@@ -61,6 +61,7 @@ use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
@@ -87,6 +88,7 @@ type Request = (
   RequestMethod,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<Value, AnyError>>,
+  CancellationToken,
 );
 
 #[derive(Clone, Debug)]
@@ -101,14 +103,14 @@ impl TsServer {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
         let mut started = false;
-        while let Some((req, state_snapshot, tx)) = rx.recv().await {
+        while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
             // TODO(@kitsonk) need to reflect the debug state of the lsp here
             start(&mut ts_runtime, false, &state_snapshot)
               .expect("could not start tsc");
             started = true;
           }
-          let value = request(&mut ts_runtime, state_snapshot, req);
+          let value = request(&mut ts_runtime, state_snapshot, req, token);
           if tx.send(value).is_err() {
             warn!("Unable to send result to client.");
           }
@@ -127,8 +129,22 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    self
+      .request_with_cancellation(snapshot, req, Default::default())
+      .await
+  }
+
+  pub(crate) async fn request_with_cancellation<R>(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    req: RequestMethod,
+    token: CancellationToken,
+  ) -> Result<R, AnyError>
+  where
+    R: de::DeserializeOwned,
+  {
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
-    if self.0.send((req, snapshot, tx)).is_err() {
+    if self.0.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
@@ -2256,6 +2272,7 @@ struct State<'a> {
   state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
+  token: CancellationToken,
 }
 
 impl<'a> State<'a> {
@@ -2270,6 +2287,7 @@ impl<'a> State<'a> {
       state_snapshot,
       snapshots: HashMap::default(),
       specifiers: HashMap::default(),
+      token: Default::default(),
     }
   }
 
@@ -2489,6 +2507,10 @@ fn op_get_text(
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
+fn op_is_cancelled(state: &mut State, _: ()) -> Result<bool, AnyError> {
+  Ok(state.token.is_cancelled())
+}
+
 fn op_load(
   state: &mut State,
   args: SpecifierArgs,
@@ -2602,6 +2624,7 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
       ("op_get_change_range", op_lsp(op_get_change_range)),
       ("op_get_length", op_lsp(op_get_length)),
       ("op_get_text", op_lsp(op_get_text)),
+      ("op_is_cancelled", op_lsp(op_is_cancelled)),
       ("op_load", op_lsp(op_load)),
       ("op_resolve", op_lsp(op_resolve)),
       ("op_respond", op_lsp(op_respond)),
@@ -3069,12 +3092,14 @@ pub(crate) fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
+  token: CancellationToken,
 ) -> Result<Value, AnyError> {
   let (performance, request_params) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
     state.state_snapshot = state_snapshot;
+    state.token = token;
     state.last_id += 1;
     let id = state.last_id;
     (state.performance.clone(), method.to_value(state, id))
@@ -3148,7 +3173,8 @@ mod tests {
       request(
         &mut runtime,
         state_snapshot.clone(),
-        RequestMethod::Configure(ts_config)
+        RequestMethod::Configure(ts_config),
+        Default::default(),
       )
       .expect("failed request"),
       json!(true)
@@ -3205,6 +3231,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::Configure(ts_config),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3232,6 +3259,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3282,6 +3310,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3316,6 +3345,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3346,6 +3376,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3400,6 +3431,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3437,6 +3469,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3499,6 +3532,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3544,6 +3578,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetAsset(specifier),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response: Option<String> =
@@ -3588,6 +3623,7 @@ mod tests {
       &mut runtime,
       state_snapshot.clone(),
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3625,6 +3661,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3696,6 +3733,7 @@ mod tests {
       &mut runtime,
       state_snapshot.clone(),
       RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let result = request(
@@ -3712,6 +3750,7 @@ mod tests {
           trigger_character: Some(".".to_string()),
         },
       )),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response: CompletionInfo =
@@ -3727,6 +3766,7 @@ mod tests {
         source: None,
         data: None,
       }),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();

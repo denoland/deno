@@ -77,17 +77,17 @@
     }
 
     get aborted() {
-      webidl.assertBranded(this, AbortSignal);
+      webidl.assertBranded(this, AbortSignalPrototype);
       return this[abortReason] !== undefined;
     }
 
     get reason() {
-      webidl.assertBranded(this, AbortSignal);
+      webidl.assertBranded(this, AbortSignalPrototype);
       return this[abortReason];
     }
 
     throwIfAborted() {
-      webidl.assertBranded(this, AbortSignal);
+      webidl.assertBranded(this, AbortSignalPrototype);
       if (this[abortReason] !== undefined) {
         throw this[abortReason];
       }
@@ -96,6 +96,7 @@
   defineEventHandler(AbortSignal.prototype, "abort");
 
   webidl.configurePrototype(AbortSignal);
+  const AbortSignalPrototype = AbortSignal.prototype;
 
   class AbortController {
     [signal] = new AbortSignal(illegalConstructorKey);
@@ -105,21 +106,22 @@
     }
 
     get signal() {
-      webidl.assertBranded(this, AbortController);
+      webidl.assertBranded(this, AbortControllerPrototype);
       return this[signal];
     }
 
     abort(reason) {
-      webidl.assertBranded(this, AbortController);
+      webidl.assertBranded(this, AbortControllerPrototype);
       this[signal][signalAbort](reason);
     }
   }
 
   webidl.configurePrototype(AbortController);
+  const AbortControllerPrototype = AbortController.prototype;
 
   webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
     "AbortSignal",
-    AbortSignal,
+    AbortSignal.prototype,
   );
 
   function newSignal() {
@@ -142,6 +144,7 @@
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
+    AbortSignalPrototype,
     add,
     signalAbort,
     remove,

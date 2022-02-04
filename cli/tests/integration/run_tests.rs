@@ -1488,6 +1488,12 @@ itest!(import_file_with_colon {
   http_server: true,
 });
 
+itest!(import_extensionless {
+  args: "run --quiet --reload import_extensionless.ts",
+  output: "import_extensionless.ts.out",
+  http_server: true,
+});
+
 itest!(classic_workers_event_loop {
   args:
     "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
@@ -2446,6 +2452,11 @@ fn issue12807() {
     .unwrap();
   assert!(status.success());
 }
+
+itest!(issue_13562 {
+  args: "run issue13562.ts",
+  output: "issue13562.ts.out",
+});
 
 itest!(import_assertions_static_import {
   args: "run --allow-read import_assertions/static_import.ts",

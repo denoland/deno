@@ -25,6 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -141,6 +142,30 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
   )
 }
 
+/// If the provided URLs derivable tsc media type doesn't match the media type,
+/// we will add an extension to the output.  This is to avoid issues with
+/// specifiers that don't have extensions, that tsc refuses to emit because they
+/// think a `.js` version exists, when it doesn't.
+fn maybe_remap_specifier(
+  specifier: &ModuleSpecifier,
+  media_type: &MediaType,
+) -> Option<String> {
+  let path = if specifier.scheme() == "file" {
+    if let Ok(path) = specifier.to_file_path() {
+      path
+    } else {
+      PathBuf::from(specifier.path())
+    }
+  } else {
+    PathBuf::from(specifier.path())
+  };
+  if path.extension().is_none() {
+    Some(format!("{}{}", specifier, media_type.as_ts_extension()))
+  } else {
+    None
+  }
+}
+
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
 /// and so we have to detect the apparent media type based on extensions it
 /// supports.
@@ -235,13 +260,13 @@ pub(crate) struct Response {
 
 #[derive(Debug)]
 struct State {
-  data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
   graph_data: Arc<RwLock<GraphData>>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
+  remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
 }
 
@@ -252,16 +277,16 @@ impl State {
     maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
-    data_url_map: HashMap<String, ModuleSpecifier>,
+    remapped_specifiers: HashMap<String, ModuleSpecifier>,
   ) -> Self {
     State {
-      data_url_map,
       hash_data,
       emitted_files: Default::default(),
       graph_data,
       maybe_config_specifier,
       maybe_tsbuildinfo,
       maybe_response: None,
+      remapped_specifiers,
       root_map,
     }
   }
@@ -324,32 +349,48 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-fn op_emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  let v: EmitArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_emit\".")?;
-  match v.file_name.as_ref() {
-    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(v.data),
-    _ => state.emitted_files.push(EmittedFile {
-      data: v.data,
-      maybe_specifiers: if let Some(specifiers) = &v.maybe_specifiers {
-        let specifiers = specifiers
-          .iter()
-          .map(|s| {
-            if let Some(data_specifier) = state.data_url_map.get(s) {
-              data_specifier.clone()
-            } else if let Some(remapped_specifier) = state.root_map.get(s) {
-              remapped_specifier.clone()
-            } else {
-              normalize_specifier(s).unwrap()
-            }
-          })
-          .collect();
-        Some(specifiers)
+fn op_emit(state: &mut State, args: EmitArgs) -> Result<Value, AnyError> {
+  match args.file_name.as_ref() {
+    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    _ => {
+      let media_type = MediaType::from(&args.file_name);
+      let media_type = if matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+          | MediaType::SourceMap
+          | MediaType::TsBuildInfo
+      ) {
+        media_type
       } else {
-        None
-      },
-      media_type: MediaType::from(&v.file_name),
-    }),
+        MediaType::JavaScript
+      };
+      state.emitted_files.push(EmittedFile {
+        data: args.data,
+        maybe_specifiers: if let Some(specifiers) = &args.maybe_specifiers {
+          let specifiers = specifiers
+            .iter()
+            .map(|s| {
+              if let Some(data_specifier) = state.remapped_specifiers.get(s) {
+                data_specifier.clone()
+              } else if let Some(remapped_specifier) = state.root_map.get(s) {
+                remapped_specifier.clone()
+              } else {
+                normalize_specifier(s).unwrap()
+              }
+            })
+            .collect();
+          Some(specifiers)
+        } else {
+          None
+        },
+        media_type,
+      })
+    }
   }
 
   Ok(json!(true))
@@ -423,10 +464,10 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let specifier = if let Some(data_specifier) =
-      state.data_url_map.get(&v.specifier)
+    let specifier = if let Some(remapped_specifier) =
+      state.remapped_specifiers.get(&v.specifier)
     {
-      data_specifier.clone()
+      remapped_specifier.clone()
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
       remapped_specifier.clone()
     } else {
@@ -465,20 +506,20 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  let v: ResolveArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_resolve\".")?;
+fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
   let mut resolved: Vec<(String, String)> = Vec::new();
-  let referrer = if let Some(data_specifier) = state.data_url_map.get(&v.base) {
-    data_specifier.clone()
-  } else if let Some(remapped_base) = state.root_map.get(&v.base) {
+  let referrer = if let Some(remapped_specifier) =
+    state.remapped_specifiers.get(&args.base)
+  {
+    remapped_specifier.clone()
+  } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&v.base).context(
+    normalize_specifier(&args.base).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
-  for specifier in &v.specifiers {
+  for specifier in &args.specifiers {
     if specifier.starts_with("asset:///") {
       resolved.push((
         specifier.clone(),
@@ -489,8 +530,12 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
       let referrer = graph_data.follow_redirect(&referrer);
       let resolved_dep = match graph_data.get(&referrer) {
         Some(ModuleEntry::Module { dependencies, .. }) => {
-          dependencies.get(specifier).and_then(|d| {
-            d.maybe_type.as_ref().or_else(|| d.maybe_code.as_ref())
+          dependencies.get(specifier).map(|d| {
+            if matches!(d.maybe_type, Resolved::Ok { .. }) {
+              &d.maybe_type
+            } else {
+              &d.maybe_code
+            }
           })
         }
         Some(ModuleEntry::Configuration { dependencies }) => {
@@ -499,7 +544,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         _ => None,
       };
       let maybe_result = match resolved_dep {
-        Some(Ok((specifier, _))) => {
+        Some(Resolved::Ok { specifier, .. }) => {
           let specifier = graph_data.follow_redirect(specifier);
           match graph_data.get(&specifier) {
             Some(ModuleEntry::Module {
@@ -507,8 +552,8 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               maybe_types,
               ..
             }) => match maybe_types {
-              Some(Ok((types, _))) => {
-                let types = graph_data.follow_redirect(types);
+              Some(Resolved::Ok { specifier, .. }) => {
+                let types = graph_data.follow_redirect(specifier);
                 match graph_data.get(&types) {
                   Some(ModuleEntry::Module { media_type, .. }) => {
                     Some((types, media_type))
@@ -528,10 +573,23 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           let specifier_str = match specifier.scheme() {
             "data" | "blob" => {
               let specifier_str = hash_url(&specifier, media_type);
-              state.data_url_map.insert(specifier_str.clone(), specifier);
+              state
+                .remapped_specifiers
+                .insert(specifier_str.clone(), specifier);
               specifier_str
             }
-            _ => specifier.to_string(),
+            _ => {
+              if let Some(specifier_str) =
+                maybe_remap_specifier(&specifier, media_type)
+              {
+                state
+                  .remapped_specifiers
+                  .insert(specifier_str.clone(), specifier);
+                specifier_str
+              } else {
+                specifier.to_string()
+              }
+            }
           };
           (specifier_str, media_type.as_ts_extension().into())
         }
@@ -573,14 +631,14 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
   // extensions and remap any that are unacceptable to tsc and add them to the
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
-  let mut data_url_map = HashMap::new();
+  let mut remapped_specifiers = HashMap::new();
   let root_names: Vec<String> = request
     .root_names
     .iter()
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
         let specifier_str = hash_url(s, mt);
-        data_url_map.insert(specifier_str.clone(), s.clone());
+        remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
       _ => {
@@ -605,7 +663,7 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
       request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
       root_map,
-      data_url_map,
+      remapped_specifiers,
     ));
   }
 
@@ -661,6 +719,7 @@ mod tests {
   use crate::diagnostics::DiagnosticCategory;
   use crate::emit::Stats;
   use deno_core::futures::future;
+  use deno_graph::ModuleKind;
   use std::fs;
 
   #[derive(Debug, Default)]
@@ -704,7 +763,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![specifier],
+      vec![(specifier, ModuleKind::Esm)],
       false,
       None,
       &mut loader,
@@ -731,7 +790,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![specifier.clone()],
+      vec![(specifier.clone(), ModuleKind::Esm)],
       false,
       None,
       &mut loader,
@@ -840,11 +899,11 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_emit(
       &mut state,
-      json!({
-        "data": "some file content",
-        "fileName": "cache:///some/file.js",
-        "maybeSpecifiers": ["file:///some/file.ts"]
-      }),
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "cache:///some/file.js".to_string(),
+        maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -864,14 +923,45 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_emit_strange_specifier() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_emit(
+      &mut state,
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "deno:///some.file.ts?q=.json".to_string(),
+        maybe_specifiers: Some(
+          vec!["file:///some/file.ts?q=.json".to_string()],
+        ),
+      },
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!(true));
+    assert_eq!(state.emitted_files.len(), 1);
+    assert!(state.maybe_tsbuildinfo.is_none());
+    assert_eq!(
+      state.emitted_files[0],
+      EmittedFile {
+        data: "some file content".to_string(),
+        maybe_specifiers: Some(vec![resolve_url_or_path(
+          "file:///some/file.ts?q=.json"
+        )
+        .unwrap()]),
+        media_type: MediaType::JavaScript,
+      }
+    );
+  }
+
+  #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
     let actual = op_emit(
       &mut state,
-      json!({
-        "data": "some file content",
-        "fileName": "deno:///.tsbuildinfo",
-      }),
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "deno:///.tsbuildinfo".to_string(),
+        maybe_specifiers: None,
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -981,7 +1071,10 @@ mod tests {
     .await;
     let actual = op_resolve(
       &mut state,
-      json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./b.ts" ]}),
+      ResolveArgs {
+        base: "https://deno.land/x/a.ts".to_string(),
+        specifiers: vec!["./b.ts".to_string()],
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
@@ -997,8 +1090,12 @@ mod tests {
     .await;
     let actual = op_resolve(
       &mut state,
-      json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
-    ).expect("should have not errored");
+      ResolveArgs {
+        base: "https://deno.land/x/a.ts".to_string(),
+        specifiers: vec!["./bad.ts".to_string()],
+      },
+    )
+    .expect("should have not errored");
     assert_eq!(
       actual,
       json!([["deno:///missing_dependency.d.ts", ".d.ts"]])

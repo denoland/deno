@@ -2,7 +2,6 @@
 
 mod auth_tokens;
 mod cache;
-mod cdp;
 mod checksum;
 mod compat;
 mod config_file;
@@ -398,7 +397,9 @@ async fn compile_command(
     .then(|| {
       let root_module = graph.as_ref().modules()[0];
       match root_module.media_type {
-        MediaType::JavaScript => Some(Ok(root_module.source.to_string())),
+        MediaType::JavaScript if root_module.maybe_source.is_some() => {
+          Some(Ok(root_module.maybe_source.clone().unwrap().to_string()))
+        }
         _ => None,
       }
     })
@@ -468,7 +469,7 @@ async fn info_command(
         .map(|im| im.as_resolver())
     };
     let graph = deno_graph::create_graph(
-      vec![specifier],
+      vec![(specifier, deno_graph::ModuleKind::Esm)],
       false,
       None,
       &mut cache,
@@ -530,15 +531,7 @@ async fn lint_command(
     return Ok(0);
   }
 
-  let ps = ProcState::build(flags.clone()).await?;
-  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
-    config_file.to_lint_config()?
-  } else {
-    None
-  };
-
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some())
-    .await?;
+  tools::lint::lint(flags, lint_flags).await?;
   Ok(0)
 }
 
@@ -556,7 +549,7 @@ async fn cache_command(
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      vec![specifier],
+      vec![(specifier, deno_graph::ModuleKind::Esm)],
       false,
       lib.clone(),
       Permissions::allow_all(),
@@ -648,7 +641,7 @@ async fn create_graph_and_maybe_check(
   };
   let graph = Arc::new(
     deno_graph::create_graph(
-      vec![root],
+      vec![(root, deno_graph::ModuleKind::Esm)],
       false,
       maybe_imports,
       &mut cache,
@@ -716,7 +709,7 @@ fn bundle_module_graph(
   ps: &ProcState,
   flags: &Flags,
 ) -> Result<(String, Option<String>), AnyError> {
-  info!("{} {}", colors::green("Bundle"), graph.roots[0]);
+  info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
 
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
     emit::ConfigType::Bundle,
@@ -786,7 +779,7 @@ async fn bundle_command(
         .filter_map(|(_, r)| {
           r.as_ref()
             .ok()
-            .map(|(s, _)| s.to_file_path().ok())
+            .map(|(s, _, _)| s.to_file_path().ok())
             .flatten()
         })
         .collect();
@@ -854,7 +847,15 @@ async fn bundle_command(
   };
 
   if flags.watch.is_some() {
-    file_watcher::watch_func(resolver, operation, "Bundle").await?;
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      file_watcher::PrintConfig {
+        job_name: "Bundle".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
+    )
+    .await?;
   } else {
     let module_graph =
       if let ResolutionResult::Restart { result, .. } = resolver(None).await {
@@ -895,8 +896,7 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config)
-    .await?;
+  tools::fmt::format(flags, fmt_flags, maybe_fmt_config).await?;
   Ok(0)
 }
 
@@ -994,7 +994,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
           .map(|im| im.as_resolver())
       };
       let graph = deno_graph::create_graph(
-        vec![main_module.clone()],
+        vec![(main_module.clone(), deno_graph::ModuleKind::Esm)],
         false,
         maybe_imports,
         &mut cache,
@@ -1018,7 +1018,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .filter_map(|(_, r)| {
           r.as_ref()
             .ok()
-            .map(|(s, _)| s.to_file_path().ok())
+            .map(|(s, _, _)| s.to_file_path().ok())
             .flatten()
         })
         .collect();
@@ -1119,7 +1119,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Process").await?;
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    file_watcher::PrintConfig {
+      job_name: "Process".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
+  )
+  .await?;
   Ok(0)
 }
 

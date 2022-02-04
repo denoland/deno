@@ -17,16 +17,17 @@ use std::sync::Arc;
 pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_exit", op_sync(op_exit)),
       ("op_env", op_sync(op_env)),
       ("op_exec_path", op_sync(op_exec_path)),
-      ("op_set_env", op_sync(op_set_env)),
-      ("op_get_env", op_sync(op_get_env)),
+      ("op_exit", op_sync(op_exit)),
       ("op_delete_env", op_sync(op_delete_env)),
+      ("op_get_env", op_sync(op_get_env)),
+      ("op_getuid", op_sync(op_getuid)),
       ("op_hostname", op_sync(op_hostname)),
       ("op_loadavg", op_sync(op_loadavg)),
       ("op_network_interfaces", op_sync(op_network_interfaces)),
       ("op_os_release", op_sync(op_os_release)),
+      ("op_set_env", op_sync(op_set_env)),
       ("op_set_exit_code", op_sync(op_set_exit_code)),
       ("op_system_memory_info", op_sync(op_system_memory_info)),
     ])
@@ -236,4 +237,26 @@ fn op_system_memory_info(
     })),
     Err(_) => Ok(None),
   }
+}
+
+#[cfg(not(windows))]
+fn op_getuid(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getUid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  unsafe { Ok(Some(libc::getuid())) }
+}
+
+#[cfg(windows)]
+fn op_getuid(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getUid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(None)
 }
