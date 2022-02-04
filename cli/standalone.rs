@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::flags::Flags;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -135,9 +136,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
-    is_dynamic: bool,
+    _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
+
+    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
 
     let module = self
       .0
@@ -145,10 +148,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .ok_or_else(|| type_error("Module not found"));
 
     async move {
-      if is_dynamic {
-        return Err(type_error(
-          "Self-contained binaries don't support dynamic imports",
-        ));
+      if let Some((ref source, _)) = is_data_uri {
+        return Ok(deno_core::ModuleSource {
+          code: source.to_owned(),
+          module_type: deno_core::ModuleType::JavaScript,
+          module_url_specified: module_specifier.to_string(),
+          module_url_found: module_specifier.to_string(),
+        });
       }
 
       let module = module?;
