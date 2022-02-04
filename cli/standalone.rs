@@ -151,7 +151,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
         ));
       }
 
-      let code = module?.source().await;
+      let module = module?;
+      let code = module.source().await;
       let code = std::str::from_utf8(&code)
         .map_err(|_| type_error("Module source is not utf-8"))?
         .to_owned();
