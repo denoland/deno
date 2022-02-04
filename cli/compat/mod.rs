@@ -139,23 +139,31 @@ pub(crate) fn add_global_require(
   Ok(())
 }
 
-pub(crate) fn resolve_cjs_module(
+pub(crate) async fn resolve_cjs_module(
   js_runtime: &mut JsRuntime,
+  fake_main: &str,
   referrer_mod: &str,
   mod_to_resolve: &str,
 ) -> Result<String, AnyError> {
+  eprintln!("resolve_cjs_module {} {}", referrer_mod, mod_to_resolve);
   let source_code = &format!(
-    r#"const CJSModule = require("module");
-    const referrerMod = require("{}");
-    const resolvedMod = CJSModule._resolveFilename("{}", referrerMod);
-    return resolvedMod;
+    r#"(async function resolveCjsModule(main) {{
+      const CJSModule = await import("{}");
+      const require = CJSModule.createRequire(main);
+      const referrerMod = require("{}");
+      const resolvedMod = CJSModule.default._resolveFilename("{}", referrerMod);
+      return resolvedMod;
+    }})('{}');
     "#,
+    MODULE_URL_STR.as_str(),
     escape_for_single_quote_string(referrer_mod),
     escape_for_single_quote_string(mod_to_resolve),
+    fake_main,
   );
 
   let value =
     js_runtime.execute_script(&located_script_name!(), source_code)?;
+  let value = js_runtime.resolve_value(value).await?;
   let resolved_specifier = {
     let scope = &mut js_runtime.handle_scope();
     let local = v8::Local::<v8::Value>::new(scope, value);

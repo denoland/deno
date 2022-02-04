@@ -18,6 +18,7 @@ use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::create_main_worker;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
@@ -356,12 +357,36 @@ impl ProcState {
       // to do CJS module resolution, but we currently don't have implementation
       // of it in Rust
       // TODO: create new MainWorker here
+      let mut worker = create_main_worker(
+        self,
+        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts").unwrap(),
+        if is_dynamic {
+          dynamic_permissions
+        } else {
+          root_permissions
+        },
+        vec![],
+      );
+      // Set up Node globals
+      worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      // And `module` module that we'll use for checking which
+      // loader to use and potentially load CJS module with.
+      // This allows to skip permission check for `--allow-net`
+      // which would otherwise be requested by dynamically importing
+      // this file.
+      worker.execute_side_module(&compat::MODULE_URL).await?;
 
       for module in graph.modules() {
         if module.kind == ModuleKind::CommonJs {
           eprintln!("cjs module {}", module.specifier);
           eprintln!("deps {:#?}", module.dependencies);
           eprintln!("maybe source {:#?}", module.maybe_source);
+          self.translate_cjs_to_esm(
+            &mut worker.js_runtime,
+            &module.specifier,
+            module.maybe_source.as_ref().unwrap().to_string(),
+            module.media_type,
+          ).await?;
         }
       }
     }
@@ -572,7 +597,7 @@ impl ProcState {
                   .push(format!("export const {} = mod.{}", export, export));
               }
               // TODO(bartlomieju): handle reexports
-              for (idx, reexport) in analysis.reexports.iter().enumerate() {
+              for (_idx, reexport) in analysis.reexports.iter().enumerate() {
                 // source.push(format!(
                 //   "const reexport{} = require(\"{}\");",
                 //   idx, reexport
@@ -647,10 +672,10 @@ impl ProcState {
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  fn translate_cjs_to_esm(
+  async fn translate_cjs_to_esm(
     &self,
     js_runtime: &mut JsRuntime,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     // TODO(bartlomieju): could use `maybe_parsed_source` if available
     code: String,
     media_type: MediaType,
@@ -665,14 +690,20 @@ impl ProcState {
     })?;
     let analysis = parsed_source.analyze_cjs();
 
+    let mut source = vec![
+      r#"import { createRequire } from "node:module";"#.to_string(),
+      r#"const require = createRequire(import.meta.url);"#.to_string(),
+    ];
+
     // if there are reexports, handle them first
     for (idx, reexport) in analysis.reexports.iter().enumerate() {
       // Firstly, resolve relate reexport specifier
       let resolved_reexport = compat::resolve_cjs_module(
         js_runtime,
-        specifier.as_str(),
+        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts").unwrap().as_str(),
+        specifier.to_file_path().unwrap().to_str().unwrap(),
         reexport.as_str(),
-      )?;
+      ).await?;
       let reexport_specifier =
         ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
       // Secondly, read the source code from disk
@@ -690,16 +721,20 @@ impl ProcState {
         })?;
         let analysis = parsed_source.analyze_cjs();
 
+        // TODO:
         // And recurse again if there are reexports!
+
+        source.push(
+          format!("const reexport{} = require(\"{}\");", idx, reexport)
+        );
+
+        for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
+          // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
+          // but it might not be necessary here since our analysis is more detailed?
+          source.push(format!("export const {} = reexport{}.{};", export, idx, export));
+        }
       }
-
-      todo!()
     }
-
-    let mut source = vec![
-      r#"import { createRequire } from "node:module";"#.to_string(),
-      r#"const require = createRequire(import.meta.url);"#.to_string(),
-    ];
 
     source.push(format!(
       "const mod = require(\"{}\");",
@@ -710,22 +745,12 @@ impl ProcState {
     for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
       // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
       // but it might not be necessary here since our analysis is more detailed?
-      source.push(format!("export const {} = mod.{}", export, export));
+      source.push(format!("export const {} = mod.{};", export, export));
     }
 
-    // TODO(bartlomieju): handle reexports
-    for (idx, reexport) in analysis.reexports.iter().enumerate() {
-      // source.push(format!(
-      //   "const reexport{} = require(\"{}\");",
-      //   idx, reexport
-      // ));
-      source.push(format!(
-        "throw new Error('Unhandled reexport {}')",
-        reexport
-      ));
-    }
-
-    Ok(source.join("\n").to_string())
+    let translated_source = source.join("\n").to_string();
+    eprintln!("translated source: {}", translated_source);
+    Ok(translated_source)
   }
 }
 
