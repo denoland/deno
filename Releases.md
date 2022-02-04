@@ -6,6 +6,21 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.18.2 / 2022.02.03
+
+- feat(unstable): add Deno.getUid (#13496)
+- fix: don't crash when $HOME is a relative path (#13581)
+- fix(cli): handle extensionless imports better (#13548)
+- fix(cli): handle local files with query params on emit (#13568)
+- fix(cli/dts/webgpu): make GPUBlendComponent properties optional (#13574)
+- fix(ext/crypto): enforce 128bits tagLength for AES-GCM decryption (#13536)
+- fix(ext/crypto): utf16 jwk encoding (#13535)
+- fix(lsp): properly display x-deno-warning with redirects (#13554)
+- fix(lsp): regression where certain diagnostics were showing for disabled files
+  (#13530)
+- fix(repl): tab completions (#13540)
+- perf(lsp): cancellable TS diagnostics (#13565)
+
 ### 1.18.1 / 2022.01.27
 
 - feat(unstable): add Deno.networkInterfaces (#13475)
