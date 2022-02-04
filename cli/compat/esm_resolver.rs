@@ -219,6 +219,7 @@ fn finalize_resolution(
     return Ok(resolved);
   }
 
+  eprintln!("resolved {} {}", resolved.as_str(), base.as_str());
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
@@ -794,9 +795,10 @@ fn package_resolve(
   base: &ModuleSpecifier,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
+  eprintln!("specifier {}", specifier);
   let (package_name, package_subpath, is_scoped) =
     parse_package_name(specifier, base)?;
-
+  eprintln!("package name {} {} {}", package_name, package_subpath, is_scoped);
   // ResolveSelf
   let package_config = get_package_scope_config(base)?;
   if package_config.exists {
@@ -805,6 +807,7 @@ fn package_resolve(
     if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         if !exports.is_null() {
+          eprintln!("here1");
           return package_exports_resolve(
             package_json_url,
             package_subpath,
@@ -854,6 +857,7 @@ fn package_resolve(
     let package_config =
       get_package_config(package_json_path.clone(), specifier, Some(base))?;
     if package_config.exports.is_some() {
+      eprintln!("here2");
       return package_exports_resolve(
         package_json_url,
         package_subpath,
@@ -863,14 +867,17 @@ fn package_resolve(
       );
     }
     if package_subpath == "." {
+      eprintln!("here3");
       return legacy_main_resolve(&package_json_url, &package_config, base);
     }
 
+    eprintln!("here4 {} {}", package_json_url, package_subpath);
     return package_json_url
       .join(&package_subpath)
       .map_err(AnyError::from);
   }
 
+  eprintln!("erroring!");
   Err(errors::err_module_not_found(
     &package_json_url
       .join(".")
@@ -903,7 +910,7 @@ fn parse_package_name(
   }
 
   let package_name = if let Some(index) = separator_index {
-    specifier[0..=index].to_string()
+    specifier[0..index].to_string()
   } else {
     specifier.to_string()
   };

@@ -44,7 +44,6 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
-use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -379,14 +378,17 @@ impl ProcState {
       for module in graph.modules() {
         if module.kind == ModuleKind::CommonJs {
           eprintln!("cjs module {}", module.specifier);
-          eprintln!("deps {:#?}", module.dependencies);
-          eprintln!("maybe source {:#?}", module.maybe_source);
-          self.translate_cjs_to_esm(
+          // eprintln!("deps {:#?}", module.dependencies);
+          // eprintln!("maybe source {:#?}", module.maybe_source);
+          let translated_source = self.translate_cjs_to_esm(
             &mut worker.js_runtime,
             &module.specifier,
             module.maybe_source.as_ref().unwrap().to_string(),
             module.media_type,
           ).await?;
+          let mut graph_data = self.graph_data.write();
+          eprintln!("adding translation {}", module.specifier);
+          graph_data.add_cjs_esm_translation(&module.specifier, translated_source);
         }
       }
     }
@@ -546,15 +548,6 @@ impl ProcState {
       is_dynamic
     );
 
-    let mut needs_cjs_esm_translation = false;
-    if let Some(resolver) = &self.maybe_resolver {
-      if let Some(referrer) = maybe_referrer {
-        let response = resolver.resolve(specifier.as_str(), &referrer);
-        needs_cjs_esm_translation =
-          matches!(response, ResolveResponse::CommonJs(_));
-      }
-    }
-
     let graph_data = self.graph_data.read();
     let found = graph_data.follow_redirect(&specifier);
     match graph_data.get(&found) {
@@ -567,47 +560,8 @@ impl ProcState {
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => {
-            if needs_cjs_esm_translation {
-              let parsed_source =
-                deno_ast::parse_script(deno_ast::ParseParams {
-                  specifier: specifier.to_string(),
-                  source: deno_ast::SourceTextInfo::new(code.clone()),
-                  media_type: *media_type,
-                  capture_tokens: true,
-                  scope_analysis: false,
-                  maybe_syntax: None,
-                })?;
-              let analysis = parsed_source.analyze_cjs();
-              let mut source = vec![
-                r#"import { createRequire } from "node:module";"#.to_string(),
-                r#"const require = createRequire(import.meta.url);"#
-                  .to_string(),
-              ];
-              source.push(format!(
-                "const mod = require(\"{}\");",
-                specifier.to_file_path().unwrap().to_str().unwrap()
-              ));
-              source.push("export default mod".to_string());
-              for export in
-                analysis.exports.iter().filter(|e| e.as_str() != "default")
-              {
-                // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
-                // but it might not be necessary here since our analysis is more detailed?
-                source
-                  .push(format!("export const {} = mod.{}", export, export));
-              }
-              // TODO(bartlomieju): handle reexports
-              for (_idx, reexport) in analysis.reexports.iter().enumerate() {
-                // source.push(format!(
-                //   "const reexport{} = require(\"{}\");",
-                //   idx, reexport
-                // ));
-                source.push(format!(
-                  "throw new Error('Unhandled reexport {}')",
-                  reexport
-                ));
-              }
-              source.join("\n").to_string()
+            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier) {
+              source.to_owned()
             } else {
               code.as_ref().clone()
             }
@@ -749,7 +703,6 @@ impl ProcState {
     }
 
     let translated_source = source.join("\n").to_string();
-    eprintln!("translated source: {}", translated_source);
     Ok(translated_source)
   }
 }

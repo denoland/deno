@@ -150,12 +150,14 @@ pub(crate) async fn resolve_cjs_module(
     r#"(async function resolveCjsModule(main) {{
       const CJSModule = await import("{}");
       const require = CJSModule.createRequire(main);
-      const referrerMod = require("{}");
+      require("{}");
+      const referrerMod = CJSModule.default._cache["{}"];
       const resolvedMod = CJSModule.default._resolveFilename("{}", referrerMod);
       return resolvedMod;
     }})('{}');
     "#,
     MODULE_URL_STR.as_str(),
+    escape_for_single_quote_string(referrer_mod),
     escape_for_single_quote_string(referrer_mod),
     escape_for_single_quote_string(mod_to_resolve),
     fake_main,
