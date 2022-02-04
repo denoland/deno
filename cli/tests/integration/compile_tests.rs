@@ -107,8 +107,48 @@ fn standalone_error() {
   } else {
     dir.path().join("error")
   };
+  let testdata_path = util::testdata_path();
   let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&testdata_path)
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./standalone_error_module_with_imports_1.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  println!("{:#?}", &output);
+  assert_eq!(output.stdout, b"hello\n");
+  let testdata_path_str = testdata_path.to_string_lossy();
+  let expected_stderr = format!("error: Error: boom!\n    at file://{testdata_path_str}/standalone_error_module_with_imports_2.ts:2:7\n");
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_eq!(stderr, expected_stderr);
+}
+
+#[test]
+fn standalone_error_module_with_imports() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("error.exe")
+  } else {
+    dir.path().join("error")
+  };
+  let testdata_path = util::testdata_path();
+  let output = util::deno_cmd()
+    .current_dir(&testdata_path)
     .arg("compile")
     .arg("--unstable")
     .arg("--output")
@@ -130,7 +170,8 @@ fn standalone_error() {
     .unwrap();
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
-  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:6:11)\n    at foo (file://$deno$/bundle.js:9:5)\n    at file://$deno$/bundle.js:11:1\n";
+  let testdata_path_str = testdata_path.to_string_lossy();
+  let expected_stderr = format!("error: Error: boom!\n    at boom (file://{testdata_path_str}/standalone_error.ts:2:11)\n    at foo (file://{testdata_path_str}/standalone_error.ts:5:5)\n    at file://{testdata_path_str}/standalone_error.ts:7:1\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(stderr, expected_stderr);
 }
