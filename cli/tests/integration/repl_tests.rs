@@ -123,6 +123,18 @@ fn pty_complete_primitives() {
 }
 
 #[test]
+fn pty_complete_expression() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_text("Deno.\t\t");
+    console.write_text("y");
+    console.write_line("");
+    console.write_line("close();");
+    assert!(console.read_all_output().contains("Display all"));
+  });
+}
+
+
+#[test]
 fn pty_complete_imports() {
   util::with_pty(&["repl"], |mut console| {
     // single quotes
