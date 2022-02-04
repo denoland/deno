@@ -290,7 +290,6 @@ fn main() {
     return;
   }
 
-  #[cfg(not(all(target_arch = "arm")))]
   println!("cargo:rustc-link-arg=-rdynamic");
 
   // To debug snapshot issues uncomment:
