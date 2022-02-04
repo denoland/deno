@@ -270,7 +270,7 @@ pub async fn run(
     permissions,
     options,
   );
-  worker.execute_main_module(&main_module).await?;
+  worker.execute_main_module(main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(true).await?;
   worker.dispatch_unload_event(&located_script_name!())?;
