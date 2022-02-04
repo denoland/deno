@@ -6,6 +6,7 @@ use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
+use crate::create_main_worker;
 use crate::deno_dir;
 use crate::emit;
 use crate::file_fetcher::get_root_cert_store;
@@ -18,7 +19,6 @@ use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
-use crate::create_main_worker;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
@@ -358,7 +358,8 @@ impl ProcState {
       // TODO: create new MainWorker here
       let mut worker = create_main_worker(
         self,
-        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts").unwrap(),
+        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts")
+          .unwrap(),
         if is_dynamic {
           dynamic_permissions
         } else {
@@ -380,15 +381,18 @@ impl ProcState {
           // eprintln!("cjs module {}", module.specifier);
           // eprintln!("deps {:#?}", module.dependencies);
           // eprintln!("maybe source {:#?}", module.maybe_source);
-          let translated_source = self.translate_cjs_to_esm(
-            &mut worker.js_runtime,
-            &module.specifier,
-            module.maybe_source.as_ref().unwrap().to_string(),
-            module.media_type,
-          ).await?;
+          let translated_source = self
+            .translate_cjs_to_esm(
+              &mut worker.js_runtime,
+              &module.specifier,
+              module.maybe_source.as_ref().unwrap().to_string(),
+              module.media_type,
+            )
+            .await?;
           let mut graph_data = self.graph_data.write();
           // eprintln!("adding translation {}", module.specifier);
-          graph_data.add_cjs_esm_translation(&module.specifier, translated_source);
+          graph_data
+            .add_cjs_esm_translation(&module.specifier, translated_source);
         }
       }
     }
@@ -560,7 +564,8 @@ impl ProcState {
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier) {
+            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier)
+            {
               source.to_owned()
             } else {
               code.as_ref().clone()
@@ -654,14 +659,18 @@ impl ProcState {
       // Firstly, resolve relate reexport specifier
       let resolved_reexport = compat::resolve_cjs_module(
         js_runtime,
-        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts").unwrap().as_str(),
+        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts")
+          .unwrap()
+          .as_str(),
         specifier.to_file_path().unwrap().to_str().unwrap(),
         reexport.as_str(),
-      ).await?;
+      )
+      .await?;
       let reexport_specifier =
         ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
       // Secondly, read the source code from disk
-      let reexport_file = self.file_fetcher.get_source(&reexport_specifier).unwrap();
+      let reexport_file =
+        self.file_fetcher.get_source(&reexport_specifier).unwrap();
       // Now perform analysis again
 
       {
@@ -678,14 +687,20 @@ impl ProcState {
         // TODO:
         // And recurse again if there are reexports!
 
-        source.push(
-          format!("const reexport{} = require(\"{}\");", idx, reexport)
-        );
+        source.push(format!(
+          "const reexport{} = require(\"{}\");",
+          idx, reexport
+        ));
 
-        for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
+        for export in
+          analysis.exports.iter().filter(|e| e.as_str() != "default")
+        {
           // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
           // but it might not be necessary here since our analysis is more detailed?
-          source.push(format!("export const {} = reexport{}.{};", export, idx, export));
+          source.push(format!(
+            "export const {} = reexport{}.{};",
+            export, idx, export
+          ));
         }
       }
     }

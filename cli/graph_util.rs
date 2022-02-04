@@ -255,7 +255,7 @@ impl GraphData {
       modules,
       referrer_map,
       configurations: self.configurations.clone(),
-      cjs_esm_translations: Default::default()
+      cjs_esm_translations: Default::default(),
     })
   }
 
@@ -420,13 +420,15 @@ impl GraphData {
     specifier: &ModuleSpecifier,
     source: String,
   ) {
-    let prev = self.cjs_esm_translations.insert(specifier.to_owned(), source);
+    let prev = self
+      .cjs_esm_translations
+      .insert(specifier.to_owned(), source);
     assert!(prev.is_none());
   }
 
   pub(crate) fn get_cjs_esm_translation<'a>(
     &'a self,
-    specifier: &ModuleSpecifier
+    specifier: &ModuleSpecifier,
   ) -> Option<&'a String> {
     self.cjs_esm_translations.get(specifier)
   }
