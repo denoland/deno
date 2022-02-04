@@ -715,7 +715,7 @@
       const validationFilteredPromise = PromisePrototypeCatch(
         operation,
         (err) => {
-          if (ObjectPrototypeIsPrototypeOf.prototype(GPUValidationError, err)) {
+          if (ObjectPrototypeIsPrototypeOf(GPUValidationError, err)) {
             return PromiseReject(err);
           }
           return PromiseResolve();
