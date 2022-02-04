@@ -1,0 +1,47 @@
+[
+  {
+    "title": "Update specifier to its redirected specifier.",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 19
+          },
+          "end": {
+            "line": 0,
+            "character": 60
+          }
+        },
+        "severity": 3,
+        "code": "redirect",
+        "source": "deno",
+        "message": "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".",
+        "data": {
+          "specifier": "http://127.0.0.1:4545/x_deno_warning.js",
+          "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"
+        }
+      }
+    ],
+    "edit": {
+      "changes": {
+        "file:///a/file.ts": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 19
+              },
+              "end": {
+                "line": 0,
+                "character": 60
+              }
+            },
+            "newText": "\"http://127.0.0.1:4545/x_deno_warning_redirect.js\""
+          }
+        ]
+      }
+    }
+  }
+]

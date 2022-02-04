@@ -1145,15 +1145,7 @@ impl Inner {
             _ => false,
           },
           "deno-lint" => matches!(&d.code, Some(_)),
-          "deno" => match &d.code {
-            Some(NumberOrString::String(code)) => {
-              matches!(
-                code.as_str(),
-                "no-cache" | "no-cache-data" | "no-assert-type"
-              )
-            }
-            _ => false,
-          },
+          "deno" => diagnostics::DenoDiagnostic::is_fixable(&d.code),
           _ => false,
         },
         None => false,
