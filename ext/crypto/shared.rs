@@ -12,6 +12,8 @@ use rsa::RsaPrivateKey;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::ec_key::ECPrivateKey;
+
 pub const RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1");
 pub const SHA1_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
@@ -133,7 +135,20 @@ impl RawKeyData {
         p384::EncodedPoint::from_bytes(&data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
-      _ => Err(type_error("expected public key data")),
+      RawKeyData::Private(data) => {
+        let ec_key = ECPrivateKey::<p384::NistP384>::try_from(&**data)
+          .map_err(|_| {
+            custom_error(
+              "DOMExceptionOperationError",
+              "failed to decode private key",
+            )
+          })?;
+        let point = p384::EncodedPoint::from_bytes(&ec_key.encoded_point)
+          .map_err(|_| data_error("expected valid public EC key"))?;
+        Ok(point)
+      }
+      // Should never reach here.
+      RawKeyData::Secret(_) => unreachable!(),
     }
   }
 
