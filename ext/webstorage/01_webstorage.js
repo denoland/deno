@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -25,12 +25,12 @@
     }
 
     get length() {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       return core.opSync("op_webstorage_length", this[_persistent]);
     }
 
     key(index) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'key' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       index = webidl.converters["unsigned long"](index, {
@@ -42,7 +42,7 @@
     }
 
     setItem(key, value) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'setItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -61,7 +61,7 @@
     }
 
     getItem(key) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'getItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -73,7 +73,7 @@
     }
 
     removeItem(key) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'removeItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -85,14 +85,14 @@
     }
 
     clear() {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       core.opSync("op_webstorage_clear", this[_persistent]);
     }
   }
 
-  function createStorage(persistent) {
-    if (persistent) window.location;
+  const StoragePrototype = Storage.prototype;
 
+  function createStorage(persistent) {
     const storage = webidl.createBranded(Storage);
     storage[_persistent] = persistent;
 
@@ -133,7 +133,8 @@
         return true;
       },
       has(target, p) {
-        return (typeof target.getItem(p)) === "string";
+        return p === SymbolFor("Deno.customInspect") ||
+          (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
         return core.opSync("op_webstorage_iterate_keys", persistent);

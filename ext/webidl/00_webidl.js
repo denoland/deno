@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -9,8 +9,9 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayBufferIsView,
     ArrayPrototypeForEach,
     ArrayPrototypePush,
@@ -19,7 +20,6 @@
     BigInt,
     BigIntAsIntN,
     BigIntAsUintN,
-    DataView,
     Float32Array,
     Float64Array,
     FunctionPrototypeBind,
@@ -41,12 +41,15 @@
     NumberMAX_SAFE_INTEGER,
     // deno-lint-ignore camelcase
     NumberMIN_SAFE_INTEGER,
+    ObjectAssign,
     ObjectCreate,
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -431,20 +434,11 @@
   }
 
   function isNonSharedArrayBuffer(V) {
-    return V instanceof ArrayBuffer;
+    return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
   }
 
   function isSharedArrayBuffer(V) {
-    return V instanceof SharedArrayBuffer;
-  }
-
-  function isArrayBufferDetached(V) {
-    try {
-      new Uint8Array(V);
-      return false;
-    } catch {
-      return true;
-    }
+    return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
   }
 
   converters.ArrayBuffer = (V, opts = {}) => {
@@ -458,15 +452,12 @@
       }
       throw makeException(TypeError, "is not an ArrayBuffer", opts);
     }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
-    }
 
     return V;
   };
 
   converters.DataView = (V, opts = {}) => {
-    if (!(V instanceof DataView)) {
+    if (!(ObjectPrototypeIsPrototypeOf(DataViewPrototype, V))) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -474,13 +465,6 @@
       throw makeException(
         TypeError,
         "is backed by a SharedArrayBuffer, which is not allowed",
-        opts,
-      );
-    }
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is backed by a detached ArrayBuffer",
         opts,
       );
     }
@@ -526,13 +510,6 @@
             opts,
           );
         }
-        if (isArrayBufferDetached(V.buffer)) {
-          throw makeException(
-            TypeError,
-            "is a view on a detached ArrayBuffer",
-            opts,
-          );
-        }
 
         return V;
       };
@@ -558,13 +535,6 @@
       );
     }
 
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is a view on a detached ArrayBuffer",
-        opts,
-      );
-    }
     return V;
   };
 
@@ -578,13 +548,6 @@
         );
       }
 
-      if (isArrayBufferDetached(V.buffer)) {
-        throw makeException(
-          TypeError,
-          "is a view on a detached ArrayBuffer",
-          opts,
-        );
-      }
       return V;
     }
 
@@ -605,9 +568,6 @@
         "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
         opts,
       );
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;
@@ -726,7 +686,7 @@
       }
       const esDict = V;
 
-      const idlDict = { ...defaultValues };
+      const idlDict = ObjectAssign({}, defaultValues);
 
       // NOTE: fast path Null and Undefined.
       if ((V === undefined || V === null) && !hasRequiredKey) {
@@ -843,8 +803,22 @@
           opts,
         );
       }
-      const keys = ReflectOwnKeys(V);
       const result = {};
+      // Fast path for common case (not a Proxy)
+      if (!core.isProxy(V)) {
+        for (const key in V) {
+          if (!ObjectPrototypeHasOwnProperty(V, key)) {
+            continue;
+          }
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
+        return result;
+      }
+      // Slow path if Proxy (e.g: in WPT tests)
+      const keys = ReflectOwnKeys(V);
       for (const key of keys) {
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {
@@ -888,7 +862,7 @@
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!(V instanceof prototype) || V[brand] !== brand) {
+      if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -903,7 +877,9 @@
   }
 
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || self[brand] !== brand) {
+    if (
+      !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
+    ) {
       throw new TypeError("Illegal invocation");
     }
   }
@@ -970,7 +946,7 @@
     }
 
     function entries() {
-      assertBranded(this, prototype);
+      assertBranded(this, prototype.prototype);
       return createDefaultIterator(this, "key+value");
     }
 
@@ -989,7 +965,7 @@
       },
       keys: {
         value: function keys() {
-          assertBranded(this, prototype);
+          assertBranded(this, prototype.prototype);
           return createDefaultIterator(this, "key");
         },
         writable: true,
@@ -998,7 +974,7 @@
       },
       values: {
         value: function values() {
-          assertBranded(this, prototype);
+          assertBranded(this, prototype.prototype);
           return createDefaultIterator(this, "value");
         },
         writable: true,
@@ -1007,7 +983,7 @@
       },
       forEach: {
         value: function forEach(idlCallback, thisArg = undefined) {
-          assertBranded(this, prototype);
+          assertBranded(this, prototype.prototype);
           const prefix = `Failed to execute 'forEach' on '${name}'`;
           requiredArguments(arguments.length, 1, { prefix });
           idlCallback = converters["Function"](idlCallback, {

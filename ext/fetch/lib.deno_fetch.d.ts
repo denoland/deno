@@ -1,6 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -22,11 +22,7 @@ type FormDataEntryValue = File | string;
  * form fields and their values, which can then be easily sent using the
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
  * encoding type were set to "multipart/form-data". */
-declare class FormData implements DomIterable<string, FormDataEntryValue> {
-  // TODO(ry) FormData constructor is non-standard.
-  // new(form?: HTMLFormElement): FormData;
-  constructor();
-
+interface FormData {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
@@ -42,6 +38,11 @@ declare class FormData implements DomIterable<string, FormDataEntryValue> {
     thisArg?: any,
   ): void;
 }
+
+declare var FormData: {
+  prototype: FormData;
+  new (): FormData;
+};
 
 interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */

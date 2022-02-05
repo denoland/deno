@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -29,8 +29,10 @@
    * @returns {string}
    */
   function atob(data) {
+    const prefix = "Failed to execute 'atob'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
     data = webidl.converters.DOMString(data, {
-      prefix: "Failed to execute 'atob'",
+      prefix,
       context: "Argument 1",
     });
 

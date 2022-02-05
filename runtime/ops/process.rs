@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
@@ -261,7 +261,6 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   let signo = super::signal::signal_str_to_int(signal)?;
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
-  use std::convert::TryFrom;
   let sig = Signal::try_from(signo)?;
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
 }
@@ -280,7 +279,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if !matches!(signal, "SIGINT" | "SIGKILL" | "SIGTERM") {
+  if !matches!(signal, "SIGKILL" | "SIGTERM") {
     Err(type_error(format!("Invalid signal: {}", signal)))
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
@@ -309,7 +308,6 @@ fn op_kill(
   pid: i32,
   signal: String,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
   kill(pid, &signal)?;
   Ok(())

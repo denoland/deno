@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -85,6 +85,7 @@ declare namespace Deno {
     export class BadResource extends Error {}
     export class Http extends Error {}
     export class Busy extends Error {}
+    export class NotSupported extends Error {}
   }
 
   /** The current process id of the runtime. */
@@ -113,8 +114,44 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  export interface TestContext {
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test step is the same
+     * as number of dispatched ops. Defaults to the parent test or step's value. */
+    sanitizeOps?: boolean;
+    /** Ensure the test step does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to the parent test or step's value. */
+    sanitizeResources?: boolean;
+    /** Ensure the test step does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to the parent test or
+     * step's value. */
+    sanitizeExit?: boolean;
+  }
+
   export interface TestDefinition {
-    fn: () => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -127,10 +164,148 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `env` permission will be inherited.
+       * If set to `true`, the global `net` permission will be requested.
+       * If set to `false`, the global `net` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      env?: "inherit" | boolean | string[];
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+       * If set to `true`, the global `hrtime` permission will be requested.
+       * If set to `false`, the global `hrtime` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+       * if set to `"inherit"`, the current `net` permission will be inherited.
+       * if set to `true`, the global `net` permission will be requested.
+       * if set to `false`, the global `net` permission will be revoked.
+       * if set to `string[]`, the `net` permission will be requested with the
+       * specified host strings with the format `"<host>[:<port>]`.
+       *
+       * Defaults to "inherit".
+       *
+       * Examples:
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "inherit",
+       *   permissions: {
+       *     net: "inherit",
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" })
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "true",
+       *   permissions: {
+       *     net: true,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "false",
+       *   permissions: {
+       *     net: false,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "denied");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "localhost:8080",
+       *   permissions: {
+       *     net: ["localhost:8080"],
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `ffi` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `ffi` permission will be inherited.
+       * If set to `true`, the global `ffi` permission will be requested.
+       * If set to `false`, the global `ffi` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      ffi?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `read` permission will be inherited.
+       * If set to `true`, the global `read` permission will be requested.
+       * If set to `false`, the global `read` permission will be revoked.
+       * If set to `Array<string | URL>`, the `read` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `run` permission will be inherited.
+       * If set to `true`, the global `run` permission will be requested.
+       * If set to `false`, the global `run` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      run?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `write` permission will be inherited.
+       * If set to `true`, the global `write` permission will be requested.
+       * If set to `false`, the global `write` permission will be revoked.
+       * If set to `Array<string | URL>`, the `write` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -173,19 +348,111 @@ declare namespace Deno {
    * ```ts
    * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test("My test description", ():void => {
+   * Deno.test("My test description", (): void => {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.test("My async test description", async ():Promise<void> => {
+   * Deno.test("My async test description", async (): Promise<void> => {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
    * });
    * ```
    */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(
+    name: string,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
 
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test(function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test(async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(fn: (t: TestContext) => void | Promise<void>): void;
+
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test("My test description", { permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(
+    name: string,
+    options: Omit<TestDefinition, "fn" | "name">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
+
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({ name: "My test description", permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test({ name: "My async test description", permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(
+    options: Omit<TestDefinition, "fn">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
+
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({ permissions: { read: true } }, function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(
+    options: Omit<TestDefinition, "fn" | "name">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
@@ -420,9 +687,6 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
-   * `Deno.copy` will be removed in Deno 2.0.
-   *
    * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
@@ -433,6 +697,9 @@ declare namespace Deno {
    * const destination = await Deno.create("my_file_2.txt");
    * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
+   *
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
@@ -447,8 +714,6 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
-   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
-   *
    * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
@@ -477,6 +742,10 @@ declare namespace Deno {
    * a view on that buffer on each iteration. It is therefore caller's
    * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
+   *
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
    */
   export function iter(
     r: Reader,
@@ -486,8 +755,6 @@ declare namespace Deno {
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
-   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
-   *
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
@@ -516,6 +783,10 @@ declare namespace Deno {
    * a view on that buffer on each iteration. It is therefore caller's
    * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
+   *
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
    */
   export function iterSync(
     r: ReaderSync,
@@ -632,7 +903,7 @@ declare namespace Deno {
    *
    * Returns the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAllSync() instead.
+   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -972,8 +1243,6 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
@@ -992,12 +1261,13 @@ declare namespace Deno {
    * const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
    * const bufferContent = await Deno.readAll(reader);
    * ```
+   *
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /**
-   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
-   *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
@@ -1016,12 +1286,14 @@ declare namespace Deno {
    * const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
    * const bufferContent = Deno.readAllSync(reader);
    * ```
+   *
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
@@ -1045,12 +1317,13 @@ declare namespace Deno {
    * await Deno.writeAll(writer, contentBytes);
    * console.log(writer.bytes().length);  // 11
    * ```
+   *
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
    */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /**
-   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
-   *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
@@ -1075,6 +1348,10 @@ declare namespace Deno {
    * Deno.writeAllSync(writer, contentBytes);
    * console.log(writer.bytes().length);  // 11
    * ```
+   *
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
    */
   export function writeAllSync(w: WriterSync, arr: Uint8Array): void;
 
@@ -1792,7 +2069,7 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface Metrics {
+  export interface OpMetrics {
     opsDispatched: number;
     opsDispatchedSync: number;
     opsDispatchedAsync: number;
@@ -1804,6 +2081,10 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
   }
 
   /** Receive metrics from the privileged side of Deno. This is primarily used
@@ -1848,9 +2129,23 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
+  /**
+   * Additional information for FsEvent objects with the "other" kind.
+   *
+   * - "rescan": rescan notices indicate either a lapse in the events or a
+   *    change in the filesystem such that events received so far can no longer
+   *    be relied on to represent the state of the filesystem now. An
+   *    application that simply reacts to file changes may not care about this.
+   *    An application that keeps an in-memory representation of the filesystem
+   *    will need to care, and will need to refresh that representation directly
+   *    from the filesystem.
+   */
+  export type FsEventFlag = "rescan";
+
   export interface FsEvent {
-    kind: "any" | "access" | "create" | "modify" | "remove";
+    kind: "any" | "access" | "create" | "modify" | "remove" | "other";
     paths: string[];
+    flag?: FsEventFlag;
   }
 
   /**
@@ -1864,9 +2159,10 @@ declare namespace Deno {
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
-    /** @deprecated
+    /**
      * Stops watching the file system and closes the watcher resource.
-     * Will be removed at 2.0.
+     *
+     * @deprecated Will be removed at 2.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -1956,13 +2252,81 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** **UNSTABLE**
+    /** Send a signal to process.
      *
-     * Send a signal to process. This functionality currently only works on
-     * Linux and Mac OS.
+     * ```ts
+     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
+     * p.kill("SIGTERM");
+     * p.close();
+     * ```
      */
-    kill(signo: string): void; // TODO(ry): Use Signal type here once made stable.
+    kill(signo: Signal): void;
   }
+
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
+
+  /** Registers the given function as a listener of the given signal event.
+   *
+   * ```ts
+   * Deno.addSignalListener("SIGTERM", () => {
+   *   console.log("SIGTERM!")
+   * });
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function addSignalListener(signal: Signal, handler: () => void): void;
+
+  /** Removes the given signal listener that has been registered with
+   * Deno.addSignalListener.
+   *
+   * ```ts
+   * const listener = () => {
+   *   console.log("SIGTERM!")
+   * };
+   * Deno.addSignalListener("SIGTERM", listener);
+   * Deno.removeSignalListener("SIGTERM", listener);
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function removeSignalListener(
+    signal: Signal,
+    handler: () => void,
+  ): void;
 
   export type ProcessStatus =
     | {
@@ -2136,6 +2500,7 @@ declare namespace Deno {
 
   export interface FfiPermissionDescriptor {
     name: "ffi";
+    path?: string | URL;
   }
 
   export interface HrtimePermissionDescriptor {
@@ -2263,11 +2628,12 @@ declare namespace Deno {
   export const args: string[];
 
   /**
-   * @deprecated A symbol which can be used as a key for a custom method which will be
+   * A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
+   * @deprecated This symbol is deprecated since 1.9. Use
+   * `Symbol.for("Deno.customInspect")` instead.
    */
   export const customInspect: unique symbol;
 
@@ -2288,7 +2654,7 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires full `allow-read` and `allow-write` permissions. */
   export function symlinkSync(
     oldpath: string | URL,
     newpath: string | URL,
@@ -2305,7 +2671,7 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires full `allow-read` and `allow-write` permissions. */
   export function symlink(
     oldpath: string | URL,
     newpath: string | URL,
@@ -2442,6 +2808,14 @@ declare namespace Deno {
 
   export interface UpgradeWebSocketOptions {
     protocol?: string;
+    /**
+     * If the client does not respond to this frame with a
+     * `pong` within the timeout specified, the connection is deemed
+     * unhealthy and is closed. The `close` and `error` event will be emitted.
+     *
+     * The default is 120 seconds. Set to 0 to disable timeouts.
+     */
+    idleTimeout?: number;
   }
 
   /**
@@ -2480,4 +2854,103 @@ declare namespace Deno {
     request: Request,
     options?: UpgradeWebSocketOptions,
   ): WebSocketUpgrade;
+
+  /** Send a signal to process under given `pid`.
+   *
+   * If `pid` is negative, the signal will be sent to the process group
+   * identified by `pid`.
+   *
+   *      const p = Deno.run({
+   *        cmd: ["sleep", "10000"]
+   *      });
+   *
+   *      Deno.kill(p.pid, "SIGINT");
+   *
+   * Requires `allow-run` permission. */
+  export function kill(pid: number, signo: Signal): void;
+
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
+
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups.
+     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+       * If not specified, defaults to 53. */
+      port?: number;
+    };
+  }
+
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
+
+  /**
+   * Performs DNS resolution against the given query, returning resolved records.
+   * Fails in the cases such as:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timed out
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 }

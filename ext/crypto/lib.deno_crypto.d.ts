@@ -1,4 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -56,12 +58,31 @@ interface JsonWebKey {
   y?: string;
 }
 
+interface AesCbcParams extends Algorithm {
+  iv: BufferSource;
+}
+
+interface AesGcmParams extends Algorithm {
+  iv: BufferSource;
+  additionalData?: BufferSource;
+  tagLength?: number;
+}
+
+interface AesCtrParams extends Algorithm {
+  counter: BufferSource;
+  length: number;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
 }
 
 interface EcKeyGenParams extends Algorithm {
+  namedCurve: NamedCurve;
+}
+
+interface EcImportParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
@@ -125,6 +146,22 @@ interface Pbkdf2Params extends Algorithm {
   salt: BufferSource;
 }
 
+interface AesDerivedKeyParams extends Algorithm {
+  length: number;
+}
+
+interface EcdhKeyDeriveParams extends Algorithm {
+  public: CryptoKey;
+}
+
+interface AesKeyGenParams extends Algorithm {
+  length: number;
+}
+
+interface AesKeyAlgorithm extends KeyAlgorithm {
+  length: number;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
@@ -157,7 +194,7 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair>;
   generateKey(
-    algorithm: HmacKeyGenParams,
+    algorithm: AesKeyGenParams | HmacKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -169,14 +206,22 @@ interface SubtleCrypto {
   importKey(
     format: "jwk",
     keyData: JsonWebKey,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
   importKey(
     format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
-    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -201,20 +246,73 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   encrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesGcmParams
+      | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   decrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesGcmParams
+      | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   deriveBits(
-    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    algorithm:
+      | AlgorithmIdentifier
+      | HkdfParams
+      | Pbkdf2Params
+      | EcdhKeyDeriveParams,
     baseKey: CryptoKey,
     length: number,
   ): Promise<ArrayBuffer>;
+  deriveKey(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    derivedKeyType:
+      | AlgorithmIdentifier
+      | AesDerivedKeyParams
+      | HmacImportParams
+      | HkdfParams
+      | Pbkdf2Params,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
+  wrapKey(
+    format: KeyFormat,
+    key: CryptoKey,
+    wrappingKey: CryptoKey,
+    wrapAlgorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesCtrParams,
+  ): Promise<ArrayBuffer>;
+  unwrapKey(
+    format: KeyFormat,
+    wrappedKey: BufferSource,
+    unwrappingKey: CryptoKey,
+    unwrapAlgorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesCtrParams,
+    unwrappedKeyAlgorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
 }
 
 declare interface Crypto {

@@ -1,10 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir::DenoDir;
+use crate::flags::CheckFlag;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::RunFlags;
-use deno_core::error::bail;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest::Client;
@@ -135,14 +136,14 @@ pub async fn write_standalone_binary(
   let output = match target {
     Some(target) => {
       if target.contains("windows") {
-        PathBuf::from(output.display().to_string() + ".exe")
+        output.with_extension("exe")
       } else {
         output
       }
     }
     None => {
       if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-        PathBuf::from(output.display().to_string() + ".exe")
+        output.with_extension("exe")
       } else {
         output
       }
@@ -174,7 +175,14 @@ pub async fn write_standalone_binary(
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
     // (see https://github.com/denoland/deno/issues/10310)
     std::fs::remove_file(&output)?;
+  } else {
+    let output_base = &output.parent().unwrap();
+    if output_base.exists() && output_base.is_file() {
+      bail!("Could not compile: {:?} is a file.", &output_base);
+    }
+    tokio::fs::create_dir_all(output_base).await?;
   }
+
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {
@@ -203,6 +211,7 @@ pub fn compile_to_runtime_flags(
     subcommand: DenoSubcommand::Run(RunFlags {
       script: "placeholder".to_string(),
     }),
+    allow_all: flags.allow_all,
     allow_env: flags.allow_env,
     allow_hrtime: flags.allow_hrtime,
     allow_net: flags.allow_net,
@@ -210,7 +219,6 @@ pub fn compile_to_runtime_flags(
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,
-    allow_serial: flags.allow_serial,
     ca_stores: flags.ca_stores,
     ca_file: flags.ca_file,
     cache_blocklist: vec![],
@@ -227,7 +235,8 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    no_check: false,
+    check: CheckFlag::All,
+    compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors,
     no_remote: false,
@@ -238,6 +247,7 @@ pub fn compile_to_runtime_flags(
     unstable: flags.unstable,
     v8_flags: flags.v8_flags,
     version: false,
-    watch: false,
+    watch: None,
+    no_clear_screen: false,
   })
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -15,12 +15,11 @@
   const {
     HTTP_TAB_OR_SPACE_PREFIX_RE,
     HTTP_TAB_OR_SPACE_SUFFIX_RE,
-    HTTP_WHITESPACE_PREFIX_RE,
-    HTTP_WHITESPACE_SUFFIX_RE,
     HTTP_TOKEN_CODE_POINT_RE,
     byteLowerCase,
     collectSequenceOfCodepoints,
     collectHttpQuotedString,
+    httpTrim,
   } = window.__bootstrap.infra;
   const {
     ArrayIsArray,
@@ -30,7 +29,7 @@
     ArrayPrototypeJoin,
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
-    ObjectKeys,
+    ObjectPrototypeHasOwnProperty,
     ObjectEntries,
     RegExpPrototypeTest,
     Symbol,
@@ -59,17 +58,7 @@
    * @returns {string}
    */
   function normalizeHeaderValue(potentialValue) {
-    potentialValue = StringPrototypeReplaceAll(
-      potentialValue,
-      HTTP_WHITESPACE_PREFIX_RE,
-      "",
-    );
-    potentialValue = StringPrototypeReplaceAll(
-      potentialValue,
-      HTTP_WHITESPACE_SUFFIX_RE,
-      "",
-    );
-    return potentialValue;
+    return httpTrim(potentialValue);
   }
 
   /**
@@ -87,7 +76,10 @@
         appendHeader(headers, header[0], header[1]);
       }
     } else {
-      for (const key of ObjectKeys(object)) {
+      for (const key in object) {
+        if (!ObjectPrototypeHasOwnProperty(object, key)) {
+          continue;
+        }
         appendHeader(headers, key, object[key]);
       }
     }
@@ -95,7 +87,7 @@
 
   // Regex matching illegal chars in a header value
   // deno-lint-ignore no-control-regex
-  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
+  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/g;
 
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
@@ -122,7 +114,13 @@
 
     // 7.
     const list = headers[_headerList];
-    name = byteLowerCase(name);
+    const lowercaseName = byteLowerCase(name);
+    for (let i = 0; i < list.length; i++) {
+      if (byteLowerCase(list[i][0]) === lowercaseName) {
+        name = list[i][0];
+        break;
+      }
+    }
     ArrayPrototypePush(list, [name, value]);
   }
 
@@ -134,7 +132,10 @@
   function getHeader(list, name) {
     const lowercaseName = byteLowerCase(name);
     const entries = ArrayPrototypeMap(
-      ArrayPrototypeFilter(list, (entry) => entry[0] === lowercaseName),
+      ArrayPrototypeFilter(
+        list,
+        (entry) => byteLowerCase(entry[0]) === lowercaseName,
+      ),
       (entry) => entry[1],
     );
     if (entries.length === 0) {
@@ -204,7 +205,7 @@
       const headers = {};
       const cookies = [];
       for (const entry of list) {
-        const name = entry[0];
+        const name = byteLowerCase(entry[0]);
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");
         // The following if statement is not spec compliant.
@@ -262,7 +263,7 @@
      * @param {string} value
      */
     append(name, value) {
-      webidl.assertBranded(this, Headers);
+      webidl.assertBranded(this, HeadersPrototype);
       const prefix = "Failed to execute 'append' on 'Headers'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters["ByteString"](name, {
@@ -295,9 +296,9 @@
       }
 
       const list = this[_headerList];
-      name = byteLowerCase(name);
+      const lowercaseName = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === name) {
+        if (byteLowerCase(list[i][0]) === lowercaseName) {
           ArrayPrototypeSplice(list, i, 1);
           i--;
         }
@@ -339,9 +340,9 @@
       }
 
       const list = this[_headerList];
-      name = byteLowerCase(name);
+      const lowercaseName = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === name) {
+        if (byteLowerCase(list[i][0]) === lowercaseName) {
           return true;
         }
       }
@@ -353,7 +354,7 @@
      * @param {string} value
      */
     set(name, value) {
-      webidl.assertBranded(this, Headers);
+      webidl.assertBranded(this, HeadersPrototype);
       const prefix = "Failed to execute 'set' on 'Headers'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters["ByteString"](name, {
@@ -380,10 +381,10 @@
       }
 
       const list = this[_headerList];
-      name = byteLowerCase(name);
+      const lowercaseName = byteLowerCase(name);
       let added = false;
       for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === name) {
+        if (byteLowerCase(list[i][0]) === lowercaseName) {
           if (!added) {
             list[i][1] = value;
             added = true;
@@ -410,6 +411,7 @@
   webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
   webidl.configurePrototype(Headers);
+  const HeadersPrototype = Headers.prototype;
 
   webidl.converters["HeadersInit"] = (V, opts) => {
     // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
@@ -427,7 +429,7 @@
   };
   webidl.converters["Headers"] = webidl.createInterfaceConverter(
     "Headers",
-    Headers,
+    Headers.prototype,
   );
 
   /**

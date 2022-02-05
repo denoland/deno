@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -33,6 +33,13 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
+  /** Specialized listener that accepts TLS connections. */
+  export interface TlsListener extends Listener, AsyncIterable<TlsConn> {
+    /** Waits for a TLS client to connect and accepts the connection. */
+    accept(): Promise<TlsConn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<TlsConn>;
+  }
+
   export interface Conn extends Reader, Writer, Closer {
     /** The local address of the connection. */
     readonly localAddr: Addr;
@@ -43,6 +50,20 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
+    /** Enable/disable the use of Nagle's algorithm. Defaults to true */
+    setNoDelay(nodelay?: boolean): void;
+    /** Enable/disable keep-alive functionality */
+    setKeepAlive(keepalive?: boolean): void;
+  }
+
+  // deno-lint-ignore no-empty-interface
+  export interface TlsHandshakeInfo {}
+
+  export interface TlsConn extends Conn {
+    /** Runs the client or server handshake protocol to completion if that has
+     * not happened yet. Calling this method is optional; the TLS handshake
+     * will be completed automatically as soon as data is sent or received. */
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   export interface ListenOptions {
@@ -90,7 +111,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): TlsListener;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -121,8 +142,18 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Server certificate file. */
+    /**
+     * Server certificate file.
+     *
+     * @deprecated This option is deprecated and will be removed in a future
+     * release.
+     */
     certFile?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -131,15 +162,46 @@ declare namespace Deno {
    * be used (see also https://github.com/ctz/webpki-roots for specifics)
    *
    * ```ts
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
    * const conn1 = await Deno.connectTls({ port: 80 });
-   * const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
+   * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80 });
    * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
+   * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80});
    * ```
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
+
+  export interface StartTlsOptions {
+    /** A literal IP address or host name that can be resolved to an IP address.
+     * If not specified, defaults to `127.0.0.1`. */
+    hostname?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+  }
+
+  /** Start TLS handshake from an existing connection using an optional list of
+   * CA certificates, and hostname (default is "127.0.0.1"). Specifying CA certs
+   * is optional. By default the configured root certificates are used. Using
+   * this function requires that the other end of the connection is prepared for
+   * a TLS handshake.
+   *
+   * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function startTls(
+    conn: Conn,
+    options?: StartTlsOptions,
+  ): Promise<TlsConn>;
 
   /** Shutdown socket send operations.
    *

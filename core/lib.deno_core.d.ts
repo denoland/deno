@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
-  declare namespace core {
+  namespace core {
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
@@ -20,6 +20,14 @@ declare namespace Deno {
       a?: any,
       b?: any,
     ): Promise<any>;
+
+    /** Mark following promise as "ref", ie. event loop won't exit
+     * until all "ref" promises are resolved. All async ops are "ref" by default. */
+    function refOp(promiseId: number): void;
+
+    /** Mark following promise as "unref", ie. event loop will exit
+     * if there are only "unref" promises left. */
+    function unrefOps(promiseId: number): void;
 
     /**
      * Retrieve a list of all registered ops, in the form of a map that maps op
@@ -45,6 +53,21 @@ declare namespace Deno {
      */
     function tryClose(rid: number): void;
 
+    /**
+     * Read from a (stream) resource that implements read()
+     */
+    function read(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Write to a (stream) resource that implements write()
+     */
+    function write(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Shutdown a resource
+     */
+    function shutdown(rid: number): Promise<void>;
+
     /** Get heap stats for current isolate/worker */
     function heapStats(): Record<string, number>;
 
@@ -63,11 +86,60 @@ declare namespace Deno {
      *     compiler. Takes the rid and a `Uint8Array`.
      *   - `op_wasm_streaming_abort`. Aborts the wasm compilation. Takes the rid
      *     and an exception. Invalidates the resource.
+     *   - `op_wasm_streaming_set_url`. Sets a source URL for the wasm module.
+     *     Takes the rid and a string.
      *   - To indicate the end of the resource, use `Deno.core.close()` with the
      *     rid.
      */
     function setWasmStreamingCallback(
       cb: (source: any, rid: number) => void,
     ): void;
+
+    /**
+     * Set a callback that will be called after resolving ops and before resolving
+     * macrotasks.
+     */
+    function setNextTickCallback(
+      cb: () => void,
+    ): void;
+
+    /** Check if there's a scheduled "next tick". */
+    function hasNextTickScheduled(): boolean;
+
+    /** Set a value telling the runtime if there are "next ticks" scheduled */
+    function setHasNextTickScheduled(value: boolean): void;
+
+    /**
+     * Set a callback that will be called after resolving ops and "next ticks".
+     */
+    function setMacrotaskCallback(
+      cb: () => boolean,
+    ): void;
+
+    /**
+     * Set a callback that will be called when a promise without a .catch
+     * handler is rejected. Returns the old handler or undefined.
+     */
+    function setPromiseRejectCallback(
+      cb: PromiseRejectCallback,
+    ): undefined | PromiseRejectCallback;
+
+    export type PromiseRejectCallback = (
+      type: number,
+      promise: Promise<unknown>,
+      reason: any,
+    ) => void;
+
+    /**
+     * Set a callback that will be called when an exception isn't caught
+     * by any try/catch handlers. Currently only invoked when the callback
+     * to setPromiseRejectCallback() throws an exception but that is expected
+     * to change in the future. Returns the old handler or undefined.
+     */
+    function setUncaughtExceptionCallback(
+      cb: UncaughtExceptionCallback,
+    ): undefined | UncaughtExceptionCallback;
+
+    export type UncaughtExceptionCallback = (err: any) => void;
   }
 }

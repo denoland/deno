@@ -1,13 +1,15 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod ast;
 mod auth_tokens;
+mod cache;
 mod checksum;
+mod compat;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
+mod emit;
 mod errors;
 mod file_fetcher;
 mod file_watcher;
@@ -15,30 +17,30 @@ mod flags;
 mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
+mod graph_util;
 mod http_cache;
 mod http_util;
-mod info;
 mod lockfile;
 mod logger;
 mod lsp;
-mod module_graph;
 mod module_loader;
 mod ops;
 mod proc_state;
+mod resolver;
 mod source_maps;
-mod specifier_handler;
 mod standalone;
 mod text_encoding;
-mod tokio_util;
 mod tools;
 mod tsc;
 mod unix_util;
 mod version;
+mod windows_util;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
+use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -53,12 +55,16 @@ use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TestFlags;
+use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
+use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_valid;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::source_maps::apply_source_map;
-use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -66,20 +72,22 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
-use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::BootstrapOptions;
 use log::debug;
 use log::info;
 use std::env;
@@ -108,12 +116,25 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     );
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
+    let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
+
     let options = WebWorkerOptions {
-      args: ps.flags.argv.clone(),
-      apply_source_maps: true,
-      debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-      unstable: ps.flags.unstable,
-      enable_testing_features: ps.flags.enable_testing_features,
+      bootstrap: BootstrapOptions {
+        args: ps.flags.argv.clone(),
+        apply_source_maps: true,
+        cpu_count: num_cpus::get(),
+        debug_flag: ps
+          .flags
+          .log_level
+          .map_or(false, |l| l == log::Level::Debug),
+        enable_testing_features: ps.flags.enable_testing_features,
+        location: Some(args.main_module.clone()),
+        no_color: !colors::use_color(),
+        runtime_version: version::deno(),
+        ts_version: version::TYPESCRIPT.to_string(),
+        unstable: ps.flags.unstable,
+      },
+      extensions,
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -127,44 +148,21 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
-      runtime_version: version::deno(),
-      ts_version: version::TYPESCRIPT.to_string(),
-      no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      cpu_count: num_cpus::get(),
+      maybe_exit_code: args.maybe_exit_code,
     };
 
-    let (mut worker, external_handle) = WebWorker::from_options(
+    WebWorker::bootstrap_from_options(
       args.name,
       args.permissions,
       args.main_module,
       args.worker_id,
-      &options,
-    );
-
-    // This block registers additional ops and state that
-    // are only available in the CLI
-    {
-      let js_runtime = &mut worker.js_runtime;
-      js_runtime
-        .op_state()
-        .borrow_mut()
-        .put::<ProcState>(ps.clone());
-      // Applies source maps - works in conjuction with `js_error_create_fn`
-      // above
-      ops::errors::init(js_runtime);
-      if args.use_deno_namespace {
-        ops::runtime_compiler::init(js_runtime);
-      }
-      js_runtime.sync_ops_cache();
-    }
-    worker.bootstrap(&options);
-
-    (worker, external_handle)
+      options,
+    )
   })
 }
 
@@ -172,7 +170,7 @@ pub fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
+  mut custom_extensions: Vec<Extension>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
 
@@ -189,12 +187,49 @@ pub fn create_main_worker(
 
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
+  let maybe_storage_key = if let Some(location) = &ps.flags.location {
+    // if a location is set, then the ascii serialization of the location is
+    // used, unless the origin is opaque, and then no storage origin is set, as
+    // we can't expect the origin to be reproducible
+    let storage_origin = location.origin().ascii_serialization();
+    if storage_origin == "null" {
+      None
+    } else {
+      Some(storage_origin)
+    }
+  } else if let Some(config_file) = &ps.maybe_config_file {
+    // otherwise we will use the path to the config file
+    Some(config_file.specifier.to_string())
+  } else {
+    // otherwise we will use the path to the main module
+    Some(main_module.to_string())
+  };
+
+  let origin_storage_dir = maybe_storage_key.map(|key| {
+    ps.dir
+      .root
+      // TODO(@crowlKats): change to origin_data for 2.0
+      .join("location_data")
+      .join(checksum::gen(&[key.as_bytes()]))
+  });
+
+  let mut extensions = ops::cli_exts(ps.clone(), true);
+  extensions.append(&mut custom_extensions);
+
   let options = WorkerOptions {
-    apply_source_maps: true,
-    args: ps.flags.argv.clone(),
-    debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    unstable: ps.flags.unstable,
-    enable_testing_features: ps.flags.enable_testing_features,
+    bootstrap: BootstrapOptions {
+      apply_source_maps: true,
+      args: ps.flags.argv.clone(),
+      cpu_count: num_cpus::get(),
+      debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
+      enable_testing_features: ps.flags.enable_testing_features,
+      location: ps.flags.location.clone(),
+      no_color: !colors::use_color(),
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      unstable: ps.flags.unstable,
+    },
+    extensions,
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
@@ -207,50 +242,15 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
-    runtime_version: version::deno(),
-    ts_version: version::TYPESCRIPT.to_string(),
-    no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
-    location: ps.flags.location.clone(),
-    origin_storage_dir: ps.flags.location.clone().map(|loc| {
-      ps.dir
-        .root
-        .clone()
-        // TODO(@crowlKats): change to origin_data for 2.0
-        .join("location_data")
-        .join(checksum::gen(&[loc.to_string().as_bytes()]))
-    }),
+    origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-    cpu_count: num_cpus::get(),
   };
 
-  let mut worker = MainWorker::from_options(main_module, permissions, &options);
-
-  // This block registers additional ops and state that
-  // are only available in the CLI
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<ProcState>(ps.clone());
-    // Applies source maps - works in conjuction with `js_error_create_fn`
-    // above
-    ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
-
-    if let Some(op_init) = maybe_op_init {
-      op_init(js_runtime);
-    }
-
-    js_runtime.sync_ops_cache();
-  }
-  worker.bootstrap(&options);
-
-  worker
+  MainWorker::bootstrap_from_options(main_module, permissions, options)
 }
 
 pub fn write_to_stdout_ignore_sigpipe(
@@ -280,7 +280,7 @@ where
 fn print_cache_info(
   state: &ProcState,
   json: bool,
-  location: Option<deno_core::url::Url>,
+  location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
@@ -365,7 +365,7 @@ pub fn get_types(unstable: bool) -> String {
 async fn compile_command(
   flags: Flags,
   compile_flags: CompileFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let run_flags = tools::standalone::compile_to_runtime_flags(
@@ -377,25 +377,36 @@ async fn compile_command(
   let ps = ProcState::build(flags.clone()).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.or_else(|| {
+  let output = compile_flags.output.and_then(|output| {
+    if fs_util::path_has_trailing_slash(&output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output)
+    }
+  }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   ))?;
 
-  let module_graph = create_module_graph_and_maybe_check(
-    module_specifier.clone(),
-    ps.clone(),
-    debug,
-  )
-  .await?;
+  let graph =
+    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
 
-  info!(
-    "{} {}",
-    colors::green("Bundle"),
-    module_specifier.to_string()
-  );
-  let bundle_str = bundle_module_graph(module_graph, ps.clone(), flags, debug)?;
+  let source = (graph.as_ref().modules().len() == 1)
+    .then(|| {
+      let root_module = graph.as_ref().modules()[0];
+      match root_module.media_type {
+        MediaType::JavaScript if root_module.maybe_source.is_some() => {
+          Some(Ok(root_module.maybe_source.clone().unwrap().to_string()))
+        }
+        _ => None,
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| {
+      bundle_module_graph(graph.as_ref(), &ps, &flags).map(|r| r.0)
+    })?;
 
   info!(
     "{} {}",
@@ -410,7 +421,7 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    bundle_str,
+    source,
     run_flags,
   )?;
 
@@ -423,50 +434,68 @@ async fn compile_command(
   )
   .await?;
 
-  Ok(())
+  Ok(0)
 }
 
 async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
-) -> Result<(), AnyError> {
-  let location = flags.location.clone();
+) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
-      &ps,
-      // info accesses dynamically imported modules just for their information
-      // so we allow access to all of them.
+    let mut cache = cache::FetchCacher::new(
+      ps.dir.gen_cache.clone(),
+      ps.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-    )?));
-    let mut builder = module_graph::GraphBuilder::new(
-      handler,
-      ps.maybe_import_map.clone(),
-      ps.lockfile.clone(),
     );
-    builder.add(&specifier, false).await?;
-    builder.analyze_config_file(&ps.maybe_config_file).await?;
-    let graph = builder.get_graph();
-    let info = graph.info()?;
+    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_resolver = if maybe_jsx_resolver.is_some() {
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
+    };
+    let graph = deno_graph::create_graph(
+      vec![(specifier, deno_graph::ModuleKind::Esm)],
+      false,
+      None,
+      &mut cache,
+      maybe_resolver,
+      maybe_locker,
+      None,
+      None,
+    )
+    .await;
 
     if info_flags.json {
-      write_json_to_stdout(&json!(info))
+      write_json_to_stdout(&json!(graph))?;
     } else {
-      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())
-        .map_err(|err| err.into())
+      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())?;
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, location)
+    print_cache_info(&ps, info_flags.json, ps.flags.location.as_ref())?;
   }
+  Ok(0)
 }
 
 async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
@@ -474,89 +503,77 @@ async fn install_command(
   let ps = ProcState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module, true).await?;
-  tools::installer::install(
-    flags,
-    &install_flags.module_url,
-    install_flags.args,
-    install_flags.name,
-    install_flags.root,
-    install_flags.force,
-  )
+  tools::installer::install(flags, install_flags)?;
+  Ok(0)
 }
 
-async fn lsp_command() -> Result<(), AnyError> {
-  lsp::start().await
+async fn uninstall_command(
+  uninstall_flags: UninstallFlags,
+) -> Result<i32, AnyError> {
+  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)?;
+  Ok(0)
 }
 
-#[allow(clippy::too_many_arguments)]
+async fn lsp_command() -> Result<i32, AnyError> {
+  lsp::start().await?;
+  Ok(0)
+}
+
 async fn lint_command(
   flags: Flags,
   lint_flags: LintFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if lint_flags.rules {
     tools::lint::print_rules_list(lint_flags.json);
-    return Ok(());
+    return Ok(0);
   }
 
-  let ps = ProcState::build(flags.clone()).await?;
-  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
-    config_file.to_lint_config()?
-  } else {
-    None
-  };
-
-  tools::lint::lint_files(
-    maybe_lint_config,
-    lint_flags.rules_tags,
-    lint_flags.rules_include,
-    lint_flags.rules_exclude,
-    lint_flags.files,
-    lint_flags.ignore,
-    lint_flags.json,
-  )
-  .await
+  tools::lint::lint(flags, lint_flags).await?;
+  Ok(0)
 }
 
 async fn cache_command(
   flags: Flags,
   cache_flags: CacheFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    module_graph::TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
   let ps = ProcState::build(flags).await?;
 
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      specifier,
+      vec![(specifier, deno_graph::ModuleKind::Esm)],
+      false,
       lib.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
       false,
-      ps.maybe_import_map.clone(),
     )
     .await?;
   }
 
-  Ok(())
+  Ok(0)
 }
 
 async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
-) -> Result<(), AnyError> {
-  // Force TypeScript compile.
-  let main_module = resolve_url_or_path("./$deno$eval.ts").unwrap();
+) -> Result<i32, AnyError> {
+  // deno_graph works off of extensions for local files to determine the media
+  // type, and so our "fake" specifier needs to have the proper extension.
+  let main_module =
+    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -568,15 +585,7 @@ async fn eval_command(
   let file = File {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
-    media_type: if eval_flags.ext.as_str() == "ts" {
-      MediaType::TypeScript
-    } else if eval_flags.ext.as_str() == "tsx" {
-      MediaType::Tsx
-    } else if eval_flags.ext.as_str() == "js" {
-      MediaType::JavaScript
-    } else {
-      MediaType::Jsx
-    },
+    media_type: MediaType::Unknown,
     source: Arc::new(String::from_utf8(source_code)?),
     specifier: main_module.clone(),
     maybe_headers: None,
@@ -586,94 +595,169 @@ async fn eval_command(
   // to allow module access by TS compiler.
   ps.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
+  if flags.compat {
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+  }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(false).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
-  Ok(())
+  worker.dispatch_unload_event(&located_script_name!())?;
+  Ok(0)
 }
 
-async fn create_module_graph_and_maybe_check(
-  module_specifier: ModuleSpecifier,
-  ps: ProcState,
+async fn create_graph_and_maybe_check(
+  root: ModuleSpecifier,
+  ps: &ProcState,
   debug: bool,
-) -> Result<module_graph::Graph, AnyError> {
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &ps,
-    // when bundling, dynamic imports are only access for their type safety,
-    // therefore we will allow the graph to access any module.
+) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
+  let mut cache = cache::FetchCacher::new(
+    ps.dir.gen_cache.clone(),
+    ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),
-  )?));
-  let mut builder = module_graph::GraphBuilder::new(
-    handler,
-    ps.maybe_import_map.clone(),
-    ps.lockfile.clone(),
   );
-  builder.add(&module_specifier, false).await?;
-  builder.analyze_config_file(&ps.maybe_config_file).await?;
-  let module_graph = builder.get_graph();
+  let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+  let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
+    config_file.to_maybe_imports()?
+  } else {
+    None
+  };
+  let maybe_import_map_resolver =
+    ps.maybe_import_map.clone().map(ImportMapResolver::new);
+  let maybe_jsx_resolver = ps
+    .maybe_config_file
+    .as_ref()
+    .map(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    })
+    .flatten();
+  let maybe_resolver = if maybe_jsx_resolver.is_some() {
+    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+  } else {
+    maybe_import_map_resolver
+      .as_ref()
+      .map(|im| im.as_resolver())
+  };
+  let graph = Arc::new(
+    deno_graph::create_graph(
+      vec![(root, deno_graph::ModuleKind::Esm)],
+      false,
+      maybe_imports,
+      &mut cache,
+      maybe_resolver,
+      maybe_locker,
+      None,
+      None,
+    )
+    .await,
+  );
 
-  if !ps.flags.no_check {
-    // TODO(@kitsonk) support bundling for workers
+  let check_js = ps
+    .maybe_config_file
+    .as_ref()
+    .map(|cf| cf.get_check_js())
+    .unwrap_or(false);
+  graph_valid(&graph, ps.flags.check != CheckFlag::None, check_js)?;
+  graph_lock_or_exit(&graph);
+
+  if ps.flags.check != CheckFlag::None {
     let lib = if ps.flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
+      emit::TypeLib::UnstableDenoWindow
     } else {
-      module_graph::TypeLib::DenoWindow
+      emit::TypeLib::DenoWindow
     };
-    let result_info =
-      module_graph.clone().check(module_graph::CheckOptions {
-        debug,
-        emit: false,
+    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+      emit::ConfigType::Check {
+        tsc_emit: false,
         lib,
-        maybe_config_file: ps.maybe_config_file.clone(),
-        reload: ps.flags.reload,
-        ..Default::default()
-      })?;
-
-    debug!("{}", result_info.stats);
-    if let Some(ignored_options) = result_info.maybe_ignored_options {
+      },
+      ps.maybe_config_file.as_ref(),
+      None,
+    )?;
+    if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    if !result_info.diagnostics.is_empty() {
-      return Err(generic_error(result_info.diagnostics.to_string()));
+    let maybe_config_specifier =
+      ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
+    let check_result = emit::check_and_maybe_emit(
+      &graph.roots,
+      Arc::new(RwLock::new(graph.as_ref().into())),
+      &mut cache,
+      emit::CheckOptions {
+        check: ps.flags.check.clone(),
+        debug,
+        emit_with_diagnostics: false,
+        maybe_config_specifier,
+        ts_config,
+        log_checks: true,
+        reload: ps.flags.reload,
+        reload_exclusions: Default::default(),
+      },
+    )?;
+    debug!("{}", check_result.stats);
+    if !check_result.diagnostics.is_empty() {
+      return Err(check_result.diagnostics.into());
     }
   }
 
-  Ok(module_graph)
+  Ok(graph)
 }
 
 fn bundle_module_graph(
-  module_graph: module_graph::Graph,
-  ps: ProcState,
-  flags: Flags,
-  debug: bool,
-) -> Result<String, AnyError> {
-  let (bundle, stats, maybe_ignored_options) =
-    module_graph.bundle(module_graph::BundleOptions {
-      debug,
-      maybe_config_file: ps.maybe_config_file.clone(),
-    })?;
-  match maybe_ignored_options {
-    Some(ignored_options) if flags.no_check => {
+  graph: &deno_graph::ModuleGraph,
+  ps: &ProcState,
+  flags: &Flags,
+) -> Result<(String, Option<String>), AnyError> {
+  info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
+
+  let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+    emit::ConfigType::Bundle,
+    ps.maybe_config_file.as_ref(),
+    None,
+  )?;
+  if flags.check == CheckFlag::None {
+    if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    _ => {}
   }
-  debug!("{}", stats);
-  Ok(bundle)
+
+  emit::bundle(
+    graph,
+    emit::BundleOptions {
+      bundle_type: emit::BundleType::Module,
+      ts_config,
+      emit_ignore_directives: true,
+    },
+  )
+}
+
+/// A function that converts a float to a string the represents a human
+/// readable version of that number.
+fn human_size(size: f64) -> String {
+  let negative = if size.is_sign_positive() { "" } else { "-" };
+  let size = size.abs();
+  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  if size < 1_f64 {
+    return format!("{}{}{}", negative, size, "B");
+  }
+  let delimiter = 1024_f64;
+  let exponent = std::cmp::min(
+    (size.ln() / delimiter.ln()).floor() as i32,
+    (units.len() - 1) as i32,
+  );
+  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
+    .parse::<f64>()
+    .unwrap()
+    * 1_f64;
+  let unit = units[exponent as usize];
+  format!("{}{}{}", negative, pretty_bytes, unit)
 }
 
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let resolver = |_| {
@@ -686,17 +770,18 @@ async fn bundle_command(
       debug!(">>>>> bundle START");
       let ps = ProcState::build(flags.clone()).await?;
 
-      let module_graph = create_module_graph_and_maybe_check(
-        module_specifier,
-        ps.clone(),
-        debug,
-      )
-      .await?;
+      let graph =
+        create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
 
-      let mut paths_to_watch: Vec<PathBuf> = module_graph
-        .get_modules()
+      let mut paths_to_watch: Vec<PathBuf> = graph
+        .specifiers()
         .iter()
-        .filter_map(|specifier| specifier.to_file_path().ok())
+        .filter_map(|(_, r)| {
+          r.as_ref()
+            .ok()
+            .map(|(s, _, _)| s.to_file_path().ok())
+            .flatten()
+        })
         .collect();
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {
@@ -704,12 +789,12 @@ async fn bundle_command(
           .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
       }
 
-      Ok((paths_to_watch, module_graph, ps))
+      Ok((paths_to_watch, graph, ps))
     }
     .map(move |result| match result {
-      Ok((paths_to_watch, module_graph, ps)) => ResolutionResult::Restart {
+      Ok((paths_to_watch, graph, ps)) => ResolutionResult::Restart {
         paths_to_watch,
-        result: Ok((ps, module_graph)),
+        result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
         paths_to_watch: vec![PathBuf::from(source_file2)],
@@ -718,36 +803,59 @@ async fn bundle_command(
     })
   };
 
-  let operation = |(ps, module_graph): (ProcState, module_graph::Graph)| {
+  let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let flags = flags.clone();
     let out_file = bundle_flags.out_file.clone();
     async move {
-      info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
-
-      let output = bundle_module_graph(module_graph, ps, flags, debug)?;
-
+      let (bundle_emit, maybe_bundle_map) =
+        bundle_module_graph(graph.as_ref(), &ps, &flags)?;
       debug!(">>>>> bundle END");
 
       if let Some(out_file) = out_file.as_ref() {
-        let output_bytes = output.as_bytes();
+        let output_bytes = bundle_emit.as_bytes();
         let output_len = output_bytes.len();
         fs_util::write_file(out_file, output_bytes, 0o644)?;
         info!(
           "{} {:?} ({})",
           colors::green("Emit"),
           out_file,
-          colors::gray(&info::human_size(output_len as f64))
+          colors::gray(human_size(output_len as f64))
         );
+        if let Some(bundle_map) = maybe_bundle_map {
+          let map_bytes = bundle_map.as_bytes();
+          let map_len = map_bytes.len();
+          let ext = if let Some(curr_ext) = out_file.extension() {
+            format!("{}.map", curr_ext.to_string_lossy())
+          } else {
+            "map".to_string()
+          };
+          let map_out_file = out_file.with_extension(ext);
+          fs_util::write_file(&map_out_file, map_bytes, 0o644)?;
+          info!(
+            "{} {:?} ({})",
+            colors::green("Emit"),
+            map_out_file,
+            colors::gray(human_size(map_len as f64))
+          );
+        }
       } else {
-        println!("{}", output);
+        println!("{}", bundle_emit);
       }
 
       Ok(())
     }
   };
 
-  if flags.watch {
-    file_watcher::watch_func(resolver, operation, "Bundle").await?;
+  if flags.watch.is_some() {
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      file_watcher::PrintConfig {
+        job_name: "Bundle".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
+    )
+    .await?;
   } else {
     let module_graph =
       if let ResolutionResult::Restart { result, .. } = resolver(None).await {
@@ -758,27 +866,21 @@ async fn bundle_command(
     operation(module_graph).await?;
   }
 
-  Ok(())
+  Ok(0)
 }
 
 async fn doc_command(
   flags: Flags,
   doc_flags: DocFlags,
-) -> Result<(), AnyError> {
-  tools::doc::print_docs(
-    flags,
-    doc_flags.source_file,
-    doc_flags.json,
-    doc_flags.filter,
-    doc_flags.private,
-  )
-  .await
+) -> Result<i32, AnyError> {
+  tools::doc::print_docs(flags, doc_flags).await?;
+  Ok(0)
 }
 
 async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let maybe_fmt_config = if let Some(config_file) = &ps.maybe_config_file {
     config_file.to_fmt_config()?
@@ -787,33 +889,43 @@ async fn format_command(
   };
 
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(
+    tools::fmt::format_stdin(
       fmt_flags,
       maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-    );
+    )?;
+    return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
-  Ok(())
+  tools::fmt::format(flags, fmt_flags, maybe_fmt_config).await?;
+  Ok(0)
 }
 
-async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
+async fn repl_command(
+  flags: Flags,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
+  if flags.compat {
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
+    worker.run_event_loop(false).await?;
+    compat::setup_builtin_modules(&mut worker.js_runtime)?;
+  }
   worker.run_event_loop(false).await?;
 
   tools::repl::run(&ps, worker, repl_flags.eval).await
 }
 
-async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
+async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker =
-    create_main_worker(&ps.clone(), main_module.clone(), permissions, None);
+    create_main_worker(&ps.clone(), main_module.clone(), permissions, vec![]);
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -831,47 +943,90 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   ps.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
+  if flags.compat {
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+  }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(false).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
-  Ok(())
+  worker.dispatch_unload_event(&located_script_name!())?;
+  Ok(worker.get_exit_code())
 }
 
-async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
+// TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
+// code properly.
+async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let resolver = |_| {
     let script1 = script.clone();
     let script2 = script.clone();
     let flags = flags.clone();
+    let watch_flag = flags.watch.clone();
     async move {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
-      let handler = Arc::new(Mutex::new(FetchHandler::new(
-        &ps,
+      let mut cache = cache::FetchCacher::new(
+        ps.dir.gen_cache.clone(),
+        ps.file_fetcher.clone(),
         Permissions::allow_all(),
         Permissions::allow_all(),
-      )?));
-      let mut builder = module_graph::GraphBuilder::new(
-        handler,
-        ps.maybe_import_map.clone(),
-        ps.lockfile.clone(),
       );
-      builder.add(&main_module, false).await?;
-      builder.analyze_config_file(&ps.maybe_config_file).await?;
-      let module_graph = builder.get_graph();
+      let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+      let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
+        config_file.to_maybe_imports()?
+      } else {
+        None
+      };
+      let maybe_import_map_resolver =
+        ps.maybe_import_map.clone().map(ImportMapResolver::new);
+      let maybe_jsx_resolver = ps
+        .maybe_config_file
+        .as_ref()
+        .map(|cf| {
+          cf.to_maybe_jsx_import_source_module()
+            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+        })
+        .flatten();
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
+      let graph = deno_graph::create_graph(
+        vec![(main_module.clone(), deno_graph::ModuleKind::Esm)],
+        false,
+        maybe_imports,
+        &mut cache,
+        maybe_resolver,
+        maybe_locker,
+        None,
+        None,
+      )
+      .await;
+      let check_js = ps
+        .maybe_config_file
+        .as_ref()
+        .map(|cf| cf.get_check_js())
+        .unwrap_or(false);
+      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None, check_js)?;
 
       // Find all local files in graph
-      let mut paths_to_watch: Vec<PathBuf> = module_graph
-        .get_modules()
+      let mut paths_to_watch: Vec<PathBuf> = graph
+        .specifiers()
         .iter()
-        .filter_map(|specifier| specifier.to_file_path().ok())
+        .filter_map(|(_, r)| {
+          r.as_ref()
+            .ok()
+            .map(|(s, _, _)| s.to_file_path().ok())
+            .flatten()
+        })
         .collect();
+
+      // Add the extra files listed in the watch flag
+      if let Some(watch_paths) = watch_flag {
+        paths_to_watch.extend(watch_paths);
+      }
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {
         paths_to_watch
@@ -898,13 +1053,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   struct FileWatcherModuleExecutor {
     worker: MainWorker,
     pending_unload: bool,
+    compat: bool,
   }
 
   impl FileWatcherModuleExecutor {
-    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker, compat: bool) -> FileWatcherModuleExecutor {
       FileWatcherModuleExecutor {
         worker,
         pending_unload: false,
+        compat,
       }
     }
 
@@ -914,11 +1071,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       &mut self,
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
+      if self.compat {
+        self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      }
       self.worker.execute_main_module(main_module).await?;
-      self.worker.execute_script(
-        &located_script_name!(),
-        "window.dispatchEvent(new Event('load'))",
-      )?;
+      self.worker.dispatch_load_event(&located_script_name!())?;
       self.pending_unload = true;
 
       let result = self.worker.run_event_loop(false).await;
@@ -928,10 +1085,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         return Err(err);
       }
 
-      self.worker.execute_script(
-        &located_script_name!(),
-        "window.dispatchEvent(new Event('unload'))",
-      )?;
+      self.worker.dispatch_unload_event(&located_script_name!())?;
 
       Ok(())
     }
@@ -942,10 +1096,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       if self.pending_unload {
         self
           .worker
-          .execute_script(
-            &located_script_name!(),
-            "window.dispatchEvent(new Event('unload'))",
-          )
+          .dispatch_unload_event(&located_script_name!())
           .unwrap();
       }
     }
@@ -953,16 +1104,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.into());
+    let permissions = Permissions::from_options(&flags.clone().into());
     async move {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
-      let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
-        &ps,
-        main_module.clone(),
-        permissions,
-        None,
-      ));
+      let mut executor = FileWatcherModuleExecutor::new(
+        create_main_worker(&ps, main_module.clone(), permissions, vec![]),
+        flags.compat,
+      );
 
       executor.execute(&main_module).await?;
 
@@ -970,27 +1119,41 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Process").await
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    file_watcher::PrintConfig {
+      job_name: "Process".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
+  )
+  .await?;
+  Ok(0)
 }
 
 async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   // Read script content from stdin
   if run_flags.script == "-" {
     return run_from_stdin(flags).await;
   }
 
-  if flags.watch {
+  if flags.watch.is_some() {
     return run_with_watch(flags, run_flags.script).await;
   }
 
+  // TODO(bartlomieju): it should not be resolved here if we're in compat mode
+  // because it might be a bare specifier
+  // TODO(bartlomieju): actually I think it will also fail if there's an import
+  // map specified and bare specifier is used on the command line - this should
+  // probably call `ProcState::resolve` instead
   let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = ps.coverage_dir {
@@ -1008,50 +1171,68 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
-  worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+
+  if flags.compat {
+    // TODO(bartlomieju): fix me
+    assert_eq!(main_module.scheme(), "file");
+
+    // Set up Node globals
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    // And `module` module that we'll use for checking which
+    // loader to use and potentially load CJS module with.
+    // This allows to skip permission check for `--allow-net`
+    // which would otherwise be requested by dynamically importing
+    // this file.
+    worker.execute_side_module(&compat::MODULE_URL).await?;
+
+    let use_esm_loader = compat::check_if_should_use_esm_loader(&main_module)?;
+
+    if use_esm_loader {
+      // ES module execution in Node compatiblity mode
+      worker.execute_main_module(&main_module).await?;
+    } else {
+      // CJS module execution in Node compatiblity mode
+      compat::load_cjs_module(
+        &mut worker.js_runtime,
+        &main_module.to_file_path().unwrap().display().to_string(),
+        true,
+      )?;
+    }
+  } else {
+    // Regular ES module execution
+    worker.execute_main_module(&main_module).await?;
+  }
+
+  worker.dispatch_load_event(&located_script_name!())?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
       .with_event_loop(coverage_collector.stop_collecting().boxed_local())
       .await?;
   }
-  Ok(())
+  Ok(worker.get_exit_code())
 }
 
 async fn coverage_command(
   flags: Flags,
   coverage_flags: CoverageFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if coverage_flags.files.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  tools::coverage::cover_files(
-    flags.clone(),
-    coverage_flags.files,
-    coverage_flags.ignore,
-    coverage_flags.include,
-    coverage_flags.exclude,
-    coverage_flags.lcov,
-  )
-  .await
+  tools::coverage::cover_files(flags, coverage_flags).await?;
+  Ok(0)
 }
 
 async fn test_command(
   flags: Flags,
   test_flags: TestFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
     env::set_var(
@@ -1060,38 +1241,35 @@ async fn test_command(
     );
   }
 
-  if flags.watch {
-    tools::test::run_tests_with_watch(
-      flags,
-      test_flags.include,
-      test_flags.ignore,
-      test_flags.doc,
-      test_flags.no_run,
-      test_flags.fail_fast,
-      test_flags.filter,
-      test_flags.shuffle,
-      test_flags.concurrent_jobs,
-    )
-    .await?;
-
-    return Ok(());
+  if flags.watch.is_some() {
+    tools::test::run_tests_with_watch(flags, test_flags).await?;
+  } else {
+    tools::test::run_tests(flags, test_flags).await?;
   }
 
-  tools::test::run_tests(
-    flags,
-    test_flags.include,
-    test_flags.ignore,
-    test_flags.doc,
-    test_flags.no_run,
-    test_flags.fail_fast,
-    test_flags.allow_none,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
-  )
-  .await?;
+  Ok(0)
+}
 
-  Ok(())
+async fn completions_command(
+  _flags: Flags,
+  completions_flags: CompletionsFlags,
+) -> Result<i32, AnyError> {
+  write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
+  Ok(0)
+}
+
+async fn types_command(flags: Flags) -> Result<i32, AnyError> {
+  let types = get_types(flags.unstable);
+  write_to_stdout_ignore_sigpipe(types.as_bytes())?;
+  Ok(0)
+}
+
+async fn upgrade_command(
+  _flags: Flags,
+  upgrade_flags: UpgradeFlags,
+) -> Result<i32, AnyError> {
+  tools::upgrade::upgrade(upgrade_flags).await?;
+  Ok(0)
 }
 
 fn init_v8_flags(v8_flags: &[String]) {
@@ -1120,7 +1298,7 @@ fn init_v8_flags(v8_flags: &[String]) {
 
 fn get_subcommand(
   flags: Flags,
-) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
   match flags.clone().subcommand {
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
@@ -1149,12 +1327,15 @@ fn get_subcommand(
     DenoSubcommand::Install(install_flags) => {
       install_command(flags, install_flags).boxed_local()
     }
+    DenoSubcommand::Uninstall(uninstall_flags) => {
+      uninstall_command(uninstall_flags).boxed_local()
+    }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint(lint_flags) => {
       lint_command(flags, lint_flags).boxed_local()
     }
     DenoSubcommand::Repl(repl_flags) => {
-      run_repl(flags, repl_flags).boxed_local()
+      repl_command(flags, repl_flags).boxed_local()
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
@@ -1162,43 +1343,39 @@ fn get_subcommand(
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()
     }
-    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
-      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
+    DenoSubcommand::Completions(completions_flags) => {
+      completions_command(flags, completions_flags).boxed_local()
     }
-    DenoSubcommand::Types => {
-      let types = get_types(flags.unstable);
-      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
-    }
+    DenoSubcommand::Types => types_command(flags).boxed_local(),
     DenoSubcommand::Upgrade(upgrade_flags) => {
-      let UpgradeFlags {
-        force,
-        dry_run,
-        canary,
-        version,
-        output,
-        ca_file,
-      } = upgrade_flags;
-      tools::upgrade::upgrade_command(
-        dry_run, force, canary, version, output, ca_file,
-      )
-      .boxed_local()
+      upgrade_command(flags, upgrade_flags).boxed_local()
     }
   }
 }
 
-fn setup_exit_process_panic_hook() {
-  // tokio does not exit the process when a task panics, so we
-  // define a custom panic hook to implement this behaviour
+fn setup_panic_hook() {
+  // This function does two things inside of the panic hook:
+  // - Tokio does not exit the process when a task panics, so we define a custom
+  //   panic hook to implement this behaviour.
+  // - We print a message to stderr to indicate that this is a bug in Deno, and
+  //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    eprintln!("\n============================================================");
+    eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+    eprintln!("at https://github.com/denoland/deno/issues/new.");
+    eprintln!("If you can reliably reproduce this panic, include the");
+    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+    eprintln!("var set and include the backtrace in your report.");
+    eprintln!();
+    eprintln!(
+      "Platform: {} {}",
+      std::env::consts::OS,
+      std::env::consts::ARCH
+    );
+    eprintln!("Version: {}", version::deno());
+    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
   }));
@@ -1208,39 +1385,42 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      eprintln!("{}: {:?}", colors::red_bold("error"), error);
+      eprintln!(
+        "{}: {}",
+        colors::red_bold("error"),
+        format!("{:?}", error).trim_start_matches("error: ")
+      );
       std::process::exit(1);
     }
   }
 }
 
 pub fn main() {
-  setup_exit_process_panic_hook();
+  setup_panic_hook();
+
+  unix_util::raise_fd_limit();
+  windows_util::ensure_stdio_open();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
-  unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
     Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(standalone::run(bundle, metadata))
+      run_basic(standalone::run(bundle, metadata))
     }
     Ok(None) => Ok(()),
     Err(err) => Err(err),
   };
-  if let Err(err) = standalone_res {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
+  unwrap_or_exit(standalone_res);
 
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
-      if err.kind == clap::ErrorKind::HelpDisplayed
-        || err.kind == clap::ErrorKind::VersionDisplayed =>
+      if err.kind == clap::ErrorKind::DisplayHelp
+        || err.kind == clap::ErrorKind::DisplayVersion =>
     {
-      err.write_to(&mut std::io::stdout()).unwrap();
-      std::io::stdout().write_all(b"\n").unwrap();
+      err.print().unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
@@ -1251,5 +1431,7 @@ pub fn main() {
 
   logger::init(flags.log_level);
 
-  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
+  let exit_code = unwrap_or_exit(run_basic(get_subcommand(flags)));
+
+  std::process::exit(exit_code);
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -9,7 +9,11 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { CryptoKey } = window.__bootstrap.crypto;
-  const { ArrayBufferIsView, ArrayBuffer } = window.__bootstrap.primordials;
+  const {
+    ArrayBufferIsView,
+    ArrayBufferPrototype,
+    ObjectPrototypeIsPrototypeOf,
+  } = window.__bootstrap.primordials;
 
   webidl.converters.AlgorithmIdentifier = (V, opts) => {
     // Union for (object or DOMString)
@@ -21,7 +25,10 @@
 
   webidl.converters["BufferSource or JsonWebKey"] = (V, opts) => {
     // Union for (BufferSource or JsonWebKey)
-    if (ArrayBufferIsView(V) || V instanceof ArrayBuffer) {
+    if (
+      ArrayBufferIsView(V) ||
+      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
+    ) {
       return webidl.converters.BufferSource(V, opts);
     }
     return webidl.converters.JsonWebKey(V, opts);
@@ -116,7 +123,22 @@
     "RsaHashedImportParams",
     dictRsaHashedImportParams,
   );
+
   webidl.converters.NamedCurve = webidl.converters.DOMString;
+
+  const dictEcKeyImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "namedCurve",
+      converter: webidl.converters.NamedCurve,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcKeyImportParams = webidl.createDictionaryConverter(
+    "EcKeyImportParams",
+    dictEcKeyImportParams,
+  );
 
   const dictEcKeyGenParams = [
     ...dictAlgorithm,
@@ -129,6 +151,18 @@
 
   webidl.converters.EcKeyGenParams = webidl
     .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
+
+  const dictEcImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "namedCurve",
+      converter: webidl.converters.NamedCurve,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcImportParams = webidl
+    .createDictionaryConverter("EcImportParams", dictEcImportParams);
 
   const dictAesKeyGenParams = [
     ...dictAlgorithm,
@@ -367,9 +401,73 @@
   webidl.converters.Pbkdf2Params = webidl
     .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
 
+  const dictAesDerivedKeyParams = [
+    ...dictAlgorithm,
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
+  const dictAesCbcParams = [
+    ...dictAlgorithm,
+    {
+      key: "iv",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+  ];
+
+  const dictAesGcmParams = [
+    ...dictAlgorithm,
+    {
+      key: "iv",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "tagLength",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    },
+    {
+      key: "additionalData",
+      converter: webidl.converters["BufferSource"],
+    },
+  ];
+
+  const dictAesCtrParams = [
+    ...dictAlgorithm,
+    {
+      key: "counter",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
+  webidl.converters.AesDerivedKeyParams = webidl
+    .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
+
+  webidl.converters.AesCbcParams = webidl
+    .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+
+  webidl.converters.AesGcmParams = webidl
+    .createDictionaryConverter("AesGcmParams", dictAesGcmParams);
+
+  webidl.converters.AesCtrParams = webidl
+    .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
+
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",
-    CryptoKey,
+    CryptoKey.prototype,
   );
 
   const dictCryptoKeyPair = [
@@ -385,4 +483,16 @@
 
   webidl.converters.CryptoKeyPair = webidl
     .createDictionaryConverter("CryptoKeyPair", dictCryptoKeyPair);
+
+  const dictEcdhKeyDeriveParams = [
+    ...dictAlgorithm,
+    {
+      key: "public",
+      converter: webidl.converters.CryptoKey,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcdhKeyDeriveParams = webidl
+    .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 })(this);

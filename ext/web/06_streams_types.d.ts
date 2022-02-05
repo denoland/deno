@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // ** Internal Interfaces **
 
@@ -15,6 +15,25 @@ interface ReadRequest<R = any> {
   closeSteps: () => void;
   // deno-lint-ignore no-explicit-any
   errorSteps: (error: any) => void;
+}
+
+interface ReadIntoRequest {
+  chunkSteps: (chunk: ArrayBufferView) => void;
+  closeSteps: (chunk?: ArrayBufferView) => void;
+  // deno-lint-ignore no-explicit-any
+  errorSteps: (error: any) => void;
+}
+
+interface PullIntoDescriptor {
+  buffer: ArrayBuffer;
+  bufferByteLength: number;
+  byteOffset: number;
+  byteLength: number;
+  bytesFilled: number;
+  elementSize: number;
+  // deno-lint-ignore no-explicit-any
+  viewConstructor: any;
+  readerType: "default" | "byob" | "none";
 }
 
 interface ReadableByteStreamQueueEntry {

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -7,16 +7,22 @@ use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 #[cfg(test)]
 use deno_core::parking_lot::Mutex;
+use deno_core::serde::de;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
+use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log;
+use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::string::ToString;
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
 #[cfg(test)]
@@ -24,9 +30,8 @@ use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
-lazy_static::lazy_static! {
-  static ref DEBUG_LOG_ENABLED: bool = log::log_enabled!(log::Level::Debug);
-}
+static DEBUG_LOG_ENABLED: Lazy<bool> =
+  Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -115,7 +120,7 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitPermission {
   pub name: &'static str,
   pub description: &'static str,
@@ -159,26 +164,48 @@ impl UnitPermission {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+/// A normalized environment variable name. On Windows this will
+/// be uppercase and on other platforms it will stay as-is.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+struct EnvVarName {
+  inner: String,
+}
+
+impl EnvVarName {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self {
+      inner: if cfg!(windows) {
+        env.as_ref().to_uppercase()
+      } else {
+        env.as_ref().to_string()
+      },
+    }
+  }
+}
+
+impl AsRef<str> for EnvVarName {
+  fn as_ref(&self) -> &str {
+    self.inner.as_str()
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
-  #[serde(skip)]
   pub name: &'static str,
-  #[serde(skip)]
   pub description: &'static str,
   pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
-  #[serde(skip)]
   pub prompt: bool,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ReadDescriptor(pub PathBuf);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteDescriptor(pub PathBuf);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
 impl NetDescriptor {
@@ -203,17 +230,53 @@ impl fmt::Display for NetDescriptor {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct EnvDescriptor(pub String);
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct EnvDescriptor(EnvVarName);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct RunDescriptor(pub String);
+impl EnvDescriptor {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self(EnvVarName::new(env))
+  }
+}
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct FfiDescriptor(pub String);
+impl AsRef<str> for EnvDescriptor {
+  fn as_ref(&self) -> &str {
+    self.0.as_ref()
+  }
+}
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct SerialDescriptor(pub String);
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub enum RunDescriptor {
+  Name(String),
+  Path(PathBuf),
+}
+
+impl FromStr for RunDescriptor {
+  type Err = ();
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    let is_path = s.contains('/');
+    #[cfg(windows)]
+    let is_path = is_path || s.contains('\\') || Path::new(s).is_absolute();
+    if is_path {
+      Ok(Self::Path(resolve_from_cwd(Path::new(s)).unwrap()))
+    } else {
+      Ok(Self::Name(s.to_string()))
+    }
+  }
+}
+
+impl ToString for RunDescriptor {
+  fn to_string(&self) -> String {
+    match self {
+      RunDescriptor::Name(s) => s.clone(),
+      RunDescriptor::Path(p) => p.to_string_lossy().to_string(),
+    }
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct FfiDescriptor(pub PathBuf);
 
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
@@ -338,6 +401,32 @@ impl UnaryPermission<ReadDescriptor> {
     }
     result
   }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    let (result, prompted) =
+      self.query(None).check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
+impl Default for UnaryPermission<ReadDescriptor> {
+  fn default() -> Self {
+    UnaryPermission::<ReadDescriptor> {
+      name: "read",
+      description: "read the file system",
+      global_state: Default::default(),
+      granted_list: Default::default(),
+      denied_list: Default::default(),
+      prompt: false,
+    }
+  }
 }
 
 impl UnaryPermission<WriteDescriptor> {
@@ -438,6 +527,32 @@ impl UnaryPermission<WriteDescriptor> {
       }
     }
     result
+  }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    let (result, prompted) =
+      self.query(None).check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
+impl Default for UnaryPermission<WriteDescriptor> {
+  fn default() -> Self {
+    UnaryPermission::<WriteDescriptor> {
+      name: "write",
+      description: "write to the file system",
+      global_state: Default::default(),
+      granted_list: Default::default(),
+      denied_list: Default::default(),
+      prompt: false,
+    }
   }
 }
 
@@ -584,25 +699,50 @@ impl UnaryPermission<NetDescriptor> {
     }
     result
   }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    let (result, prompted) =
+      self
+        .query::<&str>(None)
+        .check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
+impl Default for UnaryPermission<NetDescriptor> {
+  fn default() -> Self {
+    UnaryPermission::<NetDescriptor> {
+      name: "net",
+      description: "network",
+      global_state: Default::default(),
+      granted_list: Default::default(),
+      denied_list: Default::default(),
+      prompt: false,
+    }
+  }
 }
 
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
-    #[cfg(windows)]
-    let env = env.map(|env| env.to_uppercase());
-    #[cfg(windows)]
-    let env = env.as_deref();
+    let env = env.map(EnvVarName::new);
     if self.global_state == PermissionState::Denied
-      && match env {
+      && match env.as_ref() {
         None => true,
-        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
+        Some(env) => self.denied_list.contains(&EnvDescriptor::new(env)),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
-      || match env {
+      || match env.as_ref() {
         None => false,
-        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
+        Some(env) => self.granted_list.contains(&EnvDescriptor::new(env)),
       }
     {
       PermissionState::Granted
@@ -613,23 +753,18 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      let env = if cfg!(windows) {
-        env.to_uppercase()
-      } else {
-        env.to_string()
-      };
-      let state = self.query(Some(&env));
+      let state = self.query(Some(env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
-          self.granted_list.insert(EnvDescriptor(env));
+          self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
         } else {
-          self.denied_list.insert(EnvDescriptor(env));
+          self.denied_list.insert(EnvDescriptor::new(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(EnvDescriptor(env));
+        self.granted_list.insert(EnvDescriptor::new(env));
         PermissionState::Granted
       } else {
         state
@@ -653,9 +788,7 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      #[cfg(windows)]
-      let env = env.to_uppercase();
-      self.granted_list.remove(&EnvDescriptor(env.to_string()));
+      self.granted_list.remove(&EnvDescriptor::new(env));
     } else {
       self.granted_list.clear();
     }
@@ -666,8 +799,6 @@ impl UnaryPermission<EnvDescriptor> {
   }
 
   pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
-    #[cfg(windows)]
-    let env = &env.to_uppercase();
     let (result, prompted) = self.query(Some(env)).check(
       self.name,
       Some(&format!("\"{}\"", env)),
@@ -675,9 +806,9 @@ impl UnaryPermission<EnvDescriptor> {
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(EnvDescriptor(env.to_string()));
+        self.granted_list.insert(EnvDescriptor::new(env));
       } else {
-        self.denied_list.insert(EnvDescriptor(env.to_string()));
+        self.denied_list.insert(EnvDescriptor::new(env));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -698,19 +829,36 @@ impl UnaryPermission<EnvDescriptor> {
   }
 }
 
+impl Default for UnaryPermission<EnvDescriptor> {
+  fn default() -> Self {
+    UnaryPermission::<EnvDescriptor> {
+      name: "env",
+      description: "environment variables",
+      global_state: Default::default(),
+      granted_list: Default::default(),
+      denied_list: Default::default(),
+      prompt: false,
+    }
+  }
+}
+
 impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
       && match cmd {
         None => true,
-        Some(cmd) => self.denied_list.iter().any(|cmd_| cmd_.0 == cmd),
+        Some(cmd) => self
+          .denied_list
+          .contains(&RunDescriptor::from_str(cmd).unwrap()),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match cmd {
         None => false,
-        Some(cmd) => self.granted_list.iter().any(|cmd_| cmd_.0 == cmd),
+        Some(cmd) => self
+          .granted_list
+          .contains(&RunDescriptor::from_str(cmd).unwrap()),
       }
     {
       PermissionState::Granted
@@ -724,15 +872,21 @@ impl UnaryPermission<RunDescriptor> {
       let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("run access to \"{}\"", cmd)) {
-          self.granted_list.insert(RunDescriptor(cmd.to_string()));
+          self
+            .granted_list
+            .insert(RunDescriptor::from_str(cmd).unwrap());
           PermissionState::Granted
         } else {
-          self.denied_list.insert(RunDescriptor(cmd.to_string()));
+          self
+            .denied_list
+            .insert(RunDescriptor::from_str(cmd).unwrap());
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(RunDescriptor(cmd.to_string()));
+        self
+          .granted_list
+          .insert(RunDescriptor::from_str(cmd).unwrap());
         PermissionState::Granted
       } else {
         state
@@ -756,7 +910,9 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
     if let Some(cmd) = cmd {
-      self.granted_list.remove(&RunDescriptor(cmd.to_string()));
+      self
+        .granted_list
+        .remove(&RunDescriptor::from_str(cmd).unwrap());
     } else {
       self.granted_list.clear();
     }
@@ -774,9 +930,13 @@ impl UnaryPermission<RunDescriptor> {
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(RunDescriptor(cmd.to_string()));
+        self
+          .granted_list
+          .insert(RunDescriptor::from_str(cmd).unwrap());
       } else {
-        self.denied_list.insert(RunDescriptor(cmd.to_string()));
+        self
+          .denied_list
+          .insert(RunDescriptor::from_str(cmd).unwrap());
         self.global_state = PermissionState::Denied;
       }
     }
@@ -797,19 +957,33 @@ impl UnaryPermission<RunDescriptor> {
   }
 }
 
+impl Default for UnaryPermission<RunDescriptor> {
+  fn default() -> Self {
+    UnaryPermission::<RunDescriptor> {
+      name: "run",
+      description: "run a subprocess",
+      global_state: Default::default(),
+      granted_list: Default::default(),
+      denied_list: Default::default(),
+      prompt: false,
+    }
+  }
+}
+
 impl UnaryPermission<FfiDescriptor> {
-  pub fn query(&self, lib: Option<&str>) -> PermissionState {
+  pub fn query(&self, path: Option<&Path>) -> PermissionState {
+    let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
-      && match lib {
+      && match path.as_ref() {
         None => true,
-        Some(lib) => self.denied_list.iter().any(|lib_| lib_.0 == lib),
+        Some(path) => self.denied_list.contains(&FfiDescriptor(path.clone())),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
-      || match lib {
+      || match path.as_ref() {
         None => false,
-        Some(lib) => self.granted_list.iter().any(|lib_| lib_.0 == lib),
+        Some(path) => self.granted_list.contains(&FfiDescriptor(path.clone())),
       }
     {
       PermissionState::Granted
@@ -818,20 +992,24 @@ impl UnaryPermission<FfiDescriptor> {
     }
   }
 
-  pub fn request(&mut self, lib: Option<&str>) -> PermissionState {
-    if let Some(lib) = lib {
-      let state = self.query(Some(lib));
+  pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path);
+      let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("ffi access to \"{}\"", lib)) {
-          self.granted_list.insert(FfiDescriptor(lib.to_string()));
+        if permission_prompt(&format!(
+          "ffi access to \"{}\"",
+          display_path.display()
+        )) {
+          self.granted_list.insert(FfiDescriptor(resolved_path));
           PermissionState::Granted
         } else {
-          self.denied_list.insert(FfiDescriptor(lib.to_string()));
+          self.denied_list.insert(FfiDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(FfiDescriptor(lib.to_string()));
+        self.granted_list.insert(FfiDescriptor(resolved_path));
         PermissionState::Granted
       } else {
         state
@@ -853,33 +1031,52 @@ impl UnaryPermission<FfiDescriptor> {
     }
   }
 
-  pub fn revoke(&mut self, lib: Option<&str>) -> PermissionState {
-    if let Some(lib) = lib {
-      self.granted_list.remove(&FfiDescriptor(lib.to_string()));
+  pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let path = resolve_from_cwd(path).unwrap();
+      self.granted_list.remove(&FfiDescriptor(path));
     } else {
       self.granted_list.clear();
     }
     if self.global_state == PermissionState::Granted {
       self.global_state = PermissionState::Prompt;
     }
-    self.query(lib)
+    self.query(path)
   }
 
-  pub fn check(&mut self, lib: &str) -> Result<(), AnyError> {
-    let (result, prompted) = self.query(Some(lib)).check(
-      self.name,
-      Some(&format!("\"{}\"", lib)),
-      self.prompt,
-    );
-    if prompted {
-      if result.is_ok() {
-        self.granted_list.insert(FfiDescriptor(lib.to_string()));
-      } else {
-        self.denied_list.insert(FfiDescriptor(lib.to_string()));
-        self.global_state = PermissionState::Denied;
+  pub fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path);
+      let (result, prompted) = self.query(Some(&resolved_path)).check(
+        self.name,
+        Some(&format!("\"{}\"", display_path.display())),
+        self.prompt,
+      );
+
+      if prompted {
+        if result.is_ok() {
+          self.granted_list.insert(FfiDescriptor(resolved_path));
+        } else {
+          self.denied_list.insert(FfiDescriptor(resolved_path));
+          self.global_state = PermissionState::Denied;
+        }
       }
+
+      result
+    } else {
+      let (result, prompted) =
+        self.query(None).check(self.name, None, self.prompt);
+
+      if prompted {
+        if result.is_ok() {
+          self.global_state = PermissionState::Granted;
+        } else {
+          self.global_state = PermissionState::Denied;
+        }
+      }
+
+      result
     }
-    result
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -896,95 +1093,20 @@ impl UnaryPermission<FfiDescriptor> {
   }
 }
 
-impl UnaryPermission<SerialDescriptor> {
-  pub fn query(&self, port: Option<&str>) -> PermissionState {
-    if self.global_state == PermissionState::Denied
-      && match port {
-        None => true,
-        Some(port) => self.denied_list.iter().any(|port_| port_.0 == port),
-      }
-    {
-      PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match port {
-        None => false,
-        Some(port) => self.granted_list.iter().any(|port_| port_.0 == port),
-      }
-    {
-      PermissionState::Granted
-    } else {
-      PermissionState::Prompt
+impl Default for UnaryPermission<FfiDescriptor> {
+  fn default() -> Self {
+    UnaryPermission::<FfiDescriptor> {
+      name: "ffi",
+      description: "load a dynamic library",
+      global_state: Default::default(),
+      granted_list: Default::default(),
+      denied_list: Default::default(),
+      prompt: false,
     }
-  }
-
-  pub fn request(&mut self, port: Option<&str>) -> PermissionState {
-    if let Some(port) = port {
-      let state = self.query(Some(port));
-      if state == PermissionState::Prompt {
-        if permission_prompt(&format!("serialport access to \"{}\"", port)) {
-          self.granted_list.insert(SerialDescriptor(port.to_string()));
-          PermissionState::Granted
-        } else {
-          self.denied_list.insert(SerialDescriptor(port.to_string()));
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
-        }
-      } else if state == PermissionState::Granted {
-        self.granted_list.insert(SerialDescriptor(port.to_string()));
-        PermissionState::Granted
-      } else {
-        state
-      }
-    } else {
-      let state = self.query(None);
-      if state == PermissionState::Prompt {
-        if permission_prompt("serialport access") {
-          self.granted_list.clear();
-          self.global_state = PermissionState::Granted;
-          PermissionState::Granted
-        } else {
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
-        }
-      } else {
-        state
-      }
-    }
-  }
-
-  pub fn revoke(&mut self, port: Option<&str>) -> PermissionState {
-    if let Some(port) = port {
-      self
-        .granted_list
-        .remove(&SerialDescriptor(port.to_string()));
-    } else {
-      self.granted_list.clear();
-    }
-    if self.global_state == PermissionState::Granted {
-      self.global_state = PermissionState::Prompt;
-    }
-    self.query(port)
-  }
-
-  pub fn check(&mut self, port: &str) -> Result<(), AnyError> {
-    let (result, prompted) = self.query(Some(port)).check(
-      self.name,
-      Some(&format!("\"{}\"", port)),
-      self.prompt,
-    );
-    if prompted {
-      if result.is_ok() {
-        self.granted_list.insert(SerialDescriptor(port.to_string()));
-      } else {
-        self.denied_list.insert(SerialDescriptor(port.to_string()));
-        self.global_state = PermissionState::Denied;
-      }
-    }
-    result
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
   pub write: UnaryPermission<WriteDescriptor>,
@@ -992,8 +1114,21 @@ pub struct Permissions {
   pub env: UnaryPermission<EnvDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
-  pub serial: UnaryPermission<SerialDescriptor>,
   pub hrtime: UnitPermission,
+}
+
+impl Default for Permissions {
+  fn default() -> Self {
+    Self {
+      read: Permissions::new_read(&None, false),
+      write: Permissions::new_write(&None, false),
+      net: Permissions::new_net(&None, false),
+      env: Permissions::new_env(&None, false),
+      run: Permissions::new_run(&None, false),
+      ffi: Permissions::new_ffi(&None, false),
+      hrtime: Permissions::new_hrtime(false, false),
+    }
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
@@ -1001,11 +1136,10 @@ pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
+  pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
-  pub allow_serial: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -1015,12 +1149,10 @@ impl Permissions {
     prompt: bool,
   ) -> UnaryPermission<ReadDescriptor> {
     UnaryPermission::<ReadDescriptor> {
-      name: "read",
-      description: "read the file system",
       global_state: global_state_from_option(state),
       granted_list: resolve_read_allowlist(state),
-      denied_list: Default::default(),
       prompt,
+      ..Default::default()
     }
   }
 
@@ -1029,12 +1161,10 @@ impl Permissions {
     prompt: bool,
   ) -> UnaryPermission<WriteDescriptor> {
     UnaryPermission::<WriteDescriptor> {
-      name: "write",
-      description: "write to the file system",
       global_state: global_state_from_option(state),
       granted_list: resolve_write_allowlist(state),
-      denied_list: Default::default(),
       prompt,
+      ..Default::default()
     }
   }
 
@@ -1043,8 +1173,6 @@ impl Permissions {
     prompt: bool,
   ) -> UnaryPermission<NetDescriptor> {
     UnaryPermission::<NetDescriptor> {
-      name: "net",
-      description: "network",
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
@@ -1054,8 +1182,8 @@ impl Permissions {
             .collect()
         })
         .unwrap_or_else(HashSet::new),
-      denied_list: Default::default(),
       prompt,
+      ..Default::default()
     }
   }
 
@@ -1064,25 +1192,13 @@ impl Permissions {
     prompt: bool,
   ) -> UnaryPermission<EnvDescriptor> {
     UnaryPermission::<EnvDescriptor> {
-      name: "env",
-      description: "environment variables",
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| {
-          v.iter()
-            .map(|x| {
-              EnvDescriptor(if cfg!(windows) {
-                x.to_uppercase()
-              } else {
-                x.clone()
-              })
-            })
-            .collect()
-        })
+        .map(|v| v.iter().map(EnvDescriptor::new).collect())
         .unwrap_or_else(HashSet::new),
-      denied_list: Default::default(),
       prompt,
+      ..Default::default()
     }
   }
 
@@ -1091,49 +1207,29 @@ impl Permissions {
     prompt: bool,
   ) -> UnaryPermission<RunDescriptor> {
     UnaryPermission::<RunDescriptor> {
-      name: "run",
-      description: "run a subprocess",
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| v.iter().map(|x| RunDescriptor(x.clone())).collect())
+        .map(|v| {
+          v.iter()
+            .map(|x| RunDescriptor::from_str(x).unwrap())
+            .collect()
+        })
         .unwrap_or_else(HashSet::new),
-      denied_list: Default::default(),
       prompt,
+      ..Default::default()
     }
   }
 
   pub fn new_ffi(
-    state: &Option<Vec<String>>,
+    state: &Option<Vec<PathBuf>>,
     prompt: bool,
   ) -> UnaryPermission<FfiDescriptor> {
     UnaryPermission::<FfiDescriptor> {
-      name: "ffi",
-      description: "load a dynamic library",
       global_state: global_state_from_option(state),
-      granted_list: state
-        .as_ref()
-        .map(|v| v.iter().map(|x| FfiDescriptor(x.clone())).collect())
-        .unwrap_or_else(HashSet::new),
-      denied_list: Default::default(),
+      granted_list: resolve_ffi_allowlist(state),
       prompt,
-    }
-  }
-
-  pub fn new_serial(
-    state: &Option<Vec<String>>,
-    prompt: bool,
-  ) -> UnaryPermission<SerialDescriptor> {
-    UnaryPermission::<SerialDescriptor> {
-      name: "serial",
-      description: "use a serialport",
-      global_state: global_state_from_option(state),
-      granted_list: state
-        .as_ref()
-        .map(|v| v.iter().map(|x| SerialDescriptor(x.clone())).collect())
-        .unwrap_or_else(HashSet::new),
-      denied_list: Default::default(),
-      prompt,
+      ..Default::default()
     }
   }
 
@@ -1154,7 +1250,6 @@ impl Permissions {
       env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
       ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt),
-      serial: Permissions::new_serial(&opts.allow_serial, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
     }
   }
@@ -1167,7 +1262,6 @@ impl Permissions {
       env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
       ffi: Permissions::new_ffi(&Some(vec![]), false),
-      serial: Permissions::new_serial(&Some(vec![]), false),
       hrtime: Permissions::new_hrtime(true, false),
     }
   }
@@ -1237,14 +1331,8 @@ impl deno_websocket::WebSocketPermissions for Permissions {
 }
 
 impl deno_ffi::FfiPermissions for Permissions {
-  fn check(&mut self, path: &str) -> Result<(), AnyError> {
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.ffi.check(path)
-  }
-}
-
-impl deno_webserial::WebSerialPermissions for Permissions {
-  fn check_port(&mut self, port: &str) -> Result<(), AnyError> {
-    self.serial.check(port)
   }
 }
 
@@ -1302,12 +1390,478 @@ pub fn resolve_write_allowlist(
   }
 }
 
+pub fn resolve_ffi_allowlist(
+  allow: &Option<Vec<PathBuf>>,
+) -> HashSet<FfiDescriptor> {
+  if let Some(v) = allow {
+    v.iter()
+      .map(|raw_path| {
+        FfiDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
+      })
+      .collect()
+  } else {
+    HashSet::new()
+  }
+}
+
 /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
 /// can be displayed without leaking the CWD when not allowed.
 fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
   let resolved_path = resolve_from_cwd(path).unwrap();
   let display_path = path.to_path_buf();
   (resolved_path, display_path)
+}
+
+fn escalation_error() -> AnyError {
+  custom_error(
+    "PermissionDenied",
+    "Can't escalate parent thread permissions",
+  )
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ChildUnitPermissionArg {
+  Inherit,
+  Granted,
+  NotGranted,
+}
+
+impl Default for ChildUnitPermissionArg {
+  fn default() -> Self {
+    ChildUnitPermissionArg::Inherit
+  }
+}
+
+impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct ChildUnitPermissionArgVisitor;
+    impl<'de> de::Visitor<'de> for ChildUnitPermissionArgVisitor {
+      type Value = ChildUnitPermissionArg;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("\"inherit\" or boolean")
+      }
+
+      fn visit_unit<E>(self) -> Result<ChildUnitPermissionArg, E>
+      where
+        E: de::Error,
+      {
+        Ok(ChildUnitPermissionArg::Inherit)
+      }
+
+      fn visit_str<E>(self, v: &str) -> Result<ChildUnitPermissionArg, E>
+      where
+        E: de::Error,
+      {
+        if v == "inherit" {
+          Ok(ChildUnitPermissionArg::Inherit)
+        } else {
+          Err(de::Error::invalid_value(de::Unexpected::Str(v), &self))
+        }
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<ChildUnitPermissionArg, E>
+      where
+        E: de::Error,
+      {
+        match v {
+          true => Ok(ChildUnitPermissionArg::Granted),
+          false => Ok(ChildUnitPermissionArg::NotGranted),
+        }
+      }
+    }
+    deserializer.deserialize_any(ChildUnitPermissionArgVisitor)
+  }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ChildUnaryPermissionArg {
+  Inherit,
+  Granted,
+  NotGranted,
+  GrantedList(Vec<String>),
+}
+
+impl Default for ChildUnaryPermissionArg {
+  fn default() -> Self {
+    ChildUnaryPermissionArg::Inherit
+  }
+}
+
+impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct ChildUnaryPermissionArgVisitor;
+    impl<'de> de::Visitor<'de> for ChildUnaryPermissionArgVisitor {
+      type Value = ChildUnaryPermissionArg;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("\"inherit\" or boolean or string[]")
+      }
+
+      fn visit_unit<E>(self) -> Result<ChildUnaryPermissionArg, E>
+      where
+        E: de::Error,
+      {
+        Ok(ChildUnaryPermissionArg::Inherit)
+      }
+
+      fn visit_str<E>(self, v: &str) -> Result<ChildUnaryPermissionArg, E>
+      where
+        E: de::Error,
+      {
+        if v == "inherit" {
+          Ok(ChildUnaryPermissionArg::Inherit)
+        } else {
+          Err(de::Error::invalid_value(de::Unexpected::Str(v), &self))
+        }
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<ChildUnaryPermissionArg, E>
+      where
+        E: de::Error,
+      {
+        match v {
+          true => Ok(ChildUnaryPermissionArg::Granted),
+          false => Ok(ChildUnaryPermissionArg::NotGranted),
+        }
+      }
+
+      fn visit_seq<V>(
+        self,
+        mut v: V,
+      ) -> Result<ChildUnaryPermissionArg, V::Error>
+      where
+        V: de::SeqAccess<'de>,
+      {
+        let mut granted_list = vec![];
+        while let Some(value) = v.next_element::<String>()? {
+          granted_list.push(value);
+        }
+        Ok(ChildUnaryPermissionArg::GrantedList(granted_list))
+      }
+    }
+    deserializer.deserialize_any(ChildUnaryPermissionArgVisitor)
+  }
+}
+
+/// Directly deserializable from JS worker and test permission options.
+#[derive(Debug, Default, PartialEq)]
+pub struct ChildPermissionsArg {
+  env: ChildUnaryPermissionArg,
+  hrtime: ChildUnitPermissionArg,
+  net: ChildUnaryPermissionArg,
+  ffi: ChildUnaryPermissionArg,
+  read: ChildUnaryPermissionArg,
+  run: ChildUnaryPermissionArg,
+  write: ChildUnaryPermissionArg,
+}
+
+impl<'de> Deserialize<'de> for ChildPermissionsArg {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct ChildPermissionsArgVisitor;
+    impl<'de> de::Visitor<'de> for ChildPermissionsArgVisitor {
+      type Value = ChildPermissionsArg;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("\"inherit\" or \"none\" or object")
+      }
+
+      fn visit_unit<E>(self) -> Result<ChildPermissionsArg, E>
+      where
+        E: de::Error,
+      {
+        Ok(ChildPermissionsArg::default())
+      }
+
+      fn visit_str<E>(self, v: &str) -> Result<ChildPermissionsArg, E>
+      where
+        E: de::Error,
+      {
+        if v == "inherit" {
+          Ok(ChildPermissionsArg::default())
+        } else if v == "none" {
+          Ok(ChildPermissionsArg {
+            env: ChildUnaryPermissionArg::NotGranted,
+            hrtime: ChildUnitPermissionArg::NotGranted,
+            net: ChildUnaryPermissionArg::NotGranted,
+            ffi: ChildUnaryPermissionArg::NotGranted,
+            read: ChildUnaryPermissionArg::NotGranted,
+            run: ChildUnaryPermissionArg::NotGranted,
+            write: ChildUnaryPermissionArg::NotGranted,
+          })
+        } else {
+          Err(de::Error::invalid_value(de::Unexpected::Str(v), &self))
+        }
+      }
+
+      fn visit_map<V>(self, mut v: V) -> Result<ChildPermissionsArg, V::Error>
+      where
+        V: de::MapAccess<'de>,
+      {
+        let mut child_permissions_arg = ChildPermissionsArg::default();
+        while let Some((key, value)) =
+          v.next_entry::<String, serde_json::Value>()?
+        {
+          if key == "env" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.env = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.env) {}", e))
+            })?;
+          } else if key == "hrtime" {
+            let arg = serde_json::from_value::<ChildUnitPermissionArg>(value);
+            child_permissions_arg.hrtime = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.hrtime) {}", e))
+            })?;
+          } else if key == "net" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.net = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.net) {}", e))
+            })?;
+          } else if key == "ffi" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.ffi = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.ffi) {}", e))
+            })?;
+          } else if key == "read" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.read = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.read) {}", e))
+            })?;
+          } else if key == "run" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.run = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.run) {}", e))
+            })?;
+          } else if key == "write" {
+            let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
+            child_permissions_arg.write = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.write) {}", e))
+            })?;
+          } else {
+            return Err(de::Error::custom("unknown permission name"));
+          }
+        }
+        Ok(child_permissions_arg)
+      }
+    }
+    deserializer.deserialize_any(ChildPermissionsArgVisitor)
+  }
+}
+
+pub fn create_child_permissions(
+  main_perms: &mut Permissions,
+  child_permissions_arg: ChildPermissionsArg,
+) -> Result<Permissions, AnyError> {
+  let mut worker_perms = Permissions::default();
+  match child_permissions_arg.env {
+    ChildUnaryPermissionArg::Inherit => {
+      worker_perms.env = main_perms.env.clone();
+    }
+    ChildUnaryPermissionArg::Granted => {
+      if main_perms.env.check_all().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.env.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {}
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.env.granted_list =
+        Permissions::new_env(&Some(granted_list), false).granted_list;
+      if !worker_perms
+        .env
+        .granted_list
+        .iter()
+        .all(|desc| main_perms.env.check(desc.as_ref()).is_ok())
+      {
+        return Err(escalation_error());
+      }
+    }
+  }
+  worker_perms.env.denied_list = main_perms.env.denied_list.clone();
+  if main_perms.env.global_state == PermissionState::Denied {
+    worker_perms.env.global_state = PermissionState::Denied;
+  }
+  worker_perms.env.prompt = main_perms.env.prompt;
+  match child_permissions_arg.hrtime {
+    ChildUnitPermissionArg::Inherit => {
+      worker_perms.hrtime = main_perms.hrtime.clone();
+    }
+    ChildUnitPermissionArg::Granted => {
+      if main_perms.hrtime.check().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.hrtime.state = PermissionState::Granted;
+    }
+    ChildUnitPermissionArg::NotGranted => {}
+  }
+  if main_perms.hrtime.state == PermissionState::Denied {
+    worker_perms.hrtime.state = PermissionState::Denied;
+  }
+  worker_perms.hrtime.prompt = main_perms.hrtime.prompt;
+  match child_permissions_arg.net {
+    ChildUnaryPermissionArg::Inherit => {
+      worker_perms.net = main_perms.net.clone();
+    }
+    ChildUnaryPermissionArg::Granted => {
+      if main_perms.net.check_all().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.net.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {}
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.net.granted_list =
+        Permissions::new_net(&Some(granted_list), false).granted_list;
+      if !worker_perms
+        .net
+        .granted_list
+        .iter()
+        .all(|desc| main_perms.net.check(&(&desc.0, desc.1)).is_ok())
+      {
+        return Err(escalation_error());
+      }
+    }
+  }
+  worker_perms.net.denied_list = main_perms.net.denied_list.clone();
+  if main_perms.net.global_state == PermissionState::Denied {
+    worker_perms.net.global_state = PermissionState::Denied;
+  }
+  worker_perms.net.prompt = main_perms.net.prompt;
+  match child_permissions_arg.ffi {
+    ChildUnaryPermissionArg::Inherit => {
+      worker_perms.ffi = main_perms.ffi.clone();
+    }
+    ChildUnaryPermissionArg::Granted => {
+      if main_perms.ffi.check_all().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.ffi.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {}
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.ffi.granted_list = Permissions::new_ffi(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        false,
+      )
+      .granted_list;
+      if !worker_perms
+        .ffi
+        .granted_list
+        .iter()
+        .all(|desc| main_perms.ffi.check(Some(&desc.0)).is_ok())
+      {
+        return Err(escalation_error());
+      }
+    }
+  }
+  worker_perms.ffi.denied_list = main_perms.ffi.denied_list.clone();
+  if main_perms.ffi.global_state == PermissionState::Denied {
+    worker_perms.ffi.global_state = PermissionState::Denied;
+  }
+  worker_perms.ffi.prompt = main_perms.ffi.prompt;
+  match child_permissions_arg.read {
+    ChildUnaryPermissionArg::Inherit => {
+      worker_perms.read = main_perms.read.clone();
+    }
+    ChildUnaryPermissionArg::Granted => {
+      if main_perms.read.check_all().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.read.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {}
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.read.granted_list = Permissions::new_read(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        false,
+      )
+      .granted_list;
+      if !worker_perms
+        .read
+        .granted_list
+        .iter()
+        .all(|desc| main_perms.read.check(&desc.0).is_ok())
+      {
+        return Err(escalation_error());
+      }
+    }
+  }
+  worker_perms.read.denied_list = main_perms.read.denied_list.clone();
+  if main_perms.read.global_state == PermissionState::Denied {
+    worker_perms.read.global_state = PermissionState::Denied;
+  }
+  worker_perms.read.prompt = main_perms.read.prompt;
+  match child_permissions_arg.run {
+    ChildUnaryPermissionArg::Inherit => {
+      worker_perms.run = main_perms.run.clone();
+    }
+    ChildUnaryPermissionArg::Granted => {
+      if main_perms.run.check_all().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.run.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {}
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.run.granted_list =
+        Permissions::new_run(&Some(granted_list), false).granted_list;
+      if !worker_perms
+        .run
+        .granted_list
+        .iter()
+        .all(|desc| main_perms.run.check(&desc.to_string()).is_ok())
+      {
+        return Err(escalation_error());
+      }
+    }
+  }
+  worker_perms.run.denied_list = main_perms.run.denied_list.clone();
+  if main_perms.run.global_state == PermissionState::Denied {
+    worker_perms.run.global_state = PermissionState::Denied;
+  }
+  worker_perms.run.prompt = main_perms.run.prompt;
+  match child_permissions_arg.write {
+    ChildUnaryPermissionArg::Inherit => {
+      worker_perms.write = main_perms.write.clone();
+    }
+    ChildUnaryPermissionArg::Granted => {
+      if main_perms.write.check_all().is_err() {
+        return Err(escalation_error());
+      }
+      worker_perms.write.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {}
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.write.granted_list = Permissions::new_write(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        false,
+      )
+      .granted_list;
+      if !worker_perms
+        .write
+        .granted_list
+        .iter()
+        .all(|desc| main_perms.write.check(&desc.0).is_ok())
+      {
+        return Err(escalation_error());
+      }
+    }
+  }
+  worker_perms.write.denied_list = main_perms.write.denied_list.clone();
+  if main_perms.write.global_state == PermissionState::Denied {
+    worker_perms.write.global_state = PermissionState::Denied;
+  }
+  worker_perms.write.prompt = main_perms.write.prompt;
+  Ok(worker_perms)
 }
 
 /// Shows the permission prompt and returns the answer according to the user input.
@@ -1364,7 +1918,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error flushing console input buffer: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
     }
@@ -1387,7 +1941,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error emulating enter key press: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
     }
@@ -1400,7 +1954,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error peeking console input buffer: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
       events_read == 0
@@ -1460,23 +2014,28 @@ fn permission_prompt(_message: &str) -> bool {
 }
 
 #[cfg(test)]
-lazy_static::lazy_static! {
-  /// Lock this when you use `set_prompt_result` in a test case.
-  static ref PERMISSION_PROMPT_GUARD: Mutex<()> = Mutex::new(());
-}
-
-#[cfg(test)]
 static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
 
 #[cfg(test)]
-fn set_prompt_result(value: bool) {
-  STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
+static PERMISSION_PROMPT_STUB_VALUE_SETTER: Lazy<
+  Mutex<PermissionPromptStubValueSetter>,
+> = Lazy::new(|| Mutex::new(PermissionPromptStubValueSetter));
+
+#[cfg(test)]
+struct PermissionPromptStubValueSetter;
+
+#[cfg(test)]
+impl PermissionPromptStubValueSetter {
+  pub fn set(&self, value: bool) {
+    STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use deno_core::resolve_url_or_path;
+  use deno_core::serde_json::json;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -1807,15 +2366,11 @@ mod tests {
       },
       ffi: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_ffi(&Some(svec!["deno"]), false)
-      },
-      serial: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_serial(&Some(svec!["/dev/ttyUSB0"]), false)
+        ..Permissions::new_ffi(&Some(vec![PathBuf::from("deno")]), false)
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
-        ..Default::default()
+        ..Permissions::new_hrtime(false, false)
       },
     };
     #[rustfmt::skip]
@@ -1843,13 +2398,9 @@ mod tests {
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
-      assert_eq!(perms1.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
-      assert_eq!(perms1.serial.query(None), PermissionState::Granted);
-      assert_eq!(perms1.serial.query(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
-      assert_eq!(perms2.serial.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.serial.query(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
     };
@@ -1860,44 +2411,39 @@ mod tests {
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
-      let _guard = PERMISSION_PROMPT_GUARD.lock();
-      set_prompt_result(true);
+      let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+      prompt_value.set(true);
       assert_eq!(perms.read.request(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.read.request(Some(Path::new("/foo/bar"))), PermissionState::Granted);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.write.request(Some(Path::new("/foo"))), PermissionState::Denied);
       assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
       assert_eq!(perms.env.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
-      set_prompt_result(true);
-      assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
+      prompt_value.set(true);
+      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
-      assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
-      set_prompt_result(true);
-      assert_eq!(perms.run.request(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
-      assert_eq!(perms.run.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
-      assert_eq!(perms.run.request(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
-      set_prompt_result(false);
+      prompt_value.set(false);
+      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
+      prompt_value.set(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
     };
   }
@@ -1936,15 +2482,11 @@ mod tests {
       },
       ffi: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_ffi(&Some(svec!["deno"]), false)
-      },
-      serial: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_serial(&Some(svec!["/dev/ttyUSB0"]), false)
+        ..Permissions::new_ffi(&Some(vec![PathBuf::from("deno")]), false)
       },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
-        ..Default::default()
+        ..Permissions::new_hrtime(false, false)
       },
     };
     #[rustfmt::skip]
@@ -1960,8 +2502,7 @@ mod tests {
       assert_eq!(perms.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.ffi.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.run.revoke(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Prompt);
+      assert_eq!(perms.ffi.revoke(Some(Path::new("deno"))), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
@@ -1975,54 +2516,47 @@ mod tests {
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       ffi: Permissions::new_ffi(&None, true),
-      serial: Permissions::new_serial(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.read.check(Path::new("/foo")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.read.check(Path::new("/foo")).is_ok());
     assert!(perms.read.check(Path::new("/bar")).is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.write.check(Path::new("/foo")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.write.check(Path::new("/foo")).is_ok());
     assert!(perms.write.check(Path::new("/bar")).is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_err());
     assert!(perms.net.check(&("127.0.0.1", None)).is_err());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_err());
     assert!(perms.net.check(&("deno.land", None)).is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.run.check("cat").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.run.check("cat").is_ok());
     assert!(perms.run.check("ls").is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.env.check("HOME").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("PATH").is_err());
 
-    set_prompt_result(true);
-    assert!(perms.run.check("/dev/ttyUSB0").is_ok());
-    set_prompt_result(false);
-    assert!(perms.run.check("/dev/ttyUSB0").is_ok());
-    assert!(perms.run.check("/dev/ttyUSB1").is_err());
-
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.hrtime.check().is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.hrtime.check().is_ok());
   }
 
@@ -2035,80 +2569,72 @@ mod tests {
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       ffi: Permissions::new_ffi(&None, true),
-      serial: Permissions::new_serial(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.read.check(Path::new("/foo")).is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.read.check(Path::new("/foo")).is_err());
     assert!(perms.read.check(Path::new("/bar")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.read.check(Path::new("/bar")).is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.write.check(Path::new("/foo")).is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.write.check(Path::new("/foo")).is_err());
     assert!(perms.write.check(Path::new("/bar")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.write.check(Path::new("/bar")).is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.run.check("cat").is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.run.check("cat").is_err());
     assert!(perms.run.check("ls").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.run.check("ls").is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("HOME").is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.env.check("HOME").is_err());
     assert!(perms.env.check("PATH").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("PATH").is_ok());
 
-    set_prompt_result(false);
-    assert!(perms.run.check("/dev/ttyUSB0").is_err());
-    set_prompt_result(true);
-    assert!(perms.run.check("/dev/ttyUSB0").is_err());
-    assert!(perms.run.check("/dev/ttyUSB1").is_ok());
-    set_prompt_result(false);
-    assert!(perms.run.check("/dev/ttyUSB1").is_ok());
-
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.hrtime.check().is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.hrtime.check().is_err());
   }
 
   #[test]
   #[cfg(windows)]
   fn test_env_windows() {
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut perms = Permissions::allow_all();
     perms.env = UnaryPermission {
       global_state: PermissionState::Prompt,
       ..Permissions::new_env(&Some(svec!["HOME"]), false)
     };
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.env.check("HOME").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("hOmE").is_ok());
 
@@ -2116,5 +2642,234 @@ mod tests {
       perms.env.revoke(Some(&"HomE".to_string())),
       PermissionState::Prompt
     );
+  }
+
+  #[test]
+  fn test_deserialize_child_permissions_arg() {
+    assert_eq!(
+      ChildPermissionsArg::default(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::Inherit,
+        hrtime: ChildUnitPermissionArg::Inherit,
+        net: ChildUnaryPermissionArg::Inherit,
+        ffi: ChildUnaryPermissionArg::Inherit,
+        read: ChildUnaryPermissionArg::Inherit,
+        run: ChildUnaryPermissionArg::Inherit,
+        write: ChildUnaryPermissionArg::Inherit,
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!("inherit")).unwrap(),
+      ChildPermissionsArg::default()
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!("none")).unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::NotGranted,
+        hrtime: ChildUnitPermissionArg::NotGranted,
+        net: ChildUnaryPermissionArg::NotGranted,
+        ffi: ChildUnaryPermissionArg::NotGranted,
+        read: ChildUnaryPermissionArg::NotGranted,
+        run: ChildUnaryPermissionArg::NotGranted,
+        write: ChildUnaryPermissionArg::NotGranted,
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({})).unwrap(),
+      ChildPermissionsArg::default()
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": ["foo", "bar"],
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "hrtime": true,
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        hrtime: ChildUnitPermissionArg::Granted,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "hrtime": false,
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        hrtime: ChildUnitPermissionArg::NotGranted,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": true,
+        "net": true,
+        "ffi": true,
+        "read": true,
+        "run": true,
+        "write": true,
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::Granted,
+        net: ChildUnaryPermissionArg::Granted,
+        ffi: ChildUnaryPermissionArg::Granted,
+        read: ChildUnaryPermissionArg::Granted,
+        run: ChildUnaryPermissionArg::Granted,
+        write: ChildUnaryPermissionArg::Granted,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": false,
+        "net": false,
+        "ffi": false,
+        "read": false,
+        "run": false,
+        "write": false,
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::NotGranted,
+        net: ChildUnaryPermissionArg::NotGranted,
+        ffi: ChildUnaryPermissionArg::NotGranted,
+        read: ChildUnaryPermissionArg::NotGranted,
+        run: ChildUnaryPermissionArg::NotGranted,
+        write: ChildUnaryPermissionArg::NotGranted,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!({
+        "env": ["foo", "bar"],
+        "net": ["foo", "bar:8000"],
+        "ffi": ["foo", "file:///bar/baz"],
+        "read": ["foo", "file:///bar/baz"],
+        "run": ["foo", "file:///bar/baz", "./qux"],
+        "write": ["foo", "file:///bar/baz"],
+      }))
+      .unwrap(),
+      ChildPermissionsArg {
+        env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar:8000"]),
+        ffi: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz"
+        ]),
+        read: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz"
+        ]),
+        run: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz",
+          "./qux"
+        ]),
+        write: ChildUnaryPermissionArg::GrantedList(svec![
+          "foo",
+          "file:///bar/baz"
+        ]),
+        ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_create_child_permissions() {
+    let mut main_perms = Permissions {
+      env: Permissions::new_env(&Some(vec![]), false),
+      hrtime: Permissions::new_hrtime(true, false),
+      net: Permissions::new_net(&Some(svec!["foo", "bar"]), false),
+      ..Default::default()
+    };
+    assert_eq!(
+      create_child_permissions(
+        &mut main_perms.clone(),
+        ChildPermissionsArg {
+          env: ChildUnaryPermissionArg::Inherit,
+          hrtime: ChildUnitPermissionArg::NotGranted,
+          net: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
+          ffi: ChildUnaryPermissionArg::NotGranted,
+          ..Default::default()
+        }
+      )
+      .unwrap(),
+      Permissions {
+        env: Permissions::new_env(&Some(vec![]), false),
+        net: Permissions::new_net(&Some(svec!["foo"]), false),
+        ..Default::default()
+      }
+    );
+    assert!(create_child_permissions(
+      &mut main_perms.clone(),
+      ChildPermissionsArg {
+        net: ChildUnaryPermissionArg::Granted,
+        ..Default::default()
+      }
+    )
+    .is_err());
+    assert!(create_child_permissions(
+      &mut main_perms.clone(),
+      ChildPermissionsArg {
+        net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar", "baz"]),
+        ..Default::default()
+      }
+    )
+    .is_err());
+    assert!(create_child_permissions(
+      &mut main_perms,
+      ChildPermissionsArg {
+        ffi: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
+        ..Default::default()
+      }
+    )
+    .is_err());
+  }
+
+  #[test]
+  fn test_create_child_permissions_with_prompt() {
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let mut main_perms = Permissions::from_options(&PermissionsOptions {
+      prompt: true,
+      ..Default::default()
+    });
+    prompt_value.set(true);
+    let worker_perms = create_child_permissions(
+      &mut main_perms,
+      ChildPermissionsArg {
+        hrtime: ChildUnitPermissionArg::Granted,
+        read: ChildUnaryPermissionArg::Granted,
+        run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert_eq!(main_perms, worker_perms);
+  }
+
+  #[test]
+  fn test_create_child_permissions_with_inherited_denied_list() {
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    let mut main_perms = Permissions::from_options(&PermissionsOptions {
+      prompt: true,
+      ..Default::default()
+    });
+    prompt_value.set(false);
+    assert!(main_perms.write.check(&PathBuf::from("foo")).is_err());
+    let worker_perms = create_child_permissions(
+      &mut main_perms.clone(),
+      ChildPermissionsArg::default(),
+    )
+    .unwrap();
+    assert_eq!(worker_perms.write.denied_list, main_perms.write.denied_list);
   }
 }

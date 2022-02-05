@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 
@@ -63,12 +63,14 @@ fn pty_bad_input() {
 fn pty_syntax_error_input() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("('\\u')");
-    console.write_line("('");
+    console.write_line("'");
+    console.write_line("[{'a'}];");
     console.write_line("close();");
 
     let output = console.read_all_output();
+    assert!(output.contains("Expected 4 hex characters"));
     assert!(output.contains("Unterminated string constant"));
-    assert!(output.contains("Unexpected eof"));
+    assert!(output.contains("Expected a semicolon"));
   });
 }
 
@@ -121,6 +123,32 @@ fn pty_complete_primitives() {
 }
 
 #[test]
+fn pty_complete_imports() {
+  util::with_pty(&["repl"], |mut console| {
+    // single quotes
+    console.write_line("import './001_hel\t'");
+    // double quotes
+    console.write_line("import { output } from \"./045_out\t\"");
+    console.write_line("output('testing output');");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
+    assert!(output.contains("\ntesting output"));
+  });
+
+  // ensure when the directory changes that the suggestions come from the cwd
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Deno.chdir('./subdir');");
+    console.write_line("import '../001_hel\t'");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
+  });
+}
+
+#[test]
 fn pty_ignore_symbols() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Array.Symbol\t");
@@ -131,6 +159,17 @@ fn pty_ignore_symbols() {
     assert!(
       !output.contains("Uncaught TypeError: Array.Symbol is not a function")
     );
+  });
+}
+
+#[test]
+fn pty_assign_global_this() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("globalThis = 42;");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(!output.contains("panicked"));
   });
 }
 
@@ -256,7 +295,11 @@ fn typescript_declarations() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n0\n2\nundefined\nundefined\n"));
+  let expected_end_text = "undefined\n0\n2\nundefined\nundefined\n";
+  assert_eq!(
+    &out[out.len() - expected_end_text.len()..],
+    expected_end_text
+  );
   assert!(err.is_empty());
 }
 

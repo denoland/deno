@@ -1,12 +1,13 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertThrows,
-  unitTest,
+  unreachable,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncSuccess() {
     const enc = new TextEncoder();
@@ -20,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncUrl() {
     const enc = new TextEncoder();
@@ -39,7 +40,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, function writeFileSyncFail() {
+Deno.test({ permissions: { write: true } }, function writeFileSyncFail() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -49,7 +50,7 @@ unitTest({ permissions: { write: true } }, function writeFileSyncFail() {
   }, Deno.errors.NotFound);
 });
 
-unitTest({ permissions: { write: false } }, function writeFileSyncPerm() {
+Deno.test({ permissions: { write: false } }, function writeFileSyncPerm() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -59,7 +60,7 @@ unitTest({ permissions: { write: false } }, function writeFileSyncPerm() {
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncUpdateMode() {
     if (Deno.build.os !== "windows") {
@@ -74,7 +75,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncCreate() {
     const enc = new TextEncoder();
@@ -95,7 +96,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncAppend() {
     const enc = new TextEncoder();
@@ -120,7 +121,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileSuccess() {
     const enc = new TextEncoder();
@@ -134,7 +135,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileUrl() {
     const enc = new TextEncoder();
@@ -153,7 +154,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileNotFound() {
     const enc = new TextEncoder();
@@ -166,7 +167,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: false } },
   async function writeFilePerm() {
     const enc = new TextEncoder();
@@ -179,7 +180,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileUpdateMode() {
     if (Deno.build.os !== "windows") {
@@ -194,7 +195,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileCreate() {
     const enc = new TextEncoder();
@@ -215,7 +216,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileAppend() {
     const enc = new TextEncoder();
@@ -240,7 +241,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileAbortSignal(): Promise<void> {
     const ac = new AbortController();
@@ -250,7 +251,9 @@ unitTest(
     queueMicrotask(() => ac.abort());
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
     } catch (e) {
+      assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
     }
     const stat = Deno.statSync(filename);
@@ -258,7 +261,46 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalReason(): Promise<void> {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    const abortReason = new Error();
+    queueMicrotask(() => ac.abort(abortReason));
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, abortReason);
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalPrimitiveReason(): Promise<void> {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    queueMicrotask(() => ac.abort("Some string"));
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, "Some string");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileAbortSignalPreAborted(): Promise<void> {
     const ac = new AbortController();
@@ -268,8 +310,51 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
     } catch (e) {
+      assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalReasonPreAborted(): Promise<void> {
+    const ac = new AbortController();
+    const abortReason = new Error();
+    ac.abort(abortReason);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, abortReason);
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalPrimitiveReasonPreAborted(): Promise<
+    void
+  > {
+    const ac = new AbortController();
+    ac.abort("Some string");
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, "Some string");
     }
     const stat = Deno.statSync(filename);
     assertEquals(stat.size, 0);

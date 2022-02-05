@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_serial::SerialPort;
 use tokio_serial::SerialPortBuilderExt;
 
-pub fn init<WP: WebSerialPermissions + 'static>() -> Extension {
+pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/webserial",
@@ -27,7 +27,7 @@ pub fn init<WP: WebSerialPermissions + 'static>() -> Extension {
     .ops(vec![
       (
         "op_webserial_get_ports",
-        op_sync(op_webserial_get_ports::<WP>),
+        op_sync(op_webserial_get_ports),
       ),
       ("op_webserial_open_port", op_sync(op_webserial_open_port)),
       ("op_webserial_read", op_async(op_webserial_read)),
@@ -48,18 +48,6 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webserial.d.ts")
 }
 
-pub trait WebSerialPermissions {
-  fn check_port(&mut self, _port: &str) -> Result<(), AnyError>;
-}
-
-pub struct NoWebSerialPermissions;
-
-impl WebSerialPermissions for NoWebSerialPermissions {
-  fn check_port(&mut self, _port: &str) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 pub struct SerialPortResource(AsyncRefCell<tokio_serial::SerialStream>);
 
 impl Resource for SerialPortResource {
@@ -75,18 +63,13 @@ pub struct SerialPortInfo {
   info: Option<(u16, u16)>,
 }
 
-pub fn op_webserial_get_ports<WP>(
-  state: &mut OpState,
+pub fn op_webserial_get_ports(
+  _: &mut OpState,
   _: (),
   _: (),
-) -> Result<Vec<SerialPortInfo>, AnyError>
-where
-  WP: WebSerialPermissions + 'static,
-{
-  let state = state.borrow_mut::<WP>();
+) -> Result<Vec<SerialPortInfo>, AnyError> {
   let ports = tokio_serial::available_ports()?
     .into_iter()
-    .filter(|info| state.check_port(&info.port_name).is_ok())
     .map(|info| SerialPortInfo {
       name: info.port_name,
       info: match info.port_type {

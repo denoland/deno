@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -10,18 +10,21 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { InterruptedPrototype } = core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
+    SymbolIterator,
     TypeError,
     WeakSet,
     WeakSetPrototypeAdd,
@@ -44,12 +47,12 @@
     }
 
     get port1() {
-      webidl.assertBranded(this, MessageChannel);
+      webidl.assertBranded(this, MessageChannelPrototype);
       return this.#port1;
     }
 
     get port2() {
-      webidl.assertBranded(this, MessageChannel);
+      webidl.assertBranded(this, MessageChannelPrototype);
       return this.#port2;
     }
 
@@ -61,6 +64,7 @@
   }
 
   webidl.configurePrototype(MessageChannel);
+  const MessageChannelPrototype = MessageChannel.prototype;
 
   const _id = Symbol("id");
   const _enabled = Symbol("enabled");
@@ -71,7 +75,7 @@
    */
   function createMessagePort(id) {
     const port = core.createHostObject();
-    ObjectSetPrototypeOf(port, MessagePort.prototype);
+    ObjectSetPrototypeOf(port, MessagePortPrototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
     port[_id] = id;
@@ -94,7 +98,7 @@
      * @param {object[] | StructuredSerializeOptions} transferOrOptions
      */
     postMessage(message, transferOrOptions = {}) {
-      webidl.assertBranded(this, MessagePort);
+      webidl.assertBranded(this, MessagePortPrototype);
       const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       message = webidl.converters.any(message);
@@ -102,7 +106,7 @@
       if (
         webidl.type(transferOrOptions) === "Object" &&
         transferOrOptions !== undefined &&
-        transferOrOptions[Symbol.iterator] !== undefined
+        transferOrOptions[SymbolIterator] !== undefined
       ) {
         const transfer = webidl.converters["sequence<object>"](
           transferOrOptions,
@@ -128,16 +132,22 @@
     }
 
     start() {
-      webidl.assertBranded(this, MessagePort);
+      webidl.assertBranded(this, MessagePortPrototype);
       if (this[_enabled]) return;
       (async () => {
         this[_enabled] = true;
         while (true) {
           if (this[_id] === null) break;
-          const data = await core.opAsync(
-            "op_message_port_recv_message",
-            this[_id],
-          );
+          let data;
+          try {
+            data = await core.opAsync(
+              "op_message_port_recv_message",
+              this[_id],
+            );
+          } catch (err) {
+            if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
+            throw err;
+          }
           if (data === null) break;
           let message, transferables;
           try {
@@ -153,7 +163,7 @@
             data: message,
             ports: ArrayPrototypeFilter(
               transferables,
-              (t) => t instanceof MessagePort,
+              (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
             ),
           });
           this.dispatchEvent(event);
@@ -163,7 +173,7 @@
     }
 
     close() {
-      webidl.assertBranded(this, MessagePort);
+      webidl.assertBranded(this, MessagePortPrototype);
       if (this[_id] !== null) {
         core.close(this[_id]);
         this[_id] = null;
@@ -177,6 +187,7 @@
   defineEventHandler(MessagePort.prototype, "messageerror");
 
   webidl.configurePrototype(MessagePort);
+  const MessagePortPrototype = MessagePort.prototype;
 
   /**
    * @returns {[number, number]}
@@ -238,7 +249,7 @@
   function serializeJsMessageData(data, transferables) {
     const transferedArrayBuffers = ArrayPrototypeFilter(
       transferables,
-      (a) => a instanceof ArrayBuffer,
+      (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
     );
 
     for (const arrayBuffer of transferedArrayBuffers) {
@@ -259,7 +270,7 @@
       serializedData = core.serialize(data, {
         hostObjects: ArrayPrototypeFilter(
           transferables,
-          (a) => a instanceof MessagePort,
+          (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
         ),
         transferedArrayBuffers,
       });
@@ -272,8 +283,8 @@
 
     let arrayBufferI = 0;
     for (const transferable of transferables) {
-      if (transferable instanceof MessagePort) {
-        webidl.assertBranded(transferable, MessagePort);
+      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
+        webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];
         if (id === null) {
           throw new DOMException(
@@ -286,7 +297,9 @@
           kind: "messagePort",
           data: id,
         });
-      } else if (transferable instanceof ArrayBuffer) {
+      } else if (
+        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, transferable)
+      ) {
         ArrayPrototypePush(serializedTransferables, {
           kind: "arrayBuffer",
           data: transferedArrayBuffers[arrayBufferI],
@@ -332,6 +345,7 @@
   window.__bootstrap.messagePort = {
     MessageChannel,
     MessagePort,
+    MessagePortPrototype,
     deserializeJsMessageData,
     serializeJsMessageData,
     structuredClone,

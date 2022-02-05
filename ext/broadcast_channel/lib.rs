@@ -1,8 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 mod in_memory_broadcast_channel;
 
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
@@ -45,8 +46,8 @@ struct Unstable(bool); // --unstable
 
 pub fn op_broadcast_subscribe<BC: BroadcastChannel + 'static>(
   state: &mut OpState,
-  _args: (),
-  _buf: (),
+  _: (),
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let unstable = state.borrow::<Unstable>().0;
 
@@ -85,7 +86,7 @@ pub async fn op_broadcast_send<BC: BroadcastChannel + 'static>(
 pub async fn op_broadcast_recv<BC: BroadcastChannel + 'static>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _buf: (),
+  _: (),
 ) -> Result<Option<Message>, AnyError> {
   let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();

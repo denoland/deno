@@ -1,11 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! <https://chromedevtools.github.io/devtools-protocol/>
 //! <https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/>
 
 use crate::error::generic_error;
-use crate::error::AnyError;
 use crate::futures::channel::mpsc;
 use crate::futures::channel::mpsc::UnboundedReceiver;
 use crate::futures::channel::mpsc::UnboundedSender;
@@ -14,7 +13,7 @@ use crate::futures::future::select;
 use crate::futures::future::Either;
 use crate::futures::future::Future;
 use crate::futures::prelude::*;
-use crate::futures::stream::FuturesUnordered;
+use crate::futures::stream::SelectAll;
 use crate::futures::stream::StreamExt;
 use crate::futures::task;
 use crate::futures::task::Context;
@@ -22,13 +21,12 @@ use crate::futures::task::Poll;
 use crate::serde_json;
 use crate::serde_json::json;
 use crate::serde_json::Value;
-use crate::v8;
+use anyhow::Error;
 use parking_lot::Mutex;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::mem::replace;
 use std::mem::take;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -38,10 +36,16 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-/// If first argument is `None` then it's a notification, otherwise
-/// it's a message.
-pub type SessionProxySender = UnboundedSender<(Option<i32>, String)>;
-pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
+pub enum InspectorMsgKind {
+  Notification,
+  Message(i32),
+}
+pub struct InspectorMsg {
+  pub kind: InspectorMsgKind,
+  pub content: String,
+}
+pub type SessionProxySender = UnboundedSender<InspectorMsg>;
+pub type SessionProxyReceiver = UnboundedReceiver<String>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages in V8 session.
@@ -90,7 +94,7 @@ impl Drop for JsRuntimeInspector {
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
-    take(&mut *self.sessions.borrow_mut());
+    self.sessions.borrow_mut().drop_sessions();
 
     // Notify counterparty that this instance is being destroyed. Ignoring
     // result because counterparty waiting for the signal might have already
@@ -122,7 +126,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
-    self.flags.borrow_mut().session_handshake_done = true;
+    self.flags.borrow_mut().waiting_for_session = false;
   }
 }
 
@@ -155,24 +159,25 @@ impl JsRuntimeInspector {
     let v8_inspector_client =
       v8::inspector::V8InspectorClientBase::new::<Self>();
 
-    let flags = InspectorFlags::new();
     let waker = InspectorWaker::new(scope.thread_safe_handle());
 
     // Create JsRuntimeInspector instance.
     let mut self_ = Box::new(Self {
       v8_inspector_client,
       v8_inspector: Default::default(),
-      sessions: Default::default(),
+      sessions: RefCell::new(SessionContainer::temporary_placeholder()),
       new_session_tx,
-      flags,
+      flags: Default::default(),
       waker,
       deregister_tx: None,
     });
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
     ));
-    self_.sessions =
-      SessionContainer::new(self_.v8_inspector.clone(), new_session_rx);
+    self_.sessions = RefCell::new(SessionContainer::new(
+      self_.v8_inspector.clone(),
+      new_session_rx,
+    ));
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
@@ -185,15 +190,14 @@ impl JsRuntimeInspector {
       .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Poll the session handler so we will get notified whenever there is
-    // new_incoming debugger activity.
+    // new incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
 
     self_
   }
 
   pub fn has_active_sessions(&self) -> bool {
-    let sessions = self.sessions.borrow();
-    !sessions.established.is_empty() || sessions.handshake.is_some()
+    self.sessions.borrow().has_active_sessions()
   }
 
   fn poll_sessions(
@@ -221,43 +225,46 @@ impl JsRuntimeInspector {
     loop {
       loop {
         // Do one "handshake" with a newly connected session at a time.
-        if let Some(session) = &mut sessions.handshake {
-          let poll_result = session.poll_unpin(cx);
-          let handshake_done =
-            replace(&mut self.flags.borrow_mut().session_handshake_done, false);
+        if let Some(mut session) = sessions.handshake.take() {
+          let poll_result = session.poll_next_unpin(cx);
           match poll_result {
-            Poll::Pending if handshake_done => {
-              let session = sessions.handshake.take().unwrap();
+            Poll::Pending => {
               sessions.established.push(session);
-              take(&mut self.flags.borrow_mut().waiting_for_session);
+              continue;
             }
-            Poll::Ready(_) => sessions.handshake = None,
-            Poll::Pending => break,
-          };
+            Poll::Ready(Some(session_stream_item)) => {
+              let (v8_session_ptr, msg) = session_stream_item;
+              InspectorSession::dispatch_message(v8_session_ptr, msg);
+              sessions.established.push(session);
+              continue;
+            }
+            Poll::Ready(None) => {}
+          }
         }
 
         // Accept new connections.
-        match sessions.new_incoming.poll_next_unpin(cx) {
-          Poll::Ready(Some(session)) => {
-            let prev = sessions.handshake.replace(session);
-            assert!(prev.is_none());
-            continue;
-          }
-          Poll::Ready(None) => {}
-          Poll::Pending => {}
+        let poll_result = sessions.session_rx.poll_next_unpin(cx);
+        if let Poll::Ready(Some(session_proxy)) = poll_result {
+          let session =
+            InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
+          let prev = sessions.handshake.replace(session);
+          assert!(prev.is_none());
         }
 
         // Poll established sessions.
         match sessions.established.poll_next_unpin(cx) {
-          Poll::Ready(Some(_)) => continue,
+          Poll::Ready(Some(session_stream_item)) => {
+            let (v8_session_ptr, msg) = session_stream_item;
+            InspectorSession::dispatch_message(v8_session_ptr, msg);
+            continue;
+          }
           Poll::Ready(None) => break,
           Poll::Pending => break,
         };
       }
 
-      let should_block = sessions.handshake.is_some()
-        || self.flags.borrow().on_pause
-        || self.flags.borrow().waiting_for_session;
+      let should_block =
+        self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
@@ -302,8 +309,11 @@ impl JsRuntimeInspector {
   }
 
   /// This function blocks the thread until at least one inspector client has
-  /// established a websocket connection and successfully completed the
-  /// handshake. After that, it instructs V8 to pause at the next statement.
+  /// established a websocket connection.
+  ///
+  /// After that, it instructs V8 to pause at the next statement.
+  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume
+  /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&mut self) {
     loop {
       match self.sessions.get_mut().established.iter_mut().next() {
@@ -317,10 +327,6 @@ impl JsRuntimeInspector {
   }
 
   /// Obtain a sender for proxy channels.
-  ///
-  /// After a proxy is sent inspector will wait for a "handshake".
-  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to
-  /// complete the handshake.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
   }
@@ -353,8 +359,7 @@ impl JsRuntimeInspector {
     };
 
     // InspectorSessions for a local session is added directly to the "established"
-    // sessions, so it doesn't need to go through the session sender and handshake
-    // phase.
+    // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
       InspectorSession::new(self.v8_inspector.clone(), proxy);
     self
@@ -371,49 +376,56 @@ impl JsRuntimeInspector {
 #[derive(Default)]
 struct InspectorFlags {
   waiting_for_session: bool,
-  session_handshake_done: bool,
   on_pause: bool,
-}
-
-impl InspectorFlags {
-  fn new() -> RefCell<Self> {
-    let self_ = Self::default();
-    RefCell::new(self_)
-  }
 }
 
 /// A helper structure that helps coordinate sessions during different
 /// parts of their lifecycle.
 struct SessionContainer {
-  new_incoming: Pin<Box<dyn Stream<Item = Box<InspectorSession>> + 'static>>,
+  v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
+  session_rx: UnboundedReceiver<InspectorSessionProxy>,
   handshake: Option<Box<InspectorSession>>,
-  established: FuturesUnordered<Box<InspectorSession>>,
+  established: SelectAll<Box<InspectorSession>>,
 }
 
 impl SessionContainer {
   fn new(
     v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
     new_session_rx: UnboundedReceiver<InspectorSessionProxy>,
-  ) -> RefCell<Self> {
-    let new_incoming = new_session_rx
-      .map(move |session_proxy| {
-        InspectorSession::new(v8_inspector.clone(), session_proxy)
-      })
-      .boxed_local();
-    let self_ = Self {
-      new_incoming,
-      ..Default::default()
-    };
-    RefCell::new(self_)
-  }
-}
-
-impl Default for SessionContainer {
-  fn default() -> Self {
+  ) -> Self {
     Self {
-      new_incoming: stream::empty().boxed_local(),
+      v8_inspector,
+      session_rx: new_session_rx,
       handshake: None,
-      established: FuturesUnordered::new(),
+      established: SelectAll::new(),
+    }
+  }
+
+  /// V8 automatically deletes all sessions when an `V8Inspector` instance is
+  /// deleted, however InspectorSession also has a drop handler that cleans
+  /// up after itself. To avoid a double free, we need to manually drop
+  /// all sessions before dropping the inspector instance.
+  fn drop_sessions(&mut self) {
+    self.v8_inspector = Default::default();
+    self.handshake.take();
+    self.established.clear();
+  }
+
+  fn has_active_sessions(&self) -> bool {
+    !self.established.is_empty() || self.handshake.is_some()
+  }
+
+  /// A temporary placeholder that should be used before actual
+  /// instance of V8Inspector is created. It's used in favor
+  /// of `Default` implementation to signal that it's not meant
+  /// for actual use.
+  fn temporary_placeholder() -> Self {
+    let (_tx, rx) = mpsc::unbounded::<InspectorSessionProxy>();
+    Self {
+      v8_inspector: Default::default(),
+      session_rx: rx,
+      handshake: None,
+      established: SelectAll::new(),
     }
   }
 }
@@ -494,7 +506,7 @@ impl task::ArcWake for InspectorWaker {
 /// eg. Websocket or another set of channels.
 struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
-  v8_session: Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
+  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   proxy: InspectorSessionProxy,
 }
 
@@ -509,13 +521,13 @@ impl InspectorSession {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let mut v8_inspector = v8_inspector_rc.borrow_mut();
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
-      let v8_session = Rc::new(RefCell::new(v8_inspector_ptr.connect(
+      let v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),
-      )));
+      );
 
       Self {
         v8_channel,
@@ -526,31 +538,34 @@ impl InspectorSession {
   }
 
   // Dispatch message to V8 session
-  #[allow(unused)]
-  fn dispatch_message(&mut self, msg: Vec<u8>) {
-    let msg = v8::inspector::StringView::from(msg.as_slice());
-    let mut v8_session = self.v8_session.borrow_mut();
-    let v8_session_ptr = v8_session.as_mut();
-    v8_session_ptr.dispatch_protocol_message(msg);
+  fn dispatch_message(
+    v8_session_ptr: *mut v8::inspector::V8InspectorSession,
+    msg: String,
+  ) {
+    let msg = v8::inspector::StringView::from(msg.as_bytes());
+    unsafe {
+      (*v8_session_ptr).dispatch_protocol_message(msg);
+    };
   }
 
   fn send_message(
     &self,
-    maybe_call_id: Option<i32>,
+    msg_kind: InspectorMsgKind,
     msg: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let msg = msg.unwrap().string().to_string();
-    let _ = self.proxy.tx.unbounded_send((maybe_call_id, msg));
+    let _ = self.proxy.tx.unbounded_send(InspectorMsg {
+      kind: msg_kind,
+      content: msg,
+    });
   }
 
   pub fn break_on_next_statement(&mut self) {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
-    self
-      .v8_session
-      .borrow_mut()
-      .as_mut()
-      .schedule_pause_on_next_statement(reason, detail);
+    // TODO(bartlomieju): use raw `*mut V8InspectorSession` pointer, as this
+    // reference may become aliased.
+    (*self.v8_session).schedule_pause_on_next_statement(reason, detail);
   }
 }
 
@@ -568,32 +583,32 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(Some(call_id), message);
+    self.send_message(InspectorMsgKind::Message(call_id), message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(None, message);
+    self.send_message(InspectorMsgKind::Notification, message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
 }
 
-/// This is a "pump" future takes care of receiving messages and dispatching
-/// them to the inspector. It resolves when receiver closes.
-impl Future for InspectorSession {
-  type Output = ();
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    while let Poll::Ready(maybe_msg) = self.proxy.rx.poll_next_unpin(cx) {
+impl Stream for InspectorSession {
+  type Item = (*mut v8::inspector::V8InspectorSession, String);
+
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let inner = self.get_mut();
+    if let Poll::Ready(maybe_msg) = inner.proxy.rx.poll_next_unpin(cx) {
       if let Some(msg) = maybe_msg {
-        let msg = v8::inspector::StringView::from(msg.as_slice());
-        let mut v8_session = self.v8_session.borrow_mut();
-        let v8_session_ptr = v8_session.as_mut();
-        v8_session_ptr.dispatch_protocol_message(msg);
+        return Poll::Ready(Some((&mut *inner.v8_session, msg)));
       } else {
-        return Poll::Ready(());
+        return Poll::Ready(None);
       }
     }
 
@@ -604,8 +619,8 @@ impl Future for InspectorSession {
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
 pub struct LocalInspectorSession {
-  v8_session_tx: UnboundedSender<Vec<u8>>,
-  v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
+  v8_session_tx: UnboundedSender<String>,
+  v8_session_rx: UnboundedReceiver<InspectorMsg>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
   notification_queue: Vec<Value>,
@@ -613,8 +628,8 @@ pub struct LocalInspectorSession {
 
 impl LocalInspectorSession {
   pub fn new(
-    v8_session_tx: UnboundedSender<Vec<u8>>,
-    v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
+    v8_session_tx: UnboundedSender<String>,
+    v8_session_rx: UnboundedReceiver<InspectorMsg>,
   ) -> Self {
     let response_tx_map = HashMap::new();
     let next_message_id = 0;
@@ -638,7 +653,7 @@ impl LocalInspectorSession {
     &mut self,
     method: &str,
     params: Option<serde_json::Value>,
-  ) -> Result<serde_json::Value, AnyError> {
+  ) -> Result<serde_json::Value, Error> {
     let id = self.next_message_id;
     self.next_message_id += 1;
 
@@ -652,11 +667,8 @@ impl LocalInspectorSession {
         "params": params,
     });
 
-    let raw_message = serde_json::to_string(&message).unwrap();
-    self
-      .v8_session_tx
-      .unbounded_send(raw_message.as_bytes().to_vec())
-      .unwrap();
+    let stringified_msg = serde_json::to_string(&message).unwrap();
+    self.v8_session_tx.unbounded_send(stringified_msg).unwrap();
 
     loop {
       let receive_fut = self.receive_from_v8_session().boxed_local();
@@ -676,40 +688,40 @@ impl LocalInspectorSession {
   }
 
   async fn receive_from_v8_session(&mut self) {
-    let (maybe_call_id, message) = self.v8_session_rx.next().await.unwrap();
-    // If there's no call_id then it's a notification
-    if let Some(call_id) = maybe_call_id {
-      let message: serde_json::Value = match serde_json::from_str(&message) {
-        Ok(v) => v,
-        Err(error) => match error.classify() {
-          serde_json::error::Category::Syntax => json!({
-            "id": call_id,
-            "result": {
+    let inspector_msg = self.v8_session_rx.next().await.unwrap();
+    if let InspectorMsgKind::Message(msg_id) = inspector_msg.kind {
+      let message: serde_json::Value =
+        match serde_json::from_str(&inspector_msg.content) {
+          Ok(v) => v,
+          Err(error) => match error.classify() {
+            serde_json::error::Category::Syntax => json!({
+              "id": msg_id,
               "result": {
-                "type": "error",
-                "description": "Unterminated string literal",
-                "value": "Unterminated string literal",
+                "result": {
+                  "type": "error",
+                  "description": "Unterminated string literal",
+                  "value": "Unterminated string literal",
+                },
+                "exceptionDetails": {
+                  "exceptionId": 0,
+                  "text": "Unterminated string literal",
+                  "lineNumber": 0,
+                  "columnNumber": 0
+                },
               },
-              "exceptionDetails": {
-                "exceptionId": 0,
-                "text": "Unterminated string literal",
-                "lineNumber": 0,
-                "columnNumber": 0
-              },
-            },
-          }),
-          _ => panic!("Could not parse inspector message"),
-        },
-      };
+            }),
+            _ => panic!("Could not parse inspector message"),
+          },
+        };
 
       self
         .response_tx_map
-        .remove(&call_id)
+        .remove(&msg_id)
         .unwrap()
         .send(message)
         .unwrap();
     } else {
-      let message = serde_json::from_str(&message).unwrap();
+      let message = serde_json::from_str(&inspector_msg.content).unwrap();
       self.notification_queue.push(message);
     }
   }

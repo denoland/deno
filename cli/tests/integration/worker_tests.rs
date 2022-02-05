@@ -1,9 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 
 itest!(workers {
-  args: "test --reload --location http://127.0.0.1:4545/ --allow-net --allow-read --unstable workers/test.ts",
+  args: "test --reload --location http://127.0.0.1:4545/ -A --unstable workers/test.ts",
   output: "workers/test.ts.out",
   http_server: true,
 });
@@ -17,6 +17,20 @@ itest!(worker_error {
 itest!(worker_nested_error {
   args: "run -A workers/worker_nested_error.ts",
   output: "workers/worker_nested_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(worker_async_error {
+  args: "run -A --quiet --reload workers/worker_async_error.ts",
+  output: "workers/worker_async_error.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(worker_message_handler_error {
+  args: "run -A --quiet --reload workers/worker_message_handler_error.ts",
+  output: "workers/worker_message_handler_error.ts.out",
+  http_server: true,
   exit_code: 1,
 });
 
@@ -84,4 +98,9 @@ itest!(worker_permissions_blob_local {
   output: "workers/permissions_blob_local.ts.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(worker_terminate_tla_crash {
+  args: "run --quiet --reload workers/terminate_tla_crash.js",
+  output: "workers/terminate_tla_crash.js.out",
 });

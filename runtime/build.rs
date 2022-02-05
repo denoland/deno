@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
 use std::path::Path;
@@ -37,8 +37,106 @@ mod not_docs {
     let snapshot = js_runtime.snapshot();
     let snapshot_slice: &[u8] = &*snapshot;
     println!("Snapshot size: {}", snapshot_slice.len());
-    std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+    let compressed_snapshot_with_size = {
+      let mut vec = vec![];
+
+      vec.extend_from_slice(
+        &u32::try_from(snapshot.len())
+          .expect("snapshot larger than 4gb")
+          .to_le_bytes(),
+      );
+
+      lzzzz::lz4_hc::compress_to_vec(
+        snapshot_slice,
+        &mut vec,
+        lzzzz::lz4_hc::CLEVEL_MAX,
+      )
+      .expect("snapshot compression failed");
+
+      vec
+    };
+
+    println!(
+      "Snapshot compressed size: {}",
+      compressed_snapshot_with_size.len()
+    );
+
+    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
     println!("Snapshot written to: {} ", snapshot_path.display());
+  }
+
+  struct Permissions;
+
+  impl deno_fetch::FetchPermissions for Permissions {
+    fn check_net_url(
+      &mut self,
+      _url: &deno_core::url::Url,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read(
+      &mut self,
+      _p: &Path,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
+  impl deno_websocket::WebSocketPermissions for Permissions {
+    fn check_net_url(
+      &mut self,
+      _url: &deno_core::url::Url,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
+  impl deno_timers::TimersPermission for Permissions {
+    fn allow_hrtime(&mut self) -> bool {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_unstable(
+      &self,
+      _state: &deno_core::OpState,
+      _api_name: &'static str,
+    ) {
+      unreachable!("snapshotting!")
+    }
+  }
+
+  impl deno_ffi::FfiPermissions for Permissions {
+    fn check(
+      &mut self,
+      _path: Option<&Path>,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
+  impl deno_net::NetPermissions for Permissions {
+    fn check_net<T: AsRef<str>>(
+      &mut self,
+      _host: &(T, Option<u16>),
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read(
+      &mut self,
+      _p: &Path,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write(
+      &mut self,
+      _p: &Path,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
   }
 
   fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
@@ -48,30 +146,19 @@ mod not_docs {
       deno_url::init(),
       deno_tls::init(),
       deno_web::init(deno_web::BlobStore::default(), Default::default()),
-      deno_fetch::init::<deno_fetch::NoFetchPermissions>(
-        "".to_owned(),
-        None,
-        None,
-        None,
-        None,
-        None,
-      ),
-      deno_webserial::init::<deno_webserial::NoWebSerialPermissions>(),
-      deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
-        "".to_owned(),
-        None,
-        None,
-      ),
+      deno_fetch::init::<Permissions>(Default::default()),
+      deno_webserial::init(),
+      deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
       deno_webgpu::init(false),
-      deno_timers::init::<deno_timers::NoTimersPermission>(),
+      deno_timers::init::<Permissions>(),
       deno_broadcast_channel::init(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::init::<deno_ffi::NoFfiPermissions>(false),
-      deno_net::init::<deno_net::NoNetPermissions>(
+      deno_ffi::init::<Permissions>(false),
+      deno_net::init::<Permissions>(
         None, false, // No --unstable.
         None,
       ),

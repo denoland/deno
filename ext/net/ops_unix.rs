@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
 use crate::ops::AcceptArgs;
@@ -8,7 +8,6 @@ use crate::ops::OpPacket;
 use crate::ops::ReceiveArgs;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -92,8 +91,11 @@ pub(crate) async fn accept_unix(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (unix_stream, _socket_addr) =
-    listener.accept().try_or_cancel(cancel).await?;
+  let (unix_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(crate::ops::accept_err)?;
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
@@ -114,10 +116,8 @@ pub(crate) async fn accept_unix(
 pub(crate) async fn receive_unix_packet(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  buf: Option<ZeroCopyBuf>,
+  mut buf: ZeroCopyBuf,
 ) -> Result<OpPacket, AnyError> {
-  let mut buf = buf.ok_or_else(null_opbuf)?;
-
   let rid = args.rid;
 
   let resource = state

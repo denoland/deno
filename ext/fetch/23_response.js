@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -12,6 +12,7 @@
 "use strict";
 
 ((window) => {
+  const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
@@ -32,6 +33,7 @@
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
+    ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
     RegExpPrototypeTest,
@@ -156,8 +158,10 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const headerList = headerListFromHeaders(this[_headers]);
-      const values = getDecodeSplitHeader(headerList, "content-type");
+      const values = getDecodeSplitHeader(
+        headerListFromHeaders(this[_headers]),
+        "Content-Type",
+      );
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -229,7 +233,7 @@
       }
       const inner = newInnerResponse(status);
       inner.type = "default";
-      ArrayPrototypePush(inner.headerList, ["location", parsedURL.href]);
+      ArrayPrototypePush(inner.headerList, ["Location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(
@@ -249,7 +253,7 @@
         prefix,
         context: "Argument 1",
       });
-      init = webidl.converters["ResponseInit"](init, {
+      init = webidl.converters["ResponseInit_fast"](init, {
         prefix,
         context: "Argument 2",
       });
@@ -260,7 +264,10 @@
         );
       }
 
-      if (!RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)) {
+      if (
+        init.statusText &&
+        !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+      ) {
         throw new TypeError("Status text is not valid.");
       }
 
@@ -270,7 +277,7 @@
       this[_response] = response;
       /** @type {Headers} */
       this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (init.headers !== undefined) {
+      if (init.headers) {
         fillHeaders(this[_headers], init.headers);
       }
       if (body !== null) {
@@ -291,7 +298,7 @@
      * @returns {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"}
      */
     get type() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].type;
     }
 
@@ -299,7 +306,7 @@
      * @returns {string}
      */
     get url() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       const url = this[_response].url();
       if (url === null) return "";
       const newUrl = new URL(url);
@@ -311,7 +318,7 @@
      * @returns {boolean}
      */
     get redirected() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].urlList.length > 1;
     }
 
@@ -319,7 +326,7 @@
      * @returns {number}
      */
     get status() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].status;
     }
 
@@ -327,7 +334,7 @@
      * @returns {boolean}
      */
     get ok() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       const status = this[_response].status;
       return status >= 200 && status <= 299;
     }
@@ -336,7 +343,7 @@
      * @returns {string}
      */
     get statusText() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].statusMessage;
     }
 
@@ -344,7 +351,7 @@
      * @returns {Headers}
      */
     get headers() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_headers];
     }
 
@@ -352,7 +359,7 @@
      * @returns {Response}
      */
     clone() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -369,7 +376,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Response,
+        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
         keys: [
           "body",
           "bodyUsed",
@@ -384,13 +391,13 @@
     }
   }
 
-  mixinBody(Response, _body, _mimeType);
-
   webidl.configurePrototype(Response);
+  const ResponsePrototype = Response.prototype;
+  mixinBody(ResponsePrototype, _body, _mimeType);
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
-    Response,
+    ResponsePrototype,
   );
   webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
     "ResponseInit",
@@ -407,6 +414,27 @@
       converter: webidl.converters["HeadersInit"],
     }],
   );
+  webidl.converters["ResponseInit_fast"] = function (init, opts) {
+    if (init === undefined || init === null) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (typeof init === "object" && !isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidl.converters["unsigned short"](init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidl.converters["ByteString"](init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidl.converters["HeadersInit"](init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidl.converters["ResponseInit"](init, opts);
+  };
 
   /**
    * @param {Response} response
@@ -430,6 +458,7 @@
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Response = Response;
+  window.__bootstrap.fetch.ResponsePrototype = ResponsePrototype;
   window.__bootstrap.fetch.newInnerResponse = newInnerResponse;
   window.__bootstrap.fetch.toInnerResponse = toInnerResponse;
   window.__bootstrap.fetch.fromInnerResponse = fromInnerResponse;

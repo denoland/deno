@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
@@ -28,7 +28,6 @@ pub struct PermissionArgs {
   host: Option<String>,
   variable: Option<String>,
   command: Option<String>,
-  library: Option<String>,
 }
 
 pub fn op_query_permission(
@@ -39,8 +38,8 @@ pub fn op_query_permission(
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.query(path.as_deref().map(Path::new)),
-    "write" => permissions.write.query(path.as_deref().map(Path::new)),
+    "read" => permissions.read.query(path.map(Path::new)),
+    "write" => permissions.write.query(path.map(Path::new)),
     "net" => permissions.net.query(
       match args.host.as_deref() {
         None => None,
@@ -50,7 +49,7 @@ pub fn op_query_permission(
     ),
     "env" => permissions.env.query(args.variable.as_deref()),
     "run" => permissions.run.query(args.command.as_deref()),
-    "ffi" => permissions.ffi.query(args.library.as_deref()),
+    "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
     n => {
       return Err(custom_error(
@@ -70,8 +69,8 @@ pub fn op_revoke_permission(
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.revoke(path.as_deref().map(Path::new)),
-    "write" => permissions.write.revoke(path.as_deref().map(Path::new)),
+    "read" => permissions.read.revoke(path.map(Path::new)),
+    "write" => permissions.write.revoke(path.map(Path::new)),
     "net" => permissions.net.revoke(
       match args.host.as_deref() {
         None => None,
@@ -81,7 +80,7 @@ pub fn op_revoke_permission(
     ),
     "env" => permissions.env.revoke(args.variable.as_deref()),
     "run" => permissions.run.revoke(args.command.as_deref()),
-    "ffi" => permissions.ffi.revoke(args.library.as_deref()),
+    "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
     n => {
       return Err(custom_error(
@@ -101,8 +100,8 @@ pub fn op_request_permission(
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.request(path.as_deref().map(Path::new)),
-    "write" => permissions.write.request(path.as_deref().map(Path::new)),
+    "read" => permissions.read.request(path.map(Path::new)),
+    "write" => permissions.write.request(path.map(Path::new)),
     "net" => permissions.net.request(
       match args.host.as_deref() {
         None => None,
@@ -112,7 +111,7 @@ pub fn op_request_permission(
     ),
     "env" => permissions.env.request(args.variable.as_deref()),
     "run" => permissions.run.request(args.command.as_deref()),
-    "ffi" => permissions.ffi.request(args.library.as_deref()),
+    "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),
     n => {
       return Err(custom_error(
