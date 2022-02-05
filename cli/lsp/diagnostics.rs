@@ -20,6 +20,8 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
+use deno_core::serde::Deserialize;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
@@ -563,29 +565,196 @@ async fn generate_ts_diagnostics(
   Ok(diagnostics_vec)
 }
 
-fn resolution_error_as_code(
-  err: &deno_graph::ResolutionError,
-) -> lsp::NumberOrString {
-  use deno_graph::ResolutionError;
-  use deno_graph::SpecifierError;
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticDataSpecifier {
+  pub specifier: ModuleSpecifier,
+}
 
-  match err {
-    ResolutionError::InvalidDowngrade { .. } => {
-      lsp::NumberOrString::String("invalid-downgrade".to_string())
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticDataRedirect {
+  pub specifier: ModuleSpecifier,
+  pub redirect: ModuleSpecifier,
+}
+
+/// An enum which represents diagnostic errors which originate from Deno itself.
+pub(crate) enum DenoDiagnostic {
+  /// A `x-deno-warn` is associated with the specifier and should be displayed
+  /// as a warning to the user.
+  DenoWarn(String),
+  /// The import assertion type is incorrect.
+  InvalidAssertType(String),
+  /// A module requires an assertion type to be a valid import.
+  NoAssertType,
+  /// A remote module was not found in the cache.
+  NoCache(ModuleSpecifier),
+  /// A blob module was not found in the cache.
+  NoCacheBlob,
+  /// A data module was not found in the cache.
+  NoCacheData(ModuleSpecifier),
+  /// A local module was not found on the local file system.
+  NoLocal(ModuleSpecifier),
+  /// The specifier resolved to a remote specifier that was redirected to
+  /// another specifier.
+  Redirect {
+    from: ModuleSpecifier,
+    to: ModuleSpecifier,
+  },
+  /// An error occurred when resolving the specifier string.
+  ResolutionError(deno_graph::ResolutionError),
+}
+
+impl DenoDiagnostic {
+  fn code(&self) -> &str {
+    use deno_graph::ResolutionError;
+    use deno_graph::SpecifierError;
+
+    match self {
+      Self::DenoWarn(_) => "deno-warn",
+      Self::InvalidAssertType(_) => "invalid-assert-type",
+      Self::NoAssertType => "no-assert-type",
+      Self::NoCache(_) => "no-cache",
+      Self::NoCacheBlob => "no-cache-blob",
+      Self::NoCacheData(_) => "no-cache-data",
+      Self::NoLocal(_) => "no-local",
+      Self::Redirect { .. } => "redirect",
+      Self::ResolutionError(err) => match err {
+        ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+        ResolutionError::InvalidLocalImport { .. } => "invalid-local-import",
+        ResolutionError::InvalidSpecifier { error, .. } => match error {
+          SpecifierError::ImportPrefixMissing(_, _) => "import-prefix-missing",
+          SpecifierError::InvalidUrl(_) => "invalid-url",
+        },
+        ResolutionError::ResolverError { .. } => "resolver-error",
+      },
     }
-    ResolutionError::InvalidLocalImport { .. } => {
-      lsp::NumberOrString::String("invalid-local-import".to_string())
+  }
+
+  /// A "static" method which for a diagnostic that originated from the
+  /// structure returns a code action which can resolve the diagnostic.
+  pub(crate) fn get_code_action(
+    specifier: &ModuleSpecifier,
+    diagnostic: &lsp::Diagnostic,
+  ) -> Result<lsp::CodeAction, AnyError> {
+    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
+      let code_action = match code.as_str() {
+        "no-assert-type" => lsp::CodeAction {
+          title: "Insert import assertion.".to_string(),
+          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          diagnostics: Some(vec![diagnostic.clone()]),
+          edit: Some(lsp::WorkspaceEdit {
+            changes: Some(HashMap::from([(
+              specifier.clone(),
+              vec![lsp::TextEdit {
+                new_text: " assert { type: \"json\" }".to_string(),
+                range: lsp::Range {
+                  start: diagnostic.range.end,
+                  end: diagnostic.range.end,
+                },
+              }],
+            )])),
+            ..Default::default()
+          }),
+          ..Default::default()
+        },
+        "no-cache" | "no-cache-data" => {
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
+          let title = if code == "no-cache" {
+            format!("Cache \"{}\" and its dependencies.", data.specifier)
+          } else {
+            "Cache the data URL and its dependencies.".to_string()
+          };
+          lsp::CodeAction {
+            title,
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![json!([data.specifier])]),
+            }),
+            ..Default::default()
+          }
+        }
+        "redirect" => {
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataRedirect = serde_json::from_value(data)?;
+          lsp::CodeAction {
+            title: "Update specifier to its redirected specifier.".to_string(),
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            edit: Some(lsp::WorkspaceEdit {
+              changes: Some(HashMap::from([(
+                specifier.clone(),
+                vec![lsp::TextEdit {
+                  new_text: format!("\"{}\"", data.redirect),
+                  range: diagnostic.range,
+                }],
+              )])),
+              ..Default::default()
+            }),
+            ..Default::default()
+          }
+        }
+        _ => {
+          return Err(anyhow!(
+            "Unsupported diagnostic code (\"{}\") provided.",
+            code
+          ))
+        }
+      };
+      Ok(code_action)
+    } else {
+      Err(anyhow!("Unsupported diagnostic code provided."))
     }
-    ResolutionError::InvalidSpecifier { error, .. } => match error {
-      SpecifierError::ImportPrefixMissing(_, _) => {
-        lsp::NumberOrString::String("import-prefix-missing".to_string())
-      }
-      SpecifierError::InvalidUrl(_) => {
-        lsp::NumberOrString::String("invalid-url".to_string())
-      }
-    },
-    ResolutionError::ResolverError { .. } => {
-      lsp::NumberOrString::String("resolver-error".to_string())
+  }
+
+  /// Given a reference to the code from an LSP diagnostic, determine if the
+  /// diagnostic is fixable or not
+  pub(crate) fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
+    if let Some(lsp::NumberOrString::String(code)) = code {
+      matches!(
+        code.as_str(),
+        "no-cache" | "no-cache-data" | "no-assert-type" | "redirect"
+      )
+    } else {
+      false
+    }
+  }
+
+  /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
+  /// provided.
+  pub(crate) fn to_lsp_diagnostic(
+    &self,
+    range: &lsp::Range,
+  ) -> lsp::Diagnostic {
+    let (severity, message, data) = match self {
+      Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
+      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
+      Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
+      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
+      Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
+      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
+      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
+      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+    };
+    lsp::Diagnostic {
+      range: *range,
+      severity: Some(severity),
+      code: Some(lsp::NumberOrString::String(self.code().to_string())),
+      source: Some("deno".to_string()),
+      message,
+      data,
+      ..Default::default()
     }
   }
 }
@@ -602,21 +771,31 @@ fn diagnose_dependency(
     Resolved::Ok {
       specifier, range, ..
     } => {
+      let range = documents::to_lsp_range(range);
+      // If the module is a remote module and has a `X-Deno-Warn` header, we
+      // want a warning diagnostic with that message.
       if let Some(metadata) = cache_metadata.get(specifier) {
         if let Some(message) =
           metadata.get(&cache::MetadataKey::Warning).cloned()
         {
-          diagnostics.push(lsp::Diagnostic {
-            range: documents::to_lsp_range(range),
-            severity: Some(lsp::DiagnosticSeverity::WARNING),
-            code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
-            source: Some("deno".to_string()),
-            message,
-            ..Default::default()
-          });
+          diagnostics
+            .push(DenoDiagnostic::DenoWarn(message).to_lsp_diagnostic(&range));
         }
       }
       if let Some(doc) = documents.get(specifier) {
+        let doc_specifier = doc.specifier();
+        // If the module was redirected, we want to issue an informational
+        // diagnostic that indicates this. This then allows us to issue a code
+        // action to replace the specifier with the final redirected one.
+        if doc_specifier != specifier {
+          diagnostics.push(
+            DenoDiagnostic::Redirect {
+              from: specifier.clone(),
+              to: doc_specifier.clone(),
+            }
+            .to_lsp_diagnostic(&range),
+          );
+        }
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic
@@ -626,51 +805,34 @@ fn diagnose_dependency(
             // not provide a potentially incorrect diagnostic.
             None if is_dynamic => (),
             // The module has an incorrect assertion type, diagnostic
-            Some(assert_type) => diagnostics.push(lsp::Diagnostic {
-              range: documents::to_lsp_range(range),
-              severity: Some(lsp::DiagnosticSeverity::ERROR),
-              code: Some(lsp::NumberOrString::String("invalid-assert-type".to_string())),
-              source: Some("deno".to_string()),
-              message: format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type),
-              ..Default::default()
-            }),
+            Some(assert_type) => diagnostics.push(
+              DenoDiagnostic::InvalidAssertType(assert_type.to_string())
+                .to_lsp_diagnostic(&range),
+            ),
             // The module is missing an assertion type, diagnostic
-            None => diagnostics.push(lsp::Diagnostic {
-              range: documents::to_lsp_range(range),
-              severity: Some(lsp::DiagnosticSeverity::ERROR),
-              code: Some(lsp::NumberOrString::String("no-assert-type".to_string())),
-              source: Some("deno".to_string()),
-              message: "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(),
-              ..Default::default()
-            }),
+            None => diagnostics
+              .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
       } else {
-        let (code, message) = match specifier.scheme() {
-          "file" => (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)),
-          "data" => (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string()),
-            "blob" => (Some(lsp::NumberOrString::String("no-cache-blob".to_string())), "Uncached blob URL.".to_string()),
-            _ => (Some(lsp::NumberOrString::String("no-cache".to_string())), format!("Uncached or missing remote URL: \"{}\".", specifier)),
+        // When the document is not available, it means that it cannot be found
+        // in the cache or locally on the disk, so we want to issue a diagnostic
+        // about that.
+        let deno_diagnostic = match specifier.scheme() {
+          "file" => DenoDiagnostic::NoLocal(specifier.clone()),
+          "data" => DenoDiagnostic::NoCacheData(specifier.clone()),
+          "blob" => DenoDiagnostic::NoCacheBlob,
+          _ => DenoDiagnostic::NoCache(specifier.clone()),
         };
-        diagnostics.push(lsp::Diagnostic {
-          range: documents::to_lsp_range(range),
-          severity: Some(lsp::DiagnosticSeverity::ERROR),
-          code,
-          source: Some("deno".to_string()),
-          message,
-          data: Some(json!({ "specifier": specifier })),
-          ..Default::default()
-        });
+        diagnostics.push(deno_diagnostic.to_lsp_diagnostic(&range));
       }
     }
-    Resolved::Err(err) => diagnostics.push(lsp::Diagnostic {
-      range: documents::to_lsp_range(err.range()),
-      severity: Some(lsp::DiagnosticSeverity::ERROR),
-      code: Some(resolution_error_as_code(err)),
-      source: Some("deno".to_string()),
-      message: err.to_string(),
-      ..Default::default()
-    }),
+    // The specifier resolution resulted in an error, so we want to issue a
+    // diagnostic for that.
+    Resolved::Err(err) => diagnostics.push(
+      DenoDiagnostic::ResolutionError(err.clone())
+        .to_lsp_diagnostic(&documents::to_lsp_range(err.range())),
+    ),
     _ => (),
   }
 }
