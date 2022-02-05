@@ -6,8 +6,8 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const { Deferred } = window.__bootstrap.streams;
   const {
-    Promise,
     PromiseResolve,
     PromiseAll,
     Symbol,
@@ -132,7 +132,7 @@
 
     // deno-lint-ignore require-await
     async getPorts() {
-      webidl.assertBranded(this, Serial);
+      webidl.assertBranded(this, SerialPrototype);
       const ports = core.opSync("op_webserial_get_ports");
 
       // TODO(@crowlKats): maybe cache ports?
@@ -148,7 +148,7 @@
     }
 
     /*async requestPort(options = {}) {
-      webidl.assertBranded(this, Serial);
+      webidl.assertBranded(this, SerialPrototype);
       const prefix = "Failed to execute 'requestPort' on 'Serial'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       options = webidl.converters.SerialPortRequestOptions(options, {
@@ -165,6 +165,7 @@
       }
     }*/
   }
+  const SerialPrototype = Serial.prototype;
 
   const _state = Symbol("[[state]]");
   const _bufferSize = Symbol("[[bufferSize]]");
@@ -191,7 +192,7 @@
     [_info];
 
     get readable() {
-      webidl.assertBranded(this, SerialPort);
+      webidl.assertBranded(this, SerialPortPrototype);
       if (this[_readable] !== null) {
         return this[_readable];
       }
@@ -229,7 +230,7 @@
     }
 
     get writable() {
-      webidl.assertBranded(this, SerialPort);
+      webidl.assertBranded(this, SerialPortPrototype);
       if (this[_writable] !== null) {
         return this[_writable];
       }
@@ -242,7 +243,9 @@
 
       const stream = new WritableStream({
         write: async (chunk) => {
-          const source = webidl.converters.BufferSource(chunk);
+          const source = webidl.converters.BufferSource(chunk, {
+            context: "chunk",
+          });
           await core.opAsync("op_webserial_write", this[_rid], source.slice()); // TODO(@crowlKats): errors
         },
         abort: () => {
@@ -274,13 +277,13 @@
     }
 
     getInfo() {
-      webidl.assertBranded(this, SerialPort);
+      webidl.assertBranded(this, SerialPortPrototype);
       return this[_info];
     }
 
     // deno-lint-ignore require-await
     async open(options) {
-      webidl.assertBranded(this, SerialPort);
+      webidl.assertBranded(this, SerialPortPrototype);
       const prefix = "Failed to execute 'open' on 'SerialPort'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       options = webidl.converters.SerialOptions(options, {
@@ -314,11 +317,9 @@
     }
 
     async setSignals(options = {}) {
-      webidl.assertBranded(this, SerialPort);
-      const prefix = "Failed to execute 'setSignals' on 'SerialPort'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      options = webidl.converters.SerialPortRequestOptions(options, {
-        prefix,
+      webidl.assertBranded(this, SerialPortPrototype);
+      options = webidl.converters.SerialOutputSignals(options, {
+        prefix: "Failed to execute 'setSignals' on 'SerialPort'",
         context: "Argument 1",
       });
 
@@ -334,7 +335,7 @@
     }
 
     async getSignals() {
-      webidl.assertBranded(this, SerialPort);
+      webidl.assertBranded(this, SerialPortPrototype);
       if (this[_state] !== "opened") {
         throw new DOMException(
           "SerialPort must be opened",
@@ -346,7 +347,7 @@
     }
 
     async close() {
-      webidl.assertBranded(this, SerialPort);
+      webidl.assertBranded(this, SerialPortPrototype);
       let cancelPromise;
       if (this[_readable] === null) {
         cancelPromise = PromiseResolve(undefined);
@@ -361,12 +362,11 @@
         abortPromise = this[_writable].abort();
       }
 
-      const pendingClosePromise = new Promise((res) => {
-        if (this[_readable] === null && this[_writable] === null) {
-          res(undefined);
-        }
-      });
-      // TODO(@crowlKats): check
+      const pendingClosePromise = new Deferred();
+      if (this[_readable] === null && this[_writable] === null) {
+        pendingClosePromise.resolve(undefined);
+      }
+
       this[_pendingClosePromise] = pendingClosePromise;
 
       const combinedPromise = PromiseAll([
@@ -377,7 +377,7 @@
       this[_state] = "closing";
       try {
         await combinedPromise;
-        core.close(this[_rid]); // TODO(@crowlKats): check
+        core.close(this[_rid]);
         this[_state] = "closed";
         this[_readFatal] = false;
         this[_writeFatal] = false;
@@ -388,6 +388,7 @@
       }
     }
   }
+  const SerialPortPrototype = SerialPort.prototype;
 
   window.__bootstrap.webSerial = {
     serial: webidl.createBranded(Serial),
