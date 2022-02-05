@@ -175,6 +175,7 @@
       super(message);
     }
   }
+  const GPUValidationErrorPrototype = GPUValidationError.prototype;
 
   class GPU {
     [webidl.brand] = webidl.brand;
@@ -718,7 +719,7 @@
       const validationFilteredPromise = PromisePrototypeCatch(
         operation,
         (err) => {
-          if (ObjectPrototypeIsPrototypeOf.prototype(GPUValidationError, err)) {
+          if (ObjectPrototypeIsPrototypeOf(GPUValidationErrorPrototype, err)) {
             return PromiseReject(err);
           }
           return PromiseResolve();
