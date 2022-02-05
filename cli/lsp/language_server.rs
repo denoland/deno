@@ -621,7 +621,6 @@ impl Inner {
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     lsp_log!("Starting Deno language server...");
-    lsp_log!("Params: {:?}", params);
     let mark = self.performance.mark("initialize", Some(&params));
 
     // exit this process when the parent is lost
