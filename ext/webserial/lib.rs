@@ -25,10 +25,7 @@ pub fn init() -> Extension {
       "01_webserial.js",
     ))
     .ops(vec![
-      (
-        "op_webserial_get_ports",
-        op_sync(op_webserial_get_ports),
-      ),
+      ("op_webserial_get_ports", op_sync(op_webserial_get_ports)),
       ("op_webserial_open_port", op_sync(op_webserial_open_port)),
       ("op_webserial_read", op_async(op_webserial_read)),
       ("op_webserial_write", op_async(op_webserial_write)),
