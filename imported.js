@@ -7,4 +7,3 @@ exports.bar = "bar";
 exports.fizz = require("./reexports.js");
 
 console.log(exports);
-console.log(exports.fizz);
