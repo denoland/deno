@@ -309,14 +309,13 @@ impl Inner {
   /// If there's no config file specified in settings returns `None`.
   fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
     let workspace_settings = self.config.get_workspace_settings();
-    let maybe_root_uri = self.root_uri.clone();
     let maybe_config = workspace_settings.config;
     if let Some(config_str) = &maybe_config {
       if !config_str.is_empty() {
         lsp_log!("Setting TypeScript configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
-        } else if let Some(root_uri) = maybe_root_uri {
+        } else if let Some(root_uri) = &self.root_uri {
           root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
@@ -338,8 +337,8 @@ impl Inner {
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
-    if let Some(root_uri) = maybe_root_uri {
-      let root_path = root_uri.to_file_path().unwrap();
+    if let Some(root_uri) = &self.root_uri {
+      let root_path = fs_util::specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
       let maybe_config =
         crate::config_file::discover_from(&root_path, &mut checked)?;
