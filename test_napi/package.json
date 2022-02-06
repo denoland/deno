@@ -1,0 +1,19 @@
+{
+  "name": "testdata",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@parcel/css": "^1.2.0",
+    "@parcel/fs-search": "^2.2.1",
+    "@parcel/hash": "^2.2.1",
+    "@parcel/optimizer-image": "^2.2.1",
+    "@parcel/transformer-js": "^2.2.1",
+    "@swc/cli": "^0.1.55",
+    "@swc/core": "^1.2.133",
+    "dprint-node": "^1.0.5",
+    "fs-xattr": "^0.4.0",
+    "skia-canvas": "^0.9.28",
+    "usb": "^2.0.3"
+  }
+}

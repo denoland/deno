@@ -10,6 +10,7 @@ gclient_config.py_entries
 /target/
 /std/hash/_wasm/target
 /tools/wpt/manifest.json
+/test_napi/node_modules
 
 # Files that help ensure VSCode can work but we don't want checked into the
 # repo
