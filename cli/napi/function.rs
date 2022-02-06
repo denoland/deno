@@ -54,8 +54,9 @@ pub unsafe fn create_function<'a>(
       )
       .unwrap();
       let env_ptr = env_ptr.value() as *mut Env;
+      let sender = (&mut *(env_ptr)).async_work_sender.clone();
 
-      let mut env = (&mut *(env_ptr)).with_new_scope(scope);
+      let mut env = (&mut *(env_ptr)).with_new_scope(scope, sender);
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {
@@ -129,8 +130,9 @@ pub unsafe fn create_function_template<'a>(
       )
       .unwrap();
       let env_ptr = env_ptr.value() as *mut Env;
+      let sender = (&mut *(env_ptr)).async_work_sender.clone();
 
-      let mut env = (&mut *(env_ptr)).with_new_scope(scope);
+      let mut env = (&mut *(env_ptr)).with_new_scope(scope, sender);
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {

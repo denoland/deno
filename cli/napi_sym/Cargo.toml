@@ -1,10 +1,10 @@
 [package]
 name = "napi_sym"
 version = "0.0.1"
-description = "proc macro for writing N-API symbols"
-readme = "../README.md"
-license = "MIT"
 edition = "2021"
+license = "MIT"
+readme = "../README.md"
+description = "proc macro for writing N-API symbols"
 
 [lib]
 path = "./lib.rs"

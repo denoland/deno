@@ -5,8 +5,13 @@ pub use std::os::raw::c_void;
 pub use std::ptr;
 pub use v8;
 
+use crate::futures::channel::mpsc;
+use crate::futures::Future;
+use crate::futures::SinkExt;
+use crate::JsRuntime;
 use std::cell::RefCell;
 use std::ffi::CString;
+use std::pin::Pin;
 use std::thread_local;
 
 #[cfg(unix)]
@@ -283,33 +288,41 @@ impl EnvShared {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Env<'a, 'b, 'c> {
   pub scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
+  pub async_work_sender:
+    mpsc::UnboundedSender<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
 unsafe impl Send for Env<'_, '_, '_> {}
 unsafe impl Sync for Env<'_, '_, '_> {}
 
 impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
-  pub fn new(scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>) -> Self {
+  pub fn new(
+    scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
+    sender: mpsc::UnboundedSender<Pin<Box<dyn Future<Output = ()>>>>,
+  ) -> Self {
     Self {
       scope,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
+      async_work_sender: sender,
     }
   }
 
   pub fn with_new_scope(
     &self,
     scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
+    sender: mpsc::UnboundedSender<Pin<Box<dyn Future<Output = ()>>>>,
   ) -> Self {
     Self {
       scope,
       shared: self.shared,
       open_handle_scopes: self.open_handle_scopes,
+      async_work_sender: sender,
     }
   }
 
@@ -319,6 +332,13 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
 
   pub fn shared_mut(&self) -> &mut EnvShared {
     unsafe { &mut *self.shared }
+  }
+
+  pub fn add_async_work(
+    &mut self,
+    async_work: Pin<Box<dyn Future<Output = ()>>>,
+  ) {
+    self.async_work_sender.unbounded_send(async_work).unwrap();
   }
 }
 
@@ -356,9 +376,11 @@ pub fn dlopen_func<'s>(
     env_shared_ptr.write(env_shared);
   }
 
+  let state_rc = JsRuntime::state(scope);
+  let async_work_sender = state_rc.borrow().napi_async_work_sender.clone();
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
-  let mut env = Env::new(scope);
+  let mut env = Env::new(scope, async_work_sender);
   env.shared = env_shared_ptr;
   unsafe {
     (env_ptr as *mut Env).write(env);

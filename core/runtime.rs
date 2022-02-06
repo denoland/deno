@@ -5,6 +5,8 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::futures::channel::mpsc;
+use crate::futures::Future;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -33,6 +35,7 @@ use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -41,6 +44,7 @@ use std::task::Context;
 use std::task::Poll;
 
 type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
+type PendingNapiAsyncWork = Pin<Box<dyn Future<Output = ()>>>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -163,6 +167,11 @@ pub(crate) struct JsRuntimeState {
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
+
+  pub(crate) pending_napi_async_work: FuturesUnordered<PendingNapiAsyncWork>,
+  pub(crate) napi_async_work_sender:
+    mpsc::UnboundedSender<PendingNapiAsyncWork>,
+  napi_async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
 }
 
 impl Drop for JsRuntime {
@@ -342,6 +351,7 @@ impl JsRuntime {
     }
 
     let op_state = Rc::new(RefCell::new(op_state));
+    let (sender, receiver) = mpsc::unbounded();
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
@@ -365,6 +375,9 @@ impl JsRuntime {
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
+      pending_napi_async_work: FuturesUnordered::new(),
+      napi_async_work_sender: sender,
+      napi_async_work_receiver: receiver,
     })));
 
     let module_map = ModuleMap::new(loader, op_state);
@@ -770,6 +783,7 @@ impl JsRuntime {
     // Ops
     {
       self.resolve_async_ops(cx)?;
+      self.poll_napi(cx)?;
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
@@ -808,6 +822,7 @@ impl JsRuntime {
       .as_ref()
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
+    let has_pending_napi_work = !state.pending_napi_async_work.is_empty();
 
     if !has_pending_refed_ops
       && !has_pending_dyn_imports
@@ -815,6 +830,7 @@ impl JsRuntime {
       && !has_pending_module_evaluation
       && !has_pending_background_tasks
       && !has_tick_scheduled
+      && !has_pending_napi_work
     {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
@@ -1507,6 +1523,24 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
+  }
+
+  fn poll_napi(&mut self, cx: &mut Context) -> Result<(), Error> {
+    let state_rc = Self::state(self.v8_isolate());
+    let mut state = state_rc.borrow_mut();
+
+    while let Poll::Ready(Some(async_work_fut)) =
+      state.napi_async_work_receiver.poll_next_unpin(cx)
+    {
+      state.pending_napi_async_work.push(async_work_fut);
+    }
+
+    while let Poll::Ready(_) = state.pending_napi_async_work.poll_next_unpin(cx)
+    {
+      //
+    }
+
+    Ok(())
   }
 
   // Send finished responses to JS
