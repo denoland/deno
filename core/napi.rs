@@ -5,9 +5,9 @@ pub use std::os::raw::c_void;
 pub use std::ptr;
 pub use v8;
 
+use std::cell::RefCell;
 use std::ffi::CString;
 use std::thread_local;
-use std::cell::RefCell;
 
 #[cfg(unix)]
 use libloading::os::unix::*;

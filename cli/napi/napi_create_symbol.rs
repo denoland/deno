@@ -1,4 +1,3 @@
- 
 use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
@@ -8,7 +7,7 @@ fn napi_create_symbol(
   result: *mut napi_value,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
-  let description = match result.is_null() {
+  let description = match description.is_null() {
     true => None,
     false => Some(
       std::mem::transmute::<napi_value, v8::Local<v8::Value>>(description)

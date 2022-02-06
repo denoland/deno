@@ -1,6 +1,5 @@
- 
-use deno_core::napi::*;
 use super::util::get_array_buffer_ptr;
+use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
 fn napi_get_buffer_info(

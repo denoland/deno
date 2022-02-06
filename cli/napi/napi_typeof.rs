@@ -1,4 +1,3 @@
- 
 use deno_core::napi::*;
 
 pub fn get_value_type(value: v8::Local<v8::Value>) -> Option<napi_valuetype> {

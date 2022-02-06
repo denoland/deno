@@ -1,4 +1,3 @@
- 
 use deno_core::napi::*;
 
 #[napi_sym::napi_sym]

@@ -1,5 +1,5 @@
-use std::cell::Cell;
 use deno_core::napi::*;
+use std::cell::Cell;
 
 unsafe fn get_backing_store_slice(
   backing_store: &v8::SharedRef<v8::BackingStore>,

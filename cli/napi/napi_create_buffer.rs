@@ -1,4 +1,3 @@
- 
 use deno_core::napi::*;
 
 use super::util::get_array_buffer_ptr;

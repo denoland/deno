@@ -1,4 +1,3 @@
- 
 use deno_core::napi::*;
 
 use v8::BackingStore;

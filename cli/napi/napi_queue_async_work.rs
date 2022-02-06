@@ -1,6 +1,5 @@
- 
-use deno_core::napi::*;
 use super::napi_create_async_work::AsyncWork;
+use deno_core::napi::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 

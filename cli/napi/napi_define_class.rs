@@ -1,6 +1,5 @@
- 
-use deno_core::napi::*;
 use super::function::create_function_template;
+use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
 fn napi_define_class(
