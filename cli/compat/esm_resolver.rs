@@ -903,7 +903,7 @@ fn parse_package_name(
   }
 
   let package_name = if let Some(index) = separator_index {
-    specifier[0..=index].to_string()
+    specifier[0..index].to_string()
   } else {
     specifier.to_string()
   };
@@ -1192,6 +1192,22 @@ mod tests {
     let expected =
       Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
     matches!(actual, ResolveResponse::Esm(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
+  }
+
+  #[test]
+  fn package_subpath() {
+    let cwd = testdir("subpath");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
+    matches!(actual, ResolveResponse::CommonJs(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
+    let actual = node_resolve("foo/server.js", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/server.js")).unwrap();
+    matches!(actual, ResolveResponse::CommonJs(_));
     assert_eq!(actual.to_result().unwrap(), expected);
   }
 
