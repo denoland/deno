@@ -2396,7 +2396,13 @@ fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
   // forrest for the trees as well as it compounds any lsp performance
   // challenges, opening a single document in the editor causes some 3k worth
   // of op_exists requests... :omg:
-  let specifier = state.normalize_specifier(args.specifier)?;
+  let specifier = match state.normalize_specifier(&args.specifier) {
+    Ok(url) => url,
+    // sometimes tsc tries to query invalid specifiers, especially when
+    // something else isn't quite right, so instead of bubbling up the error
+    // back to tsc, we simply swallow it and say the file doesn't exist
+    Err(err) => return Ok(false),
+  };
   let result = state.state_snapshot.documents.exists(&specifier);
   Ok(result)
 }
@@ -3671,6 +3677,31 @@ mod tests {
         "file:///a.ts": []
       })
     );
+  }
+
+  #[test]
+  fn test_op_exists() {
+    let (_, state_snapshot, _) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[],
+    );
+    let performance = Arc::new(Performance::default());
+    let mut state = State::new(state_snapshot, performance);
+    let actual = op_exists(
+      &mut state,
+      SpecifierArgs {
+        specifier: "/error/unknown:something/index.d.ts".to_string(),
+      },
+    );
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert!(!actual);
   }
 
   #[test]
