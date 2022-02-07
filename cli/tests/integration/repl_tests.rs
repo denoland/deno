@@ -129,7 +129,13 @@ fn pty_complete_expression() {
     console.write_text("y");
     console.write_line("");
     console.write_line("close();");
-    assert!(console.read_all_output().contains("Display all"));
+    let output = console.read_all_output();
+    assert!(output.contains("Display all"));
+    assert!(output.contains("core"));
+    assert!(output.contains("args"));
+    assert!(output.contains("exit"));
+    assert!(output.contains("symlink"));
+    assert!(output.contains("permissions"));
   });
 }
 
