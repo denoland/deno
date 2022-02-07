@@ -1,0 +1,13 @@
+export { assert, assertEquals } from "../test_util/std/testing/asserts.ts";
+
+const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
+const [libPrefix, libSuffix] = {
+  darwin: ["lib", "dylib"],
+  linux: ["lib", "so"],
+  windows: ["", "dll"],
+}[Deno.build.os];
+
+export function loadTestLibrary(id) {
+  const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
+  return Deno.core.dlopen(specifier);
+}

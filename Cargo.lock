@@ -2391,6 +2391,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "napi-sys"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a385494dac3c52cbcacb393bb3b42669e7db8ab240c7ad5115f549eb061f2cc"
+
+[[package]]
 name = "napi_sym"
 version = "0.0.1"
 dependencies = [
@@ -4212,6 +4218,14 @@ dependencies = [
 name = "test_ffi"
 version = "0.1.0"
 dependencies = [
+ "test_util",
+]
+
+[[package]]
+name = "test_napi"
+version = "0.1.0"
+dependencies = [
+ "napi-sys",
  "test_util",
 ]
 

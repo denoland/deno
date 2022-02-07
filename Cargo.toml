@@ -10,6 +10,7 @@ members = [
   "runtime",
   "serde_v8",
   "test_ffi",
+  "test_napi",
   "test_util",
   "ext/broadcast_channel",
   "ext/console",
