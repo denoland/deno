@@ -26,6 +26,7 @@ use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
+use futures::stream::Stream;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::any::Any;
@@ -44,7 +45,8 @@ use std::task::Context;
 use std::task::Poll;
 
 type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
-type PendingNapiAsyncWork = Pin<Box<dyn Future<Output = ()>>>;
+pub(crate) type PendingNapiAsyncWork =
+  Box<dyn FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> ()>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -168,7 +170,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
 
-  pub(crate) pending_napi_async_work: FuturesUnordered<PendingNapiAsyncWork>,
+  pub(crate) pending_napi_async_work: Vec<PendingNapiAsyncWork>,
   pub(crate) napi_async_work_sender:
     mpsc::UnboundedSender<PendingNapiAsyncWork>,
   napi_async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
@@ -375,7 +377,7 @@ impl JsRuntime {
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
-      pending_napi_async_work: FuturesUnordered::new(),
+      pending_napi_async_work: Vec::new(),
       napi_async_work_sender: sender,
       napi_async_work_receiver: receiver,
     })));
@@ -1528,6 +1530,7 @@ impl JsRuntime {
   fn poll_napi(&mut self, cx: &mut Context) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
+    let scope = &mut self.handle_scope();
 
     while let Poll::Ready(Some(async_work_fut)) =
       state.napi_async_work_receiver.poll_next_unpin(cx)
@@ -1535,9 +1538,10 @@ impl JsRuntime {
       state.pending_napi_async_work.push(async_work_fut);
     }
 
-    while let Poll::Ready(Some(_)) = state.pending_napi_async_work.poll_next_unpin(cx)
-    {
-      //
+    let context = v8::Context::new(scope);
+    let context_scope = &mut v8::ContextScope::new(scope, context);
+    while let Some(work) = state.pending_napi_async_work.pop() {
+      work(context_scope);
     }
 
     Ok(())

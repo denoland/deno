@@ -8,6 +8,7 @@ pub use v8;
 use crate::futures::channel::mpsc;
 use crate::futures::Future;
 use crate::futures::SinkExt;
+use crate::runtime::PendingNapiAsyncWork;
 use crate::JsRuntime;
 use std::cell::RefCell;
 use std::ffi::CString;
@@ -293,8 +294,7 @@ pub struct Env<'a, 'b, 'c> {
   pub scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
-  pub async_work_sender:
-    mpsc::UnboundedSender<Pin<Box<dyn Future<Output = ()>>>>,
+  pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
 }
 
 unsafe impl Send for Env<'_, '_, '_> {}
@@ -303,7 +303,7 @@ unsafe impl Sync for Env<'_, '_, '_> {}
 impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
   pub fn new(
     scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
-    sender: mpsc::UnboundedSender<Pin<Box<dyn Future<Output = ()>>>>,
+    sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
     Self {
       scope,
@@ -316,7 +316,7 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
   pub fn with_new_scope(
     &self,
     scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
-    sender: mpsc::UnboundedSender<Pin<Box<dyn Future<Output = ()>>>>,
+    sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
     Self {
       scope,
@@ -334,10 +334,7 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
     unsafe { &mut *self.shared }
   }
 
-  pub fn add_async_work(
-    &mut self,
-    async_work: Pin<Box<dyn Future<Output = ()>>>,
-  ) {
+  pub fn add_async_work(&mut self, async_work: PendingNapiAsyncWork) {
     self.async_work_sender.unbounded_send(async_work).unwrap();
   }
 }
