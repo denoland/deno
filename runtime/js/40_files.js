@@ -6,10 +6,12 @@
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
+  const { readableStreamForRid, writableStreamForRid } =
+    window.__bootstrap.streamUtils;
   const {
+    ArrayPrototypeFilter,
     Error,
     ObjectValues,
-    ArrayPrototypeFilter,
   } = window.__bootstrap.primordials;
 
   function seekSync(
@@ -77,6 +79,9 @@
   class File {
     #rid = 0;
 
+    #readable;
+    #writable;
+
     constructor(rid) {
       this.#rid = rid;
     }
@@ -128,9 +133,25 @@
     close() {
       core.close(this.rid);
     }
+
+    get readable() {
+      if (this.#readable === undefined) {
+        this.#readable = readableStreamForRid(this.rid);
+      }
+      return this.#readable;
+    }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
+    }
   }
 
   class Stdin {
+    #readable;
+
     constructor() {
     }
 
@@ -149,9 +170,18 @@
     close() {
       core.close(this.rid);
     }
+
+    get readable() {
+      if (this.#readable === undefined) {
+        this.#readable = readableStreamForRid(this.rid);
+      }
+      return this.#readable;
+    }
   }
 
   class Stdout {
+    #writable;
+
     constructor() {
     }
 
@@ -170,9 +200,18 @@
     close() {
       core.close(this.rid);
     }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
+    }
   }
 
   class Stderr {
+    #writable;
+
     constructor() {
     }
 
@@ -190,6 +229,13 @@
 
     close() {
       core.close(this.rid);
+    }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
     }
   }
 
