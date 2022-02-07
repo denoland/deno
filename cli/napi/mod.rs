@@ -81,6 +81,7 @@ pub mod napi_get_value_bool;
 pub mod napi_get_value_double;
 pub mod napi_get_value_external;
 pub mod napi_get_value_int32;
+pub mod napi_get_value_int64;
 pub mod napi_get_value_string_latin1;
 pub mod napi_get_value_string_utf16;
 pub mod napi_get_value_string_utf8;
