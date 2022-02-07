@@ -2,6 +2,7 @@ use napi_sys::*;
 
 pub mod numbers;
 pub mod strings;
+pub mod typedarray;
 
 #[macro_export]
 macro_rules! get_callback_info {
@@ -47,5 +48,6 @@ unsafe extern "C" fn napi_register_module_v1(
 ) -> napi_value {
   strings::init(env, exports);
   numbers::init(env, exports);
+  typedarray::init(env, exports);
   exports
 }
