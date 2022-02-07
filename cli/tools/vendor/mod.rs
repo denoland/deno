@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -35,6 +35,7 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     .modules()
     .into_iter()
     .partition::<Vec<_>, _>(|m| is_remote_specifier(&m.specifier));
+  // todo(THIS PR): change this to leave absolute http(s) urls as-is in the vendored files
   let mappings =
     Mappings::from_remote_modules(&graph, &remote_modules, &output_dir)?;
 
@@ -174,7 +175,7 @@ fn build_import_map(
 
   let output_dir = ModuleSpecifier::from_directory_path(&output_dir).unwrap();
 
-  // purposefully includes duplicate keys... the user should then select which to delete
+  // todo: use serde_json to print htis out?
   let mut text = "{\n".to_string();
   text.push_str("  \"imports\": {\n");
   for (i, (key, value)) in key_values.iter().enumerate() {
@@ -196,16 +197,16 @@ fn collect_import_map_key_values(
   local_modules: &[&Module],
 ) -> Vec<(String, ModuleSpecifier)> {
   fn add_if_remote(
-    specifiers: &mut HashSet<(String, ModuleSpecifier)>,
+    specifiers: &mut HashMap<String, ModuleSpecifier>,
     text: &str,
     specifier: &ModuleSpecifier,
   ) {
     if is_remote_specifier(specifier) {
-      specifiers.insert((text.to_string(), specifier.clone()));
+      specifiers.insert(text.to_string(), specifier.clone());
     }
   }
 
-  let mut result = HashSet::new();
+  let mut result = HashMap::new();
   for module in local_modules {
     for (text, dep) in &module.dependencies {
       if let Some(specifier) = dep.get_code() {
@@ -223,7 +224,7 @@ fn collect_import_map_key_values(
   }
 
   let mut result = result.into_iter().collect::<Vec<_>>();
-  result.sort();
+  result.sort_by(|a, b| a.0.cmp(&b.0));
   result
 }
 

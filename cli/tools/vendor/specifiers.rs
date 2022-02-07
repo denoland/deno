@@ -94,7 +94,8 @@ pub fn dir_name_for_root(
     let max_win_path = 260;
     // This is the approximate length that a path might be before the root directory.
     // It should be a hardcoded number and not calculated based on the system as the
-    // produced code will most likely not stay only on the system that produced it.
+    // produced code will most likely not stay only on the system or directory that
+    // produced it.
     let approx_path_prefix_len = 80;
     let truncate_len = std::cmp::max(
       10,
