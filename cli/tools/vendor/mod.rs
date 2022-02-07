@@ -1,12 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 
 use crate::flags::VendorFlags;
@@ -15,13 +14,15 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use self::specifiers::dir_name_for_root;
-use self::specifiers::get_unique_path;
-use self::specifiers::make_url_relative;
-use self::specifiers::partition_by_root_specifiers;
-use self::specifiers::sanitize_filepath;
+use self::analyze::CollectSpecifierTextChangesParams;
+use self::analyze::collect_specifier_text_changes;
+use self::mappings::Mappings;
+use self::text_changes::apply_text_changes;
 
+mod analyze;
 mod specifiers;
+mod text_changes;
+mod mappings;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   let output_dir = resolve_and_validate_output_dir(&flags)?;
@@ -31,23 +32,33 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     .into_iter()
     .filter(|m| m.specifier.scheme().starts_with("http"))
     .collect::<Vec<_>>();
-  let partitioned_specifiers =
-    partition_by_root_specifiers(remote_modules.iter().map(|m| &m.specifier));
-  let mut mapped_paths = HashSet::new();
-  let mut mappings = HashMap::new();
+  let mappings = Mappings::from_remote_modules(&graph, &remote_modules, &output_dir)?;
 
-  for (root, specifiers) in partitioned_specifiers.into_iter() {
-    let base_dir = get_unique_path(
-      output_dir.join(dir_name_for_root(&root, &specifiers)),
-      &mut mapped_paths,
-    );
-    for specifier in specifiers {
-      let media_type = graph.get(&specifier).unwrap().media_type;
-      let relative = base_dir
-        .join(sanitize_filepath(&make_url_relative(&root, &specifier)?))
-        .with_extension(&media_type.as_ts_extension()[1..]);
-      mappings.insert(specifier, get_unique_path(relative, &mut mapped_paths));
-    }
+  // collect text changes
+  for module in &remote_modules {
+    let source = match &module.maybe_source {
+      Some(source) => source,
+      None => continue,
+    };
+    let local_path = mappings.local_path(&module.specifier);
+    let file_text = match module.kind {
+      ModuleKind::Esm => {
+        let text_changes = collect_specifier_text_changes(&CollectSpecifierTextChangesParams {
+          graph: &graph,
+          mappings: &mappings,
+          module,
+        });
+        apply_text_changes(source, text_changes)
+      },
+      ModuleKind::Asserted => {
+        source.to_string()
+      },
+      _ => {
+        log::warn!("Unsupported module kind {:?} for {}", module.kind, module.specifier);
+        continue;
+      }
+    };
+    std::fs::write(local_path, file_text)?;
   }
 
   Ok(())
