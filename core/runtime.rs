@@ -6,7 +6,7 @@ use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::futures::channel::mpsc;
-use crate::futures::Future;
+
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -26,7 +26,7 @@ use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
-use futures::stream::Stream;
+
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::any::Any;
@@ -36,7 +36,7 @@ use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
-use std::pin::Pin;
+
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -46,7 +46,7 @@ use std::task::Poll;
 
 type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub(crate) type PendingNapiAsyncWork =
-  Box<dyn FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> ()>;
+  Box<dyn FnOnce(&mut v8::ContextScope<v8::HandleScope>)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1530,7 +1530,10 @@ impl JsRuntime {
   fn poll_napi(&mut self, cx: &mut Context) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
-    let scope = &mut self.handle_scope();
+    let scope = &mut v8::HandleScope::with_context(
+      self.v8_isolate(),
+      state.global_context.clone().unwrap(),
+    );
 
     while let Poll::Ready(Some(async_work_fut)) =
       state.napi_async_work_receiver.poll_next_unpin(cx)

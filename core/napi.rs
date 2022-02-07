@@ -6,13 +6,13 @@ pub use std::ptr;
 pub use v8;
 
 use crate::futures::channel::mpsc;
-use crate::futures::Future;
+
 use crate::futures::SinkExt;
 use crate::runtime::PendingNapiAsyncWork;
 use crate::JsRuntime;
 use std::cell::RefCell;
 use std::ffi::CString;
-use std::pin::Pin;
+
 use std::thread_local;
 
 #[cfg(unix)]
@@ -355,7 +355,7 @@ pub fn dlopen_func<'s>(
   let path = args.get(0).to_string(scope).unwrap();
   let path = path.to_rust_string_lossy(scope);
 
-  let mut exports = v8::Object::new(scope);
+  let exports = v8::Object::new(scope);
 
   // We need complete control over the env object's lifetime
   // so we'll use explicit allocation for it, so that it doesn't

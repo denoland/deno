@@ -1,3 +1,4 @@
+#![allow(unused_mut)]
 pub mod function;
 pub mod napi_add_env_cleanup_hook;
 pub mod napi_adjust_external_memory;
