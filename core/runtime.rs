@@ -1535,7 +1535,7 @@ impl JsRuntime {
       state.pending_napi_async_work.push(async_work_fut);
     }
 
-    while let Poll::Ready(_) = state.pending_napi_async_work.poll_next_unpin(cx)
+    while let Poll::Ready(Some(_)) = state.pending_napi_async_work.poll_next_unpin(cx)
     {
       //
     }
