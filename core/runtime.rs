@@ -861,6 +861,7 @@ impl JsRuntime {
         || has_pending_dyn_module_evaluation
         || has_pending_background_tasks
         || has_tick_scheduled
+        || has_pending_napi_work
       {
         // pass, will be polled again
       } else {
@@ -1540,10 +1541,16 @@ impl JsRuntime {
     {
       state.pending_napi_async_work.push(async_work_fut);
     }
+    drop(state); // Drop borrow, `work` can call back into the runtime.
 
     let context = v8::Context::new(scope);
     let context_scope = &mut v8::ContextScope::new(scope, context);
-    while let Some(work) = state.pending_napi_async_work.pop() {
+
+    loop {
+      let mut work = match state_rc.borrow_mut().pending_napi_async_work.pop() {
+        Some(work) => work,
+        None => break,
+      };
       work(context_scope);
     }
 

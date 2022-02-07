@@ -12,6 +12,6 @@ fn napi_create_promise(
   let promise: v8::Local<v8::Value> = resolver.get_promise(env.scope).into();
   *deferred = *(&mut global as *mut _ as *mut napi_deferred);
   *promise_out = std::mem::transmute(promise);
-  
+
   Ok(())
 }
