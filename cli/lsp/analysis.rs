@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::diagnostics::DenoDiagnostic;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
@@ -359,12 +360,6 @@ pub struct CodeActionData {
   pub fix_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DenoFixData {
-  pub specifier: ModuleSpecifier,
-}
-
 #[derive(Debug, Clone)]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
@@ -389,49 +384,8 @@ impl CodeActionCollection {
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
-      if code == "no-assert-type" {
-        let code_action = lsp::CodeAction {
-          title: "Insert import assertion.".to_string(),
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          edit: Some(lsp::WorkspaceEdit {
-            changes: Some(HashMap::from([(
-              specifier.clone(),
-              vec![lsp::TextEdit {
-                new_text: " assert { type: \"json\" }".to_string(),
-                range: lsp::Range {
-                  start: diagnostic.range.end,
-                  end: diagnostic.range.end,
-                },
-              }],
-            )])),
-            ..Default::default()
-          }),
-          ..Default::default()
-        };
-        self.actions.push(CodeActionKind::Deno(code_action));
-      } else if let Some(data) = diagnostic.data.clone() {
-        let fix_data: DenoFixData = serde_json::from_value(data)?;
-        let title = if code == "no-cache-data" {
-          "Cache the data URL and its dependencies.".to_string()
-        } else {
-          format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-        };
-        let code_action = lsp::CodeAction {
-          title,
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![json!([fix_data.specifier])]),
-          }),
-          ..Default::default()
-        };
-        self.actions.push(CodeActionKind::Deno(code_action));
-      }
-    }
+    let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
+    self.actions.push(CodeActionKind::Deno(code_action));
     Ok(())
   }
 

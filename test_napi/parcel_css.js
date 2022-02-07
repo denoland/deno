@@ -34,5 +34,5 @@ const result = lib.transform({
 });
 
 console.log(Deno.core.decode(result.code));
-console.log(JSON.stringify(result.exports));
-console.log(JSON.stringify(result.dependencies));
+console.log(result.exports);
+console.log(result.dependencies);
