@@ -126,8 +126,9 @@
       const request = fromInnerRequest(innerRequest, signal, "immutable");
 
       const respondWith = createRespondWith(this, streamRid);
+      const upgrade = () => core.opAsync("op_http_upgrade", streamRid);
 
-      return { request, respondWith };
+      return { request, respondWith, upgrade };
     }
 
     /** @returns {void} */
