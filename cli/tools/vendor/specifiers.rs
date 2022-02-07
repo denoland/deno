@@ -72,7 +72,7 @@ pub fn dir_name_for_root(
   if let Some(segments) = root.path_segments() {
     for segment in segments.filter(|s| !s.is_empty()) {
       if !result.is_empty() {
-        result.push('_');
+        result.push('/');
       }
       result.push_str(&sanitize_segment(segment));
     }
@@ -103,10 +103,13 @@ pub fn dir_name_for_root(
         - sub_path_len as isize,
     ) as usize;
 
-    truncate_str(&result, truncate_len)
-      .trim_end_matches('_')
-      .trim_end_matches('.')
-      .to_string()
+    // if the final text should be truncated, then truncate and
+    // flatten it to a single folder name
+    let text = match result.char_indices().nth(truncate_len) {
+      Some((i, _)) => (&result[..i]).replace('/', "_"),
+      None => result,
+    };
+    text.trim_end_matches('_').trim_end_matches('.').to_string()
   })
 }
 
@@ -156,13 +159,6 @@ pub fn make_url_relative(
       root.to_string()
     )
   })
-}
-
-fn truncate_str(text: &str, max: usize) -> &str {
-  match text.char_indices().nth(max) {
-    Some((i, _)) => &text[..i],
-    None => text,
-  }
 }
 
 pub fn sanitize_filepath(text: &str) -> String {
@@ -278,7 +274,7 @@ mod test {
     run_test(
       "http://deno.land/x/test",
       &["http://deno.land/x/test/mod.ts"],
-      "deno.land_x_test",
+      "deno.land/x/test",
     );
     run_test(
       "http://localhost",
@@ -288,9 +284,9 @@ mod test {
     run_test(
       "http://localhost/test%20test",
       &["http://localhost/test%20test/asdf"],
-      "localhost_test%20test",
+      "localhost/test%20test",
     );
-    // will truncate
+    // will flatten and truncate
     run_test(
       // length of 45
       "http://localhost/testtestestingtestingtesting",

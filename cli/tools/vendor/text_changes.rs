@@ -1,9 +1,6 @@
-// todo: before merge, delete this file as it's now in deno_ast
+// todo(THIS PR): before merge, delete this file as this functionality is now in deno_ast
 
 use std::ops::Range;
-
-use deno_ast::swc::common::BytePos;
-use deno_ast::swc::common::Span;
 
 #[derive(Clone, Debug)]
 pub struct TextChange {
@@ -19,19 +16,6 @@ impl TextChange {
       range: start..end,
       new_text,
     }
-  }
-
-  pub fn from_span_and_text(span: Span, new_text: String) -> Self {
-    TextChange::new(span.lo.0 as usize, span.hi.0 as usize, new_text)
-  }
-
-  /// Gets an swc span for the provided text change.
-  pub fn as_span(&self) -> Span {
-    Span::new(
-      BytePos(self.range.start as u32),
-      BytePos(self.range.end as u32),
-      Default::default(),
-    )
   }
 }
 
