@@ -133,7 +133,6 @@ fn pty_complete_expression() {
   });
 }
 
-
 #[test]
 fn pty_complete_imports() {
   util::with_pty(&["repl"], |mut console| {
