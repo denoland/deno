@@ -315,6 +315,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
@@ -395,7 +396,10 @@ impl WebWorker {
     let runtime_exts = vec![
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(options.create_web_worker_cb.clone()),
+      ops::worker_host::init(
+        options.create_web_worker_cb.clone(),
+        options.preload_module_cb.clone(),
+      ),
       ops::io::init(),
     ];
 
@@ -599,6 +603,7 @@ pub fn run_web_worker(
   mut worker: WebWorker,
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
+  preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
@@ -606,6 +611,11 @@ pub fn run_web_worker(
   // with terminate
 
   let fut = async move {
+    let fut = (preload_module_cb)(worker);
+    // TODO: handle result
+    let result = fut.await;
+    let mut worker = result.unwrap();
+
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code {
       worker.execute_script(&located_script_name!(), &source_code)
