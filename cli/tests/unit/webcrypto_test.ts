@@ -1668,3 +1668,19 @@ Deno.test(async function testAesGcmTagLength() {
     );
   });
 });
+
+Deno.test(async function ecPrivateKeyMaterialExportSpki() {
+  // `generateKey` generates a key pair internally stored as "private" key.
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(keys.privateKey instanceof CryptoKey);
+  assert(keys.publicKey instanceof CryptoKey);
+
+  // `exportKey` should be able to perform necessary conversion to export spki.
+  const spki = await crypto.subtle.exportKey("spki", keys.publicKey);
+  assert(spki instanceof ArrayBuffer);
+});
