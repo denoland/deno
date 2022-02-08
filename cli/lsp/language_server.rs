@@ -1649,6 +1649,7 @@ impl Inner {
       self.client.clone(),
       &self.module_registries,
       &self.documents,
+      self.maybe_import_map.clone(),
     )
     .await
     {

@@ -49,6 +49,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use import_map::parse_from_json;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
@@ -617,7 +618,7 @@ pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
 ) -> Result<ImportMap, AnyError> {
-  let result = ImportMap::from_json_with_diagnostics(specifier, json_text)?;
+  let result = parse_from_json(specifier, json_text)?;
   if !result.diagnostics.is_empty() {
     warn!(
       "Import map diagnostics:\n{}",
