@@ -116,8 +116,7 @@ async fn create_graph(
     .collect::<Result<Vec<_>, AnyError>>()?;
 
   // todo(dsherret): there is a lot of copy and paste here from
-  // other parts of the codebase and we should resolve this
-  // code duplication in a future PR
+  // other parts of the codebase
   let mut cache = crate::cache::FetchCacher::new(
     ps.dir.gen_cache.clone(),
     ps.file_fetcher.clone(),

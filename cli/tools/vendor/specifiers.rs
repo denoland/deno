@@ -364,7 +364,8 @@ mod test {
     );
     assert_eq!(
       path_with_stem_suffix(&PathBuf::from("/test.D.TS"), "2"),
-      PathBuf::from("/test_2.D.TS")
+      // good enough
+      PathBuf::from("/test_2.d.TS")
     );
     assert_eq!(
       path_with_stem_suffix(&PathBuf::from("/test.d.mts"), "2"),

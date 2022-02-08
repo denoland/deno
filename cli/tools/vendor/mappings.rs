@@ -91,8 +91,12 @@ mod test {
       PathBuf::from("/test.d.ts")
     );
     assert_eq!(
+      path_with_extension(&PathBuf::from("/test.ts"), "js"),
+      PathBuf::from("/test.js")
+    );
+    assert_eq!(
       path_with_extension(&PathBuf::from("/test.js"), "js"),
-      PathBuf::from("/test.ts")
+      PathBuf::from("/test.js")
     );
   }
 }
