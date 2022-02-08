@@ -53,6 +53,8 @@
     RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
+    SafeArrayIterator,
+    SafeSet,
     SetPrototype,
     SetPrototypeEntries,
     Symbol,
@@ -1621,10 +1623,18 @@
       } else if (css.backgroundColor == "white") {
         ansi += `\x1b[47m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.backgroundColor)
-          ? css.backgroundColor
-          : parseCssColor(css.backgroundColor);
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.backgroundColor)) {
+          const [r, g, b] = css.backgroundColor;
+          ansi += `\x1b[48;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.backgroundColor);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[48;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[49m";
+          }
+        }
       }
     }
     if (!colorEquals(css.color, prevCss.color)) {
@@ -1647,10 +1657,18 @@
       } else if (css.color == "white") {
         ansi += `\x1b[37m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.color)
-          ? css.color
-          : parseCssColor(css.color);
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.color)) {
+          const [r, g, b] = css.color;
+          ansi += `\x1b[38;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.color);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[38;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[39m";
+          }
+        }
       }
     }
     if (css.fontWeight != prevCss.fontWeight) {
@@ -1922,11 +1940,14 @@
       const [first, ...rest] = args;
 
       if (typeof first === "string") {
-        this.error(`Assertion failed: ${first}`, ...rest);
+        this.error(
+          `Assertion failed: ${first}`,
+          ...new SafeArrayIterator(rest),
+        );
         return;
       }
 
-      this.error(`Assertion failed:`, ...args);
+      this.error(`Assertion failed:`, ...new SafeArrayIterator(args));
     };
 
     count = (label = "default") => {
@@ -1978,7 +1999,7 @@
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
       if (isSet) {
-        resultData = [...data];
+        resultData = [...new SafeSet(data)];
       } else if (isMap) {
         let idx = 0;
         resultData = {};
@@ -2032,12 +2053,16 @@
 
       const headerKeys = ObjectKeys(objectValues);
       const bodyValues = ObjectValues(objectValues);
+      const headerProps = properties ||
+        [
+          ...new SafeArrayIterator(headerKeys),
+          !isMap && hasPrimitives && valuesKey,
+        ];
       const header = ArrayPrototypeFilter([
         indexKey,
-        ...(properties ||
-          [...headerKeys, !isMap && hasPrimitives && valuesKey]),
+        ...new SafeArrayIterator(headerProps),
       ], Boolean);
-      const body = [indexKeys, ...bodyValues, values];
+      const body = [indexKeys, ...new SafeArrayIterator(bodyValues), values];
 
       toTable(header, body);
     };
@@ -2064,7 +2089,7 @@
       const startTime = MapPrototypeGet(timerMap, label);
       const duration = DateNow() - startTime;
 
-      this.info(`${label}: ${duration}ms`, ...args);
+      this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
     };
 
     timeEnd = (label = "default") => {
@@ -2084,7 +2109,7 @@
 
     group = (...label) => {
       if (label.length > 0) {
-        this.log(...label);
+        this.log(...new SafeArrayIterator(label));
       }
       this.indentLevel += 2;
     };

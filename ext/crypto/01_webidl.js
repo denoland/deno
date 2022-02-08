@@ -13,6 +13,7 @@
     ArrayBufferIsView,
     ArrayBufferPrototype,
     ObjectPrototypeIsPrototypeOf,
+    SafeArrayIterator,
   } = window.__bootstrap.primordials;
 
   webidl.converters.AlgorithmIdentifier = (V, opts) => {
@@ -79,7 +80,7 @@
 
   /** @type {__bootstrap.webidl.Dictionary} */
   const dictRsaKeyGenParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "modulusLength",
       converter: (V, opts) =>
@@ -97,7 +98,7 @@
     .createDictionaryConverter("RsaKeyGenParams", dictRsaKeyGenParams);
 
   const dictRsaHashedKeyGenParams = [
-    ...dictRsaKeyGenParams,
+    ...new SafeArrayIterator(dictRsaKeyGenParams),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -111,7 +112,7 @@
   );
 
   const dictRsaHashedImportParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -127,7 +128,7 @@
   webidl.converters.NamedCurve = webidl.converters.DOMString;
 
   const dictEcKeyImportParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "namedCurve",
       converter: webidl.converters.NamedCurve,
@@ -141,7 +142,7 @@
   );
 
   const dictEcKeyGenParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "namedCurve",
       converter: webidl.converters.NamedCurve,
@@ -153,7 +154,7 @@
     .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
 
   const dictEcImportParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "namedCurve",
       converter: webidl.converters.NamedCurve,
@@ -165,7 +166,7 @@
     .createDictionaryConverter("EcImportParams", dictEcImportParams);
 
   const dictAesKeyGenParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "length",
       converter: (V, opts) =>
@@ -178,7 +179,7 @@
     .createDictionaryConverter("AesKeyGenParams", dictAesKeyGenParams);
 
   const dictHmacKeyGenParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -195,7 +196,7 @@
     .createDictionaryConverter("HmacKeyGenParams", dictHmacKeyGenParams);
 
   const dictRsaPssParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "saltLength",
       converter: (V, opts) =>
@@ -208,7 +209,7 @@
     .createDictionaryConverter("RsaPssParams", dictRsaPssParams);
 
   const dictRsaOaepParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "label",
       converter: webidl.converters["BufferSource"],
@@ -219,7 +220,7 @@
     .createDictionaryConverter("RsaOaepParams", dictRsaOaepParams);
 
   const dictEcdsaParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -231,7 +232,7 @@
     .createDictionaryConverter("EcdsaParams", dictEcdsaParams);
 
   const dictHmacImportParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -357,7 +358,7 @@
   );
 
   const dictHkdfParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -379,7 +380,7 @@
     .createDictionaryConverter("HkdfParams", dictHkdfParams);
 
   const dictPbkdf2Params = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "hash",
       converter: webidl.converters.HashAlgorithmIdentifier,
@@ -402,7 +403,7 @@
     .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
 
   const dictAesDerivedKeyParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "length",
       converter: (V, opts) =>
@@ -412,7 +413,7 @@
   ];
 
   const dictAesCbcParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "iv",
       converter: webidl.converters["BufferSource"],
@@ -421,7 +422,7 @@
   ];
 
   const dictAesGcmParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "iv",
       converter: webidl.converters["BufferSource"],
@@ -439,7 +440,7 @@
   ];
 
   const dictAesCtrParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "counter",
       converter: webidl.converters["BufferSource"],
@@ -485,7 +486,7 @@
     .createDictionaryConverter("CryptoKeyPair", dictCryptoKeyPair);
 
   const dictEcdhKeyDeriveParams = [
-    ...dictAlgorithm,
+    ...new SafeArrayIterator(dictAlgorithm),
     {
       key: "public",
       converter: webidl.converters.CryptoKey,

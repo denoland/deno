@@ -32,6 +32,7 @@
     ObjectPrototypeHasOwnProperty,
     ObjectEntries,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -230,7 +231,10 @@
       }
 
       return ArrayPrototypeSort(
-        [...ObjectEntries(headers), ...cookies],
+        [
+          ...new SafeArrayIterator(ObjectEntries(headers)),
+          ...new SafeArrayIterator(cookies),
+        ],
         (a, b) => {
           const akey = a[0];
           const bkey = b[0];

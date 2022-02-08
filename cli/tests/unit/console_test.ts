@@ -1000,6 +1000,7 @@ Deno.test(function consoleTestWithStyleSpecifier() {
 });
 
 Deno.test(function consoleParseCssColor() {
+  assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
@@ -1019,6 +1020,14 @@ Deno.test(function consoleParseCssColor() {
 });
 
 Deno.test(function consoleParseCss() {
+  assertEquals(
+    parseCss("background-color: inherit"),
+    { ...DEFAULT_CSS, backgroundColor: "inherit" },
+  );
+  assertEquals(
+    parseCss("color: inherit"),
+    { ...DEFAULT_CSS, color: "inherit" },
+  );
   assertEquals(
     parseCss("background-color: red"),
     { ...DEFAULT_CSS, backgroundColor: "red" },
@@ -1074,8 +1083,20 @@ Deno.test(function consoleParseCss() {
 
 Deno.test(function consoleCssToAnsi() {
   assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "foo" }),
+    "_[49m",
+  );
+  assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "black" }),
     "_[40m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "inherit" }),
+    "_[39m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: "blue" }),
@@ -1569,6 +1590,13 @@ Deno.test(function consoleLogShouldNotThrowError() {
   mockConsole((console, out) => {
     console.log(new Error("foo"));
     assertEquals(out.toString().includes("Uncaught"), false);
+  });
+});
+
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
+  mockConsole((console, out) => {
+    console.log("%cfoo", "color: foo; background-color: bar;");
+    assertEquals(stripColor(out.toString()), "foo\n");
   });
 });
 
