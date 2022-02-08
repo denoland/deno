@@ -956,6 +956,7 @@ dependencies = [
  "deno_core",
  "deno_websocket",
  "hyper",
+ "percent-encoding",
  "ring",
  "serde",
  "tokio",
