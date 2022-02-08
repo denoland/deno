@@ -23,7 +23,12 @@ use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
 use lspower::lsp;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::sync::Arc;
+
+static FILE_PROTO_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"^file:/{2}(?:[A-Za-z]:)?"#).unwrap());
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
@@ -210,7 +215,7 @@ fn get_base_import_map_completions(
       // import map as `file:///`, and so when we pull the keys out, we need to
       // change the behavior
       let mut label = if key.starts_with("file://") {
-        key.replace("file://", "")
+        FILE_PROTO_RE.replace(key, "").to_string()
       } else {
         key.to_string()
       };
@@ -252,7 +257,7 @@ fn get_import_map_completions(
         // for some reason, the import_map stores keys that begin with `/` as
         // `file:///` in its index, so we have to reverse that here
         let key = if key.starts_with("file://") {
-          key.replace("file://", "")
+          FILE_PROTO_RE.replace(key, "").to_string()
         } else {
           key.to_string()
         };
