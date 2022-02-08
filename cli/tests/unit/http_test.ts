@@ -1156,10 +1156,10 @@ Deno.test(
       for await (const conn of listener) {
         const httpConn = Deno.serveHttp(conn);
         for await (const { request, respondWith } of httpConn) {
-          assertEquals(
-            new URL(request.url).pathname,
-            "/path/name",
-          );
+          const url = new URL(request.url);
+          assertEquals(url.protocol, "http+unix:");
+          assertEquals(decodeURIComponent(url.host), filePath);
+          assertEquals(url.pathname, "/path/name");
           await respondWith(new Response("", { headers: {} }));
           httpConn.close();
         }
