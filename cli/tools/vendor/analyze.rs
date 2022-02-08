@@ -3,8 +3,6 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_ast::swc::common::BytePos;
-use deno_ast::swc::common::Span;
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
@@ -14,29 +12,34 @@ use deno_graph::Range;
 use deno_graph::Resolved;
 
 use super::mappings::Mappings;
+use super::specifiers::is_remote_specifier_text;
 use super::text_changes::TextChange;
 
 struct Context<'a> {
   mappings: &'a Mappings,
   module: &'a Module,
   text_info: &'a SourceTextInfo,
+  text: &'a str,
   text_changes: Vec<TextChange>,
   local_path: PathBuf,
 }
 
 impl<'a> Context<'a> {
-  pub fn byte_pos(&self, pos: &Position) -> BytePos {
+  pub fn byte_index(&self, pos: &Position) -> usize {
     // todo(https://github.com/denoland/deno_graph/issues/79): use byte indexes all the way down
-    self.text_info.byte_index(LineAndColumnIndex {
-      line_index: pos.line,
-      column_index: pos.character,
-    })
+    self
+      .text_info
+      .byte_index(LineAndColumnIndex {
+        line_index: pos.line,
+        column_index: pos.character,
+      })
+      .0 as usize
   }
 
-  pub fn span(&self, range: &Range) -> Span {
-    let start = self.byte_pos(&range.start);
-    let end = self.byte_pos(&range.end);
-    Span::new(start, end, Default::default())
+  pub fn byte_range(&self, range: &Range) -> std::ops::Range<usize> {
+    let start = self.byte_index(&range.start);
+    let end = self.byte_index(&range.end);
+    start..end
   }
 
   pub fn relative_specifier_text(&self, specifier: &ModuleSpecifier) -> String {
@@ -53,10 +56,15 @@ pub fn collect_remote_module_text_changes<'a>(
     Some(source) => source.source(),
     None => return Vec::new(),
   };
+  let text = match &module.maybe_source {
+    Some(source) => source,
+    None => return Vec::new(),
+  };
   let mut context = Context {
     mappings,
     module,
     text_info,
+    text,
     text_changes: Vec::new(),
     local_path: mappings.local_path(&module.specifier).to_owned(),
   };
@@ -90,13 +98,23 @@ fn handle_maybe_resolved(maybe_resolved: &Resolved, context: &mut Context<'_>) {
     specifier, range, ..
   } = maybe_resolved
   {
-    let span = context.span(range);
-    let new_specifier_text = context.relative_specifier_text(specifier);
-    context.text_changes.push(TextChange::new(
-      span.lo.0 as usize + 1,
-      span.hi.0 as usize - 1,
-      new_specifier_text,
-    ));
+    let mut byte_range = context.byte_range(range);
+    let mut current_text = &context.text[byte_range.clone()];
+    if current_text.starts_with('"') || current_text.starts_with('\'') {
+      // remove the quotes
+      byte_range = (byte_range.start + 1)..(byte_range.end - 1);
+      current_text = &context.text[byte_range.clone()];
+    };
+
+    // leave remote specifiers as-is as they will be handled by the import map
+    if !is_remote_specifier_text(current_text) {
+      let new_specifier_text = context.relative_specifier_text(specifier);
+      context.text_changes.push(TextChange::new(
+        byte_range.start,
+        byte_range.end,
+        new_specifier_text,
+      ));
+    }
   }
 }
 

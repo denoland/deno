@@ -21,6 +21,8 @@ use crate::resolver::JsxResolver;
 
 use self::analyze::collect_remote_module_text_changes;
 use self::mappings::Mappings;
+use self::specifiers::is_remote_specifier;
+use self::specifiers::is_remote_specifier_text;
 use self::text_changes::apply_text_changes;
 
 mod analyze;
@@ -31,11 +33,12 @@ mod text_changes;
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   let output_dir = resolve_and_validate_output_dir(&flags)?;
   let graph = create_graph(&ps, &flags).await?;
-  let (remote_modules, local_modules) = graph
-    .modules()
-    .into_iter()
-    .partition::<Vec<_>, _>(|m| is_remote_specifier(&m.specifier));
-  // todo(THIS PR): change this to leave absolute http(s) urls as-is in the vendored files
+  let all_modules = graph.modules();
+  let remote_modules = all_modules
+    .iter()
+    .filter(|m| is_remote_specifier(&m.specifier))
+    .copied()
+    .collect::<Vec<_>>();
   let mappings =
     Mappings::from_remote_modules(&graph, &remote_modules, &output_dir)?;
 
@@ -68,7 +71,7 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
 
   // create the import map
   if let Some(import_map_text) =
-    build_import_map(&output_dir, &local_modules, &mappings)
+    build_import_map(&output_dir, &all_modules, &mappings)
   {
     std::fs::write(output_dir.join("import_map.json"), import_map_text)?;
   }
@@ -165,17 +168,17 @@ async fn create_graph(
 
 fn build_import_map(
   output_dir: &Path,
-  local_modules: &[&Module],
+  modules: &[&Module],
   mappings: &Mappings,
 ) -> Option<String> {
-  let key_values = collect_import_map_key_values(local_modules);
+  let key_values = collect_import_map_key_values(modules);
   if key_values.is_empty() {
     return None;
   }
 
   let output_dir = ModuleSpecifier::from_directory_path(&output_dir).unwrap();
 
-  // todo: use serde_json to print htis out?
+  // todo: use serde_json to print this out?
   let mut text = "{\n".to_string();
   text.push_str("  \"imports\": {\n");
   for (i, (key, value)) in key_values.iter().enumerate() {
@@ -197,12 +200,12 @@ fn collect_import_map_key_values(
   local_modules: &[&Module],
 ) -> Vec<(String, ModuleSpecifier)> {
   fn add_if_remote(
-    specifiers: &mut HashMap<String, ModuleSpecifier>,
+    imports: &mut HashMap<String, ModuleSpecifier>,
     text: &str,
     specifier: &ModuleSpecifier,
   ) {
-    if is_remote_specifier(specifier) {
-      specifiers.insert(text.to_string(), specifier.clone());
+    if is_remote_specifier_text(text) {
+      imports.insert(text.to_string(), specifier.clone());
     }
   }
 
@@ -226,8 +229,4 @@ fn collect_import_map_key_values(
   let mut result = result.into_iter().collect::<Vec<_>>();
   result.sort_by(|a, b| a.0.cmp(&b.0));
   result
-}
-
-fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
-  specifier.scheme().to_lowercase().starts_with("http")
 }

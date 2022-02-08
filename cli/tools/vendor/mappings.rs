@@ -37,11 +37,13 @@ impl Mappings {
       );
       for specifier in specifiers {
         let media_type = graph.get(&specifier).unwrap().media_type;
-        let relative = base_dir
-          .join(sanitize_filepath(&make_url_relative(&root, &specifier)?))
-          .with_extension(&media_type.as_ts_extension()[1..]);
+        let new_path = path_with_extension(
+          &base_dir
+            .join(sanitize_filepath(&make_url_relative(&root, &specifier)?)),
+          &media_type.as_ts_extension()[1..],
+        );
         mappings
-          .insert(specifier, get_unique_path(relative, &mut mapped_paths));
+          .insert(specifier, get_unique_path(new_path, &mut mapped_paths));
       }
     }
 
@@ -54,5 +56,43 @@ impl Mappings {
       .get(specifier)
       .as_ref()
       .unwrap_or_else(|| panic!("Could not find local path for {}", specifier))
+  }
+}
+
+fn path_with_extension(path: &Path, ext: &str) -> PathBuf {
+  if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
+    if path.extension().is_some() && file_stem.to_lowercase().ends_with(".d") {
+      return path.with_file_name(format!(
+        "{}.{}",
+        &file_stem[..file_stem.len() - ".d".len()],
+        ext
+      ));
+    }
+  }
+  path.with_extension(ext)
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_path_with_extension() {
+    assert_eq!(
+      path_with_extension(&PathBuf::from("/test.D.TS"), "ts"),
+      PathBuf::from("/test.ts")
+    );
+    assert_eq!(
+      path_with_extension(&PathBuf::from("/test.D.MTS"), "js"),
+      PathBuf::from("/test.js")
+    );
+    assert_eq!(
+      path_with_extension(&PathBuf::from("/test.D.TS"), "d.ts"),
+      PathBuf::from("/test.d.ts")
+    );
+    assert_eq!(
+      path_with_extension(&PathBuf::from("/test.js"), "js"),
+      PathBuf::from("/test.ts")
+    );
   }
 }
