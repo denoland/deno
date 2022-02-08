@@ -28,7 +28,7 @@ use regex::Regex;
 use std::sync::Arc;
 
 static FILE_PROTO_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^file:/{2}(?:[A-Za-z]:)?"#).unwrap());
+  Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
