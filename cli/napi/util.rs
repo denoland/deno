@@ -2,7 +2,7 @@ use deno_core::napi::*;
 use std::cell::Cell;
 
 unsafe fn get_backing_store_slice(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
+  backing_store: &mut v8::SharedRef<v8::BackingStore>,
   byte_offset: usize,
   byte_length: usize,
 ) -> &mut [u8] {
@@ -13,9 +13,9 @@ unsafe fn get_backing_store_slice(
 }
 
 pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut u8 {
-  let backing_store = ab.get_backing_store();
+  let mut backing_store = ab.get_backing_store();
   let byte_length = ab.byte_length();
   let mut slice =
-    unsafe { get_backing_store_slice(&backing_store, 0, byte_length) };
+    unsafe { get_backing_store_slice(&mut backing_store, 0, byte_length) };
   slice.as_mut_ptr()
 }

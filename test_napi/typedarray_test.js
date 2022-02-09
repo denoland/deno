@@ -1,4 +1,4 @@
-import { assert, assertEquals, loadTestLibrary } from "./common.js";
+import { assertEquals, loadTestLibrary } from "./common.js";
 
 const typedarray = loadTestLibrary();
 

@@ -15,7 +15,7 @@ pub unsafe fn create_function<'a>(
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
-  let method_ptr = v8::External::new(env.scope, std::mem::transmute(cb));
+  let method_ptr = v8::External::new(env.scope, cb as *mut c_void);
   let cb_info_ext = v8::External::new(env.scope, std::mem::transmute(cb_info));
   let env_ptr = env as *mut _ as *mut c_void;
   let env_ext = v8::External::new(env.scope, env_ptr);
@@ -54,9 +54,9 @@ pub unsafe fn create_function<'a>(
       )
       .unwrap();
       let env_ptr = env_ptr.value() as *mut Env;
-      let sender = (&mut *(env_ptr)).async_work_sender.clone();
+      let sender = (*(env_ptr)).async_work_sender.clone();
 
-      let mut env = (&mut *(env_ptr)).with_new_scope(scope, sender);
+      let mut env = (*(env_ptr)).with_new_scope(scope, sender);
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {
@@ -91,7 +91,7 @@ pub unsafe fn create_function_template<'a>(
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::FunctionTemplate> {
-  let method_ptr = v8::External::new(env.scope, std::mem::transmute(cb));
+  let method_ptr = v8::External::new(env.scope, cb as *mut c_void);
   let cb_info_ext = v8::External::new(env.scope, std::mem::transmute(cb_info));
   let env_ptr = env as *mut _ as *mut c_void;
   let env_ext = v8::External::new(env.scope, env_ptr);
@@ -130,9 +130,9 @@ pub unsafe fn create_function_template<'a>(
       )
       .unwrap();
       let env_ptr = env_ptr.value() as *mut Env;
-      let sender = (&mut *(env_ptr)).async_work_sender.clone();
+      let sender = (*(env_ptr)).async_work_sender.clone();
 
-      let mut env = (&mut *(env_ptr)).with_new_scope(scope, sender);
+      let mut env = (*(env_ptr)).with_new_scope(scope, sender);
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {

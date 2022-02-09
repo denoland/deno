@@ -3,13 +3,13 @@ use deno_core::napi::*;
 thread_local! {
   static NODE_VERSION: napi_node_version = {
     let release = std::ffi::CString::new("Deno N-API").unwrap();
-    let release = release.as_ptr();
+    let release_ptr = release.as_ptr();
     std::mem::forget(release);
     napi_node_version {
       major: 17,
       minor: 4,
       patch: 0,
-      release: release,
+      release: release_ptr,
     }
   }
 }

@@ -101,9 +101,9 @@ pub enum Error {
 
 pub type Result = std::result::Result<(), Error>;
 
-impl Into<napi_status> for Error {
-  fn into(self) -> napi_status {
-    match self {
+impl From<Error> for napi_status {
+  fn from(error: Error) -> Self {
+    match error {
       Error::InvalidArg => napi_invalid_arg,
       Error::ObjectExpected => napi_object_expected,
       Error::StringExpected => napi_string_expected,
@@ -329,7 +329,7 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
     unsafe { &*self.shared }
   }
 
-  pub fn shared_mut(&self) -> &mut EnvShared {
+  pub fn shared_mut(&mut self) -> &mut EnvShared {
     unsafe { &mut *self.shared }
   }
 

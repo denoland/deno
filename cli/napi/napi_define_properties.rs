@@ -21,7 +21,7 @@ fn napi_define_properties(
       std::mem::transmute(property.name)
     };
 
-    let method_ptr: *mut c_void = std::mem::transmute(property.method);
+    let method_ptr = property.method as *mut c_void;
 
     if !method_ptr.is_null() {
       let function: v8::Local<v8::Value> = {

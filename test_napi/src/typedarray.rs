@@ -48,5 +48,4 @@ pub fn init(env: napi_env, exports: napi_value) {
   unsafe {
     napi_define_properties(env, exports, properties.len(), properties.as_ptr())
   };
-  std::mem::forget(properties);
 }

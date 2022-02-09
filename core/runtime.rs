@@ -1546,11 +1546,7 @@ impl JsRuntime {
     let context = v8::Context::new(scope);
     let context_scope = &mut v8::ContextScope::new(scope, context);
 
-    loop {
-      let work = match state_rc.borrow_mut().pending_napi_async_work.pop() {
-        Some(work) => work,
-        None => break,
-      };
+    while let Some(work) = state_rc.borrow_mut().pending_napi_async_work.pop() {
       work(context_scope);
     }
 

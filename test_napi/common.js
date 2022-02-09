@@ -7,7 +7,7 @@ const [libPrefix, libSuffix] = {
   windows: ["", "dll"],
 }[Deno.build.os];
 
-export function loadTestLibrary(id) {
+export function loadTestLibrary() {
   const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
   return Deno.core.dlopen(specifier);
 }

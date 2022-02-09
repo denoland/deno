@@ -30,7 +30,7 @@ fn napi_get_value_string_utf8(
       v8::WriteOptions::NO_NULL_TERMINATION
         | v8::WriteOptions::REPLACE_INVALID_UTF8,
     );
-    buf.offset(copied as isize).write(0);
+    buf.add(copied).write(0);
     if !result.is_null() {
       *result = copied;
     }

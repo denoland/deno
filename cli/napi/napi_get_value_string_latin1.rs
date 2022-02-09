@@ -29,7 +29,7 @@ fn napi_get_value_string_latin1(
       0,
       v8::WriteOptions::NO_NULL_TERMINATION,
     );
-    buf.offset(copied as isize).write(0);
+    buf.add(copied).write(0);
     if !result.is_null() {
       *result = copied;
     }

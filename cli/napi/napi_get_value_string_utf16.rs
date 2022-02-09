@@ -25,7 +25,7 @@ fn napi_get_value_string_utf16(
     let buffer = std::slice::from_raw_parts_mut(buf, bufsize - 1);
     let copied =
       v8str.write(env.scope, buffer, 0, v8::WriteOptions::NO_NULL_TERMINATION);
-    buf.offset(copied as isize).write(0);
+    buf.add(copied).write(0);
     if !result.is_null() {
       *result = copied;
     }
