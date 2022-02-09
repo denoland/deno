@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod cjs;
 mod errors;
 mod esm_resolver;
 
