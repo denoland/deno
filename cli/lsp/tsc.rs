@@ -354,7 +354,7 @@ fn get_tag_body_text(
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = convert_link_tags(display_parts, language_server);
+    let text = display_parts_to_string(display_parts, language_server);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -385,7 +385,7 @@ fn get_tag_documentation(
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text = convert_link_tags(display_parts, language_server);
+        let text = display_parts_to_string(display_parts, language_server);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -687,9 +687,10 @@ struct Link {
   linkcode: bool,
 }
 
-/// Convert a `{@link Symbol}` or `{@linkcode Symbol}` into markdown which
-/// hyperlinks to the symbol in the client.
-fn convert_link_tags(
+/// Takes `SymbolDisplayPart` items and converts them into a string, handling
+/// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
+/// to the their source location.
+fn display_parts_to_string(
   parts: &[SymbolDisplayPart],
   language_server: &language_server::Inner,
 ) -> String {
@@ -701,17 +702,7 @@ fn convert_link_tags(
       "link" => {
         if let Some(link) = current_link.as_mut() {
           if let Some(target) = &link.target {
-            if let Ok(mut specifier) = normalize_specifier(&target.file_name) {
-              if let Some(doc) =
-                language_server.get_maybe_cached_asset_or_document(&specifier)
-              {
-                let range = target.text_span.to_range(doc.line_index());
-                specifier.set_fragment(Some(&format!(
-                  "L{},{}",
-                  range.start.line + 1,
-                  range.start.character + 1
-                )));
-              }
+            if let Some(specifier) = target.to_target(language_server) {
               let link_text = link.text.clone().unwrap_or_else(|| {
                 link
                   .name
@@ -730,7 +721,7 @@ fn convert_link_tags(
             let maybe_text = link.text.clone().or_else(|| link.name.clone());
             if let Some(text) = maybe_text {
               if HTTP_RE.is_match(&text) {
-                let parts: Vec<&str> = text.split(" ").collect();
+                let parts: Vec<&str> = text.split(' ').collect();
                 if parts.len() == 1 {
                   out.push(parts[0].to_string());
                 } else {
@@ -783,7 +774,7 @@ impl QuickInfo {
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| convert_link_tags(&p, language_server))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
       parts.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
@@ -793,7 +784,7 @@ impl QuickInfo {
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| convert_link_tags(&p, language_server))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
       parts.push(lsp::MarkedString::from_markdown(documentation));
     }
@@ -872,6 +863,36 @@ impl DocumentSpan {
       target_selection_range,
     };
     Some(link)
+  }
+
+  /// Convert the `DocumentSpan` into a specifier that can be sent to the client
+  /// to link to the target document span. Used for converting JSDoc symbol
+  /// links to markdown links.
+  fn to_target(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> Option<ModuleSpecifier> {
+    let specifier = normalize_specifier(&self.file_name).ok()?;
+    log::info!(
+      "to_target file_name: {} specifier: {}",
+      self.file_name,
+      specifier
+    );
+    let asset_or_doc =
+      language_server.get_maybe_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = self.text_span.to_range(line_index);
+    let mut target = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .ok()?;
+    target.set_fragment(Some(&format!(
+      "L{},{}",
+      range.start.line + 1,
+      range.start.character + 1
+    )));
+
+    Some(target)
   }
 }
 
@@ -1859,7 +1880,7 @@ impl CompletionEntryDetails {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&convert_link_tags(
+      Some(replace_links(&display_parts_to_string(
         &self.display_parts,
         language_server,
       )))
@@ -1867,7 +1888,7 @@ impl CompletionEntryDetails {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
-      let mut value = convert_link_tags(parts, language_server);
+      let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
         let tag_documentation = tags
           .iter()
@@ -2294,16 +2315,19 @@ impl SignatureHelpItem {
     language_server: &language_server::Inner,
   ) -> lsp::SignatureInformation {
     let prefix_text =
-      convert_link_tags(&self.prefix_display_parts, language_server);
+      display_parts_to_string(&self.prefix_display_parts, language_server);
     let params_text = self
       .parameters
       .iter()
-      .map(|param| convert_link_tags(&param.display_parts, language_server))
+      .map(|param| {
+        display_parts_to_string(&param.display_parts, language_server)
+      })
       .collect::<Vec<String>>()
       .join(", ");
     let suffix_text =
-      convert_link_tags(&self.suffix_display_parts, language_server);
-    let documentation = convert_link_tags(&self.documentation, language_server);
+      display_parts_to_string(&self.suffix_display_parts, language_server);
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -2338,9 +2362,10 @@ impl SignatureHelpParameter {
     self,
     language_server: &language_server::Inner,
   ) -> lsp::ParameterInformation {
-    let documentation = convert_link_tags(&self.documentation, language_server);
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::ParameterInformation {
-      label: lsp::ParameterLabel::Simple(convert_link_tags(
+      label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
         language_server,
       )),
