@@ -15,3 +15,6 @@ napi-sys = "2.1.0"
 
 [dev-dependencies]
 test_util = { path = "../test_util" }
+
+[build-dependencies]
+napi-build = "1"
