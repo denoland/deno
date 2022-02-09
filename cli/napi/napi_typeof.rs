@@ -28,11 +28,10 @@ pub fn get_value_type(value: v8::Local<v8::Value>) -> Option<napi_valuetype> {
 
 #[napi_sym::napi_sym]
 fn napi_typeof(
-  env: napi_env,
+  _env: napi_env,
   value: napi_value,
   result: *mut napi_valuetype,
 ) -> Result {
-  let mut env = &mut *(env as *mut Env);
   if value.is_null() {
     *result = napi_undefined;
     return Ok(());

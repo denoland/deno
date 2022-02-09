@@ -32,12 +32,12 @@ fn napi_create_external_arraybuffer(
   env: napi_env,
   data: *mut c_void,
   byte_length: usize,
-  finalize_cb: napi_finalize,
+  _finalize_cb: napi_finalize,
   finalize_hint: *mut c_void,
   result: *mut napi_value,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
-  let slice = std::slice::from_raw_parts(data as *mut u8, byte_length);
+  let _slice = std::slice::from_raw_parts(data as *mut u8, byte_length);
   // TODO: finalization
   let store: UniqueRef<BackingStore> =
     std::mem::transmute(v8__ArrayBuffer__NewBackingStore__with_data(

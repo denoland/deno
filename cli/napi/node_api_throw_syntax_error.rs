@@ -3,7 +3,7 @@ use deno_core::napi::*;
 #[napi_sym::napi_sym]
 fn node_api_throw_syntax_error(
   env: napi_env,
-  code: *const c_char,
+  _code: *const c_char,
   msg: *const c_char,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);

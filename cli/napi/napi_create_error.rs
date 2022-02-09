@@ -9,7 +9,7 @@ fn napi_create_error(
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
 
-  let code: v8::Local<v8::Value> = std::mem::transmute(code);
+  let _code: v8::Local<v8::Value> = std::mem::transmute(code);
   let msg: v8::Local<v8::Value> = std::mem::transmute(msg);
 
   let msg = msg.to_string(env.scope).unwrap();

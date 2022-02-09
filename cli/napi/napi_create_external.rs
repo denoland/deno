@@ -4,8 +4,8 @@ use deno_core::napi::*;
 fn napi_create_external(
   env: napi_env,
   value: *mut c_void,
-  finalize_cb: napi_finalize,
-  finalize_hint: *mut c_void,
+  _finalize_cb: napi_finalize,
+  _finalize_hint: *mut c_void,
   result: *mut napi_value,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);

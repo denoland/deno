@@ -1,8 +1,5 @@
 use super::napi_create_async_work::AsyncWork;
-use deno_core::futures::FutureExt;
 use deno_core::napi::*;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 #[napi_sym::napi_sym]
 fn napi_queue_async_work(env: napi_env, work: napi_async_work) -> Result {
@@ -12,7 +9,7 @@ fn napi_queue_async_work(env: napi_env, work: napi_async_work) -> Result {
   let sender = env_ptr.async_work_sender.clone();
   let fut = Box::new(move |scope: &mut v8::ContextScope<v8::HandleScope>| {
     let mut env = Env::new(scope, sender);
-    let env_ptr = (&mut env as *mut _ as napi_env);
+    let env_ptr = &mut env as *mut _ as napi_env;
     (work.execute)(env_ptr, work.data);
 
     // Note: Must be called from the loop thread.

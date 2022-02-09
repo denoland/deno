@@ -5,7 +5,8 @@ use deno_core::napi::*;
 fn napi_define_class(
   env: napi_env,
   utf8name: *const c_char,
-  length: usize,
+  // TODO
+  _length: usize,
   constructor: napi_callback,
   callback_data: *mut c_void,
   property_count: usize,

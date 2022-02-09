@@ -7,7 +7,6 @@ pub use v8;
 
 use crate::futures::channel::mpsc;
 
-use crate::futures::SinkExt;
 use crate::runtime::PendingNapiAsyncWork;
 use crate::JsRuntime;
 use std::cell::RefCell;

@@ -5,8 +5,8 @@ fn napi_create_external_buffer(
   env: napi_env,
   byte_length: isize,
   data: *mut c_void,
-  finalize_cb: napi_finalize,
-  finalize_hint: *mut c_void,
+  _finalize_cb: napi_finalize,
+  _finalize_hint: *mut c_void,
   result: *mut napi_value,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);

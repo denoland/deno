@@ -40,6 +40,7 @@ pub mod napi_create_string_utf8;
 pub mod napi_create_symbol;
 pub mod napi_create_threadsafe_function;
 pub mod napi_create_type_error;
+#[allow(non_upper_case_globals)]
 pub mod napi_create_typedarray;
 pub mod napi_create_uint32;
 pub mod napi_define_class;

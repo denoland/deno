@@ -3,15 +3,13 @@ use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
 fn napi_get_cb_info(
-  env: napi_env,
+  _env: napi_env,
   cbinfo: napi_callback_info,
   argc: *mut i32,
   argv: *mut napi_value,
   this_arg: *mut napi_value,
   cb_data: *mut *mut c_void,
 ) -> Result {
-  let mut env = &mut *(env as *mut Env);
-
   let cbinfo: &CallbackInfo = &*(cbinfo as *const CallbackInfo);
   let args = &*(cbinfo.args as *const v8::FunctionCallbackArguments);
 
