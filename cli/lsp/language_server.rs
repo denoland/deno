@@ -1105,7 +1105,7 @@ impl Inner {
           error!("Unable to get quick info: {}", err);
           LspError::internal_error()
         })?;
-      maybe_quick_info.map(|qi| qi.to_hover(line_index))
+      maybe_quick_info.map(|qi| qi.to_hover(line_index, self))
     };
     self.performance.measure(mark);
     Ok(hover)
@@ -1723,7 +1723,7 @@ impl Inner {
             },
           )?;
         if let Some(completion_info) = maybe_completion_info {
-          completion_info.as_completion_item(&params)
+          completion_info.as_completion_item(&params, self)
         } else {
           error!(
             "Received an undefined response from tsc for completion details."
@@ -2264,7 +2264,7 @@ impl Inner {
       })?;
 
     if let Some(signature_help_items) = maybe_signature_help_items {
-      let signature_help = signature_help_items.into_signature_help();
+      let signature_help = signature_help_items.into_signature_help(self);
       self.performance.measure(mark);
       Ok(Some(signature_help))
     } else {
