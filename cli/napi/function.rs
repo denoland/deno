@@ -9,14 +9,14 @@ pub struct CallbackInfo {
   pub args: *const c_void,
 }
 
-pub unsafe fn create_function<'a>(
+pub fn create_function<'a>(
   env: &'a mut Env,
   name: Option<&str>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
   let method_ptr = v8::External::new(env.scope, cb as *mut c_void);
-  let cb_info_ext = v8::External::new(env.scope, std::mem::transmute(cb_info));
+  let cb_info_ext = v8::External::new(env.scope, unsafe { transmute(cb_info) });
   let env_ptr = env as *mut _ as *mut c_void;
   let env_ext = v8::External::new(env.scope, env_ptr);
 
@@ -54,9 +54,9 @@ pub unsafe fn create_function<'a>(
       )
       .unwrap();
       let env_ptr = env_ptr.value() as *mut Env;
-      let sender = (*(env_ptr)).async_work_sender.clone();
+      let sender = unsafe { (*(env_ptr)).async_work_sender.clone() };
 
-      let mut env = (*(env_ptr)).with_new_scope(scope, sender);
+      let mut env = unsafe { (*(env_ptr)).with_new_scope(scope, sender) };
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {
@@ -85,14 +85,14 @@ pub unsafe fn create_function<'a>(
   function
 }
 
-pub unsafe fn create_function_template<'a>(
+pub fn create_function_template<'a>(
   env: &'a mut Env,
   name: Option<&str>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::FunctionTemplate> {
   let method_ptr = v8::External::new(env.scope, cb as *mut c_void);
-  let cb_info_ext = v8::External::new(env.scope, std::mem::transmute(cb_info));
+  let cb_info_ext = v8::External::new(env.scope, unsafe { transmute(cb_info) });
   let env_ptr = env as *mut _ as *mut c_void;
   let env_ext = v8::External::new(env.scope, env_ptr);
 
@@ -130,9 +130,9 @@ pub unsafe fn create_function_template<'a>(
       )
       .unwrap();
       let env_ptr = env_ptr.value() as *mut Env;
-      let sender = (*(env_ptr)).async_work_sender.clone();
+      let sender = unsafe { (*(env_ptr)).async_work_sender.clone() };
 
-      let mut env = (*(env_ptr)).with_new_scope(scope, sender);
+      let mut env = unsafe { (*(env_ptr)).with_new_scope(scope, sender) };
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {
@@ -145,7 +145,7 @@ pub unsafe fn create_function_template<'a>(
       let info_ptr = &mut info as *mut _ as *mut c_void;
 
       let value = unsafe { cb(env_ptr, info_ptr) };
-      let value = unsafe { std::mem::transmute(value) };
+      let value = unsafe { transmute(value) };
       rv.set(value);
     },
   )

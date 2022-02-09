@@ -1,5 +1,8 @@
 use deno_core::napi::*;
 
+/// # Safety
+///
+/// It's an N-API symbol
 #[no_mangle]
 pub unsafe extern "C" fn napi_fatal_error(
   location: *const c_char,

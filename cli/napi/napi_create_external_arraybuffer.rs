@@ -17,13 +17,13 @@ extern "C" {
   ) -> *mut BackingStore;
 }
 
-pub unsafe extern "C" fn backing_store_deleter_callback(
+pub extern "C" fn backing_store_deleter_callback(
   data: *mut c_void,
   byte_length: usize,
   _deleter_data: *mut c_void,
 ) {
   let slice_ptr = ptr::slice_from_raw_parts_mut(data as *mut u8, byte_length);
-  let b = Box::from_raw(slice_ptr);
+  let b = unsafe { Box::from_raw(slice_ptr) };
   drop(b);
 }
 
