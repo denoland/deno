@@ -1,6 +1,7 @@
 #![allow(unused_mut)]
 pub mod function;
 pub mod napi_add_env_cleanup_hook;
+pub mod napi_add_finalizer;
 pub mod napi_adjust_external_memory;
 pub mod napi_call_function;
 pub mod napi_call_threadsafe_function;

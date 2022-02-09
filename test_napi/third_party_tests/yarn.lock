@@ -1174,6 +1174,14 @@ ms@^2.0.0:
   resolved "https://registry.yarnpkg.com/ms/-/ms-2.1.3.tgz#574c8138ce1d2b5861f0b44579dbadd60c6615b2"
   integrity sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==
 
+msgpackr-extract@1.1.0-napi:
+  version "1.1.0-napi"
+  resolved "https://registry.yarnpkg.com/msgpackr-extract/-/msgpackr-extract-1.1.0-napi.tgz#24a5e0424a125468a447438cda45c245d226964b"
+  integrity sha512-2F+jECHkEkRVfjyug/OR55dU3inDjZ0saLUCcFFZDm8KnSV8MRGE3peVf1Hv0Msy8Uqq6IWJcJVaLlURBHSrhw==
+  dependencies:
+    node-addon-api "^4.3.0"
+    node-gyp-build "^4.2.3"
+
 msgpackr-extract@^1.0.14:
   version "1.0.16"
   resolved "https://registry.yarnpkg.com/msgpackr-extract/-/msgpackr-extract-1.0.16.tgz#701c4f6e6f25c100ae84557092274e8fffeefe45"
@@ -1214,7 +1222,7 @@ node-addon-api@^3.2.1:
   resolved "https://registry.yarnpkg.com/node-addon-api/-/node-addon-api-3.2.1.tgz#81325e0a2117789c0128dab65e7e38f07ceba161"
   integrity sha512-mmcei9JghVNDYydghQmeDX8KoAm0FAiYyIcUt/N4nhyAipB17pllZQDOJD2fotxABnt4Mdz+dKTO7eftLg4d0A==
 
-node-addon-api@^4.2.0:
+node-addon-api@^4.2.0, node-addon-api@^4.3.0:
   version "4.3.0"
   resolved "https://registry.yarnpkg.com/node-addon-api/-/node-addon-api-4.3.0.tgz#52a1a0b475193e0928e98e0426a0d1254782b77f"
   integrity sha512-73sE9+3UaLYYFmDsFZnqCInzPyh3MqIwZO9cw58yIqAZhONrrabrYyYe3TuIqtIiOuTXVhsGau8hcrhhwSsDIQ==

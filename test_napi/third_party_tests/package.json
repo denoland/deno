@@ -13,6 +13,7 @@
     "@swc/core": "^1.2.133",
     "dprint-node": "^1.0.5",
     "fs-xattr": "^0.4.0",
+    "msgpackr-extract": "1.1.0-napi",
     "node-gyp": "^8.4.1",
     "skia-canvas": "^0.9.28",
     "usb": "^2.0.3"
