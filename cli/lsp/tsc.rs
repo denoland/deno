@@ -708,7 +708,8 @@ fn convert_link_tags(
                 let range = target.text_span.to_range(doc.line_index());
                 specifier.set_fragment(Some(&format!(
                   "L{},{}",
-                  range.start.line + 1, range.start.character + 1
+                  range.start.line + 1,
+                  range.start.character + 1
                 )));
               }
               let link_text = link.text.clone().unwrap_or_else(|| {
