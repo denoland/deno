@@ -30,6 +30,7 @@
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     queueMicrotask,
+    SafeArrayIterator,
     StringFromCodePoint,
     Symbol,
     TypedArrayPrototypeSet,
@@ -484,7 +485,11 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
+      return FunctionPrototypeCall(
+        wrappedHandler.handler,
+        this,
+        ...new SafeArrayIterator(args),
+      );
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;

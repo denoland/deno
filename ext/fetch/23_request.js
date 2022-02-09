@@ -38,6 +38,7 @@
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
@@ -101,7 +102,9 @@
    */
   function cloneInnerRequest(request) {
     const headerList = [
-      ...ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+      ),
     ];
     let body = null;
     if (request.body !== null) {

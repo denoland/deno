@@ -24,6 +24,7 @@
     RegExp,
     RegExpPrototypeTest,
     Set,
+    SafeArrayIterator,
     StringPrototypeEndsWith,
     StringPrototypeIncludes,
     StringPrototypeSlice,
@@ -278,7 +279,10 @@ finishing test case.`;
 
       const post = core.resources();
 
-      const allResources = new Set([...ObjectKeys(pre), ...ObjectKeys(post)]);
+      const allResources = new Set([
+        ...new SafeArrayIterator(ObjectKeys(pre)),
+        ...new SafeArrayIterator(ObjectKeys(post)),
+      ]);
 
       const details = [];
       for (const resource of allResources) {
@@ -322,7 +326,7 @@ finishing test case.`;
       });
 
       try {
-        await fn(...params);
+        await fn(...new SafeArrayIterator(params));
       } catch (err) {
         throw err;
       } finally {
@@ -423,7 +427,7 @@ finishing test case.`;
       const token = pledgePermissions(permissions);
 
       try {
-        await fn(...params);
+        await fn(...new SafeArrayIterator(params));
       } finally {
         restorePermissions(token);
       }

@@ -53,6 +53,8 @@
     RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
+    SafeArrayIterator,
+    SafeSet,
     SetPrototype,
     SetPrototypeEntries,
     Symbol,
@@ -72,6 +74,7 @@
     ArrayPrototypePop,
     ArrayPrototypeSort,
     ArrayPrototypeSlice,
+    ArrayPrototypeShift,
     ArrayPrototypeIncludes,
     ArrayPrototypeFill,
     ArrayPrototypeFilter,
@@ -340,11 +343,17 @@
     // If we didn't find any properties, we will just append an
     // empty suffix.
     let suffix = ``;
+    let refStr = "";
     if (
       ObjectKeys(value).length > 0 ||
       ObjectGetOwnPropertySymbols(value).length > 0
     ) {
-      const propString = inspectRawObject(value, level, inspectOptions);
+      const [propString, refIndex] = inspectRawObject(
+        value,
+        level,
+        inspectOptions,
+      );
+      refStr = refIndex;
       // Filter out the empty string for the case we only have
       // non-enumerable symbols.
       if (
@@ -357,9 +366,9 @@
 
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
-      return cyan(`[${cstrName}: ${value.name}]`) + suffix;
+      return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
     }
-    return cyan(`[${cstrName}]`) + suffix;
+    return cyan(`${refStr}[${cstrName}]`) + suffix;
   }
 
   function inspectIterable(
@@ -589,6 +598,23 @@
     return entries;
   }
 
+  let circular;
+  function handleCircular(value, cyan) {
+    let index = 1;
+    if (circular === undefined) {
+      circular = new Map();
+      MapPrototypeSet(circular, value, index);
+    } else {
+      index = MapPrototypeGet(circular, value);
+      if (index === undefined) {
+        index = circular.size + 1;
+        MapPrototypeSet(circular, value, index);
+      }
+    }
+    // Circular string is cyan
+    return cyan(`[Circular *${index}]`);
+  }
+
   function _inspectValue(
     value,
     level,
@@ -623,7 +649,7 @@
       case "function": // Function string is cyan
         if (ctxHas(value)) {
           // Circular string is cyan
-          return cyan("[Circular]");
+          return handleCircular(value, cyan);
         }
 
         return inspectFunction(value, level, inspectOptions);
@@ -633,8 +659,7 @@
         }
 
         if (ctxHas(value)) {
-          // Circular string is cyan
-          return cyan("[Circular]");
+          return handleCircular(value, cyan);
         }
         return inspectObject(value, level, inspectOptions);
       default:
@@ -892,25 +917,41 @@
     return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
-  function inspectError(value) {
-    const causes = [];
+  function inspectError(value, cyan) {
+    const causes = [value];
 
     let err = value;
-    while (
-      ObjectPrototypeIsPrototypeOf(ErrorPrototype, err.cause) &&
-      err.cause !== value &&
-      !ArrayPrototypeIncludes(causes, err.cause) // circular check
-    ) {
-      ArrayPrototypePush(causes, err.cause);
-      err = err.cause;
+    while (err.cause) {
+      if (ArrayPrototypeIncludes(causes, err.cause)) {
+        ArrayPrototypePush(causes, handleCircular(err.cause, cyan));
+        break;
+      } else {
+        ArrayPrototypePush(causes, err.cause);
+        err = err.cause;
+      }
     }
 
-    return `${value.stack}${
+    const refMap = new Map();
+    for (const cause of causes) {
+      if (circular !== undefined) {
+        const index = MapPrototypeGet(circular, cause);
+        if (index !== undefined) {
+          MapPrototypeSet(refMap, cause, cyan(`<ref *${index}> `));
+        }
+      }
+    }
+    ArrayPrototypeShift(causes);
+
+    return (MapPrototypeGet(refMap, value) ?? "") + value.stack +
       ArrayPrototypeJoin(
-        ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`),
+        ArrayPrototypeMap(
+          causes,
+          (cause) =>
+            "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
+            (cause?.stack ?? cause),
+        ),
         "",
-      )
-    }`;
+      );
   }
 
   function inspectStringObject(value, inspectOptions) {
@@ -1002,7 +1043,7 @@
     const cyan = maybeColor(colors.cyan, inspectOptions);
 
     if (level >= inspectOptions.depth) {
-      return cyan("[Object]"); // wrappers are in cyan
+      return [cyan("[Object]"), ""]; // wrappers are in cyan
     }
 
     let baseString;
@@ -1144,7 +1185,15 @@
       baseString = `${displayName} ${baseString}`;
     }
 
-    return baseString;
+    let refIndex = "";
+    if (circular !== undefined) {
+      const index = MapPrototypeGet(circular, value);
+      if (index !== undefined) {
+        refIndex = `<ref *${index}> `;
+      }
+    }
+
+    return [baseString, refIndex];
   }
 
   function inspectObject(
@@ -1171,7 +1220,7 @@
       return String(value[privateCustomInspect](inspect));
     }
     if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
-      return inspectError(value);
+      return inspectError(value, maybeColor(colors.cyan, inspectOptions));
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
@@ -1207,7 +1256,9 @@
       );
     } else {
       // Otherwise, default object formatting
-      return inspectRawObject(value, level, inspectOptions);
+      let [insp, refIndex] = inspectRawObject(value, level, inspectOptions);
+      insp = refIndex + insp;
+      return insp;
     }
   }
 
@@ -1572,10 +1623,18 @@
       } else if (css.backgroundColor == "white") {
         ansi += `\x1b[47m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.backgroundColor)
-          ? css.backgroundColor
-          : parseCssColor(css.backgroundColor);
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.backgroundColor)) {
+          const [r, g, b] = css.backgroundColor;
+          ansi += `\x1b[48;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.backgroundColor);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[48;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[49m";
+          }
+        }
       }
     }
     if (!colorEquals(css.color, prevCss.color)) {
@@ -1598,10 +1657,18 @@
       } else if (css.color == "white") {
         ansi += `\x1b[37m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.color)
-          ? css.color
-          : parseCssColor(css.color);
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.color)) {
+          const [r, g, b] = css.color;
+          ansi += `\x1b[38;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.color);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[38;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[39m";
+          }
+        }
       }
     }
     if (css.fontWeight != prevCss.fontWeight) {
@@ -1660,6 +1727,8 @@
   }
 
   function inspectArgs(args, inspectOptions = {}) {
+    circular = undefined;
+
     const noColor = colors.getNoColor();
     const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
     const first = args[0];
@@ -1871,11 +1940,14 @@
       const [first, ...rest] = args;
 
       if (typeof first === "string") {
-        this.error(`Assertion failed: ${first}`, ...rest);
+        this.error(
+          `Assertion failed: ${first}`,
+          ...new SafeArrayIterator(rest),
+        );
         return;
       }
 
-      this.error(`Assertion failed:`, ...args);
+      this.error(`Assertion failed:`, ...new SafeArrayIterator(args));
     };
 
     count = (label = "default") => {
@@ -1927,7 +1999,7 @@
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
       if (isSet) {
-        resultData = [...data];
+        resultData = [...new SafeSet(data)];
       } else if (isMap) {
         let idx = 0;
         resultData = {};
@@ -1981,12 +2053,16 @@
 
       const headerKeys = ObjectKeys(objectValues);
       const bodyValues = ObjectValues(objectValues);
+      const headerProps = properties ||
+        [
+          ...new SafeArrayIterator(headerKeys),
+          !isMap && hasPrimitives && valuesKey,
+        ];
       const header = ArrayPrototypeFilter([
         indexKey,
-        ...(properties ||
-          [...headerKeys, !isMap && hasPrimitives && valuesKey]),
+        ...new SafeArrayIterator(headerProps),
       ], Boolean);
-      const body = [indexKeys, ...bodyValues, values];
+      const body = [indexKeys, ...new SafeArrayIterator(bodyValues), values];
 
       toTable(header, body);
     };
@@ -2013,7 +2089,7 @@
       const startTime = MapPrototypeGet(timerMap, label);
       const duration = DateNow() - startTime;
 
-      this.info(`${label}: ${duration}ms`, ...args);
+      this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
     };
 
     timeEnd = (label = "default") => {
@@ -2033,7 +2109,7 @@
 
     group = (...label) => {
       if (label.length > 0) {
-        this.log(...label);
+        this.log(...new SafeArrayIterator(label));
       }
       this.indentLevel += 2;
     };
@@ -2076,6 +2152,7 @@
     value,
     inspectOptions = {},
   ) {
+    circular = undefined;
     return inspectValue(value, 0, {
       ...DEFAULT_INSPECT_OPTIONS,
       ...inspectOptions,

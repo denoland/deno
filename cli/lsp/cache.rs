@@ -5,19 +5,25 @@ use crate::cache::FetchCacher;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
 use crate::graph_util::graph_valid;
+use crate::http_cache;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use import_map::ImportMap;
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
+use std::time::SystemTime;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -115,5 +121,99 @@ impl CacheServer {
       return Err(anyhow!("failed to send request to cache thread"));
     }
     rx.await?
+  }
+}
+
+/// Calculate a version for for a given path.
+pub(crate) fn calculate_fs_version(path: &Path) -> Option<String> {
+  let metadata = fs::metadata(path).ok()?;
+  if let Ok(modified) = metadata.modified() {
+    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+      Some(n.as_millis().to_string())
+    } else {
+      Some("1".to_string())
+    }
+  } else {
+    Some("1".to_string())
+  }
+}
+
+/// Populate the metadata map based on the supplied headers
+fn parse_metadata(
+  headers: &HashMap<String, String>,
+) -> HashMap<MetadataKey, String> {
+  let mut metadata = HashMap::new();
+  if let Some(warning) = headers.get("x-deno-warning").cloned() {
+    metadata.insert(MetadataKey::Warning, warning);
+  }
+  metadata
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(crate) enum MetadataKey {
+  /// Represent the `x-deno-warning` header associated with the document
+  Warning,
+}
+
+#[derive(Debug, Clone)]
+struct Metadata {
+  values: Arc<HashMap<MetadataKey, String>>,
+  version: Option<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct CacheMetadata {
+  cache: http_cache::HttpCache,
+  metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
+}
+
+impl CacheMetadata {
+  pub fn new(location: &Path) -> Self {
+    Self {
+      cache: http_cache::HttpCache::new(location),
+      metadata: Default::default(),
+    }
+  }
+
+  /// Return the meta data associated with the specifier. Unlike the `get()`
+  /// method, redirects of the supplied specifier will not be followed.
+  pub fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Arc<HashMap<MetadataKey, String>>> {
+    if specifier.scheme() == "file" {
+      return None;
+    }
+    let version = self
+      .cache
+      .get_cache_filename(specifier)
+      .map(|ref path| calculate_fs_version(path))
+      .flatten();
+    let metadata = self.metadata.lock().get(specifier).cloned();
+    if metadata.as_ref().map(|m| m.version.clone()).flatten() != version {
+      self.refresh(specifier).map(|m| m.values)
+    } else {
+      metadata.map(|m| m.values)
+    }
+  }
+
+  fn refresh(&self, specifier: &ModuleSpecifier) -> Option<Metadata> {
+    if specifier.scheme() == "file" {
+      return None;
+    }
+    let cache_filename = self.cache.get_cache_filename(specifier)?;
+    let specifier_metadata =
+      http_cache::Metadata::read(&cache_filename).ok()?;
+    let values = Arc::new(parse_metadata(&specifier_metadata.headers));
+    let version = calculate_fs_version(&cache_filename);
+    let mut metadata_map = self.metadata.lock();
+    let metadata = Metadata { values, version };
+    metadata_map.insert(specifier.clone(), metadata.clone());
+    Some(metadata)
+  }
+
+  pub fn set_location(&mut self, location: &Path) {
+    self.cache = http_cache::HttpCache::new(location);
+    self.metadata.lock().clear();
   }
 }
