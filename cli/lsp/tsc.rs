@@ -72,7 +72,8 @@ static CODEBLOCK_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
 static EMAIL_MATCH_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
-static HTTP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^https?:"#).unwrap());
+static HTTP_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
 static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
 });
