@@ -43,7 +43,6 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
-// pub type PreloadModuleCb = dyn Fn(WebWorker) -> Pin<Box<dyn Future<Output = Result<WebWorker, AnyError>>>> + Sync + Send;
 pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
   + Sync
   + Send;
