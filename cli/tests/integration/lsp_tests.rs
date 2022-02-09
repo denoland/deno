@@ -1661,6 +1661,71 @@ fn lsp_hover_typescript_types() {
 }
 
 #[test]
+fn lsp_hover_jsdoc_symbol_link() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export function hello() {}\n"
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { hello } from \"./b.ts\";\n\nhello();\n\nconst b = \"b\";\n\n/** JSDoc {@link hello} and {@linkcode b} */\nfunction a() {}\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 7,
+          "character": 10
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "function a(): void"
+        },
+        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
+      ],
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 9
+        },
+        "end": {
+          "line": 7,
+          "character": 10
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_goto_type_definition() {
   let mut client = init("initialize_params.json");
   did_open(
