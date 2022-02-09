@@ -284,10 +284,43 @@ fn git_commit_hash() -> String {
   }
 }
 
+#[cfg(target_os = "windows")]
+fn gen_napi_exports_def() -> std::io::Result<()> {
+  let mut exports = String::from("LIBRARY\nEXPORTS\n");
+  for entry in std::fs::read_dir("./napi")? {
+    let entry = entry?;
+    if let Ok(ftype) = entry.file_type() {
+      let name = entry.file_name();
+      let name = name.to_str().unwrap();
+      if ftype.is_file()
+        && (name.starts_with("napi_") || name.starts_with("node_api_"))
+        && name.ends_with(".rs")
+      {
+        exports.push_str(&format!("  {}\n", &name[0..name.len() - 3]));
+      }
+    }
+  }
+  std::fs::write("./napi_exports.def", exports)?;
+  Ok(())
+}
+
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
     return;
+  }
+
+  // Needed for exporting symbols from executable on Windows
+  #[cfg(target_os = "windows")]
+  {
+    gen_napi_exports_def().unwrap();
+    println!(
+      "cargo:rustc-env=LINK=/DEF:{}",
+      std::path::Path::new("napi_exports.def")
+        .canonicalize()
+        .unwrap()
+        .display(),
+    );
   }
 
   println!("cargo:rustc-link-arg=-rdynamic");

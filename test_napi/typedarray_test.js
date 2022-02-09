@@ -1,7 +1,10 @@
-import { loadTestLibrary, assert, assertEquals } from "./common.js";
+import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const typedarray = loadTestLibrary();
 
 Deno.test("napi typedarray external", function () {
-  assertEquals(new Uint8Array(typedarray.test_external()), new Uint8Array([0, 1, 2, 3]));
+  assertEquals(
+    new Uint8Array(typedarray.test_external()),
+    new Uint8Array([0, 1, 2, 3]),
+  );
 });

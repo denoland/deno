@@ -1,4 +1,4 @@
-import { loadTestLibrary, assertEquals } from "./common.js";
+import { assertEquals, loadTestLibrary } from "./common.js";
 
 const numbers = loadTestLibrary();
 
@@ -9,5 +9,8 @@ Deno.test("napi int32", function () {
 
 Deno.test("napi int64", function () {
   assertEquals(numbers.test_int64(69), 69);
-  assertEquals(numbers.test_int64(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+  assertEquals(
+    numbers.test_int64(Number.MAX_SAFE_INTEGER),
+    Number.MAX_SAFE_INTEGER,
+  );
 });

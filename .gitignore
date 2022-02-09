@@ -36,3 +36,6 @@ cli/tests/.test_coverage/
 # WPT generated cert files
 /tools/wpt/certs/index.txt*
 /tools/wpt/certs/serial*
+
+# generated symbols definition files for Windows linker
+cli/napi_exports.def

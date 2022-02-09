@@ -3,5 +3,5 @@ const xattr = Deno.core.dlopen(
 );
 xattr.set("exports.def", "foo", Deno.core.encode("bar")).then(console.log);
 
-console.log(1)
+console.log(1);
 //await xattr.get("exports.def", "foo");
