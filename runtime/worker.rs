@@ -371,6 +371,7 @@ mod tests {
       root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
+      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,

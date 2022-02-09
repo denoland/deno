@@ -70,6 +70,7 @@ use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::future::LocalFutureObj;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::parking_lot::RwLock;
@@ -100,11 +101,21 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-fn create_web_worker_preload_module_callback(ps: ProcState) -> Arc<PreloadModuleCb> {
-  Arc::new(move |worker| {
-    async move {
+fn create_web_worker_preload_module_callback(
+  ps: ProcState,
+) -> Arc<PreloadModuleCb> {
+  let compat = ps.flags.compat;
+
+  Arc::new(move |mut worker| {
+    let fut = async move {
+      if compat {
+        worker.execute_side_module(&compat::GLOBAL_URL).await?;
+        worker.execute_side_module(&compat::MODULE_URL).await?;
+      }
+
       Ok(worker)
-    }.boxed()
+    };
+    LocalFutureObj::new(Box::new(fut))
   })
 }
 
@@ -124,7 +135,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       args.parent_permissions.clone(),
     );
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
-    let preload_module_cb = create_web_worker_preload_module_callback(ps.clone());
+    let preload_module_cb =
+      create_web_worker_preload_module_callback(ps.clone());
 
     let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
 
@@ -197,7 +209,8 @@ pub fn create_main_worker(
   let should_break_on_first_statement = ps.flags.inspect_brk.is_some();
 
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
-  let web_worker_preload_module_cb = create_web_worker_preload_module_callback(ps.clone());
+  let web_worker_preload_module_cb =
+    create_web_worker_preload_module_callback(ps.clone());
 
   let maybe_storage_key = if let Some(location) = &ps.flags.location {
     // if a location is set, then the ascii serialization of the location is

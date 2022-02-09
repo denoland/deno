@@ -523,6 +523,35 @@ impl WebWorker {
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
+  pub async fn execute_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let id = self.preload_module(module_specifier, false).await?;
+    let mut receiver = self.js_runtime.mod_evaluate(id);
+    tokio::select! {
+      maybe_result = &mut receiver => {
+        debug!("received worker module evaluate {:#?}", maybe_result);
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        maybe_result.unwrap_or(Ok(()))
+      }
+
+      event_loop_result = self.run_event_loop(false) => {
+        if self.internal_handle.is_terminated() {
+           return Ok(());
+        }
+        event_loop_result?;
+        let maybe_result = receiver.await;
+        maybe_result.unwrap_or(Ok(()))
+      }
+    }
+  }
+
+  /// Loads, instantiates and executes specified JavaScript module.
+  ///
+  /// This module will have "import.meta.main" equal to true.
   pub async fn execute_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
@@ -600,7 +629,7 @@ fn print_worker_error(error_str: String, name: &str) {
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 pub fn run_web_worker(
-  mut worker: WebWorker,
+  worker: WebWorker,
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
   preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
@@ -611,10 +640,21 @@ pub fn run_web_worker(
   // with terminate
 
   let fut = async move {
-    let fut = (preload_module_cb)(worker);
-    // TODO: handle result
-    let result = fut.await;
-    let mut worker = result.unwrap();
+    let internal_handle = worker.internal_handle.clone();
+    let result = (preload_module_cb)(worker).await;
+
+    let mut worker = match result {
+      Ok(worker) => worker,
+      Err(e) => {
+        print_worker_error(e.to_string(), &name);
+        internal_handle
+          .post_event(WorkerControlEvent::TerminalError(e))
+          .expect("Failed to post message to host");
+
+        // Failure to execute script is a terminal error, bye, bye.
+        return Ok(());
+      }
+    };
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code {
@@ -624,8 +664,6 @@ pub fn run_web_worker(
       // script instead of module
       worker.execute_main_module(&specifier).await
     };
-
-    let internal_handle = worker.internal_handle.clone();
 
     // If sender is closed it means that worker has already been closed from
     // within using "globalThis.close()"

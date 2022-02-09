@@ -12,6 +12,7 @@ use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::AnyError;
+use deno_core::futures::future::LocalFutureObj;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::serde::Deserialize;
@@ -26,8 +27,6 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::pin::Pin;
-use deno_core::futures::Future;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
@@ -44,7 +43,8 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
-pub type PreloadModuleCb = dyn Fn(WebWorker) -> Pin<Box<dyn Future<Output = Result<WebWorker, AnyError>>>>
+// pub type PreloadModuleCb = dyn Fn(WebWorker) -> Pin<Box<dyn Future<Output = Result<WebWorker, AnyError>>>> + Sync + Send;
+pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
   + Sync
   + Send;
 
@@ -237,7 +237,12 @@ fn op_create_worker(
     // is using `worker.internal_channels`.
     //
     // Host can already push messages and interact with worker.
-    run_web_worker(worker, module_specifier, maybe_source_code, preload_module_cb.0)
+    run_web_worker(
+      worker,
+      module_specifier,
+      maybe_source_code,
+      preload_module_cb.0,
+    )
   })?;
 
   // Receive WebWorkerHandle from newly created worker
