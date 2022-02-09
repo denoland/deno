@@ -17,6 +17,7 @@
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
     ObjectPrototypeIsPrototypeOf,
+    SafeArrayIterator,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -159,7 +160,11 @@
         // 3.
         // TODO(@andreubotella): Error handling.
         if (typeof callback === "function") {
-          FunctionPrototypeCall(callback, globalThis, ...args);
+          FunctionPrototypeCall(
+            callback,
+            globalThis,
+            ...new SafeArrayIterator(args),
+          );
         } else {
           // TODO(@andreubotella): eval doesn't seem to have a primordial, but
           // it can be redefined in the global scope.

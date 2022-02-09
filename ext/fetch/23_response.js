@@ -37,6 +37,7 @@
     RangeError,
     RegExp,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
@@ -45,7 +46,11 @@
   const VCHAR = ["\x21-\x7E"];
   const OBS_TEXT = ["\x80-\xFF"];
 
-  const REASON_PHRASE = [...HTTP_TAB_OR_SPACE, ...VCHAR, ...OBS_TEXT];
+  const REASON_PHRASE = [
+    ...new SafeArrayIterator(HTTP_TAB_OR_SPACE),
+    ...new SafeArrayIterator(VCHAR),
+    ...new SafeArrayIterator(OBS_TEXT),
+  ];
   const REASON_PHRASE_MATCHER = regexMatcher(REASON_PHRASE);
   const REASON_PHRASE_RE = new RegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
 
@@ -90,9 +95,11 @@
    * @returns {InnerResponse}
    */
   function cloneInnerResponse(response) {
-    const urlList = [...response.urlList];
+    const urlList = [...new SafeArrayIterator(response.urlList)];
     const headerList = [
-      ...ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
+      ),
     ];
     let body = null;
     if (response.body !== null) {
