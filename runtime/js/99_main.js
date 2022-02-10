@@ -134,9 +134,11 @@ delete Object.prototype.__proto__;
       );
     }
     while (!isClosing) {
+      core.print(`receiving msg in JS\n`, true);
       const data = await core.opAsync("op_worker_recv_message");
       if (data === null) break;
       const v = deserializeJsMessageData(data);
+      core.print(`received msg in JS ${JSON.stringify(v[0])}\n`, true);
       const message = v[0];
       const transferables = v[1];
 

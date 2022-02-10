@@ -523,6 +523,9 @@ impl WebWorker {
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
+  /// 
+  /// This method assumes that worker can't be terminated when executing 
+  /// side module code.
   pub async fn execute_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
@@ -531,20 +534,14 @@ impl WebWorker {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = &mut receiver => {
-        debug!("received worker module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        maybe_result.unwrap_or(Ok(()))
+        debug!("received module evaluate {:#?}", maybe_result);
+        maybe_result.expect("Module evaluation result not provided.")
       }
 
       event_loop_result = self.run_event_loop(false) => {
-        if self.internal_handle.is_terminated() {
-           return Ok(());
-        }
         event_loop_result?;
         let maybe_result = receiver.await;
-        maybe_result.unwrap_or(Ok(()))
+        maybe_result.expect("Module evaluation result not provided.")
       }
     }
   }

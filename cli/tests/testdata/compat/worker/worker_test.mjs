@@ -6,10 +6,10 @@ const url = new URL("./worker.mjs", import.meta.url);
 const worker = new Worker(url.href, { type: "module", deno: true });
 
 worker.onmessage = (e) => {
-    if (e.data == "hello from worker") {
-        promise1.resolve();
-        return;
-    }
+    // if (e.data == "hello from worker") {
+    //     promise1.resolve();
+    //     return;
+    // }
 
     const pid = e.data.pid;
     if (typeof pid != "number") {
@@ -19,7 +19,7 @@ worker.onmessage = (e) => {
     promise2.resolve();
 };
 
-await promise1;
+// await promise1;
 worker.postMessage("hello");
 await promise2;
 worker.terminate();

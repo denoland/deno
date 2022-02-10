@@ -48,11 +48,14 @@ async fn op_worker_recv_message(
     let state = state.borrow();
     state.borrow::<WebWorkerInternalHandle>().clone()
   };
-  handle
+  eprintln!("waiting for message");
+  let msg =   handle
     .port
     .recv(state.clone())
     .or_cancel(handle.cancel)
-    .await?
+    .await?;
+    eprintln!("got message");
+    msg
 }
 
 fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {

@@ -378,6 +378,7 @@ fn op_host_post_message(
   id: WorkerId,
   data: JsMessageData,
 ) -> Result<(), AnyError> {
+  eprintln!("sending message to worker");
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     debug!("post message to worker {}", id);
     let worker_handle = worker_thread.worker_handle.clone();
