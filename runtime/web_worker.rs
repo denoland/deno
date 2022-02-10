@@ -494,18 +494,16 @@ impl WebWorker {
       .expect("Failed to execute worker bootstrap script");
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
+    let script = r#"
+    const pollForMessages = globalThis.pollForMessages;
+    delete globalThis.pollForMessages;
+    pollForMessages
+    "#;
     let poll_for_messages_fn = self
       .js_runtime
-      .execute_script(&located_script_name!(), "globalThis.pollForMessages")
+      .execute_script(&located_script_name!(), script)
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
-    // Delete that reference from `globalThis`.
-    self
-      .execute_script(
-        &located_script_name!(),
-        "delete globalThis.pollForMessages",
-      )
-      .expect("Failed to execute worker bootstrap script");
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -631,15 +629,12 @@ impl WebWorker {
   // Starts polling for messages from worker host from JavaScript.
   fn start_polling_for_messages(&mut self) {
     let poll_for_messages_fn = self.poll_for_messages_fn.take().unwrap();
-    let context_global = self.js_runtime.global_context();
     let scope = &mut self.js_runtime.handle_scope();
     let poll_for_messages =
       v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
     let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
-    let context = context_global.open(scope);
-    let global = context.global(scope);
-    let global_value = v8::Local::<v8::Value>::from(global);
-    fn_.call(scope, global_value, &[]).unwrap();
+    let undefined = v8::undefined(scope);
+    fn_.call(scope, undefined.into(), &[]).unwrap();
   }
 }
 

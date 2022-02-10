@@ -50,14 +50,14 @@ pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<W
 /// A holder for callback that is used to create a new
 /// WebWorker. It's a struct instead of a type alias
 /// because `GothamState` used in `OpState` overrides
-/// value if type alises have the same underlying type
+/// value if type aliases have the same underlying type
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 /// A holder for callback that can used to preload some modules into a WebWorker
 /// before actual worker code is executed. It's a struct instead of a type
 /// because `GothamState` used in `OpState` overrides
-/// value if type alises have the same underlying type
+/// value if type aliases have the same underlying type
 #[derive(Clone)]
 pub struct PreloadModuleCbHolder(Arc<PreloadModuleCb>);
 
