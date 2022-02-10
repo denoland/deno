@@ -690,9 +690,13 @@ pub fn run_web_worker(
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      let id = worker.preload_module(&specifier, true).await?;
-      worker.start_polling_for_messages();
-      worker.execute_main_module(id).await
+      match worker.preload_module(&specifier, true).await {
+        Ok(id) => {
+          worker.start_polling_for_messages();
+          worker.execute_main_module(id).await
+        }
+        Err(e) => Err(e),
+      }
     };
 
     // If sender is closed it means that worker has already been closed from
