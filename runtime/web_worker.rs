@@ -499,6 +499,13 @@ impl WebWorker {
       .execute_script(&located_script_name!(), "globalThis.pollForMessages")
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
+    // Delete that reference from `globalThis`.
+    self
+      .execute_script(
+        &located_script_name!(),
+        "delete globalThis.pollForMessages",
+      )
+      .expect("Failed to execute worker bootstrap script");
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -532,8 +539,8 @@ impl WebWorker {
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
-  /// 
-  /// This method assumes that worker can't be terminated when executing 
+  ///
+  /// This method assumes that worker can't be terminated when executing
   /// side module code.
   pub async fn execute_side_module(
     &mut self,
@@ -620,6 +627,20 @@ impl WebWorker {
   ) -> Result<(), AnyError> {
     poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
+
+  // Starts polling for messages from worker host from JavaScript.
+  fn start_polling_for_messages(&mut self) {
+    let poll_for_messages_fn = self.poll_for_messages_fn.take().unwrap();
+    let context_global = self.js_runtime.global_context();
+    let scope = &mut self.js_runtime.handle_scope();
+    let poll_for_messages =
+      v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
+    let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
+    let context = context_global.open(scope);
+    let global = context.global(scope);
+    let global_value = v8::Local::<v8::Value>::from(global);
+    fn_.call(scope, global_value, &[]).unwrap();
+  }
 }
 
 fn print_worker_error(error_str: String, name: &str) {
@@ -664,41 +685,13 @@ pub fn run_web_worker(
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code {
       let r = worker.execute_script(&located_script_name!(), &source_code);
-      let poll_for_messages_fn = worker.poll_for_messages_fn.take().unwrap();
-      {
-        let context_global = worker.js_runtime.global_context();
-        let scope = &mut worker.js_runtime.handle_scope();
-        let poll_for_messages = v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
-        let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
-        let context = context_global.open(scope);
-        let global = context.global(scope);
-        let global_value = v8::Local::<v8::Value>::from(global);
-        fn_.call(
-          scope,
-          global_value,
-          &[]
-        ).unwrap();
-      }
+      worker.start_polling_for_messages();
       r
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
       let id = worker.preload_module(&specifier, true).await?;
-      let poll_for_messages_fn = worker.poll_for_messages_fn.take().unwrap();
-      {
-        let context_global = worker.js_runtime.global_context();
-        let scope = &mut worker.js_runtime.handle_scope();
-        let poll_for_messages = v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
-        let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
-        let context = context_global.open(scope);
-        let global = context.global(scope);
-        let global_value = v8::Local::<v8::Value>::from(global);
-        fn_.call(
-          scope,
-          global_value,
-          &[]
-        ).unwrap();
-      }
+      worker.start_polling_for_messages();
       worker.execute_main_module(id).await
     };
 
