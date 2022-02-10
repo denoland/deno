@@ -304,6 +304,7 @@ pub struct WebWorker {
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
+  poll_for_messages_fn: Option<v8::Global<v8::Value>>,
 }
 
 pub struct WebWorkerOptions {
@@ -472,6 +473,7 @@ impl WebWorker {
         use_deno_namespace: options.use_deno_namespace,
         worker_type: options.worker_type,
         main_module,
+        poll_for_messages_fn: None,
       },
       external_handle,
     )
@@ -490,6 +492,13 @@ impl WebWorker {
     self
       .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute worker bootstrap script");
+    // Save a reference to function that will start polling for messages
+    // from a worker host; it will be called after the user code is loaded.
+    let poll_for_messages_fn = self
+      .js_runtime
+      .execute_script(&located_script_name!(), "globalThis.pollForMessages")
+      .expect("Failed to execute worker bootstrap script");
+    self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -538,7 +547,7 @@ impl WebWorker {
         maybe_result.expect("Module evaluation result not provided.")
       }
 
-      event_loop_result = self.run_event_loop(false) => {
+      event_loop_result = self.js_runtime.run_event_loop(false) => {
         event_loop_result?;
         let maybe_result = receiver.await;
         maybe_result.expect("Module evaluation result not provided.")
@@ -551,9 +560,8 @@ impl WebWorker {
   /// This module will have "import.meta.main" equal to true.
   pub async fn execute_main_module(
     &mut self,
-    module_specifier: &ModuleSpecifier,
+    id: ModuleId,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, true).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = &mut receiver => {
@@ -655,11 +663,43 @@ pub fn run_web_worker(
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code {
-      worker.execute_script(&located_script_name!(), &source_code)
+      let r = worker.execute_script(&located_script_name!(), &source_code);
+      let poll_for_messages_fn = worker.poll_for_messages_fn.take().unwrap();
+      {
+        let context_global = worker.js_runtime.global_context();
+        let scope = &mut worker.js_runtime.handle_scope();
+        let poll_for_messages = v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
+        let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
+        let context = context_global.open(scope);
+        let global = context.global(scope);
+        let global_value = v8::Local::<v8::Value>::from(global);
+        fn_.call(
+          scope,
+          global_value,
+          &[]
+        ).unwrap();
+      }
+      r
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      worker.execute_main_module(&specifier).await
+      let id = worker.preload_module(&specifier, true).await?;
+      let poll_for_messages_fn = worker.poll_for_messages_fn.take().unwrap();
+      {
+        let context_global = worker.js_runtime.global_context();
+        let scope = &mut worker.js_runtime.handle_scope();
+        let poll_for_messages = v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
+        let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
+        let context = context_global.open(scope);
+        let global = context.global(scope);
+        let global_value = v8::Local::<v8::Value>::from(global);
+        fn_.call(
+          scope,
+          global_value,
+          &[]
+        ).unwrap();
+      }
+      worker.execute_main_module(id).await
     };
 
     // If sender is closed it means that worker has already been closed from

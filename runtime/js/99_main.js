@@ -127,6 +127,7 @@ delete Object.prototype.__proto__;
   let globalDispatchEvent;
 
   async function pollForMessages() {
+    globalThis.pollForMessages = undefined;
     if (!globalDispatchEvent) {
       globalDispatchEvent = FunctionPrototypeBind(
         globalThis.dispatchEvent,
@@ -678,7 +679,7 @@ delete Object.prototype.__proto__;
     numCpus = cpuCount;
     registerErrors();
 
-    pollForMessages();
+    globalThis.pollForMessages = pollForMessages;
 
     const internalSymbol = Symbol("Deno.internal");
 
