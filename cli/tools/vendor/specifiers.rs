@@ -13,6 +13,10 @@ use deno_core::error::AnyError;
 pub fn partition_by_root_specifiers<'a>(
   specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
 ) -> Vec<(ModuleSpecifier, Vec<ModuleSpecifier>)> {
+  // todo: this should do an initial pass where it partitions
+  // even within paths in domains, then a second pass where it collapses
+  // them while mapping
+
   let mut root_specifiers: Vec<(ModuleSpecifier, Vec<ModuleSpecifier>)> =
     Vec::new();
   for remote_specifier in specifiers {
@@ -159,9 +163,7 @@ pub fn make_url_relative(
   root: &ModuleSpecifier,
   url: &ModuleSpecifier,
 ) -> Result<String, AnyError> {
-  let mut url = url.clone();
-  url.set_query(None);
-  root.make_relative(&url).ok_or_else(|| {
+  root.make_relative(url).ok_or_else(|| {
     anyhow!(
       "Error making url ({}) relative to root: {}",
       url.to_string(),
@@ -174,7 +176,7 @@ pub fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
   specifier.scheme().to_lowercase().starts_with("http")
 }
 
-pub fn is_remote_specifier_text(text: &str) -> bool {
+pub fn is_absolute_specifier_text(text: &str) -> bool {
   text.trim_start().to_lowercase().starts_with("http")
 }
 

@@ -12,8 +12,10 @@ use deno_graph::Range;
 use deno_graph::Resolved;
 
 use super::mappings::Mappings;
-use super::specifiers::is_remote_specifier_text;
+use super::specifiers::is_absolute_specifier_text;
 use super::text_changes::TextChange;
+
+// todo: delete... not used anymore
 
 struct Context<'a> {
   mappings: &'a Mappings,
@@ -44,7 +46,7 @@ impl<'a> Context<'a> {
 
   pub fn relative_specifier_text(&self, specifier: &ModuleSpecifier) -> String {
     let local_path = self.mappings.local_path(specifier);
-    get_relative_specifier_text(&self.local_path, local_path)
+    get_relative_specifier_text(&self.local_path, &local_path)
   }
 }
 
@@ -66,11 +68,12 @@ pub fn collect_remote_module_text_changes<'a>(
     text_info,
     text,
     text_changes: Vec::new(),
-    local_path: mappings.local_path(&module.specifier).to_owned(),
+    local_path: mappings.local_path(&module.specifier),
   };
 
   // todo(THIS PR): this is may not good enough because it only includes
   // what deno_graph has resolved and may not include everything in the source file?
+  // Yeah, not enough.
   for dep in context.module.dependencies.values() {
     handle_maybe_resolved(&dep.maybe_code, &mut context);
     handle_maybe_resolved(&dep.maybe_type, &mut context);
@@ -107,7 +110,7 @@ fn handle_maybe_resolved(maybe_resolved: &Resolved, context: &mut Context<'_>) {
     };
 
     // leave remote specifiers as-is as they will be handled by the import map
-    if !is_remote_specifier_text(current_text) {
+    if !is_absolute_specifier_text(current_text) {
       let new_specifier_text = context.relative_specifier_text(specifier);
       context.text_changes.push(TextChange::new(
         byte_range.start,
@@ -118,6 +121,7 @@ fn handle_maybe_resolved(maybe_resolved: &Resolved, context: &mut Context<'_>) {
   }
 }
 
+// todo: delete, I moved it elsewhere
 fn get_relative_specifier_text(from: &Path, to: &Path) -> String {
   let relative_path = get_relative_path(from, to);
 
@@ -128,6 +132,7 @@ fn get_relative_specifier_text(from: &Path, to: &Path) -> String {
   }
 }
 
+// todo: delete
 fn get_relative_path(from: &Path, to: &Path) -> String {
   let from_path = ModuleSpecifier::from_file_path(from).unwrap();
   let to_path = ModuleSpecifier::from_file_path(to).unwrap();

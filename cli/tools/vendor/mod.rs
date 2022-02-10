@@ -1,16 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_graph::Module;
 use deno_graph::ModuleKind;
-use deno_graph::Resolved;
 use deno_runtime::permissions::Permissions;
 
 use crate::flags::VendorFlags;
@@ -19,18 +15,18 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use self::analyze::collect_remote_module_text_changes;
+use self::import_map::build_import_map;
 use self::mappings::Mappings;
 use self::specifiers::is_remote_specifier;
-use self::specifiers::is_remote_specifier_text;
-use self::text_changes::apply_text_changes;
 
 mod analyze;
+mod import_map;
 mod mappings;
 mod specifiers;
 mod text_changes;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
+  // todo: error when someone uses an import map in the vendor folder
   let output_dir = resolve_and_validate_output_dir(&flags)?;
   let graph = create_graph(&ps, &flags).await?;
   let all_modules = graph.modules();
@@ -51,9 +47,10 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     let local_path = mappings.local_path(&module.specifier);
     let file_text = match module.kind {
       ModuleKind::Esm => {
-        let text_changes =
+        /*let text_changes =
           collect_remote_module_text_changes(&mappings, module);
-        apply_text_changes(source, text_changes)
+        apply_text_changes(source, text_changes)*/
+        source.to_string()
       }
       ModuleKind::Asserted => source.to_string(),
       _ => {
@@ -70,9 +67,8 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   }
 
   // create the import map
-  if let Some(import_map_text) =
-    build_import_map(&output_dir, &all_modules, &mappings)
-  {
+  if !mappings.base_specifiers().is_empty() {
+    let import_map_text = build_import_map(&all_modules, &mappings);
     std::fs::write(output_dir.join("import_map.json"), import_map_text)?;
   }
 
@@ -163,69 +159,4 @@ async fn create_graph(
   graph.valid()?;
 
   Ok(graph)
-}
-
-fn build_import_map(
-  output_dir: &Path,
-  modules: &[&Module],
-  mappings: &Mappings,
-) -> Option<String> {
-  let key_values = collect_import_map_key_values(modules);
-  if key_values.is_empty() {
-    return None;
-  }
-
-  let output_dir = ModuleSpecifier::from_directory_path(&output_dir).unwrap();
-
-  // todo: use serde_json to print this out?
-  let mut text = "{\n".to_string();
-  text.push_str("  \"imports\": {\n");
-  for (i, (key, value)) in key_values.iter().enumerate() {
-    if i > 0 {
-      text.push_str(",\n");
-    }
-    let local_path = mappings.local_path(value);
-    let local_uri = ModuleSpecifier::from_file_path(&local_path).unwrap();
-    let relative_path = output_dir.make_relative(&local_uri).unwrap();
-    text.push_str(&format!("    \"{}\": \"./{}\"", key, relative_path));
-  }
-  text.push_str("\n  }\n");
-  text.push_str("}\n");
-
-  Some(text)
-}
-
-fn collect_import_map_key_values(
-  local_modules: &[&Module],
-) -> Vec<(String, ModuleSpecifier)> {
-  fn add_if_remote(
-    imports: &mut HashMap<String, ModuleSpecifier>,
-    text: &str,
-    specifier: &ModuleSpecifier,
-  ) {
-    if is_remote_specifier_text(text) {
-      imports.insert(text.to_string(), specifier.clone());
-    }
-  }
-
-  let mut result = HashMap::new();
-  for module in local_modules {
-    for (text, dep) in &module.dependencies {
-      if let Some(specifier) = dep.get_code() {
-        add_if_remote(&mut result, text, specifier);
-      }
-      if let Some(specifier) = dep.get_type() {
-        add_if_remote(&mut result, text, specifier);
-      }
-    }
-    if let Some((text, Resolved::Ok { specifier, .. })) =
-      &module.maybe_types_dependency
-    {
-      add_if_remote(&mut result, text, specifier);
-    }
-  }
-
-  let mut result = result.into_iter().collect::<Vec<_>>();
-  result.sort_by(|a, b| a.0.cmp(&b.0));
-  result
 }
