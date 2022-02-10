@@ -33,6 +33,15 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function mkdirSyncDefaultMode() {
+    const path = Deno.makeTempDirSync() + "/dir";
+    Deno.mkdirSync(path);
+    assertDirectory(path, 0o755);
+  },
+);
+
 Deno.test({ permissions: { write: false } }, function mkdirSyncPerm() {
   assertThrows(() => {
     Deno.mkdirSync("/baddir");
@@ -54,6 +63,15 @@ Deno.test(
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
     assertDirectory(path, 0o737);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function mkdirDefaultMode() {
+    const path = Deno.makeTempDirSync() + "/dir";
+    await Deno.mkdir(path);
+    assertDirectory(path, 0o755);
   },
 );
 
