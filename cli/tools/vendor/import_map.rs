@@ -1,8 +1,12 @@
 use std::collections::BTreeMap;
 
+use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceTextInfo;
 use deno_core::serde_json;
 use deno_graph::Module;
+use deno_graph::Position;
+use deno_graph::Range;
 use deno_graph::Resolved;
 use serde::Serialize;
 
@@ -104,36 +108,63 @@ fn fill_scopes(
   import_map: &mut ImportMapBuilder,
 ) {
   for module in modules {
-    for (text, dep) in &module.dependencies {
-      if let Some(specifier) = dep.get_code() {
-        handle_dep_specifier(
-          import_map,
-          &module.specifier,
-          text,
-          specifier,
-          mappings,
-        );
-      }
-      if let Some(specifier) = dep.get_type() {
-        handle_dep_specifier(
-          import_map,
-          &module.specifier,
-          text,
-          specifier,
-          mappings,
-        );
-      }
-    }
-    if let Some((text, Resolved::Ok { specifier, .. })) =
-      &module.maybe_types_dependency
-    {
-      handle_dep_specifier(
+    let text_info = match &module.maybe_parsed_source {
+      Some(source) => source.source(),
+      None => continue,
+    };
+    let source_text = match &module.maybe_source {
+      Some(source) => source,
+      None => continue,
+    };
+
+    for dep in module.dependencies.values() {
+      handle_maybe_resolved(
+        &dep.maybe_code,
         import_map,
         &module.specifier,
-        text,
-        specifier,
         mappings,
+        text_info,
+        source_text,
       );
+      handle_maybe_resolved(
+        &dep.maybe_type,
+        import_map,
+        &module.specifier,
+        mappings,
+        text_info,
+        source_text,
+      );
+    }
+
+    if let Some((_, maybe_resolved)) = &module.maybe_types_dependency {
+      handle_maybe_resolved(
+        maybe_resolved,
+        import_map,
+        &module.specifier,
+        mappings,
+        text_info,
+        source_text,
+      );
+    }
+  }
+}
+
+fn handle_maybe_resolved(
+  maybe_resolved: &Resolved,
+  import_map: &mut ImportMapBuilder,
+  referrer: &ModuleSpecifier,
+  mappings: &Mappings,
+  text_info: &SourceTextInfo,
+  source_text: &str,
+) {
+  if let Resolved::Ok {
+    specifier, range, ..
+  } = maybe_resolved
+  {
+    let text = text_from_range(text_info, source_text, range);
+    // if the text is empty then it's probably an x-TypeScript-types
+    if !text.is_empty() {
+      handle_dep_specifier(import_map, referrer, text, specifier, mappings);
     }
   }
 }
@@ -185,4 +216,37 @@ fn handle_dep_specifier(
     // todo: wrong
     imports.add(text.to_string(), specifier);
   }
+}
+
+fn text_from_range<'a>(
+  text_info: &SourceTextInfo,
+  text: &'a str,
+  range: &Range,
+) -> &'a str {
+  let result = &text[byte_range(text_info, range)];
+  if result.starts_with('"') || result.starts_with('\'') {
+    // remove the quotes
+    &result[1..result.len() - 1]
+  } else {
+    result
+  }
+}
+
+fn byte_range(
+  text_info: &SourceTextInfo,
+  range: &Range,
+) -> std::ops::Range<usize> {
+  let start = byte_index(text_info, &range.start);
+  let end = byte_index(text_info, &range.end);
+  start..end
+}
+
+fn byte_index(text_info: &SourceTextInfo, pos: &Position) -> usize {
+  // todo(https://github.com/denoland/deno_graph/issues/79): use byte indexes all the way down
+  text_info
+    .byte_index(LineAndColumnIndex {
+      line_index: pos.line,
+      column_index: pos.character,
+    })
+    .0 as usize
 }

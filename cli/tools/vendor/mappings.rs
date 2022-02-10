@@ -38,7 +38,7 @@ impl Mappings {
 
     for (root, specifiers) in partitioned_specifiers.into_iter() {
       let base_dir = get_unique_path(
-        output_dir.join(dir_name_for_root(&root, &specifiers)),
+        output_dir.join(dir_name_for_root(&root)),
         &mut mapped_paths,
       );
       for specifier in specifiers {
