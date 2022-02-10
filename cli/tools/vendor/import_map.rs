@@ -5,6 +5,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::serde_json;
 use deno_graph::Module;
+use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
 use deno_graph::Resolved;
@@ -62,7 +63,9 @@ impl<'a> ImportMapBuilder<'a> {
   }
 
   pub fn into_file_text(self) -> String {
-    serde_json::to_string_pretty(&self.into_serializable()).unwrap()
+    let mut text = serde_json::to_string_pretty(&self.into_serializable()).unwrap();
+    text.push('\n');
+    text
   }
 }
 
@@ -89,9 +92,13 @@ impl<'a> ImportsBuilder<'a> {
   }
 }
 
-pub fn build_import_map(modules: &[&Module], mappings: &Mappings) -> String {
+pub fn build_import_map(
+  graph: &ModuleGraph,
+  modules: &[&Module],
+  mappings: &Mappings,
+) -> String {
   let mut import_map = ImportMapBuilder::new(mappings);
-  fill_scopes(modules, mappings, &mut import_map);
+  visit_modules(graph, modules, mappings, &mut import_map);
 
   for base_specifier in mappings.base_specifiers() {
     import_map
@@ -102,7 +109,8 @@ pub fn build_import_map(modules: &[&Module], mappings: &Mappings) -> String {
   import_map.into_file_text()
 }
 
-fn fill_scopes(
+fn visit_modules(
+  graph: &ModuleGraph,
   modules: &[&Module],
   mappings: &Mappings,
   import_map: &mut ImportMapBuilder,
@@ -118,16 +126,18 @@ fn fill_scopes(
     };
 
     for dep in module.dependencies.values() {
-      handle_maybe_resolved(
+      visit_maybe_resolved(
         &dep.maybe_code,
+        graph,
         import_map,
         &module.specifier,
         mappings,
         text_info,
         source_text,
       );
-      handle_maybe_resolved(
+      visit_maybe_resolved(
         &dep.maybe_type,
+        graph,
         import_map,
         &module.specifier,
         mappings,
@@ -137,8 +147,9 @@ fn fill_scopes(
     }
 
     if let Some((_, maybe_resolved)) = &module.maybe_types_dependency {
-      handle_maybe_resolved(
+      visit_maybe_resolved(
         maybe_resolved,
+        graph,
         import_map,
         &module.specifier,
         mappings,
@@ -149,8 +160,9 @@ fn fill_scopes(
   }
 }
 
-fn handle_maybe_resolved(
+fn visit_maybe_resolved(
   maybe_resolved: &Resolved,
+  graph: &ModuleGraph,
   import_map: &mut ImportMapBuilder,
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
@@ -164,24 +176,28 @@ fn handle_maybe_resolved(
     let text = text_from_range(text_info, source_text, range);
     // if the text is empty then it's probably an x-TypeScript-types
     if !text.is_empty() {
-      handle_dep_specifier(import_map, referrer, text, specifier, mappings);
+      handle_dep_specifier(
+        text, specifier, graph, import_map, referrer, mappings,
+      );
     }
   }
 }
 
 fn handle_dep_specifier(
+  text: &str,
+  unresolved_specifier: &ModuleSpecifier,
+  graph: &ModuleGraph,
   import_map: &mut ImportMapBuilder,
   referrer: &ModuleSpecifier,
-  text: &str,
-  specifier: &ModuleSpecifier,
   mappings: &Mappings,
 ) {
+  let specifier = graph.resolve(unresolved_specifier);
   // do not handle specifiers pointing at local modules
-  if !is_remote_specifier(specifier) {
+  if !is_remote_specifier(&specifier) {
     return;
   }
 
-  let base_specifier = mappings.base_specifier(specifier);
+  let base_specifier = mappings.base_specifier(&specifier);
   if is_absolute_specifier_text(text) {
     if !text.starts_with(base_specifier.as_str()) {
       panic!("Expected {} to start with {}", text, base_specifier);
@@ -189,32 +205,45 @@ fn handle_dep_specifier(
 
     let sub_path = &text[base_specifier.as_str().len()..];
     let expected_relative_specifier_text =
-      mappings.relative_path(base_specifier, specifier);
+      mappings.relative_path(base_specifier, &specifier);
     if expected_relative_specifier_text == sub_path {
       return;
     }
-    println!(
-      "File system text: {} || Sub path: {}",
-      expected_relative_specifier_text, sub_path
-    );
 
     if !is_remote_specifier(referrer) {
-      import_map.imports.add(text.to_string(), specifier);
+      import_map.imports.add(text.to_string(), &specifier);
     } else {
       let imports = import_map.scope(base_specifier);
-      imports.add(sub_path.to_string(), specifier);
+      imports.add(sub_path.to_string(), &specifier);
     }
   } else {
     let expected_relative_specifier_text =
-      mappings.relative_specifier_text(referrer, specifier);
+      mappings.relative_specifier_text(referrer, &specifier);
     if expected_relative_specifier_text == text {
       return;
     }
-    // println!("File system text: {} || Actual: {}", file_system_specifier_text, text);
 
+    let key = if text.starts_with("./") || text.starts_with("../") {
+      // resolve relative specifier key
+      let mut local_base_specifier = mappings.local_uri(base_specifier);
+      local_base_specifier = local_base_specifier
+        .join(&unresolved_specifier.path()[1..])
+        .unwrap_or_else(|_| {
+          panic!(
+            "Error joining {} to {}",
+            unresolved_specifier.path(),
+            local_base_specifier
+          )
+        });
+      local_base_specifier.set_query(unresolved_specifier.query());
+      mappings
+        .relative_specifier_text(mappings.output_dir(), &local_base_specifier)
+    } else {
+      // absolute (`/`) or bare specifier should be left as-is
+      text.to_string()
+    };
     let imports = import_map.scope(base_specifier);
-    // todo: wrong
-    imports.add(text.to_string(), specifier);
+    imports.add(key, &specifier);
   }
 }
 

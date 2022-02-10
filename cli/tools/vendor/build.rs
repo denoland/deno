@@ -48,30 +48,21 @@ pub fn build(
       None => continue,
     };
     let local_path = mappings.local_path(&module.specifier);
-    let file_text = match module.kind {
-      ModuleKind::Esm => {
-        /*let text_changes =
-          collect_remote_module_text_changes(&mappings, module);
-        apply_text_changes(source, text_changes)*/
-        source.to_string()
-      }
-      ModuleKind::Asserted => source.to_string(),
-      _ => {
-        log::warn!(
-          "Unsupported module kind {:?} for {}",
-          module.kind,
-          module.specifier
-        );
-        continue;
-      }
-    };
+    if !matches!(module.kind, ModuleKind::Esm | ModuleKind::Asserted) {
+      log::warn!(
+        "Unsupported module kind {:?} for {}",
+        module.kind,
+        module.specifier
+      );
+      continue;
+    }
     environment.create_dir_all(local_path.parent().unwrap())?;
-    environment.write_file(&local_path, &file_text)?;
+    environment.write_file(&local_path, source)?;
   }
 
   // create the import map
   if !mappings.base_specifiers().is_empty() {
-    let import_map_text = build_import_map(&all_modules, &mappings);
+    let import_map_text = build_import_map(graph, &all_modules, &mappings);
     environment
       .write_file(&output_dir.join("import_map.json"), &import_map_text)?;
   }
@@ -86,13 +77,28 @@ mod test {
   use pretty_assertions::assert_eq;
 
   #[tokio::test]
-  async fn should_handle_remote_files() {
+  async fn local_specifiers_to_remote() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let output = builder
       .with_loader(|loader| {
         loader
-          .add_local_file("/mod.ts", r#"import "https://localhost/mod.ts";"#)
-          .add_remote_file("https://localhost/mod.ts", "export class Test {}");
+          .add_local_file(
+            "/mod.ts",
+            concat!(
+              r#"import "https://localhost/mod.ts";"#,
+              r#"import "https://localhost/other.ts?test";"#,
+              r#"import "https://localhost/redirect.ts";"#,
+            ),
+          )
+          .add_remote_file("https://localhost/mod.ts", "export class Mod {}")
+          .add_remote_file(
+            "https://localhost/other.ts?test",
+            "export class Other {}",
+          )
+          .add_redirect(
+            "https://localhost/redirect.ts",
+            "https://localhost/mod.ts",
+          );
       })
       .build()
       .await
@@ -102,9 +108,125 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost"
+          "https://localhost/": "./localhost",
+          "https://localhost/other.ts?test": "./localhost/other.ts",
+          "https://localhost/redirect.ts": "./localhost/mod.ts",
         }
       }))
-    )
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.ts", "export class Mod {}"),
+        ("/vendor/localhost/other.ts", "export class Other {}"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn remote_specifiers() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add_local_file(
+            "/mod.ts",
+            concat!(
+              r#"import "https://localhost/mod.ts";"#,
+              r#"import "https://other/mod.ts";"#,
+            ),
+          )
+          .add_remote_file(
+            "https://localhost/mod.ts",
+            concat!(
+              "export * from './other.ts';",
+              "export * from './redirect.ts';",
+              "export * from '/absolute.ts';",
+            ),
+          )
+          .add_remote_file(
+            "https://localhost/other.ts",
+            "export class Other {}",
+          )
+          .add_redirect(
+            "https://localhost/redirect.ts",
+            "https://localhost/other.ts",
+          )
+          .add_remote_file(
+            "https://localhost/absolute.ts",
+            "export class Absolute {}",
+          )
+          .add_remote_file(
+            "https://other/mod.ts",
+            "export * from './sub/mod.ts';",
+          )
+          .add_remote_file(
+            "https://other/sub/mod.ts",
+            concat!(
+              "export * from '../sub2/mod.ts';",
+              "export * from '../sub2/other?asdf';",
+            ),
+          )
+          .add_remote_file("https://other/sub2/mod.ts", "export class Mod {}")
+          .add_remote_file_with_headers(
+            "https://other/sub2/other?asdf",
+            "export class Other {}",
+            &[("content-type", "application/javascript")],
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost",
+          "https://other/": "./other"
+        },
+        "scopes": {
+          "./localhost": {
+            "/absolute.ts": "./localhost/absolute.ts",
+            "./localhost/redirect.ts": "./localhost/other.ts",
+          },
+          "./other": {
+            "./other/sub2/other?asdf": "./other/sub2/other.js"
+          }
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/absolute.ts", "export class Absolute {}"),
+        (
+          "/vendor/localhost/mod.ts",
+          concat!(
+            "export * from './other.ts';",
+            "export * from './redirect.ts';",
+            "export * from '/absolute.ts';",
+          )
+        ),
+        ("/vendor/localhost/other.ts", "export class Other {}"),
+        ("/vendor/other/mod.ts", "export * from './sub/mod.ts';"),
+        (
+          "/vendor/other/sub/mod.ts",
+          concat!(
+            "export * from '../sub2/mod.ts';",
+            "export * from '../sub2/other?asdf';",
+          )
+        ),
+        ("/vendor/other/sub2/mod.ts", "export class Mod {}"),
+        ("/vendor/other/sub2/other.js", "export class Other {}"),
+      ]),
+    );
+  }
+
+  fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {
+    items
+      .iter()
+      .map(|(f, t)| (f.to_string(), t.to_string()))
+      .collect()
   }
 }

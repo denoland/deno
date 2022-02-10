@@ -41,9 +41,7 @@ impl InMemoryLoader {
     text: impl AsRef<str>,
   ) -> &mut Self {
     let path = make_path(path.as_ref());
-    self
-      .local_files
-      .insert(path, text.as_ref().to_string());
+    self.local_files.insert(path, text.as_ref().to_string());
     self
   }
 
@@ -72,18 +70,6 @@ impl InMemoryLoader {
     self.remote_files.insert(
       ModuleSpecifier::parse(specifier.as_ref()).unwrap(),
       Ok((text.as_ref().to_string(), Some(headers))),
-    );
-    self
-  }
-
-  pub fn add_remote_file_with_error(
-    &mut self,
-    specifier: impl AsRef<str>,
-    error_text: impl AsRef<str>,
-  ) -> &mut Self {
-    self.remote_files.insert(
-      ModuleSpecifier::parse(specifier.as_ref()).unwrap(),
-      Err(error_text.as_ref().to_string()),
     );
     self
   }

@@ -23,9 +23,10 @@ mod test;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   // todo: error when someone uses an import map in the vendor folder
-  // todo: need to handle rewriting out the current import map to the new location? Though probably not possible.
+  // todo: need to handle rewriting out the current import map to the new location? Doesn't seem possible.
   // I think people will need to manually update
   // todo: add integration tests
+  // todo: add x-TypeScript-types support via proxy file
   let output_dir = resolve_and_validate_output_dir(&flags)?;
   let graph = create_graph(&ps, &flags).await?;
 
