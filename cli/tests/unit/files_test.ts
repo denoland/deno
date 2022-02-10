@@ -174,7 +174,7 @@ Deno.test(
     file.close();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o626);
     }
   },
 );
@@ -193,7 +193,7 @@ Deno.test(
     file.close();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o626);
     }
   },
 );
@@ -217,7 +217,7 @@ Deno.test(
     file.close();
     const pathInfo = Deno.statSync(fileUrl);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o626);
     }
 
     Deno.removeSync(tempDir, { recursive: true });
@@ -243,7 +243,7 @@ Deno.test(
     file.close();
     const pathInfo = Deno.statSync(fileUrl);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o626);
     }
 
     Deno.removeSync(tempDir, { recursive: true });

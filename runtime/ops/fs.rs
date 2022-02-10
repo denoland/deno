@@ -52,7 +52,6 @@ pub fn init() -> Extension {
       ("op_flock_async", op_async(op_flock_async)),
       ("op_funlock_sync", op_sync(op_funlock_sync)),
       ("op_funlock_async", op_async(op_funlock_async)),
-      ("op_umask", op_sync(op_umask)),
       ("op_chdir", op_sync(op_chdir)),
       ("op_mkdir_sync", op_sync(op_mkdir_sync)),
       ("op_mkdir_async", op_async(op_mkdir_async)),
@@ -467,38 +466,6 @@ async fn op_funlock_async(
     Ok(())
   })
   .await?
-}
-
-fn op_umask(
-  state: &mut OpState,
-  mask: Option<u32>,
-  _: (),
-) -> Result<u32, AnyError> {
-  super::check_unstable(state, "Deno.umask");
-  // TODO implement umask for Windows
-  // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
-  // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
-  #[cfg(not(unix))]
-  {
-    let _ = mask; // avoid unused warning.
-    Err(not_supported())
-  }
-  #[cfg(unix)]
-  {
-    use nix::sys::stat::mode_t;
-    use nix::sys::stat::umask;
-    use nix::sys::stat::Mode;
-    let r = if let Some(mask) = mask {
-      // If mask provided, return previous.
-      umask(Mode::from_bits_truncate(mask as mode_t))
-    } else {
-      // If no mask provided, we query the current. Requires two syscalls.
-      let prev = umask(Mode::from_bits_truncate(0o777));
-      let _ = umask(prev);
-      prev
-    };
-    Ok(r.bits() as u32)
-  }
 }
 
 fn op_chdir(

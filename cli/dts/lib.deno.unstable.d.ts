@@ -4,23 +4,6 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.  This API is under consideration to
-   * determine if permissions are required to call it.
-   *
-   * Retrieve the process umask.  If `mask` is provided, sets the process umask.
-   * This call always returns what the umask was before the call.
-   *
-   * ```ts
-   * console.log(Deno.umask());  // e.g. 18 (0o022)
-   * const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
-   * console.log(Deno.umask());  // e.g. 63 (0o077)
-   * ```
-   *
-   * NOTE:  This API is not implemented on Windows
-   */
-  export function umask(mask?: number): number;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Gets the size of the console as columns/rows.

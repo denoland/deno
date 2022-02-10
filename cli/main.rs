@@ -1400,6 +1400,7 @@ pub fn main() {
   setup_panic_hook();
 
   unix_util::raise_fd_limit();
+  unix_util::reset_umask();
   windows_util::ensure_stdio_open();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10

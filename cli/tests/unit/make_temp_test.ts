@@ -33,7 +33,7 @@ Deno.test(
     const path = Deno.makeTempDirSync();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o700 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o700);
     }
   },
 );
@@ -75,7 +75,7 @@ Deno.test(
     const path = await Deno.makeTempDir();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o700 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o700);
     }
   },
 );
@@ -108,7 +108,7 @@ Deno.test(
     const path = Deno.makeTempFileSync();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o600 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o600);
     }
   },
 );
@@ -151,7 +151,7 @@ Deno.test(
     const path = await Deno.makeTempFile();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
-      assertEquals(pathInfo.mode! & 0o777, 0o600 & ~Deno.umask());
+      assertEquals(pathInfo.mode! & 0o777, 0o600);
     }
   },
 );

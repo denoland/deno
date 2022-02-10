@@ -11,7 +11,7 @@ function assertDirectory(path: string, mode?: number) {
   const info = Deno.lstatSync(path);
   assert(info.isDirectory);
   if (Deno.build.os !== "windows" && mode !== undefined) {
-    assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
+    assertEquals(info.mode! & 0o777, mode);
   }
 }
 
