@@ -100,7 +100,7 @@ pub fn get_unique_path(
 ) -> PathBuf {
   let original_path = path.clone();
   let mut count = 2;
-  // case insensitive comparison for case insensitive file systems
+  // case insensitive comparison so the output works on case insensitive file systems
   while !unique_set.insert(path.to_string_lossy().to_lowercase()) {
     path = path_with_stem_suffix(&original_path, &count.to_string());
     count += 1;
@@ -239,18 +239,9 @@ mod test {
 
   #[test]
   fn should_get_dir_name_root() {
-    run_test(
-      "http://deno.land/x/test",
-      "deno.land/x/test",
-    );
-    run_test(
-      "http://localhost",
-      "localhost",
-    );
-    run_test(
-      "http://localhost/test%20:test",
-      "localhost/test%20_test",
-    );
+    run_test("http://deno.land/x/test", "deno.land/x/test");
+    run_test("http://localhost", "localhost");
+    run_test("http://localhost/test%20:test", "localhost/test%20_test");
 
     fn run_test(specifier: &str, expected: &str) {
       assert_eq!(

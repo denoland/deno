@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 
 use crate::flags::VendorFlags;
@@ -15,64 +14,22 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use self::import_map::build_import_map;
-use self::mappings::Mappings;
-use self::specifiers::is_remote_specifier;
-
+mod build;
 mod import_map;
 mod mappings;
 mod specifiers;
+#[cfg(test)]
+mod test;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   // todo: error when someone uses an import map in the vendor folder
   // todo: need to handle rewriting out the current import map to the new location? Though probably not possible.
   // I think people will need to manually update
+  // todo: add integration tests
   let output_dir = resolve_and_validate_output_dir(&flags)?;
   let graph = create_graph(&ps, &flags).await?;
-  let all_modules = graph.modules();
-  let remote_modules = all_modules
-    .iter()
-    .filter(|m| is_remote_specifier(&m.specifier))
-    .copied()
-    .collect::<Vec<_>>();
-  let mappings =
-    Mappings::from_remote_modules(&graph, &remote_modules, &output_dir)?;
 
-  // collect and write out all the text changes
-  for module in &remote_modules {
-    let source = match &module.maybe_source {
-      Some(source) => source,
-      None => continue,
-    };
-    let local_path = mappings.local_path(&module.specifier);
-    let file_text = match module.kind {
-      ModuleKind::Esm => {
-        /*let text_changes =
-          collect_remote_module_text_changes(&mappings, module);
-        apply_text_changes(source, text_changes)*/
-        source.to_string()
-      }
-      ModuleKind::Asserted => source.to_string(),
-      _ => {
-        log::warn!(
-          "Unsupported module kind {:?} for {}",
-          module.kind,
-          module.specifier
-        );
-        continue;
-      }
-    };
-    std::fs::create_dir_all(local_path.parent().unwrap())?;
-    std::fs::write(local_path, file_text)?;
-  }
-
-  // create the import map
-  if !mappings.base_specifiers().is_empty() {
-    let import_map_text = build_import_map(&all_modules, &mappings);
-    std::fs::write(output_dir.join("import_map.json"), import_map_text)?;
-  }
-
-  Ok(())
+  build::build(&graph, &output_dir, &build::RealVendorEnvironment)
 }
 
 fn resolve_and_validate_output_dir(
@@ -112,7 +69,7 @@ async fn create_graph(
     .collect::<Result<Vec<_>, AnyError>>()?;
 
   // todo(dsherret): there is a lot of copy and paste here from
-  // other parts of the codebase
+  // other parts of the codebase. We should consolidate this.
   let mut cache = crate::cache::FetchCacher::new(
     ps.dir.gen_cache.clone(),
     ps.file_fetcher.clone(),
