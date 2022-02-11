@@ -23,6 +23,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -559,7 +560,7 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
 
   let script_coverages =
     collect_coverages(coverage_flags.files, coverage_flags.ignore)?;

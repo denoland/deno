@@ -384,19 +384,17 @@ impl Flags {
       vec![]
     }
   }
-}
 
-impl From<Flags> for PermissionsOptions {
-  fn from(flags: Flags) -> Self {
-    Self {
-      allow_env: flags.allow_env,
-      allow_hrtime: flags.allow_hrtime,
-      allow_net: flags.allow_net,
-      allow_ffi: flags.allow_ffi,
-      allow_read: flags.allow_read,
-      allow_run: flags.allow_run,
-      allow_write: flags.allow_write,
-      prompt: flags.prompt,
+  pub fn permissions_options(&self) -> PermissionsOptions {
+    PermissionsOptions {
+      allow_env: self.allow_env.clone(),
+      allow_hrtime: self.allow_hrtime,
+      allow_net: self.allow_net.clone(),
+      allow_ffi: self.allow_ffi.clone(),
+      allow_read: self.allow_read.clone(),
+      allow_run: self.allow_run.clone(),
+      allow_write: self.allow_write.clone(),
+      prompt: self.prompt,
     }
   }
 }
