@@ -676,7 +676,7 @@ delete Object.prototype.__proto__;
     numCpus = cpuCount;
     registerErrors();
 
-    pollForMessages();
+    globalThis.pollForMessages = pollForMessages;
 
     const internalSymbol = Symbol("Deno.internal");
 
