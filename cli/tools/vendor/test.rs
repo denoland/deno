@@ -122,28 +122,19 @@ struct TestVendorEnvironment {
 
 impl VendorEnvironment for TestVendorEnvironment {
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
-    let dir_path = dir_path.to_path_buf();
     let mut directories = self.directories.borrow_mut();
-    if !directories.insert(dir_path.clone()) {
-      for path in dir_path.ancestors() {
-        if !directories.insert(path.to_path_buf()) {
-          break;
-        }
+    for path in dir_path.ancestors() {
+      if !directories.insert(path.to_path_buf()) {
+        break;
       }
     }
     Ok(())
   }
 
   fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
-    if !self
-      .directories
-      .borrow()
-      .contains(file_path.parent().unwrap())
-    {
-      bail!(
-        "Directory not found: {}",
-        file_path.parent().unwrap().display()
-      );
+    let parent = file_path.parent().unwrap();
+    if !self.directories.borrow().contains(parent) {
+      bail!("Directory not found: {}", parent.display());
     }
     self
       .files

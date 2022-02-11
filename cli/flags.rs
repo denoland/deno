@@ -1439,6 +1439,7 @@ fn vendor_subcommand<'a>() -> App<'a> {
         )
         .takes_value(false),
     )
+    .arg(import_map_arg())
 }
 
 fn compile_args(app: App) -> App {
@@ -2261,6 +2262,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  import_map_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
     entry_points: matches
       .values_of("entry_points")

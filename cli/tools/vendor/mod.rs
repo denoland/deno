@@ -22,13 +22,8 @@ mod specifiers;
 mod test;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
-  // todo: error when someone uses an import map in the vendor folder
-  // todo: need to handle rewriting out the current import map to the new location? Doesn't seem possible.
-  // I think people will need to manually update
-  // todo: add integration tests
   // todo: add x-TypeScript-types support via proxy file
-  // todo: test for data url
-  let output_dir = resolve_and_validate_output_dir(&flags)?;
+  let output_dir = resolve_and_validate_output_dir(&flags, &ps)?;
   let graph = create_graph(&ps, &flags).await?;
 
   build::build(&graph, &output_dir, &build::RealVendorEnvironment)
@@ -36,6 +31,7 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
 
 fn resolve_and_validate_output_dir(
   flags: &VendorFlags,
+  ps: &ProcState,
 ) -> Result<PathBuf, AnyError> {
   let output_dir = match &flags.output_path {
     Some(output_path) => output_path.clone(),
@@ -44,6 +40,22 @@ fn resolve_and_validate_output_dir(
   if !flags.force && !is_dir_empty(&output_dir)? {
     bail!("Directory {} was not empty. Please provide an empty directory or use --force to ignore this error and potentially overwrite its contents.", output_dir.display());
   }
+
+  // check the import map
+  if let Some(import_map_path) = ps
+    .maybe_import_map
+    .as_ref()
+    .and_then(|m| m.base_url().to_file_path().ok())
+  {
+    if import_map_path.starts_with(&output_dir) {
+      // We don't allow using the output directory to help generate the new state
+      // of itself because supporting this scenario adds a lot of complexity.
+      bail!(
+        "Using an import map found in the output directory is not supported."
+      );
+    }
+  }
+
   Ok(output_dir)
 }
 

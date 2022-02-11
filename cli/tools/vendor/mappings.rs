@@ -120,7 +120,14 @@ impl Mappings {
         .unwrap();
     }
 
-    from.make_relative(&to).unwrap()
+    // workaround for url crate not adding a trailing slash for a directory
+    // it seems to be fixed once a version greater than 2.2.2 is released
+    let is_dir = to.path().ends_with('/');
+    let mut text = from.make_relative(&to).unwrap();
+    if is_dir && !text.ends_with('/') && to.query().is_none() {
+      text.push('/');
+    }
+    text
   }
 
   pub fn relative_specifier_text(

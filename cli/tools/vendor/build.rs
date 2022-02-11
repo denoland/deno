@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use std::path::Path;
 
 use deno_core::error::AnyError;
@@ -38,8 +40,6 @@ pub fn build(
     .collect::<Vec<_>>();
   let mappings =
     Mappings::from_remote_modules(graph, &remote_modules, output_dir)?;
-
-  environment.create_dir_all(output_dir)?;
 
   // collect and write out all the text changes
   for module in &remote_modules {
@@ -120,7 +120,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost",
+          "https://localhost/": "./localhost/",
           "https://localhost/other.ts?test": "./localhost/other.ts",
           "https://localhost/redirect.ts": "./localhost/mod.ts",
         }
@@ -185,15 +185,15 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost",
-          "https://other/": "./other"
+          "https://localhost/": "./localhost/",
+          "https://other/": "./other/"
         },
         "scopes": {
-          "./localhost": {
+          "./localhost/": {
             "/absolute.ts": "./localhost/absolute.ts",
             "./localhost/redirect.ts": "./localhost/other.ts",
           },
-          "./other": {
+          "./other/": {
             "./other/sub2/other?asdf": "./other/sub2/other.js"
           }
         }
@@ -256,7 +256,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost",
+          "https://localhost/": "./localhost/",
           "https://localhost/mod.TS": "./localhost/mod_2.TS",
           "https://localhost/mod.ts": "./localhost/mod_3.ts",
           "https://localhost/mod.ts?test": "./localhost/mod_4.ts",
@@ -271,6 +271,42 @@ mod test {
         ("/vendor/localhost/mod_2.TS", "export class Mod2 {}"),
         ("/vendor/localhost/mod_3.ts", "export class Mod3 {}"),
         ("/vendor/localhost/mod_4.ts", "export class Mod4 {}"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn multiple_entrypoints() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .add_entry_point("/test.deps.ts")
+      .with_loader(|loader| {
+        loader
+          .add("/mod.ts", r#"import "https://localhost/mod.ts";"#)
+          .add(
+            "/test.deps.ts",
+            r#"export * from "https://localhost/test.ts";"#,
+          )
+          .add("https://localhost/mod.ts", "export class Mod {}")
+          .add("https://localhost/test.ts", "export class Test {}");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.ts", "export class Mod {}"),
+        ("/vendor/localhost/test.ts", "export class Test {}"),
       ]),
     );
   }
@@ -295,7 +331,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost"
+          "https://localhost/": "./localhost/"
         }
       }))
     );
@@ -309,9 +345,7 @@ mod test {
   async fn data_urls() {
     let mut builder = VendorTestBuilder::with_default_setup();
 
-    let mod_file_text = format!(
-      r#"import * as b from "data:application/typescript,export%20*%20from%20%22https://localhost/mod.ts%22;";"#
-    );
+    let mod_file_text = r#"import * as b from "data:application/typescript,export%20*%20from%20%22https://localhost/mod.ts%22;";"#;
 
     let output = builder
       .with_loader(|loader| {
@@ -327,7 +361,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost"
+          "https://localhost/": "./localhost/"
         }
       }))
     );
