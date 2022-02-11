@@ -74,9 +74,11 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
       if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
         return if file_stem.to_lowercase().ends_with(".d") {
           path.with_file_name(format!(
-            "{}_{}.d.{}",
+            "{}_{}.{}.{}",
             &file_stem[..file_stem.len() - ".d".len()],
             suffix,
+            // maintain casing
+            &file_stem[file_stem.len() - "d".len()..],
             ext
           ))
         } else {
@@ -125,7 +127,7 @@ pub fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
   specifier.scheme().to_lowercase().starts_with("http")
 }
 
-pub fn is_absolute_specifier_text(text: &str) -> bool {
+pub fn is_remote_specifier_text(text: &str) -> bool {
   text.trim_start().to_lowercase().starts_with("http")
 }
 
@@ -279,8 +281,7 @@ mod test {
     );
     assert_eq!(
       path_with_stem_suffix(&PathBuf::from("/test.D.TS"), "2"),
-      // good enough
-      PathBuf::from("/test_2.d.TS")
+      PathBuf::from("/test_2.D.TS")
     );
     assert_eq!(
       path_with_stem_suffix(&PathBuf::from("/test.d.mts"), "2"),

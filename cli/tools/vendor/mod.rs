@@ -27,6 +27,7 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   // I think people will need to manually update
   // todo: add integration tests
   // todo: add x-TypeScript-types support via proxy file
+  // todo: test for data url
   let output_dir = resolve_and_validate_output_dir(&flags)?;
   let graph = create_graph(&ps, &flags).await?;
 

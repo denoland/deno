@@ -223,6 +223,58 @@ mod test {
     );
   }
 
+  #[tokio::test]
+  async fn same_target_filename_specifiers() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add_local_file(
+            "/mod.ts",
+            concat!(
+              r#"import "https://localhost/MOD.TS";"#,
+              r#"import "https://localhost/mod.TS";"#,
+              r#"import "https://localhost/mod.ts";"#,
+              r#"import "https://localhost/mod.ts?test";"#,
+              r#"import "https://localhost/CAPS.TS";"#,
+            ),
+          )
+          .add_remote_file("https://localhost/MOD.TS", "export class Mod {}")
+          .add_remote_file("https://localhost/mod.TS", "export class Mod2 {}")
+          .add_remote_file("https://localhost/mod.ts", "export class Mod3 {}")
+          .add_remote_file(
+            "https://localhost/mod.ts?test",
+            "export class Mod4 {}",
+          )
+          .add_remote_file("https://localhost/CAPS.TS", "export class Caps {}");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost",
+          "https://localhost/mod.TS": "./localhost/mod_2.TS",
+          "https://localhost/mod.ts": "./localhost/mod_3.ts",
+          "https://localhost/mod.ts?test": "./localhost/mod_4.ts",
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/CAPS.TS", "export class Caps {}"),
+        ("/vendor/localhost/MOD.TS", "export class Mod {}"),
+        ("/vendor/localhost/mod_2.TS", "export class Mod2 {}"),
+        ("/vendor/localhost/mod_3.ts", "export class Mod3 {}"),
+        ("/vendor/localhost/mod_4.ts", "export class Mod4 {}"),
+      ]),
+    );
+  }
+
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {
     items
       .iter()

@@ -12,8 +12,8 @@ use deno_graph::Resolved;
 use serde::Serialize;
 
 use super::mappings::Mappings;
-use super::specifiers::is_absolute_specifier_text;
 use super::specifiers::is_remote_specifier;
+use super::specifiers::is_remote_specifier_text;
 
 #[derive(Serialize)]
 struct SerializableImportMap {
@@ -63,7 +63,8 @@ impl<'a> ImportMapBuilder<'a> {
   }
 
   pub fn into_file_text(self) -> String {
-    let mut text = serde_json::to_string_pretty(&self.into_serializable()).unwrap();
+    let mut text =
+      serde_json::to_string_pretty(&self.into_serializable()).unwrap();
     text.push('\n');
     text
   }
@@ -198,7 +199,7 @@ fn handle_dep_specifier(
   }
 
   let base_specifier = mappings.base_specifier(&specifier);
-  if is_absolute_specifier_text(text) {
+  if is_remote_specifier_text(text) {
     if !text.starts_with(base_specifier.as_str()) {
       panic!("Expected {} to start with {}", text, base_specifier);
     }

@@ -155,31 +155,41 @@ impl Mappings {
   }
 }
 
-fn path_with_extension(path: &Path, ext: &str) -> PathBuf {
+fn path_with_extension(path: &Path, new_ext: &str) -> PathBuf {
   if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
-    if path.extension().is_some() {
+    if let Some(old_ext) = path.extension().map(|f| f.to_string_lossy()) {
       if file_stem.to_lowercase().ends_with(".d") {
+        if new_ext.to_lowercase() == format!("d.{}", old_ext.to_lowercase()) {
+          // maintain casing
+          return path.to_path_buf();
+        }
         return path.with_file_name(format!(
           "{}.{}",
           &file_stem[..file_stem.len() - ".d".len()],
-          ext
+          new_ext
         ));
+      }
+      if new_ext.to_lowercase() == old_ext.to_lowercase() {
+        // maintain casing
+        return path.to_path_buf();
       }
       let media_type: MediaType = path.into();
       if media_type == MediaType::Unknown {
         return path.with_file_name(format!(
           "{}.{}",
           path.file_name().unwrap().to_string_lossy(),
-          ext
+          new_ext
         ));
       }
     }
   }
-  path.with_extension(ext)
+  path.with_extension(new_ext)
 }
 
 #[cfg(test)]
 mod test {
+  use pretty_assertions::assert_eq;
+
   use super::*;
 
   #[test]
@@ -194,7 +204,13 @@ mod test {
     );
     assert_eq!(
       path_with_extension(&PathBuf::from("/test.D.TS"), "d.ts"),
-      PathBuf::from("/test.d.ts")
+      // maintains casing
+      PathBuf::from("/test.D.TS"),
+    );
+    assert_eq!(
+      path_with_extension(&PathBuf::from("/test.TS"), "ts"),
+      // maintains casing
+      PathBuf::from("/test.TS"),
     );
     assert_eq!(
       path_with_extension(&PathBuf::from("/test.ts"), "js"),
