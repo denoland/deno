@@ -48,6 +48,7 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectHasOwn,
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectIs,
@@ -648,7 +649,7 @@
 
     const defaultValues = {};
     for (const member of allMembers) {
-      if ("defaultValue" in member) {
+      if (ObjectHasOwn(member, "defaultValue")) {
         const idlMemberValue = member.defaultValue;
         const imvType = typeof idlMemberValue;
         // Copy by value types can be directly assigned, copy by reference types
@@ -1013,13 +1014,16 @@
     for (const key in descriptors) {
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
-      if ("value" in descriptor && typeof descriptor.value === "function") {
+      if (
+        ObjectHasOwn(descriptor, "value") &&
+        typeof descriptor.value === "function"
+      ) {
         ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           writable: true,
           configurable: true,
         });
-      } else if ("get" in descriptor) {
+      } else if (ObjectHasOwn(descriptor, "get")) {
         ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           configurable: true,

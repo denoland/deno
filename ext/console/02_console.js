@@ -27,6 +27,7 @@
     ObjectGetPrototypeOf,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertySymbols,
+    ObjectHasOwn,
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectPrototypePropertyIsEnumerable,
@@ -327,7 +328,10 @@
 
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    if (customInspect in value && typeof value[customInspect] === "function") {
+    if (
+      ObjectHasOwn(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
       return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
@@ -1201,7 +1205,10 @@
     level,
     inspectOptions,
   ) {
-    if (customInspect in value && typeof value[customInspect] === "function") {
+    if (
+      ObjectHasOwn(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
       return String(value[customInspect](inspect));
     }
     // This non-unique symbol is used to support op_crates, ie.
@@ -1210,7 +1217,7 @@
     // Internal only, shouldn't be used by users.
     const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
     if (
-      privateCustomInspect in value &&
+      ObjectHasOwn(value, privateCustomInspect) &&
       typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
@@ -2038,8 +2045,8 @@
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
           for (const k of keys) {
-            if (!primitive && k in valueObj) {
-              if (!(k in objectValues)) {
+            if (!primitive && ObjectHasOwn(valueObj, k)) {
+              if (!ObjectHasOwn(objectValues, k)) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
               }
               objectValues[k][idx] = stringifyValue(valueObj[k]);

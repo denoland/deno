@@ -18,6 +18,7 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
+    ObjectHasOwn,
     FunctionPrototypeCall,
     PromiseResolve,
     PromiseReject,
@@ -120,7 +121,10 @@
    */
   function cache(desc, state) {
     let { name: key } = desc;
-    if ((desc.name === "read" || desc.name === "write") && "path" in desc) {
+    if (
+      (desc.name === "read" || desc.name === "write") &&
+      ObjectHasOwn(desc, "path")
+    ) {
       key += `-${desc.path}`;
     } else if (desc.name === "net" && desc.host) {
       key += `-${desc.host}`;

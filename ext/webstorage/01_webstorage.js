@@ -12,6 +12,7 @@
     ObjectDefineProperty,
     ObjectFromEntries,
     ObjectEntries,
+    ObjectHasOwn,
     ReflectGet,
     Proxy,
   } = window.__bootstrap.primordials;
@@ -116,7 +117,7 @@
       },
       get(target, key) {
         if (typeof key == "symbol") return target[key];
-        if (key in target) {
+        if (ObjectHasOwn(target, key)) {
           return ReflectGet(...new SafeArrayIterator(arguments));
         } else {
           return target.getItem(key) ?? undefined;
@@ -144,7 +145,7 @@
         if (arguments.length === 1) {
           return undefined;
         }
-        if (key in target) {
+        if (ObjectHasOwn(target, key)) {
           return undefined;
         }
         const value = target.getItem(key);

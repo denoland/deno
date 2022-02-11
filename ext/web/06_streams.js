@@ -32,6 +32,7 @@
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetPrototypeOf,
+    ObjectHasOwn,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
@@ -208,7 +209,7 @@
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    return isFakeDetached in O;
+    return ObjectHasOwn(O, isFakeDetached);
   }
 
   /**
@@ -410,7 +411,10 @@
    * @returns {T}
    */
   function dequeueValue(container) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ObjectHasOwn(container, _queue) &&
+        ObjectHasOwn(container, _queueTotalSize),
+    );
     assert(container[_queue].length);
     const valueWithSize = ArrayPrototypeShift(container[_queue]);
     container[_queueTotalSize] -= valueWithSize.size;
@@ -428,7 +432,10 @@
    * @returns {void}
    */
   function enqueueValueWithSize(container, value, size) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ObjectHasOwn(container, _queue) &&
+        ObjectHasOwn(container, _queueTotalSize),
+    );
     if (isNonNegativeNumber(size) === false) {
       throw RangeError("chunk size isn't a positive number");
     }
@@ -610,7 +617,7 @@
    */
   function isReadableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_controller in value));
+      !ObjectHasOwn(value, _controller));
   }
 
   /**
@@ -630,7 +637,7 @@
    */
   function isReadableStreamDefaultReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_readRequests in value));
+      !ObjectHasOwn(value, _readRequests));
   }
 
   /**
@@ -639,7 +646,7 @@
    */
   function isReadableStreamBYOBReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_readIntoRequests in value));
+      !ObjectHasOwn(value, _readIntoRequests));
   }
 
   /**
@@ -657,7 +664,7 @@
    */
   function isWritableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_controller in value));
+      !ObjectHasOwn(value, _controller));
   }
 
   /**
@@ -677,7 +684,10 @@
    * @returns {T | _close}
    */
   function peekQueueValue(container) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ObjectHasOwn(container, _queue) &&
+        ObjectHasOwn(container, _queueTotalSize),
+    );
     assert(container[_queue].length);
     const valueWithSize = container[_queue][0];
     return valueWithSize.value;
@@ -4351,7 +4361,7 @@
           highWaterMark,
         );
       } else {
-        assert(!("type" in underlyingSourceDict));
+        assert(!(ObjectHasOwn(underlyingSourceDict, "type")));
         const sizeAlgorithm = extractSizeAlgorithm(strategy);
         const highWaterMark = extractHighWaterMark(strategy, 1);
         setUpReadableStreamDefaultControllerFromUnderlyingSource(

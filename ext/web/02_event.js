@@ -29,6 +29,7 @@
     ObjectCreate,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
+    ObjectHasOwn,
     ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
     SafeArrayIterator,
@@ -102,7 +103,7 @@
   function hasRelatedTarget(
     event,
   ) {
-    return "relatedTarget" in event;
+    return ObjectHasOwn(event, "relatedTarget");
   }
 
   const isTrusted = ObjectGetOwnPropertyDescriptor({
@@ -448,7 +449,7 @@
   function isNode(
     eventTarget,
   ) {
-    return Boolean(eventTarget && "nodeType" in eventTarget);
+    return Boolean(eventTarget && ObjectHasOwn(eventTarget, "nodeType"));
   }
 
   // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
@@ -483,7 +484,7 @@
   function isSlotable(
     nodeImpl,
   ) {
-    return Boolean(isNode(nodeImpl) && "assignedSlot" in nodeImpl);
+    return Boolean(isNode(nodeImpl) && ObjectHasOwn(nodeImpl, "assignedSlot"));
   }
 
   // DOM Logic functions
@@ -898,7 +899,7 @@
       options = normalizeAddEventHandlerOptions(options);
       const { listeners } = (this ?? globalThis)[eventTargetData];
 
-      if (!(type in listeners)) {
+      if (!ObjectHasOwn(listeners, type)) {
         listeners[type] = [];
       }
 
@@ -942,7 +943,7 @@
       });
 
       const { listeners } = (this ?? globalThis)[eventTargetData];
-      if (callback !== null && type in listeners) {
+      if (callback !== null && ObjectHasOwn(liteners, type)) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
           (listener) => listener.callback !== callback,
@@ -979,7 +980,7 @@
       const self = this ?? window;
 
       const { listeners } = self[eventTargetData];
-      if (!(event.type in listeners)) {
+      if (!ObjectHasOwn(listeners, event.type)) {
         setTarget(event, this);
         return true;
       }
