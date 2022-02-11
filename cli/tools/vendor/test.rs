@@ -20,44 +20,44 @@ use deno_graph::ModuleGraph;
 
 use super::build::VendorEnvironment;
 
-// Utilities that help `deno vendor` edge cases get tested in memory.
-// Note that utilities are still required.
+// Utilities that help `deno vendor` get tested in memory.
 
 type RemoteFileText = String;
 type RemoteFileHeaders = Option<HashMap<String, String>>;
 type RemoteFileResult = Result<(RemoteFileText, RemoteFileHeaders), String>;
 
 #[derive(Clone, Default)]
-pub struct InMemoryLoader {
-  local_files: HashMap<PathBuf, String>,
-  remote_files: HashMap<ModuleSpecifier, RemoteFileResult>,
+pub struct TestLoader {
+  files: HashMap<ModuleSpecifier, RemoteFileResult>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
 }
 
-impl InMemoryLoader {
-  pub fn add_local_file(
+impl TestLoader {
+  pub fn add(
     &mut self,
-    path: impl AsRef<str>,
+    path_or_specifier: impl AsRef<str>,
     text: impl AsRef<str>,
   ) -> &mut Self {
-    let path = make_path(path.as_ref());
-    self.local_files.insert(path, text.as_ref().to_string());
+    if path_or_specifier
+      .as_ref()
+      .to_lowercase()
+      .starts_with("http")
+    {
+      self.files.insert(
+        ModuleSpecifier::parse(path_or_specifier.as_ref()).unwrap(),
+        Ok((text.as_ref().to_string(), None)),
+      );
+    } else {
+      let path = make_path(path_or_specifier.as_ref());
+      let specifier = ModuleSpecifier::from_file_path(path).unwrap();
+      self
+        .files
+        .insert(specifier, Ok((text.as_ref().to_string(), None)));
+    }
     self
   }
 
-  pub fn add_remote_file(
-    &mut self,
-    specifier: impl AsRef<str>,
-    text: impl AsRef<str>,
-  ) -> &mut Self {
-    self.remote_files.insert(
-      ModuleSpecifier::parse(specifier.as_ref()).unwrap(),
-      Ok((text.as_ref().to_string(), None)),
-    );
-    self
-  }
-
-  pub fn add_remote_file_with_headers(
+  pub fn add_remote_with_headers(
     &mut self,
     specifier: impl AsRef<str>,
     text: impl AsRef<str>,
@@ -67,7 +67,7 @@ impl InMemoryLoader {
       .iter()
       .map(|(key, value)| (key.to_string(), value.to_string()))
       .collect();
-    self.remote_files.insert(
+    self.files.insert(
       ModuleSpecifier::parse(specifier.as_ref()).unwrap(),
       Ok((text.as_ref().to_string(), Some(headers))),
     );
@@ -87,26 +87,14 @@ impl InMemoryLoader {
   }
 }
 
-impl Loader for InMemoryLoader {
+impl Loader for TestLoader {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
   ) -> LoadFuture {
-    if specifier.scheme() == "file" {
-      let file_path = specifier.to_file_path().unwrap();
-      let result = self.local_files.get(&file_path).map(ToOwned::to_owned);
-      let specifier = specifier.clone();
-      return Box::pin(async move {
-        Ok(result.map(|result| LoadResponse {
-          content: Arc::new(result),
-          maybe_headers: None,
-          specifier,
-        }))
-      });
-    }
     let specifier = self.redirects.get(specifier).unwrap_or(specifier);
-    let result = self.remote_files.get(specifier).map(|result| match result {
+    let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse {
         specifier: specifier.clone(),
         content: Arc::new(result.0.clone()),
@@ -116,7 +104,10 @@ impl Loader for InMemoryLoader {
     });
     let result = match result {
       Some(Ok(result)) => Ok(Some(result)),
-      Some(Err(err)) => Err(anyhow!("{}", err.to_string())),
+      Some(Err(err)) => Err(anyhow!("{}", err)),
+      None if specifier.scheme() == "data" => {
+        deno_graph::source::load_data_url(specifier)
+      }
       None => Ok(None),
     };
     Box::pin(futures::future::ready(result))
@@ -170,7 +161,7 @@ pub struct VendorOutput {
 #[derive(Default)]
 pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
-  loader: InMemoryLoader,
+  loader: TestLoader,
 }
 
 impl VendorTestBuilder {
@@ -208,10 +199,7 @@ impl VendorTestBuilder {
     })
   }
 
-  pub fn with_loader(
-    &mut self,
-    action: impl Fn(&mut InMemoryLoader),
-  ) -> &mut Self {
+  pub fn with_loader(&mut self, action: impl Fn(&mut TestLoader)) -> &mut Self {
     action(&mut self.loader);
     self
   }

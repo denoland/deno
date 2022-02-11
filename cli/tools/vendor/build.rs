@@ -77,12 +77,27 @@ mod test {
   use pretty_assertions::assert_eq;
 
   #[tokio::test]
+  async fn no_remote_modules() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(output.import_map, None,);
+    assert_eq!(output.files, vec![],);
+  }
+
+  #[tokio::test]
   async fn local_specifiers_to_remote() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let output = builder
       .with_loader(|loader| {
         loader
-          .add_local_file(
+          .add(
             "/mod.ts",
             concat!(
               r#"import "https://localhost/mod.ts";"#,
@@ -90,11 +105,8 @@ mod test {
               r#"import "https://localhost/redirect.ts";"#,
             ),
           )
-          .add_remote_file("https://localhost/mod.ts", "export class Mod {}")
-          .add_remote_file(
-            "https://localhost/other.ts?test",
-            "export class Other {}",
-          )
+          .add("https://localhost/mod.ts", "export class Mod {}")
+          .add("https://localhost/other.ts?test", "export class Other {}")
           .add_redirect(
             "https://localhost/redirect.ts",
             "https://localhost/mod.ts",
@@ -129,14 +141,14 @@ mod test {
     let output = builder
       .with_loader(|loader| {
         loader
-          .add_local_file(
+          .add(
             "/mod.ts",
             concat!(
               r#"import "https://localhost/mod.ts";"#,
               r#"import "https://other/mod.ts";"#,
             ),
           )
-          .add_remote_file(
+          .add(
             "https://localhost/mod.ts",
             concat!(
               "export * from './other.ts';",
@@ -144,31 +156,22 @@ mod test {
               "export * from '/absolute.ts';",
             ),
           )
-          .add_remote_file(
-            "https://localhost/other.ts",
-            "export class Other {}",
-          )
+          .add("https://localhost/other.ts", "export class Other {}")
           .add_redirect(
             "https://localhost/redirect.ts",
             "https://localhost/other.ts",
           )
-          .add_remote_file(
-            "https://localhost/absolute.ts",
-            "export class Absolute {}",
-          )
-          .add_remote_file(
-            "https://other/mod.ts",
-            "export * from './sub/mod.ts';",
-          )
-          .add_remote_file(
+          .add("https://localhost/absolute.ts", "export class Absolute {}")
+          .add("https://other/mod.ts", "export * from './sub/mod.ts';")
+          .add(
             "https://other/sub/mod.ts",
             concat!(
               "export * from '../sub2/mod.ts';",
               "export * from '../sub2/other?asdf';",
             ),
           )
-          .add_remote_file("https://other/sub2/mod.ts", "export class Mod {}")
-          .add_remote_file_with_headers(
+          .add("https://other/sub2/mod.ts", "export class Mod {}")
+          .add_remote_with_headers(
             "https://other/sub2/other?asdf",
             "export class Other {}",
             &[("content-type", "application/javascript")],
@@ -229,7 +232,7 @@ mod test {
     let output = builder
       .with_loader(|loader| {
         loader
-          .add_local_file(
+          .add(
             "/mod.ts",
             concat!(
               r#"import "https://localhost/MOD.TS";"#,
@@ -239,14 +242,11 @@ mod test {
               r#"import "https://localhost/CAPS.TS";"#,
             ),
           )
-          .add_remote_file("https://localhost/MOD.TS", "export class Mod {}")
-          .add_remote_file("https://localhost/mod.TS", "export class Mod2 {}")
-          .add_remote_file("https://localhost/mod.ts", "export class Mod3 {}")
-          .add_remote_file(
-            "https://localhost/mod.ts?test",
-            "export class Mod4 {}",
-          )
-          .add_remote_file("https://localhost/CAPS.TS", "export class Caps {}");
+          .add("https://localhost/MOD.TS", "export class Mod {}")
+          .add("https://localhost/mod.TS", "export class Mod2 {}")
+          .add("https://localhost/mod.ts", "export class Mod3 {}")
+          .add("https://localhost/mod.ts?test", "export class Mod4 {}")
+          .add("https://localhost/CAPS.TS", "export class Caps {}");
       })
       .build()
       .await
@@ -272,6 +272,68 @@ mod test {
         ("/vendor/localhost/mod_3.ts", "export class Mod3 {}"),
         ("/vendor/localhost/mod_4.ts", "export class Mod4 {}"),
       ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn json_module() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add(
+            "/mod.ts",
+            r#"import data from "https://localhost/data.json" assert { type: "json" };"#,
+          )
+          .add("https://localhost/data.json", "{}");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost"
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/localhost/data.json", "{}"),]),
+    );
+  }
+
+  #[tokio::test]
+  async fn data_urls() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+
+    let mod_file_text = format!(
+      r#"import * as b from "data:application/typescript,export%20*%20from%20%22https://localhost/mod.ts%22;";"#
+    );
+
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add("/mod.ts", &mod_file_text)
+          .add("https://localhost/mod.ts", "export class Example {}");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost"
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/localhost/mod.ts", "export class Example {}"),]),
     );
   }
 
