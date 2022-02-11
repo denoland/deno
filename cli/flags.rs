@@ -386,7 +386,7 @@ impl Flags {
   }
 
   pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions{
+    PermissionsOptions {
       allow_env: self.allow_env.clone(),
       allow_hrtime: self.allow_hrtime,
       allow_net: self.allow_net.clone(),

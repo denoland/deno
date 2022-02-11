@@ -1019,13 +1019,8 @@ pub async fn run_tests(
     emit::TypeLib::DenoWindow
   };
 
-  check_specifiers(
-    &ps,
-    permissions.clone(),
-    specifiers_with_mode.clone(),
-    lib,
-  )
-  .await?;
+  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone(), lib)
+    .await?;
 
   if test_flags.no_run {
     return Ok(());

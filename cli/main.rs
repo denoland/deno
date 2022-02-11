@@ -395,10 +395,8 @@ async fn compile_command(
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags = tools::standalone::compile_to_runtime_flags(
-    &flags,
-    compile_flags.args,
-  )?;
+  let run_flags =
+    tools::standalone::compile_to_runtime_flags(&flags, compile_flags.args)?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
@@ -526,7 +524,8 @@ async fn install_command(
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
-  let permissions = Permissions::from_options(&preload_flags.permissions_options());
+  let permissions =
+    Permissions::from_options(&preload_flags.permissions_options());
   let ps = ProcState::build(Arc::new(preload_flags)).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
@@ -947,7 +946,6 @@ async fn repl_command(
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-
   let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
