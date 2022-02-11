@@ -71,6 +71,7 @@ use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::future::LocalFutureObj;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::parking_lot::RwLock;
@@ -82,6 +83,7 @@ use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::ops::worker_host::PreloadModuleCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use deno_runtime::web_worker::WebWorker;
@@ -100,6 +102,24 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
+fn create_web_worker_preload_module_callback(
+  ps: ProcState,
+) -> Arc<PreloadModuleCb> {
+  let compat = ps.flags.compat;
+
+  Arc::new(move |mut worker| {
+    let fut = async move {
+      if compat {
+        worker.execute_side_module(&compat::GLOBAL_URL).await?;
+        worker.execute_side_module(&compat::MODULE_URL).await?;
+      }
+
+      Ok(worker)
+    };
+    LocalFutureObj::new(Box::new(fut))
+  })
+}
+
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let global_state_ = ps.clone();
@@ -116,6 +136,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       args.parent_permissions.clone(),
     );
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
+    let preload_module_cb =
+      create_web_worker_preload_module_callback(ps.clone());
 
     let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
 
@@ -145,6 +167,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       seed: ps.flags.seed,
       module_loader,
       create_web_worker_cb,
+      preload_module_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
@@ -187,6 +210,8 @@ pub fn create_main_worker(
   let should_break_on_first_statement = ps.flags.inspect_brk.is_some();
 
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
+  let web_worker_preload_module_cb =
+    create_web_worker_preload_module_callback(ps.clone());
 
   let maybe_storage_key = if let Some(location) = &ps.flags.location {
     // if a location is set, then the ascii serialization of the location is
@@ -240,6 +265,7 @@ pub fn create_main_worker(
     seed: ps.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
+    web_worker_preload_module_cb,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
