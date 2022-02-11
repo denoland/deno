@@ -981,6 +981,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
+  let flags = Arc::new(flags);
   let resolver = |_| {
     let script1 = script.clone();
     let script2 = script.clone();
@@ -988,7 +989,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     let watch_flag = flags.watch.clone();
     async move {
       let main_module = resolve_url_or_path(&script1)?;
-      let ps = ProcState::build(Arc::new(flags)).await?;
+      let ps = ProcState::build(flags).await?;
       let mut cache = cache::FetchCacher::new(
         ps.dir.gen_cache.clone(),
         ps.file_fetcher.clone(),

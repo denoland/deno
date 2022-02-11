@@ -238,8 +238,8 @@ pub fn compile_to_runtime_flags(
     check: CheckFlag::All,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
-      .clone()
-      .unsafely_ignore_certificate_errors,
+      .unsafely_ignore_certificate_errors
+      .clone(),
     no_remote: false,
     prompt: flags.prompt,
     reload: false,
