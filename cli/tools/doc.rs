@@ -1,7 +1,8 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::file_fetcher::File;
+use crate::flags::DocFlags;
 use crate::flags::Flags;
 use crate::get_types;
 use crate::proc_state::ProcState;
@@ -17,7 +18,9 @@ use deno_graph::create_graph;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
+use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
@@ -29,10 +32,10 @@ struct StubDocLoader;
 impl Loader for StubDocLoader {
   fn load(
     &mut self,
-    specifier: &ModuleSpecifier,
+    _specifier: &ModuleSpecifier,
     _is_dynamic: bool,
   ) -> LoadFuture {
-    Box::pin(future::ready((specifier.clone(), Ok(None))))
+    Box::pin(future::ready(Ok(None)))
   }
 }
 
@@ -46,17 +49,18 @@ impl Resolver for DocResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> ResolveResponse {
     if let Some(import_map) = &self.import_map {
-      return import_map
-        .resolve(specifier, referrer.as_str())
-        .map_err(AnyError::from);
+      return match import_map.resolve(specifier, referrer) {
+        Ok(specifier) => ResolveResponse::Specifier(specifier),
+        Err(err) => ResolveResponse::Err(err.into()),
+      };
     }
 
-    let module_specifier =
-      deno_core::resolve_import(specifier, referrer.as_str())?;
-
-    Ok(module_specifier)
+    match deno_core::resolve_import(specifier, referrer.as_str()) {
+      Ok(specifier) => ResolveResponse::Specifier(specifier),
+      Err(err) => ResolveResponse::Err(err.into()),
+    }
   }
 }
 
@@ -73,18 +77,16 @@ impl Loader for DocLoader {
     let specifier = specifier.clone();
     let ps = self.ps.clone();
     async move {
-      let result = ps
-        .file_fetcher
+      ps.file_fetcher
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map(|file| {
           Some(LoadResponse {
-            specifier: specifier.clone(),
+            specifier,
             content: file.source.clone(),
             maybe_headers: file.maybe_headers,
           })
-        });
-      (specifier.clone(), result)
+        })
     }
     .boxed_local()
   }
@@ -92,13 +94,12 @@ impl Loader for DocLoader {
 
 pub async fn print_docs(
   flags: Flags,
-  source_file: Option<String>,
-  json: bool,
-  maybe_filter: Option<String>,
-  private: bool,
+  doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
-  let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  let source_file = doc_flags
+    .source_file
+    .unwrap_or_else(|| "--builtin".to_string());
   let source_parser = deno_graph::DefaultSourceParser::new();
 
   let parse_result = if source_file == "--builtin" {
@@ -106,20 +107,22 @@ pub async fn print_docs(
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
     let graph = create_graph(
-      vec![source_file_specifier.clone()],
+      vec![(source_file_specifier.clone(), ModuleKind::Esm)],
       false,
       None,
       &mut loader,
       None,
       None,
       None,
+      None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
+    let doc_parser =
+      doc::DocParser::new(graph, doc_flags.private, &source_parser);
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
-      Arc::new(get_types(flags.unstable)),
+      Arc::new(get_types(ps.flags.unstable)),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -144,16 +147,18 @@ pub async fn print_docs(
       import_map: ps.maybe_import_map.clone(),
     };
     let graph = create_graph(
-      vec![root_specifier.clone()],
+      vec![(root_specifier.clone(), ModuleKind::Esm)],
       false,
       None,
       &mut loader,
       Some(&resolver),
       None,
       None,
+      None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
+    let doc_parser =
+      doc::DocParser::new(graph, doc_flags.private, &source_parser);
     doc_parser.parse_with_reexports(&root_specifier)
   };
 
@@ -165,11 +170,11 @@ pub async fn print_docs(
     }
   };
 
-  if json {
+  if doc_flags.json {
     write_json_to_stdout(&doc_nodes)
   } else {
     doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
-    let details = if let Some(filter) = maybe_filter {
+    let details = if let Some(filter) = doc_flags.filter {
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
       if nodes.is_empty() {
@@ -178,12 +183,16 @@ pub async fn print_docs(
       }
       format!(
         "{}",
-        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+        doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
       )
     } else {
       format!(
         "{}",
-        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+        doc::DocPrinter::new(
+          &doc_nodes,
+          colors::use_color(),
+          doc_flags.private
+        )
       )
     };
 

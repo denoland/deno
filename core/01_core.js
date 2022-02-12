@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -195,6 +195,7 @@
       this.name = "BadResource";
     }
   }
+  const BadResourcePrototype = BadResource.prototype;
 
   class Interrupted extends Error {
     constructor(msg) {
@@ -202,6 +203,7 @@
       this.name = "Interrupted";
     }
   }
+  const InterruptedPrototype = Interrupted.prototype;
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
@@ -221,7 +223,9 @@
     opresolve,
     syncOpsCache,
     BadResource,
+    BadResourcePrototype,
     Interrupted,
+    InterruptedPrototype,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

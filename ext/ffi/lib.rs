@@ -1,7 +1,9 @@
-// Copyright 2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::generic_error;
 use deno_core::error::range_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;
@@ -55,6 +57,7 @@ struct Symbol {
   result_type: NativeType,
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Symbol {}
 unsafe impl Sync for Symbol {}
 
@@ -76,10 +79,23 @@ impl Resource for DynamicLibraryResource {
 impl DynamicLibraryResource {
   fn register(
     &mut self,
-    symbol: String,
+    name: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
-    let fn_ptr = unsafe { self.lib.symbol::<*const c_void>(&symbol) }?;
+    let symbol = match &foreign_fn.name {
+      Some(symbol) => symbol,
+      None => &name,
+    };
+    // By default, Err returned by this function does not tell
+    // which symbol wasn't exported. So we'll modify the error
+    // message to include the name of symbol.
+    let fn_ptr = match unsafe { self.lib.symbol::<*const c_void>(symbol) } {
+      Ok(value) => Ok(value),
+      Err(err) => Err(generic_error(format!(
+        "Failed to register symbol {}: {}",
+        symbol, err
+      ))),
+    }?;
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
       foreign_fn
@@ -91,7 +107,7 @@ impl DynamicLibraryResource {
     );
 
     self.symbols.insert(
-      symbol,
+      name,
       Symbol {
         cif,
         ptr,
@@ -114,6 +130,11 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
+      ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
+      (
+        "op_ffi_call_ptr_nonblocking",
+        op_async(op_ffi_call_ptr_nonblocking),
+      ),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
       ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
       ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read::<P>)),
@@ -194,44 +215,44 @@ union NativeValue {
 }
 
 impl NativeValue {
-  fn new(native_type: NativeType, value: Value) -> Self {
-    match native_type {
+  fn new(native_type: NativeType, value: Value) -> Result<Self, AnyError> {
+    let value = match native_type {
       NativeType::Void => Self { void_value: () },
       NativeType::U8 => Self {
-        u8_value: value_as_uint::<u8>(value),
+        u8_value: value_as_uint::<u8>(value)?,
       },
       NativeType::I8 => Self {
-        i8_value: value_as_int::<i8>(value),
+        i8_value: value_as_int::<i8>(value)?,
       },
       NativeType::U16 => Self {
-        u16_value: value_as_uint::<u16>(value),
+        u16_value: value_as_uint::<u16>(value)?,
       },
       NativeType::I16 => Self {
-        i16_value: value_as_int::<i16>(value),
+        i16_value: value_as_int::<i16>(value)?,
       },
       NativeType::U32 => Self {
-        u32_value: value_as_uint::<u32>(value),
+        u32_value: value_as_uint::<u32>(value)?,
       },
       NativeType::I32 => Self {
-        i32_value: value_as_int::<i32>(value),
+        i32_value: value_as_int::<i32>(value)?,
       },
       NativeType::U64 => Self {
-        u64_value: value_as_uint::<u64>(value),
+        u64_value: value_as_uint::<u64>(value)?,
       },
       NativeType::I64 => Self {
-        i64_value: value_as_int::<i64>(value),
+        i64_value: value_as_int::<i64>(value)?,
       },
       NativeType::USize => Self {
-        usize_value: value_as_uint::<usize>(value),
+        usize_value: value_as_uint::<usize>(value)?,
       },
       NativeType::ISize => Self {
-        isize_value: value_as_int::<isize>(value),
+        isize_value: value_as_int::<isize>(value)?,
       },
       NativeType::F32 => Self {
-        f32_value: value_as_f32(value),
+        f32_value: value_as_f32(value)?,
       },
       NativeType::F64 => Self {
-        f64_value: value_as_f64(value),
+        f64_value: value_as_f64(value)?,
       },
       NativeType::Pointer => {
         if value.is_null() {
@@ -240,14 +261,13 @@ impl NativeValue {
           }
         } else {
           Self {
-            pointer: u64::from(
-              serde_json::from_value::<U32x2>(value)
-              .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
-            ) as *const u8,
+            pointer: u64::from(serde_json::from_value::<U32x2>(value)?)
+              as *const u8,
           }
         }
       }
-    }
+    };
+    Ok(value)
   }
 
   fn buffer(ptr: *const u8) -> Self {
@@ -274,31 +294,41 @@ impl NativeValue {
   }
 }
 
-fn value_as_uint<T: TryFrom<u64>>(value: Value) -> T {
-  value
-    .as_u64()
-    .and_then(|v| T::try_from(v).ok())
-    .expect("Expected ffi arg value to be an unsigned integer")
+fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
+  match value.as_u64().and_then(|v| T::try_from(v).ok()) {
+    Some(value) => Ok(value),
+    None => Err(type_error(format!(
+      "Expected FFI argument to be an unsigned integer, but got {:?}",
+      value
+    ))),
+  }
 }
 
-fn value_as_int<T: TryFrom<i64>>(value: Value) -> T {
-  value
-    .as_i64()
-    .and_then(|v| T::try_from(v).ok())
-    .expect("Expected ffi arg value to be a signed integer")
+fn value_as_int<T: TryFrom<i64>>(value: Value) -> Result<T, AnyError> {
+  match value.as_i64().and_then(|v| T::try_from(v).ok()) {
+    Some(value) => Ok(value),
+    None => Err(type_error(format!(
+      "Expected FFI argument to be a signed integer, but got {:?}",
+      value
+    ))),
+  }
 }
 
-fn value_as_f32(value: Value) -> f32 {
-  value_as_f64(value) as f32
+fn value_as_f32(value: Value) -> Result<f32, AnyError> {
+  Ok(value_as_f64(value)? as f32)
 }
 
-fn value_as_f64(value: Value) -> f64 {
-  value
-    .as_f64()
-    .expect("Expected ffi arg value to be a float")
+fn value_as_f64(value: Value) -> Result<f64, AnyError> {
+  match value.as_f64() {
+    Some(value) => Ok(value),
+    None => Err(type_error(format!(
+      "Expected FFI argument to be a double, but got {:?}",
+      value
+    ))),
+  }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 struct U32x2(u32, u32);
 
 impl From<u64> for U32x2 {
@@ -316,6 +346,7 @@ impl From<U32x2> for u64 {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct ForeignFunction {
+  name: Option<String>,
   parameters: Vec<NativeType>,
   result: NativeType,
 }
@@ -443,6 +474,49 @@ struct FfiCallArgs {
   buffers: Vec<Option<ZeroCopyBuf>>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiCallPtrArgs {
+  pointer: U32x2,
+  def: ForeignFunction,
+  parameters: Vec<Value>,
+  buffers: Vec<Option<ZeroCopyBuf>>,
+}
+
+impl From<FfiCallPtrArgs> for FfiCallArgs {
+  fn from(args: FfiCallPtrArgs) -> Self {
+    FfiCallArgs {
+      rid: 0,
+      symbol: String::new(),
+      parameters: args.parameters,
+      buffers: args.buffers,
+    }
+  }
+}
+
+impl FfiCallPtrArgs {
+  fn get_symbol(&self) -> Symbol {
+    let fn_ptr: u64 = self.pointer.into();
+    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+    let cif = libffi::middle::Cif::new(
+      self
+        .def
+        .parameters
+        .clone()
+        .into_iter()
+        .map(libffi::middle::Type::from),
+      self.def.result.into(),
+    );
+
+    Symbol {
+      cif,
+      ptr,
+      parameter_types: self.def.parameters.clone(),
+      result_type: self.def.result,
+    }
+  }
+}
+
 fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -450,22 +524,35 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
     .collect();
 
-  let native_values = symbol
+  let mut native_values: Vec<NativeValue> = vec![];
+
+  for (&native_type, value) in symbol
     .parameter_types
     .iter()
     .zip(args.parameters.into_iter())
-    .map(|(&native_type, value)| {
-      if let NativeType::Pointer = native_type {
-        if let Some(idx) = value.as_u64() {
-          if let Some(&Some(buf)) = buffers.get(idx as usize) {
-            return NativeValue::buffer(buf.as_ptr());
-          }
+  {
+    match native_type {
+      NativeType::Pointer => match value.as_u64() {
+        Some(idx) => {
+          let buf = buffers
+            .get(idx as usize)
+            .ok_or_else(|| {
+              generic_error(format!("No buffer present at index {}", idx))
+            })?
+            .unwrap();
+          native_values.push(NativeValue::buffer(buf.as_ptr()));
         }
+        _ => {
+          let value = NativeValue::new(native_type, value)?;
+          native_values.push(value);
+        }
+      },
+      _ => {
+        let value = NativeValue::new(native_type, value)?;
+        native_values.push(value);
       }
-
-      NativeValue::new(native_type, value)
-    })
-    .collect::<Vec<_>>();
+    }
+  }
 
   let call_args = symbol
     .parameter_types
@@ -522,6 +609,26 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       } as u64))
     }
   })
+}
+
+fn op_ffi_call_ptr(
+  _state: &mut deno_core::OpState,
+  args: FfiCallPtrArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let symbol = args.get_symbol();
+  ffi_call(args.into(), &symbol)
+}
+
+async fn op_ffi_call_ptr_nonblocking(
+  _state: Rc<RefCell<deno_core::OpState>>,
+  args: FfiCallPtrArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let symbol = args.get_symbol();
+  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
+    .await
+    .unwrap()
 }
 
 fn op_ffi_call(

@@ -1,12 +1,13 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
+  const { BlobPrototype } = window.__bootstrap.file;
   const {
-    Response,
+    ResponsePrototype,
     fromInnerRequest,
     toInnerResponse,
     newInnerRequest,
@@ -14,16 +15,27 @@
     fromInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResource, Interrupted } = core;
-  const { ReadableStream } = window.__bootstrap.streams;
+  const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { ReadableStream, ReadableStreamPrototype } =
+    window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { WebSocket, _rid, _readyState, _eventLoop, _protocol, _server } =
-    window.__bootstrap.webSocket;
+  const {
+    WebSocket,
+    _rid,
+    _readyState,
+    _eventLoop,
+    _protocol,
+    _server,
+    _idleTimeoutDuration,
+    _idleTimeoutTimeout,
+    _serverHandleIdleTimeout,
+  } = window.__bootstrap.webSocket;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
-    Promise,
+    ObjectPrototypeIsPrototypeOf,
+    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -37,6 +49,7 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   const connErrorSymbol = Symbol("connError");
@@ -72,8 +85,8 @@
         // those with it.
         this[connErrorSymbol] = error;
         if (
-          error instanceof BadResource ||
-          error instanceof Interrupted ||
+          ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) ||
+          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error) ||
           StringPrototypeIncludes(error.message, "connection closed")
         ) {
           return null;
@@ -149,11 +162,11 @@
   function createRespondWith(httpConn, streamRid) {
     return async function respondWith(resp) {
       try {
-        if (resp instanceof Promise) {
+        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
           resp = await resp;
         }
 
-        if (!(resp instanceof Response)) {
+        if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
           );
@@ -170,10 +183,18 @@
           if (innerResp.body.unusable()) {
             throw new TypeError("Body is unusable.");
           }
-          if (innerResp.body.streamOrStatic instanceof ReadableStream) {
+          if (
+            ObjectPrototypeIsPrototypeOf(
+              ReadableStreamPrototype,
+              innerResp.body.streamOrStatic,
+            )
+          ) {
             if (
               innerResp.body.length === null ||
-              innerResp.body.source instanceof Blob
+              ObjectPrototypeIsPrototypeOf(
+                BlobPrototype,
+                innerResp.body.source,
+              )
             ) {
               respBody = innerResp.body.stream;
             } else {
@@ -195,7 +216,8 @@
           respBody = new Uint8Array(0);
         }
         const isStreamingResponseBody = !(
-          typeof respBody === "string" || respBody instanceof Uint8Array
+          typeof respBody === "string" ||
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
 
         try {
@@ -206,25 +228,34 @@
           );
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
-          if (error instanceof BadResource && connError != null) {
+          if (
+            ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+            connError != null
+          ) {
             // deno-lint-ignore no-ex-assign
             error = new connError.constructor(connError.message);
           }
-          if (respBody !== null && respBody instanceof ReadableStream) {
+          if (
+            respBody !== null &&
+            ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
+          ) {
             await respBody.cancel(error);
           }
           throw error;
         }
 
         if (isStreamingResponseBody) {
-          if (respBody === null || !(respBody instanceof ReadableStream)) {
+          if (
+            respBody === null ||
+            !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
+          ) {
             throw new TypeError("Unreachable");
           }
           const reader = respBody.getReader();
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (!(value instanceof Uint8Array)) {
+            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
               await reader.cancel(new TypeError("Value not a Uint8Array"));
               break;
             }
@@ -232,7 +263,10 @@
               await core.opAsync("op_http_write", streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
-              if (error instanceof BadResource && connError != null) {
+              if (
+                ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+                connError != null
+              ) {
                 // deno-lint-ignore no-ex-assign
                 error = new connError.constructor(connError.message);
               }
@@ -277,6 +311,13 @@
             ws.dispatchEvent(event);
 
             ws[_eventLoop]();
+            if (ws[_idleTimeoutDuration]) {
+              ws.addEventListener(
+                "close",
+                () => clearTimeout(ws[_idleTimeoutTimeout]),
+              );
+            }
+            ws[_serverHandleIdleTimeout]();
           }
         }
       } finally {
@@ -378,6 +419,8 @@
     setEventTargetData(socket);
     socket[_server] = true;
     response[_ws] = socket;
+    socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
+    socket[_idleTimeoutTimeout] = null;
 
     return { response, socket };
   }

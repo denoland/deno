@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -16,6 +16,8 @@
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
+    ObjectPrototypeIsPrototypeOf,
+    SafeArrayIterator,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -158,7 +160,11 @@
         // 3.
         // TODO(@andreubotella): Error handling.
         if (typeof callback === "function") {
-          FunctionPrototypeCall(callback, globalThis, ...args);
+          FunctionPrototypeCall(
+            callback,
+            globalThis,
+            ...new SafeArrayIterator(args),
+          );
         } else {
           // TODO(@andreubotella): eval doesn't seem to have a primordial, but
           // it can be redefined in the global scope.
@@ -287,7 +293,7 @@
         }
       },
       (err) => {
-        if (err instanceof core.Interrupted) {
+        if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
           // The timer was cancelled.
           removeFromScheduledTimers(timerObject);
         } else {

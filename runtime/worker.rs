@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::inspector_server::InspectorServer;
 use crate::js;
@@ -51,8 +51,9 @@ pub struct WorkerOptions {
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  // Callback invoked when creating new instance of WebWorker
+  // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
@@ -126,7 +127,10 @@ impl MainWorker {
       deno_ffi::init::<Permissions>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(options.create_web_worker_cb.clone()),
+      ops::worker_host::init(
+        options.create_web_worker_cb.clone(),
+        options.web_worker_preload_module_cb.clone(),
+      ),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),
@@ -184,10 +188,10 @@ impl MainWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    name: &str,
+    script_name: &str,
     source_code: &str,
   ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(name, source_code)?;
+    self.js_runtime.execute_script(script_name, source_code)?;
     Ok(())
   }
 
@@ -305,6 +309,38 @@ impl MainWorker {
     let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
     exit_code
   }
+
+  /// Dispatches "load" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "load" event handlers.
+  pub fn dispatch_load_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('load'))",
+    )
+  }
+
+  /// Dispatches "unload" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "unload" event handlers.
+  pub fn dispatch_unload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('unload'))",
+    )
+  }
 }
 
 #[cfg(test)]
@@ -335,6 +371,7 @@ mod tests {
       root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
+      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,

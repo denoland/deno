@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -31,8 +31,8 @@ function stringify(...args: unknown[]): string {
 }
 
 interface Css {
-  backgroundColor: [number, number, number] | null;
-  color: [number, number, number] | null;
+  backgroundColor: [number, number, number] | string | null;
+  color: [number, number, number] | string | null;
   fontWeight: string | null;
   fontStyle: string | null;
   textDecorationColor: [number, number, number] | null;
@@ -225,7 +225,7 @@ Deno.test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{
+  const nestedObjExpected = `<ref *1> {
   num: 1,
   bool: true,
   str: "a",
@@ -245,9 +245,9 @@ Deno.test(function consoleTestStringifyCircular() {
     method: [Function: method],
     un: undefined,
     nu: null,
-    nested: [Circular],
+    nested: [Circular *1],
     emptyObj: {},
-    arr: [ 1, "s", false, null, [Circular] ],
+    arr: [ 1, "s", false, null, [Circular *1] ],
     baseClass: Base { a: 1 }
   }
 }`;
@@ -350,10 +350,21 @@ Deno.test(function consoleTestStringifyCircular() {
         return Deno.inspect(this);
       },
     }),
-    "[Circular]",
+    "[Circular *1]",
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
+});
+
+Deno.test(function consoleTestStringifyMultipleCircular() {
+  const y = { a: { b: {} }, foo: { bar: {} } };
+  y.a.b = y.a;
+  y.foo.bar = y.foo;
+  console.log(y);
+  assertEquals(
+    stringify(y),
+    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+  );
 });
 
 Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
@@ -392,14 +403,14 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] {
+  f: <ref *1> [Function: f] {
     x: [Function],
     y: 3,
     z: [Function],
     b: [Function: bar],
     a: Map {},
-    s: [Circular],
-    t: [Function: t] { x: [Circular] }
+    s: [Circular *1],
+    t: [Function: t] { x: [Circular *1] }
   }
 }`,
   );
@@ -989,6 +1000,7 @@ Deno.test(function consoleTestWithStyleSpecifier() {
 });
 
 Deno.test(function consoleParseCssColor() {
+  assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
@@ -1009,10 +1021,18 @@ Deno.test(function consoleParseCssColor() {
 
 Deno.test(function consoleParseCss() {
   assertEquals(
-    parseCss("background-color: red"),
-    { ...DEFAULT_CSS, backgroundColor: [255, 0, 0] },
+    parseCss("background-color: inherit"),
+    { ...DEFAULT_CSS, backgroundColor: "inherit" },
   );
-  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: [0, 0, 255] });
+  assertEquals(
+    parseCss("color: inherit"),
+    { ...DEFAULT_CSS, color: "inherit" },
+  );
+  assertEquals(
+    parseCss("background-color: red"),
+    { ...DEFAULT_CSS, backgroundColor: "red" },
+  );
+  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: "blue" });
   assertEquals(
     parseCss("font-weight: bold"),
     { ...DEFAULT_CSS, fontWeight: "bold" },
@@ -1047,21 +1067,41 @@ Deno.test(function consoleParseCss() {
 
   assertEquals(
     parseCss("color:red;font-weight:bold;"),
-    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+    { ...DEFAULT_CSS, color: "red", fontWeight: "bold" },
   );
   assertEquals(
     parseCss(
       " \t\ncolor \t\n: \t\nred \t\n; \t\nfont-weight \t\n: \t\nbold \t\n; \t\n",
     ),
-    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+    { ...DEFAULT_CSS, color: "red", fontWeight: "bold" },
   );
   assertEquals(
     parseCss("color: red; font-weight: bold, font-style: italic"),
-    { ...DEFAULT_CSS, color: [255, 0, 0] },
+    { ...DEFAULT_CSS, color: "red" },
   );
 });
 
 Deno.test(function consoleCssToAnsi() {
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "foo" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "black" }),
+    "_[40m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "inherit" }),
+    "_[39m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "blue" }),
+    "_[34m",
+  );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
     "_[48;2;200;201;202m",
@@ -1553,6 +1593,13 @@ Deno.test(function consoleLogShouldNotThrowError() {
   });
 });
 
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
+  mockConsole((console, out) => {
+    console.log("%cfoo", "color: foo; background-color: bar;");
+    assertEquals(stripColor(out.toString()), "foo\n");
+  });
+});
+
 // console.log(Invalid Date) test
 Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
@@ -1856,11 +1903,15 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
-    "Error: This is an error",
+    "<ref *1> Error: This is an error",
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
     "Caused by Error: This is a cause error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by [Circular *1]",
   );
 });
 

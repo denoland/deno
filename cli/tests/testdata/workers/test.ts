@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Requires to be run with `--allow-net` flag
 
@@ -796,5 +796,34 @@ Deno.test({
     assertEquals(await promise3, true);
     await result;
     worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker Deno.memoryUsage",
+  fn: async function () {
+    const w = new Worker(
+      /**
+       * Source code
+       * self.onmessage = function() {self.postMessage(Deno.memoryUsage())}
+       */
+      "data:application/typescript;base64,c2VsZi5vbm1lc3NhZ2UgPSBmdW5jdGlvbigpIHtzZWxmLnBvc3RNZXNzYWdlKERlbm8ubWVtb3J5VXNhZ2UoKSl9",
+      { type: "module", name: "tsWorker", deno: true },
+    );
+
+    w.postMessage(null);
+
+    const memoryUsagePromise = deferred();
+    w.onmessage = function (evt) {
+      memoryUsagePromise.resolve(evt.data);
+    };
+
+    assertEquals(
+      Object.keys(
+        await memoryUsagePromise as unknown as Record<string, number>,
+      ),
+      ["rss", "heapTotal", "heapUsed", "external"],
+    );
+    w.terminate();
   },
 });

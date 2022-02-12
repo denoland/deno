@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -16,6 +16,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log;
+use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -29,9 +30,8 @@ use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
-lazy_static::lazy_static! {
-  static ref DEBUG_LOG_ENABLED: bool = log::log_enabled!(log::Level::Debug);
-}
+static DEBUG_LOG_ENABLED: Lazy<bool> =
+  Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -1918,7 +1918,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error flushing console input buffer: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
     }
@@ -1941,7 +1941,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error emulating enter key press: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
     }
@@ -1954,7 +1954,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error peeking console input buffer: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
       events_read == 0
@@ -2017,9 +2017,9 @@ fn permission_prompt(_message: &str) -> bool {
 static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
 
 #[cfg(test)]
-lazy_static::lazy_static! {
-  static ref PERMISSION_PROMPT_STUB_VALUE_SETTER: Mutex<PermissionPromptStubValueSetter> = Mutex::new(PermissionPromptStubValueSetter);
-}
+static PERMISSION_PROMPT_STUB_VALUE_SETTER: Lazy<
+  Mutex<PermissionPromptStubValueSetter>,
+> = Lazy::new(|| Mutex::new(PermissionPromptStubValueSetter));
 
 #[cfg(test)]
 struct PermissionPromptStubValueSetter;

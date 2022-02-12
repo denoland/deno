@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
@@ -200,12 +200,15 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = resolve_url(SPECIFIER)?;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
+    todo!("Worker are currently not supported in standalone binaries");
+  });
+  let web_worker_preload_module_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
   });
 
@@ -249,7 +252,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
     },
-    extensions: vec![],
+    extensions: ops::cli_exts(ps.clone(), true),
     user_agent: version::get_user_agent(),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -257,6 +260,7 @@ pub async fn run(
     seed: metadata.seed,
     js_error_create_fn: None,
     create_web_worker_cb,
+    web_worker_preload_module_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
@@ -272,27 +276,10 @@ pub async fn run(
     permissions,
     options,
   );
-  // TODO(@AaronO): move to a JsRuntime Extension passed into options
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<ProcState>(ps.clone());
-    ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
-    js_runtime.sync_ops_cache();
-  }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(true).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }
 

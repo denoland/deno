@@ -22,10 +22,10 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]005_more_imports.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/005_more_imports.ts"
     },
     {
@@ -47,18 +47,17 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]mod1.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/subdir/mod1.ts"
     },
     {
-      "dependencies": [],
+      "kind": "esm",
       "local": "[WILDCARD]print_hello.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/subdir/print_hello.ts"
     },
     {
@@ -80,10 +79,10 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]mod2.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/subdir/subdir2/mod2.ts"
     }
   ],

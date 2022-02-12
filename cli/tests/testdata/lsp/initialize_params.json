@@ -8,6 +8,7 @@
   "initializationOptions": {
     "enable": true,
     "cache": null,
+    "certificateStores": null,
     "codeLens": {
       "implementations": true,
       "references": true,
@@ -25,6 +26,8 @@
         "hosts": {}
       }
     },
+    "tlsCertificate": null,
+    "unsafelyIgnoreCertificateErrors": null,
     "unstable": false
   },
   "capabilities": {

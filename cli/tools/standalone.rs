@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir::DenoDir;
 use crate::flags::CheckFlag;
@@ -99,7 +99,7 @@ pub fn create_standalone_binary(
     unstable: flags.unstable,
     seed: flags.seed,
     location: flags.location.clone(),
-    permissions: flags.clone().into(),
+    permissions: flags.permissions_options(),
     v8_flags: flags.v8_flags.clone(),
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors
@@ -136,14 +136,14 @@ pub async fn write_standalone_binary(
   let output = match target {
     Some(target) => {
       if target.contains("windows") {
-        PathBuf::from(output.display().to_string() + ".exe")
+        output.with_extension("exe")
       } else {
         output
       }
     }
     None => {
       if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-        PathBuf::from(output.display().to_string() + ".exe")
+        output.with_extension("exe")
       } else {
         output
       }
@@ -175,7 +175,14 @@ pub async fn write_standalone_binary(
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
     // (see https://github.com/denoland/deno/issues/10310)
     std::fs::remove_file(&output)?;
+  } else {
+    let output_base = &output.parent().unwrap();
+    if output_base.exists() && output_base.is_file() {
+      bail!("Could not compile: {:?} is a file.", &output_base);
+    }
+    tokio::fs::create_dir_all(output_base).await?;
   }
+
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {
@@ -193,7 +200,7 @@ pub async fn write_standalone_binary(
 ///   applicable at runtime so are set to their defaults like `false`.
 /// - Other flags are inherited.
 pub fn compile_to_runtime_flags(
-  flags: Flags,
+  flags: &Flags,
   baked_args: Vec<String>,
 ) -> Result<Flags, AnyError> {
   // IMPORTANT: Don't abbreviate any of this to `..flags` or
@@ -204,41 +211,44 @@ pub fn compile_to_runtime_flags(
     subcommand: DenoSubcommand::Run(RunFlags {
       script: "placeholder".to_string(),
     }),
-    allow_env: flags.allow_env,
+    allow_all: flags.allow_all,
+    allow_env: flags.allow_env.clone(),
     allow_hrtime: flags.allow_hrtime,
-    allow_net: flags.allow_net,
-    allow_ffi: flags.allow_ffi,
-    allow_read: flags.allow_read,
-    allow_run: flags.allow_run,
-    allow_write: flags.allow_write,
-    ca_stores: flags.ca_stores,
-    ca_file: flags.ca_file,
+    allow_net: flags.allow_net.clone(),
+    allow_ffi: flags.allow_ffi.clone(),
+    allow_read: flags.allow_read.clone(),
+    allow_run: flags.allow_run.clone(),
+    allow_write: flags.allow_write.clone(),
+    ca_stores: flags.ca_stores.clone(),
+    ca_file: flags.ca_file.clone(),
     cache_blocklist: vec![],
     cache_path: None,
     cached_only: false,
     config_path: None,
-    coverage_dir: flags.coverage_dir,
+    coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,
     ignore: vec![],
     import_map_path: None,
     inspect_brk: None,
     inspect: None,
-    location: flags.location,
+    location: flags.location.clone(),
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
     check: CheckFlag::All,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
-      .unsafely_ignore_certificate_errors,
+      .unsafely_ignore_certificate_errors
+      .clone(),
     no_remote: false,
     prompt: flags.prompt,
     reload: false,
     repl: false,
     seed: flags.seed,
     unstable: flags.unstable,
-    v8_flags: flags.v8_flags,
+    v8_flags: flags.v8_flags.clone(),
     version: false,
     watch: None,
+    no_clear_screen: false,
   })
 }

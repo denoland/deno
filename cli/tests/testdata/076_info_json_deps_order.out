@@ -22,10 +22,10 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]076_info_json_deps_order.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts"
     },
     {
@@ -63,10 +63,10 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]A.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/recursive_imports/A.ts"
     },
     {
@@ -104,10 +104,10 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]B.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/recursive_imports/B.ts"
     },
     {
@@ -145,18 +145,17 @@
           }
         }
       ],
+      "kind": "esm",
       "local": "[WILDCARD]C.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/recursive_imports/C.ts"
     },
     {
-      "dependencies": [],
+      "kind": "esm",
       "local": "[WILDCARD]common.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      [WILDCARD]
       "specifier": "file://[WILDCARD]/recursive_imports/common.ts"
     }
   ],
