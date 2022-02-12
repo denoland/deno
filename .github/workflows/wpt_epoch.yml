@@ -3,12 +3,12 @@
 
 name: wpt_epoch
 
-on: pull_request 
-  # schedule:
-  #   # Every night at 0:30 UTC. This is 20 minutes after `epochs/daily` branch is
-  #   # triggered to be created in WPT repo.
-  #   - cron: 30 0 * * *
-  # workflow_dispatch:
+on:
+  schedule:
+    # Every night at 0:30 UTC. This is 20 minutes after `epochs/daily` branch is
+    # triggered to be created in WPT repo.
+    - cron: 30 0 * * *
+  workflow_dispatch:
 
 jobs:
   wpt:
