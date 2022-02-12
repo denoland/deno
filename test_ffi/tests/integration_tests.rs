@@ -69,6 +69,8 @@ fn basic() {
     true\n\
     Before\n\
     true\n\
+    Static u32: 42\n\
+    Static ptr: true\n\
     After\n\
     true\n\
     Correct number of resources\n";

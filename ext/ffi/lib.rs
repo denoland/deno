@@ -118,6 +118,19 @@ impl DynamicLibraryResource {
 
     Ok(())
   }
+
+  fn get_constant(&self, symbol: String) -> Result<*const c_void, AnyError> {
+    // By default, Err returned by this function does not tell
+    // which symbol wasn't exported. So we'll modify the error
+    // message to include the name of symbol.
+    match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+      Ok(value) => Ok(Ok(value)),
+      Err(err) => Err(generic_error(format!(
+        "Failed to register symbol {}: {}",
+        symbol, err
+      ))),
+    }?
+  }
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
@@ -128,6 +141,15 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
+      ("op_ffi_get_u8", op_sync(op_ffi_get_u8)),
+      ("op_ffi_get_i8", op_sync(op_ffi_get_i8)),
+      ("op_ffi_get_u16", op_sync(op_ffi_get_u16)),
+      ("op_ffi_get_i16", op_sync(op_ffi_get_i16)),
+      ("op_ffi_get_u32", op_sync(op_ffi_get_u32)),
+      ("op_ffi_get_i32", op_sync(op_ffi_get_i32)),
+      ("op_ffi_get_u64", op_sync(op_ffi_get_u64)),
+      ("op_ffi_get_f32", op_sync(op_ffi_get_f32)),
+      ("op_ffi_get_f64", op_sync(op_ffi_get_f64)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
@@ -352,9 +374,15 @@ struct ForeignFunction {
 }
 
 #[derive(Deserialize, Debug)]
+enum ForeignSymbol {
+  ForeignFunction(ForeignFunction),
+  ForeignConstant,
+}
+
+#[derive(Deserialize, Debug)]
 struct FfiLoadArgs {
   path: String,
-  symbols: HashMap<String, ForeignFunction>,
+  symbols: HashMap<String, ForeignSymbol>,
 }
 
 // `path` is only used on Windows.
@@ -458,8 +486,15 @@ where
     symbols: HashMap::new(),
   };
 
-  for (symbol, foreign_fn) in args.symbols {
-    resource.register(symbol, foreign_fn)?;
+  for (symbol, foreign_symbol) in args.symbols {
+    match foreign_symbol {
+      ForeignSymbol::ForeignConstant => {
+        // No-op: Constants will be handled separately and are not part of the Rust-side resource.
+      }
+      ForeignSymbol::ForeignFunction(foreign_fn) => {
+        resource.register(symbol, foreign_fn)?;
+      }
+    }
   }
 
   Ok(state.resource_table.add(resource))
@@ -629,6 +664,139 @@ async fn op_ffi_call_ptr_nonblocking(
   tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
     .await
     .unwrap()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiGetArgs {
+  rid: ResourceId,
+  name: String,
+}
+
+fn op_ffi_get_u8(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<u8, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const u8;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_i8(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<i8, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const i8;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_u16(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<u16, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const u16;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_i16(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<i16, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const i16;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_u32(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<u32, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const u32;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_i32(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<i32, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const i32;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_u64(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<U32x2, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const u64;
+
+  Ok(unsafe { U32x2::from(ptr::read_unaligned(data_ptr)) })
+}
+
+fn op_ffi_get_f32(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<f32, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const f32;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+}
+
+fn op_ffi_get_f64(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<f64, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_constant(args.name)? as *const f64;
+
+  Ok(unsafe { ptr::read_unaligned(data_ptr) })
 }
 
 fn op_ffi_call(

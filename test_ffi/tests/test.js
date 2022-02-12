@@ -73,6 +73,12 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [],
     result: "pointer",
   },
+  "static_u32": {
+    type: "u32",
+  },
+  "static_pointer": {
+    type: "pointer",
+  },
 });
 
 dylib.symbols.printSomething();
@@ -200,6 +206,9 @@ dylib.symbols.sleep_nonblocking(100).then(() => {
 });
 console.log("Before");
 console.log(performance.now() - start < 100);
+
+console.log("Static u32:", dylib.symbols.static_u32);
+console.log("Static ptr:", dylib.symbols.static_pointer.value > 0);
 
 function cleanup() {
   dylib.close();

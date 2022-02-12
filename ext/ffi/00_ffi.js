@@ -230,6 +230,83 @@
       this.#rid = core.opSync("op_ffi_load", { path, symbols });
 
       for (const symbol in symbols) {
+        if ("type" in symbols[symbol]) {
+          const type = symbols[symbol].type;
+          const name = symbols[symbol].name || symbol;
+          if (type === "u8") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_u8", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "i8") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_i8", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "u16") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_u16", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "i16") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_i16", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "u32") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_u32", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "i32") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_i32", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "u64") {
+            this.symbols[symbol] = unpackU64(core.opSync(
+              "op_ffi_get_u64", {
+              rid: this.#rid,
+              name,
+            }));
+          } else if (type === "u64") {
+            this.symbols[symbol] = unpackI64(core.opSync(
+              "op_ffi_get_u64", {
+              rid: this.#rid,
+              name,
+            }));
+          } else if (type === "f32") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_f32", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "f64") {
+            this.symbols[symbol] = core.opSync(
+              "op_ffi_get_f64", {
+              rid: this.#rid,
+              name,
+            });
+          } else if (type === "pointer") {
+            this.symbols[symbol] = new UnsafePointer(
+              unpackU64(
+                core.opSync("op_ffi_get_u64", {
+                  rid: this.#rid,
+                  name,
+                })
+              )
+            )
+          } else {
+            throw new TypeError(`Invalid dlopen constant symbol type '${type}' for symbol '${symbol}'`);
+          }
+          continue;
+        }
         const isNonBlocking = symbols[symbol].nonblocking;
         const types = symbols[symbol].parameters;
 
