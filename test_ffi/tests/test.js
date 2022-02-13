@@ -76,7 +76,7 @@ const dylib = Deno.dlopen(libPath, {
   "static_u32": {
     type: "u32",
   },
-  "static_pointer": {
+  "static_ptr": {
     type: "pointer",
   },
 });
@@ -208,7 +208,9 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 console.log("Static u32:", dylib.symbols.static_u32);
-console.log("Static ptr:", dylib.symbols.static_pointer.value > 0);
+console.log("Static ptr:", dylib.symbols.static_ptr instanceof Deno.UnsafePointer);
+const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
+console.log("Static ptr value:", view.getUint32());
 
 function cleanup() {
   dylib.close();

@@ -119,7 +119,7 @@ impl DynamicLibraryResource {
     Ok(())
   }
 
-  fn get_constant(&self, symbol: String) -> Result<*const c_void, AnyError> {
+  fn get_static(&self, symbol: String) -> Result<*const c_void, AnyError> {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
@@ -141,15 +141,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
-      ("op_ffi_get_u8", op_sync(op_ffi_get_u8)),
-      ("op_ffi_get_i8", op_sync(op_ffi_get_i8)),
-      ("op_ffi_get_u16", op_sync(op_ffi_get_u16)),
-      ("op_ffi_get_i16", op_sync(op_ffi_get_i16)),
-      ("op_ffi_get_u32", op_sync(op_ffi_get_u32)),
-      ("op_ffi_get_i32", op_sync(op_ffi_get_i32)),
-      ("op_ffi_get_u64", op_sync(op_ffi_get_u64)),
-      ("op_ffi_get_f32", op_sync(op_ffi_get_f32)),
-      ("op_ffi_get_f64", op_sync(op_ffi_get_f64)),
+      ("op_ffi_get_static", op_sync(op_ffi_get_static)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
@@ -374,9 +366,17 @@ struct ForeignFunction {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct ForeignStatic {
+  name: Option<String>,
+  r#type: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
-  ForeignConstant,
+  ForeignStatic(ForeignStatic),
 }
 
 #[derive(Deserialize, Debug)]
@@ -488,8 +488,8 @@ where
 
   for (symbol, foreign_symbol) in args.symbols {
     match foreign_symbol {
-      ForeignSymbol::ForeignConstant => {
-        // No-op: Constants will be handled separately and are not part of the Rust-side resource.
+      ForeignSymbol::ForeignStatic(_) => {
+        // No-op: Statics will be handled separately and are not part of the Rust-side resource.
       }
       ForeignSymbol::ForeignFunction(foreign_fn) => {
         resource.register(symbol, foreign_fn)?;
@@ -671,132 +671,64 @@ async fn op_ffi_call_ptr_nonblocking(
 struct FfiGetArgs {
   rid: ResourceId,
   name: String,
+  r#type: NativeType,
 }
 
-fn op_ffi_get_u8(
+fn op_ffi_get_static(
   state: &mut deno_core::OpState,
   args: FfiGetArgs,
   _: (),
-) -> Result<u8, AnyError> {
+) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
     .get::<DynamicLibraryResource>(args.rid)?;
 
-  let data_ptr = resource.get_constant(args.name)? as *const u8;
+  let data_ptr = resource.get_static(args.name)? as *const u8;
 
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_i8(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<i8, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const i8;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_u16(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<u16, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const u16;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_i16(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<i16, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const i16;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_u32(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<u32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const u32;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_i32(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<i32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const i32;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_u64(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<U32x2, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const u64;
-
-  Ok(unsafe { U32x2::from(ptr::read_unaligned(data_ptr)) })
-}
-
-fn op_ffi_get_f32(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<f32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const f32;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
-}
-
-fn op_ffi_get_f64(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-  _: (),
-) -> Result<f64, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let data_ptr = resource.get_constant(args.name)? as *const f64;
-
-  Ok(unsafe { ptr::read_unaligned(data_ptr) })
+  Ok(match args.r#type {
+    NativeType::Void => {
+      unreachable!();
+    }
+    NativeType::U8 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u8) })
+    }
+    NativeType::I8 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i8) })
+    }
+    NativeType::U16 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u16) })
+    }
+    NativeType::I16 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i16) })
+    }
+    NativeType::U32 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u32) })
+    }
+    NativeType::I32 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i32) })
+    }
+    NativeType::U64 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u64) })
+    }
+    NativeType::I64 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i64) })
+    }
+    NativeType::USize => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const usize) })
+    }
+    NativeType::ISize => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const isize) })
+    }
+    NativeType::F32 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const f32) })
+    }
+    NativeType::F64 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
+    }
+    NativeType::Pointer => {
+      json!(U32x2::from(data_ptr as *const u8 as u64))
+    }
+  })
 }
 
 fn op_ffi_call(
