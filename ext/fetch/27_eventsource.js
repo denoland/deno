@@ -67,32 +67,32 @@
     [_reconnectionTime] = 2200;
 
     get CONNECTING() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       return CONNECTING;
     }
 
     get OPEN() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       return OPEN;
     }
 
     get CLOSED() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       return CLOSED;
     }
 
     get readyState() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       return this[_readyState];
     }
 
     get url() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       return this[_url];
     }
 
     get withCredentials() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       return this[_withCredentials];
     }
 
@@ -126,7 +126,7 @@
     }
 
     close() {
-      webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSourcePrototype);
       this[_readyState] = CLOSED;
       this[_abortSignal].abort();
     }
@@ -337,6 +337,7 @@
   defineEventHandler(EventSource.prototype, "error", null);
   defineEventHandler(EventSource.prototype, "open", null);
   webidl.configurePrototype(EventSource);
+  const EventSourcePrototype = EventSource.prototype;
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.EventSource = EventSource;
