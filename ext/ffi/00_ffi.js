@@ -232,6 +232,10 @@
       for (const symbol in symbols) {
         if ("type" in symbols[symbol]) {
           const type = symbols[symbol].type;
+          if (type === "void") {
+            throw new TypeError("Foreign symbol of type 'void' is not supported.");
+          }
+          
           const name = symbols[symbol].name || symbol;
           let value = core.opSync(
             "op_ffi_get_static",
