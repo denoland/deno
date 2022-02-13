@@ -50,6 +50,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
+  let flags = Arc::new(flags);
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
