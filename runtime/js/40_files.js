@@ -74,7 +74,7 @@
     });
   }
 
-  class File {
+  class FsFile {
     #rid = 0;
 
     constructor(rid) {
@@ -226,7 +226,8 @@
     stdin,
     stdout,
     stderr,
-    File,
+    File: FsFile,
+    FsFile,
     create,
     createSync,
     open,
