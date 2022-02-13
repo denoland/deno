@@ -65,7 +65,7 @@
     #settings = {
       url: "",
       fetchSettings: {
-        headers: [["Accept", "text/event-stream"]],
+        headers: defaultHeaders,
         credentials: "same-origin",
         mode: "cors",
       },
@@ -93,20 +93,25 @@
       return this.#withCredentials;
     }
 
-    constructor(url, eventSourceInitDict = {}) {
+    constructor(url, eventSourceInitDict) {
       super();
+      this[webidl.brand] = webidl.brand;
+      const prefix = "Failed to construct 'EventSource'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      if (eventSourceInitDict) {
+        eventSourceInitDict = webidl.converters["EventSourceInit"]({
+          prefix,
+          context: "Argument 2",
+        });
+      }
 
       try {
         // Allow empty url
         // https://github.com/web-platform-tests/wpt/blob/master/eventsource/eventsource-constructor-empty-url.any.js
-        this.#settings.url = url == ""
-          ? window.location.toString()
-          : new URL(url, window.location.href).toString();
+        const baseURL = getLocationHref();
+        this.#settings.url = new URL(url, baseURL).href;
       } catch (e) {
-        // Dunno if this is allowd in the spec. But handy for testing purposes
-        if (e instanceof ReferenceError) {
-          this.#settings.url = new URL(url).toString();
-        } else throw new DOMException(e.message, "SyntaxError");
+        throw new DOMException(e.message, "SyntaxError");
       }
 
       if (eventSourceInitDict?.withCredentials) {
@@ -126,19 +131,24 @@
     async #fetch() {
       let currentRetries = 0;
       while (this.#readyState < this.CLOSED) {
-        const res = await fetch(this.url, {
-          cache: "no-store",
-          // This seems to cause problems if the abort happens while `res.body` is being used
-          // signal: this.#abortController.signal,
-          keepalive: true,
-          redirect: "follow",
-          ...this.#settings.fetchSettings,
-        }).catch(() => void (0));
-
+        const req = newInnerRequest(
+          "GET",
+          this.url,
+          this.#settings.fetchSettings.headers,
+          null,
+        );
+        /** @type { InnerResponse } */
+        const res = await mainFetch(req, true, this.#abortController.signal);
+        const correctContentType = ArrayPrototypeSome(
+          res.headerList,
+          (header) =>
+            StringPrototypeToLowerCase(header[0]) === "content-type" &&
+            StringPrototypeIncludes(header[1], "text/event-stream"),
+        );
         if (
           res?.body &&
           res?.status === 200 &&
-          res.headers.get("content-type")?.startsWith("text/event-stream")
+          correctContentType
         ) {
           // Announce connection
           if (this.#readyState !== this.CLOSED) {
@@ -156,7 +166,7 @@
             ignoreBOM: false,
             fatal: false,
           });
-          const reader = res.body.pipeThrough(decoder);
+          const reader = res.body.stream.pipeThrough(decoder);
 
           // Initiate buffers
           let lastEventIDBuffer = "";
