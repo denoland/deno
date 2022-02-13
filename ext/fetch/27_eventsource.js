@@ -59,109 +59,96 @@
   const _fetch = Symbol("fetch");
 
   class EventSource extends EventTarget {
-    [_readyState] = CONNECTING;
-    [_withCredentials] = false;
-    [_abortSignal] = new AbortController();
-    [_fetchHeaders] = defaultHeaders;
-    [_lastEventID] = "";
-    [_reconnectionTime] = 2200;
+    #withCredentials = false;
+    #readyState = 0;
+    #abortController = new AbortController();
+    #settings = {
+      url: "",
+      fetchSettings: {
+        headers: [["Accept", "text/event-stream"]],
+        credentials: "same-origin",
+        mode: "cors",
+      },
+      reconnectionTime: 2200,
+      lastEventID: "",
+    };
 
-    get CONNECTING() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      return CONNECTING;
-    }
+    onopen = null;
+    onmessage = null;
+    onerror = null;
 
-    get OPEN() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      return OPEN;
-    }
-
-    get CLOSED() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      return CLOSED;
-    }
+    CONNECTING = 0;
+    OPEN = 1;
+    CLOSED = 2;
 
     get readyState() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      return this[_readyState];
+      return this.#readyState;
     }
 
     get url() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      return this[_url];
+      return this.#settings.url;
     }
 
     get withCredentials() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      return this[_withCredentials];
+      return this.#withCredentials;
     }
 
-    constructor(url, eventSourceInitDict) {
+    constructor(url, eventSourceInitDict = {}) {
       super();
-      this[webidl.brand] = webidl.brand;
-      const prefix = "Failed to construct 'EventSource'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      if (eventSourceInitDict) {
-        eventSourceInitDict = webidl.converters["EventSourceInit"]({
-          prefix,
-          context: "Argument 2",
-        });
-      }
 
       try {
         // Allow empty url
         // https://github.com/web-platform-tests/wpt/blob/master/eventsource/eventsource-constructor-empty-url.any.js
-        const baseURL = getLocationHref();
-        this[_url] = new URL(url, baseURL).href;
+        this.#settings.url = url == ""
+          ? window.location.toString()
+          : new URL(url, window.location.href).toString();
       } catch (e) {
-        throw new DOMException(e.message, "SyntaxError");
+        // Dunno if this is allowd in the spec. But handy for testing purposes
+        if (e instanceof ReferenceError) {
+          this.#settings.url = new URL(url).toString();
+        } else throw new DOMException(e.message, "SyntaxError");
       }
 
       if (eventSourceInitDict?.withCredentials) {
-        this[_withCredentials] = true;
+        this.#settings.fetchSettings.credentials = "include";
+        this.#withCredentials = true;
       }
 
-      this[_fetch]();
+      this.#fetch();
       return;
     }
 
     close() {
-      webidl.assertBranded(this, EventSourcePrototype);
-      this[_readyState] = CLOSED;
-      this[_abortSignal].abort();
+      this.#readyState = this.CLOSED;
+      this.#abortController.abort();
     }
 
-    async [_fetch]() {
+    async #fetch() {
       let currentRetries = 0;
-      while (this[_readyState] < CLOSED) {
-        const req = newInnerRequest(
-          "GET",
-          this[_url],
-          this[_fetchHeaders],
-          null,
-        );
-        /** @type { InnerResponse } */
-        const res = await mainFetch(req, true, this[_abortSignal].signal);
-        const correctContentType = ArrayPrototypeSome(
-          res.headerList,
-          (header) =>
-            StringPrototypeToLowerCase(header[0]) === "content-type" &&
-            StringPrototypeIncludes(header[1], "text/event-stream"),
-        );
+      while (this.#readyState < this.CLOSED) {
+        const res = await fetch(this.url, {
+          cache: "no-store",
+          // This seems to cause problems if the abort happens while `res.body` is being used
+          // signal: this.#abortController.signal,
+          keepalive: true,
+          redirect: "follow",
+          ...this.#settings.fetchSettings,
+        }).catch(() => void (0));
+
         if (
           res?.body &&
           res?.status === 200 &&
-          correctContentType
+          res.headers.get("content-type")?.startsWith("text/event-stream")
         ) {
           // Announce connection
-          if (this[_readyState] !== CLOSED) {
-            this[_readyState] = OPEN;
+          if (this.#readyState !== this.CLOSED) {
+            this.#readyState = this.OPEN;
             const openEvent = new Event("open", {
               bubbles: false,
               cancelable: false,
             });
             super.dispatchEvent(openEvent);
-            this.onopen?.(openEvent);
+            if (this.onopen) this.onopen(openEvent);
           }
 
           // Decode body for interpreting
@@ -169,7 +156,7 @@
             ignoreBOM: false,
             fatal: false,
           });
-          const reader = res.body.stream.pipeThrough(decoder);
+          const reader = res.body.pipeThrough(decoder);
 
           // Initiate buffers
           let lastEventIDBuffer = "";
@@ -178,25 +165,17 @@
           let readBuffer = "";
 
           for await (const chunk of reader) {
-            if (this[_abortSignal].signal.aborted) break;
-            const lines = StringPrototypeSplit(
-              StringPrototypeReplaceAll(
-                StringPrototypeReplaceAll(
-                  decodeURIComponent(readBuffer + chunk),
-                  "\r\n",
-                  "\n",
-                ),
-                "\r",
-                "\n",
-              ),
-              "\n",
-            );
-            readBuffer = ArrayPrototypePop(lines) ?? "";
+            if (this.#abortController.signal.aborted) break;
+            const lines = decodeURIComponent(readBuffer + chunk)
+              .replaceAll("\r\n", "\n")
+              .replaceAll("\r", "\n")
+              .split("\n");
+            readBuffer = lines.pop() ?? "";
 
             // Start loop for interpreting
             for (const line of lines) {
               if (!line) {
-                this[_lastEventID] = lastEventIDBuffer;
+                this.#settings.lastEventID = lastEventIDBuffer;
 
                 // Check if buffer is not an empty string
                 if (messageBuffer) {
@@ -206,17 +185,17 @@
                   }
 
                   const event = new MessageEvent(eventTypeBuffer, {
-                    data: StringPrototypeTrim(messageBuffer),
+                    data: messageBuffer.trim(),
                     origin: res.url,
-                    lastEventId: this[_lastEventID],
+                    lastEventId: this.#settings.lastEventID,
                     cancelable: false,
                     bubbles: false,
                   });
 
-                  if (this[_readyState] !== CLOSED) {
+                  if (this.readyState !== this.CLOSED) {
                     // Fire event
                     super.dispatchEvent(event);
-                    this.onmessage?.(event);
+                    if (this.onmessage) this.onmessage(event);
                   }
                 }
 
@@ -229,15 +208,10 @@
               // Ignore comments
               if (line[0] === ":") continue;
 
-              let splitIndex = StringPrototypeIndexOf(line, ":");
+              let splitIndex = line.indexOf(":");
               splitIndex = splitIndex > 0 ? splitIndex : line.length;
-              const field = StringPrototypeTrim(
-                StringPrototypeSlice(line, 0, splitIndex),
-              );
-              /** @type { string } */
-              const data = StringPrototypeTrim(
-                StringPrototypeSlice(line, splitIndex + 1),
-              );
+              const field = line.slice(0, splitIndex).trim();
+              const data = line.slice(splitIndex + 1).trim();
               switch (field) {
                 case "event":
                   // Set fieldBuffer to Field Value
@@ -250,8 +224,7 @@
                 case "id":
                   // set lastEventID to Field Value
                   if (
-                    data && !StringPrototypeIncludes(data, "\u0000") &&
-                    !StringPrototypeIncludes(data, "\x00")
+                    data && !data.includes("\u0000") && !data.includes("\x00")
                   ) {
                     lastEventIDBuffer = data;
                   }
@@ -259,37 +232,37 @@
                 case "retry": {
                   // set reconnectionTime to Field Value if int
                   const num = Number(data);
-                  if (!NumberIsNaN(num) && NumberIsFinite(num)) {
-                    this[_reconnectionTime] = num;
+                  if (!isNaN(num) && isFinite(num)) {
+                    this.#settings.reconnectionTime = num;
                   }
                   break;
                 }
               }
             }
           }
-          if (this[_abortSignal].signal.aborted) {
+          if (this.#abortController.signal.aborted) {
             // Cancel reader to close the EventSource properly
             await reader.cancel();
-            this[_readyState] = CLOSED;
+            this.#readyState = this.CLOSED;
             break;
           }
         } else {
           // Connection failed for whatever reason
-          this[_readyState] = CLOSED;
-          this[_abortSignal].abort();
+          this.#readyState = this.CLOSED;
+          this.#abortController.abort();
           const errorEvent = new Event("error", {
             bubbles: false,
             cancelable: false,
           });
           super.dispatchEvent(errorEvent);
-          this.onerror?.(errorEvent);
+          if (this.onerror) this.onerror(errorEvent);
           if (currentRetries >= 3) break;
           currentRetries++;
         }
 
         // Set readyState to CONNECTING
-        if (this[_readyState] !== CLOSED) {
-          this[_readyState] = CONNECTING;
+        if (this.#readyState !== this.CLOSED) {
+          this.#readyState = this.CONNECTING;
 
           // Fire onerror
           const errorEvent = new Event("error", {
@@ -298,22 +271,22 @@
           });
 
           super.dispatchEvent(errorEvent);
-          this.onerror?.(errorEvent);
+          if (this.onerror) this.onerror(errorEvent);
 
           // Timeout for re-establishing the connection
           await new Promise((res) => {
             const id = setTimeout(
               () => res(clearTimeout(id)),
-              this[_reconnectionTime],
+              this.#settings.reconnectionTime,
             );
           });
 
-          if (this[_readyState] !== CONNECTING) break;
+          if (this.#readyState !== this.CONNECTING) break;
 
-          if (this[_lastEventID]) {
-            ArrayPrototypePush(this[_fetchHeaders], [
+          if (this.#settings.lastEventID) {
+            this.#settings.fetchSettings.headers.push([
               "Last-Event-ID",
-              this[_lastEventID],
+              this.#settings.lastEventID,
             ]);
           }
         }
