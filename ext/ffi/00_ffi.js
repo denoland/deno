@@ -9,6 +9,7 @@
     Uint8Array,
     BigInt,
     Number,
+    ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -235,7 +236,7 @@
           if (type === "void") {
             throw new TypeError("Foreign symbol of type 'void' is not supported.");
           }
-          
+
           const name = symbols[symbol].name || symbol;
           let value = core.opSync(
             "op_ffi_get_static",
@@ -253,13 +254,22 @@
           } else if (type === "i64") {
             value = unpackI64(value);
           }
-          this.symbols[symbol] = value;
+          ObjectDefineProperty(
+            this.symbols,
+            symbol,
+            {
+              configurable: false,
+              enumerable: true,
+              value,
+              writable: false,
+            },
+          );
           continue;
         }
         const isNonBlocking = symbols[symbol].nonblocking;
         const types = symbols[symbol].parameters;
 
-        this.symbols[symbol] = (...args) => {
+        const fn = (...args) => {
           const { parameters, buffers } = prepareArgs(types, args);
 
           if (isNonBlocking) {
@@ -292,6 +302,17 @@
             return result;
           }
         };
+
+        ObjectDefineProperty(
+          this.symbols,
+          symbol,
+          {
+            configurable: false,
+            enumerable: true,
+            value: fn,
+            writable: false,
+          },
+        );
       }
     }
 
