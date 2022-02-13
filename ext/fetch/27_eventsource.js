@@ -13,12 +13,15 @@
     Promise,
     StringPrototypeTrim,
     Number,
+    NumberIsNaN,
+    NumberIsFinite,
     StringPrototypeSlice,
     StringPrototypeReplaceAll,
     StringPrototypeSplit,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
     ArrayPrototypePop,
+    ArrayPrototypePush,
     StringPrototypeIndexOf,
     decodeURIComponent,
   } = window.__bootstrap.primordials;
@@ -33,7 +36,7 @@
       {
         key: "withCredentials",
         converter: webidl.converters.boolean,
-        required: true,
+        defaultValue: false,
       },
     ],
   );
@@ -131,11 +134,19 @@
     async [_fetch]() {
       let currentRetries = 0;
       while (this[_readyState] < CLOSED) {
-        const req = newInnerRequest("GET", this[_url], this[_fetchHeaders], null);
+        const req = newInnerRequest(
+          "GET",
+          this[_url],
+          this[_fetchHeaders],
+          null,
+        );
         /** @type { InnerResponse } */
         const res = await mainFetch(req, true, this[_abortSignal].signal);
-        const correctContentType = ArrayPrototypeSome(res.headerList, (header) =>
-          StringPrototypeToLowerCase(header[0]) === "content-type" && StringPrototypeIncludes(header[1], "text/event-stream")
+        const correctContentType = ArrayPrototypeSome(
+          res.headerList,
+          (header) =>
+            StringPrototypeToLowerCase(header[0]) === "content-type" &&
+            StringPrototypeIncludes(header[1], "text/event-stream"),
         );
         if (
           res?.body &&
@@ -248,7 +259,7 @@
                 case "retry": {
                   // set reconnectionTime to Field Value if int
                   const num = Number(data);
-                  if (!Number.isNaN(num) && Number.isFinite(num)) {
+                  if (!NumberIsNaN(num) && NumberIsFinite(num)) {
                     this[_reconnectionTime] = num;
                   }
                   break;
@@ -300,7 +311,7 @@
           if (this[_readyState] !== CONNECTING) break;
 
           if (this[_lastEventID]) {
-            this[_fetchHeaders].push([
+            ArrayPrototypePush(this[_fetchHeaders], [
               "Last-Event-ID",
               this[_lastEventID],
             ]);
@@ -327,5 +338,6 @@
   defineEventHandler(EventSource.prototype, "open", null);
   webidl.configurePrototype(EventSource);
 
-  window.__bootstrap.eventSource = EventSource;
+  window.__bootstrap.fetch ??= {};
+  window.__bootstrap.fetch.EventSource = EventSource;
 })(this);

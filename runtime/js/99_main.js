@@ -26,7 +26,6 @@ delete Object.prototype.__proto__;
     TypeError,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
-  const EventSource = window.__bootstrap.eventSource;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
@@ -379,7 +378,7 @@ delete Object.prototype.__proto__;
     DOMException: util.nonEnumerable(domException.DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
-    EventSource: util.nonEnumerable(EventSource),
+    EventSource: util.nonEnumerable(fetch.EventSource),
     EventTarget: util.nonEnumerable(EventTarget),
     File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
