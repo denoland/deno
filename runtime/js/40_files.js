@@ -39,7 +39,7 @@
       { path: pathFromURL(path), options, mode },
     );
 
-    return new File(rid);
+    return new FsFile(rid);
   }
 
   async function open(
@@ -53,7 +53,7 @@
       { path: pathFromURL(path), options, mode },
     );
 
-    return new File(rid);
+    return new FsFile(rid);
   }
 
   function createSync(path) {
