@@ -1,18 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::module_graph::Graph;
-use crate::module_graph::Stats;
+use crate::emit;
+use crate::graph_util::GraphData;
+use crate::graph_util::ModuleEntry;
 
 use deno_ast::MediaType;
-use deno_core::error::anyhow;
-use deno_core::error::bail;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::located_script_name;
 use deno_core::op_sync;
-use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -25,6 +25,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::Resolved;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -50,11 +52,25 @@ pub static SHARED_GLOBALS_LIB: &str =
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
 pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
-pub static COMPILER_SNAPSHOT: &[u8] =
-  include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
+  #[cold]
+  #[inline(never)]
+  || {
+    static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
+      include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+
+    zstd::block::decompress(
+      &COMPRESSED_COMPILER_SNAPSHOT[4..],
+      u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
+        as usize,
+    )
+    .unwrap()
+    .into_boxed_slice()
+  },
+);
 
 pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(COMPILER_SNAPSHOT)
+  Snapshot::Static(&*COMPILER_SNAPSHOT)
 }
 
 macro_rules! inc {
@@ -63,29 +79,39 @@ macro_rules! inc {
   };
 }
 
-lazy_static::lazy_static! {
-  /// Contains static assets that are not preloaded in the compiler snapshot.
-  pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
-    ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),
-    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
-    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
-    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
-    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
-    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
-    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
-    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
-    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
-    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
-    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
-    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
-    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
-    ("lib.webworker.importscripts.d.ts", inc!("lib.webworker.importscripts.d.ts")),
-    ("lib.webworker.iterable.d.ts", inc!("lib.webworker.iterable.d.ts")),
-  ])
-  .iter()
-  .cloned()
-  .collect();
-}
+/// Contains static assets that are not preloaded in the compiler snapshot.
+pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
+  Lazy::new(|| {
+    (&[
+      (
+        "lib.dom.asynciterable.d.ts",
+        inc!("lib.dom.asynciterable.d.ts"),
+      ),
+      ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+      ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+      ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+      ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+      ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+      ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+      ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+      ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+      ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+      ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+      ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+      (
+        "lib.webworker.importscripts.d.ts",
+        inc!("lib.webworker.importscripts.d.ts"),
+      ),
+      (
+        "lib.webworker.iterable.d.ts",
+        inc!("lib.webworker.iterable.d.ts"),
+      ),
+    ])
+      .iter()
+      .cloned()
+      .collect()
+  });
 
 /// Retrieve a static asset that are included in the binary.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
@@ -93,7 +119,7 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
 }
 
 fn get_maybe_hash(
-  maybe_source: &Option<String>,
+  maybe_source: Option<&String>,
   hash_data: &[Vec<u8>],
 ) -> Option<String> {
   if let Some(source) = maybe_source {
@@ -105,30 +131,39 @@ fn get_maybe_hash(
   }
 }
 
-fn hash_data_url(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-) -> String {
-  assert_eq!(
-    specifier.scheme(),
-    "data",
-    "Specifier must be a data: specifier."
-  );
+/// Hash the URL so it can be sent to `tsc` in a supportable way
+fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
   let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
-  format!("data:///{}{}", hash, media_type.as_ts_extension())
+  format!(
+    "{}:///{}{}",
+    specifier.scheme(),
+    hash,
+    media_type.as_ts_extension()
+  )
 }
 
-fn hash_blob_url(
+/// If the provided URLs derivable tsc media type doesn't match the media type,
+/// we will add an extension to the output.  This is to avoid issues with
+/// specifiers that don't have extensions, that tsc refuses to emit because they
+/// think a `.js` version exists, when it doesn't.
+fn maybe_remap_specifier(
   specifier: &ModuleSpecifier,
   media_type: &MediaType,
-) -> String {
-  assert_eq!(
-    specifier.scheme(),
-    "blob",
-    "Specifier must be a blob: specifier."
-  );
-  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
-  format!("blob:///{}{}", hash, media_type.as_ts_extension())
+) -> Option<String> {
+  let path = if specifier.scheme() == "file" {
+    if let Ok(path) = specifier.to_file_path() {
+      path
+    } else {
+      PathBuf::from(specifier.path())
+    }
+  } else {
+    PathBuf::from(specifier.path())
+  };
+  if path.extension().is_none() {
+    Some(format!("{}{}", specifier, media_type.as_ts_extension()))
+  } else {
+    None
+  }
 }
 
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
@@ -157,8 +192,30 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         }
         MediaType::TypeScript
       }
+      Some("mts") => {
+        if let Some(os_str) = path.file_stem() {
+          if let Some(file_name) = os_str.to_str() {
+            if file_name.ends_with(".d") {
+              return MediaType::Dmts;
+            }
+          }
+        }
+        MediaType::Mts
+      }
+      Some("cts") => {
+        if let Some(os_str) = path.file_stem() {
+          if let Some(file_name) = os_str.to_str() {
+            if file_name.ends_with(".d") {
+              return MediaType::Dcts;
+            }
+          }
+        }
+        MediaType::Cts
+      }
       Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
+      Some("mjs") => MediaType::Mjs,
+      Some("cjs") => MediaType::Cjs,
       Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
@@ -180,7 +237,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Arc<Mutex<Graph>>,
+  pub(crate) graph_data: Arc<RwLock<GraphData>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -190,7 +247,7 @@ pub struct Request {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Response {
+pub(crate) struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
   /// Any files that were emitted during the check.
@@ -198,38 +255,38 @@ pub struct Response {
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
   /// Statistics from the check.
-  pub stats: Stats,
+  pub stats: emit::Stats,
 }
 
 #[derive(Debug)]
 struct State {
-  data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Arc<Mutex<Graph>>,
+  graph_data: Arc<RwLock<GraphData>>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
+  remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
 }
 
 impl State {
   pub fn new(
-    graph: Arc<Mutex<Graph>>,
+    graph_data: Arc<RwLock<GraphData>>,
     hash_data: Vec<Vec<u8>>,
     maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
-    data_url_map: HashMap<String, ModuleSpecifier>,
+    remapped_specifiers: HashMap<String, ModuleSpecifier>,
   ) -> Self {
     State {
-      data_url_map,
       hash_data,
       emitted_files: Default::default(),
-      graph,
+      graph_data,
       maybe_config_specifier,
       maybe_tsbuildinfo,
       maybe_response: None,
+      remapped_specifiers,
       root_map,
     }
   }
@@ -292,32 +349,48 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-fn op_emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  let v: EmitArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_emit\".")?;
-  match v.file_name.as_ref() {
-    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(v.data),
-    _ => state.emitted_files.push(EmittedFile {
-      data: v.data,
-      maybe_specifiers: if let Some(specifiers) = &v.maybe_specifiers {
-        let specifiers = specifiers
-          .iter()
-          .map(|s| {
-            if let Some(data_specifier) = state.data_url_map.get(s) {
-              data_specifier.clone()
-            } else if let Some(remapped_specifier) = state.root_map.get(s) {
-              remapped_specifier.clone()
-            } else {
-              normalize_specifier(s).unwrap()
-            }
-          })
-          .collect();
-        Some(specifiers)
+fn op_emit(state: &mut State, args: EmitArgs) -> Result<Value, AnyError> {
+  match args.file_name.as_ref() {
+    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    _ => {
+      let media_type = MediaType::from(&args.file_name);
+      let media_type = if matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+          | MediaType::SourceMap
+          | MediaType::TsBuildInfo
+      ) {
+        media_type
       } else {
-        None
-      },
-      media_type: MediaType::from(&v.file_name),
-    }),
+        MediaType::JavaScript
+      };
+      state.emitted_files.push(EmittedFile {
+        data: args.data,
+        maybe_specifiers: if let Some(specifiers) = &args.maybe_specifiers {
+          let specifiers = specifiers
+            .iter()
+            .map(|s| {
+              if let Some(data_specifier) = state.remapped_specifiers.get(s) {
+                data_specifier.clone()
+              } else if let Some(remapped_specifier) = state.root_map.get(s) {
+                remapped_specifier.clone()
+              } else {
+                normalize_specifier(s).unwrap()
+              }
+            })
+            .collect();
+          Some(specifiers)
+        } else {
+          None
+        },
+        media_type,
+      })
+    }
   }
 
   Ok(json!(true))
@@ -330,12 +403,15 @@ struct ExistsArgs {
 }
 
 fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
+  let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
       Ok(true)
     } else {
-      let graph = state.graph.lock();
-      Ok(graph.contains(&specifier))
+      Ok(matches!(
+        graph_data.get(&graph_data.follow_redirect(&specifier)),
+        Some(ModuleEntry::Module { .. })
+      ))
     }
   } else {
     Ok(false)
@@ -346,6 +422,24 @@ fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
 struct LoadArgs {
   /// The fully qualified specifier that should be loaded.
   specifier: String,
+}
+
+fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+  match media_type {
+    MediaType::JavaScript => 1,
+    MediaType::Jsx => 2,
+    MediaType::Mjs => 1,
+    MediaType::Cjs => 1,
+    MediaType::TypeScript => 3,
+    MediaType::Mts => 3,
+    MediaType::Cts => 3,
+    MediaType::Dts => 3,
+    MediaType::Dmts => 3,
+    MediaType::Dcts => 3,
+    MediaType::Tsx => 4,
+    MediaType::Json => 6,
+    _ => 0,
+  }
 }
 
 fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -366,32 +460,39 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
     let maybe_source = get_asset(&name).map(String::from);
-    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.lock();
-    let specifier = if let Some(data_specifier) =
-      state.data_url_map.get(&v.specifier)
+    let specifier = if let Some(remapped_specifier) =
+      state.remapped_specifiers.get(&v.specifier)
     {
-      data_specifier.clone()
+      remapped_specifier.clone()
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
       remapped_specifier.clone()
     } else {
       specifier
     };
-    let maybe_source = graph.get_source(&specifier).map(|t| t.to_string());
-    media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
-      media_type
+    let graph_data = state.graph_data.read();
+    let maybe_source = if let Some(ModuleEntry::Module {
+      code,
+      media_type: mt,
+      ..
+    }) =
+      graph_data.get(&graph_data.follow_redirect(&specifier))
+    {
+      media_type = *mt;
+      Some(code.as_ref().clone())
     } else {
-      MediaType::Unknown
+      media_type = MediaType::Unknown;
+      None
     };
-    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
     maybe_source
   };
 
   Ok(
-    json!({ "data": data, "hash": hash, "scriptKind": media_type.as_ts_script_kind() }),
+    json!({ "data": data, "hash": hash, "scriptKind": as_ts_script_kind(&media_type) }),
   )
 }
 
@@ -405,68 +506,99 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  let v: ResolveArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_resolve\".")?;
+fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
   let mut resolved: Vec<(String, String)> = Vec::new();
-  let referrer = if let Some(data_specifier) = state.data_url_map.get(&v.base) {
-    data_specifier.clone()
-  } else if let Some(remapped_base) = state.root_map.get(&v.base) {
+  let referrer = if let Some(remapped_specifier) =
+    state.remapped_specifiers.get(&args.base)
+  {
+    remapped_specifier.clone()
+  } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&v.base).context(
+    normalize_specifier(&args.base).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
-  for specifier in &v.specifiers {
+  for specifier in &args.specifiers {
     if specifier.starts_with("asset:///") {
       resolved.push((
         specifier.clone(),
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.lock();
-      match graph.resolve(specifier, &referrer, true) {
-        Ok(resolved_specifier) => {
-          let media_type = if let Some(media_type) =
-            graph.get_media_type(&resolved_specifier)
-          {
-            media_type
-          } else {
-            bail!(
-              "Unable to resolve media type for specifier: \"{}\"",
-              resolved_specifier
-            )
-          };
-          let resolved_specifier_str = match resolved_specifier.scheme() {
+      let graph_data = state.graph_data.read();
+      let referrer = graph_data.follow_redirect(&referrer);
+      let resolved_dep = match graph_data.get(&referrer) {
+        Some(ModuleEntry::Module { dependencies, .. }) => {
+          dependencies.get(specifier).map(|d| {
+            if matches!(d.maybe_type, Resolved::Ok { .. }) {
+              &d.maybe_type
+            } else {
+              &d.maybe_code
+            }
+          })
+        }
+        Some(ModuleEntry::Configuration { dependencies }) => {
+          dependencies.get(specifier)
+        }
+        _ => None,
+      };
+      let maybe_result = match resolved_dep {
+        Some(Resolved::Ok { specifier, .. }) => {
+          let specifier = graph_data.follow_redirect(specifier);
+          match graph_data.get(&specifier) {
+            Some(ModuleEntry::Module {
+              media_type,
+              maybe_types,
+              ..
+            }) => match maybe_types {
+              Some(Resolved::Ok { specifier, .. }) => {
+                let types = graph_data.follow_redirect(specifier);
+                match graph_data.get(&types) {
+                  Some(ModuleEntry::Module { media_type, .. }) => {
+                    Some((types, media_type))
+                  }
+                  _ => None,
+                }
+              }
+              _ => Some((specifier, media_type)),
+            },
+            _ => None,
+          }
+        }
+        _ => None,
+      };
+      let result = match maybe_result {
+        Some((specifier, media_type)) => {
+          let specifier_str = match specifier.scheme() {
             "data" | "blob" => {
-              let specifier_str = if resolved_specifier.scheme() == "data" {
-                hash_data_url(&resolved_specifier, &media_type)
-              } else {
-                hash_blob_url(&resolved_specifier, &media_type)
-              };
+              let specifier_str = hash_url(&specifier, media_type);
               state
-                .data_url_map
-                .insert(specifier_str.clone(), resolved_specifier);
+                .remapped_specifiers
+                .insert(specifier_str.clone(), specifier);
               specifier_str
             }
-            _ => resolved_specifier.to_string(),
+            _ => {
+              if let Some(specifier_str) =
+                maybe_remap_specifier(&specifier, media_type)
+              {
+                state
+                  .remapped_specifiers
+                  .insert(specifier_str.clone(), specifier);
+                specifier_str
+              } else {
+                specifier.to_string()
+              }
+            }
           };
-          resolved.push((
-            resolved_specifier_str,
-            media_type.as_ts_extension().into(),
-          ));
+          (specifier_str, media_type.as_ts_extension().into())
         }
-        // in certain situations, like certain dynamic imports, we won't have
-        // the source file in the graph, so we will return a fake module to
-        // make tsc happy.
-        Err(_) => {
-          resolved.push((
-            "deno:///missing_dependency.d.ts".to_string(),
-            ".d.ts".to_string(),
-          ));
-        }
-      }
+        None => (
+          "deno:///missing_dependency.d.ts".to_string(),
+          ".d.ts".to_string(),
+        ),
+      };
+      resolved.push(result);
     }
   }
 
@@ -476,7 +608,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
-  pub stats: Stats,
+  pub stats: emit::Stats,
 }
 
 fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -489,7 +621,7 @@ fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(request: Request) -> Result<Response, AnyError> {
+pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     ..Default::default()
@@ -499,18 +631,14 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   // extensions and remap any that are unacceptable to tsc and add them to the
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
-  let mut data_url_map = HashMap::new();
+  let mut remapped_specifiers = HashMap::new();
   let root_names: Vec<String> = request
     .root_names
     .iter()
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
-        let specifier_str = if s.scheme() == "data" {
-          hash_data_url(s, mt)
-        } else {
-          hash_blob_url(s, mt)
-        };
-        data_url_map.insert(specifier_str.clone(), s.clone());
+        let specifier_str = hash_url(s, mt);
+        remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
       _ => {
@@ -530,12 +658,12 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     op_state.put(State::new(
-      request.graph.clone(),
+      request.graph_data,
       request.hash_data.clone(),
       request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
       root_map,
-      data_url_map,
+      remapped_specifiers,
     ));
   }
 
@@ -589,9 +717,40 @@ mod tests {
   use crate::config_file::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
-  use crate::module_graph::tests::MockSpecifierHandler;
-  use crate::module_graph::GraphBuilder;
-  use deno_core::parking_lot::Mutex;
+  use crate::emit::Stats;
+  use deno_core::futures::future;
+  use deno_graph::ModuleKind;
+  use std::fs;
+
+  #[derive(Debug, Default)]
+  pub(crate) struct MockLoader {
+    pub fixtures: PathBuf,
+  }
+
+  impl deno_graph::source::Loader for MockLoader {
+    fn load(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      _is_dynamic: bool,
+    ) -> deno_graph::source::LoadFuture {
+      let specifier_text = specifier
+        .to_string()
+        .replace(":///", "_")
+        .replace("://", "_")
+        .replace("/", "-");
+      let source_path = self.fixtures.join(specifier_text);
+      let response = fs::read_to_string(&source_path)
+        .map(|c| {
+          Some(deno_graph::source::LoadResponse {
+            specifier: specifier.clone(),
+            maybe_headers: None,
+            content: Arc::new(c),
+          })
+        })
+        .map_err(|err| err.into());
+      Box::pin(future::ready(response))
+    }
+  }
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
@@ -602,18 +761,20 @@ mod tests {
       .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let fixtures = test_util::testdata_path().join("tsc2");
-    let handler = Arc::new(Mutex::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder
-      .add(&specifier, false)
-      .await
-      .expect("module not inserted");
-    let graph = Arc::new(Mutex::new(builder.get_graph()));
+    let mut loader = MockLoader { fixtures };
+    let graph = deno_graph::create_graph(
+      vec![(specifier, ModuleKind::Esm)],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      None,
+      None,
+    )
+    .await;
     State::new(
-      graph,
+      Arc::new(RwLock::new((&graph).into())),
       hash_data,
       None,
       maybe_tsbuildinfo,
@@ -627,13 +788,18 @@ mod tests {
   ) -> Result<Response, AnyError> {
     let hash_data = vec![b"something".to_vec()];
     let fixtures = test_util::testdata_path().join("tsc2");
-    let handler = Arc::new(Mutex::new(MockSpecifierHandler {
-      fixtures,
-      ..Default::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder.add(specifier, false).await?;
-    let graph = Arc::new(Mutex::new(builder.get_graph()));
+    let mut loader = MockLoader { fixtures };
+    let graph = deno_graph::create_graph(
+      vec![(specifier.clone(), ModuleKind::Esm)],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      None,
+      None,
+    )
+    .await;
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
@@ -654,7 +820,7 @@ mod tests {
     let request = Request {
       config,
       debug: false,
-      graph,
+      graph_data: Arc::new(RwLock::new((&graph).into())),
       hash_data,
       maybe_config_specifier: None,
       maybe_tsbuildinfo: None,
@@ -695,24 +861,28 @@ mod tests {
   }
 
   #[test]
-  fn test_hash_data_url() {
+  fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_data_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(hash_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
   }
 
   #[test]
   fn test_get_tsc_media_type() {
     let fixtures = vec![
       ("file:///a.ts", MediaType::TypeScript),
+      ("file:///a.cts", MediaType::Cts),
+      ("file:///a.mts", MediaType::Mts),
       ("file:///a.tsx", MediaType::Tsx),
       ("file:///a.d.ts", MediaType::Dts),
+      ("file:///a.d.cts", MediaType::Dcts),
+      ("file:///a.d.mts", MediaType::Dmts),
       ("file:///a.js", MediaType::JavaScript),
       ("file:///a.jsx", MediaType::Jsx),
-      ("file:///a.cjs", MediaType::Unknown),
-      ("file:///a.mjs", MediaType::Unknown),
+      ("file:///a.cjs", MediaType::Cjs),
+      ("file:///a.mjs", MediaType::Mjs),
       ("file:///a.json", MediaType::Unknown),
       ("file:///a.wasm", MediaType::Unknown),
       ("file:///a.js.map", MediaType::Unknown),
@@ -729,11 +899,11 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_emit(
       &mut state,
-      json!({
-        "data": "some file content",
-        "fileName": "cache:///some/file.js",
-        "maybeSpecifiers": ["file:///some/file.ts"]
-      }),
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "cache:///some/file.js".to_string(),
+        maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -753,14 +923,45 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_emit_strange_specifier() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_emit(
+      &mut state,
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "deno:///some.file.ts?q=.json".to_string(),
+        maybe_specifiers: Some(
+          vec!["file:///some/file.ts?q=.json".to_string()],
+        ),
+      },
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!(true));
+    assert_eq!(state.emitted_files.len(), 1);
+    assert!(state.maybe_tsbuildinfo.is_none());
+    assert_eq!(
+      state.emitted_files[0],
+      EmittedFile {
+        data: "some file content".to_string(),
+        maybe_specifiers: Some(vec![resolve_url_or_path(
+          "file:///some/file.ts?q=.json"
+        )
+        .unwrap()]),
+        media_type: MediaType::JavaScript,
+      }
+    );
+  }
+
+  #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
     let actual = op_emit(
       &mut state,
-      json!({
-        "data": "some file content",
-        "fileName": "deno:///.tsbuildinfo",
-      }),
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "deno:///.tsbuildinfo".to_string(),
+        maybe_specifiers: None,
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -870,7 +1071,10 @@ mod tests {
     .await;
     let actual = op_resolve(
       &mut state,
-      json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./b.ts" ]}),
+      ResolveArgs {
+        base: "https://deno.land/x/a.ts".to_string(),
+        specifiers: vec!["./b.ts".to_string()],
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
@@ -886,8 +1090,12 @@ mod tests {
     .await;
     let actual = op_resolve(
       &mut state,
-      json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
-    ).expect("should have not errored");
+      ResolveArgs {
+        base: "https://deno.land/x/a.ts".to_string(),
+        specifiers: vec!["./bad.ts".to_string()],
+      },
+    )
+    .expect("should have not errored");
     assert_eq!(
       actual,
       json!([["deno:///missing_dependency.d.ts", ".d.ts"]])

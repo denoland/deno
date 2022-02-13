@@ -1,12 +1,16 @@
 use crate::error::type_error;
-use crate::error::AnyError;
 use crate::include_js_files;
+use crate::op_async;
 use crate::op_sync;
+use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
+use crate::void_op_async;
+use crate::void_op_sync;
 use crate::Extension;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
+use anyhow::Error;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
@@ -26,6 +30,17 @@ pub(crate) fn init_builtins() -> Extension {
       ("op_resources", op_sync(op_resources)),
       ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
       ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
+      (
+        "op_wasm_streaming_set_url",
+        op_sync(op_wasm_streaming_set_url),
+      ),
+      ("op_metrics", op_sync(op_metrics)),
+      ("op_void_sync", void_op_sync()),
+      ("op_void_async", void_op_async()),
+      // TODO(@AaronO): track IO metrics for builtin streams
+      ("op_read", op_async(op_read)),
+      ("op_write", op_async(op_write)),
+      ("op_shutdown", op_async(op_shutdown)),
     ])
     .build()
 }
@@ -36,7 +51,7 @@ pub fn op_resources(
   state: &mut OpState,
   _: (),
   _: (),
-) -> Result<Vec<(ResourceId, String)>, AnyError> {
+) -> Result<Vec<(ResourceId, String)>, Error> {
   let serialized_resources = state
     .resource_table
     .names()
@@ -50,7 +65,7 @@ pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
@@ -64,7 +79,7 @@ pub fn op_try_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8.
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
@@ -77,7 +92,7 @@ pub fn op_print(
   _state: &mut OpState,
   msg: String,
   is_err: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), Error> {
   if is_err {
     stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
@@ -88,7 +103,7 @@ pub fn op_print(
   Ok(())
 }
 
-pub struct WasmStreamingResource(pub(crate) RefCell<rusty_v8::WasmStreaming>);
+pub struct WasmStreamingResource(pub(crate) RefCell<v8::WasmStreaming>);
 
 impl Resource for WasmStreamingResource {
   fn close(self: Rc<Self>) {
@@ -108,7 +123,7 @@ pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
   bytes: ZeroCopyBuf,
-) -> Result<(), AnyError> {
+) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
@@ -122,7 +137,7 @@ pub fn op_wasm_streaming_abort(
   state: &mut OpState,
   rid: ResourceId,
   exception: serde_v8::Value,
-) -> Result<(), AnyError> {
+) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.take::<WasmStreamingResource>(rid)?;
 
@@ -136,4 +151,54 @@ pub fn op_wasm_streaming_abort(
   }
 
   Ok(())
+}
+
+pub fn op_wasm_streaming_set_url(
+  state: &mut OpState,
+  rid: ResourceId,
+  url: String,
+) -> Result<(), Error> {
+  let wasm_streaming =
+    state.resource_table.get::<WasmStreamingResource>(rid)?;
+
+  wasm_streaming.0.borrow_mut().set_url(&url);
+
+  Ok(())
+}
+
+pub fn op_metrics(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
+  Ok((aggregate, per_op))
+}
+
+async fn op_read(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<u32, Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.read(buf).await.map(|n| n as u32)
+}
+
+async fn op_write(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<u32, Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.write(buf).await.map(|n| n as u32)
+}
+
+async fn op_shutdown(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.shutdown().await
 }

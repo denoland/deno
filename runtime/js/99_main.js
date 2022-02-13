@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
@@ -16,6 +16,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperty,
     ObjectDefineProperties,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     PromiseResolve,
     Symbol,
@@ -36,7 +37,9 @@ delete Object.prototype.__proto__;
   const timers = window.__bootstrap.timers;
   const base64 = window.__bootstrap.base64;
   const encoding = window.__bootstrap.encoding;
+  const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
@@ -141,7 +144,9 @@ delete Object.prototype.__proto__;
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) => t instanceof MessagePort),
+        ports: transferables.filter((t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
+        ),
       });
 
       try {
@@ -310,7 +315,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, NavigatorPrototype);
         return webgpu.gpu;
       },
     },
@@ -318,11 +323,12 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
       },
     },
   });
+  const NavigatorPrototype = Navigator.prototype;
 
   class WorkerNavigator {
     constructor() {
@@ -341,7 +347,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator);
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
         return webgpu.gpu;
       },
     },
@@ -349,11 +355,12 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator);
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
         return numCpus;
       },
     },
   });
+  const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
@@ -362,11 +369,13 @@ delete Object.prototype.__proto__;
       streams.ByteLengthQueuingStrategy,
     ),
     CloseEvent: util.nonEnumerable(CloseEvent),
+    CompressionStream: util.nonEnumerable(compression.CompressionStream),
     CountQueuingStrategy: util.nonEnumerable(
       streams.CountQueuingStrategy,
     ),
     CryptoKey: util.nonEnumerable(crypto.CryptoKey),
     CustomEvent: util.nonEnumerable(CustomEvent),
+    DecompressionStream: util.nonEnumerable(compression.DecompressionStream),
     DOMException: util.nonEnumerable(domException.DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
@@ -409,6 +418,12 @@ delete Object.prototype.__proto__;
     ),
     ReadableByteStreamController: util.nonEnumerable(
       streams.ReadableByteStreamController,
+    ),
+    ReadableStreamBYOBReader: util.nonEnumerable(
+      streams.ReadableStreamBYOBReader,
+    ),
+    ReadableStreamBYOBRequest: util.nonEnumerable(
+      streams.ReadableStreamBYOBRequest,
     ),
     ReadableStreamDefaultController: util.nonEnumerable(
       streams.ReadableStreamDefaultController,
@@ -474,7 +489,7 @@ delete Object.prototype.__proto__;
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
-    self: util.readOnly(globalThis),
+    self: util.writable(globalThis),
     Navigator: util.nonEnumerable(Navigator),
     navigator: {
       configurable: true,
@@ -567,6 +582,7 @@ delete Object.prototype.__proto__;
       cpuCount,
     } = runtimeOptions;
 
+    colors.setNoColor(noColor);
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
@@ -581,7 +597,6 @@ delete Object.prototype.__proto__;
       [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
-      memoryUsage: core.memoryUsage,
       ...denoNs,
     };
     ObjectDefineProperties(finalDenoNs, {
@@ -627,7 +642,7 @@ delete Object.prototype.__proto__;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    ObjectDefineProperties(globalThis, { name: util.writable(name) });
     if (runtimeOptions.enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
@@ -658,11 +673,12 @@ delete Object.prototype.__proto__;
       cpuCount,
     } = runtimeOptions;
 
+    colors.setNoColor(noColor);
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();
 
-    pollForMessages();
+    globalThis.pollForMessages = pollForMessages;
 
     const internalSymbol = Symbol("Deno.internal");
 

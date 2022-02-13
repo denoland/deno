@@ -1,10 +1,5 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-  unitTest,
-} from "./test_util.ts";
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 
@@ -29,8 +24,8 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   return { uid, gid };
 }
 
-unitTest(
-  { ignore: Deno.build.os == "windows" },
+Deno.test(
+  { ignore: Deno.build.os == "windows", permissions: { write: false } },
   async function chownNoWritePermission() {
     const filePath = "chown_test_file.txt";
     await assertRejects(async () => {
@@ -39,7 +34,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -48,13 +43,17 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = Deno.makeTempDirSync() + "/chown_test_file.txt";
 
-    assertThrows(() => {
-      Deno.chownSync(filePath, uid, gid);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.chownSync(filePath, uid, gid);
+      },
+      Deno.errors.NotFound,
+      `chown '${filePath}'`,
+    );
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -63,13 +62,17 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = (await Deno.makeTempDir()) + "/chown_test_file.txt";
 
-    await assertRejects(async () => {
-      await Deno.chown(filePath, uid, gid);
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        await Deno.chown(filePath, uid, gid);
+      },
+      Deno.errors.NotFound,
+      `chown '${filePath}'`,
+    );
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true }, ignore: Deno.build.os == "windows" },
   function chownSyncPermissionDenied() {
     const dirPath = Deno.makeTempDirSync();
@@ -84,7 +87,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true }, ignore: Deno.build.os == "windows" },
   async function chownPermissionDenied() {
     const dirPath = await Deno.makeTempDir();
@@ -99,7 +102,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -122,7 +125,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -137,7 +140,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -152,7 +155,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -167,7 +170,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",

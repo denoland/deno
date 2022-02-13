@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -8,19 +8,29 @@
   function opConnectTls(
     args,
   ) {
-    return core.opAsync("op_connect_tls", args);
+    return core.opAsync("op_tls_connect", args);
   }
 
   function opAcceptTLS(rid) {
-    return core.opAsync("op_accept_tls", rid);
+    return core.opAsync("op_tls_accept", rid);
   }
 
   function opListenTls(args) {
-    return core.opSync("op_listen_tls", args);
+    return core.opSync("op_tls_listen", args);
   }
 
   function opStartTls(args) {
-    return core.opAsync("op_start_tls", args);
+    return core.opAsync("op_tls_start", args);
+  }
+
+  function opTlsHandshake(rid) {
+    return core.opAsync("op_tls_handshake", rid);
+  }
+
+  class TlsConn extends Conn {
+    handshake() {
+      return opTlsHandshake(this.rid);
+    }
   }
 
   async function connectTls({
@@ -31,6 +41,7 @@
     caCerts = [],
     certChain = undefined,
     privateKey = undefined,
+    alpnProtocols = undefined,
   }) {
     const res = await opConnectTls({
       port,
@@ -40,14 +51,15 @@
       caCerts,
       certChain,
       privateKey,
+      alpnProtocols,
     });
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
-  class TLSListener extends Listener {
+  class TlsListener extends Listener {
     async accept() {
       const res = await opAcceptTLS(this.rid);
-      return new Conn(res.rid, res.remoteAddr, res.localAddr);
+      return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
     }
   }
 
@@ -57,7 +69,7 @@
     keyFile,
     hostname = "0.0.0.0",
     transport = "tcp",
-    alpnProtocols,
+    alpnProtocols = undefined,
   }) {
     const res = opListenTls({
       port,
@@ -67,26 +79,33 @@
       transport,
       alpnProtocols,
     });
-    return new TLSListener(res.rid, res.localAddr);
+    return new TlsListener(res.rid, res.localAddr);
   }
 
   async function startTls(
     conn,
-    { hostname = "127.0.0.1", certFile = undefined, caCerts = [] } = {},
+    {
+      hostname = "127.0.0.1",
+      certFile = undefined,
+      caCerts = [],
+      alpnProtocols = undefined,
+    } = {},
   ) {
     const res = await opStartTls({
       rid: conn.rid,
       hostname,
       certFile,
       caCerts,
+      alpnProtocols,
     });
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.tls = {
     startTls,
     listenTls,
     connectTls,
-    TLSListener,
+    TlsConn,
+    TlsListener,
   };
 })(this);

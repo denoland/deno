@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -12,8 +12,10 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
+    ObjectEntries,
     ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
@@ -21,6 +23,7 @@
     MapPrototypeSet,
     PromisePrototypeThen,
     ObjectAssign,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
@@ -41,6 +44,9 @@
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
+  // TODO(bartlomieju): it future use `v8::Private` so it's not visible
+  // to users. Currently missing bindings.
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -117,6 +123,10 @@
       const err = errorBuilder ? errorBuilder(res.message) : new Error(
         `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
+      // Set .code if error was a known OS error, see error_codes.rs
+      if (res.code) {
+        err.code = res.code;
+      }
       // Strip unwrapOpResult() and errorBuilder() calls from stack trace
       ErrorCaptureStackTrace(err, unwrapOpResult);
       throw err;
@@ -129,7 +139,10 @@
     const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    // Save the id on the promise so it can later be ref'ed or unref'ed
+    p[promiseIdSymbol] = promiseId;
+    return p;
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
@@ -138,6 +151,18 @@
 
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
+  }
+
+  function read(rid, buf) {
+    return opAsync("op_read", rid, buf);
+  }
+
+  function write(rid, buf) {
+    return opAsync("op_write", rid, buf);
+  }
+
+  function shutdown(rid) {
+    return opAsync("op_shutdown", rid);
   }
 
   function close(rid) {
@@ -152,6 +177,15 @@
     opSync("op_print", str, isErr);
   }
 
+  function metrics() {
+    const [aggregate, perOps] = opSync("op_metrics");
+    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
+      ObjectEntries(opsCache),
+      ([opName, opId]) => [opName, perOps[opId]],
+    ));
+    return aggregate;
+  }
+
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
   // JS code (eg. "deno_net") so they are provided in "Deno.core" but later
   // reexported on "Deno.errors"
@@ -161,6 +195,7 @@
       this.name = "BadResource";
     }
   }
+  const BadResourcePrototype = BadResource.prototype;
 
   class Interrupted extends Error {
     constructor(msg) {
@@ -168,6 +203,7 @@
       this.name = "Interrupted";
     }
   }
+  const InterruptedPrototype = Interrupted.prototype;
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
@@ -176,14 +212,20 @@
     ops,
     close,
     tryClose,
+    read,
+    write,
+    shutdown,
     print,
     resources,
+    metrics,
     registerErrorBuilder,
     registerErrorClass,
     opresolve,
     syncOpsCache,
     BadResource,
+    BadResourcePrototype,
     Interrupted,
+    InterruptedPrototype,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

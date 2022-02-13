@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -29,7 +29,9 @@
     ObjectCreate,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
+    ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -174,7 +176,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Event,
+        evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
         keys: EVENT_PROPS,
       }));
     }
@@ -970,7 +972,11 @@
       webidl.requiredArguments(arguments.length, 1, {
         prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
       });
-      const self = this ?? globalThis;
+      // If `this` is not present, then fallback to global scope. We don't use
+      // `globalThis` directly here, because it could be deleted by user.
+      // Instead use saved reference to global scope when the script was
+      // executed.
+      const self = this ?? window;
 
       const { listeners } = self[eventTargetData];
       if (!(event.type in listeners)) {
@@ -1054,9 +1060,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ErrorEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "message",
           "filename",
           "lineno",
@@ -1115,9 +1121,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CloseEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "wasClean",
           "code",
           "reason",
@@ -1147,9 +1153,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof MessageEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "data",
           "origin",
           "lastEventId",
@@ -1180,9 +1186,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CustomEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "detail",
         ],
       }));
@@ -1210,9 +1216,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ProgressEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "lengthComputable",
           "loaded",
           "total",
@@ -1234,7 +1240,8 @@
 
       if (
         isSpecialErrorEventHandler &&
-        evt instanceof ErrorEvent && evt.type === "error"
+        ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+        evt.type === "error"
       ) {
         const ret = FunctionPrototypeCall(
           wrappedHandler.handler,

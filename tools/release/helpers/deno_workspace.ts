@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import * as path from "https://deno.land/std@0.105.0/path/mod.ts";
 import * as semver from "https://deno.land/x/semver@v1.4.0/mod.ts";
@@ -43,10 +43,15 @@ export class DenoWorkspace {
   getDependencyCrates() {
     return [
       this.getBenchUtilCrate(),
+      this.getSerdeV8Crate(),
       this.getCoreCrate(),
       ...this.getExtCrates(),
       this.getRuntimeCrate(),
     ];
+  }
+
+  getSerdeV8Crate() {
+    return this.getCrateByNameOrThrow("serde_v8");
   }
 
   getCliCrate() {

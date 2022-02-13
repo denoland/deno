@@ -1,20 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Requires to be run with `--allow-net` flag
 
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertThrows,
 } from "../../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../../test_util/std/async/deferred.ts";
-import { fromFileUrl } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "worker terminate",
   fn: async function () {
-    const promise = deferred();
-
     const jsWorker = new Worker(
       new URL("test_worker.js", import.meta.url).href,
       { type: "module" },
@@ -24,18 +22,20 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    tsWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
-      promise.resolve();
+    const promise1 = deferred();
+    jsWorker.onmessage = (e) => {
+      promise1.resolve(e.data);
     };
 
-    jsWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
-      tsWorker.postMessage("Hello World");
+    const promise2 = deferred();
+    tsWorker.onmessage = (e) => {
+      promise2.resolve(e.data);
     };
 
     jsWorker.postMessage("Hello World");
-    await promise;
+    assertEquals(await promise1, "Hello World");
+    tsWorker.postMessage("Hello World");
+    assertEquals(await promise2, "Hello World");
     tsWorker.terminate();
     jsWorker.terminate();
   },
@@ -44,20 +44,18 @@ Deno.test({
 Deno.test({
   name: "worker from data url",
   async fn() {
-    const promise = deferred();
     const tsWorker = new Worker(
       "data:application/typescript;base64,aWYgKHNlbGYubmFtZSAhPT0gInRzV29ya2VyIikgewogIHRocm93IEVycm9yKGBJbnZhbGlkIHdvcmtlciBuYW1lOiAke3NlbGYubmFtZX0sIGV4cGVjdGVkIHRzV29ya2VyYCk7Cn0KCm9ubWVzc2FnZSA9IGZ1bmN0aW9uIChlKTogdm9pZCB7CiAgcG9zdE1lc3NhZ2UoZS5kYXRhKTsKICBjbG9zZSgpOwp9Owo=",
       { type: "module", name: "tsWorker" },
     );
 
+    const promise = deferred();
     tsWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
-      promise.resolve();
+      promise.resolve(e.data);
     };
 
     tsWorker.postMessage("Hello World");
-
-    await promise;
+    assertEquals(await promise, "Hello World");
     tsWorker.terminate();
   },
 });
@@ -65,20 +63,18 @@ Deno.test({
 Deno.test({
   name: "worker nested",
   fn: async function () {
-    const promise = deferred();
-
     const nestedWorker = new Worker(
       new URL("nested_worker.js", import.meta.url).href,
       { type: "module", name: "nested" },
     );
 
+    const promise = deferred();
     nestedWorker.onmessage = (e) => {
-      assert(e.data.type !== "error");
-      promise.resolve();
+      promise.resolve(e.data);
     };
 
     nestedWorker.postMessage("Hello World");
-    await promise;
+    assertEquals(await promise, { type: "msg", text: "Hello World" });
     nestedWorker.terminate();
   },
 });
@@ -86,20 +82,19 @@ Deno.test({
 Deno.test({
   name: "worker throws when executing",
   fn: async function () {
-    const promise = deferred();
     const throwingWorker = new Worker(
       new URL("throwing_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
+    const promise = deferred();
     // deno-lint-ignore no-explicit-any
     throwingWorker.onerror = (e: any) => {
       e.preventDefault();
-      assert(/Uncaught Error: Thrown error/.test(e.message));
-      promise.resolve();
+      promise.resolve(e.message);
     };
 
-    await promise;
+    assertMatch(await promise as string, /Uncaught Error: Thrown error/);
     throwingWorker.terminate();
   },
 });
@@ -107,18 +102,19 @@ Deno.test({
 Deno.test({
   name: "worker globals",
   fn: async function () {
-    const promise = deferred();
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
       new URL("worker_globals.ts", import.meta.url).href,
       workerOptions,
     );
+
+    const promise = deferred();
     w.onmessage = (e) => {
-      assertEquals(e.data, "true, true, true, true");
-      promise.resolve();
+      promise.resolve(e.data);
     };
+
     w.postMessage("Hello, world!");
-    await promise;
+    assertEquals(await promise, "true, true, true, true");
     w.terminate();
   },
 });
@@ -126,26 +122,23 @@ Deno.test({
 Deno.test({
   name: "worker fetch API",
   fn: async function () {
-    const promise = deferred();
-
     const fetchingWorker = new Worker(
       new URL("fetching_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
+    const promise = deferred();
     // deno-lint-ignore no-explicit-any
     fetchingWorker.onerror = (e: any) => {
       e.preventDefault();
       promise.reject(e.message);
     };
-
     // Defer promise.resolve() to allow worker to shut down
     fetchingWorker.onmessage = (e) => {
-      assert(e.data === "Done!");
-      promise.resolve();
+      promise.resolve(e.data);
     };
 
-    await promise;
+    assertEquals(await promise, "Done!");
     fetchingWorker.terminate();
   },
 });
@@ -170,14 +163,13 @@ Deno.test({
           throw new Error("unreachable");
         };
         setTimeout(() => {
-          assertEquals(testResult, 10000);
-          promise.resolve();
+          promise.resolve(testResult);
         }, 100);
       }
     };
 
     busyWorker.postMessage("ping");
-    await promise;
+    assertEquals(await promise, 10000);
   },
 });
 
@@ -255,27 +247,25 @@ Deno.test({
 Deno.test({
   name: "worker scope is event listener",
   fn: async function () {
-    const promise1 = deferred();
-
     const worker = new Worker(
       new URL("event_worker_scope.js", import.meta.url),
       { type: "module" },
     );
 
+    const promise = deferred();
     worker.onmessage = (e: MessageEvent) => {
-      const { messageHandlersCalled, errorHandlersCalled } = e.data;
-      assertEquals(messageHandlersCalled, 4);
-      assertEquals(errorHandlersCalled, 4);
-      promise1.resolve();
+      promise.resolve(e.data);
     };
-
     worker.onerror = (_e) => {
       throw new Error("unreachable");
     };
 
     worker.postMessage("boom");
     worker.postMessage("ping");
-    await promise1;
+    assertEquals(await promise, {
+      messageHandlersCalled: 4,
+      errorHandlersCalled: 4,
+    });
     worker.terminate();
   },
 });
@@ -283,9 +273,6 @@ Deno.test({
 Deno.test({
   name: "worker with Deno namespace",
   fn: async function () {
-    const promise = deferred();
-    const promise2 = deferred();
-
     const regularWorker = new Worker(
       new URL("non_deno_worker.js", import.meta.url),
       { type: "module" },
@@ -301,39 +288,40 @@ Deno.test({
       },
     );
 
+    const promise1 = deferred();
     regularWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
       regularWorker.terminate();
-      promise.resolve();
+      promise1.resolve(e.data);
     };
 
+    const promise2 = deferred();
     denoWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
       denoWorker.terminate();
-      promise2.resolve();
+      promise2.resolve(e.data);
     };
 
     regularWorker.postMessage("Hello World");
-    await promise;
+    assertEquals(await promise1, "Hello World");
     denoWorker.postMessage("Hello World");
-    await promise2;
+    assertEquals(await promise2, "Hello World");
   },
 });
 
 Deno.test({
   name: "worker with crypto in scope",
   fn: async function () {
-    const promise = deferred();
     const w = new Worker(
       new URL("worker_crypto.js", import.meta.url).href,
       { type: "module" },
     );
+
+    const promise = deferred();
     w.onmessage = (e) => {
-      assertEquals(e.data, true);
-      promise.resolve();
+      promise.resolve(e.data);
     };
+
     w.postMessage(null);
-    await promise;
+    assertEquals(await promise, true);
     w.terminate();
   },
 });
@@ -353,11 +341,11 @@ Deno.test({
     };
     w.addEventListener("message", () => arr.push(3));
     w.addEventListener("message", () => {
-      assertEquals(arr, [1, 2, 3]);
       promise.resolve();
     });
     w.postMessage("Hello World");
     await promise;
+    assertEquals(arr, [1, 2, 3]);
     w.terminate();
   },
 });
@@ -404,7 +392,6 @@ Deno.test({
 });
 
 Deno.test("Worker inherits permissions", async function () {
-  const promise = deferred();
   const worker = new Worker(
     new URL("./read_check_worker.js", import.meta.url).href,
     {
@@ -416,19 +403,17 @@ Deno.test("Worker inherits permissions", async function () {
     },
   );
 
-  worker.onmessage = ({ data: hasPermission }) => {
-    assert(hasPermission);
-    promise.resolve();
+  const promise = deferred();
+  worker.onmessage = (e) => {
+    promise.resolve(e.data);
   };
 
   worker.postMessage(null);
-
-  await promise;
+  assertEquals(await promise, true);
   worker.terminate();
 });
 
 Deno.test("Worker limit children permissions", async function () {
-  const promise = deferred();
   const worker = new Worker(
     new URL("./read_check_worker.js", import.meta.url).href,
     {
@@ -442,19 +427,17 @@ Deno.test("Worker limit children permissions", async function () {
     },
   );
 
-  worker.onmessage = ({ data: hasPermission }) => {
-    assert(!hasPermission);
-    promise.resolve();
+  const promise = deferred();
+  worker.onmessage = (e) => {
+    promise.resolve(e.data);
   };
 
   worker.postMessage(null);
-
-  await promise;
+  assertEquals(await promise, false);
   worker.terminate();
 });
 
 Deno.test("Worker limit children permissions granularly", async function () {
-  const promise = deferred();
   const worker = new Worker(
     new URL("./read_check_granular_worker.js", import.meta.url).href,
     {
@@ -462,53 +445,52 @@ Deno.test("Worker limit children permissions granularly", async function () {
       deno: {
         namespace: true,
         permissions: {
-          read: [
-            new URL("./read_check_worker.js", import.meta.url),
-          ],
+          env: ["foo"],
+          hrtime: true,
+          net: ["foo", "bar:8000"],
+          ffi: [new URL("foo", import.meta.url), "bar"],
+          read: [new URL("foo", import.meta.url), "bar"],
+          run: [new URL("foo", import.meta.url), "bar", "./baz"],
+          write: [new URL("foo", import.meta.url), "bar"],
         },
       },
     },
   );
-
-  //Routes are relative to the spawned worker location
-  const routes = [
-    {
-      permission: false,
-      path: fromFileUrl(
-        new URL("read_check_granular_worker.js", import.meta.url),
-      ),
-    },
-    {
-      permission: true,
-      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
-    },
-  ];
-
-  let checked = 0;
-  worker.onmessage = ({ data }) => {
-    checked++;
-    assertEquals(data.hasPermission, routes[data.index].permission);
-    routes.shift();
-    if (checked === routes.length) {
-      promise.resolve();
-    }
-  };
-
-  routes.forEach(({ path }, index) =>
-    worker.postMessage({
-      index,
-      path,
-    })
-  );
-
-  await promise;
+  const promise = deferred();
+  worker.onmessage = ({ data }) => promise.resolve(data);
+  assertEquals(await promise, {
+    envGlobal: "prompt",
+    envFoo: "granted",
+    envAbsent: "prompt",
+    hrtime: "granted",
+    netGlobal: "prompt",
+    netFoo: "granted",
+    netFoo8000: "granted",
+    netBar: "prompt",
+    netBar8000: "granted",
+    ffiGlobal: "prompt",
+    ffiFoo: "granted",
+    ffiBar: "granted",
+    ffiAbsent: "prompt",
+    readGlobal: "prompt",
+    readFoo: "granted",
+    readBar: "granted",
+    readAbsent: "prompt",
+    runGlobal: "prompt",
+    runFoo: "granted",
+    runBar: "granted",
+    runBaz: "granted",
+    runAbsent: "prompt",
+    writeGlobal: "prompt",
+    writeFoo: "granted",
+    writeBar: "granted",
+    writeAbsent: "prompt",
+  });
   worker.terminate();
 });
 
 Deno.test("Nested worker limit children permissions", async function () {
-  const promise = deferred();
-
-  /** This worker has read permissions but doesn't grant them to its children */
+  /** This worker has permissions but doesn't grant them to its children */
   const worker = new Worker(
     new URL("./parent_read_check_worker.js", import.meta.url).href,
     {
@@ -519,109 +501,68 @@ Deno.test("Nested worker limit children permissions", async function () {
       },
     },
   );
-
-  worker.onmessage = ({ data }) => {
-    assert(data.parentHasPermission);
-    assert(!data.childHasPermission);
-    promise.resolve();
-  };
-
-  worker.postMessage(null);
-
-  await promise;
-  worker.terminate();
-});
-
-Deno.test("Nested worker limit children permissions granularly", async function () {
   const promise = deferred();
-
-  /** This worker has read permissions but doesn't grant them to its children */
-  const worker = new Worker(
-    new URL("./parent_read_check_granular_worker.js", import.meta.url)
-      .href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: {
-          read: [
-            new URL("./read_check_granular_worker.js", import.meta.url),
-          ],
-        },
-      },
-    },
-  );
-
-  //Routes are relative to the spawned worker location
-  const routes = [
-    {
-      childHasPermission: false,
-      parentHasPermission: true,
-      path: fromFileUrl(
-        new URL("read_check_granular_worker.js", import.meta.url),
-      ),
-    },
-    {
-      childHasPermission: false,
-      parentHasPermission: false,
-      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
-    },
-  ];
-
-  let checked = 0;
-  worker.onmessage = ({ data }) => {
-    checked++;
-    assertEquals(
-      data.childHasPermission,
-      routes[data.index].childHasPermission,
-    );
-    assertEquals(
-      data.parentHasPermission,
-      routes[data.index].parentHasPermission,
-    );
-    if (checked === routes.length) {
-      promise.resolve();
-    }
-  };
-
-  // Index needed cause requests will be handled asynchronously
-  routes.forEach(({ path }, index) =>
-    worker.postMessage({
-      index,
-      path,
-    })
-  );
-
-  await promise;
+  worker.onmessage = ({ data }) => promise.resolve(data);
+  assertEquals(await promise, {
+    envGlobal: "prompt",
+    envFoo: "prompt",
+    envAbsent: "prompt",
+    hrtime: "prompt",
+    netGlobal: "prompt",
+    netFoo: "prompt",
+    netFoo8000: "prompt",
+    netBar: "prompt",
+    netBar8000: "prompt",
+    ffiGlobal: "prompt",
+    ffiFoo: "prompt",
+    ffiBar: "prompt",
+    ffiAbsent: "prompt",
+    readGlobal: "prompt",
+    readFoo: "prompt",
+    readBar: "prompt",
+    readAbsent: "prompt",
+    runGlobal: "prompt",
+    runFoo: "prompt",
+    runBar: "prompt",
+    runBaz: "prompt",
+    runAbsent: "prompt",
+    writeGlobal: "prompt",
+    writeFoo: "prompt",
+    writeBar: "prompt",
+    writeAbsent: "prompt",
+  });
   worker.terminate();
 });
 
 // This test relies on env permissions not being granted on main thread
-Deno.test("Worker initialization throws on worker permissions greater than parent thread permissions", function () {
-  assertThrows(
-    () => {
-      const worker = new Worker(
-        new URL("./deno_worker.ts", import.meta.url).href,
-        {
-          type: "module",
-          deno: {
-            namespace: true,
-            permissions: {
-              env: true,
+Deno.test({
+  name:
+    "Worker initialization throws on worker permissions greater than parent thread permissions",
+  permissions: { env: false },
+  fn: function () {
+    assertThrows(
+      () => {
+        const worker = new Worker(
+          new URL("./deno_worker.ts", import.meta.url).href,
+          {
+            type: "module",
+            deno: {
+              namespace: true,
+              permissions: {
+                env: true,
+              },
             },
           },
-        },
-      );
-      worker.terminate();
-    },
-    Deno.errors.PermissionDenied,
-    "Can't escalate parent thread permissions",
-  );
+        );
+        worker.terminate();
+      },
+      Deno.errors.PermissionDenied,
+      "Can't escalate parent thread permissions",
+    );
+  },
 });
 
 Deno.test("Worker with disabled permissions", async function () {
-  const promise = deferred();
-
   const worker = new Worker(
     new URL("./no_permissions_worker.js", import.meta.url).href,
     {
@@ -633,14 +574,27 @@ Deno.test("Worker with disabled permissions", async function () {
     },
   );
 
-  worker.onmessage = ({ data: sandboxed }) => {
-    assert(sandboxed);
-    promise.resolve();
+  const promise = deferred();
+  worker.onmessage = (e) => {
+    promise.resolve(e.data);
   };
 
   worker.postMessage(null);
-  await promise;
+  assertEquals(await promise, true);
   worker.terminate();
+});
+
+Deno.test("Worker with invalid permission arg", function () {
+  assertThrows(
+    () =>
+      new Worker(`data:,close();`, {
+        type: "module",
+        // @ts-expect-error invalid env value
+        deno: { permissions: { env: "foo" } },
+      }),
+    TypeError,
+    'Error parsing args: (deno.permissions.env) invalid value: string "foo", expected "inherit" or boolean or string[]',
+  );
 });
 
 Deno.test({
@@ -651,11 +605,10 @@ Deno.test({
       new URL("worker_location.ts", import.meta.url).href;
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e) => {
-      assertEquals(e.data, `${workerModuleHref}, true`);
-      promise.resolve();
+      promise.resolve(e.data);
     };
     w.postMessage("Hello, world!");
-    await promise;
+    assertEquals(await promise, `${workerModuleHref}, true`);
     w.terminate();
   },
 });
@@ -664,17 +617,16 @@ Deno.test({
   name: "worker with relative specifier",
   fn: async function () {
     assertEquals(location.href, "http://127.0.0.1:4545/");
-    const promise = deferred();
     const w = new Worker(
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
+    const promise = deferred();
     w.onmessage = (e) => {
-      assertEquals(e.data, "Hello, world!");
-      promise.resolve();
+      promise.resolve(e.data);
     };
     w.postMessage("Hello, world!");
-    await promise;
+    assertEquals(await promise, "Hello, world!");
     w.terminate();
   },
 });
@@ -733,34 +685,33 @@ Deno.test({
 Deno.test({
   name: "structured cloning postMessage",
   fn: async function () {
-    const result = deferred();
     const worker = new Worker(
       new URL("worker_structured_cloning.ts", import.meta.url).href,
       { type: "module" },
     );
 
+    const result = deferred();
     worker.onmessage = (e) => {
-      // self field should reference itself (circular ref)
-      const value = e.data.self.self.self;
-
-      // fields a and b refer to the same array
-      assertEquals(value.a, ["a", true, 432]);
-      assertEquals(value.a, ["a", true, 432]);
-      value.b[0] = "b";
-      value.a[2] += 5;
-      assertEquals(value.a, ["b", true, 437]);
-      assertEquals(value.b, ["b", true, 437]);
-
-      const len = value.c.size;
-      value.c.add(1); // This value is already in the set.
-      value.c.add(2);
-      assertEquals(len + 1, value.c.size);
-
-      result.resolve();
+      result.resolve(e.data);
     };
 
     worker.postMessage("START");
-    await result;
+    // deno-lint-ignore no-explicit-any
+    const data = await result as any;
+    // self field should reference itself (circular ref)
+    assert(data === data.self);
+    // fields a and b refer to the same array
+    assertEquals(data.a, ["a", true, 432]);
+    assertEquals(data.b, ["a", true, 432]);
+    data.b[0] = "b";
+    data.a[2] += 5;
+    assertEquals(data.a, ["b", true, 437]);
+    assertEquals(data.b, ["b", true, 437]);
+    // c is a set
+    const len = data.c.size;
+    data.c.add(1); // This value is already in the set.
+    data.c.add(2);
+    assertEquals(len + 1, data.c.size);
     worker.terminate();
   },
 });
@@ -769,17 +720,16 @@ Deno.test({
   name: "worker with relative specifier",
   fn: async function () {
     assertEquals(location.href, "http://127.0.0.1:4545/");
-    const promise = deferred();
     const w = new Worker(
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
+    const promise = deferred();
     w.onmessage = (e) => {
-      assertEquals(e.data, "Hello, world!");
-      promise.resolve();
+      promise.resolve(e.data);
     };
     w.postMessage("Hello, world!");
-    await promise;
+    assertEquals(await promise, "Hello, world!");
     w.terminate();
   },
 });
@@ -802,12 +752,12 @@ Deno.test({
     w.onmessage = () => {
       w.postMessage([sab1, sab2]);
       w.onmessage = () => {
-        assertEquals(bytes1[0], 1);
-        assertEquals(bytes2[0], 2);
         promise.resolve();
       };
     };
     await promise;
+    assertEquals(bytes1[0], 1);
+    assertEquals(bytes2[0], 2);
     w.terminate();
   },
 });
@@ -815,33 +765,65 @@ Deno.test({
 Deno.test({
   name: "Send MessagePorts from / to workers",
   fn: async function () {
-    const result = deferred();
     const worker = new Worker(
       new URL("message_port.ts", import.meta.url).href,
       { type: "module" },
     );
-
     const channel = new MessageChannel();
 
+    const promise1 = deferred();
+    const promise2 = deferred();
+    const promise3 = deferred();
+    const result = deferred();
     worker.onmessage = (e) => {
-      assertEquals(e.data, "1");
-      assertEquals(e.ports.length, 1);
+      promise1.resolve([e.data, e.ports.length]);
       const port1 = e.ports[0];
       port1.onmessage = (e) => {
-        assertEquals(e.data, true);
+        promise2.resolve(e.data);
         port1.close();
         worker.postMessage("3", [channel.port1]);
       };
       port1.postMessage("2");
     };
-
     channel.port2.onmessage = (e) => {
-      assertEquals(e.data, true);
+      promise3.resolve(e.data);
       channel.port2.close();
       result.resolve();
     };
 
+    assertEquals(await promise1, ["1", 1]);
+    assertEquals(await promise2, true);
+    assertEquals(await promise3, true);
     await result;
     worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker Deno.memoryUsage",
+  fn: async function () {
+    const w = new Worker(
+      /**
+       * Source code
+       * self.onmessage = function() {self.postMessage(Deno.memoryUsage())}
+       */
+      "data:application/typescript;base64,c2VsZi5vbm1lc3NhZ2UgPSBmdW5jdGlvbigpIHtzZWxmLnBvc3RNZXNzYWdlKERlbm8ubWVtb3J5VXNhZ2UoKSl9",
+      { type: "module", name: "tsWorker", deno: true },
+    );
+
+    w.postMessage(null);
+
+    const memoryUsagePromise = deferred();
+    w.onmessage = function (evt) {
+      memoryUsagePromise.resolve(evt.data);
+    };
+
+    assertEquals(
+      Object.keys(
+        await memoryUsagePromise as unknown as Record<string, number>,
+      ),
+      ["rss", "heapTotal", "heapUsed", "external"],
+    );
+    w.terminate();
   },
 });

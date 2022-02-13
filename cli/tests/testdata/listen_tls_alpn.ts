@@ -7,6 +7,8 @@ const listener = Deno.listenTls({
 
 console.log("READY");
 
-for await (const conn of listener) {
-  conn.close();
-}
+const conn = await listener.accept() as Deno.TlsConn;
+await conn.handshake();
+conn.close();
+
+listener.close();

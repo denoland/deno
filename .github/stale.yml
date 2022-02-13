@@ -13,6 +13,7 @@ exemptLabels:
   - tests
   - build
   - docs
+  - flaky
 
 exemptMilestones: true
 

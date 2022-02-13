@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use test_util as util;
@@ -18,6 +18,12 @@ fn no_color() {
   assert!(out.contains("test ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
+
+itest!(overloads {
+  args: "test test/overloads.ts",
+  exit_code: 0,
+  output: "test/overloads.out",
+});
 
 itest!(meta {
   args: "test test/meta.ts",
@@ -85,6 +91,12 @@ itest!(markdown {
   output: "test/markdown.out",
 });
 
+itest!(markdown_windows {
+  args: "test --doc --allow-all test/markdown_windows.md",
+  exit_code: 1,
+  output: "test/markdown_windows.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
@@ -131,6 +143,34 @@ itest!(allow_none {
   args: "test --unstable test/allow_none.ts",
   exit_code: 1,
   output: "test/allow_none.out",
+});
+
+itest!(ops_sanitizer_unstable {
+  args: "test --unstable test/ops_sanitizer_unstable.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_unstable.out",
+});
+
+itest!(ops_sanitizer_timeout_failure {
+  args: "test test/ops_sanitizer_timeout_failure.ts",
+  output: "test/ops_sanitizer_timeout_failure.out",
+});
+
+itest!(ops_sanitizer_multiple_timeout_tests {
+  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_multiple_timeout_tests.out",
+});
+
+itest!(ops_sanitizer_nexttick {
+  args: "test test/ops_sanitizer_nexttick.ts",
+  output: "test/ops_sanitizer_nexttick.out",
+});
+
+itest!(resource_sanitizer {
+  args: "test --allow-read test/resource_sanitizer.ts",
+  exit_code: 1,
+  output: "test/resource_sanitizer.out",
 });
 
 itest!(exit_sanitizer {
@@ -185,4 +225,34 @@ itest!(aggregate_error {
   args: "test test/aggregate_error.ts",
   exit_code: 1,
   output: "test/aggregate_error.out",
+});
+
+itest!(steps_passing_steps {
+  args: "test test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});
+
+itest!(steps_passing_steps_concurrent {
+  args: "test --jobs=2 test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});
+
+itest!(steps_failing_steps {
+  args: "test test/steps/failing_steps.ts",
+  exit_code: 1,
+  output: "test/steps/failing_steps.out",
+});
+
+itest!(steps_ignored_steps {
+  args: "test test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.out",
+});
+
+itest!(steps_invalid_usage {
+  args: "test test/steps/invalid_usage.ts",
+  exit_code: 1,
+  output: "test/steps/invalid_usage.out",
 });

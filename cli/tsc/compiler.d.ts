@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
@@ -58,6 +58,7 @@ declare global {
     | GetDocumentHighlightsRequest
     | GetEncodedSemanticClassifications
     | GetImplementationRequest
+    | GetNavigateToItems
     | GetNavigationTree
     | GetOutliningSpans
     | GetQuickInfoRequest
@@ -65,6 +66,7 @@ declare global {
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
     | GetSupportedCodeFixes
+    | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
     | ProvideCallHierarchyOutgoingCalls;
@@ -173,6 +175,13 @@ declare global {
     position: number;
   }
 
+  interface GetNavigateToItems extends BaseLanguageServerRequest {
+    method: "getNavigateToItems";
+    search: string;
+    maxResultCount?: number;
+    fileName?: string;
+  }
+
   interface GetNavigationTree extends BaseLanguageServerRequest {
     method: "getNavigationTree";
     specifier: string;
@@ -210,6 +219,12 @@ declare global {
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
     method: "getSupportedCodeFixes";
+  }
+
+  interface GetTypeDefinitionRequest extends BaseLanguageServerRequest {
+    method: "getTypeDefinition";
+    specifier: string;
+    position: number;
   }
 
   interface PrepareCallHierarchy extends BaseLanguageServerRequest {

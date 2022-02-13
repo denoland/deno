@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -259,9 +259,9 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   println!("swc {} bytes", swc_size);
   sizes.insert("swc_rlib".to_string(), swc_size);
 
-  let rusty_v8_size = rlib_size(target_dir, "librusty_v8");
-  println!("rusty_v8 {} bytes", rusty_v8_size);
-  sizes.insert("rusty_v8_rlib".to_string(), rusty_v8_size);
+  let v8_size = rlib_size(target_dir, "libv8");
+  println!("v8 {} bytes", v8_size);
+  sizes.insert("rusty_v8_rlib".to_string(), v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.

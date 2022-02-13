@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import type { DenoWorkspaceCrate } from "./deno_workspace.ts";
 
@@ -28,10 +28,22 @@ export function getGitLogFromTag(directory: string, tagName: string) {
   });
 }
 
+const IGNORED_COMMIT_PREFIX = [
+  "build",
+  "chore",
+  "ci",
+  "docs",
+  "refactor",
+  "test",
+];
+
 export function formatGitLogForMarkdown(text: string) {
   return text.split(/\r?\n/)
     .map((line) => line.replace(/^[a-f0-9]{9} /i, "").trim())
-    .filter((l) => !l.startsWith("chore") && l.length > 0)
+    .filter((l) => {
+      return !IGNORED_COMMIT_PREFIX.some((prefix) => l.startsWith(prefix)) &&
+        l.length > 0;
+    })
     .sort()
     .map((line) => `- ${line}`)
     .join("\n");

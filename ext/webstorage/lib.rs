@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
@@ -38,8 +38,8 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
       ),
     ])
     .state(move |state| {
-      if let Some(origin_storage_dir) = origin_storage_dir.clone() {
-        state.put(OriginStorageDir(origin_storage_dir));
+      if let Some(origin_storage_dir) = &origin_storage_dir {
+        state.put(OriginStorageDir(origin_storage_dir.clone()));
       }
       Ok(())
     })

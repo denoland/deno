@@ -1,5 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::fs::File;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -129,7 +130,7 @@ fn standalone_error() {
     .unwrap();
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
-  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:2:11)\n    at foo (file://$deno$/bundle.js:5:5)\n    at file://$deno$/bundle.js:7:1\n";
+  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:6:11)\n    at foo (file://$deno$/bundle.js:9:5)\n    at file://$deno$/bundle.js:11:1\n";
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(stderr, expected_stderr);
 }
@@ -231,6 +232,73 @@ fn standalone_compiler_ops() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Hello, Compiler API!\n");
+}
+
+#[test]
+fn compile_with_directory_output_flag() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let output_path = if cfg!(windows) {
+    dir.path().join(r"args\random\")
+  } else {
+    dir.path().join("args/random/")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&output_path)
+    .arg("./standalone_compiler_ops.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let exe = if cfg!(windows) {
+    output_path.join("standalone_compiler_ops.exe")
+  } else {
+    output_path.join("standalone_compiler_ops")
+  };
+  assert!(&exe.exists());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
+}
+
+#[test]
+fn compile_with_file_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let output_path = if cfg!(windows) {
+    dir.path().join(r"args\")
+  } else {
+    dir.path().join("args/")
+  };
+  let file_path = dir.path().join("args");
+  File::create(&file_path).expect("cannot create file");
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&output_path)
+    .arg("./028_args.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: {:?} is a file.\n", &file_path);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
 }
 
 #[test]
@@ -369,4 +437,41 @@ fn standalone_runtime_flags() {
   let stderr_str = String::from_utf8(output.stderr).unwrap();
   assert!(util::strip_ansi_codes(&stderr_str)
     .contains("PermissionDenied: Requires write access"));
+}
+
+#[test]
+// https://github.com/denoland/deno/issues/12670
+fn skip_rebundle() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("hello_world.exe")
+  } else {
+    dir.path().join("hello_world")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./001_hello.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+
+  //no "Bundle testdata_path/001_hello.js" in output
+  assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
+
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "Hello World\n".as_bytes());
 }

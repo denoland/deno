@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 /// <reference path="../../core/internal.d.ts" />
@@ -9,20 +9,23 @@
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
   const { add, remove } = window.__bootstrap.abortSignal;
+  const { headersFromHeaderList, headerListFromHeaders, fillHeaders } =
+    window.__bootstrap.headers;
 
   const {
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    Error,
+    ObjectPrototypeIsPrototypeOf,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    Set,
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
     Symbol,
     SymbolFor,
-    Set,
-    ArrayPrototypeMap,
-    ArrayPrototypeJoin,
-    PromisePrototypeThen,
-    PromisePrototypeCatch,
-    Uint8Array,
     TypeError,
-    Error,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
@@ -38,6 +41,10 @@
       {
         key: "signal",
         converter: webidl.converters.AbortSignal,
+      },
+      {
+        key: "headers",
+        converter: webidl.converters.HeadersInit,
       },
     ],
   );
@@ -60,14 +67,13 @@
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
-  const _closing = Symbol("[[closing]]");
   const _earlyClose = Symbol("[[earlyClose]]");
   class WebSocketStream {
     [_rid];
 
     [_url];
     get url() {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_url];
     }
 
@@ -117,6 +123,11 @@
         );
       }
 
+      const headers = headersFromHeaderList([], "request");
+      if (options.headers !== undefined) {
+        fillHeaders(headers, options.headers);
+      }
+
       const cancelRid = core.opSync(
         "op_ws_check_permission_and_cancel_handle",
         this[_url],
@@ -125,10 +136,7 @@
 
       if (options.signal?.aborted) {
         core.close(cancelRid);
-        const err = new DOMException(
-          "This operation was aborted",
-          "AbortError",
-        );
+        const err = options.signal.reason;
         this[_connection].reject(err);
         this[_closed].reject(err);
       } else {
@@ -143,6 +151,7 @@
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
+            headers: headerListFromHeaders(headers),
           }),
           (create) => {
             options.signal?.[remove](abort);
@@ -194,7 +203,9 @@
                       kind: "text",
                       value: chunk,
                     });
-                  } else if (chunk instanceof Uint8Array) {
+                  } else if (
+                    ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  ) {
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "binary",
                       value: chunk,
@@ -261,27 +272,10 @@
                       });
                       break;
                     }
+                    case "closed":
                     case "close": {
-                      if (this[_closing]) {
-                        this[_closed].resolve(value);
-                        core.tryClose(this[_rid]);
-                      } else {
-                        PromisePrototypeThen(
-                          core.opAsync("op_ws_close", {
-                            rid: this[_rid],
-                            ...value,
-                          }),
-                          () => {
-                            this[_closed].resolve(value);
-                            core.tryClose(this[_rid]);
-                          },
-                          (err) => {
-                            this[_closed].reject(err);
-                            controller.error(err);
-                            core.tryClose(this[_rid]);
-                          },
-                        );
-                      }
+                      this[_closed].resolve(value);
+                      core.tryClose(this[_rid]);
                       break;
                     }
                     case "error": {
@@ -312,7 +306,12 @@
             }
           },
           (err) => {
-            core.tryClose(cancelRid);
+            if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
+              // The signal was aborted.
+              err = options.signal.reason;
+            } else {
+              core.tryClose(cancelRid);
+            }
             this[_connection].reject(err);
             this[_closed].reject(err);
           },
@@ -322,20 +321,19 @@
 
     [_connection] = new Deferred();
     get connection() {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_connection].promise;
     }
 
     [_earlyClose] = false;
-    [_closing] = false;
     [_closed] = new Deferred();
     get closed() {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
     }
 
     close(closeInfo) {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
         prefix: "Failed to execute 'close' on 'WebSocketStream'",
         context: "Argument 1",
@@ -370,7 +368,6 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        this[_closing] = true;
         PromisePrototypeCatch(
           core.opAsync("op_ws_close", {
             rid: this[_rid],
@@ -393,6 +390,8 @@
       }`;
     }
   }
+
+  const WebSocketStreamPrototype = WebSocketStream.prototype;
 
   window.__bootstrap.webSocket.WebSocketStream = WebSocketStream;
 })(this);

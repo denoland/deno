@@ -1,13 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertRejects,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -27,7 +26,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -50,7 +49,7 @@ unitTest(
 );
 
 // Check symlink when not on windows
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -81,20 +80,24 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, function chmodSyncFailure() {
-  assertThrows(() => {
-    const filename = "/badfile.txt";
-    Deno.chmodSync(filename, 0o777);
-  }, Deno.errors.NotFound);
+Deno.test({ permissions: { write: true } }, function chmodSyncFailure() {
+  const filename = "/badfile.txt";
+  assertThrows(
+    () => {
+      Deno.chmodSync(filename, 0o777);
+    },
+    Deno.errors.NotFound,
+    `chmod '${filename}'`,
+  );
 });
 
-unitTest({ permissions: { write: false } }, function chmodSyncPerm() {
+Deno.test({ permissions: { write: false } }, function chmodSyncPerm() {
   assertThrows(() => {
     Deno.chmodSync("/somefile.txt", 0o777);
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -114,7 +117,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -138,7 +141,7 @@ unitTest(
 
 // Check symlink when not on windows
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -169,14 +172,18 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, async function chmodFailure() {
-  await assertRejects(async () => {
-    const filename = "/badfile.txt";
-    await Deno.chmod(filename, 0o777);
-  }, Deno.errors.NotFound);
+Deno.test({ permissions: { write: true } }, async function chmodFailure() {
+  const filename = "/badfile.txt";
+  await assertRejects(
+    async () => {
+      await Deno.chmod(filename, 0o777);
+    },
+    Deno.errors.NotFound,
+    `chmod '${filename}'`,
+  );
 });
 
-unitTest({ permissions: { write: false } }, async function chmodPerm() {
+Deno.test({ permissions: { write: false } }, async function chmodPerm() {
   await assertRejects(async () => {
     await Deno.chmod("/somefile.txt", 0o777);
   }, Deno.errors.PermissionDenied);

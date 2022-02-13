@@ -1,0 +1,112 @@
+[WILDCARD]
+running 7 tests from [WILDCARD]/invalid_usage.ts
+test capturing ...
+  test some step ... ok ([WILDCARD])
+FAILED ([WILDCARD])
+test top level missing await ...
+  test step ... pending ([WILDCARD])
+FAILED ([WILDCARD])
+test inner missing await ...
+  test step ...
+    test inner ... pending ([WILDCARD])
+      Error: Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
+          at postValidation [WILDCARD]
+          at testStepSanitizer [WILDCARD]
+  FAILED ([WILDCARD])
+    Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
+        at postValidation [WILDCARD]
+        at testStepSanitizer [WILDCARD]
+        at async fn ([WILDCARD]/invalid_usage.ts:[WILDCARD])
+        at async Object.testStepSanitizer [WILDCARD]
+FAILED ([WILDCARD])
+test parallel steps with sanitizers ...
+  test step 1 ... pending ([WILDCARD])
+  test step 2 ... FAILED ([WILDCARD])
+    Error: Cannot start test step while another test step with sanitizers is running.
+     * parallel steps with sanitizers > step 1
+        at preValidation ([WILDCARD])
+        at testStepSanitizer ([WILDCARD])
+        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+        at [WILDCARD]
+FAILED ([WILDCARD])
+test parallel steps when first has sanitizer ...
+  test step 1 ... pending ([WILDCARD])
+  test step 2 ... FAILED ([WILDCARD])
+    Error: Cannot start test step while another test step with sanitizers is running.
+     * parallel steps when first has sanitizer > step 1
+        at preValidation ([WILDCARD])
+        at testStepSanitizer ([WILDCARD])
+        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+        at [WILDCARD]
+FAILED ([WILDCARD])
+test parallel steps when second has sanitizer ...
+  test step 1 ... ok ([WILDCARD])
+  test step 2 ... FAILED ([WILDCARD])
+    Error: Cannot start test step with sanitizers while another test step is running.
+     * parallel steps when second has sanitizer > step 1
+        at preValidation ([WILDCARD])
+        at testStepSanitizer ([WILDCARD])
+        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+        at [WILDCARD]
+FAILED ([WILDCARD])
+test parallel steps where only inner tests have sanitizers ...
+  test step 1 ...
+    test step inner ... ok ([WILDCARD])
+  ok ([WILDCARD])
+  test step 2 ...
+    test step inner ... FAILED ([WILDCARD])
+      Error: Cannot start test step with sanitizers while another test step is running.
+       * parallel steps where only inner tests have sanitizers > step 1
+          at preValidation ([WILDCARD])
+          at testStepSanitizer ([WILDCARD])
+          at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+  FAILED ([WILDCARD])
+FAILED ([WILDCARD])
+
+failures:
+
+capturing
+Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
+    at TestContext.step ([WILDCARD])
+    at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+    at [WILDCARD]
+
+top level missing await
+Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
+    at postValidation [WILDCARD]
+    at testStepSanitizer ([WILDCARD])
+    [WILDCARD]
+
+inner missing await
+Error: 1 test step failed.
+    at [WILDCARD]
+
+parallel steps with sanitizers
+Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
+    at postValidation [WILDCARD]
+    at testStepSanitizer ([WILDCARD])
+    [WILDCARD]
+
+parallel steps when first has sanitizer
+Error: 1 test step failed.
+    at runTest ([WILDCARD])
+    at [WILDCARD]
+
+parallel steps when second has sanitizer
+Error: 1 test step failed.
+    at runTest ([WILDCARD])
+    at [WILDCARD]
+
+failures:
+
+	capturing
+	top level missing await
+	inner missing await
+	parallel steps with sanitizers
+	parallel steps when first has sanitizer
+	parallel steps when second has sanitizer
+	parallel steps where only inner tests have sanitizers
+
+test result: FAILED. 0 passed (4 steps); 7 failed (10 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

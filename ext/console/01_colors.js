@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -10,6 +10,16 @@
     StringPrototypeReplace,
     ArrayPrototypeJoin,
   } = window.__bootstrap.primordials;
+
+  let noColor = false;
+
+  function setNoColor(value) {
+    noColor = value;
+  }
+
+  function getNoColor() {
+    return noColor;
+  }
 
   function code(open, close) {
     return {
@@ -65,11 +75,11 @@
     return run(str, code(35, 39));
   }
 
-  // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
+  // https://github.com/chalk/ansi-regex/blob/02fa893d619d3da85411acc8fd4e2eea0e95a9d9/index.js
   const ANSI_PATTERN = new RegExp(
     ArrayPrototypeJoin([
-      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
-      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
+      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))",
     ], "|"),
     "g",
   );
@@ -79,7 +89,7 @@
   }
 
   function maybeColor(fn) {
-    return !(globalThis.Deno?.noColor ?? false) ? fn : (s) => s;
+    return !noColor ? fn : (s) => s;
   }
 
   window.__bootstrap.colors = {
@@ -95,5 +105,7 @@
     magenta,
     stripColor,
     maybeColor,
+    setNoColor,
+    getNoColor,
   };
 })(this);

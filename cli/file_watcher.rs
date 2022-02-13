@@ -1,10 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::fs_util::canonicalize_path;
+
 use deno_core::error::AnyError;
-use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
@@ -13,57 +13,43 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
-use pin_project::pin_project;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 use std::time::Duration;
-use tokio::pin;
 use tokio::select;
+use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tokio::time::Instant;
-use tokio::time::Sleep;
 
+const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
-#[pin_project(project = DebounceProjection)]
-struct Debounce {
-  #[pin]
-  timer: Sleep,
-  changed_paths: Arc<Mutex<HashSet<PathBuf>>>,
+struct DebouncedReceiver {
+  receiver: mpsc::UnboundedReceiver<Vec<PathBuf>>,
 }
 
-impl Debounce {
-  fn new() -> Self {
-    Self {
-      timer: sleep(DEBOUNCE_INTERVAL),
-      changed_paths: Arc::new(Mutex::new(HashSet::new())),
-    }
+impl DebouncedReceiver {
+  fn new_with_sender() -> (Arc<mpsc::UnboundedSender<Vec<PathBuf>>>, Self) {
+    let (sender, receiver) = mpsc::unbounded_channel();
+    (Arc::new(sender), Self { receiver })
   }
-}
 
-impl Stream for Debounce {
-  type Item = Vec<PathBuf>;
-
-  /// Note that this never returns `Poll::Ready(None)`, which means that the
-  /// file watcher will be alive until the Deno process is terminated.
-  fn poll_next(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> Poll<Option<Self::Item>> {
-    let mut changed_paths = self.changed_paths.lock();
-    if changed_paths.len() > 0 {
-      Poll::Ready(Some(changed_paths.drain().collect()))
-    } else {
-      drop(changed_paths);
-      let mut timer = self.project().timer;
-      if timer.as_mut().poll(cx).is_ready() {
-        timer.reset(Instant::now() + DEBOUNCE_INTERVAL);
+  async fn recv(&mut self) -> Option<Vec<PathBuf>> {
+    let mut received_items = self
+      .receiver
+      .recv()
+      .await?
+      .into_iter()
+      .collect::<HashSet<_>>(); // prevent duplicates
+    loop {
+      tokio::select! {
+        items = self.receiver.recv() => {
+          received_items.extend(items?);
+        }
+        _ = sleep(DEBOUNCE_INTERVAL) => {
+          return Some(received_items.into_iter().collect());
+        }
       }
-      Poll::Pending
     }
   }
 }
@@ -74,7 +60,7 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
+    let msg = format!("{}: {}", colors::red_bold("error"), err);
     eprintln!("{}", msg);
   }
 }
@@ -89,14 +75,14 @@ pub enum ResolutionResult<T> {
 
 async fn next_restart<R, T, F>(
   resolver: &mut R,
-  debounce: &mut Pin<&mut Debounce>,
+  debounced_receiver: &mut DebouncedReceiver,
 ) -> (Vec<PathBuf>, Result<T, AnyError>)
 where
   R: FnMut(Option<Vec<PathBuf>>) -> F,
   F: Future<Output = ResolutionResult<T>>,
 {
   loop {
-    let changed = debounce.next().await;
+    let changed = debounced_receiver.recv().await;
     match resolver(changed).await {
       ResolutionResult::Ignore => {
         log::debug!("File change ignored")
@@ -105,14 +91,17 @@ where
         paths_to_watch,
         result,
       } => {
-        info!(
-          "{} File change detected! Restarting!",
-          colors::intense_blue("Watcher"),
-        );
         return (paths_to_watch, result);
       }
     }
   }
+}
+
+pub struct PrintConfig {
+  /// printing watcher status to terminal.
+  pub job_name: String,
+  /// determine whether to clear the terminal screen
+  pub clear_screen: bool,
 }
 
 /// Creates a file watcher, which will call `resolver` with every file change.
@@ -125,12 +114,10 @@ where
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-///
-/// - `job_name` is just used for printing watcher status to terminal.
 pub async fn watch_func<R, O, T, F1, F2>(
   mut resolver: R,
   mut operation: O,
-  job_name: &str,
+  print_config: PrintConfig,
 ) -> Result<(), AnyError>
 where
   R: FnMut(Option<Vec<PathBuf>>) -> F1,
@@ -138,13 +125,27 @@ where
   F1: Future<Output = ResolutionResult<T>>,
   F2: Future<Output = Result<(), AnyError>>,
 {
-  let debounce = Debounce::new();
-  pin!(debounce);
+  let (sender, mut receiver) = DebouncedReceiver::new_with_sender();
+
+  let PrintConfig {
+    job_name,
+    clear_screen,
+  } = print_config;
 
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
   let mut paths_to_watch;
   let mut resolution_result;
+
+  let print_after_restart = || {
+    if clear_screen {
+      eprint!("{}", CLEAR_SCREEN);
+    }
+    info!(
+      "{} File change detected! Restarting!",
+      colors::intense_blue("Watcher"),
+    );
+  };
 
   match resolver(None).await {
     ResolutionResult::Ignore => {
@@ -159,9 +160,11 @@ where
         colors::intense_blue("Watcher"),
       );
 
-      let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
+      let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
       paths_to_watch = paths;
       resolution_result = result;
+
+      print_after_restart();
     }
     ResolutionResult::Restart {
       paths_to_watch: paths,
@@ -172,18 +175,26 @@ where
     }
   };
 
+  if clear_screen {
+    eprint!("{}", CLEAR_SCREEN);
+  }
+
+  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+
   loop {
-    let watcher = new_watcher(&paths_to_watch, &debounce)?;
+    let watcher = new_watcher(&paths_to_watch, sender.clone())?;
 
     match resolution_result {
       Ok(operation_arg) => {
         let fut = error_handler(operation(operation_arg));
         select! {
-          (paths, result) = next_restart(&mut resolver, &mut debounce) => {
+          (paths, result) = next_restart(&mut resolver, &mut receiver) => {
             if result.is_ok() {
               paths_to_watch = paths;
             }
             resolution_result = result;
+
+            print_after_restart();
             continue;
           },
           _ = fut => {},
@@ -205,11 +216,13 @@ where
       }
     }
 
-    let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
+    let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
     if result.is_ok() {
       paths_to_watch = paths;
     }
     resolution_result = result;
+
+    print_after_restart();
 
     drop(watcher);
   }
@@ -217,10 +230,8 @@ where
 
 fn new_watcher(
   paths: &[PathBuf],
-  debounce: &Debounce,
+  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
-  let changed_paths = Arc::clone(&debounce.changed_paths);
-
   let mut watcher: RecommendedWatcher =
     Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
       if let Ok(event) = res {
@@ -231,9 +242,9 @@ fn new_watcher(
           let paths = event
             .paths
             .iter()
-            .filter_map(|path| path.canonicalize().ok());
-          let mut changed_paths = changed_paths.lock();
-          changed_paths.extend(paths);
+            .filter_map(|path| canonicalize_path(path).ok())
+            .collect();
+          sender.send(paths).unwrap();
         }
       }
     })?;

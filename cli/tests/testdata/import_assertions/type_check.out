@@ -1,0 +1,5 @@
+[WILDCARD]
+error: TS2339 [ERROR]: Property 'foo' does not exist on type '{ a: string; c: { d: number; }; }'.
+console.log(data.foo);
+                 ~~~
+    at [WILDCARD]type_check.ts:3:18

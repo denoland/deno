@@ -1,74 +1,77 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::diagnostics::DenoDiagnostic;
+use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::ast;
-use crate::ast::Location;
-use crate::lsp::documents::DocumentData;
-use crate::module_graph::parse_deno_types;
-use crate::module_graph::parse_ts_reference;
-use crate::module_graph::TypeScriptReference;
+use crate::config_file::LintConfig;
 use crate::tools::lint::create_linter;
+use crate::tools::lint::get_configured_rules;
 
-use deno_ast::swc::ast as swc_ast;
-use deno_ast::swc::common::DUMMY_SP;
-use deno_ast::swc::visit::Node;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
-use deno_ast::Diagnostic;
-use deno_ast::MediaType;
 use deno_ast::SourceTextInfo;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url;
-use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
-use deno_lint::rules;
-use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt;
 
-lazy_static::lazy_static! {
-  /// Diagnostic error codes which actually are the same, and so when grouping
-  /// fixes we treat them the same.
-  static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =
-    (&[("2339", "2339"), ("2345", "2339"),])
+/// Diagnostic error codes which actually are the same, and so when grouping
+/// fixes we treat them the same.
+static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
+  Lazy::new(|| {
+    (&[("2339", "2339"), ("2345", "2339")])
       .iter()
       .cloned()
-      .collect();
+      .collect()
+  });
 
-  /// Fixes which help determine if there is a preferred fix when there are
-  /// multiple fixes available.
-  static ref PREFERRED_FIXES: HashMap<&'static str, (u32, bool)> = (&[
-    ("annotateWithTypeFromJSDoc", (1, false)),
-    ("constructorForDerivedNeedSuperCall", (1, false)),
-    ("extendsInterfaceBecomesImplements", (1, false)),
-    ("awaitInSyncFunction", (1, false)),
-    ("classIncorrectlyImplementsInterface", (3, false)),
-    ("classDoesntImplementInheritedAbstractMember", (3, false)),
-    ("unreachableCode", (1, false)),
-    ("unusedIdentifier", (1, false)),
-    ("forgottenThisPropertyAccess", (1, false)),
-    ("spelling", (2, false)),
-    ("addMissingAwait", (1, false)),
-    ("fixImport", (0, true)),
-  ])
-  .iter()
-  .cloned()
-  .collect();
+/// Fixes which help determine if there is a preferred fix when there are
+/// multiple fixes available.
+static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
+  Lazy::new(|| {
+    (&[
+      ("annotateWithTypeFromJSDoc", (1, false)),
+      ("constructorForDerivedNeedSuperCall", (1, false)),
+      ("extendsInterfaceBecomesImplements", (1, false)),
+      ("awaitInSyncFunction", (1, false)),
+      ("classIncorrectlyImplementsInterface", (3, false)),
+      ("classDoesntImplementInheritedAbstractMember", (3, false)),
+      ("unreachableCode", (1, false)),
+      ("unusedIdentifier", (1, false)),
+      ("forgottenThisPropertyAccess", (1, false)),
+      ("spelling", (2, false)),
+      ("addMissingAwait", (1, false)),
+      ("fixImport", (0, true)),
+    ])
+      .iter()
+      .cloned()
+      .collect()
+  });
 
-  static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
-}
+static IMPORT_SPECIFIER_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
+
+static DENO_TYPES_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#).unwrap()
+});
+
+static TRIPLE_SLASH_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap());
+
+static PATH_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap());
+static TYPES_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap());
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
@@ -100,7 +103,7 @@ impl Reference {
         hint,
       } => lsp::Diagnostic {
         range: self.range,
-        severity: Some(lsp::DiagnosticSeverity::Warning),
+        severity: Some(lsp::DiagnosticSeverity::WARNING),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
@@ -135,15 +138,11 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
+  maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let syntax = deno_ast::get_syntax(parsed_source.media_type());
-  let lint_rules = rules::get_recommended_rules();
-  let linter = create_linter(syntax, lint_rules);
-  // TODO(dsherret): do not re-parse here again
-  let (_, lint_diagnostics) = linter.lint(
-    parsed_source.specifier().to_string(),
-    parsed_source.source().text_str().to_string(),
-  )?;
+  let lint_rules = get_configured_rules(maybe_lint_config, None, None, None)?;
+  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
@@ -160,265 +159,6 @@ pub fn get_lint_references(
   )
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Dependency {
-  pub is_dynamic: bool,
-  pub maybe_code: Option<ResolvedDependency>,
-  pub maybe_code_specifier_range: Option<Range>,
-  pub maybe_type: Option<ResolvedDependency>,
-  pub maybe_type_specifier_range: Option<Range>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolvedDependencyErr {
-  InvalidDowngrade,
-  InvalidLocalImport,
-  InvalidSpecifier(ModuleResolutionError),
-  Missing,
-}
-
-impl ResolvedDependencyErr {
-  pub fn as_code(&self) -> lsp::NumberOrString {
-    match self {
-      Self::InvalidDowngrade => {
-        lsp::NumberOrString::String("invalid-downgrade".to_string())
-      }
-      Self::InvalidLocalImport => {
-        lsp::NumberOrString::String("invalid-local-import".to_string())
-      }
-      Self::InvalidSpecifier(error) => match error {
-        ModuleResolutionError::ImportPrefixMissing(_, _) => {
-          lsp::NumberOrString::String("import-prefix-missing".to_string())
-        }
-        ModuleResolutionError::InvalidBaseUrl(_) => {
-          lsp::NumberOrString::String("invalid-base-url".to_string())
-        }
-        ModuleResolutionError::InvalidPath(_) => {
-          lsp::NumberOrString::String("invalid-path".to_string())
-        }
-        ModuleResolutionError::InvalidUrl(_) => {
-          lsp::NumberOrString::String("invalid-url".to_string())
-        }
-      },
-      Self::Missing => lsp::NumberOrString::String("missing".to_string()),
-    }
-  }
-}
-
-impl fmt::Display for ResolvedDependencyErr {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      Self::InvalidDowngrade => {
-        write!(f, "HTTPS modules cannot import HTTP modules.")
-      }
-      Self::InvalidLocalImport => {
-        write!(f, "Remote modules cannot import local modules.")
-      }
-      Self::InvalidSpecifier(err) => write!(f, "{}", err),
-      Self::Missing => write!(f, "The module is unexpectedly missing."),
-    }
-  }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolvedDependency {
-  Resolved(ModuleSpecifier),
-  Err(ResolvedDependencyErr),
-}
-
-impl ResolvedDependency {
-  pub fn as_hover_text(&self) -> String {
-    match self {
-      Self::Resolved(specifier) => match specifier.scheme() {
-        "data" => "_(a data url)_".to_string(),
-        "blob" => "_(a blob url)_".to_string(),
-        _ => format!(
-          "{}&#8203;{}",
-          specifier[..url::Position::AfterScheme].to_string(),
-          specifier[url::Position::AfterScheme..].to_string()
-        ),
-      },
-      Self::Err(_) => "_[errored]_".to_string(),
-    }
-  }
-}
-
-pub fn resolve_import(
-  specifier: &str,
-  referrer: &ModuleSpecifier,
-  maybe_import_map: &Option<ImportMap>,
-) -> ResolvedDependency {
-  let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    import_map.resolve(specifier, referrer.as_str()).ok()
-  } else {
-    None
-  };
-  let remapped = maybe_mapped.is_some();
-  let specifier = if let Some(remapped) = maybe_mapped {
-    remapped
-  } else {
-    match deno_core::resolve_import(specifier, referrer.as_str()) {
-      Ok(resolved) => resolved,
-      Err(err) => {
-        return ResolvedDependency::Err(
-          ResolvedDependencyErr::InvalidSpecifier(err),
-        )
-      }
-    }
-  };
-  let referrer_scheme = referrer.scheme();
-  let specifier_scheme = specifier.scheme();
-  if referrer_scheme == "https" && specifier_scheme == "http" {
-    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidDowngrade);
-  }
-  if (referrer_scheme == "https" || referrer_scheme == "http")
-    && !(specifier_scheme == "https" || specifier_scheme == "http")
-    && !remapped
-  {
-    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidLocalImport);
-  }
-
-  ResolvedDependency::Resolved(specifier)
-}
-
-pub fn parse_module(
-  specifier: &ModuleSpecifier,
-  source: SourceTextInfo,
-  media_type: MediaType,
-) -> Result<deno_ast::ParsedSource, Diagnostic> {
-  deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.as_str().to_string(),
-    source,
-    media_type,
-    // capture the tokens for linting and formatting
-    capture_tokens: true,
-    maybe_syntax: None,
-  })
-}
-
-// TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
-// Module::parse() and should be refactored out to a common function.
-pub fn analyze_dependencies(
-  specifier: &ModuleSpecifier,
-  media_type: MediaType,
-  parsed_source: &deno_ast::ParsedSource,
-  maybe_import_map: &Option<ImportMap>,
-) -> (HashMap<String, Dependency>, Option<ResolvedDependency>) {
-  let mut maybe_type = None;
-  let mut dependencies = HashMap::<String, Dependency>::new();
-
-  // Parse leading comments for supported triple slash references.
-  for comment in parsed_source.get_leading_comments().iter() {
-    if let Some((ts_reference, span)) = parse_ts_reference(comment) {
-      let loc = parsed_source.source().line_and_column_index(span.lo);
-      match ts_reference {
-        TypeScriptReference::Path(import) => {
-          let dep = dependencies.entry(import.clone()).or_default();
-          let resolved_import =
-            resolve_import(&import, specifier, maybe_import_map);
-          dep.maybe_code = Some(resolved_import);
-          dep.maybe_code_specifier_range = Some(Range {
-            start: Position {
-              line: loc.line_index as u32,
-              character: loc.column_index as u32,
-            },
-            end: Position {
-              line: loc.line_index as u32,
-              character: (loc.column_index + import.chars().count() + 2) as u32,
-            },
-          });
-        }
-        TypeScriptReference::Types(import) => {
-          let resolved_import =
-            resolve_import(&import, specifier, maybe_import_map);
-          if media_type == MediaType::JavaScript || media_type == MediaType::Jsx
-          {
-            maybe_type = Some(resolved_import.clone());
-          }
-          let dep = dependencies.entry(import.clone()).or_default();
-          dep.maybe_type = Some(resolved_import);
-          dep.maybe_type_specifier_range = Some(Range {
-            start: Position {
-              line: loc.line_index as u32,
-              character: loc.column_index as u32,
-            },
-            end: Position {
-              line: loc.line_index as u32,
-              character: (loc.column_index + import.chars().count() + 2) as u32,
-            },
-          });
-        }
-      }
-    }
-  }
-
-  // Parse ES and type only imports
-  let descriptors = deno_graph::analyze_dependencies(parsed_source);
-  for desc in descriptors.into_iter().filter(|desc| {
-    desc.kind != deno_ast::swc::dep_graph::DependencyKind::Require
-  }) {
-    let resolved_import =
-      resolve_import(&desc.specifier, specifier, maybe_import_map);
-
-    let maybe_resolved_type_dependency =
-      // Check for `@deno-types` pragmas that affect the import
-      if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(comment).as_ref().map(|(deno_types, span)| {
-          (
-            resolve_import(deno_types, specifier, maybe_import_map),
-            deno_types.clone(),
-            parsed_source.source().line_and_column_index(span.lo)
-          )
-        })
-      } else {
-        None
-      };
-
-    let dep = dependencies.entry(desc.specifier.to_string()).or_default();
-    dep.is_dynamic = desc.is_dynamic;
-    let start = parsed_source
-      .source()
-      .line_and_column_index(desc.specifier_span.lo);
-    let end = parsed_source
-      .source()
-      .line_and_column_index(desc.specifier_span.hi);
-    let range = Range {
-      start: Position {
-        line: start.line_index as u32,
-        character: start.column_index as u32,
-      },
-      end: Position {
-        line: end.line_index as u32,
-        character: end.column_index as u32,
-      },
-    };
-    dep.maybe_code_specifier_range = Some(range);
-    dep.maybe_code = Some(resolved_import);
-    if dep.maybe_type.is_none() {
-      if let Some((resolved_dependency, specifier, loc)) =
-        maybe_resolved_type_dependency
-      {
-        dep.maybe_type_specifier_range = Some(Range {
-          start: Position {
-            line: loc.line_index as u32,
-            // +1 to skip quote
-            character: (loc.column_index + 1) as u32,
-          },
-          end: Position {
-            line: loc.line_index as u32,
-            // +1 to skip quote
-            character: (loc.column_index + 1 + specifier.chars().count())
-              as u32,
-          },
-        });
-        dep.maybe_type = Some(resolved_dependency);
-      }
-    }
-  }
-
-  (dependencies, maybe_type)
-}
-
 fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
   match code {
     Some(lsp::NumberOrString::String(str)) => str.clone(),
@@ -433,22 +173,14 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 fn check_specifier(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  snapshot: &language_server::StateSnapshot,
-  maybe_import_map: &Option<ImportMap>,
+  documents: &Documents,
 ) -> Option<String> {
   for ext in SUPPORTED_EXTENSIONS {
     let specifier_with_ext = format!("{}{}", specifier, ext);
-    if let ResolvedDependency::Resolved(resolved_specifier) =
-      resolve_import(&specifier_with_ext, referrer, maybe_import_map)
-    {
-      if snapshot.documents.contains_key(&resolved_specifier)
-        || snapshot.sources.contains_key(&resolved_specifier)
-      {
-        return Some(specifier_with_ext);
-      }
+    if documents.contains_import(&specifier_with_ext, referrer) {
+      return Some(specifier_with_ext);
     }
   }
-
   None
 }
 
@@ -457,10 +189,9 @@ fn check_specifier(
 pub(crate) fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
-  language_server: &language_server::Inner,
+  documents: &Documents,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
-  let snapshot = language_server.snapshot()?;
   for change in changes {
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
@@ -471,12 +202,9 @@ pub(crate) fn fix_ts_import_changes(
           .get(1)
           .ok_or_else(|| anyhow!("Missing capture."))?
           .as_str();
-        if let Some(new_specifier) = check_specifier(
-          specifier,
-          referrer,
-          &snapshot,
-          &language_server.maybe_import_map,
-        ) {
+        if let Some(new_specifier) =
+          check_specifier(specifier, referrer, documents)
+        {
           let new_text =
             text_change.new_text.replace(specifier, &new_specifier);
           text_changes.push(tsc::TextChange {
@@ -504,7 +232,7 @@ pub(crate) fn fix_ts_import_changes(
 fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
-  language_server: &language_server::Inner,
+  documents: &Documents,
 ) -> Result<tsc::CodeFixAction, AnyError> {
   if action.fix_name == "import" {
     let change = action
@@ -521,13 +249,9 @@ fn fix_ts_import_action(
         .get(1)
         .ok_or_else(|| anyhow!("Missing capture."))?
         .as_str();
-      let snapshot = language_server.snapshot()?;
-      if let Some(new_specifier) = check_specifier(
-        specifier,
-        referrer,
-        &snapshot,
-        &language_server.maybe_import_map,
-      ) {
+      if let Some(new_specifier) =
+        check_specifier(specifier, referrer, documents)
+      {
         let description = action.description.replace(specifier, &new_specifier);
         let changes = action
           .changes
@@ -614,7 +338,7 @@ fn is_preferred(
 /// for an LSP CodeAction.
 pub(crate) async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
@@ -634,12 +358,6 @@ pub(crate) async fn ts_changes_to_edit(
 pub struct CodeActionData {
   pub specifier: ModuleSpecifier,
   pub fix_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DenoFixData {
-  pub specifier: ModuleSpecifier,
 }
 
 #[derive(Debug, Clone)]
@@ -663,40 +381,20 @@ pub struct CodeActionCollection {
 impl CodeActionCollection {
   pub(crate) fn add_deno_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    if let Some(data) = diagnostic.data.clone() {
-      let fix_data: DenoFixData = serde_json::from_value(data)?;
-      let title = if matches!(&diagnostic.code, Some(lsp::NumberOrString::String(code)) if code == "no-cache-data")
-      {
-        "Cache the data URL and its dependencies.".to_string()
-      } else {
-        format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-      };
-      let code_action = lsp::CodeAction {
-        title,
-        kind: Some(lsp::CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diagnostic.clone()]),
-        edit: None,
-        command: Some(lsp::Command {
-          title: "".to_string(),
-          command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([fix_data.specifier])]),
-        }),
-        is_preferred: None,
-        disabled: None,
-        data: None,
-      };
-      self.actions.push(CodeActionKind::Deno(code_action));
-    }
+    let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
+    self.actions.push(CodeActionKind::Deno(code_action));
     Ok(())
   }
 
   pub(crate) fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
-    document: Option<&DocumentData>,
     diagnostic: &lsp::Diagnostic,
+    maybe_text_info: Option<SourceTextInfo>,
+    maybe_parsed_source: Option<deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     let code = diagnostic
       .code
@@ -707,11 +405,8 @@ impl CodeActionCollection {
       })
       .unwrap();
 
-    let document_source = document.map(|d| d.source());
-
-    let line_content = document_source.map(|d| {
-      d.text_info()
-        .line_text(diagnostic.range.start.line as usize)
+    let line_content = maybe_text_info.map(|ti| {
+      ti.line_text(diagnostic.range.start.line as usize)
         .to_string()
     });
 
@@ -754,9 +449,7 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let parsed_source =
-      document_source.and_then(|d| d.module().and_then(|r| r.as_ref().ok()));
-    let maybe_ignore_comment = parsed_source.and_then(|ps| {
+    let maybe_ignore_comment = maybe_parsed_source.clone().and_then(|ps| {
       // Note: we can use ps.get_leading_comments() but it doesn't
       // work when shebang is present at the top of the file.
       ps.comments().get_vec().iter().find_map(|c| {
@@ -787,7 +480,7 @@ impl CodeActionCollection {
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {}", code);
       // Get the end position of the comment.
-      let line = parsed_source
+      let line = maybe_parsed_source
         .unwrap()
         .source()
         .line_and_column_index(ignore_comment.span.hi());
@@ -864,7 +557,7 @@ impl CodeActionCollection {
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied
@@ -879,7 +572,8 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(specifier, action, language_server)?;
+    let action =
+      fix_ts_import_action(specifier, action, &language_server.documents)?;
     let edit = ts_changes_to_edit(&action.changes, language_server).await?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
@@ -1039,157 +733,9 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   }
 }
 
-/// Get LSP range from the provided start and end locations.
-fn get_range_from_location(
-  start: &ast::Location,
-  end: &ast::Location,
-) -> lsp::Range {
-  lsp::Range {
-    start: lsp::Position {
-      line: (start.line - 1) as u32,
-      character: start.col as u32,
-    },
-    end: lsp::Position {
-      line: (end.line - 1) as u32,
-      character: end.col as u32,
-    },
-  }
-}
-
-/// Narrow the range to only include the text of the specifier, excluding the
-/// quotes.
-fn narrow_range(range: lsp::Range) -> lsp::Range {
-  lsp::Range {
-    start: lsp::Position {
-      line: range.start.line,
-      character: range.start.character + 1,
-    },
-    end: lsp::Position {
-      line: range.end.line,
-      character: range.end.character - 1,
-    },
-  }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DependencyRange {
-  /// The LSP Range is inclusive of the quotes around the specifier.
-  pub range: lsp::Range,
-  /// The text of the specifier within the document.
-  pub specifier: String,
-}
-
-impl DependencyRange {
-  /// Determine if the position is within the range
-  fn within(&self, position: &lsp::Position) -> bool {
-    (position.line > self.range.start.line
-      || position.line == self.range.start.line
-        && position.character >= self.range.start.character)
-      && (position.line < self.range.end.line
-        || position.line == self.range.end.line
-          && position.character <= self.range.end.character)
-  }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct DependencyRanges(Vec<DependencyRange>);
-
-impl DependencyRanges {
-  pub fn contains(&self, position: &lsp::Position) -> Option<DependencyRange> {
-    self.0.iter().find(|r| r.within(position)).cloned()
-  }
-}
-
-struct DependencyRangeCollector<'a> {
-  import_ranges: DependencyRanges,
-  parsed_source: &'a deno_ast::ParsedSource,
-}
-
-impl<'a> DependencyRangeCollector<'a> {
-  pub fn new(parsed_source: &'a deno_ast::ParsedSource) -> Self {
-    Self {
-      import_ranges: DependencyRanges::default(),
-      parsed_source,
-    }
-  }
-
-  pub fn take(self) -> DependencyRanges {
-    self.import_ranges
-  }
-}
-
-impl<'a> Visit for DependencyRangeCollector<'a> {
-  fn visit_import_decl(
-    &mut self,
-    node: &swc_ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let start = Location::from_pos(self.parsed_source, node.src.span.lo);
-    let end = Location::from_pos(self.parsed_source, node.src.span.hi);
-    self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_location(&start, &end)),
-      specifier: node.src.value.to_string(),
-    });
-  }
-
-  fn visit_named_export(
-    &mut self,
-    node: &swc_ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &node.src {
-      let start = Location::from_pos(self.parsed_source, src.span.lo);
-      let end = Location::from_pos(self.parsed_source, src.span.hi);
-      self.import_ranges.0.push(DependencyRange {
-        range: narrow_range(get_range_from_location(&start, &end)),
-        specifier: src.value.to_string(),
-      });
-    }
-  }
-
-  fn visit_export_all(
-    &mut self,
-    node: &swc_ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let start = Location::from_pos(self.parsed_source, node.src.span.lo);
-    let end = Location::from_pos(self.parsed_source, node.src.span.hi);
-    self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_location(&start, &end)),
-      specifier: node.src.value.to_string(),
-    });
-  }
-
-  fn visit_ts_import_type(
-    &mut self,
-    node: &swc_ast::TsImportType,
-    _parent: &dyn Node,
-  ) {
-    let start = Location::from_pos(self.parsed_source, node.arg.span.lo);
-    let end = Location::from_pos(self.parsed_source, node.arg.span.hi);
-    self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_location(&start, &end)),
-      specifier: node.arg.value.to_string(),
-    });
-  }
-}
-
-/// Analyze a document for import ranges, which then can be used to identify if
-/// a particular position within the document as inside an import range.
-pub fn analyze_dependency_ranges(
-  parsed_source: &deno_ast::ParsedSource,
-) -> Result<DependencyRanges, AnyError> {
-  let mut collector = DependencyRangeCollector::new(parsed_source);
-  parsed_source
-    .module()
-    .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);
-  Ok(collector.take())
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url;
 
   #[test]
   fn test_reference_to_diagnostic() {
@@ -1216,7 +762,7 @@ mod tests {
         },
         lsp::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::Warning),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
           code: Some(lsp::NumberOrString::String("code1".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message1".to_string(),
@@ -1234,7 +780,7 @@ mod tests {
         },
         lsp::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::Warning),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
           code: Some(lsp::NumberOrString::String("code2".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message2\nhint2".to_string(),
@@ -1276,211 +822,6 @@ mod tests {
           character: 0,
         },
       }
-    );
-  }
-
-  #[test]
-  fn test_get_lint_references() {
-    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
-    let source = "const foo = 42;";
-    let parsed_module = parse_module(
-      &specifier,
-      SourceTextInfo::from_string(source.to_string()),
-      MediaType::TypeScript,
-    )
-    .unwrap();
-    let actual = get_lint_references(&parsed_module).unwrap();
-
-    assert_eq!(
-      actual,
-      vec![Reference {
-        category: Category::Lint {
-          message: "`foo` is never used".to_string(),
-          code: "no-unused-vars".to_string(),
-          hint: Some(
-            "If this is intentional, prefix it with an underscore like `_foo`"
-              .to_string()
-          ),
-        },
-        range: Range {
-          start: Position {
-            line: 0,
-            character: 6,
-          },
-          end: Position {
-            line: 0,
-            character: 9,
-          }
-        }
-      }]
-    );
-  }
-
-  #[test]
-  fn test_analyze_dependencies() {
-    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
-    let source = r#"import {
-      Application,
-      Context,
-      Router,
-      Status,
-    } from "https://deno.land/x/oak@v6.3.2/mod.ts";
-
-    import type { Component } from "https://esm.sh/preact";
-    import { h, Fragment } from "https://esm.sh/preact";
-
-    // @deno-types="https://deno.land/x/types/react/index.d.ts";
-    import React from "https://cdn.skypack.dev/react";
-    "#;
-    let parsed_module = parse_module(
-      &specifier,
-      SourceTextInfo::from_string(source.to_string()),
-      MediaType::TypeScript,
-    )
-    .unwrap();
-    let (actual, maybe_type) = analyze_dependencies(
-      &specifier,
-      MediaType::TypeScript,
-      &parsed_module,
-      &None,
-    );
-    assert!(maybe_type.is_none());
-    assert_eq!(actual.len(), 3);
-    assert_eq!(
-      actual.get("https://cdn.skypack.dev/react").cloned(),
-      Some(Dependency {
-        is_dynamic: false,
-        maybe_code: Some(ResolvedDependency::Resolved(
-          resolve_url("https://cdn.skypack.dev/react").unwrap()
-        )),
-        maybe_type: Some(ResolvedDependency::Resolved(
-          resolve_url("https://deno.land/x/types/react/index.d.ts").unwrap()
-        )),
-        maybe_code_specifier_range: Some(Range {
-          start: Position {
-            line: 11,
-            character: 22,
-          },
-          end: Position {
-            line: 11,
-            character: 53,
-          }
-        }),
-        maybe_type_specifier_range: Some(Range {
-          start: Position {
-            line: 10,
-            character: 20,
-          },
-          end: Position {
-            line: 10,
-            character: 62,
-          }
-        })
-      })
-    );
-    assert_eq!(
-      actual.get("https://deno.land/x/oak@v6.3.2/mod.ts").cloned(),
-      Some(Dependency {
-        is_dynamic: false,
-        maybe_code: Some(ResolvedDependency::Resolved(
-          resolve_url("https://deno.land/x/oak@v6.3.2/mod.ts").unwrap()
-        )),
-        maybe_type: None,
-        maybe_code_specifier_range: Some(Range {
-          start: Position {
-            line: 5,
-            character: 11,
-          },
-          end: Position {
-            line: 5,
-            character: 50,
-          }
-        }),
-        maybe_type_specifier_range: None,
-      })
-    );
-    assert_eq!(
-      actual.get("https://esm.sh/preact").cloned(),
-      Some(Dependency {
-        is_dynamic: false,
-        maybe_code: Some(ResolvedDependency::Resolved(
-          resolve_url("https://esm.sh/preact").unwrap()
-        )),
-        maybe_type: None,
-        maybe_code_specifier_range: Some(Range {
-          start: Position {
-            line: 8,
-            character: 32
-          },
-          end: Position {
-            line: 8,
-            character: 55
-          }
-        }),
-        maybe_type_specifier_range: None,
-      }),
-    );
-  }
-
-  #[test]
-  fn test_analyze_dependency_ranges() {
-    let specifier = resolve_url("file:///a.ts").unwrap();
-    let source =
-      "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
-    let media_type = MediaType::TypeScript;
-    let parsed_module = parse_module(
-      &specifier,
-      SourceTextInfo::from_string(source.to_string()),
-      media_type,
-    )
-    .unwrap();
-    let result = analyze_dependency_ranges(&parsed_module);
-    assert!(result.is_ok());
-    let actual = result.unwrap();
-    assert_eq!(
-      actual.contains(&lsp::Position {
-        line: 0,
-        character: 0,
-      }),
-      None
-    );
-    assert_eq!(
-      actual.contains(&lsp::Position {
-        line: 0,
-        character: 22,
-      }),
-      Some(DependencyRange {
-        range: lsp::Range {
-          start: lsp::Position {
-            line: 0,
-            character: 20,
-          },
-          end: lsp::Position {
-            line: 0,
-            character: 26,
-          },
-        },
-        specifier: "./b.ts".to_string(),
-      })
-    );
-    assert_eq!(
-      actual.contains(&lsp::Position {
-        line: 1,
-        character: 22,
-      }),
-      Some(DependencyRange {
-        range: lsp::Range {
-          start: lsp::Position {
-            line: 1,
-            character: 20,
-          },
-          end: lsp::Position {
-            line: 1,
-            character: 26,
-          },
-        },
-        specifier: "./c.ts".to_string(),
-      })
     );
   }
 }

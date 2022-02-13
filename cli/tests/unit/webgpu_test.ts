@@ -1,4 +1,4 @@
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 let isCI: boolean;
 try {
@@ -9,7 +9,7 @@ try {
 
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-unitTest({
+Deno.test({
   permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuComputePass() {
@@ -33,13 +33,14 @@ unitTest({
 
   const stagingBuffer = device.createBuffer({
     size: size,
-    usage: 1 | 8,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
   });
 
   const storageBuffer = device.createBuffer({
     label: "Storage Buffer",
     size: size,
-    usage: 0x80 | 8 | 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
+      GPUBufferUsage.COPY_SRC,
     mappedAtCreation: true,
   });
 
@@ -100,7 +101,7 @@ unitTest({
 
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-unitTest({
+Deno.test({
   permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuHelloTriangle() {

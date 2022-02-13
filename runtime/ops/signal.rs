@@ -1,10 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async_unref;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -33,7 +33,7 @@ pub fn init() -> Extension {
     .ops(vec![
       ("op_signal_bind", op_sync(op_signal_bind)),
       ("op_signal_unbind", op_sync(op_signal_unbind)),
-      ("op_signal_poll", op_async_unref(op_signal_poll)),
+      ("op_signal_poll", op_async(op_signal_poll)),
     ])
     .build()
 }
@@ -97,7 +97,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
     "SIGHUP" => Ok(1),
@@ -179,10 +179,15 @@ fn op_signal_bind(
   sig: String,
   _: (),
 ) -> Result<ResourceId, AnyError> {
-  super::check_unstable(state, "Deno.signal");
   let signo = signal_str_to_int(&sig)?;
+  if signal_hook_registry::FORBIDDEN.contains(&signo) {
+    return Err(type_error(format!(
+      "Binding to signal '{}' is not allowed",
+      sig
+    )));
+  }
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).unwrap()),
+    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo))?),
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);
@@ -195,8 +200,6 @@ async fn op_signal_poll(
   rid: ResourceId,
   _: (),
 ) -> Result<bool, AnyError> {
-  super::check_unstable2(&state, "Deno.signal");
-
   let resource = state
     .borrow_mut()
     .resource_table
@@ -216,7 +219,6 @@ pub fn op_signal_unbind(
   rid: ResourceId,
   _: (),
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.signal");
   state.resource_table.close(rid)?;
   Ok(())
 }

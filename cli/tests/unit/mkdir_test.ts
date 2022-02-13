@@ -1,11 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
 function assertDirectory(path: string, mode?: number) {
@@ -16,7 +15,7 @@ function assertDirectory(path: string, mode?: number) {
   }
 }
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncSuccess() {
     const path = Deno.makeTempDirSync() + "/dir";
@@ -25,7 +24,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncMode() {
     const path = Deno.makeTempDirSync() + "/dir";
@@ -34,13 +33,13 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: false } }, function mkdirSyncPerm() {
+Deno.test({ permissions: { write: false } }, function mkdirSyncPerm() {
   assertThrows(() => {
     Deno.mkdirSync("/baddir");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function mkdirSuccess() {
     const path = Deno.makeTempDirSync() + "/dir";
@@ -49,7 +48,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function mkdirMode() {
     const path = Deno.makeTempDirSync() + "/dir";
@@ -58,19 +57,27 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, function mkdirErrSyncIfExists() {
-  assertThrows(() => {
-    Deno.mkdirSync(".");
-  }, Deno.errors.AlreadyExists);
+Deno.test({ permissions: { write: true } }, function mkdirErrSyncIfExists() {
+  assertThrows(
+    () => {
+      Deno.mkdirSync(".");
+    },
+    Deno.errors.AlreadyExists,
+    `mkdir '.'`,
+  );
 });
 
-unitTest({ permissions: { write: true } }, async function mkdirErrIfExists() {
-  await assertRejects(async () => {
-    await Deno.mkdir(".");
-  }, Deno.errors.AlreadyExists);
+Deno.test({ permissions: { write: true } }, async function mkdirErrIfExists() {
+  await assertRejects(
+    async () => {
+      await Deno.mkdir(".");
+    },
+    Deno.errors.AlreadyExists,
+    `mkdir '.'`,
+  );
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncRecursive() {
     const path = Deno.makeTempDirSync() + "/nested/directory";
@@ -79,7 +86,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function mkdirRecursive() {
     const path = Deno.makeTempDirSync() + "/nested/directory";
@@ -88,7 +95,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
@@ -99,7 +106,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function mkdirRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
@@ -110,7 +117,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncRecursiveIfExists() {
     const path = Deno.makeTempDirSync() + "/dir";
@@ -128,7 +135,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function mkdirRecursiveIfExists() {
     const path = Deno.makeTempDirSync() + "/dir";
@@ -146,7 +153,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncErrors() {
     const testDir = Deno.makeTempDirSync();
@@ -197,7 +204,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function mkdirSyncRelativeUrlPath() {
     const testDir = Deno.makeTempDirSync();
@@ -212,7 +219,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function mkdirRelativeUrlPath() {
     const testDir = Deno.makeTempDirSync();
