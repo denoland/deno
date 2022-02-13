@@ -208,7 +208,10 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 console.log("Static u32:", dylib.symbols.static_u32);
-console.log("Static ptr:", dylib.symbols.static_ptr instanceof Deno.UnsafePointer);
+console.log(
+  "Static ptr:",
+  dylib.symbols.static_ptr instanceof Deno.UnsafePointer,
+);
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
 

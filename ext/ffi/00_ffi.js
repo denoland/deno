@@ -234,11 +234,13 @@
           const type = symbols[symbol].type;
           const name = symbols[symbol].name || symbol;
           let value = core.opSync(
-            "op_ffi_get_static", {
-            rid: this.#rid,
-            name,
-            type,
-          });
+            "op_ffi_get_static",
+            {
+              rid: this.#rid,
+              name,
+              type,
+            },
+          );
           if (type === "pointer" || type === "u64") {
             value = unpackU64(value);
             if (type === "pointer") {
