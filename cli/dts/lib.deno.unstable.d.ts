@@ -217,7 +217,7 @@ declare namespace Deno {
       T["nonblocking"],
       StaticForeignFunctionResult<T["result"]>
     >
-      : T extends ForeignStatic ? StaticForeignFunctionResult<T>
+      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
       : never;
 
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
