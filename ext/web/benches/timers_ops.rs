@@ -7,7 +7,7 @@ use deno_web::BlobStore;
 
 struct Permissions;
 
-impl deno_timers::TimersPermission for Permissions {
+impl deno_web::TimersPermission for Permissions {
   fn allow_hrtime(&mut self) -> bool {
     true
   }
@@ -23,8 +23,7 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     deno_url::init(),
-    deno_web::init(BlobStore::default(), None),
-    deno_timers::init::<Permissions>(),
+    deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder()
     .js(vec![
       ("setup",

@@ -1006,7 +1006,6 @@ dependencies = [
  "deno_ffi",
  "deno_http",
  "deno_net",
- "deno_timers",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -1042,18 +1041,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_timers"
-version = "0.34.0"
-dependencies = [
- "deno_bench_util",
- "deno_core",
- "deno_url",
- "deno_web",
- "deno_webidl",
- "tokio",
-]
-
-[[package]]
 name = "deno_tls"
 version = "0.23.0"
 dependencies = [
@@ -1085,7 +1072,10 @@ version = "0.67.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
+ "deno_bench_util",
  "deno_core",
+ "deno_url",
+ "deno_webidl",
  "encoding_rs",
  "flate2",
  "serde",
