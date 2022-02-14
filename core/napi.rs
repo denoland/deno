@@ -451,11 +451,3 @@ pub fn dlopen_func<'s>(
 
   std::mem::forget(library);
 }
-
-pub fn setup_napi(scope: &mut v8::HandleScope<'_>, obj: v8::Local<v8::Object>) {
-  let dlopen_func = v8::FunctionTemplate::new(scope, dlopen_func);
-  let val = dlopen_func.get_function(scope).unwrap();
-  let dlopen_name = v8::String::new(scope, "dlopen").unwrap();
-
-  obj.set(scope, dlopen_name.into(), val.into()).unwrap();
-}
