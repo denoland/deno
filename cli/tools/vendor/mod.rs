@@ -14,6 +14,7 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+mod analyze;
 mod build;
 mod import_map;
 mod mappings;

@@ -10,6 +10,10 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_graph::Position;
+use deno_graph::Resolved;
+
+use crate::fs_util::path_with_stem_suffix;
 
 use super::specifiers::dir_name_for_root;
 use super::specifiers::get_unique_path;
@@ -17,11 +21,17 @@ use super::specifiers::make_url_relative;
 use super::specifiers::partition_by_root_specifiers;
 use super::specifiers::sanitize_filepath;
 
+pub struct ProxiedModule {
+  pub output_path: PathBuf,
+  pub declaration_specifier: ModuleSpecifier,
+}
+
 /// Constructs and holds the remote specifier to local path mappings.
 pub struct Mappings {
   output_dir: ModuleSpecifier,
   mappings: HashMap<ModuleSpecifier, PathBuf>,
   base_specifiers: Vec<ModuleSpecifier>,
+  proxies: HashMap<ModuleSpecifier, ProxiedModule>,
 }
 
 impl Mappings {
@@ -34,6 +44,7 @@ impl Mappings {
       partition_by_root_specifiers(remote_modules.iter().map(|m| &m.specifier));
     let mut mapped_paths = HashSet::new();
     let mut mappings = HashMap::new();
+    let mut proxies = HashMap::new();
     let mut base_specifiers = Vec::new();
 
     for (root, specifiers) in partitioned_specifiers.into_iter() {
@@ -63,10 +74,40 @@ impl Mappings {
       mappings.insert(root, base_dir);
     }
 
+    // resolve all the "proxy" paths to use for when an x-typescript-types header is specified
+    for module in remote_modules {
+      if let Some((
+        _,
+        Resolved::Ok {
+          specifier, range, ..
+        },
+      )) = &module.maybe_types_dependency
+      {
+        // hack to tell if it's a x-typescript-types header
+        let is_ts_types_header =
+          range.start == Position::zeroed() && range.end == Position::zeroed();
+        if is_ts_types_header {
+          let module_path = mappings.get(&module.specifier).unwrap();
+          let proxied_path = get_unique_path(
+            path_with_stem_suffix(module_path, ".proxied"),
+            &mut mapped_paths,
+          );
+          proxies.insert(
+            module.specifier.clone(),
+            ProxiedModule {
+              output_path: proxied_path,
+              declaration_specifier: specifier.clone(),
+            },
+          );
+        }
+      }
+    }
+
     Ok(Self {
       output_dir: ModuleSpecifier::from_directory_path(output_dir).unwrap(),
       mappings,
       base_specifiers,
+      proxies,
     })
   }
 
@@ -159,6 +200,16 @@ impl Mappings {
       .unwrap_or_else(|| {
         panic!("Could not find base specifier for {}", child_specifier)
       })
+  }
+
+  pub fn proxied_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    self.proxies.get(specifier).map(|s| s.output_path.clone())
+  }
+
+  pub fn proxied_modules(
+    &self,
+  ) -> std::collections::hash_map::Iter<'_, ModuleSpecifier, ProxiedModule> {
+    self.proxies.iter()
   }
 }
 

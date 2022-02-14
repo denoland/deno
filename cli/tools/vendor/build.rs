@@ -3,11 +3,14 @@
 use std::path::Path;
 
 use deno_core::error::AnyError;
+use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 
+use super::analyze::has_default_export;
 use super::import_map::build_import_map;
 use super::mappings::Mappings;
+use super::mappings::ProxiedModule;
 use super::specifiers::is_remote_specifier;
 
 pub trait VendorEnvironment {
@@ -41,13 +44,15 @@ pub fn build(
   let mappings =
     Mappings::from_remote_modules(graph, &remote_modules, output_dir)?;
 
-  // collect and write out all the text changes
+  // write out all the files
   for module in &remote_modules {
     let source = match &module.maybe_source {
       Some(source) => source,
       None => continue,
     };
-    let local_path = mappings.local_path(&module.specifier);
+    let local_path = mappings
+      .proxied_path(&module.specifier)
+      .unwrap_or_else(|| mappings.local_path(&module.specifier));
     if !matches!(module.kind, ModuleKind::Esm | ModuleKind::Asserted) {
       log::warn!(
         "Unsupported module kind {:?} for {}",
@@ -60,6 +65,15 @@ pub fn build(
     environment.write_file(&local_path, source)?;
   }
 
+  // write out the proxies
+  for (specifier, proxied_module) in mappings.proxied_modules() {
+    let proxy_path = mappings.local_path(specifier);
+    let module = graph.get(specifier).unwrap();
+    let text = build_proxy_module_source(module, proxied_module);
+
+    environment.write_file(&proxy_path, &text)?;
+  }
+
   // create the import map
   if !mappings.base_specifiers().is_empty() {
     let import_map_text = build_import_map(graph, &all_modules, &mappings);
@@ -68,6 +82,40 @@ pub fn build(
   }
 
   Ok(())
+}
+
+fn build_proxy_module_source(
+  module: &Module,
+  proxied_module: &ProxiedModule,
+) -> String {
+  let mut text = format!(
+    "// @deno-types=\"{}\"\n",
+    proxied_module.declaration_specifier
+  );
+  let relative_specifier = format!(
+    "./{}",
+    proxied_module
+      .output_path
+      .file_name()
+      .unwrap()
+      .to_string_lossy()
+  );
+
+  // for simplicity, always include the `export *` statement as it won't error
+  // even when the module does not contain a named export
+  text.push_str(&format!("export * from \"{}\";\n", relative_specifier));
+
+  // add a default export if one exists in the module
+  if let Some(parsed_source) = module.maybe_parsed_source.as_ref() {
+    if has_default_export(parsed_source) {
+      text.push_str(&format!(
+        "export {{ default }} from \"{}\";\n",
+        relative_specifier
+      ));
+    }
+  }
+
+  text
 }
 
 #[cfg(test)]
@@ -171,7 +219,7 @@ mod test {
             ),
           )
           .add("https://other/sub2/mod.ts", "export class Mod {}")
-          .add_remote_with_headers(
+          .add_with_headers(
             "https://other/sub2/other?asdf",
             "export class Other {}",
             &[("content-type", "application/javascript")],
@@ -368,6 +416,94 @@ mod test {
     assert_eq!(
       output.files,
       to_file_vec(&[("/vendor/localhost/mod.ts", "export class Example {}"),]),
+    );
+  }
+
+  #[tokio::test]
+  async fn x_typescript_types_no_default() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add("/mod.ts", r#"import "https://localhost/mod.js";"#)
+          .add_with_headers(
+            "https://localhost/mod.js",
+            "export class Mod {}",
+            &[("x-typescript-types", "https://localhost/mod.d.ts")],
+          )
+          .add("https://localhost/mod.d.ts", "export class Mod {}");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/"
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.d.ts", "export class Mod {}"),
+        (
+          "/vendor/localhost/mod.js",
+          concat!(
+            "// @deno-types=\"https://localhost/mod.d.ts\"\n",
+            "export * from \"./mod.proxied.js\";\n"
+          )
+        ),
+        ("/vendor/localhost/mod.proxied.js", "export class Mod {}"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn x_typescript_types_default_export() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add("/mod.ts", r#"import "https://localhost/mod.js";"#)
+          .add_with_headers(
+            "https://localhost/mod.js",
+            "export default class Mod {}",
+            &[("x-typescript-types", "https://localhost/mod.d.ts")],
+          )
+          .add("https://localhost/mod.d.ts", "export default class Mod {}");
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/"
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.d.ts", "export default class Mod {}"),
+        (
+          "/vendor/localhost/mod.js",
+          concat!(
+            "// @deno-types=\"https://localhost/mod.d.ts\"\n",
+            "export * from \"./mod.proxied.js\";\n",
+            "export { default } from \"./mod.proxied.js\";\n",
+          )
+        ),
+        (
+          "/vendor/localhost/mod.proxied.js",
+          "export default class Mod {}"
+        ),
+      ]),
     );
   }
 

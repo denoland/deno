@@ -1,12 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::path::Path;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+
+use crate::fs_util::path_with_stem_suffix;
 
 /// Partitions the provided specifiers by specifiers that do not have a
 /// parent specifier.
@@ -67,32 +68,6 @@ pub fn dir_name_for_root(root: &ModuleSpecifier) -> PathBuf {
   result
 }
 
-/// Gets a path with the specified file stem suffix.
-pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
-  if let Some(file_name) = path.file_name().map(|f| f.to_string_lossy()) {
-    if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
-      if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
-        return if file_stem.to_lowercase().ends_with(".d") {
-          path.with_file_name(format!(
-            "{}_{}.{}.{}",
-            &file_stem[..file_stem.len() - ".d".len()],
-            suffix,
-            // maintain casing
-            &file_stem[file_stem.len() - "d".len()..],
-            ext
-          ))
-        } else {
-          path.with_file_name(format!("{}_{}.{}", file_stem, suffix, ext))
-        };
-      }
-    }
-
-    path.with_file_name(format!("{}_{}", file_name, suffix))
-  } else {
-    path.with_file_name(suffix)
-  }
-}
-
 /// Gets a unique file path given the provided file path
 /// and the set of existing file paths. Inserts to the
 /// set when finding a unique path.
@@ -104,7 +79,7 @@ pub fn get_unique_path(
   let mut count = 2;
   // case insensitive comparison so the output works on case insensitive file systems
   while !unique_set.insert(path.to_string_lossy().to_lowercase()) {
-    path = path_with_stem_suffix(&original_path, &count.to_string());
+    path = path_with_stem_suffix(&original_path, &format!("_{}", count));
     count += 1;
   }
   path
@@ -251,46 +226,6 @@ mod test {
         PathBuf::from(expected)
       );
     }
-  }
-
-  #[test]
-  fn test_path_with_stem_suffix() {
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/"), "2"),
-      PathBuf::from("/2")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test"), "2"),
-      PathBuf::from("/test_2")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.txt"), "2"),
-      PathBuf::from("/test_2.txt")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test/subdir"), "2"),
-      PathBuf::from("/test/subdir_2")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test/subdir.other.txt"), "2"),
-      PathBuf::from("/test/subdir.other_2.txt")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.d.ts"), "2"),
-      PathBuf::from("/test_2.d.ts")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.D.TS"), "2"),
-      PathBuf::from("/test_2.D.TS")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.d.mts"), "2"),
-      PathBuf::from("/test_2.d.mts")
-    );
-    assert_eq!(
-      path_with_stem_suffix(&PathBuf::from("/test.d.cts"), "2"),
-      PathBuf::from("/test_2.d.cts")
-    );
   }
 
   #[test]

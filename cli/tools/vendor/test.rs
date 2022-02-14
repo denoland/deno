@@ -57,7 +57,7 @@ impl TestLoader {
     self
   }
 
-  pub fn add_remote_with_headers(
+  pub fn add_with_headers(
     &mut self,
     specifier: impl AsRef<str>,
     text: impl AsRef<str>,
