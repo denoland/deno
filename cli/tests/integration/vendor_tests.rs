@@ -196,3 +196,37 @@ fn remote_module_test() {
     }),
   );
 }
+
+#[test]
+fn existing_import_map() {
+  let _server = http_server();
+  let t = TempDir::new().unwrap();
+  let vendor_dir = t.path().join("vendor");
+  fs::write(
+    t.path().join("mod.ts"),
+    "import {Logger} from 'http://localhost:4545/vendor/logger/mod.ts';",
+  )
+  .unwrap();
+  fs::write(
+    t.path().join("imports.json"),
+    r#"{ "imports": { "http://localhost:4545/vendor/logger/": "./logger/" } }"#,
+  )
+  .unwrap();
+  fs::create_dir(t.path().join("logger")).unwrap();
+  fs::write(t.path().join("logger/mod.ts"), "export class Logger {}").unwrap();
+
+  let status = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("vendor")
+    .arg("mod.ts")
+    .arg("--import-map")
+    .arg("imports.json")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  // it should not have found any remote dependencies because
+  // the provided import map mapped it to a local directory
+  assert!(!vendor_dir.join("import_map.json").exists());
+}
