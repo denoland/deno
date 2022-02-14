@@ -57,6 +57,7 @@ Deno.test({
     const keys = Object.keys(files);
     assertEquals(keys.length, 1);
     assertEquals(keys[0], data);
+    assertStringIncludes(files[keys[0]], 'console.log("hello world");');
   },
 });
 
