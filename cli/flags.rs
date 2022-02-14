@@ -253,7 +253,7 @@ pub struct Flags {
   /// If true, a list of Node built-in modules will be injected into
   /// the import map.
   pub compat: bool,
-  pub prompt: bool,
+  pub no_prompt: bool,
   pub reload: bool,
   pub repl: bool,
   pub seed: Option<u64>,
@@ -392,19 +392,17 @@ impl Flags {
       vec![]
     }
   }
-}
 
-impl From<Flags> for PermissionsOptions {
-  fn from(flags: Flags) -> Self {
-    Self {
-      allow_env: flags.allow_env,
-      allow_hrtime: flags.allow_hrtime,
-      allow_net: flags.allow_net,
-      allow_ffi: flags.allow_ffi,
-      allow_read: flags.allow_read,
-      allow_run: flags.allow_run,
-      allow_write: flags.allow_write,
-      prompt: flags.prompt,
+  pub fn permissions_options(&self) -> PermissionsOptions {
+    PermissionsOptions {
+      allow_env: self.allow_env.clone(),
+      allow_hrtime: self.allow_hrtime,
+      allow_net: self.allow_net.clone(),
+      allow_ffi: self.allow_ffi.clone(),
+      allow_read: self.allow_read.clone(),
+      allow_run: self.allow_run.clone(),
+      allow_write: self.allow_write.clone(),
+      prompt: !self.no_prompt,
     }
   }
 }
@@ -1531,10 +1529,13 @@ fn permission_args(app: App) -> App {
         .long("allow-all")
         .help("Allow all permissions"),
     )
+    .arg(Arg::new("prompt").long("prompt").help(
+      "deprecated: Fallback to prompt if required permission wasn't passed",
+    ))
     .arg(
-      Arg::new("prompt")
-        .long("prompt")
-        .help("Fallback to prompt if required permission wasn't passed"),
+      Arg::new("no-prompt")
+        .long("no-prompt")
+        .help("Always throw if required permission wasn't passed"),
     )
 }
 
@@ -2341,8 +2342,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  if matches.is_present("prompt") {
-    flags.prompt = true;
+  if matches.is_present("no-prompt") {
+    flags.no_prompt = true;
   }
 }
 fn unsafely_ignore_certificate_errors_parse(

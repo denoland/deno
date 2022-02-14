@@ -65,7 +65,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::Flags,
+  pub flags: Arc<flags::Flags>,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
@@ -90,7 +90,7 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
+  pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
