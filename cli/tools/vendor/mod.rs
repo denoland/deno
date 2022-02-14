@@ -9,6 +9,7 @@ use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 
 use crate::flags::VendorFlags;
+use crate::fs_util::resolve_from_cwd;
 use crate::lockfile;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
@@ -34,7 +35,7 @@ fn resolve_and_validate_output_dir(
   ps: &ProcState,
 ) -> Result<PathBuf, AnyError> {
   let output_dir = match &flags.output_path {
-    Some(output_path) => output_path.clone(),
+    Some(output_path) => resolve_from_cwd(output_path)?,
     None => std::env::current_dir()?.join("vendor"),
   };
   if !flags.force && !is_dir_empty(&output_dir)? {

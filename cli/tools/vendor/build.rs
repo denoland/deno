@@ -35,6 +35,7 @@ pub fn build(
   output_dir: &Path,
   environment: &impl VendorEnvironment,
 ) -> Result<(), AnyError> {
+  assert!(output_dir.is_absolute());
   let all_modules = graph.modules();
   let remote_modules = all_modules
     .iter()
@@ -502,6 +503,58 @@ mod test {
         (
           "/vendor/localhost/mod.proxied.js",
           "export default class Mod {}"
+        ),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn subdir() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add(
+            "/mod.ts",
+            r#"import "http://localhost:4545/sub/logger/mod.ts?testing";"#,
+          )
+          .add(
+            "http://localhost:4545/sub/logger/mod.ts?testing",
+            "export * from './logger.ts?test';",
+          )
+          .add(
+            "http://localhost:4545/sub/logger/logger.ts?test",
+            "export class Logger {}",
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "http://localhost:4545/": "./localhost_4545/",
+          "http://localhost:4545/sub/logger/mod.ts?testing": "./localhost_4545/sub/logger/mod.ts",
+        },
+        "scopes": {
+          "./localhost_4545/": {
+            "./localhost_4545/sub/logger/logger.ts?test": "./localhost_4545/sub/logger/logger.ts"
+          }
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        (
+          "/vendor/localhost_4545/sub/logger/logger.ts",
+          "export class Logger {}",
+        ),
+        (
+          "/vendor/localhost_4545/sub/logger/mod.ts",
+          "export * from './logger.ts?test';"
         ),
       ]),
     );

@@ -229,6 +229,7 @@ fn handle_dep_specifier(
     let key = if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
       let mut local_base_specifier = mappings.local_uri(base_specifier);
+      local_base_specifier.set_query(unresolved_specifier.query());
       local_base_specifier = local_base_specifier
         .join(&unresolved_specifier.path()[1..])
         .unwrap_or_else(|_| {

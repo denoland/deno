@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -9,39 +10,19 @@ use deno_core::error::AnyError;
 
 use crate::fs_util::path_with_stem_suffix;
 
-/// Partitions the provided specifiers by specifiers that do not have a
-/// parent specifier.
+/// Partitions the provided specifiers by the non-path and non-query parts of a specifier.
 pub fn partition_by_root_specifiers<'a>(
   specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
-) -> Vec<(ModuleSpecifier, Vec<ModuleSpecifier>)> {
-  let mut root_specifiers: Vec<(ModuleSpecifier, Vec<ModuleSpecifier>)> =
-    Vec::new();
+) -> BTreeMap<ModuleSpecifier, Vec<ModuleSpecifier>> {
+  let mut root_specifiers: BTreeMap<ModuleSpecifier, Vec<ModuleSpecifier>> =
+    Default::default();
   for remote_specifier in specifiers {
-    let mut found = false;
-    for (root_specifier, specifiers) in root_specifiers.iter_mut() {
-      if let Some(relative_url) = root_specifier.make_relative(remote_specifier)
-      {
-        // found a new root
-        if relative_url.starts_with("../") {
-          let end_ancestor_index =
-            relative_url.len() - relative_url.trim_start_matches("../").len();
-          *root_specifier = root_specifier
-            .join(&relative_url[..end_ancestor_index])
-            .unwrap();
-        }
+    let mut root_specifier = remote_specifier.clone();
+    root_specifier.set_query(None);
+    root_specifier.set_path("/");
 
-        specifiers.push(remote_specifier.clone());
-        found = true;
-        break;
-      }
-    }
-    if !found {
-      // get the specifier without the directory
-      let root_specifier = remote_specifier
-        .join("./")
-        .unwrap_or_else(|_| remote_specifier.clone());
-      root_specifiers.push((root_specifier, vec![remote_specifier.clone()]));
-    }
+    let specifiers = root_specifiers.entry(root_specifier).or_default();
+    specifiers.push(remote_specifier.clone());
   }
   root_specifiers
 }
@@ -141,7 +122,7 @@ mod test {
         "https://deno.land/x/mod/other/A.ts",
       ],
       vec![(
-        "https://deno.land/x/mod/",
+        "https://deno.land/",
         vec![
           "https://deno.land/x/mod/A.ts",
           "https://deno.land/x/mod/other/A.ts",
@@ -158,7 +139,7 @@ mod test {
         "https://deno.land/x/other/A.ts",
       ],
       vec![(
-        "https://deno.land/x/",
+        "https://deno.land/",
         vec![
           "https://deno.land/x/mod/A.ts",
           "https://deno.land/x/other/A.ts",
@@ -172,12 +153,19 @@ mod test {
     run_partition_by_root_specifiers_test(
       vec![
         "https://deno.land/mod/A.ts",
+        "http://deno.land/B.ts",
+        "https://deno.land:8080/C.ts",
         "https://localhost/mod/A.ts",
         "https://other/A.ts",
       ],
       vec![
-        ("https://deno.land/mod/", vec!["https://deno.land/mod/A.ts"]),
-        ("https://localhost/mod/", vec!["https://localhost/mod/A.ts"]),
+        ("http://deno.land/", vec!["http://deno.land/B.ts"]),
+        ("https://deno.land/", vec!["https://deno.land/mod/A.ts"]),
+        (
+          "https://deno.land:8080/",
+          vec!["https://deno.land:8080/C.ts"],
+        ),
+        ("https://localhost/", vec!["https://localhost/mod/A.ts"]),
         ("https://other/", vec!["https://other/A.ts"]),
       ],
     );
