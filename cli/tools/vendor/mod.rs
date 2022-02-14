@@ -23,7 +23,6 @@ mod specifiers;
 mod test;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
-  // todo: add x-TypeScript-types support via proxy file
   let output_dir = resolve_and_validate_output_dir(&flags, &ps)?;
   let graph = create_graph(&ps, &flags).await?;
 

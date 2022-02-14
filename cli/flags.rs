@@ -2549,8 +2549,8 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr),*) => (vec![$($x.to_string()),*]);
-}
+    ($($x:expr),* $(,)?) => (vec![$($x.to_string()),*]);
+  }
 
   #[test]
   fn global_flags() {
@@ -4906,5 +4906,48 @@ mod tests {
     assert!(&error_message
       .contains("error: The following required arguments were not provided:"));
     assert!(&error_message.contains("--watch=<FILES>..."));
+  }
+
+  #[test]
+  fn vendor_minimal() {
+    let r = flags_from_vec(svec!["deno", "vendor", "mod.ts",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Vendor(VendorFlags {
+          entry_points: svec!["mod.ts"],
+          force: false,
+          output_path: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn vendor_all() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "vendor",
+      "--force",
+      "--output",
+      "out_dir",
+      "--import-map",
+      "import_map.json",
+      "mod.ts",
+      "deps.test.ts",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Vendor(VendorFlags {
+          entry_points: svec!["mod.ts", "deps.test.ts"],
+          force: true,
+          output_path: Some(PathBuf::from("out_dir")),
+        }),
+        import_map_path: Some("import_map.json".to_string()),
+        ..Flags::default()
+      }
+    );
   }
 }
