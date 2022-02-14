@@ -75,7 +75,7 @@ async fn create_graph(
   flags: &VendorFlags,
 ) -> Result<deno_graph::ModuleGraph, AnyError> {
   let entry_points = flags
-    .entry_points
+    .specifiers
     .iter()
     .map(|p| {
       let url = resolve_url_or_path(p)?;

@@ -155,3 +155,44 @@ fn standard_test() {
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted",);
   assert!(output.status.success());
 }
+
+#[test]
+fn remote_module_test() {
+  let _server = http_server();
+  let t = TempDir::new().unwrap();
+  let vendor_dir = t.path().join("vendor");
+
+  let status = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("vendor")
+    .arg("http://localhost:4545/vendor/logger/mod.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  assert!(vendor_dir.exists());
+  assert!(vendor_dir
+    .join("localhost_4545/vendor/logger/mod.ts")
+    .exists());
+  assert!(vendor_dir
+    .join("localhost_4545/vendor/logger/logger.ts")
+    .exists());
+  let import_map: serde_json::Value = serde_json::from_str(
+    &fs::read_to_string(vendor_dir.join("import_map.json")).unwrap(),
+  )
+  .unwrap();
+  assert_eq!(
+    import_map,
+    json!({
+      "imports": {
+        "http://localhost:4545/": "./localhost_4545/",
+      },
+      "scopes": {
+        "./localhost_4545/": {
+          "./localhost_4545/vendor/logger/logger.ts?test": "./localhost_4545/vendor/logger/logger.ts"
+        }
+      }
+    }),
+  );
+}

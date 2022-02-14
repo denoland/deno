@@ -163,7 +163,7 @@ pub struct UpgradeFlags {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct VendorFlags {
-  pub entry_points: Vec<String>,
+  pub specifiers: Vec<String>,
   pub output_path: Option<PathBuf>,
   pub force: bool,
 }
@@ -1411,12 +1411,24 @@ update to a different location, use the --output flag
 }
 
 fn vendor_subcommand<'a>() -> App<'a> {
-  // todo(THIS PR): write tests for these once finalized
   App::new("vendor")
     .about("Vendor remote modules into a local directory")
-    .long_about("<TODO>")
+    .long_about(
+      "Vendor remote modules into a local directory.
+
+Analyzes the provided modules and their dependencies, downloads remote
+modules to the output directory, and produces an import map that maps
+remote specifiers to the downloaded files.
+
+  deno vendor main.ts
+  deno run --import-map vendor/import_map.json main.ts
+
+Remote modules and multiple modules may also be specified:
+
+  deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
+    )
     .arg(
-      Arg::new("entry_points")
+      Arg::new("specifiers")
         .takes_value(true)
         .multiple_values(true)
         .multiple_occurrences(true)
@@ -2265,8 +2277,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
-    entry_points: matches
-      .values_of("entry_points")
+    specifiers: matches
+      .values_of("specifiers")
       .map(|p| p.map(ToString::to_string).collect())
       .unwrap_or_default(),
     output_path: matches.value_of("output").map(PathBuf::from),
@@ -4915,7 +4927,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Vendor(VendorFlags {
-          entry_points: svec!["mod.ts"],
+          specifiers: svec!["mod.ts"],
           force: false,
           output_path: None,
         }),
@@ -4941,7 +4953,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Vendor(VendorFlags {
-          entry_points: svec!["mod.ts", "deps.test.ts"],
+          specifiers: svec!["mod.ts", "deps.test.ts"],
           force: true,
           output_path: Some(PathBuf::from("out_dir")),
         }),
