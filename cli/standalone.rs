@@ -200,12 +200,15 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = resolve_url(SPECIFIER)?;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
+    todo!("Worker are currently not supported in standalone binaries");
+  });
+  let web_worker_preload_module_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
   });
 
@@ -257,6 +260,7 @@ pub async fn run(
     seed: metadata.seed,
     js_error_create_fn: None,
     create_web_worker_cb,
+    web_worker_preload_module_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,

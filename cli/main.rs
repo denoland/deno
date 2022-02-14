@@ -72,6 +72,7 @@ use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::future::LocalFutureObj;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::parking_lot::RwLock;
@@ -83,6 +84,7 @@ use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::ops::worker_host::PreloadModuleCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use deno_runtime::web_worker::WebWorker;
@@ -101,6 +103,24 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
+fn create_web_worker_preload_module_callback(
+  ps: ProcState,
+) -> Arc<PreloadModuleCb> {
+  let compat = ps.flags.compat;
+
+  Arc::new(move |mut worker| {
+    let fut = async move {
+      if compat {
+        worker.execute_side_module(&compat::GLOBAL_URL).await?;
+        worker.execute_side_module(&compat::MODULE_URL).await?;
+      }
+
+      Ok(worker)
+    };
+    LocalFutureObj::new(Box::new(fut))
+  })
+}
+
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let global_state_ = ps.clone();
@@ -117,6 +137,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       args.parent_permissions.clone(),
     );
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
+    let preload_module_cb =
+      create_web_worker_preload_module_callback(ps.clone());
 
     let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
 
@@ -146,6 +168,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       seed: ps.flags.seed,
       module_loader,
       create_web_worker_cb,
+      preload_module_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
@@ -188,6 +211,8 @@ pub fn create_main_worker(
   let should_break_on_first_statement = ps.flags.inspect_brk.is_some();
 
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
+  let web_worker_preload_module_cb =
+    create_web_worker_preload_module_callback(ps.clone());
 
   let maybe_storage_key = if let Some(location) = &ps.flags.location {
     // if a location is set, then the ascii serialization of the location is
@@ -241,6 +266,7 @@ pub fn create_main_worker(
     seed: ps.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
+    web_worker_preload_module_cb,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
@@ -370,13 +396,11 @@ async fn compile_command(
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags = tools::standalone::compile_to_runtime_flags(
-    flags.clone(),
-    compile_flags.args,
-  )?;
+  let run_flags =
+    tools::standalone::compile_to_runtime_flags(&flags, compile_flags.args)?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let deno_dir = &ps.dir;
 
   let output = compile_flags.output.and_then(|output| {
@@ -407,7 +431,7 @@ async fn compile_command(
     })
     .flatten()
     .unwrap_or_else(|| {
-      bundle_module_graph(graph.as_ref(), &ps, &flags).map(|r| r.0)
+      bundle_module_graph(graph.as_ref(), &ps, &ps.flags).map(|r| r.0)
     })?;
 
   info!(
@@ -443,7 +467,7 @@ async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
     let mut cache = cache::FetchCacher::new(
@@ -501,8 +525,9 @@ async fn install_command(
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
-  let permissions = Permissions::from_options(&preload_flags.clone().into());
-  let ps = ProcState::build(preload_flags).await?;
+  let permissions =
+    Permissions::from_options(&preload_flags.permissions_options());
+  let ps = ProcState::build(Arc::new(preload_flags)).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, vec![]);
@@ -546,7 +571,7 @@ async fn cache_command(
   } else {
     emit::TypeLib::DenoWindow
   };
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
 
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
@@ -572,8 +597,8 @@ async fn eval_command(
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags.clone()).await?;
+  let permissions = Permissions::from_options(&flags.permissions_options());
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // Create a dummy source file.
@@ -597,7 +622,7 @@ async fn eval_command(
   // to allow module access by TS compiler.
   ps.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
-  if flags.compat {
+  if ps.flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
@@ -761,7 +786,7 @@ async fn bundle_command(
   bundle_flags: BundleFlags,
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
-
+  let flags = Arc::new(flags);
   let resolver = |_| {
     let flags = flags.clone();
     let source_file1 = bundle_flags.source_file.clone();
@@ -770,7 +795,7 @@ async fn bundle_command(
       let module_specifier = resolve_url_or_path(&source_file1)?;
 
       debug!(">>>>> bundle START");
-      let ps = ProcState::build(flags.clone()).await?;
+      let ps = ProcState::build(flags).await?;
 
       let graph =
         create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
@@ -806,11 +831,10 @@ async fn bundle_command(
   };
 
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
-    let flags = flags.clone();
     let out_file = bundle_flags.out_file.clone();
     async move {
       let (bundle_emit, maybe_bundle_map) =
-        bundle_module_graph(graph.as_ref(), &ps, &flags)?;
+        bundle_module_graph(graph.as_ref(), &ps, &ps.flags)?;
       debug!(">>>>> bundle END");
 
       if let Some(out_file) = out_file.as_ref() {
@@ -883,7 +907,7 @@ async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let maybe_fmt_config = if let Some(config_file) = &ps.maybe_config_file {
     config_file.to_fmt_config()?
   } else {
@@ -898,7 +922,7 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(flags, fmt_flags, maybe_fmt_config).await?;
+  tools::fmt::format(ps.flags.as_ref(), fmt_flags, maybe_fmt_config).await?;
   Ok(0)
 }
 
@@ -907,11 +931,11 @@ async fn repl_command(
   repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags.clone()).await?;
+  let permissions = Permissions::from_options(&flags.permissions_options());
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, vec![]);
-  if flags.compat {
+  if ps.flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
     worker.run_event_loop(false).await?;
@@ -923,8 +947,8 @@ async fn repl_command(
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker =
     create_main_worker(&ps.clone(), main_module.clone(), permissions, vec![]);
@@ -945,7 +969,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   ps.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
-  if flags.compat {
+  if ps.flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
@@ -958,6 +982,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
+  let flags = Arc::new(flags);
   let resolver = |_| {
     let script1 = script.clone();
     let script2 = script.clone();
@@ -1106,7 +1131,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
 
   let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.clone().into());
+    let permissions = Permissions::from_options(&flags.permissions_options());
     async move {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
@@ -1152,8 +1177,8 @@ async fn run_command(
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
   let main_module = resolve_url_or_path(&run_flags.script)?;
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, vec![]);
 
@@ -1174,7 +1199,7 @@ async fn run_command(
 
   debug!("main_module {}", main_module);
 
-  if flags.compat {
+  if ps.flags.compat {
     // TODO(bartlomieju): fix me
     assert_eq!(main_module.scheme(), "file");
 
@@ -1301,7 +1326,7 @@ fn init_v8_flags(v8_flags: &[String]) {
 fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
-  match flags.clone().subcommand {
+  match flags.subcommand.clone() {
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
     }

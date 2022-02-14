@@ -50,13 +50,13 @@ impl CacheServer {
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let ps = ProcState::build(Flags {
+        let ps = ProcState::build(Arc::new(Flags {
           cache_path: maybe_cache_path,
           ca_stores: maybe_ca_stores,
           ca_file: maybe_ca_file,
           unsafely_ignore_certificate_errors,
           ..Default::default()
-        })
+        }))
         .await
         .unwrap();
         let maybe_import_map_resolver =
