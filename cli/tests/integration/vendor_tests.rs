@@ -28,7 +28,14 @@ fn output_dir_exists() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    format!("error: Directory {} was not empty. Please provide an empty directory or use --force to ignore this error and potentially overwrite its contents.", vendor_dir.display()),
+    format!(
+      concat!(
+        "error: Directory {} was not empty. Please provide an empty ",
+        "directory or use --force to ignore this error and potentially ",
+        "overwrite its contents.",
+      ),
+      vendor_dir.display(),
+    ),
   );
   assert!(!output.status.success());
 
@@ -46,7 +53,14 @@ fn output_dir_exists() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    format!("error: Directory {} was not empty. Please provide an empty directory or use --force to ignore this error and potentially overwrite its contents.", vendor_dir.display()),
+    format!(
+      concat!(
+        "error: Directory {} was not empty. Please provide an empty ",
+        "directory or use --force to ignore this error and potentially ",
+        "overwrite its contents.",
+      ),
+      vendor_dir.display(),
+    ),
   );
   assert!(!output.status.success());
 
@@ -102,7 +116,10 @@ fn standard_test() {
   let _server = http_server();
   let t = TempDir::new().unwrap();
   let vendor_dir = t.path().join("vendor2");
-  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/query_reexport.ts?testing'; new Logger().log('outputted');").unwrap();
+  fs::write(
+    t.path().join("mod.ts"),
+    "import {Logger} from 'http://localhost:4545/vendor/query_reexport.ts?testing'; new Logger().log('outputted');",
+  ).unwrap();
 
   let status = util::deno_cmd()
     .current_dir(t.path())
@@ -235,7 +252,10 @@ fn dynamic_import() {
   let _server = http_server();
   let t = TempDir::new().unwrap();
   let vendor_dir = t.path().join("vendor");
-  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/dynamic.ts'; new Logger().log('outputted');").unwrap();
+  fs::write(
+    t.path().join("mod.ts"),
+    "import {Logger} from 'http://localhost:4545/vendor/dynamic.ts'; new Logger().log('outputted');",
+  ).unwrap();
 
   let status = util::deno_cmd()
     .current_dir(t.path())
@@ -284,20 +304,24 @@ fn dynamic_import() {
 fn dynamic_non_analyzable_import() {
   let _server = http_server();
   let t = TempDir::new().unwrap();
-  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/dynamic_non_analyzable.ts'; new Logger().log('outputted');").unwrap();
+  fs::write(
+    t.path().join("mod.ts"),
+    "import {Logger} from 'http://localhost:4545/vendor/dynamic_non_analyzable.ts'; new Logger().log('outputted');",
+  ).unwrap();
 
   let deno = util::deno_cmd()
     .current_dir(t.path())
     .env("NO_COLOR", "1")
     .arg("vendor")
-    .arg("mod.ts")
     .arg("--reload")
+    .arg("mod.ts")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  // todo(dsherret): it should warn about how it couldn't analyze the dynamic import
+  // todo(https://github.com/denoland/deno_graph/issues/138): it should warn about
+  // how it couldn't analyze the dynamic import
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts"

@@ -1449,7 +1449,11 @@ Remote modules and multiple modules may also be specified:
         )
         .takes_value(false),
     )
+    .arg(config_arg())
     .arg(import_map_arg())
+    .arg(lock_arg())
+    .arg(reload_arg())
+    .arg(ca_file_arg())
 }
 
 fn compile_args(app: App) -> App {
@@ -2275,7 +2279,12 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
   import_map_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches);
+
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
     specifiers: matches
       .values_of("specifiers")
@@ -2492,12 +2501,16 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  lock_arg_parse(flags, matches);
+  if matches.is_present("lock-write") {
+    flags.lock_write = true;
+  }
+}
+
+fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
     let lockfile = matches.value_of("lock").unwrap();
     flags.lock = Some(PathBuf::from(lockfile));
-  }
-  if matches.is_present("lock-write") {
-    flags.lock_write = true;
   }
 }
 
@@ -4941,11 +4954,16 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "vendor",
+      "--config",
+      "deno.json",
+      "--import-map",
+      "import_map.json",
+      "--lock",
+      "lock.json",
       "--force",
       "--output",
       "out_dir",
-      "--import-map",
-      "import_map.json",
+      "--reload",
       "mod.ts",
       "deps.test.ts",
     ]);
@@ -4957,7 +4975,10 @@ mod tests {
           force: true,
           output_path: Some(PathBuf::from("out_dir")),
         }),
+        config_path: Some("deno.json".to_string()),
         import_map_path: Some("import_map.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
+        reload: true,
         ..Flags::default()
       }
     );
