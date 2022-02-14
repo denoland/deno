@@ -1449,7 +1449,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
       where
         E: de::Error,
       {
-        Ok(ChildUnitPermissionArg::Inherit)
+        Ok(ChildUnitPermissionArg::NotGranted)
       }
 
       fn visit_str<E>(self, v: &str) -> Result<ChildUnitPermissionArg, E>
@@ -1508,7 +1508,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
       where
         E: de::Error,
       {
-        Ok(ChildUnaryPermissionArg::Inherit)
+        Ok(ChildUnaryPermissionArg::NotGranted)
       }
 
       fn visit_str<E>(self, v: &str) -> Result<ChildUnaryPermissionArg, E>
