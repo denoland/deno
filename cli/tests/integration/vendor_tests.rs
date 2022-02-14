@@ -102,7 +102,7 @@ fn standard_test() {
   let _server = http_server();
   let t = TempDir::new().unwrap();
   let vendor_dir = t.path().join("vendor2");
-  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/logger/mod.ts?testing'; new Logger().log('outputted');").unwrap();
+  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/query_reexport.ts?testing'; new Logger().log('outputted');").unwrap();
 
   let status = util::deno_cmd()
     .current_dir(t.path())
@@ -126,11 +126,11 @@ fn standard_test() {
     json!({
       "imports": {
         "http://localhost:4545/": "./localhost_4545/",
-        "http://localhost:4545/vendor/logger/mod.ts?testing": "./localhost_4545/vendor/logger/mod.ts",
+        "http://localhost:4545/vendor/query_reexport.ts?testing": "./localhost_4545/vendor/query_reexport.ts",
       },
       "scopes": {
         "./localhost_4545/": {
-          "./localhost_4545/vendor/logger/logger.ts?test": "./localhost_4545/vendor/logger/logger.ts"
+          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
         }
       }
     }),
@@ -151,8 +151,8 @@ fn standard_test() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "",);
-  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted",);
+  assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "");
+  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted");
   assert!(output.status.success());
 }
 
@@ -165,7 +165,7 @@ fn remote_module_test() {
   let status = util::deno_cmd()
     .current_dir(t.path())
     .arg("vendor")
-    .arg("http://localhost:4545/vendor/logger/mod.ts")
+    .arg("http://localhost:4545/vendor/query_reexport.ts")
     .spawn()
     .unwrap()
     .wait()
@@ -173,11 +173,9 @@ fn remote_module_test() {
   assert!(status.success());
   assert!(vendor_dir.exists());
   assert!(vendor_dir
-    .join("localhost_4545/vendor/logger/mod.ts")
+    .join("localhost_4545/vendor/query_reexport.ts")
     .exists());
-  assert!(vendor_dir
-    .join("localhost_4545/vendor/logger/logger.ts")
-    .exists());
+  assert!(vendor_dir.join("localhost_4545/vendor/logger.ts").exists());
   let import_map: serde_json::Value = serde_json::from_str(
     &fs::read_to_string(vendor_dir.join("import_map.json")).unwrap(),
   )
@@ -190,7 +188,7 @@ fn remote_module_test() {
       },
       "scopes": {
         "./localhost_4545/": {
-          "./localhost_4545/vendor/logger/logger.ts?test": "./localhost_4545/vendor/logger/logger.ts"
+          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
         }
       }
     }),
@@ -204,16 +202,17 @@ fn existing_import_map() {
   let vendor_dir = t.path().join("vendor");
   fs::write(
     t.path().join("mod.ts"),
-    "import {Logger} from 'http://localhost:4545/vendor/logger/mod.ts';",
+    "import {Logger} from 'http://localhost:4545/vendor/logger.ts';",
   )
   .unwrap();
   fs::write(
     t.path().join("imports.json"),
-    r#"{ "imports": { "http://localhost:4545/vendor/logger/": "./logger/" } }"#,
+    r#"{ "imports": { "http://localhost:4545/vendor/": "./logger/" } }"#,
   )
   .unwrap();
   fs::create_dir(t.path().join("logger")).unwrap();
-  fs::write(t.path().join("logger/mod.ts"), "export class Logger {}").unwrap();
+  fs::write(t.path().join("logger/logger.ts"), "export class Logger {}")
+    .unwrap();
 
   let status = util::deno_cmd()
     .current_dir(t.path())
@@ -229,4 +228,80 @@ fn existing_import_map() {
   // it should not have found any remote dependencies because
   // the provided import map mapped it to a local directory
   assert!(!vendor_dir.join("import_map.json").exists());
+}
+
+#[test]
+fn dynamic_import() {
+  let _server = http_server();
+  let t = TempDir::new().unwrap();
+  let vendor_dir = t.path().join("vendor");
+  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/dynamic.ts'; new Logger().log('outputted');").unwrap();
+
+  let status = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("vendor")
+    .arg("mod.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  let import_map: serde_json::Value = serde_json::from_str(
+    &fs::read_to_string(vendor_dir.join("import_map.json")).unwrap(),
+  )
+  .unwrap();
+  assert_eq!(
+    import_map,
+    json!({
+      "imports": {
+        "http://localhost:4545/": "./localhost_4545/",
+      }
+    }),
+  );
+
+  // try running the output with `--no-remote`
+  let deno = util::deno_cmd()
+    .current_dir(t.path())
+    .env("NO_COLOR", "1")
+    .arg("run")
+    .arg("--allow-read=.")
+    .arg("--no-remote")
+    .arg("--no-check")
+    .arg("--import-map")
+    .arg("vendor/import_map.json")
+    .arg("mod.ts")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "");
+  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted");
+  assert!(output.status.success());
+}
+
+#[test]
+fn dynamic_non_analyzable_import() {
+  let _server = http_server();
+  let t = TempDir::new().unwrap();
+  fs::write(t.path().join("mod.ts"), "import {Logger} from 'http://localhost:4545/vendor/dynamic_non_analyzable.ts'; new Logger().log('outputted');").unwrap();
+
+  let deno = util::deno_cmd()
+    .current_dir(t.path())
+    .env("NO_COLOR", "1")
+    .arg("vendor")
+    .arg("mod.ts")
+    .arg("--reload")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  // todo(dsherret): it should warn about how it couldn't analyze the dynamic import
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr).trim(),
+    "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts"
+  );
+  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
+  assert!(output.status.success());
 }
