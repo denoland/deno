@@ -6,8 +6,7 @@ fn napi_open_handle_scope(
   result: *mut napi_handle_scope,
 ) -> Result {
   let env = &mut *(env as *mut Env);
-  let scope = &mut v8::HandleScope::new(env.scope);
-  *result = transmute(scope);
+  *result = env.scope as *mut _ as napi_handle_scope;
   env.open_handle_scopes += 1;
   Ok(())
 }

@@ -134,3 +134,50 @@ pub mod node_api_create_syntax_error;
 pub mod node_api_get_module_file_name;
 pub mod node_api_throw_syntax_error;
 pub mod util;
+
+use deno_core::v8;
+use std::os::raw::c_int;
+use std::os::raw::c_void;
+
+pub type uv_async_t = *mut uv_async;
+pub type uv_loop_t = *mut c_void;
+pub type uv_async_cb = extern "C" fn(handle: uv_async_t);
+
+use deno_core::futures::channel::mpsc;
+#[repr(C)]
+pub struct uv_async {
+  pub data: Option<*mut c_void>,
+  callback: uv_async_cb,
+  sender: Option<mpsc::UnboundedSender<deno_core::napi::PendingNapiAsyncWork>>,
+}
+#[no_mangle]
+pub extern "C" fn uv_default_loop() -> uv_loop_t {
+  std::ptr::null_mut()
+}
+
+#[no_mangle]
+pub extern "C" fn uv_async_init(
+  _loop: uv_loop_t,
+  async_: uv_async_t,
+  cb: uv_async_cb,
+) -> c_int {
+  unsafe {
+    (*async_).callback = cb;
+  }
+  deno_core::napi::ASYNC_WORK_SENDER.with(|sender| {
+    unsafe {
+      (*async_).sender.replace(sender.borrow().clone().unwrap());
+    }
+    0
+  })
+}
+
+#[no_mangle]
+pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
+  let sender = unsafe { (*async_).sender.as_ref().unwrap() };
+  let fut = Box::new(move |scope: &mut v8::ContextScope<v8::HandleScope>| {
+    unsafe { ((*async_).callback)(async_) };
+  });
+  sender.unbounded_send(fut);
+  0
+}

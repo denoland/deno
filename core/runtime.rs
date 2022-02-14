@@ -45,7 +45,7 @@ use std::task::Context;
 use std::task::Poll;
 
 type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
-pub(crate) type PendingNapiAsyncWork =
+pub type PendingNapiAsyncWork =
   Box<dyn FnOnce(&mut v8::ContextScope<v8::HandleScope>)>;
 
 pub enum Snapshot {
@@ -783,13 +783,14 @@ impl JsRuntime {
     self.pump_v8_message_loop();
 
     // Ops
-    {
+    let maybe_scheduling_napi = {
       self.resolve_async_ops(cx)?;
-      self.poll_napi(cx)?;
+      let m = self.poll_napi(cx)?;
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
-    }
+      m
+    };
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
@@ -824,7 +825,8 @@ impl JsRuntime {
       .as_ref()
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
-    let has_pending_napi_work = !state.pending_napi_async_work.is_empty();
+    let has_pending_napi_work =
+      maybe_scheduling_napi || !state.pending_napi_async_work.is_empty();
 
     if !has_pending_refed_ops
       && !has_pending_dyn_imports
@@ -1528,7 +1530,7 @@ impl JsRuntime {
     exception_to_err_result(scope, exception, true)
   }
 
-  fn poll_napi(&mut self, cx: &mut Context) -> Result<(), Error> {
+  fn poll_napi(&mut self, cx: &mut Context) -> Result<bool, Error> {
     let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
     let scope = &mut v8::HandleScope::with_context(
@@ -1546,11 +1548,16 @@ impl JsRuntime {
     let context = v8::Context::new(scope);
     let context_scope = &mut v8::ContextScope::new(scope, context);
 
+    // `work` can call back into the runtime. It can also schedule an async task
+    // but we don't know that now. We need to make the runtime re-poll to make
+    // sure no pending NAPI tasks exist.
+    let mut maybe_scheduling = false;
     while let Some(work) = state_rc.borrow_mut().pending_napi_async_work.pop() {
       work(context_scope);
+      maybe_scheduling = true;
     }
 
-    Ok(())
+    Ok(maybe_scheduling)
   }
 
   // Send finished responses to JS

@@ -7,7 +7,7 @@ pub use v8;
 
 use crate::futures::channel::mpsc;
 
-use crate::runtime::PendingNapiAsyncWork;
+pub use crate::runtime::PendingNapiAsyncWork;
 use crate::JsRuntime;
 use std::cell::RefCell;
 use std::ffi::CString;
@@ -57,6 +57,7 @@ pub const napi_would_deadlock: napi_status = 21;
 
 thread_local! {
   pub static MODULE: RefCell<Option<*const NapiModule>> = RefCell::new(None);
+  pub static ASYNC_WORK_SENDER: RefCell<Option<mpsc::UnboundedSender<PendingNapiAsyncWork>>> = RefCell::new(None);
 }
 
 type napi_addon_register_func =
@@ -304,6 +305,10 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
     scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
+    let sc = sender.clone();
+    ASYNC_WORK_SENDER.with(|s| {
+      s.replace(Some(sc));
+    });
     Self {
       scope,
       shared: std::ptr::null_mut(),
@@ -317,6 +322,10 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
     scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
+    let sc = sender.clone();
+    ASYNC_WORK_SENDER.with(|s| {
+      s.replace(Some(sc));
+    });
     Self {
       scope,
       shared: self.shared,
