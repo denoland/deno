@@ -297,8 +297,9 @@ impl JsRuntime {
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
+        let isolate_ptr = &mut isolate as *mut _;
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope);
+        let context = bindings::initialize_context(Some(isolate_ptr), scope);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -323,13 +324,14 @@ impl JsRuntime {
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
+        let isolate_ptr = &mut isolate as *mut _;
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_loaded {
           v8::Context::new(scope)
         } else {
           // If no snapshot is provided, we initialize the context with empty
           // main source code and source maps.
-          bindings::initialize_context(scope)
+          bindings::initialize_context(Some(isolate_ptr), scope)
         };
         global_context = v8::Global::new(scope, context);
       }

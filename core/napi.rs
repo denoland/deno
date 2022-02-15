@@ -356,6 +356,8 @@ pub fn dlopen_func<'s>(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
+  let external = v8::Local::<v8::External>::try_from(args.data().unwrap()).unwrap();
+  let value = external.value() as *mut v8::OwnedIsolate;
   let context = v8::Context::new(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
 
@@ -389,7 +391,7 @@ pub fn dlopen_func<'s>(
   let async_work_sender = state_rc.borrow().napi_async_work_sender.clone();
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
-  let mut env = Env::new(scope, async_work_sender);
+  let mut env = Env::new(value, scope, async_work_sender);
   env.shared = env_shared_ptr;
   unsafe {
     (env_ptr as *mut Env).write(env);

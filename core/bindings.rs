@@ -157,6 +157,7 @@ pub fn module_origin<'a>(
 }
 
 pub fn initialize_context<'s>(
+  isolate_ptr: Option<*mut v8::OwnedIsolate>,
   scope: &mut v8::HandleScope<'s, ()>,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
@@ -228,12 +229,31 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
-  set_func(scope, core_val, "dlopen", dlopen_func);
+
+  if let Some(isolate_ptr) = isolate_ptr {
+    set_func_with_external(scope, core_val, "dlopen", dlopen_func, isolate_ptr);
+  }
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
   scope.escape(context)
+}
+
+#[inline(always)]
+pub fn set_func_with_external<T>(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  name: &'static str,
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
+  data: *mut T
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let external = v8::External::new(scope, data as *mut _);
+  let tmpl = v8::FunctionTemplate::builder(callback).data(external.into()).build(scope);
+  let val = tmpl.get_function(scope).unwrap();
+  val.set_name(key);
+  obj.set(scope, key.into(), val.into());
 }
 
 #[inline(always)]

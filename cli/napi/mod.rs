@@ -150,6 +150,7 @@ pub struct uv_async {
   callback: uv_async_cb,
   sender: Option<mpsc::UnboundedSender<deno_core::napi::PendingNapiAsyncWork>>,
 }
+
 #[no_mangle]
 pub extern "C" fn uv_default_loop() -> uv_loop_t {
   std::ptr::null_mut()
