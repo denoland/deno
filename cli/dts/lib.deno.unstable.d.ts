@@ -179,7 +179,7 @@ declare namespace Deno {
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
     name?: string;
-    type: Omit<Type, "void">;
+    type: Exclude<Type, "void">;
   }
 
   /** A foreign library interface descriptor */
