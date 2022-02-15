@@ -32,6 +32,7 @@
     PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
+    SafeArrayIterator,
     Set,
     SetPrototypeEntries,
     SetPrototypeForEach,
@@ -174,6 +175,7 @@
       super(message);
     }
   }
+  const GPUValidationErrorPrototype = GPUValidationError.prototype;
 
   class GPU {
     [webidl.brand] = webidl.brand;
@@ -542,7 +544,9 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return `${this.constructor.name} ${inspect([...this.values()])}`;
+      return `${this.constructor.name} ${
+        inspect([...new SafeArrayIterator(this.values())])
+      }`;
     }
   }
 
@@ -715,7 +719,7 @@
       const validationFilteredPromise = PromisePrototypeCatch(
         operation,
         (err) => {
-          if (ObjectPrototypeIsPrototypeOf.prototype(GPUValidationError, err)) {
+          if (ObjectPrototypeIsPrototypeOf(GPUValidationErrorPrototype, err)) {
             return PromiseReject(err);
           }
           return PromiseResolve();
@@ -1922,7 +1926,7 @@
           const { err } = core.opSync("op_webgpu_buffer_unmap", {
             bufferRid,
             mappedRid,
-          }, ...(write ? [new Uint8Array(buffer)] : []));
+          }, ...new SafeArrayIterator(write ? [new Uint8Array(buffer)] : []));
           device.pushError(err);
           if (err) return;
         }

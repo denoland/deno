@@ -51,8 +51,9 @@ pub struct WorkerOptions {
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  // Callback invoked when creating new instance of WebWorker
+  // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
@@ -99,7 +100,7 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(
+      deno_web::init::<Permissions>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
@@ -121,12 +122,14 @@ impl MainWorker {
       deno_crypto::init(options.seed),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_webgpu::init(unstable),
-      deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(options.create_web_worker_cb.clone()),
+      ops::worker_host::init(
+        options.create_web_worker_cb.clone(),
+        options.web_worker_preload_module_cb.clone(),
+      ),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),
@@ -367,6 +370,7 @@ mod tests {
       root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
+      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,

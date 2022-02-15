@@ -6,6 +6,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const {
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     ObjectDefineProperty,
@@ -116,7 +117,7 @@
       get(target, key) {
         if (typeof key == "symbol") return target[key];
         if (key in target) {
-          return ReflectGet(...arguments);
+          return ReflectGet(...new SafeArrayIterator(arguments));
         } else {
           return target.getItem(key) ?? undefined;
         }
