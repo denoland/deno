@@ -134,7 +134,13 @@ fn standalone_error() {
   let testdata_path_str = testdata_path.to_string_lossy();
   let expected_stderr = format!("error: Error: boom!\n    at boom (file://{testdata_path_str}/standalone_error.ts:2:11)\n    at foo (file://{testdata_path_str}/standalone_error.ts:5:5)\n    at file://{testdata_path_str}/standalone_error.ts:7:1\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr, expected_stderr);
+  // On Windows, we cannot assert the file path (because '\').
+  // Instead we just check for relevant output.
+  assert!(stderr.contains("error: Error: boom!\n    at boom (file://"));
+  assert!(stderr.contains("standalone_error.ts:2:11"));
+  assert!(stderr.contains("at foo (file://"));
+  assert!(stderr.contains("standalone_error.ts:5:5"));
+  assert!(stderr.contains("standalone_error.ts:7:1"));
 }
 
 #[test]
@@ -171,9 +177,11 @@ fn standalone_error_module_with_imports() {
   println!("{:#?}", &output);
   assert_eq!(output.stdout, b"hello\n");
   let testdata_path_str = testdata_path.to_string_lossy();
-  let expected_stderr = format!("error: Error: boom!\n    at file://{testdata_path_str}/standalone_error_module_with_imports_2.ts:2:7\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr, expected_stderr);
+  // On Windows, we cannot assert the file path (because '\').
+  // Instead we just check for relevant output.
+  assert!(stderr.contains("error: Error: boom!\n    at file://"));
+  assert!(stderr.contains("standalone_error_module_with_imports_2.ts:2:7"));
 }
 
 #[test]
