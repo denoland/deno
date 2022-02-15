@@ -304,6 +304,7 @@ pub struct WebWorker {
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
+  poll_for_messages_fn: Option<v8::Global<v8::Value>>,
 }
 
 pub struct WebWorkerOptions {
@@ -315,6 +316,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
@@ -395,7 +397,10 @@ impl WebWorker {
     let runtime_exts = vec![
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(options.create_web_worker_cb.clone()),
+      ops::worker_host::init(
+        options.create_web_worker_cb.clone(),
+        options.preload_module_cb.clone(),
+      ),
       ops::io::init(),
     ];
 
@@ -468,6 +473,7 @@ impl WebWorker {
         use_deno_namespace: options.use_deno_namespace,
         worker_type: options.worker_type,
         main_module,
+        poll_for_messages_fn: None,
       },
       external_handle,
     )
@@ -486,6 +492,18 @@ impl WebWorker {
     self
       .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute worker bootstrap script");
+    // Save a reference to function that will start polling for messages
+    // from a worker host; it will be called after the user code is loaded.
+    let script = r#"
+    const pollForMessages = globalThis.pollForMessages;
+    delete globalThis.pollForMessages;
+    pollForMessages
+    "#;
+    let poll_for_messages_fn = self
+      .js_runtime
+      .execute_script(&located_script_name!(), script)
+      .expect("Failed to execute worker bootstrap script");
+    self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -519,11 +537,36 @@ impl WebWorker {
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
-  pub async fn execute_main_module(
+  ///
+  /// This method assumes that worker can't be terminated when executing
+  /// side module code.
+  pub async fn execute_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, true).await?;
+    let id = self.preload_module(module_specifier, false).await?;
+    let mut receiver = self.js_runtime.mod_evaluate(id);
+    tokio::select! {
+      maybe_result = &mut receiver => {
+        debug!("received module evaluate {:#?}", maybe_result);
+        maybe_result.expect("Module evaluation result not provided.")
+      }
+
+      event_loop_result = self.js_runtime.run_event_loop(false) => {
+        event_loop_result?;
+        let maybe_result = receiver.await;
+        maybe_result.expect("Module evaluation result not provided.")
+      }
+    }
+  }
+
+  /// Loads, instantiates and executes specified JavaScript module.
+  ///
+  /// This module will have "import.meta.main" equal to true.
+  pub async fn execute_main_module(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = &mut receiver => {
@@ -582,6 +625,17 @@ impl WebWorker {
   ) -> Result<(), AnyError> {
     poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
+
+  // Starts polling for messages from worker host from JavaScript.
+  fn start_polling_for_messages(&mut self) {
+    let poll_for_messages_fn = self.poll_for_messages_fn.take().unwrap();
+    let scope = &mut self.js_runtime.handle_scope();
+    let poll_for_messages =
+      v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
+    let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
+    let undefined = v8::undefined(scope);
+    fn_.call(scope, undefined.into(), &[]).unwrap();
+  }
 }
 
 fn print_worker_error(error_str: String, name: &str) {
@@ -596,9 +650,10 @@ fn print_worker_error(error_str: String, name: &str) {
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 pub fn run_web_worker(
-  mut worker: WebWorker,
+  worker: WebWorker,
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
+  preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
@@ -606,16 +661,38 @@ pub fn run_web_worker(
   // with terminate
 
   let fut = async move {
+    let internal_handle = worker.internal_handle.clone();
+    let result = (preload_module_cb)(worker).await;
+
+    let mut worker = match result {
+      Ok(worker) => worker,
+      Err(e) => {
+        print_worker_error(e.to_string(), &name);
+        internal_handle
+          .post_event(WorkerControlEvent::TerminalError(e))
+          .expect("Failed to post message to host");
+
+        // Failure to execute script is a terminal error, bye, bye.
+        return Ok(());
+      }
+    };
+
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code {
-      worker.execute_script(&located_script_name!(), &source_code)
+      let r = worker.execute_script(&located_script_name!(), &source_code);
+      worker.start_polling_for_messages();
+      r
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      worker.execute_main_module(&specifier).await
+      match worker.preload_module(&specifier, true).await {
+        Ok(id) => {
+          worker.start_polling_for_messages();
+          worker.execute_main_module(id).await
+        }
+        Err(e) => Err(e),
+      }
     };
-
-    let internal_handle = worker.internal_handle.clone();
 
     // If sender is closed it means that worker has already been closed from
     // within using "globalThis.close()"

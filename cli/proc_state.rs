@@ -51,6 +51,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use import_map::parse_from_json;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
@@ -66,7 +67,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::Flags,
+  pub flags: Arc<flags::Flags>,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
@@ -91,7 +92,7 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
+  pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -769,7 +770,7 @@ pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
 ) -> Result<ImportMap, AnyError> {
-  let result = ImportMap::from_json_with_diagnostics(specifier, json_text)?;
+  let result = parse_from_json(specifier, json_text)?;
   if !result.diagnostics.is_empty() {
     warn!(
       "Import map diagnostics:\n{}",

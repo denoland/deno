@@ -68,7 +68,7 @@ encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
 fancy-regex = "=0.7.1"
 http = "=0.2.4"
-import_map = "=0.6.0"
+import_map = "=0.8.0"
 jsonc-parser = { version = "=0.19.0", features = ["serde"] }
 libc = "=0.2.106"
 log = { version = "=0.4.14", features = ["serde"] }

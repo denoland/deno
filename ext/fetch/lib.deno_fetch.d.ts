@@ -424,13 +424,15 @@ declare class Response implements Body {
   text(): Promise<string>;
 }
 
-/** Fetch a resource from the network. It returns a Promise that resolves to the
- * Response to that request, whether it is successful or not.
+/** Fetch a resource from the network. It returns a `Promise` that resolves to the
+ * `Response` to that `Request`, whether it is successful or not.
  *
- *     const response = await fetch("http://my.json.host/data.json");
- *     console.log(response.status);  // e.g. 200
- *     console.log(response.statusText); // e.g. "OK"
- *     const jsonData = await response.json();
+ * ```ts
+ * const response = await fetch("http://my.json.host/data.json");
+ * console.log(response.status);  // e.g. 200
+ * console.log(response.statusText); // e.g. "OK"
+ * const jsonData = await response.json();
+ * ```
  */
 declare function fetch(
   input: Request | URL | string,
