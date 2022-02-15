@@ -1314,7 +1314,7 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
-impl deno_timers::TimersPermission for Permissions {
+impl deno_web::TimersPermission for Permissions {
   fn allow_hrtime(&mut self) -> bool {
     self.hrtime.check().is_ok()
   }
