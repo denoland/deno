@@ -2,7 +2,6 @@
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_runtime::fs_util;
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::process::Stdio;
@@ -29,13 +28,10 @@ fn output_dir_exists() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    format!(
-      concat!(
-        "error: Output directory {} was not empty. Please provide an empty ",
-        "directory or use --force to ignore this error and potentially ",
-        "overwrite its contents.",
-      ),
-      fs_util::canonicalize_path(&vendor_dir).unwrap().display(),
+    concat!(
+      "error: Output directory was not empty. Please specify an empty ",
+      "directory or use --force to ignore this error and potentially ",
+      "overwrite its contents.",
     ),
   );
   assert!(!output.status.success());
@@ -54,13 +50,10 @@ fn output_dir_exists() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    format!(
-      concat!(
-        "error: Output directory {} was not empty. Please provide an empty ",
-        "directory or use --force to ignore this error and potentially ",
-        "overwrite its contents.",
-      ),
-      fs_util::canonicalize_path(&vendor_dir).unwrap().display(),
+    concat!(
+      "error: Output directory was not empty. Please specify an empty ",
+      "directory or use --force to ignore this error and potentially ",
+      "overwrite its contents.",
     ),
   );
   assert!(!output.status.success());

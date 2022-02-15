@@ -39,13 +39,10 @@ fn resolve_and_validate_output_dir(
     None => PathBuf::from("vendor"),
   })?;
   if !flags.force && !is_dir_empty(&output_dir)? {
-    bail!(
-      concat!(
-        "Output directory {} was not empty. Please provide an empty directory or use ",
-        "--force to ignore this error and potentially overwrite its contents.",
-      ),
-      output_dir.display(),
-    );
+    bail!(concat!(
+      "Output directory was not empty. Please specify an empty directory or use ",
+      "--force to ignore this error and potentially overwrite its contents.",
+    ));
   }
 
   // check the import map
@@ -55,6 +52,10 @@ fn resolve_and_validate_output_dir(
     .and_then(|m| m.base_url().to_file_path().ok())
     .and_then(|p| fs_util::canonicalize_path(&p).ok())
   {
+    // make the output directory in order to canonicalize it for the check below
+    std::fs::create_dir_all(&output_dir)?;
+    let output_dir = fs_util::canonicalize_path(&output_dir)?;
+
     if import_map_path.starts_with(&output_dir) {
       // We don't allow using the output directory to help generate the new state
       // of itself because supporting this scenario adds a lot of complexity.
