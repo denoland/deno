@@ -54,6 +54,9 @@ declare namespace Deno {
     setNoDelay(nodelay?: boolean): void;
     /** Enable/disable keep-alive functionality */
     setKeepAlive(keepalive?: boolean): void;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
   }
 
   // deno-lint-ignore no-empty-interface

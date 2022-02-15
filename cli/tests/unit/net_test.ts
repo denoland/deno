@@ -751,3 +751,59 @@ Deno.test(
     listener.close();
   },
 );
+
+Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
+  (async () => {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
+    const conn = await listener.accept();
+    await conn.readable.pipeTo(conn.writable);
+    listener.close();
+  })();
+
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const reader = conn.readable.getReader();
+  const writer = conn.writable.getWriter();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const data = encoder.encode("Hello World");
+
+  await writer.write(data);
+  const { value, done } = await reader.read();
+  assert(!done);
+  assertEquals(decoder.decode(value), "Hello World");
+  await reader.cancel();
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readableStreamTextEncoderPipe() {
+    const filename = "cli/tests/testdata/hello.txt";
+    const file = await Deno.open(filename);
+    const readable = file.readable.pipeThrough(new TextDecoderStream());
+    const chunks = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+    }
+    assertEquals(chunks.length, 1);
+    assertEquals(chunks[0].length, 12);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writableStream() {
+    const path = await Deno.makeTempFile();
+    const file = await Deno.open(path, { write: true });
+    assert(file.writable instanceof WritableStream);
+    const readable = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("hello "));
+        controller.enqueue(new TextEncoder().encode("world!"));
+        controller.close();
+      },
+    });
+    await readable.pipeTo(file.writable);
+    const res = await Deno.readTextFile(path);
+    assertEquals(res, "hello world!");
+  },
+);

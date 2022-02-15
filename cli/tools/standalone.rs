@@ -8,6 +8,7 @@ use crate::flags::RunFlags;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_graph::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest::Client;
 use std::env;
 use std::fs::read;
@@ -86,10 +87,12 @@ async fn download_base_binary(
 /// and magic trailer to the currently executing binary.
 pub fn create_standalone_binary(
   mut original_bin: Vec<u8>,
-  source_code: String,
+  eszip: eszip::EszipV2,
+  entrypoint: ModuleSpecifier,
   flags: Flags,
 ) -> Result<Vec<u8>, AnyError> {
-  let mut source_code = source_code.as_bytes().to_vec();
+  let mut eszip_archive = eszip.into_bytes();
+
   let ca_data = match &flags.ca_file {
     Some(ca_file) => Some(read(ca_file)?),
     None => None,
@@ -107,19 +110,21 @@ pub fn create_standalone_binary(
     log_level: flags.log_level,
     ca_stores: flags.ca_stores,
     ca_data,
+    entrypoint,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
 
-  let bundle_pos = original_bin.len();
-  let metadata_pos = bundle_pos + source_code.len();
+  let eszip_pos = original_bin.len();
+  let metadata_pos = eszip_pos + eszip_archive.len();
   let mut trailer = MAGIC_TRAILER.to_vec();
-  trailer.write_all(&bundle_pos.to_be_bytes())?;
+  trailer.write_all(&eszip_pos.to_be_bytes())?;
   trailer.write_all(&metadata_pos.to_be_bytes())?;
 
-  let mut final_bin =
-    Vec::with_capacity(original_bin.len() + source_code.len() + trailer.len());
+  let mut final_bin = Vec::with_capacity(
+    original_bin.len() + eszip_archive.len() + trailer.len(),
+  );
   final_bin.append(&mut original_bin);
-  final_bin.append(&mut source_code);
+  final_bin.append(&mut eszip_archive);
   final_bin.append(&mut metadata);
   final_bin.append(&mut trailer);
 

@@ -81,7 +81,7 @@ impl Loader for DocLoader {
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map(|file| {
-          Some(LoadResponse {
+          Some(LoadResponse::Module {
             specifier,
             content: file.source.clone(),
             maybe_headers: file.maybe_headers,
