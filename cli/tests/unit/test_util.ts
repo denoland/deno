@@ -28,7 +28,7 @@ export function pathToAbsoluteFileUrl(path: string): URL {
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }
 
-if (Deno.build.os === "windows") {
+if (Deno.build.os !== "windows") {
   // Resets the process umask to 0o000.
   Deno.umask(0o000);
 }
