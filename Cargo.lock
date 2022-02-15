@@ -489,16 +489,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console_error_panic_hook"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
-dependencies = [
- "cfg-if 1.0.0",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,12 +892,11 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.30.0"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da197c43b8a697f92d07575e4170a7baf3be0e82cd21c0383dcb5eef985e9be6"
+checksum = "c7e2982f488761ef90a31d3d2a873cb05bf6342ffba9d8fbf94b95a6366fa463"
 dependencies = [
  "cfg-if 1.0.0",
- "console_error_panic_hook",
  "deno_ast",
  "deno_graph",
  "futures",

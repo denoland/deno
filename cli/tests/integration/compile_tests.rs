@@ -209,38 +209,6 @@ fn standalone_load_datauri() {
 }
 
 #[test]
-fn standalone_load_dynamic_import() {
-  let dir = TempDir::new().expect("tempdir fail");
-  let exe = if cfg!(windows) {
-    dir.path().join("load_dynamic_import.exe")
-  } else {
-    dir.path().join("load_dynamic_import")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./standalone_dynamic_imports.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello\n");
-}
-
-#[test]
 fn standalone_compiler_ops() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {

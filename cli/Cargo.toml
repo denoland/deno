@@ -47,7 +47,7 @@ winres = "=0.1.11"
 [dependencies]
 deno_ast = { version = "0.11.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.118.0", path = "../core" }
-deno_doc = "0.30.0"
+deno_doc = "0.31.0"
 deno_graph = "0.23.0"
 deno_lint = { version = "0.24.0", features = ["docs"] }
 deno_runtime = { version = "0.44.0", path = "../runtime" }
