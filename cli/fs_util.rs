@@ -371,7 +371,7 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
       if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
         return if file_stem.to_lowercase().ends_with(".d") {
           path.with_file_name(format!(
-            "{}_{}.{}.{}",
+            "{}{}.{}.{}",
             &file_stem[..file_stem.len() - ".d".len()],
             suffix,
             // maintain casing
