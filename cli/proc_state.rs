@@ -352,7 +352,6 @@ impl ProcState {
     if needs_cjs_esm_translation {
       for module in graph.modules() {
         if module.kind == ModuleKind::CommonJs {
-          eprintln!("doing translation {}", module.specifier);
           let translated_source = self
             .translate_cjs_to_esm(
               &module.specifier,
@@ -617,8 +616,6 @@ impl ProcState {
       maybe_syntax: None,
     })?;
     let analysis = parsed_source.analyze_cjs();
-
-    eprintln!("parsed {:#?}", analysis);
 
     let mut source = vec![
       r#"import { createRequire } from "node:module";"#.to_string(),
