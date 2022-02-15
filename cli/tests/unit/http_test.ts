@@ -1142,6 +1142,49 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/pull/13628
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function httpServerOnUnixSocket() {
+    const filePath = Deno.makeTempFileSync();
+
+    const promise = (async () => {
+      const listener = Deno.listen({ path: filePath, transport: "unix" });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          const url = new URL(request.url);
+          assertEquals(url.protocol, "http+unix:");
+          assertEquals(decodeURIComponent(url.host), filePath);
+          assertEquals(url.pathname, "/path/name");
+          await respondWith(new Response("", { headers: {} }));
+          httpConn.close();
+        }
+        break;
+      }
+    })();
+
+    // fetch() does not supports unix domain sockets yet https://github.com/denoland/deno/issues/8821
+    const conn = await Deno.connect({ path: filePath, transport: "unix" });
+    const encoder = new TextEncoder();
+    // The Host header must be present and empty if it is not a Internet host name (RFC2616, Section 14.23)
+    const body = `GET /path/name HTTP/1.1\r\nHost:\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const resp = new Uint8Array(200);
+    const readResult = await conn.read(resp);
+    assertEquals(readResult, 115);
+
+    conn.close();
+
+    await promise;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
