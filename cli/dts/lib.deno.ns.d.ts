@@ -1092,14 +1092,26 @@ declare namespace Deno {
     stat(): Promise<FileInfo>;
     statSync(): FileInfo;
     close(): void;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & ReaderSync & Closer & { readonly rid: number };
+  export const stdin: Reader & ReaderSync & Closer & {
+    readonly rid: number;
+    readonly readable: ReadableStream<Uint8Array>;
+  };
   /** A handle for `stdout`. */
-  export const stdout: Writer & WriterSync & Closer & { readonly rid: number };
+  export const stdout: Writer & WriterSync & Closer & {
+    readonly rid: number;
+    readonly writable: WritableStream<Uint8Array>;
+  };
   /** A handle for `stderr`. */
-  export const stderr: Writer & WriterSync & Closer & { readonly rid: number };
+  export const stderr: Writer & WriterSync & Closer & {
+    readonly rid: number;
+    readonly writable: WritableStream<Uint8Array>;
+  };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -2208,12 +2220,18 @@ declare namespace Deno {
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer
-      : (Writer & Closer) | null;
-    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer
-      : (Reader & Closer) | null;
-    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer
-      : (Reader & Closer) | null;
+    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer & {
+      writable: WritableStream<Uint8Array>;
+    }
+      : (Writer & Closer & { writable: WritableStream<Uint8Array> }) | null;
+    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer & {
+      readable: ReadableStream<Uint8Array>;
+    }
+      : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
+    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer & {
+      readable: ReadableStream<Uint8Array>;
+    }
+      : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
     /** Wait for the process to exit and return its exit status.
      *
      * Calling this function multiple times will return the same status.
