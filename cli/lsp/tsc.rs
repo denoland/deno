@@ -72,6 +72,8 @@ static CODEBLOCK_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
 static EMAIL_MATCH_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
+static HTTP_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
 static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
 });
@@ -346,19 +348,14 @@ async fn get_asset(
   }
 }
 
-fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
-  parts
-    .iter()
-    .map(|p| p.text.to_string())
-    .collect::<Vec<String>>()
-    .join("")
-}
-
-fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
+fn get_tag_body_text(
+  tag: &JsDocTagInfo,
+  language_server: &language_server::Inner,
+) -> Option<String> {
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = display_parts_to_string(display_parts);
+    let text = display_parts_to_string(display_parts, language_server);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -380,13 +377,16 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
   })
 }
 
-fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
+fn get_tag_documentation(
+  tag: &JsDocTagInfo,
+  language_server: &language_server::Inner,
+) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text = display_parts_to_string(display_parts);
+        let text = display_parts_to_string(display_parts, language_server);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -406,7 +406,7 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
     _ => (),
   }
   let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag);
+  let maybe_text = get_tag_body_text(tag, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
       format!("{}  \n{}", label, text)
@@ -427,9 +427,9 @@ fn make_codeblock(text: &str) -> String {
 }
 
 /// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
-fn replace_links(text: &str) -> String {
+fn replace_links<S: AsRef<str>>(text: S) -> String {
   JSDOC_LINKS_RE
-    .replace_all(text, |c: &Captures| match &c[1] {
+    .replace_all(text.as_ref(), |c: &Captures| match &c[1] {
       "linkcode" => format!(
         "[`{}`]({})",
         if c.get(3).is_none() {
@@ -656,6 +656,10 @@ impl TextSpan {
 pub struct SymbolDisplayPart {
   text: String,
   kind: String,
+  // This is only on `JSDocLinkDisplayPart` which extends `SymbolDisplayPart`
+  // but is only used as an upcast of a `SymbolDisplayPart` and not explicitly
+  // returned by any API, so it is safe to add it as an optional value.
+  target: Option<DocumentSpan>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -676,15 +680,104 @@ pub struct QuickInfo {
   tags: Option<Vec<JsDocTagInfo>>,
 }
 
+#[derive(Default)]
+struct Link {
+  name: Option<String>,
+  target: Option<DocumentSpan>,
+  text: Option<String>,
+  linkcode: bool,
+}
+
+/// Takes `SymbolDisplayPart` items and converts them into a string, handling
+/// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
+/// to the their source location.
+fn display_parts_to_string(
+  parts: &[SymbolDisplayPart],
+  language_server: &language_server::Inner,
+) -> String {
+  let mut out = Vec::<String>::new();
+
+  let mut current_link: Option<Link> = None;
+  for part in parts {
+    match part.kind.as_str() {
+      "link" => {
+        if let Some(link) = current_link.as_mut() {
+          if let Some(target) = &link.target {
+            if let Some(specifier) = target.to_target(language_server) {
+              let link_text = link.text.clone().unwrap_or_else(|| {
+                link
+                  .name
+                  .clone()
+                  .map(|ref n| n.replace('`', "\\`"))
+                  .unwrap_or_else(|| "".to_string())
+              });
+              let link_str = if link.linkcode {
+                format!("[`{}`]({})", link_text, specifier)
+              } else {
+                format!("[{}]({})", link_text, specifier)
+              };
+              out.push(link_str);
+            }
+          } else {
+            let maybe_text = link.text.clone().or_else(|| link.name.clone());
+            if let Some(text) = maybe_text {
+              if HTTP_RE.is_match(&text) {
+                let parts: Vec<&str> = text.split(' ').collect();
+                if parts.len() == 1 {
+                  out.push(parts[0].to_string());
+                } else {
+                  let link_text = parts[1..].join(" ").replace('`', "\\`");
+                  let link_str = if link.linkcode {
+                    format!("[`{}`]({})", link_text, parts[0])
+                  } else {
+                    format!("[{}]({})", link_text, parts[0])
+                  };
+                  out.push(link_str);
+                }
+              } else {
+                out.push(text.replace('`', "\\`"));
+              }
+            }
+          }
+          current_link = None;
+        } else {
+          current_link = Some(Link {
+            linkcode: part.text.as_str() == "{@linkcode ",
+            ..Default::default()
+          });
+        }
+      }
+      "linkName" => {
+        if let Some(link) = current_link.as_mut() {
+          link.name = Some(part.text.clone());
+          link.target = part.target.clone();
+        }
+      }
+      "linkText" => {
+        if let Some(link) = current_link.as_mut() {
+          link.name = Some(part.text.clone());
+        }
+      }
+      _ => out.push(part.text.clone()),
+    }
+  }
+
+  replace_links(out.join(""))
+}
+
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: Arc<LineIndex>) -> lsp::Hover {
-    let mut contents = Vec::<lsp::MarkedString>::new();
+  pub(crate) fn to_hover(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::Hover {
+    let mut parts = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| display_parts_to_string(&p))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
-      contents.push(lsp::MarkedString::from_language_code(
+      parts.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
@@ -692,31 +785,31 @@ impl QuickInfo {
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| display_parts_to_string(&p))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
-      contents.push(lsp::MarkedString::from_markdown(documentation));
+      parts.push(lsp::MarkedString::from_markdown(documentation));
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
-        .map(get_tag_documentation)
+        .map(|tag_info| get_tag_documentation(tag_info, language_server))
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        contents.push(lsp::MarkedString::from_markdown(format!(
+        parts.push(lsp::MarkedString::from_markdown(format!(
           "\n\n{}",
           tags_preview
         )));
       }
     }
     lsp::Hover {
-      contents: lsp::HoverContents::Array(contents),
+      contents: lsp::HoverContents::Array(parts),
       range: Some(self.text_span.to_range(line_index)),
     }
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
@@ -771,6 +864,36 @@ impl DocumentSpan {
       target_selection_range,
     };
     Some(link)
+  }
+
+  /// Convert the `DocumentSpan` into a specifier that can be sent to the client
+  /// to link to the target document span. Used for converting JSDoc symbol
+  /// links to markdown links.
+  fn to_target(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> Option<ModuleSpecifier> {
+    let specifier = normalize_specifier(&self.file_name).ok()?;
+    log::info!(
+      "to_target file_name: {} specifier: {}",
+      self.file_name,
+      specifier
+    );
+    let asset_or_doc =
+      language_server.get_maybe_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = self.text_span.to_range(line_index);
+    let mut target = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .ok()?;
+    target.set_fragment(Some(&format!(
+      "L{},{}",
+      range.start.line + 1,
+      range.start.character + 1
+    )));
+
+    Some(target)
   }
 }
 
@@ -1750,23 +1873,27 @@ pub struct CompletionEntryDetails {
 }
 
 impl CompletionEntryDetails {
-  pub fn as_completion_item(
+  pub(crate) fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
+    language_server: &language_server::Inner,
   ) -> lsp::CompletionItem {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(&self.display_parts)))
+      Some(replace_links(&display_parts_to_string(
+        &self.display_parts,
+        language_server,
+      )))
     } else {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
-      let mut value = display_parts_to_string(parts);
+      let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
         let tag_documentation = tags
           .iter()
-          .map(get_tag_documentation)
+          .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
           .join("");
         value = format!("{}\n\n{}", value, tag_documentation);
@@ -2155,12 +2282,15 @@ pub struct SignatureHelpItems {
 }
 
 impl SignatureHelpItems {
-  pub fn into_signature_help(self) -> lsp::SignatureHelp {
+  pub(crate) fn into_signature_help(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::SignatureHelp {
     lsp::SignatureHelp {
       signatures: self
         .items
         .into_iter()
-        .map(|item| item.into_signature_information())
+        .map(|item| item.into_signature_information(language_server))
         .collect(),
       active_parameter: Some(self.argument_index),
       active_signature: Some(self.selected_item_index),
@@ -2181,16 +2311,24 @@ pub struct SignatureHelpItem {
 }
 
 impl SignatureHelpItem {
-  pub fn into_signature_information(self) -> lsp::SignatureInformation {
-    let prefix_text = display_parts_to_string(&self.prefix_display_parts);
+  pub(crate) fn into_signature_information(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::SignatureInformation {
+    let prefix_text =
+      display_parts_to_string(&self.prefix_display_parts, language_server);
     let params_text = self
       .parameters
       .iter()
-      .map(|param| display_parts_to_string(&param.display_parts))
+      .map(|param| {
+        display_parts_to_string(&param.display_parts, language_server)
+      })
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text = display_parts_to_string(&self.suffix_display_parts);
-    let documentation = display_parts_to_string(&self.documentation);
+    let suffix_text =
+      display_parts_to_string(&self.suffix_display_parts, language_server);
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -2203,7 +2341,7 @@ impl SignatureHelpItem {
         self
           .parameters
           .into_iter()
-          .map(|param| param.into_parameter_information())
+          .map(|param| param.into_parameter_information(language_server))
           .collect(),
       ),
       active_parameter: None,
@@ -2221,11 +2359,16 @@ pub struct SignatureHelpParameter {
 }
 
 impl SignatureHelpParameter {
-  pub fn into_parameter_information(self) -> lsp::ParameterInformation {
-    let documentation = display_parts_to_string(&self.documentation);
+  pub(crate) fn into_parameter_information(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::ParameterInformation {
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
+        language_server,
       )),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {

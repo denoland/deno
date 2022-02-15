@@ -39,7 +39,7 @@ use std::sync::{Arc, Mutex};
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  flags: Flags,
+  flags: &Flags,
   fmt_flags: FmtFlags,
   maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<(), AnyError> {

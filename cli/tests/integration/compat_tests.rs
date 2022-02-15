@@ -90,6 +90,11 @@ itest!(top_level_fail_esm {
   output: "compat/test_runner/top_level_fail_esm.out",
 });
 
+itest!(compat_worker {
+  args: "run --compat --unstable -A --quiet --no-check compat/worker/worker_test.mjs",
+  output: "compat/worker/worker_test.out",
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(

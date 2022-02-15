@@ -328,8 +328,8 @@ fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.prompt {
-    executable_args.push("--prompt".to_string());
+  if flags.no_prompt {
+    executable_args.push("--no-prompt".to_string());
   }
 
   if !flags.v8_flags.is_empty() {
@@ -714,7 +714,7 @@ mod tests {
   fn install_prompt() {
     let shim_data = resolve_shim_data(
       &Flags {
-        prompt: true,
+        no_prompt: true,
         ..Flags::default()
       },
       &InstallFlags {
@@ -729,7 +729,7 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--prompt", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--no-prompt", "http://localhost:4545/echo_server.ts",]
     );
   }
 
