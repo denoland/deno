@@ -41,7 +41,7 @@
       { path: pathFromURL(path), options, mode },
     );
 
-    return new File(rid);
+    return new FsFile(rid);
   }
 
   async function open(
@@ -55,7 +55,7 @@
       { path: pathFromURL(path), options, mode },
     );
 
-    return new File(rid);
+    return new FsFile(rid);
   }
 
   function createSync(path) {
@@ -76,7 +76,7 @@
     });
   }
 
-  class File {
+  class FsFile {
     #rid = 0;
 
     #readable;
@@ -272,7 +272,8 @@
     stdin,
     stdout,
     stderr,
-    File,
+    File: FsFile,
+    FsFile,
     create,
     createSync,
     open,
