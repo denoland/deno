@@ -1416,9 +1416,9 @@ fn vendor_subcommand<'a>() -> App<'a> {
     .long_about(
       "Vendor remote modules into a local directory.
 
-Analyzes the provided modules and their dependencies, downloads remote
-modules to the output directory, and produces an import map that maps
-remote specifiers to the downloaded files.
+Analyzes the provided modules along with their dependencies, downloads
+remote modules to the output directory, and produces an import map that
+maps remote specifiers to the downloaded files.
 
   deno vendor main.ts
   deno run --import-map vendor/import_map.json main.ts

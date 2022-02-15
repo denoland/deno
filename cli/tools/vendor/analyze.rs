@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use deno_ast::swc::ast::ExportDefaultDecl;
 use deno_ast::swc::ast::ExportSpecifier;
 use deno_ast::swc::ast::ModuleExportName;

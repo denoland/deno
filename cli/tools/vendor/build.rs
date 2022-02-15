@@ -13,6 +13,7 @@ use super::mappings::Mappings;
 use super::mappings::ProxiedModule;
 use super::specifiers::is_remote_specifier;
 
+/// Allows substituting the environment for testing purposes.
 pub trait VendorEnvironment {
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError>;
   fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError>;

@@ -363,6 +363,8 @@ pub fn path_has_trailing_slash(path: &Path) -> bool {
 }
 
 /// Gets a path with the specified file stem suffix.
+///
+/// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
 pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
   if let Some(file_name) = path.file_name().map(|f| f.to_string_lossy()) {
     if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
