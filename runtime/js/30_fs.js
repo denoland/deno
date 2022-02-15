@@ -266,6 +266,10 @@
     await core.opAsync("op_truncate_async", { path, len: coerceLen(len) });
   }
 
+  function umask(mask) {
+    return core.opSync("op_umask", mask);
+  }
+
   function linkSync(oldpath, newpath) {
     core.opSync("op_link_sync", { oldpath, newpath });
   }
@@ -432,6 +436,7 @@
     ftruncateSync,
     truncate,
     truncateSync,
+    umask,
     link,
     linkSync,
     fstatSync,

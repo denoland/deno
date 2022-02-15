@@ -52,6 +52,7 @@ pub fn init() -> Extension {
       ("op_flock_async", op_async(op_flock_async)),
       ("op_funlock_sync", op_sync(op_funlock_sync)),
       ("op_funlock_async", op_async(op_funlock_async)),
+      ("op_umask", op_sync(op_umask)),
       ("op_chdir", op_sync(op_chdir)),
       ("op_mkdir_sync", op_sync(op_mkdir_sync)),
       ("op_mkdir_async", op_async(op_mkdir_async)),
@@ -468,6 +469,26 @@ async fn op_funlock_async(
   .await?
 }
 
+fn op_umask(state: &mut OpState, mask: u32, _: ()) -> Result<u32, AnyError> {
+  super::check_unstable(state, "Deno.umask");
+  // TODO implement umask for Windows
+  // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
+  // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
+  #[cfg(not(unix))]
+  {
+    let _ = mask; // avoid unused warning.
+    Err(not_supported())
+  }
+  #[cfg(unix)]
+  {
+    use nix::sys::stat::mode_t;
+    use nix::sys::stat::umask;
+    use nix::sys::stat::Mode;
+    let r = umask(Mode::from_bits_truncate(mask as mode_t));
+    Ok(r.bits() as u32)
+  }
+}
+
 fn op_chdir(
   state: &mut OpState,
   directory: String,
@@ -495,7 +516,7 @@ fn op_mkdir_sync(
   _: (),
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
-  let mode = args.mode.unwrap_or(0o755) & 0o777;
+  let mode = args.mode.unwrap_or(0o777) & 0o777;
   state.borrow_mut::<Permissions>().write.check(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
@@ -517,7 +538,7 @@ async fn op_mkdir_async(
   _: (),
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
-  let mode = args.mode.unwrap_or(0o755) & 0o777;
+  let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   {
     let mut state = state.borrow_mut();

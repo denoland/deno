@@ -41,12 +41,3 @@ pub fn raise_fd_limit() {
     }
   }
 }
-
-pub fn reset_umask() {
-  #[cfg(unix)]
-  {
-    use nix::sys::stat::umask;
-    use nix::sys::stat::Mode;
-    umask(Mode::from_bits_truncate(0o000));
-  }
-}
