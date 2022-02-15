@@ -34,12 +34,18 @@ fn resolve_and_validate_output_dir(
   flags: &VendorFlags,
   ps: &ProcState,
 ) -> Result<PathBuf, AnyError> {
-  let output_dir = match &flags.output_path {
-    Some(output_path) => resolve_from_cwd(output_path)?,
-    None => std::env::current_dir()?.join("vendor"),
-  };
+  let output_dir = resolve_from_cwd(&match &flags.output_path {
+    Some(output_path) => output_path.to_owned(),
+    None => PathBuf::from("vendor"),
+  })?;
   if !flags.force && !is_dir_empty(&output_dir)? {
-    bail!("Directory {} was not empty. Please provide an empty directory or use --force to ignore this error and potentially overwrite its contents.", output_dir.display());
+    bail!(
+      concat!(
+        "Output directory {} was not empty. Please provide an empty directory or use ",
+        "--force to ignore this error and potentially overwrite its contents.",
+      ),
+      output_dir.display(),
+    );
   }
 
   // check the import map
