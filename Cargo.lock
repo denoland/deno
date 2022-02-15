@@ -753,6 +753,7 @@ dependencies = [
  "log",
  "lspower",
  "nix",
+ "node_resolve",
  "notify",
  "num_cpus",
  "once_cell",
@@ -2426,6 +2427,15 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "node_resolve"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

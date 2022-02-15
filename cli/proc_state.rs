@@ -6,7 +6,6 @@ use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
-use crate::create_main_worker;
 use crate::deno_dir;
 use crate::emit;
 use crate::file_fetcher::get_root_cert_store;
@@ -35,7 +34,6 @@ use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
-use deno_core::JsRuntime;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
@@ -352,34 +350,11 @@ impl ProcState {
       .any(|m| m.kind == ModuleKind::CommonJs);
 
     if needs_cjs_esm_translation {
-      // TODO(bartlomieju): extremely inefficient to create a new worker, just
-      // to do CJS module resolution, but we currently don't have implementation
-      // of it in Rust
-      let mut worker = create_main_worker(
-        self,
-        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts")
-          .unwrap(),
-        if is_dynamic {
-          dynamic_permissions
-        } else {
-          root_permissions
-        },
-        vec![],
-      );
-      // Set up Node globals
-      worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      // And `module` module that we'll use for checking which
-      // loader to use and potentially load CJS module with.
-      // This allows to skip permission check for `--allow-net`
-      // which would otherwise be requested by dynamically importing
-      // this file.
-      worker.execute_side_module(&compat::MODULE_URL).await?;
-
       for module in graph.modules() {
         if module.kind == ModuleKind::CommonJs {
+          eprintln!("doing translation {}", module.specifier);
           let translated_source = self
             .translate_cjs_to_esm(
-              &mut worker.js_runtime,
               &module.specifier,
               module.maybe_source.as_ref().unwrap().to_string(),
               module.media_type,
@@ -628,7 +603,6 @@ impl ProcState {
   /// If successful a source code for equivalent ES module is returned.
   async fn translate_cjs_to_esm(
     &self,
-    js_runtime: &mut JsRuntime,
     specifier: &ModuleSpecifier,
     // TODO(bartlomieju): could use `maybe_parsed_source` if available
     code: String,
@@ -644,6 +618,8 @@ impl ProcState {
     })?;
     let analysis = parsed_source.analyze_cjs();
 
+    eprintln!("parsed {:#?}", analysis);
+
     let mut source = vec![
       r#"import { createRequire } from "node:module";"#.to_string(),
       r#"const require = createRequire(import.meta.url);"#.to_string(),
@@ -652,15 +628,12 @@ impl ProcState {
     // if there are reexports, handle them first
     for (idx, reexport) in analysis.reexports.iter().enumerate() {
       // Firstly, resolve relate reexport specifier
-      let resolved_reexport = compat::resolve_cjs_module(
-        js_runtime,
-        deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts")
-          .unwrap()
-          .as_str(),
-        specifier.to_file_path().unwrap().to_str().unwrap(),
-        reexport.as_str(),
-      )
-      .await?;
+      let resolved_reexport = node_resolve::node_resolve(
+        reexport,
+        &specifier.to_file_path().unwrap(),
+        // FIXME(bartlomieju): check what should be proper conditions
+        &["deno", "require", "default"],
+      )?;
       let reexport_specifier =
         ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
       // Secondly, read the source code from disk
@@ -670,7 +643,7 @@ impl ProcState {
 
       {
         let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-          specifier: resolved_reexport,
+          specifier: reexport_specifier.to_string(),
           source: deno_ast::SourceTextInfo::new(reexport_file.source),
           media_type: reexport_file.media_type,
           capture_tokens: true,
