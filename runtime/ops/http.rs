@@ -51,6 +51,8 @@ fn op_http_start(
     .resource_table
     .take::<UnixStreamResource>(tcp_stream_rid)
   {
+    super::check_unstable(state, "Deno.serveHttp");
+
     let resource = Rc::try_unwrap(resource_rc)
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
