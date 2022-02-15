@@ -692,7 +692,7 @@
             length: key[_algorithm].length,
             iv: normalizedAlgorithm.iv,
             additionalData: normalizedAlgorithm.additionalData ||
-              new Uint8Array(),
+              null,
             tagLength: normalizedAlgorithm.tagLength,
           }, data);
 
@@ -3826,8 +3826,7 @@
           algorithm: "AES-GCM",
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
-          additionalData: normalizedAlgorithm.additionalData ||
-            new Uint8Array(),
+          additionalData: normalizedAlgorithm.additionalData || null,
           tagLength: normalizedAlgorithm.tagLength,
         }, data);
 
