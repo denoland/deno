@@ -292,6 +292,7 @@ impl EnvShared {
 // #[derive(Debug)]
 pub struct Env<'a, 'b, 'c> {
   pub scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
+  pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
@@ -302,6 +303,7 @@ unsafe impl Sync for Env<'_, '_, '_> {}
 
 impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
   pub fn new(
+    isolate_ptr: *mut v8::OwnedIsolate,
     scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
@@ -311,6 +313,7 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
     });
     Self {
       scope,
+      isolate_ptr,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -328,6 +331,7 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
     });
     Self {
       scope,
+      isolate_ptr: self.isolate_ptr,
       shared: self.shared,
       open_handle_scopes: self.open_handle_scopes,
       async_work_sender: sender,
