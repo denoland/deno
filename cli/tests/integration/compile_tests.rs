@@ -107,8 +107,9 @@ fn standalone_error() {
   } else {
     dir.path().join("error")
   };
+  let testdata_path = util::testdata_path();
   let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&testdata_path)
     .arg("compile")
     .arg("--unstable")
     .arg("--output")
@@ -130,26 +131,32 @@ fn standalone_error() {
     .unwrap();
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
-  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:6:11)\n    at foo (file://$deno$/bundle.js:9:5)\n    at file://$deno$/bundle.js:11:1\n";
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr, expected_stderr);
+  // On Windows, we cannot assert the file path (because '\').
+  // Instead we just check for relevant output.
+  assert!(stderr.contains("error: Error: boom!\n    at boom (file://"));
+  assert!(stderr.contains("standalone_error.ts:2:11"));
+  assert!(stderr.contains("at foo (file://"));
+  assert!(stderr.contains("standalone_error.ts:5:5"));
+  assert!(stderr.contains("standalone_error.ts:7:1"));
 }
 
 #[test]
-fn standalone_no_module_load() {
+fn standalone_error_module_with_imports() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
-    dir.path().join("hello.exe")
+    dir.path().join("error.exe")
   } else {
-    dir.path().join("hello")
+    dir.path().join("error")
   };
+  let testdata_path = util::testdata_path();
   let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&testdata_path)
     .arg("compile")
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import.ts")
+    .arg("./standalone_error_module_with_imports_1.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -157,6 +164,7 @@ fn standalone_no_module_load() {
     .unwrap();
   assert!(output.status.success());
   let output = Command::new(exe)
+    .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -164,10 +172,13 @@ fn standalone_no_module_load() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  assert_eq!(output.stdout, b"start\n");
-  let stderr_str = String::from_utf8(output.stderr).unwrap();
-  assert!(util::strip_ansi_codes(&stderr_str)
-    .contains("Self-contained binaries don't support module loading"));
+  println!("{:#?}", &output);
+  assert_eq!(output.stdout, b"hello\n");
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  // On Windows, we cannot assert the file path (because '\').
+  // Instead we just check for relevant output.
+  assert!(stderr.contains("error: Error: boom!\n    at file://"));
+  assert!(stderr.contains("standalone_error_module_with_imports_2.ts:2:7"));
 }
 
 #[test]

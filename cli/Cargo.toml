@@ -47,8 +47,8 @@ winres = "=0.1.11"
 [dependencies]
 deno_ast = { version = "0.11.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.118.0", path = "../core" }
-deno_doc = "0.29.0"
-deno_graph = "0.22.0"
+deno_doc = "0.31.0"
+deno_graph = "0.23.0"
 deno_lint = { version = "0.24.0", features = ["docs"] }
 deno_runtime = { version = "0.44.0", path = "../runtime" }
 
@@ -63,9 +63,10 @@ data-url = "=0.1.1"
 dissimilar = "=1.0.2"
 dprint-plugin-json = "=0.14.1"
 dprint-plugin-markdown = "=0.12.2"
-dprint-plugin-typescript = "=0.62.2"
+dprint-plugin-typescript = "=0.64.1"
 encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
+eszip = "=0.16.0"
 fancy-regex = "=0.7.1"
 http = "=0.2.4"
 import_map = "=0.8.0"

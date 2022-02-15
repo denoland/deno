@@ -741,7 +741,7 @@ mod tests {
       let source_path = self.fixtures.join(specifier_text);
       let response = fs::read_to_string(&source_path)
         .map(|c| {
-          Some(deno_graph::source::LoadResponse {
+          Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
             maybe_headers: None,
             content: Arc::new(c),
