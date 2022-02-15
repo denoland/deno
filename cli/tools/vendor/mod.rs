@@ -9,7 +9,7 @@ use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 
 use crate::flags::VendorFlags;
-use crate::fs_util::resolve_from_cwd;
+use crate::fs_util;
 use crate::lockfile;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
@@ -34,7 +34,7 @@ fn resolve_and_validate_output_dir(
   flags: &VendorFlags,
   ps: &ProcState,
 ) -> Result<PathBuf, AnyError> {
-  let output_dir = resolve_from_cwd(&match &flags.output_path {
+  let output_dir = fs_util::resolve_from_cwd(&match &flags.output_path {
     Some(output_path) => output_path.to_owned(),
     None => PathBuf::from("vendor"),
   })?;
@@ -53,6 +53,7 @@ fn resolve_and_validate_output_dir(
     .maybe_import_map
     .as_ref()
     .and_then(|m| m.base_url().to_file_path().ok())
+    .and_then(|p| fs_util::canonicalize_path(&p).ok())
   {
     if import_map_path.starts_with(&output_dir) {
       // We don't allow using the output directory to help generate the new state
