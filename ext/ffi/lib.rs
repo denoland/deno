@@ -365,8 +365,11 @@ struct ForeignFunction {
   result: NativeType,
 }
 
-#[derive(Deserialize, Debug)]
+// ForeignStatic's name and type fields are read and used by
+// serde_v8 to determine which variant a ForeignSymbol is.
+// They are not used beyond that and are thus "dead code" to Rust.
 #[allow(dead_code)]
+#[derive(Deserialize, Debug)]
 struct ForeignStatic {
   name: Option<String>,
   #[serde(rename = "type")]
