@@ -1092,6 +1092,9 @@ declare namespace Deno {
     stat(): Promise<FileInfo>;
     statSync(): FileInfo;
     close(): void;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
   }
 
   /**
