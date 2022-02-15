@@ -62,6 +62,7 @@ pub struct CompletionsFlags {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct CoverageFlags {
   pub files: Vec<PathBuf>,
+  pub output: Option<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
@@ -687,7 +688,7 @@ an url to match it must match the include pattern and not match the exclude patt
 
 Write a report using the lcov format:
 
-  deno coverage --lcov cov_profile > cov.lcov
+  deno coverage --lcov --output=cov.lcov cov_profile/
 
 Generate html reports from lcov:
 
@@ -730,6 +731,18 @@ Generate html reports from lcov:
         .help("Output coverage report in lcov format")
         .takes_value(false),
     )
+    .arg(Arg::new("output")
+    .requires("lcov")
+    .long("output")
+    .help("Output file (defaults to stdout) for lcov")
+    .long_help("Exports the coverage report in lcov format to the given file.
+Filename should be passed along with '='
+For example '--output=foo.lcov'
+If no --output arg is specified then the report is written to stdout."
+  )
+    .takes_value(true)
+    .require_equals(true)
+  )
     .arg(
       Arg::new("files")
         .takes_value(true)
@@ -1864,8 +1877,10 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let lcov = matches.is_present("lcov");
+  let output = matches.value_of("output").map(PathBuf::from);
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files,
+    output,
     ignore,
     include,
     exclude,
@@ -4782,6 +4797,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
           files: vec![PathBuf::from("foo.json")],
+          output: None,
           ignore: vec![],
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
@@ -4792,6 +4808,30 @@ mod tests {
     );
   }
 
+  #[test]
+  fn coverage_with_lcov_and_out_file() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "coverage",
+      "--lcov",
+      "--output=foo.lcov",
+      "foo.json"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage(CoverageFlags {
+          files: vec![PathBuf::from("foo.json")],
+          ignore: vec![],
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          lcov: true,
+          output: Some(PathBuf::from("foo.lcov")),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
   #[test]
   fn location_with_bad_scheme() {
     #[rustfmt::skip]
