@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.28.0"
+version = "0.29.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -16,8 +16,8 @@ path = "lib.rs"
 [dependencies]
 base64 = "0.13.0"
 bytes = "1"
-deno_core = { version = "0.118.0", path = "../../core" }
-deno_websocket = { version = "0.41.0", path = "../websocket" }
+deno_core = { version = "0.119.0", path = "../../core" }
+deno_websocket = { version = "0.42.0", path = "../websocket" }
 hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
 percent-encoding = "2.1.0"
 ring = "0.16.20"
