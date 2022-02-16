@@ -50,10 +50,6 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
-    /** Enable/disable the use of Nagle's algorithm. Defaults to true */
-    setNoDelay(nodelay?: boolean): void;
-    /** Enable/disable keep-alive functionality */
-    setKeepAlive(keepalive?: boolean): void;
 
     readonly readable: ReadableStream<Uint8Array>;
     readonly writable: WritableStream<Uint8Array>;
