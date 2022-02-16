@@ -2554,10 +2554,7 @@ mod tests {
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("PATH").is_err());
 
-    prompt_value.set(true);
-    assert!(perms.hrtime.check().is_ok());
-    prompt_value.set(false);
-    assert!(perms.hrtime.check().is_ok());
+    assert!(perms.hrtime.check().is_err());
   }
 
   #[test]
@@ -2846,7 +2843,6 @@ mod tests {
     let worker_perms = create_child_permissions(
       &mut main_perms,
       ChildPermissionsArg {
-        hrtime: ChildUnitPermissionArg::Granted,
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
         ..Default::default()
