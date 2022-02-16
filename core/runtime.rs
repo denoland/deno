@@ -1547,8 +1547,7 @@ impl JsRuntime {
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (promise_id, op_id, resp) = item;
-        let resolver = state_rc
-        .borrow_mut()
+        let resolver = state
         .promise_ring
         .as_mut()
         .unwrap()
