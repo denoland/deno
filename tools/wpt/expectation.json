@@ -1017,8 +1017,16 @@
   },
   "dom": {
     "abort": {
-      "AbortSignal.any.html": true,
-      "AbortSignal.any.worker.html": true,
+      "AbortSignal.any.html": [
+        "AbortSignal.timeout() returns a non-aborted signal",
+        "Signal returned by AbortSignal.timeout() times out",
+        "AbortSignal timeouts fire in order"
+      ],
+      "AbortSignal.any.worker.html": [
+        "AbortSignal.timeout() returns a non-aborted signal",
+        "Signal returned by AbortSignal.timeout() times out",
+        "AbortSignal timeouts fire in order"
+      ],
       "event.any.html": true,
       "event.any.worker.html": true
     },
