@@ -2715,6 +2715,8 @@
           "Fetch with POST with ReadableStream containing Blob",
           "Fetch with POST with text body on 421 response should be retried once on new connection."
         ],
+        "response-null-body.any.html": true,
+        "response-null-body.any.worker.html": true,
         "response-url.sub.any.html": true,
         "response-url.sub.any.worker.html": true,
         "scheme-about.any.html": true,
@@ -3002,6 +3004,14 @@
           "response.json() rejects if already aborted",
           "response.text() rejects if already aborted",
           "Call text() twice on aborted response"
+        ],
+        "request.any.html": [
+          "Calling formData() on an aborted request",
+          "Aborting a request after calling formData()"
+        ],
+        "request.any.worker.html": [
+          "Calling formData() on an aborted request",
+          "Aborting a request after calling formData()"
         ]
       }
     },
