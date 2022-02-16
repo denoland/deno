@@ -112,14 +112,14 @@ fn standard_test() {
   let t = TempDir::new().unwrap();
   let vendor_dir = t.path().join("vendor2");
   fs::write(
-    t.path().join("mod.ts"),
+    t.path().join("my_app.ts"),
     "import {Logger} from 'http://localhost:4545/vendor/query_reexport.ts?testing'; new Logger().log('outputted');",
   ).unwrap();
 
   let deno = util::deno_cmd()
     .current_dir(t.path())
     .arg("vendor")
-    .arg("mod.ts")
+    .arg("my_app.ts")
     .arg("--output")
     .arg("vendor2")
     .env("NO_COLOR", "1")
@@ -128,7 +128,6 @@ fn standard_test() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
@@ -137,10 +136,11 @@ fn standard_test() {
         "Download http://localhost:4545/vendor/logger.ts?test\n",
         "{}",
       ),
-      success_text("2 modules", "vendor2"),
+      success_text("2 modules", "vendor2", "my_app.ts"),
     )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
+  assert!(output.status.success());
 
   assert!(vendor_dir.exists());
   assert!(!t.path().join("vendor").exists());
@@ -172,7 +172,7 @@ fn standard_test() {
     .arg("--no-check")
     .arg("--import-map")
     .arg("vendor2/import_map.json")
-    .arg("mod.ts")
+    .arg("my_app.ts")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .spawn()
@@ -189,15 +189,29 @@ fn remote_module_test() {
   let t = TempDir::new().unwrap();
   let vendor_dir = t.path().join("vendor");
 
-  let status = util::deno_cmd()
+  let deno = util::deno_cmd()
     .current_dir(t.path())
+    .env("NO_COLOR", "1")
     .arg("vendor")
     .arg("http://localhost:4545/vendor/query_reexport.ts")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
-    .unwrap()
-    .wait()
     .unwrap();
-  assert!(status.success());
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr).trim(),
+    format!(
+      concat!(
+        "Download http://localhost:4545/vendor/query_reexport.ts\n",
+        "Download http://localhost:4545/vendor/logger.ts?test\n",
+        "{}",
+      ),
+      success_text("2 modules", "vendor/", "main.ts"),
+    )
+  );
+  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
+  assert!(output.status.success());
   assert!(vendor_dir.exists());
   assert!(vendor_dir
     .join("localhost_4545/vendor/query_reexport.ts")
@@ -336,22 +350,23 @@ fn dynamic_non_analyzable_import() {
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
       "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts\n{}",
-      success_text("1 module", "vendor/"),
+      success_text("1 module", "vendor/", "mod.ts"),
     )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
   assert!(output.status.success());
 }
 
-fn success_text(module_count_text: &str, dir_text: &str) -> String {
+fn success_text(module_count: &str, dir: &str, entry_point: &str) -> String {
   format!(
     concat!(
       "Vendored {} into {} directory.\n\n",
       "To use vendored modules, specify the `--import-map` flag when invoking deno subcommands:\n",
-      "  deno run -A --import-map {} main.ts"
+      "  deno run -A --import-map {} {}"
     ),
-    module_count_text,
-    dir_text,
-    PathBuf::from(dir_text).join("import_map.json").display(),
+    module_count,
+    dir,
+    PathBuf::from(dir).join("import_map.json").display(),
+    entry_point,
   )
 }

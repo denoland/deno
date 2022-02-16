@@ -15,6 +15,7 @@ use crate::lockfile;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::vendor::specifiers::is_remote_specifier_text;
 
 mod analyze;
 mod build;
@@ -39,7 +40,7 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     r#"Vendored {} {} into {} directory.
 
 To use vendored modules, specify the `--import-map` flag when invoking deno subcommands:
-  deno run -A --import-map {} main.ts"#,
+  deno run -A --import-map {} {}"#,
     vendored_count,
     if vendored_count == 1 {
       "module"
@@ -48,6 +49,12 @@ To use vendored modules, specify the `--import-map` flag when invoking deno subc
     },
     raw_output_dir.display(),
     raw_output_dir.join("import_map.json").display(),
+    flags
+      .specifiers
+      .iter()
+      .map(|s| s.as_str())
+      .find(|s| !is_remote_specifier_text(s))
+      .unwrap_or("main.ts"),
   );
 
   Ok(())
