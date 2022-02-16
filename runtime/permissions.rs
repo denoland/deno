@@ -2006,7 +2006,7 @@ fn permission_prompt(message: &str, name: &str) -> bool {
   // buffered data cannot effect the prompt.
   clear_stdin();
 
-  let opts = "[yes / no] ";
+  let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
     "{}  ️Deno requests {}. Run again with --allow-{} to bypass this prompt.\n   Allow? {} ",
     PERMISSION_EMOJI, message, name, opts
