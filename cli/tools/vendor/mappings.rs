@@ -83,7 +83,7 @@ impl Mappings {
         },
       )) = &module.maybe_types_dependency
       {
-        // hack to tell if it's a x-typescript-types header
+        // hack to tell if it's an x-typescript-types header
         let is_ts_types_header =
           range.start == Position::zeroed() && range.end == Position::zeroed();
         if is_ts_types_header {

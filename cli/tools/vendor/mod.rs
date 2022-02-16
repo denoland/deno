@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
@@ -73,7 +74,10 @@ fn validate_output_dir(
   {
     // make the output directory in order to canonicalize it for the check below
     std::fs::create_dir_all(&output_dir)?;
-    let output_dir = fs_util::canonicalize_path(output_dir)?;
+    let output_dir =
+      fs_util::canonicalize_path(output_dir).with_context(|| {
+        format!("Failed to canonicalize: {}", output_dir.display())
+      })?;
 
     if import_map_path.starts_with(&output_dir) {
       // We don't allow using the output directory to help generate the new state
