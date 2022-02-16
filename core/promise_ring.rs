@@ -1,5 +1,5 @@
 use crate::PromiseId;
-use rusty_v8 as v8;
+use v8;
 use std::collections::btree_map::BTreeMap;
 
 type PromiseResolver = v8::Global<v8::PromiseResolver>;
@@ -7,8 +7,8 @@ const RING_SIZE: usize = 4 * 1024;
 
 // NOTE: could generalize to a "RingMap"
 pub struct PromiseRing {
-  len: u64,
-  cursor: u64,
+  len: u32,
+  cursor: u32,
   // TODO(@AaronO): Maybe optimize by tracking existence with a bitset
   // would reduce mem usage from 2*usize*RING_SIZE to (1+1/8)*usize*RING_SIZE
   // with the current approach the Option tag "wastes" 32kb per isolate
@@ -27,15 +27,15 @@ impl PromiseRing {
   }
 
   // TODO(@AaronO): decide if this is useful (but it should match length of futures stream so ...)
-  // pub(crate) fn len(&self) -> u64 {
+  // pub(crate) fn len(&self) -> u32 {
   //   self.len
   // }
 
   pub(crate) fn take(&mut self, id: PromiseId) -> Option<PromiseResolver> {
-    let ring_start = if self.cursor < (RING_SIZE as u64) {
+    let ring_start = if self.cursor < (RING_SIZE as u32) {
       0
     } else {
-      self.cursor - RING_SIZE as u64
+      self.cursor - RING_SIZE as u32
     };
     let resolver = if id >= ring_start {
       self.ring.get_mut(Self::ring_idx(id)).unwrap().take()
@@ -58,13 +58,13 @@ impl PromiseRing {
     self.len += 1;
     let slot = self.ring.get_mut(Self::ring_idx(id));
     if let Some(old_resolver) = slot.unwrap().replace(resolver) {
-      let old_id = id - RING_SIZE as u64; // Since we're looping on the ring
+      let old_id = id - RING_SIZE as u32; // Since we're looping on the ring
       self.map.insert(old_id, old_resolver);
     }
     id as PromiseId
   }
 
-  fn ring_idx(id: u64) -> usize {
+  fn ring_idx(id: u32) -> usize {
     (id as usize) % RING_SIZE
   }
 }

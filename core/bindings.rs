@@ -7,6 +7,7 @@ use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
+use crate::PromiseId;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -598,7 +599,7 @@ fn ref_op<'s>(
   let mut state = state_rc.borrow_mut();
 
   let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-    .map(|l| l.value() as PromiseId)
+    .map(|l| l.uint32_value(scope).unwrap_or_default() as PromiseId)
     .map_err(Error::from)
   {
     Ok(promise_id) => promise_id,

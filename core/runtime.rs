@@ -160,7 +160,7 @@ pub(crate) struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) unrefed_ops: HashSet<i32>,
+  pub(crate) unrefed_ops: HashSet<PromiseId>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -362,7 +362,6 @@ impl JsRuntime {
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
-      pending_unref_ops: FuturesUnordered::new(),
       promise_ring: Some(PromiseRing::new()),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
@@ -1537,21 +1536,9 @@ impl JsRuntime {
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
-
-    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
     let scope = &mut self.handle_scope();
 
-    // We return async responses to JS in unbounded batches (may change),
-    // each batch is a flat vector of tuples:
-    // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
-    // promise_id is a simple integer, op_result is an ops::OpResult
-    // which contains a value OR an error, encoded as a tuple.
-    // This batch is received in JS via the special `arguments` variable
-    // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
-
     // Now handle actual ops.
-    {
       let mut state = state_rc.borrow_mut();
       state.have_unpolled_ops = false;
 
@@ -1586,11 +1573,8 @@ impl JsRuntime {
         ),
       }
     }
-
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception, false),
-    }
+    
+    Ok(())
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), Error> {

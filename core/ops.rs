@@ -81,7 +81,7 @@ where
   }
 }
 
-pub type PromiseId = i32;
+pub type PromiseId = u32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static;
 pub type OpId = usize;
