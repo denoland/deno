@@ -863,37 +863,25 @@ Deno.test(
     const ev = await httpConn.nextRequest();
     const { respondWith } = ev!;
 
-    const { readable, writable } = new TransformStream<Uint8Array>();
-    const writer = writable.getWriter();
-
-    async function writeResponse() {
-      await delay(50);
-      await writer.write(
-        new TextEncoder().encode(
-          "written to the writable side of a TransformStream",
-        ),
-      );
-      await writer.close();
-    }
-
     const errors: Error[] = [];
 
-    const writePromise = writeResponse()
-      .catch((error: Error) => {
+    const readable = new ReadableStream({
+      async pull(controller) {
+        client.close();
+        await delay(100);
+        controller.enqueue(new TextEncoder().encode(
+          "written to the writable side of a TransformStream",
+        ));
+        controller.close();
+      },
+      cancel(error) {
         errors.push(error);
-      });
+      },
+    });
 
     const res = new Response(readable);
 
-    const respondPromise = respondWith(res)
-      .catch((error: Error) => errors.push(error));
-
-    client.close();
-
-    await Promise.all([
-      writePromise,
-      respondPromise,
-    ]);
+    await respondWith(res).catch((error: Error) => errors.push(error));
 
     httpConn.close();
     listener.close();
@@ -938,11 +926,11 @@ Deno.test(
     let httpConn: Deno.HttpConn;
 
     const promise = (async () => {
-      listener = Deno.listen({ port: 4502 });
+      listener = Deno.listen({ port: 4508 });
       for await (const conn of listener) {
         httpConn = Deno.serveHttp(conn);
         for await (const { request, respondWith } of httpConn) {
-          assertEquals(new URL(request.url).href, "http://127.0.0.1:4502/");
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4508/");
           // not reading request body on purpose
           respondWith(new Response("ok"));
         }
@@ -950,7 +938,7 @@ Deno.test(
     })();
 
     const resourcesBefore = Deno.resources();
-    const response = await fetch("http://127.0.0.1:4502", {
+    const response = await fetch("http://127.0.0.1:4508", {
       method: "POST",
       body: "hello world",
     });
@@ -1137,6 +1125,49 @@ Deno.test(
     assertEquals(resp.status, 200);
     const body = await resp.arrayBuffer();
     assertEquals(new Uint8Array(body), new Uint8Array([128]));
+
+    await promise;
+  },
+);
+
+// https://github.com/denoland/deno/pull/13628
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function httpServerOnUnixSocket() {
+    const filePath = Deno.makeTempFileSync();
+
+    const promise = (async () => {
+      const listener = Deno.listen({ path: filePath, transport: "unix" });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          const url = new URL(request.url);
+          assertEquals(url.protocol, "http+unix:");
+          assertEquals(decodeURIComponent(url.host), filePath);
+          assertEquals(url.pathname, "/path/name");
+          await respondWith(new Response("", { headers: {} }));
+          httpConn.close();
+        }
+        break;
+      }
+    })();
+
+    // fetch() does not supports unix domain sockets yet https://github.com/denoland/deno/issues/8821
+    const conn = await Deno.connect({ path: filePath, transport: "unix" });
+    const encoder = new TextEncoder();
+    // The Host header must be present and empty if it is not a Internet host name (RFC2616, Section 14.23)
+    const body = `GET /path/name HTTP/1.1\r\nHost:\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const resp = new Uint8Array(200);
+    const readResult = await conn.read(resp);
+    assertEquals(readResult, 115);
+
+    conn.close();
 
     await promise;
   },

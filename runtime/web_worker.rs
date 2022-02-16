@@ -368,7 +368,10 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
+      deno_web::init::<Permissions>(
+        options.blob_store.clone(),
+        Some(main_module.clone()),
+      ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
         user_agent: options.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
@@ -386,7 +389,6 @@ impl WebWorker {
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
-      deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
       // Permissions ext (worker specific state)
