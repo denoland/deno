@@ -4,7 +4,7 @@ import { deferred } from "../../../test_util/std/async/deferred.ts";
 const errorDeferred = deferred();
 const closeDeferred = deferred();
 
-const listener = Deno.listen({ port: 4502 });
+const listener = Deno.listen({ port: 4509 });
 console.log("READY");
 const httpConn = Deno.serveHttp(await listener.accept());
 const { request, respondWith } = (await httpConn.nextRequest())!;

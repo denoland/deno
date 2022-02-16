@@ -656,7 +656,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyString() {
-    const addr = "127.0.0.1:4502";
+    const addr = "127.0.0.1:4511";
     const bufPromise = bufferServer(addr);
     const body = "hello world";
     const response = await fetch(`http://${addr}/blah`, {
@@ -1039,7 +1039,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyReadableStream() {
-    const addr = "127.0.0.1:4502";
+    const addr = "127.0.0.1:4511";
     const bufPromise = bufferServer(addr);
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -1126,7 +1126,7 @@ Deno.test(
   async function fetchFilterOutCustomHostHeader(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4502";
+    const addr = "127.0.0.1:4511";
     const listener = returnHostHeaderServer(addr);
     const response = await fetch(`http://${addr}/`, {
       headers: { "Host": "example.com" },

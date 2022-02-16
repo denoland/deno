@@ -926,11 +926,11 @@ Deno.test(
     let httpConn: Deno.HttpConn;
 
     const promise = (async () => {
-      listener = Deno.listen({ port: 4502 });
+      listener = Deno.listen({ port: 4508 });
       for await (const conn of listener) {
         httpConn = Deno.serveHttp(conn);
         for await (const { request, respondWith } of httpConn) {
-          assertEquals(new URL(request.url).href, "http://127.0.0.1:4502/");
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4508/");
           // not reading request body on purpose
           respondWith(new Response("ok"));
         }
@@ -938,7 +938,7 @@ Deno.test(
     })();
 
     const resourcesBefore = Deno.resources();
-    const response = await fetch("http://127.0.0.1:4502", {
+    const response = await fetch("http://127.0.0.1:4508", {
       method: "POST",
       body: "hello world",
     });

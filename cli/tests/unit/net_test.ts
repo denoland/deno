@@ -156,7 +156,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netTcpConcurrentAccept() {
-    const listener = Deno.listen({ port: 4502 });
+    const listener = Deno.listen({ port: 4510 });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
       if (e.message === "Listener has been closed") {
