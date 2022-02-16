@@ -1142,7 +1142,6 @@ fn js_unit_tests() {
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
-    .arg("--no-prompt")
     .arg("-A")
     .arg(util::tests_path().join("unit"))
     .spawn()
