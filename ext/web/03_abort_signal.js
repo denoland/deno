@@ -14,6 +14,7 @@
     Symbol,
     TypeError,
   } = window.__bootstrap.primordials;
+  const { setTimeout } = window.__bootstrap.timers;
 
   const add = Symbol("[[add]]");
   const signalAbort = Symbol("[[signalAbort]]");
@@ -31,6 +32,24 @@
       }
       const signal = new AbortSignal(illegalConstructorKey);
       signal[signalAbort](reason);
+      return signal;
+    }
+
+    static timeout(millis) {
+      const prefix = "Failed to call 'AbortSignal.timeout'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      millis = webidl.converters["unsigned long long"]({ enforceRange: true });
+
+      const signal = new AbortSignal(illegalConstructorKey);
+      // TODO(andreubotella): Don't block the event loop from exiting if there
+      // aren't any listeners for the abort event.
+      setTimeout(
+        () =>
+          signal[signalAbort](
+            new DOMException("Signal timed out.", "TimeoutError"),
+          ),
+        millis,
+      );
       return signal;
     }
 

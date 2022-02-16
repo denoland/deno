@@ -303,6 +303,7 @@ declare var AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
   abort(reason?: any): AbortSignal;
+  timeout(milliseconds: number): AbortSignal;
 };
 
 interface FileReaderEventMap {
