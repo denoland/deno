@@ -741,6 +741,7 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::UnstableChecker;
   use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -896,6 +897,7 @@ mod tests {
     let my_ext = Extension::builder()
       .state(move |state| {
         state.put(TestPermission {});
+        state.put(UnstableChecker { unstable: true });
         Ok(())
       })
       .build();
