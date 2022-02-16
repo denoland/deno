@@ -39,7 +39,6 @@ use hyper::service::Service;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use percent_encoding::percent_encode;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -428,7 +427,7 @@ fn req_url(
     // httpie uses http+unix://[percent_encoding_of_path]/ which we follow
     #[cfg(unix)]
     HttpSocketAddr::UnixSocket(addr) => Cow::Owned(
-      percent_encode(
+      percent_encoding::percent_encode(
         addr
           .as_pathname()
           .and_then(|x| x.to_str())
