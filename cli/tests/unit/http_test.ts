@@ -863,37 +863,25 @@ Deno.test(
     const ev = await httpConn.nextRequest();
     const { respondWith } = ev!;
 
-    const { readable, writable } = new TransformStream<Uint8Array>();
-    const writer = writable.getWriter();
-
-    async function writeResponse() {
-      await delay(50);
-      await writer.write(
-        new TextEncoder().encode(
-          "written to the writable side of a TransformStream",
-        ),
-      );
-      await writer.close();
-    }
-
     const errors: Error[] = [];
 
-    const writePromise = writeResponse()
-      .catch((error: Error) => {
+    const readable = new ReadableStream({
+      async pull(controller) {
+        client.close();
+        await delay(100);
+        controller.enqueue(new TextEncoder().encode(
+          "written to the writable side of a TransformStream",
+        ));
+        controller.close();
+      },
+      cancel(error) {
         errors.push(error);
-      });
+      },
+    });
 
     const res = new Response(readable);
 
-    const respondPromise = respondWith(res)
-      .catch((error: Error) => errors.push(error));
-
-    client.close();
-
-    await Promise.all([
-      writePromise,
-      respondPromise,
-    ]);
+    await respondWith(res).catch((error: Error) => errors.push(error));
 
     httpConn.close();
     listener.close();
