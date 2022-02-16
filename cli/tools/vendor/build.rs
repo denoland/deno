@@ -218,6 +218,9 @@ mod test {
             concat!(
               "export * from '../sub2/mod.ts';",
               "export * from '../sub2/other?asdf';",
+              // reference a path on a different origin
+              "export * from 'https://localhost/other.ts';",
+              "export * from 'https://localhost/redirect.ts';",
             ),
           )
           .add("https://other/sub2/mod.ts", "export class Mod {}")
@@ -236,12 +239,13 @@ mod test {
       Some(json!({
         "imports": {
           "https://localhost/": "./localhost/",
+          "https://localhost/redirect.ts": "./localhost/other.ts",
           "https://other/": "./other/"
         },
         "scopes": {
           "./localhost/": {
-            "/absolute.ts": "./localhost/absolute.ts",
             "./localhost/redirect.ts": "./localhost/other.ts",
+            "/absolute.ts": "./localhost/absolute.ts",
           },
           "./other/": {
             "./other/sub2/other?asdf": "./other/sub2/other.js"
@@ -268,6 +272,8 @@ mod test {
           concat!(
             "export * from '../sub2/mod.ts';",
             "export * from '../sub2/other?asdf';",
+            "export * from 'https://localhost/other.ts';",
+            "export * from 'https://localhost/redirect.ts';",
           )
         ),
         ("/vendor/other/sub2/mod.ts", "export class Mod {}"),

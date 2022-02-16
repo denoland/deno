@@ -213,11 +213,11 @@ fn handle_dep_specifier(
       return;
     }
 
-    if !is_remote_specifier(referrer) {
-      import_map.imports.add(text.to_string(), &specifier);
-    } else {
+    if referrer.origin() == specifier.origin() {
       let imports = import_map.scope(base_specifier);
       imports.add(sub_path.to_string(), &specifier);
+    } else {
+      import_map.imports.add(text.to_string(), &specifier);
     }
   } else {
     let expected_relative_specifier_text =
