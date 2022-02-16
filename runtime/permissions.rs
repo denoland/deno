@@ -138,7 +138,7 @@ impl UnitPermission {
     if self.state == PermissionState::Prompt {
       if permission_prompt(
         &format!("access to {}", self.description),
-        "allow-hrtime",
+        self.name,
       ) {
         self.state = PermissionState::Granted;
       } else {
@@ -157,9 +157,7 @@ impl UnitPermission {
 
   pub fn check(&mut self) -> Result<(), AnyError> {
     let (result, prompted) =
-      self
-        .state
-        .check(self.name, None, self.prompt, "allow-hrtime");
+      self.state.check(self.name, None, self.prompt, self.name);
     if prompted {
       if result.is_ok() {
         self.state = PermissionState::Granted;
@@ -320,7 +318,7 @@ impl UnaryPermission<ReadDescriptor> {
       if state == PermissionState::Prompt {
         if permission_prompt(
           &format!("read access to \"{}\"", display_path.display()),
-          "allow-read",
+          self.name,
         ) {
           self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
@@ -338,7 +336,7 @@ impl UnaryPermission<ReadDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("read access", "allow-read") {
+        if permission_prompt("read access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -373,7 +371,7 @@ impl UnaryPermission<ReadDescriptor> {
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
       self.prompt,
-      "allow-read",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -398,7 +396,7 @@ impl UnaryPermission<ReadDescriptor> {
       self.name,
       Some(&format!("<{}>", display)),
       self.prompt,
-      "allow-read",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -415,7 +413,7 @@ impl UnaryPermission<ReadDescriptor> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, Some("all"), self.prompt, "allow-read");
+        .check(self.name, Some("all"), self.prompt, self.name);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -475,7 +473,7 @@ impl UnaryPermission<WriteDescriptor> {
       if state == PermissionState::Prompt {
         if permission_prompt(
           &format!("write access to \"{}\"", display_path.display()),
-          "allow-write",
+          self.name,
         ) {
           self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
@@ -493,7 +491,7 @@ impl UnaryPermission<WriteDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("write access", "allow-write") {
+        if permission_prompt("write access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -528,7 +526,7 @@ impl UnaryPermission<WriteDescriptor> {
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
       self.prompt,
-      "allow-write",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -542,12 +540,10 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
-    let (result, prompted) = self.query(None).check(
-      self.name,
-      Some("all"),
-      self.prompt,
-      "allow-write",
-    );
+    let (result, prompted) =
+      self
+        .query(None)
+        .check(self.name, Some("all"), self.prompt, self.name);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -618,7 +614,7 @@ impl UnaryPermission<NetDescriptor> {
       if state == PermissionState::Prompt {
         if permission_prompt(
           &format!("network access to \"{}\"", host),
-          "allow-net",
+          self.name,
         ) {
           self.granted_list.insert(host);
           PermissionState::Granted
@@ -636,7 +632,7 @@ impl UnaryPermission<NetDescriptor> {
     } else {
       let state = self.query::<&str>(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("network access", "allow-net") {
+        if permission_prompt("network access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -681,7 +677,7 @@ impl UnaryPermission<NetDescriptor> {
       self.name,
       Some(&format!("\"{}\"", new_host)),
       self.prompt,
-      "allow-net",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -708,7 +704,7 @@ impl UnaryPermission<NetDescriptor> {
       self.name,
       Some(&format!("\"{}\"", display_host)),
       self.prompt,
-      "allow-net",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -726,7 +722,7 @@ impl UnaryPermission<NetDescriptor> {
       self.name,
       Some("all"),
       self.prompt,
-      "allow-net",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -778,8 +774,7 @@ impl UnaryPermission<EnvDescriptor> {
     if let Some(env) = env {
       let state = self.query(Some(env));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("env access to \"{}\"", env), "allow-env")
-        {
+        if permission_prompt(&format!("env access to \"{}\"", env), self.name) {
           self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
         } else {
@@ -796,7 +791,7 @@ impl UnaryPermission<EnvDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("env access", "allow-env") {
+        if permission_prompt("env access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -827,7 +822,7 @@ impl UnaryPermission<EnvDescriptor> {
       self.name,
       Some(&format!("\"{}\"", env)),
       self.prompt,
-      "allow-run",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -844,7 +839,7 @@ impl UnaryPermission<EnvDescriptor> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, Some("all"), self.prompt, "allow-run");
+        .check(self.name, Some("all"), self.prompt, self.name);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -898,8 +893,7 @@ impl UnaryPermission<RunDescriptor> {
     if let Some(cmd) = cmd {
       let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("run access to \"{}\"", cmd), "allow-run")
-        {
+        if permission_prompt(&format!("run access to \"{}\"", cmd), self.name) {
           self
             .granted_list
             .insert(RunDescriptor::from_str(cmd).unwrap());
@@ -922,7 +916,7 @@ impl UnaryPermission<RunDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("run access", "allow-run") {
+        if permission_prompt("run access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -955,7 +949,7 @@ impl UnaryPermission<RunDescriptor> {
       self.name,
       Some(&format!("\"{}\"", cmd)),
       self.prompt,
-      "allow-run",
+      self.name,
     );
     if prompted {
       if result.is_ok() {
@@ -976,7 +970,7 @@ impl UnaryPermission<RunDescriptor> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, Some("all"), self.prompt, "allow-all");
+        .check(self.name, Some("all"), self.prompt, self.name);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -1030,7 +1024,7 @@ impl UnaryPermission<FfiDescriptor> {
       if state == PermissionState::Prompt {
         if permission_prompt(
           &format!("ffi access to \"{}\"", display_path.display()),
-          "allow-ffi",
+          self.name,
         ) {
           self.granted_list.insert(FfiDescriptor(resolved_path));
           PermissionState::Granted
@@ -1048,7 +1042,7 @@ impl UnaryPermission<FfiDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("ffi access", "allow-ffi") {
+        if permission_prompt("ffi access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -1082,7 +1076,7 @@ impl UnaryPermission<FfiDescriptor> {
         self.name,
         Some(&format!("\"{}\"", display_path.display())),
         self.prompt,
-        "allow-ffi",
+        self.name,
       );
 
       if prompted {
@@ -1099,7 +1093,7 @@ impl UnaryPermission<FfiDescriptor> {
       let (result, prompted) =
         self
           .query(None)
-          .check(self.name, None, self.prompt, "allow-ffi");
+          .check(self.name, None, self.prompt, self.name);
 
       if prompted {
         if result.is_ok() {
@@ -1117,7 +1111,7 @@ impl UnaryPermission<FfiDescriptor> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, Some("all"), self.prompt, "allow-all");
+        .check(self.name, Some("all"), self.prompt, self.name);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -1903,7 +1897,7 @@ pub fn create_child_permissions(
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
-fn permission_prompt(message: &str, flag: &str) -> bool {
+fn permission_prompt(message: &str, name: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
@@ -2014,8 +2008,8 @@ fn permission_prompt(message: &str, flag: &str) -> bool {
 
   let opts = "[yes / no] ";
   let msg = format!(
-    "{}  ️Deno requests {}. Run again with --{} to bypass this prompt.\n   Allow? {} ",
-    PERMISSION_EMOJI, message, flag, opts
+    "{}  ️Deno requests {}. Run again with --allow-{} to bypass this prompt.\n   Allow? {} ",
+    PERMISSION_EMOJI, message, name, opts
   );
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
