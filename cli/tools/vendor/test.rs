@@ -95,7 +95,7 @@ impl Loader for TestLoader {
   ) -> LoadFuture {
     let specifier = self.redirects.get(specifier).unwrap_or(specifier);
     let result = self.files.get(specifier).map(|result| match result {
-      Ok(result) => Ok(LoadResponse {
+      Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
         content: Arc::new(result.0.clone()),
         maybe_headers: result.1.clone(),
