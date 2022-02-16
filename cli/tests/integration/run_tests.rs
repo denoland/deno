@@ -521,9 +521,9 @@ fn _090_run_permissions_request() {
   let args = "run --quiet 090_run_permissions_request.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
-    Output("⚠️  ️Deno requests run access to \"ls\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Output("⚠️  ️Deno requests run access to \"ls\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("y\n"),
-    Output("⚠️  ️Deno requests run access to \"cat\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Output("⚠️  ️Deno requests run access to \"cat\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("n\n"),
     Output("granted\r\n"),
     Output("prompt\r\n"),
@@ -2197,9 +2197,9 @@ mod permissions {
     let args = "run --quiet 061_permissions_request.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
-      Output("⚠️  ️Deno requests read access to \"foo\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access to \"foo\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
-      Output("⚠️  ️Deno requests read access to \"bar\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access to \"bar\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("granted\r\n"),
       Output("prompt\r\n"),
@@ -2212,7 +2212,7 @@ mod permissions {
     let args = "run --quiet 062_permissions_request_global.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
-      Output("⚠️  ️Deno requests read access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access. Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
@@ -2332,9 +2332,9 @@ fn issue9750() {
     vec![
       Output("Enter 'yy':\r\n"),
       Input("yy\n"),
-      Output("⚠️  ️Deno requests env access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests env access. Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
-      Output("⚠️  ️Deno requests env access to \"SECRET\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
     ],
