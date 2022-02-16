@@ -31,11 +31,12 @@ impl VendorEnvironment for RealVendorEnvironment {
   }
 }
 
+/// Vendors remote modules and returns how many were vendored.
 pub fn build(
   graph: &ModuleGraph,
   output_dir: &Path,
   environment: &impl VendorEnvironment,
-) -> Result<(), AnyError> {
+) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
   let all_modules = graph.modules();
   let remote_modules = all_modules
@@ -83,7 +84,7 @@ pub fn build(
       .write_file(&output_dir.join("import_map.json"), &import_map_text)?;
   }
 
-  Ok(())
+  Ok(remote_modules.len())
 }
 
 fn build_proxy_module_source(

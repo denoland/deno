@@ -4,6 +4,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use pretty_assertions::assert_eq;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Stdio;
 use tempfile::TempDir;
 use test_util as util;
@@ -115,17 +116,32 @@ fn standard_test() {
     "import {Logger} from 'http://localhost:4545/vendor/query_reexport.ts?testing'; new Logger().log('outputted');",
   ).unwrap();
 
-  let status = util::deno_cmd()
+  let deno = util::deno_cmd()
     .current_dir(t.path())
     .arg("vendor")
     .arg("mod.ts")
     .arg("--output")
     .arg("vendor2")
+    .env("NO_COLOR", "1")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
-    .unwrap()
-    .wait()
     .unwrap();
-  assert!(status.success());
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr).trim(),
+    format!(
+      concat!(
+        "Download http://localhost:4545/vendor/query_reexport.ts?testing\n",
+        "Download http://localhost:4545/vendor/logger.ts?test\n",
+        "{}",
+      ),
+      success_text("2 modules", "vendor2"),
+    )
+  );
+  assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
+
   assert!(vendor_dir.exists());
   assert!(!t.path().join("vendor").exists());
   let import_map: serde_json::Value = serde_json::from_str(
@@ -318,8 +334,24 @@ fn dynamic_non_analyzable_import() {
   // how it couldn't analyze the dynamic import
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts"
+    format!(
+      "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts\n{}",
+      success_text("1 module", "vendor/"),
+    )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
   assert!(output.status.success());
+}
+
+fn success_text(module_count_text: &str, dir_text: &str) -> String {
+  format!(
+    concat!(
+      "Vendored {} into {} directory.\n\n",
+      "To use vendored modules, specify the `--import-map` flag when invoking deno subcommands:\n",
+      "  deno run -A --import-map {} main.ts"
+    ),
+    module_count_text,
+    dir_text,
+    PathBuf::from(dir_text).join("import_map.json").display(),
+  )
 }

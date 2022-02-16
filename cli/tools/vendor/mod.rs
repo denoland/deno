@@ -24,21 +24,40 @@ mod specifiers;
 mod test;
 
 pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
-  let output_dir = resolve_and_validate_output_dir(&flags, &ps)?;
+  let raw_output_dir = match &flags.output_path {
+    Some(output_path) => output_path.to_owned(),
+    None => PathBuf::from("vendor/"),
+  };
+  let output_dir = fs_util::resolve_from_cwd(&raw_output_dir)?;
+  validate_output_dir(&output_dir, &flags, &ps)?;
   let graph = create_graph(&ps, &flags).await?;
+  let vendored_count =
+    build::build(&graph, &output_dir, &build::RealVendorEnvironment)?;
 
-  build::build(&graph, &output_dir, &build::RealVendorEnvironment)
+  eprintln!(
+    r#"Vendored {} {} into {} directory.
+
+To use vendored modules, specify the `--import-map` flag when invoking deno subcommands:
+  deno run -A --import-map {} main.ts"#,
+    vendored_count,
+    if vendored_count == 1 {
+      "module"
+    } else {
+      "modules"
+    },
+    raw_output_dir.display(),
+    raw_output_dir.join("import_map.json").display(),
+  );
+
+  Ok(())
 }
 
-fn resolve_and_validate_output_dir(
+fn validate_output_dir(
+  output_dir: &Path,
   flags: &VendorFlags,
   ps: &ProcState,
-) -> Result<PathBuf, AnyError> {
-  let output_dir = fs_util::resolve_from_cwd(&match &flags.output_path {
-    Some(output_path) => output_path.to_owned(),
-    None => PathBuf::from("vendor"),
-  })?;
-  if !flags.force && !is_dir_empty(&output_dir)? {
+) -> Result<(), AnyError> {
+  if !flags.force && !is_dir_empty(output_dir)? {
     bail!(concat!(
       "Output directory was not empty. Please specify an empty directory or use ",
       "--force to ignore this error and potentially overwrite its contents.",
@@ -54,7 +73,7 @@ fn resolve_and_validate_output_dir(
   {
     // make the output directory in order to canonicalize it for the check below
     std::fs::create_dir_all(&output_dir)?;
-    let output_dir = fs_util::canonicalize_path(&output_dir)?;
+    let output_dir = fs_util::canonicalize_path(output_dir)?;
 
     if import_map_path.starts_with(&output_dir) {
       // We don't allow using the output directory to help generate the new state
@@ -65,7 +84,7 @@ fn resolve_and_validate_output_dir(
     }
   }
 
-  Ok(output_dir)
+  Ok(())
 }
 
 fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
