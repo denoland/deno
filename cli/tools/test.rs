@@ -475,6 +475,12 @@ async fn test_specifier(
     None
   };
 
+  // Enable op call tracing in core to enable better debugging of op sanitizer
+  // failures.
+  worker
+    .execute_script(&located_script_name!(), "Deno.core.enableOpCallTracing();")
+    .unwrap();
+
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {

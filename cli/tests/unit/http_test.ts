@@ -868,7 +868,7 @@ Deno.test(
     const readable = new ReadableStream({
       async pull(controller) {
         client.close();
-        await delay(100);
+        await delay(1000);
         controller.enqueue(new TextEncoder().encode(
           "written to the writable side of a TransformStream",
         ));
