@@ -163,6 +163,13 @@ pub struct UpgradeFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct VendorFlags {
+  pub specifiers: Vec<String>,
+  pub output_path: Option<PathBuf>,
+  pub force: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
   Bundle(BundleFlags),
   Cache(CacheFlags),
@@ -182,6 +189,7 @@ pub enum DenoSubcommand {
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
+  Vendor(VendorFlags),
 }
 
 impl Default for DenoSubcommand {
@@ -481,6 +489,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
+    Some(("vendor", m)) => vendor_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
@@ -552,6 +561,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
+    .subcommand(vendor_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -1413,6 +1423,52 @@ update to a different location, use the --output flag
     .arg(ca_file_arg())
 }
 
+fn vendor_subcommand<'a>() -> App<'a> {
+  App::new("vendor")
+    .about("Vendor remote modules into a local directory")
+    .long_about(
+      "Vendor remote modules into a local directory.
+
+Analyzes the provided modules along with their dependencies, downloads
+remote modules to the output directory, and produces an import map that
+maps remote specifiers to the downloaded files.
+
+  deno vendor main.ts
+  deno run --import-map vendor/import_map.json main.ts
+
+Remote modules and multiple modules may also be specified:
+
+  deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
+    )
+    .arg(
+      Arg::new("specifiers")
+        .takes_value(true)
+        .multiple_values(true)
+        .multiple_occurrences(true)
+        .required(true),
+    )
+    .arg(
+      Arg::new("output")
+        .long("output")
+        .help("The directory to output the vendored modules to")
+        .takes_value(true),
+    )
+    .arg(
+      Arg::new("force")
+        .long("force")
+        .short('f')
+        .help(
+          "Forcefully overwrite conflicting files in existing output directory",
+        )
+        .takes_value(false),
+    )
+    .arg(config_arg())
+    .arg(import_map_arg())
+    .arg(lock_arg())
+    .arg(reload_arg())
+    .arg(ca_file_arg())
+}
+
 fn compile_args(app: App) -> App {
   app
     .arg(import_map_arg())
@@ -2237,6 +2293,23 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
+fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
+  import_map_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches);
+
+  flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
+    specifiers: matches
+      .values_of("specifiers")
+      .map(|p| p.map(ToString::to_string).collect())
+      .unwrap_or_default(),
+    output_path: matches.value_of("output").map(PathBuf::from),
+    force: matches.is_present("force"),
+  });
+}
+
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -2443,12 +2516,16 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  lock_arg_parse(flags, matches);
+  if matches.is_present("lock-write") {
+    flags.lock_write = true;
+  }
+}
+
+fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
     let lockfile = matches.value_of("lock").unwrap();
     flags.lock = Some(PathBuf::from(lockfile));
-  }
-  if matches.is_present("lock-write") {
-    flags.lock_write = true;
   }
 }
 
@@ -2512,8 +2589,8 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr),*) => (vec![$($x.to_string()),*]);
-}
+    ($($x:expr),* $(,)?) => (vec![$($x.to_string()),*]);
+  }
 
   #[test]
   fn global_flags() {
@@ -4894,5 +4971,56 @@ mod tests {
     assert!(&error_message
       .contains("error: The following required arguments were not provided:"));
     assert!(&error_message.contains("--watch=<FILES>..."));
+  }
+
+  #[test]
+  fn vendor_minimal() {
+    let r = flags_from_vec(svec!["deno", "vendor", "mod.ts",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Vendor(VendorFlags {
+          specifiers: svec!["mod.ts"],
+          force: false,
+          output_path: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn vendor_all() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "vendor",
+      "--config",
+      "deno.json",
+      "--import-map",
+      "import_map.json",
+      "--lock",
+      "lock.json",
+      "--force",
+      "--output",
+      "out_dir",
+      "--reload",
+      "mod.ts",
+      "deps.test.ts",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Vendor(VendorFlags {
+          specifiers: svec!["mod.ts", "deps.test.ts"],
+          force: true,
+          output_path: Some(PathBuf::from("out_dir")),
+        }),
+        config_path: Some("deno.json".to_string()),
+        import_map_path: Some("import_map.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
+        reload: true,
+        ..Flags::default()
+      }
+    );
   }
 }

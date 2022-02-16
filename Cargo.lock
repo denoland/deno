@@ -1965,9 +1965,9 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09ae88504e9128c4c181a0a4726d868d52aa76de270c7fb00c3c40a8f4fbace4"
+checksum = "f99e0f89d56c163538ea6bf1f250049669298a26daeee15a9a18f4118cc503f1"
 dependencies = [
  "indexmap",
  "log",

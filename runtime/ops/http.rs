@@ -8,7 +8,6 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
-use deno_net::io::UnixStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
 
 pub fn init() -> Extension {
@@ -49,7 +48,7 @@ fn op_http_start(
   #[cfg(unix)]
   if let Ok(resource_rc) = state
     .resource_table
-    .take::<UnixStreamResource>(tcp_stream_rid)
+    .take::<deno_net::io::UnixStreamResource>(tcp_stream_rid)
   {
     super::check_unstable(state, "Deno.serveHttp");
 
