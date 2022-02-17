@@ -367,11 +367,12 @@ struct ForeignFunction {
 
 // ForeignStatic's name and type fields are read and used by
 // serde_v8 to determine which variant a ForeignSymbol is.
-// They're not used by the lib.rs itself and are thus prefixed
-// with an underscore.
+// They are not used beyond that and are thus marked with underscores.
 #[derive(Deserialize, Debug)]
 struct ForeignStatic {
+  #[serde(rename(deserialize = "name"))]
   _name: Option<String>,
+  #[serde(rename(deserialize = "type"))]
   _type: String,
 }
 
