@@ -372,8 +372,7 @@ struct ForeignFunction {
 #[derive(Deserialize, Debug)]
 struct ForeignStatic {
   name: Option<String>,
-  #[serde(rename = "type")]
-  type_: String,
+  r#type: String,
 }
 
 #[derive(Deserialize, Debug)]
