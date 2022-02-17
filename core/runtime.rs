@@ -14,6 +14,7 @@ use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
+use crate::bindings::external_references;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -289,27 +290,37 @@ impl JsRuntime {
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
     let global_context;
+
+    let align = std::mem::align_of::<usize>();
+    let layout = unsafe { std::alloc::Layout::from_size_align_unchecked(std::mem::size_of::<*mut v8::OwnedIsolate>(), align) };
+    let mut isolate_ptr: *mut *mut v8::OwnedIsolate = unsafe { std::alloc::alloc(layout) as *mut _ };
+
+    let refs = external_references(isolate_ptr as *mut _);
+    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
+      
       let mut creator =
-        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
+        v8::SnapshotCreator::new(Some(&refs));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        let isolate_ptr = &mut isolate as *mut _;
+        unsafe { isolate_ptr.write(&mut isolate) };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(Some(isolate_ptr), scope);
+        
+        let context = bindings::initialize_context(Some(isolate_ptr as *mut _), scope);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
       (isolate, Some(creator))
     } else {
+      
       let mut params = options
         .create_params
         .take()
         .unwrap_or_else(v8::Isolate::create_params)
-        .external_references(&**bindings::EXTERNAL_REFERENCES);
+        .external_references(&**refs);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -324,14 +335,14 @@ impl JsRuntime {
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        let isolate_ptr = &mut isolate as *mut _;
+        unsafe { isolate_ptr.write(&mut isolate) };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_loaded {
           v8::Context::new(scope)
         } else {
           // If no snapshot is provided, we initialize the context with empty
           // main source code and source maps.
-          bindings::initialize_context(Some(isolate_ptr), scope)
+          bindings::initialize_context(Some(isolate_ptr as *mut _), scope)
         };
         global_context = v8::Global::new(scope, context);
       }

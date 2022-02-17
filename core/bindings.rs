@@ -31,93 +31,95 @@ use v8::MapFnTo;
 use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
+use std::os::raw::c_void;
 
 const UNDEFINED_OP_ID_MSG: &str =
   "invalid op id: received `undefined` instead of an integer.
 This error is often caused by a typo in an op name, or not calling
 JsRuntime::sync_ops_cache() after JsRuntime initialization.";
 
-pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
-  Lazy::new(|| {
-    v8::ExternalReferences::new(&[
-      v8::ExternalReference {
-        function: opcall_async.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: opcall_sync.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: ref_op.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: unref_op.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_macrotask_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_nexttick_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_promise_reject_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_uncaught_exception_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: run_microtasks.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: has_tick_scheduled.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_has_tick_scheduled.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: eval_context.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: queue_microtask.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: create_host_object.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: encode.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: decode.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: serialize.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: deserialize.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: get_promise_details.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: get_proxy_details.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: is_proxy.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: memory_usage.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: call_console.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_wasm_streaming_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: dlopen_func.map_fn_to(),
-      },
-    ])
-  });
-
+pub fn external_references(isolate_ptr: *mut c_void) -> v8::ExternalReferences {
+  v8::ExternalReferences::new(&[
+    v8::ExternalReference {
+      function: opcall_async.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: opcall_sync.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: ref_op.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: unref_op.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_macrotask_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_nexttick_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_promise_reject_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_uncaught_exception_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: run_microtasks.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: has_tick_scheduled.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_has_tick_scheduled.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: eval_context.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: queue_microtask.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: create_host_object.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: encode.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: decode.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: serialize.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: deserialize.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: get_promise_details.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: get_proxy_details.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: is_proxy.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: memory_usage.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: call_console.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_wasm_streaming_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: dlopen_func.map_fn_to(),
+    },
+    v8::ExternalReference {
+      pointer: isolate_ptr,
+    }
+  ])
+}
 pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
