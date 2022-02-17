@@ -25,7 +25,7 @@ const remote = Deno.dlopen(
     method18: { parameters: [], result: "pointer" },
     method19: { parameters: [], result: "pointer", nonblocking: true },
     static1: { type: "usize" },
-    static2: { type: "void" },
+    static2: { type: "pointer" },
     static3: { type: "usize" },
     static4: { type: "isize" },
     static5: { type: "u8" },
@@ -38,7 +38,6 @@ const remote = Deno.dlopen(
     static12: { type: "i64" },
     static13: { type: "f32" },
     static14: { type: "f64" },
-    static15: { type: "pointer" },
   } as const,
 );
 
@@ -142,7 +141,7 @@ const static1_wrong: null = remote.symbols.static1;
 const static1_right: number = remote.symbols.static1;
 // @ts-expect-error: Invalid member type
 const static2_wrong: null = remote.symbols.static2;
-const static2_right: void = remote.symbols.static2;
+const static2_right: Deno.UnsafePointer = remote.symbols.static2;
 // @ts-expect-error: Invalid member type
 const static3_wrong: null = remote.symbols.static3;
 const static3_right: number = remote.symbols.static3;
@@ -179,6 +178,3 @@ const static13_right: number = remote.symbols.static13;
 // @ts-expect-error: Invalid member type
 const static14_wrong: null = remote.symbols.static14;
 const static14_right: number = remote.symbols.static14;
-// @ts-expect-error: Invalid member type
-const static15_wrong: null = remote.symbols.static15;
-const static15_right: Deno.UnsafePointer = remote.symbols.static15;
