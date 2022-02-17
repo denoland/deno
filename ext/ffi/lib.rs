@@ -367,12 +367,12 @@ struct ForeignFunction {
 
 // ForeignStatic's name and type fields are read and used by
 // serde_v8 to determine which variant a ForeignSymbol is.
-// They are not used beyond that and are thus "dead code" to Rust.
-#[allow(dead_code)]
+// They're not used by the lib.rs itself and are thus prefixed
+// with an underscore.
 #[derive(Deserialize, Debug)]
 struct ForeignStatic {
-  name: Option<String>,
-  r#type: String,
+  _name: Option<String>,
+  _type: String,
 }
 
 #[derive(Deserialize, Debug)]
