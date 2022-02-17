@@ -59,6 +59,7 @@ use crate::flags::RunFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
+use crate::flags::VendorFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
@@ -416,23 +417,14 @@ async fn compile_command(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   ))?;
 
-  let graph =
-    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
+  let graph = Arc::try_unwrap(
+    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?,
+  )
+  .map_err(|_| {
+    generic_error("There should only be one reference to ModuleGraph")
+  })?;
 
-  let source = (graph.as_ref().modules().len() == 1)
-    .then(|| {
-      let root_module = graph.as_ref().modules()[0];
-      match root_module.media_type {
-        MediaType::JavaScript if root_module.maybe_source.is_some() => {
-          Some(Ok(root_module.maybe_source.clone().unwrap().to_string()))
-        }
-        _ => None,
-      }
-    })
-    .flatten()
-    .unwrap_or_else(|| {
-      bundle_module_graph(graph.as_ref(), &ps, &ps.flags).map(|r| r.0)
-    })?;
+  let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
   info!(
     "{} {}",
@@ -447,7 +439,8 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    source,
+    eszip,
+    module_specifier.clone(),
     run_flags,
   )?;
 
@@ -1299,6 +1292,15 @@ async fn upgrade_command(
   Ok(0)
 }
 
+async fn vendor_command(
+  flags: Flags,
+  vendor_flags: VendorFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  tools::vendor::vendor(ps, vendor_flags).await?;
+  Ok(0)
+}
+
 fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
@@ -1377,6 +1379,9 @@ fn get_subcommand(
     DenoSubcommand::Upgrade(upgrade_flags) => {
       upgrade_command(flags, upgrade_flags).boxed_local()
     }
+    DenoSubcommand::Vendor(vendor_flags) => {
+      vendor_command(flags, vendor_flags).boxed_local()
+    }
   }
 }
 
@@ -1431,34 +1436,40 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  let standalone_res = match standalone::extract_standalone(args.clone()) {
-    Ok(Some((metadata, bundle))) => {
-      run_basic(standalone::run(bundle, metadata))
+
+  let exit_code = async move {
+    let standalone_res =
+      match standalone::extract_standalone(args.clone()).await {
+        Ok(Some((metadata, eszip))) => standalone::run(eszip, metadata).await,
+        Ok(None) => Ok(()),
+        Err(err) => Err(err),
+      };
+    // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
+    unwrap_or_exit(standalone_res);
+
+    let flags = match flags::flags_from_vec(args) {
+      Ok(flags) => flags,
+      Err(err @ clap::Error { .. })
+        if err.kind == clap::ErrorKind::DisplayHelp
+          || err.kind == clap::ErrorKind::DisplayVersion =>
+      {
+        err.print().unwrap();
+        std::process::exit(0);
+      }
+      Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+    };
+    if !flags.v8_flags.is_empty() {
+      init_v8_flags(&*flags.v8_flags);
     }
-    Ok(None) => Ok(()),
-    Err(err) => Err(err),
+
+    logger::init(flags.log_level);
+
+    let exit_code = get_subcommand(flags).await;
+
+    exit_code
   };
-  // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
-  unwrap_or_exit(standalone_res);
 
-  let flags = match flags::flags_from_vec(args) {
-    Ok(flags) => flags,
-    Err(err @ clap::Error { .. })
-      if err.kind == clap::ErrorKind::DisplayHelp
-        || err.kind == clap::ErrorKind::DisplayVersion =>
-    {
-      err.print().unwrap();
-      std::process::exit(0);
-    }
-    Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
-  };
-  if !flags.v8_flags.is_empty() {
-    init_v8_flags(&*flags.v8_flags);
-  }
-
-  logger::init(flags.log_level);
-
-  let exit_code = unwrap_or_exit(run_basic(get_subcommand(flags)));
+  let exit_code = unwrap_or_exit(run_basic(exit_code));
 
   std::process::exit(exit_code);
 }

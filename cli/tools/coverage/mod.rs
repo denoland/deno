@@ -21,7 +21,7 @@ use sourcemap::SourceMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::Write;
+use std::io::{self, Error, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use text_lines::TextLines;
@@ -159,12 +159,14 @@ struct CoverageReport {
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
   found_lines: Vec<(usize, i64)>,
+  output: Option<PathBuf>,
 }
 
 fn generate_coverage_report(
   script_coverage: &ScriptCoverage,
   script_source: &str,
   maybe_source_map: &Option<Vec<u8>>,
+  output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
     .as_ref()
@@ -191,6 +193,7 @@ fn generate_coverage_report(
     ),
     branches: Vec::new(),
     found_lines: Vec::new(),
+    output: output.clone(),
   };
 
   for function in &script_coverage.functions {
@@ -359,7 +362,11 @@ fn create_reporter(
 }
 
 trait CoverageReporter {
-  fn report(&mut self, coverage_report: &CoverageReport, file_text: &str);
+  fn report(
+    &mut self,
+    coverage_report: &CoverageReport,
+    file_text: &str,
+  ) -> Result<(), AnyError>;
 
   fn done(&mut self);
 }
@@ -373,7 +380,22 @@ impl LcovCoverageReporter {
 }
 
 impl CoverageReporter for LcovCoverageReporter {
-  fn report(&mut self, coverage_report: &CoverageReport, _file_text: &str) {
+  fn report(
+    &mut self,
+    coverage_report: &CoverageReport,
+    _file_text: &str,
+  ) -> Result<(), AnyError> {
+    // pipes output to stdout if no file is specified
+    let out_mode: Result<Box<dyn Write>, Error> = match coverage_report.output {
+      // only append to the file as the file should be created already
+      Some(ref path) => File::options()
+        .append(true)
+        .open(path)
+        .map(|f| Box::new(f) as Box<dyn Write>),
+      None => Ok(Box::new(io::stdout())),
+    };
+    let mut out_writer = out_mode?;
+
     let file_path = coverage_report
       .url
       .to_file_path()
@@ -381,24 +403,33 @@ impl CoverageReporter for LcovCoverageReporter {
       .map(|p| p.to_str().map(|p| p.to_string()))
       .flatten()
       .unwrap_or_else(|| coverage_report.url.to_string());
-    println!("SF:{}", file_path);
+    writeln!(out_writer, "SF:{}", file_path)?;
 
     for function in &coverage_report.named_functions {
-      println!("FN:{},{}", function.line_index + 1, function.name);
+      writeln!(
+        out_writer,
+        "FN:{},{}",
+        function.line_index + 1,
+        function.name
+      )?;
     }
 
     for function in &coverage_report.named_functions {
-      println!("FNDA:{},{}", function.execution_count, function.name);
+      writeln!(
+        out_writer,
+        "FNDA:{},{}",
+        function.execution_count, function.name
+      )?;
     }
 
     let functions_found = coverage_report.named_functions.len();
-    println!("FNF:{}", functions_found);
+    writeln!(out_writer, "FNF:{}", functions_found)?;
     let functions_hit = coverage_report
       .named_functions
       .iter()
       .filter(|f| f.execution_count > 0)
       .count();
-    println!("FNH:{}", functions_hit);
+    writeln!(out_writer, "FNH:{}", functions_hit)?;
 
     for branch in &coverage_report.branches {
       let taken = if let Some(taken) = &branch.taken {
@@ -407,23 +438,23 @@ impl CoverageReporter for LcovCoverageReporter {
         "-".to_string()
       };
 
-      println!(
+      writeln!(
+        out_writer,
         "BRDA:{},{},{},{}",
         branch.line_index + 1,
         branch.block_number,
         branch.branch_number,
         taken
-      );
+      )?;
     }
 
     let branches_found = coverage_report.branches.len();
-    println!("BRF:{}", branches_found);
+    writeln!(out_writer, "BRF:{}", branches_found)?;
     let branches_hit =
       coverage_report.branches.iter().filter(|b| b.is_hit).count();
-    println!("BRH:{}", branches_hit);
-
+    writeln!(out_writer, "BRH:{}", branches_hit)?;
     for (index, count) in &coverage_report.found_lines {
-      println!("DA:{},{}", index + 1, count);
+      writeln!(out_writer, "DA:{},{}", index + 1, count)?;
     }
 
     let lines_hit = coverage_report
@@ -431,12 +462,13 @@ impl CoverageReporter for LcovCoverageReporter {
       .iter()
       .filter(|(_, count)| *count != 0)
       .count();
-    println!("LH:{}", lines_hit);
+    writeln!(out_writer, "LH:{}", lines_hit)?;
 
     let lines_found = coverage_report.found_lines.len();
-    println!("LF:{}", lines_found);
+    writeln!(out_writer, "LF:{}", lines_found)?;
 
-    println!("end_of_record");
+    writeln!(out_writer, "end_of_record")?;
+    Ok(())
   }
 
   fn done(&mut self) {}
@@ -451,7 +483,11 @@ impl PrettyCoverageReporter {
 }
 
 impl CoverageReporter for PrettyCoverageReporter {
-  fn report(&mut self, coverage_report: &CoverageReport, file_text: &str) {
+  fn report(
+    &mut self,
+    coverage_report: &CoverageReport,
+    file_text: &str,
+  ) -> Result<(), AnyError> {
     let lines = file_text.split('\n').collect::<Vec<_>>();
     print!("cover {} ... ", coverage_report.url);
 
@@ -505,6 +541,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 
       last_line = Some(line_index);
     }
+    Ok(())
   }
 
   fn done(&mut self) {}
@@ -590,6 +627,16 @@ pub async fn cover_files(
 
   let mut reporter = create_reporter(reporter_kind);
 
+  let out_mode = match coverage_flags.output {
+    Some(ref path) => match File::create(path) {
+      Ok(_) => Some(PathBuf::from(path)),
+      Err(e) => {
+        return Err(anyhow!("Failed to create output file: {}", e));
+      }
+    },
+    None => None,
+  };
+
   for script_coverage in script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
@@ -653,9 +700,10 @@ pub async fn cover_files(
       &script_coverage,
       &transpiled_source,
       &maybe_source_map,
+      &out_mode,
     );
 
-    reporter.report(&coverage_report, original_source);
+    reporter.report(&coverage_report, original_source)?;
   }
 
   reporter.done();

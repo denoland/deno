@@ -3,6 +3,7 @@
 mod blob;
 mod compression;
 mod message_port;
+mod timers;
 
 use deno_core::error::range_error;
 use deno_core::error::type_error;
@@ -47,8 +48,18 @@ use crate::message_port::op_message_port_recv_message;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 
+use crate::timers::op_now;
+use crate::timers::op_sleep;
+use crate::timers::op_sleep_sync;
+use crate::timers::op_timer_handle;
+use crate::timers::StartTime;
+pub use crate::timers::TimersPermission;
+
 /// Load and execute the javascript code.
-pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
+pub fn init<P: TimersPermission + 'static>(
+  blob_store: BlobStore,
+  maybe_location: Option<Url>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/web",
@@ -57,6 +68,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       "01_mimesniff.js",
       "02_event.js",
       "02_structured_clone.js",
+      "02_timers.js",
       "03_abort_signal.js",
       "04_global_interfaces.js",
       "05_base64.js",
@@ -68,6 +80,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       "12_location.js",
       "13_message_port.js",
       "14_compression.js",
+      "15_performance.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
@@ -116,12 +129,17 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         "op_compression_finish",
         op_sync(compression::op_compression_finish),
       ),
+      ("op_now", op_sync(op_now::<P>)),
+      ("op_timer_handle", op_sync(op_timer_handle)),
+      ("op_sleep", op_async(op_sleep)),
+      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
       if let Some(location) = maybe_location.clone() {
         state.put(Location(location));
       }
+      state.put(StartTime::now());
       Ok(())
     })
     .build()

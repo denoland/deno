@@ -84,6 +84,8 @@ mod run;
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
+#[path = "vendor_tests.rs"]
+mod vendor;
 #[path = "watcher_tests.rs"]
 mod watcher;
 #[path = "worker_tests.rs"]
@@ -758,7 +760,7 @@ fn websocket_server_idletimeout() {
   assert_eq!(msg, "READY");
 
   let req = http::request::Builder::new()
-    .uri("ws://localhost:4502")
+    .uri("ws://localhost:4509")
     .body(())
     .unwrap();
   let (_ws, _request) =

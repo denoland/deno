@@ -76,6 +76,7 @@
     write: __bootstrap.io.write,
     writeSync: __bootstrap.io.writeSync,
     File: __bootstrap.files.File,
+    FsFile: __bootstrap.files.FsFile,
     open: __bootstrap.files.open,
     openSync: __bootstrap.files.openSync,
     create: __bootstrap.files.create,

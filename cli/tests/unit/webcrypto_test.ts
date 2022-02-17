@@ -1443,7 +1443,7 @@ Deno.test(async function testAesGcmEncrypt() {
   const data = new Uint8Array([1, 2, 3]);
 
   const cipherText = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    { name: "AES-GCM", iv },
     key,
     data,
   );
@@ -1457,7 +1457,7 @@ Deno.test(async function testAesGcmEncrypt() {
   );
 
   const plainText = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    { name: "AES-GCM", iv },
     key,
     cipherText,
   );
@@ -1655,14 +1655,14 @@ Deno.test(async function testAesGcmTagLength() {
   // encrypt won't fail, it will simply truncate the tag
   // as expected.
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+    { name: "AES-GCM", iv, tagLength: 96 },
     key,
     new Uint8Array(32),
   );
 
   await assertRejects(async () => {
     await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+      { name: "AES-GCM", iv, tagLength: 96 },
       key,
       encrypted,
     );
