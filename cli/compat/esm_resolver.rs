@@ -43,6 +43,17 @@ impl Resolver for NodeEsmResolver {
       }
     }
 
+    if referrer.scheme().starts_with("http") {
+      return match deno_core::resolve_import(specifier, referrer.as_str()) {
+        Ok(specifier) => ResolveResponse::Esm(specifier),
+        Err(err) => ResolveResponse::Err(err.into()),
+      };
+    } else if let Ok(url) = Url::parse(specifier) {
+      if url.scheme().starts_with("http") {
+        return ResolveResponse::Esm(url);
+      }
+    }
+
     let current_dir = match std::env::current_dir() {
       Ok(path) => path,
       Err(err) => return ResolveResponse::Err(err.into()),
@@ -209,16 +220,6 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): this is not part of Node resolution algorithm
-  // (as it doesn't support http/https); but I had to short circuit here
-  // for remote modules because they are mainly used to polyfill `node` built
-  // in modules. Another option would be to leave the resolved URLs
-  // as `node:<module_name>` and do the actual remapping to std's polyfill
-  // in module loader. I'm not sure which approach is better.
-  if resolved.scheme().starts_with("http") {
-    return Ok(resolved);
-  }
-
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
