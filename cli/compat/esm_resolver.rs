@@ -136,6 +136,8 @@ fn node_resolve(
   } else {
     Url::parse(referrer).expect("referrer was not proper url")
   };
+  eprintln!("specifier {}", specifier);
+  assert_eq!(parent_url.scheme(), "file");
 
   let conditions = DEFAULT_CONDITIONS;
   let url = module_resolve(specifier, &parent_url, conditions)?;
