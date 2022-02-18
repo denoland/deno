@@ -5,8 +5,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
-use std::path::PathBuf;
 use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub(crate) struct PackageConfig {
@@ -141,7 +141,7 @@ pub(crate) fn get_package_scope_config(
   }
 
   let package_config = PackageConfig {
-    pjsonpath: package_json_path.to_owned(),
+    pjsonpath: package_json_path,
     exists: false,
     main: None,
     name: None,

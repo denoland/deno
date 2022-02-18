@@ -51,7 +51,9 @@ pub(crate) fn err_module_not_found(
 ) -> AnyError {
   generic_error(format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find {} \"{}\" imported from \"{}\"",
-    typ, path, base.to_string_lossy()
+    typ,
+    path,
+    base.to_string_lossy()
   ))
 }
 

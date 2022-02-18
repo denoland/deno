@@ -258,10 +258,7 @@ fn finalize_resolution(
     (false, false)
   };
   if is_dir {
-    return Err(errors::err_unsupported_dir_import(
-      resolved.as_str(),
-      base,
-    ));
+    return Err(errors::err_unsupported_dir_import(resolved.as_str(), base));
   } else if !is_file {
     return Err(errors::err_module_not_found(
       resolved.as_str(),
@@ -345,17 +342,16 @@ pub(crate) fn package_resolve(
     }
     if package_subpath == "." {
       let p = legacy_main_resolve(&package_json_path, &package_config, base)?;
-      return Ok(Url::from_file_path(p).unwrap())
+      return Ok(Url::from_file_path(p).unwrap());
     }
 
-    return Ok(Url::from_file_path(package_json_path.join(&package_subpath)).unwrap());
+    return Ok(
+      Url::from_file_path(package_json_path.join(&package_subpath)).unwrap(),
+    );
   }
 
   Err(errors::err_module_not_found(
-    &package_json_path
-      .join(".")
-      .to_string_lossy()
-      .to_string(),
+    &package_json_path.join(".").to_string_lossy().to_string(),
     base,
     "package",
   ))

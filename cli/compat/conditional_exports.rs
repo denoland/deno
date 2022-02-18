@@ -7,8 +7,8 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use std::path::PathBuf;
 use std::path::Path;
+use std::path::PathBuf;
 
 use super::package_json::PackageConfig;
 
@@ -131,8 +131,7 @@ pub(crate) fn package_imports_resolve(
 
   let package_config = super::package_json::get_package_scope_config(base)?;
   if package_config.exists {
-    package_json_path =
-      Some(package_config.pjsonpath.clone());
+    package_json_path = Some(package_config.pjsonpath.clone());
     if let Some(imports) = &package_config.imports {
       if imports.contains_key(name) && !name.contains('*') {
         let maybe_resolved = resolve_package_target(
@@ -531,7 +530,7 @@ fn throw_invalid_subpath(
   let reason = format!(
     "request is not a valid subpath for the \"{}\" resolution of {}",
     ie,
-    package_json_path.to_string_lossy().to_string()
+    package_json_path.to_string_lossy()
   );
   errors::err_invalid_module_specifier(
     &subpath,
