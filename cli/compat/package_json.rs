@@ -112,7 +112,8 @@ pub(crate) fn get_package_config(
 pub(crate) fn get_package_scope_config(
   resolved: &Path,
 ) -> Result<PackageConfig, AnyError> {
-  let mut package_json_path = resolved.join("./package.json");
+  let mut package_json_path = resolved.to_path_buf();
+  package_json_path.set_file_name("package.json");
 
   loop {
     if package_json_path.ends_with("node_modules/package.json") {
@@ -130,8 +131,8 @@ pub(crate) fn get_package_scope_config(
     }
 
     let last_package_json_path = package_json_path.clone();
-    package_json_path = package_json_path.join("../package.json");
-
+    package_json_path.pop();
+    package_json_path.set_file_name("package.json");
     // TODO(bartlomieju): I'm not sure this will work properly
     // Terminates at root where ../package.json equals ../../package.json
     // (can't just check "/package.json" for Windows support)

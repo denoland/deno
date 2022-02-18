@@ -297,8 +297,11 @@ pub(crate) fn package_resolve(
     }
   }
 
-  let mut package_json_path =
-    base.join(&format!("./node_modules/{}/package.json", package_name));
+  let mut package_json_path = base.to_path_buf();
+  package_json_path.pop();
+  package_json_path.push("node_modules");
+  package_json_path.push(package_name.clone());
+  package_json_path.push("package.json");
   let mut last_path;
   loop {
     let p_str = package_json_path.to_str().unwrap();
@@ -312,13 +315,21 @@ pub(crate) fn package_resolve(
     if !is_dir {
       last_path = package_json_path.clone();
 
-      let prefix = if is_scoped {
-        "../../../../node_modules/"
+      if is_scoped {
+        // "../../../../node_modules/"
+        package_json_path.pop();
+        package_json_path.pop();
+        package_json_path.pop();
+        package_json_path.pop();
       } else {
-        "../../../node_modules/"
+        // "../../../node_modules/"
+        package_json_path.pop();
+        package_json_path.pop();
+        package_json_path.pop();
       };
-      package_json_path = package_json_path
-        .join(&format!("{}{}/package.json", prefix, package_name));
+      package_json_path.push("node_modules");
+      package_json_path.push(package_name.clone());
+      package_json_path.push("package_json");
       if package_json_path.to_str().unwrap().len()
         == last_path.to_str().unwrap().len()
       {
