@@ -6,10 +6,10 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use path_clean::PathClean;
 use regex::Regex;
 use std::path::Path;
 use std::path::PathBuf;
-use path_clean::PathClean;
 
 use super::package_json::PackageConfig;
 
@@ -217,6 +217,7 @@ pub(crate) fn package_exports_resolve(
     && package_subpath.find('*').is_none()
     && !package_subpath.ends_with('/')
   {
+    eprintln!("here1");
     let target = exports_map.get(&package_subpath).unwrap().to_owned();
     let resolved = resolve_package_target(
       package_json_path,
@@ -228,6 +229,7 @@ pub(crate) fn package_exports_resolve(
       false,
       conditions,
     )?;
+    eprintln!("here1124351234 {:?}", resolved);
     if resolved.is_none() {
       return Err(throw_exports_not_found(
         package_subpath,
@@ -273,6 +275,7 @@ pub(crate) fn package_exports_resolve(
   }
 
   if !best_match.is_empty() {
+    eprintln!("here2");
     let target = exports.get(best_match).unwrap().to_owned();
     let maybe_resolved = resolve_package_target(
       package_json_path,
@@ -287,6 +290,7 @@ pub(crate) fn package_exports_resolve(
     if let Some(resolved) = maybe_resolved {
       return Ok(resolved);
     } else {
+      eprintln!("here3");
       return Err(throw_exports_not_found(
         package_subpath,
         package_json_path,
@@ -295,6 +299,7 @@ pub(crate) fn package_exports_resolve(
     }
   }
 
+  eprintln!("here4");
   Err(throw_exports_not_found(
     package_subpath,
     package_json_path,
@@ -314,6 +319,7 @@ fn resolve_package_target(
   conditions: &[&str],
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(target) = target.as_str() {
+    eprintln!("here11");
     return Ok(Some(resolve_package_target_string(
       target.to_string(),
       subpath,
@@ -360,6 +366,7 @@ fn resolve_package_target(
     if last_error.is_none() {
       return Ok(None);
     }
+    eprintln!("here12");
     return Err(last_error.unwrap());
   } else if let Some(target_obj) = target.as_object() {
     for key in target_obj.keys() {
@@ -372,6 +379,7 @@ fn resolve_package_target(
 
       if key == "default" || conditions.contains(&key.as_str()) {
         let condition_target = target_obj.get(key).unwrap().to_owned();
+        eprintln!("here13");
         let resolved = resolve_package_target(
           package_json_path,
           condition_target,
@@ -392,6 +400,7 @@ fn resolve_package_target(
     return Ok(None);
   }
 
+  eprintln!("here14");
   Err(throw_invalid_package_target(
     package_subpath,
     target.to_string(),
@@ -412,7 +421,9 @@ fn resolve_package_target_string(
   internal: bool,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
+  eprintln!("resolve package target string {} {} {}", target, subpath, match_);
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
+    eprintln!("here111");
     return Err(throw_invalid_package_target(
       match_,
       target,
@@ -437,6 +448,7 @@ fn resolve_package_target_string(
         } else {
           format!("{}{}", target, subpath)
         };
+        eprintln!("here112");
         return super::esm_resolver::package_resolve(
           &export_target,
           package_json_path,
@@ -444,6 +456,7 @@ fn resolve_package_target_string(
         );
       }
     }
+    eprintln!("here113");
     return Err(throw_invalid_package_target(
       match_,
       target,
@@ -454,6 +467,7 @@ fn resolve_package_target_string(
   }
 
   if invalid_segment_re.is_match(&target[2..]) {
+    eprintln!("here114");
     return Err(throw_invalid_package_target(
       match_,
       target,
@@ -469,6 +483,7 @@ fn resolve_package_target_string(
   let package_path = package_json_path.join("..").clean();
 
   if !resolved.starts_with(&package_path) {
+    eprintln!("here115");
     return Err(throw_invalid_package_target(
       match_,
       target,
@@ -478,7 +493,9 @@ fn resolve_package_target_string(
     ));
   }
 
+  eprintln!("subpath empty {:?}", resolved);
   if subpath.is_empty() {
+    eprintln!("here117");
     return Ok(Url::from_file_path(resolved).unwrap());
   }
 
@@ -496,6 +513,7 @@ fn resolve_package_target_string(
     ));
   }
 
+  eprintln!("here116");
   if pattern {
     let resolved_str = resolved.to_string_lossy().to_string();
     let replaced = pattern_re

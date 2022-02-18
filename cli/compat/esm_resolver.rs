@@ -219,6 +219,7 @@ fn module_resolve(
   } else if let Ok(resolved) = Url::parse(specifier) {
     resolved
   } else {
+    eprintln!("pre resolve");
     package_resolve(specifier, base, conditions)?
   };
   finalize_resolution(resolved, base)
@@ -228,6 +229,7 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &Path,
 ) -> Result<ModuleSpecifier, AnyError> {
+  eprintln!("finalize {:?} {:?}", resolved.as_str(), base);
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
@@ -278,6 +280,7 @@ pub(crate) fn package_resolve(
   let (package_name, package_subpath, is_scoped) =
     parse_package_name(specifier, base)?;
 
+  eprintln!("package_resolve {} {:?} {} {}", specifier, base, package_name, package_subpath);
   // ResolveSelf
   let package_config = get_package_scope_config(base)?;
   if package_config.exists {
@@ -285,6 +288,7 @@ pub(crate) fn package_resolve(
     if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         if !exports.is_null() {
+          eprintln!("package resolve package exports resolve");
           return super::conditional_exports::package_exports_resolve(
             &package_json_path,
             package_subpath,
@@ -297,6 +301,7 @@ pub(crate) fn package_resolve(
     }
   }
 
+  // TODO: broken here
   let mut package_json_path = base.to_path_buf();
   package_json_path.pop();
   package_json_path.push("node_modules");
@@ -304,6 +309,7 @@ pub(crate) fn package_resolve(
   package_json_path.push("package.json");
   let mut last_path;
   loop {
+    eprintln!("loop {:?}", package_json_path);
     let p_str = package_json_path.to_str().unwrap();
     let package_str_len = "/package.json".len();
     let p = p_str[0..=p_str.len() - package_str_len].to_string();
@@ -312,11 +318,13 @@ pub(crate) fn package_resolve(
     } else {
       false
     };
+    eprintln!("is dir {} {:?} {:?}", is_dir, p, package_json_path);
     if !is_dir {
-      last_path = package_json_path.clone();
+      last_path = package_json_path.to_path_buf();
 
       if is_scoped {
         // "../../../../node_modules/"
+        package_json_path.pop();
         package_json_path.pop();
         package_json_path.pop();
         package_json_path.pop();
@@ -326,13 +334,17 @@ pub(crate) fn package_resolve(
         package_json_path.pop();
         package_json_path.pop();
         package_json_path.pop();
+        package_json_path.pop();
       };
+      eprintln!("after pops {:?}", package_json_path);
       package_json_path.push("node_modules");
       package_json_path.push(package_name.clone());
-      package_json_path.push("package_json");
+      package_json_path.push("package.json");
+      eprintln!("package json {:?} {:?}", package_json_path, last_path);
       if package_json_path.to_str().unwrap().len()
         == last_path.to_str().unwrap().len()
       {
+        eprintln!("breaking");
         break;
       } else {
         continue;
@@ -340,8 +352,10 @@ pub(crate) fn package_resolve(
     }
 
     // Package match.
+    eprintln!("pre config");
     let package_config =
       get_package_config(&package_json_path, specifier, Some(base))?;
+    eprintln!("post config");
     if package_config.exports.is_some() {
       eprintln!("exports");
       return super::conditional_exports::package_exports_resolve(
