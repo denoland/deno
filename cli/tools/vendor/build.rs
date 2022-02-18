@@ -568,6 +568,57 @@ mod test {
     );
   }
 
+  #[tokio::test]
+  async fn same_origin_absolute_with_redirect() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add(
+            "/mod.ts",
+            r#"import "https://localhost/subdir/sub/mod.ts";"#,
+          )
+          .add(
+            "https://localhost/subdir/sub/mod.ts",
+            "import 'https://localhost/std/hash/mod.ts'",
+          )
+          .add_redirect(
+            "https://localhost/std/hash/mod.ts",
+            "https://localhost/std@0.1.0/hash/mod.ts",
+          )
+          .add(
+            "https://localhost/std@0.1.0/hash/mod.ts",
+            "export class Test {}",
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "https://localhost/std/hash/mod.ts": "./localhost/std@0.1.0/hash/mod.ts"
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        (
+          "/vendor/localhost/std@0.1.0/hash/mod.ts",
+          "export class Test {}"
+        ),
+        (
+          "/vendor/localhost/subdir/sub/mod.ts",
+          "import 'https://localhost/std/hash/mod.ts'"
+        ),
+      ]),
+    );
+  }
+
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {
     items
       .iter()
