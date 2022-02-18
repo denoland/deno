@@ -148,11 +148,12 @@ fn node_resolve(
 
   let conditions = DEFAULT_CONDITIONS;
   let url = module_resolve(specifier, &parent_path, conditions)?;
+  let url_path = url.to_file_path().unwrap();
 
   let resolve_response = if url.as_str().starts_with("http") {
     ResolveResponse::Esm(url)
   } else if url.as_str().ends_with(".js") {
-    let package_config = get_package_scope_config(&url)?;
+    let package_config = get_package_scope_config(&url_path)?;
     if package_config.typ == "module" {
       ResolveResponse::Esm(url)
     } else {
@@ -172,10 +173,6 @@ fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
     .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
-}
-
-fn to_file_path_string(url: &ModuleSpecifier) -> String {
-  to_file_path(url).display().to_string()
 }
 
 fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
@@ -212,9 +209,9 @@ fn module_resolve(
   specifier: &str,
   base: &Path,
   conditions: &[&str],
-) -> Result<PathBuf, AnyError> {
+) -> Result<ModuleSpecifier, AnyError> {
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
-    base.join(specifier)
+    Url::from_file_path(base.join(specifier)).unwrap()
   } else if specifier.starts_with('#') {
     super::conditional_exports::package_imports_resolve(
       specifier, base, conditions,
@@ -228,16 +225,16 @@ fn module_resolve(
 }
 
 fn finalize_resolution(
-  resolved: PathBuf,
+  resolved: ModuleSpecifier,
   base: &Path,
-) -> Result<PathBuf, AnyError> {
+) -> Result<ModuleSpecifier, AnyError> {
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
     return Err(errors::err_invalid_module_specifier(
       resolved.path(),
       "must not include encoded \"/\" or \"\\\\\" characters",
-      Some(to_file_path_string(base)),
+      Some(base.to_string_lossy().to_string()),
     ));
   }
 
@@ -263,12 +260,12 @@ fn finalize_resolution(
   if is_dir {
     return Err(errors::err_unsupported_dir_import(
       resolved.as_str(),
-      base.as_str(),
+      base,
     ));
   } else if !is_file {
     return Err(errors::err_module_not_found(
       resolved.as_str(),
-      base.as_str(),
+      base,
       "module",
     ));
   }
@@ -278,7 +275,7 @@ fn finalize_resolution(
 
 pub(crate) fn package_resolve(
   specifier: &str,
-  base: &ModuleSpecifier,
+  base: &Path,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   let (package_name, package_subpath, is_scoped) =
@@ -287,13 +284,12 @@ pub(crate) fn package_resolve(
   // ResolveSelf
   let package_config = get_package_scope_config(base)?;
   if package_config.exists {
-    let package_json_url =
-      Url::from_file_path(&package_config.pjsonpath).unwrap();
+    let package_json_path = package_config.pjsonpath.clone();
     if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         if !exports.is_null() {
           return super::conditional_exports::package_exports_resolve(
-            package_json_url,
+            &package_json_path,
             package_subpath,
             package_config,
             base,
@@ -304,9 +300,8 @@ pub(crate) fn package_resolve(
     }
   }
 
-  let mut package_json_url =
-    base.join(&format!("./node_modules/{}/package.json", package_name))?;
-  let mut package_json_path = to_file_path(&package_json_url);
+  let mut package_json_path =
+    base.join(&format!("./node_modules/{}/package.json", package_name));
   let mut last_path;
   loop {
     let p_str = package_json_path.to_str().unwrap();
@@ -318,16 +313,15 @@ pub(crate) fn package_resolve(
       false
     };
     if !is_dir {
-      last_path = package_json_path;
+      last_path = package_json_path.clone();
 
       let prefix = if is_scoped {
         "../../../../node_modules/"
       } else {
         "../../../node_modules/"
       };
-      package_json_url = package_json_url
-        .join(&format!("{}{}/package.json", prefix, package_name))?;
-      package_json_path = to_file_path(&package_json_url);
+      package_json_path = package_json_path
+        .join(&format!("{}{}/package.json", prefix, package_name));
       if package_json_path.to_str().unwrap().len()
         == last_path.to_str().unwrap().len()
       {
@@ -339,10 +333,10 @@ pub(crate) fn package_resolve(
 
     // Package match.
     let package_config =
-      get_package_config(package_json_path.clone(), specifier, Some(base))?;
+      get_package_config(&package_json_path, specifier, Some(base))?;
     if package_config.exports.is_some() {
       return super::conditional_exports::package_exports_resolve(
-        package_json_url,
+        &package_json_path,
         package_subpath,
         package_config,
         base,
@@ -350,30 +344,26 @@ pub(crate) fn package_resolve(
       );
     }
     if package_subpath == "." {
-      return legacy_main_resolve(&package_json_url, &package_config, base);
+      let p = legacy_main_resolve(&package_json_path, &package_config, base)?;
+      return Ok(Url::from_file_path(p).unwrap())
     }
 
-    return package_json_url
-      .join(&package_subpath)
-      .map_err(AnyError::from);
+    return Ok(Url::from_file_path(package_json_path.join(&package_subpath)).unwrap());
   }
 
   Err(errors::err_module_not_found(
-    &package_json_url
+    &package_json_path
       .join(".")
-      .unwrap()
-      .to_file_path()
-      .unwrap()
-      .display()
+      .to_string_lossy()
       .to_string(),
-    &to_file_path_string(base),
+    base,
     "package",
   ))
 }
 
 fn parse_package_name(
   specifier: &str,
-  base: &ModuleSpecifier,
+  base: &Path,
 ) -> Result<(String, String, bool), AnyError> {
   let mut separator_index = specifier.find('/');
   let mut valid_package_name = true;
@@ -407,7 +397,7 @@ fn parse_package_name(
     return Err(errors::err_invalid_module_specifier(
       specifier,
       "is not a valid package name",
-      Some(to_file_path_string(base)),
+      Some(base.to_string_lossy().to_string()),
     ));
   }
 
@@ -430,12 +420,14 @@ pub fn check_if_should_use_esm_loader(
   if s.ends_with(".cjs") {
     return Ok(false);
   }
-  let package_config = get_package_scope_config(main_module)?;
+  assert_eq!(main_module.scheme(), "file");
+  let main_module = main_module.to_file_path().unwrap();
+  let package_config = get_package_scope_config(&main_module)?;
   Ok(package_config.typ == "module")
 }
 
-fn file_exists(path_url: &ModuleSpecifier) -> bool {
-  if let Ok(stats) = std::fs::metadata(to_file_path(path_url)) {
+fn file_exists(path_url: &Path) -> bool {
+  if let Ok(stats) = std::fs::metadata(path_url) {
     stats.is_file()
   } else {
     false
@@ -443,14 +435,14 @@ fn file_exists(path_url: &ModuleSpecifier) -> bool {
 }
 
 fn legacy_main_resolve(
-  package_json_url: &ModuleSpecifier,
+  package_json_url: &Path,
   package_config: &PackageConfig,
-  _base: &ModuleSpecifier,
-) -> Result<ModuleSpecifier, AnyError> {
+  _base: &Path,
+) -> Result<PathBuf, AnyError> {
   let mut guess;
 
   if let Some(main) = &package_config.main {
-    guess = package_json_url.join(&format!("./{}", main))?;
+    guess = package_json_url.join(&format!("./{}", main));
     if file_exists(&guess) {
       return Ok(guess);
     }
@@ -464,7 +456,7 @@ fn legacy_main_resolve(
       "/index.json",
       "/index.node",
     ] {
-      guess = package_json_url.join(&format!("./{}{}", main, ext))?;
+      guess = package_json_url.join(&format!("./{}{}", main, ext));
       if file_exists(&guess) {
         found = true;
         break;
@@ -478,7 +470,7 @@ fn legacy_main_resolve(
   }
 
   for p in ["./index.js", "./index.json", "./index.node"] {
-    guess = package_json_url.join(p)?;
+    guess = package_json_url.join(p);
     if file_exists(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
       return Ok(guess);

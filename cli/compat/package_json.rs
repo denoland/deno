@@ -5,8 +5,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
-use deno_core::ModuleSpecifier;
 use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub(crate) struct PackageConfig {
@@ -19,17 +19,10 @@ pub(crate) struct PackageConfig {
   pub typ: String,
 }
 
-// TODO: remove me
-fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
-  url
-    .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
-}
-
 pub(crate) fn get_package_config(
-  path: PathBuf,
+  path: &Path,
   specifier: &str,
-  maybe_base: Option<&ModuleSpecifier>,
+  maybe_base: Option<&Path>,
 ) -> Result<PackageConfig, AnyError> {
   // TODO(bartlomieju):
   // if let Some(existing) = package_json_cache.get(path) {
@@ -41,7 +34,7 @@ pub(crate) fn get_package_config(
   let source = result.unwrap_or_else(|_| "".to_string());
   if source.is_empty() {
     let package_config = PackageConfig {
-      pjsonpath: path,
+      pjsonpath: path.to_path_buf(),
       exists: false,
       main: None,
       name: None,
@@ -56,7 +49,7 @@ pub(crate) fn get_package_config(
 
   let package_json: Value = serde_json::from_str(&source).map_err(|err| {
     let base_msg = maybe_base.map(|base| {
-      format!("\"{}\" from {}", specifier, to_file_path(base).display())
+      format!("\"{}\" from \"{}\"", specifier, base.to_string_lossy())
     });
     errors::err_invalid_package_config(
       &path.display().to_string(),
@@ -103,7 +96,7 @@ pub(crate) fn get_package_config(
   };
 
   let package_config = PackageConfig {
-    pjsonpath: path,
+    pjsonpath: path.to_path_buf(),
     exists: true,
     main,
     name,
@@ -117,20 +110,18 @@ pub(crate) fn get_package_config(
 }
 
 pub(crate) fn get_package_scope_config(
-  resolved: &ModuleSpecifier,
+  resolved: &Path,
 ) -> Result<PackageConfig, AnyError> {
-  let mut package_json_url = resolved.join("./package.json")?;
+  let mut package_json_path = resolved.join("./package.json");
 
   loop {
-    let package_json_path = package_json_url.path();
-
     if package_json_path.ends_with("node_modules/package.json") {
       break;
     }
 
     let package_config = get_package_config(
-      to_file_path(&package_json_url),
-      resolved.as_str(),
+      &package_json_path,
+      &resolved.to_string_lossy().to_string(),
       None,
     )?;
 
@@ -138,20 +129,19 @@ pub(crate) fn get_package_scope_config(
       return Ok(package_config);
     }
 
-    let last_package_json_url = package_json_url.clone();
-    package_json_url = package_json_url.join("../package.json")?;
+    let last_package_json_path = package_json_path.clone();
+    package_json_path = package_json_path.join("../package.json");
 
     // TODO(bartlomieju): I'm not sure this will work properly
     // Terminates at root where ../package.json equals ../../package.json
     // (can't just check "/package.json" for Windows support)
-    if package_json_url.path() == last_package_json_url.path() {
+    if package_json_path == last_package_json_path {
       break;
     }
   }
 
-  let package_json_path = to_file_path(&package_json_url);
   let package_config = PackageConfig {
-    pjsonpath: package_json_path,
+    pjsonpath: package_json_path.to_owned(),
     exists: false,
     main: None,
     name: None,

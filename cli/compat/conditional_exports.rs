@@ -8,37 +8,26 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
 use std::path::PathBuf;
+use std::path::Path;
 
 use super::package_json::PackageConfig;
 
-// TODO: remove me
-fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
-  url
-    .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
-}
-
-// TODO: remove me
-fn to_file_path_string(url: &ModuleSpecifier) -> String {
-  to_file_path(url).display().to_string()
-}
-
 fn throw_import_not_defined(
   specifier: &str,
-  package_json_url: Option<ModuleSpecifier>,
-  base: &ModuleSpecifier,
+  path: Option<PathBuf>,
+  base: &Path,
 ) -> AnyError {
   errors::err_package_import_not_defined(
     specifier,
-    package_json_url.map(|u| to_file_path_string(&u.join(".").unwrap())),
-    &to_file_path_string(base),
+    path.map(|u| u.join(".").to_string_lossy().to_string()),
+    &base.to_string_lossy().to_string(),
   )
 }
 
 fn is_conditional_exports_main_sugar(
   exports: &Value,
-  package_json_url: &ModuleSpecifier,
-  base: &ModuleSpecifier,
+  package_json_path: &Path,
+  base: &Path,
 ) -> Result<bool, AnyError> {
   if exports.is_string() || exports.is_array() {
     return Ok(true);
@@ -58,8 +47,8 @@ fn is_conditional_exports_main_sugar(
       i += 1;
     } else if is_conditional_sugar != cur_is_conditional_sugar {
       return Err(errors::err_invalid_package_config(
-          &to_file_path_string(package_json_url),
-          Some(base.as_str().to_string()),
+          &package_json_path.to_string_lossy().to_string(),
+          Some(base.to_string_lossy().to_string()),
           Some("\"exports\" cannot contains some keys starting with \'.\' and some not.
           The exports object must either be an object of package subpath keys
           or an object of main entry condition name keys only.".to_string())
@@ -72,13 +61,13 @@ fn is_conditional_exports_main_sugar(
 
 fn throw_exports_not_found(
   subpath: String,
-  package_json_url: &ModuleSpecifier,
-  base: &ModuleSpecifier,
+  package_json_path: &Path,
+  base: &Path,
 ) -> AnyError {
   errors::err_package_path_not_exported(
-    to_file_path_string(&package_json_url.join(".").unwrap()),
+    package_json_path.join(".").to_string_lossy().to_string(),
     subpath,
-    Some(to_file_path_string(base)),
+    Some(base.to_string_lossy().to_string()),
   )
 }
 
@@ -126,7 +115,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
 
 pub(crate) fn package_imports_resolve(
   name: &str,
-  base: &ModuleSpecifier,
+  base: &Path,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   if name == "#" || name.starts_with("#/") || name.ends_with('/') {
@@ -134,20 +123,20 @@ pub(crate) fn package_imports_resolve(
     return Err(errors::err_invalid_module_specifier(
       name,
       reason,
-      Some(to_file_path_string(base)),
+      Some(base.to_string_lossy().to_string()),
     ));
   }
 
-  let mut package_json_url = None;
+  let mut package_json_path = None;
 
   let package_config = super::package_json::get_package_scope_config(base)?;
   if package_config.exists {
-    package_json_url =
-      Some(Url::from_file_path(package_config.pjsonpath).unwrap());
+    package_json_path =
+      Some(package_config.pjsonpath.clone());
     if let Some(imports) = &package_config.imports {
       if imports.contains_key(name) && !name.contains('*') {
         let maybe_resolved = resolve_package_target(
-          package_json_url.clone().unwrap(),
+          package_json_path.as_ref().unwrap(),
           imports.get(name).unwrap().to_owned(),
           "".to_string(),
           name.to_string(),
@@ -186,7 +175,7 @@ pub(crate) fn package_imports_resolve(
         if !best_match.is_empty() {
           let target = imports.get(best_match).unwrap().to_owned();
           let maybe_resolved = resolve_package_target(
-            package_json_url.clone().unwrap(),
+            package_json_path.as_ref().unwrap(),
             target,
             best_match_subpath.unwrap(),
             best_match.to_string(),
@@ -203,20 +192,20 @@ pub(crate) fn package_imports_resolve(
     }
   }
 
-  Err(throw_import_not_defined(name, package_json_url, base))
+  Err(throw_import_not_defined(name, package_json_path, base))
 }
 
 pub(crate) fn package_exports_resolve(
-  package_json_url: ModuleSpecifier,
+  package_json_path: &Path,
   package_subpath: String,
   package_config: PackageConfig,
-  base: &ModuleSpecifier,
+  base: &Path,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   let exports = &package_config.exports.unwrap();
 
   let exports_map =
-    if is_conditional_exports_main_sugar(exports, &package_json_url, base)? {
+    if is_conditional_exports_main_sugar(exports, package_json_path, base)? {
       let mut map = Map::new();
       map.insert(".".to_string(), exports.to_owned());
       map
@@ -230,7 +219,7 @@ pub(crate) fn package_exports_resolve(
   {
     let target = exports_map.get(&package_subpath).unwrap().to_owned();
     let resolved = resolve_package_target(
-      package_json_url.clone(),
+      package_json_path,
       target,
       "".to_string(),
       package_subpath.to_string(),
@@ -242,7 +231,7 @@ pub(crate) fn package_exports_resolve(
     if resolved.is_none() {
       return Err(throw_exports_not_found(
         package_subpath,
-        &package_json_url,
+        package_json_path,
         base,
       ));
     }
@@ -286,7 +275,7 @@ pub(crate) fn package_exports_resolve(
   if !best_match.is_empty() {
     let target = exports.get(best_match).unwrap().to_owned();
     let maybe_resolved = resolve_package_target(
-      package_json_url.clone(),
+      package_json_path,
       target,
       best_match_subpath.unwrap(),
       best_match.to_string(),
@@ -300,7 +289,7 @@ pub(crate) fn package_exports_resolve(
     } else {
       return Err(throw_exports_not_found(
         package_subpath,
-        &package_json_url,
+        package_json_path,
         base,
       ));
     }
@@ -308,18 +297,18 @@ pub(crate) fn package_exports_resolve(
 
   Err(throw_exports_not_found(
     package_subpath,
-    &package_json_url,
+    package_json_path,
     base,
   ))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn resolve_package_target(
-  package_json_url: ModuleSpecifier,
+  package_json_path: &Path,
   target: Value,
   subpath: String,
   package_subpath: String,
-  base: &ModuleSpecifier,
+  base: &Path,
   pattern: bool,
   internal: bool,
   conditions: &[&str],
@@ -329,7 +318,7 @@ fn resolve_package_target(
       target.to_string(),
       subpath,
       package_subpath,
-      package_json_url,
+      package_json_path,
       base,
       pattern,
       internal,
@@ -343,7 +332,7 @@ fn resolve_package_target(
     let mut last_error = None;
     for target_item in target_arr {
       let resolved_result = resolve_package_target(
-        package_json_url.clone(),
+        package_json_path,
         target_item.to_owned(),
         subpath.clone(),
         package_subpath.clone(),
@@ -376,7 +365,7 @@ fn resolve_package_target(
     for key in target_obj.keys() {
       // TODO(bartlomieju): verify that keys are not numeric
       // return Err(errors::err_invalid_package_config(
-      //   to_file_path_string(package_json_url),
+      //   to_file_path_string(package_json_path),
       //   Some(base.as_str().to_string()),
       //   Some("\"exports\" cannot contain numeric property keys.".to_string()),
       // ));
@@ -384,7 +373,7 @@ fn resolve_package_target(
       if key == "default" || conditions.contains(&key.as_str()) {
         let condition_target = target_obj.get(key).unwrap().to_owned();
         let resolved = resolve_package_target(
-          package_json_url.clone(),
+          package_json_path,
           condition_target,
           subpath.clone(),
           package_subpath.clone(),
@@ -406,7 +395,7 @@ fn resolve_package_target(
   Err(throw_invalid_package_target(
     package_subpath,
     target.to_string(),
-    &package_json_url,
+    package_json_path,
     internal,
     base,
   ))
@@ -417,8 +406,8 @@ fn resolve_package_target_string(
   target: String,
   subpath: String,
   match_: String,
-  package_json_url: ModuleSpecifier,
-  base: &ModuleSpecifier,
+  package_json_path: &Path,
+  base: &Path,
   pattern: bool,
   internal: bool,
   conditions: &[&str],
@@ -427,7 +416,7 @@ fn resolve_package_target_string(
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
       base,
     ));
@@ -450,7 +439,7 @@ fn resolve_package_target_string(
         };
         return super::esm_resolver::package_resolve(
           &export_target,
-          &package_json_url,
+          package_json_path,
           conditions,
         );
       }
@@ -458,7 +447,7 @@ fn resolve_package_target_string(
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
       base,
     ));
@@ -468,29 +457,27 @@ fn resolve_package_target_string(
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
       base,
     ));
   }
 
-  let resolved = package_json_url.join(&target)?;
-  let resolved_path = resolved.path();
-  let package_url = package_json_url.join(".").unwrap();
-  let package_path = package_url.path();
+  let resolved = package_json_path.join(&target);
+  let package_path = package_json_path.join(".");
 
-  if !resolved_path.starts_with(package_path) {
+  if !resolved.starts_with(&package_path) {
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
       base,
     ));
   }
 
   if subpath.is_empty() {
-    return Ok(resolved);
+    return Ok(Url::from_file_path(resolved).unwrap());
   }
 
   if invalid_segment_re.is_match(&subpath) {
@@ -501,53 +488,54 @@ fn resolve_package_target_string(
     };
     return Err(throw_invalid_subpath(
       request,
-      &package_json_url,
+      package_json_path,
       internal,
       base,
     ));
   }
 
   if pattern {
+    let resolved_str = resolved.to_string_lossy().to_string();
     let replaced = pattern_re
-      .replace(resolved.as_str(), |_caps: &regex::Captures| subpath.clone());
+      .replace(&resolved_str, |_caps: &regex::Captures| subpath.clone());
     let url = Url::parse(&replaced)?;
     return Ok(url);
   }
 
-  Ok(resolved.join(&subpath)?)
+  Ok(Url::from_file_path(resolved.join(&subpath)).unwrap())
 }
 
 fn throw_invalid_package_target(
   subpath: String,
   target: String,
-  package_json_url: &ModuleSpecifier,
+  package_json_path: &Path,
   internal: bool,
-  base: &ModuleSpecifier,
+  base: &Path,
 ) -> AnyError {
   errors::err_invalid_package_target(
-    to_file_path_string(&package_json_url.join(".").unwrap()),
+    package_json_path.join(".").to_string_lossy().to_string(),
     subpath,
     target,
     internal,
-    Some(base.as_str().to_string()),
+    Some(base.to_string_lossy().to_string()),
   )
 }
 
 fn throw_invalid_subpath(
   subpath: String,
-  package_json_url: &ModuleSpecifier,
+  package_json_path: &Path,
   internal: bool,
-  base: &ModuleSpecifier,
+  base: &Path,
 ) -> AnyError {
   let ie = if internal { "imports" } else { "exports" };
   let reason = format!(
     "request is not a valid subpath for the \"{}\" resolution of {}",
     ie,
-    to_file_path_string(package_json_url)
+    package_json_path.to_string_lossy().to_string()
   );
   errors::err_invalid_module_specifier(
     &subpath,
     &reason,
-    Some(to_file_path_string(base)),
+    Some(base.to_string_lossy().to_string()),
   )
 }

@@ -4,6 +4,7 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use std::path::Path;
 
 pub(crate) fn err_invalid_module_specifier(
   request: &str,
@@ -45,17 +46,17 @@ pub(crate) fn err_invalid_package_config(
 
 pub(crate) fn err_module_not_found(
   path: &str,
-  base: &str,
+  base: &Path,
   typ: &str,
 ) -> AnyError {
   generic_error(format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find {} \"{}\" imported from \"{}\"",
-    typ, path, base
+    typ, path, base.to_string_lossy()
   ))
 }
 
-pub(crate) fn err_unsupported_dir_import(path: &str, base: &str) -> AnyError {
-  generic_error(format!("[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules imported from {}", path, base))
+pub(crate) fn err_unsupported_dir_import(path: &str, base: &Path) -> AnyError {
+  generic_error(format!("[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules imported from {}", path, base.to_string_lossy()))
 }
 
 pub(crate) fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
