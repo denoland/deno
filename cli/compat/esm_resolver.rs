@@ -9,6 +9,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
 use regex::Regex;
+use std::path::Path;
 use std::path::PathBuf;
 
 use super::package_json::get_package_config;
@@ -41,6 +42,12 @@ impl Resolver for NodeEsmResolver {
           return response;
         }
       }
+    }
+
+    // TODO(bartlomieju): this is ugly, but allows us to assert that all
+    // referrers are file paths
+    if specifier == super::GLOBAL_URL.as_str() {
+      return ResolveResponse::Esm(super::GLOBAL_URL.clone());
     }
 
     if referrer.scheme().starts_with("http") {
@@ -136,11 +143,11 @@ fn node_resolve(
   } else {
     Url::parse(referrer).expect("referrer was not proper url")
   };
-  eprintln!("specifier {}", specifier);
   assert_eq!(parent_url.scheme(), "file");
+  let parent_path = parent_url.to_file_path().unwrap();
 
   let conditions = DEFAULT_CONDITIONS;
-  let url = module_resolve(specifier, &parent_url, conditions)?;
+  let url = module_resolve(specifier, &parent_path, conditions)?;
 
   let resolve_response = if url.as_str().starts_with("http") {
     ResolveResponse::Esm(url)
@@ -203,11 +210,11 @@ fn is_relative_specifier(specifier: &str) -> bool {
 
 fn module_resolve(
   specifier: &str,
-  base: &ModuleSpecifier,
+  base: &Path,
   conditions: &[&str],
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<PathBuf, AnyError> {
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
-    base.join(specifier)?
+    base.join(specifier)
   } else if specifier.starts_with('#') {
     super::conditional_exports::package_imports_resolve(
       specifier, base, conditions,
@@ -221,9 +228,9 @@ fn module_resolve(
 }
 
 fn finalize_resolution(
-  resolved: ModuleSpecifier,
-  base: &ModuleSpecifier,
-) -> Result<ModuleSpecifier, AnyError> {
+  resolved: PathBuf,
+  base: &Path,
+) -> Result<PathBuf, AnyError> {
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
