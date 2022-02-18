@@ -212,7 +212,10 @@ fn module_resolve(
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
-    Url::from_file_path(base.join(specifier)).unwrap()
+    let mut resolved = base.to_path_buf();
+    resolved.pop();
+    let resolved = resolved.join(specifier).clean();
+    Url::from_file_path(resolved).unwrap()
   } else if specifier.starts_with('#') {
     super::conditional_exports::package_imports_resolve(
       specifier, base, conditions,
