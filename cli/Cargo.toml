@@ -79,6 +79,7 @@ num_cpus = "=1.13.0"
 once_cell = "=1.9.0"
 percent-encoding = "=2.1.0"
 pin-project = "=1.0.8"
+path-clean = "=0.1.0"
 rand = { version = "=0.8.4", features = ["small_rng"] }
 regex = "=1.5.4"
 ring = "=0.16.20"

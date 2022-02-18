@@ -343,6 +343,7 @@ pub(crate) fn package_resolve(
     let package_config =
       get_package_config(&package_json_path, specifier, Some(base))?;
     if package_config.exports.is_some() {
+      eprintln!("exports");
       return super::conditional_exports::package_exports_resolve(
         &package_json_path,
         package_subpath,
@@ -352,10 +353,12 @@ pub(crate) fn package_resolve(
       );
     }
     if package_subpath == "." {
+      eprintln!("legacy main resolve");
       let p = legacy_main_resolve(&package_json_path, &package_config, base)?;
       return Ok(Url::from_file_path(p).unwrap());
     }
 
+    eprintln!("after resolve self1");
     return Ok(
       Url::from_file_path(package_json_path.join(&package_subpath)).unwrap(),
     );
@@ -442,14 +445,15 @@ fn file_exists(path_url: &Path) -> bool {
 }
 
 fn legacy_main_resolve(
-  package_json_url: &Path,
+  package_json_path: &Path,
   package_config: &PackageConfig,
   _base: &Path,
 ) -> Result<PathBuf, AnyError> {
   let mut guess;
 
   if let Some(main) = &package_config.main {
-    guess = package_json_url.join(&format!("./{}", main));
+    guess = package_json_path.to_path_buf();
+    guess.set_file_name(main);
     if file_exists(&guess) {
       return Ok(guess);
     }
@@ -463,7 +467,8 @@ fn legacy_main_resolve(
       "/index.json",
       "/index.node",
     ] {
-      guess = package_json_url.join(&format!("./{}{}", main, ext));
+      guess = package_json_path.to_path_buf();
+      guess.set_file_name(&format!("{}{}", main, ext));
       if file_exists(&guess) {
         found = true;
         break;
@@ -477,7 +482,8 @@ fn legacy_main_resolve(
   }
 
   for p in ["./index.js", "./index.json", "./index.node"] {
-    guess = package_json_url.join(p);
+    guess = package_json_path.to_path_buf();
+    guess.set_file_name(p);
     if file_exists(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
       return Ok(guess);

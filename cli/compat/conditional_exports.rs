@@ -9,6 +9,7 @@ use deno_core::ModuleSpecifier;
 use regex::Regex;
 use std::path::Path;
 use std::path::PathBuf;
+use path_clean::PathClean;
 
 use super::package_json::PackageConfig;
 
@@ -462,8 +463,10 @@ fn resolve_package_target_string(
     ));
   }
 
-  let resolved = package_json_path.join(&target);
-  let package_path = package_json_path.join(".");
+  let mut resolved = package_json_path.to_path_buf();
+  resolved.set_file_name(&target);
+  let resolved = resolved.clean();
+  let package_path = package_json_path.join("..").clean();
 
   if !resolved.starts_with(&package_path) {
     return Err(throw_invalid_package_target(
