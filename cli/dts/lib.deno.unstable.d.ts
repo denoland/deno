@@ -1066,7 +1066,7 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
-  export interface Conn {
+  export interface TcpConn extends Conn {
     /**
      * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
      *
