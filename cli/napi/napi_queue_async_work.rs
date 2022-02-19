@@ -14,7 +14,7 @@ fn napi_queue_async_work(env: napi_env, work: napi_async_work) -> Result {
     (work.execute)(env_ptr, work.data);
 
     // Note: Must be called from the loop thread.
-    // (work.complete)(env_ptr, napi_ok, work.data);
+    (work.complete)(env_ptr, napi_ok, work.data);
   });
   env_ptr.add_async_work(fut);
 

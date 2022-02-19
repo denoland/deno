@@ -297,7 +297,7 @@ impl JsRuntime {
         align,
       )
     };
-    let mut isolate_ptr: *mut *mut v8::OwnedIsolate =
+    let mut isolate_ptr: *mut v8::OwnedIsolate =
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let refs = external_references(isolate_ptr as *mut _);
@@ -310,9 +310,10 @@ impl JsRuntime {
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        unsafe { isolate_ptr.write(&mut isolate) };
+        unsafe { isolate_ptr.write(isolate) };
+        // Get isolate from the pointer.
+        isolate = unsafe { isolate_ptr.read() };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-
         let context =
           bindings::initialize_context(Some(isolate_ptr as *mut _), scope);
         global_context = v8::Global::new(scope, context);
@@ -339,7 +340,9 @@ impl JsRuntime {
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        unsafe { isolate_ptr.write(&mut isolate) };
+        unsafe { isolate_ptr.write(isolate) };
+
+        isolate = unsafe { isolate_ptr.read() };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_loaded {
           v8::Context::new(scope)
@@ -350,6 +353,7 @@ impl JsRuntime {
         };
         global_context = v8::Global::new(scope, context);
       }
+
       (isolate, None)
     };
 
@@ -1563,9 +1567,16 @@ impl JsRuntime {
     // but we don't know that now. We need to make the runtime re-poll to make
     // sure no pending NAPI tasks exist.
     let mut maybe_scheduling = false;
-    while let Some(work) = state_rc.borrow_mut().pending_napi_async_work.pop() {
-      work(scope);
-      maybe_scheduling = true;
+
+    loop {
+      let mut state = state_rc.borrow_mut();
+      if let Some(work) = state.pending_napi_async_work.pop() {
+        drop(state); // Drop borrow, can call back into runtime.
+        work(scope);
+        maybe_scheduling = true;
+      } else {
+        break;
+      }
     }
 
     Ok(maybe_scheduling)
