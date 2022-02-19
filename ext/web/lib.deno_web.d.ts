@@ -846,7 +846,7 @@ declare function structuredClone(
  * ```
  */
 declare class CompressionStream {
-    /**
+  /**
    * Creates a new `CompressionStream` object which compresses a stream of data.
    *
    * Throws a `TypeError` if the format passed to the constructor is not supported.
@@ -871,7 +871,7 @@ declare class CompressionStream {
  * ```
  */
 declare class DecompressionStream {
-    /**
+  /**
    * Creates a new `DecompressionStream` object which decompresses a stream of data.
    *
    * Throws a `TypeError` if the format passed to the constructor is not supported.
