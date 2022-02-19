@@ -13,18 +13,17 @@ fn napi_has_own_property(
 
   let key: v8::Local<v8::Value> = transmute::<napi_value, _>(key);
   if !key.is_name() {
-    return Err(Error::NameExpected);  
+    return Err(Error::NameExpected);
   }
 
   let maybe = object
-    .has_own_property(env.scope, key)
+    .has_own_property(env.scope, v8::Local::<v8::Name>::try_from(key).unwrap())
     .unwrap_or(false);
-  
-  match maybe {
-    Some(res) => {
-      *result = res;
-      Ok(())
-    }
-    None => Err(Error::GenericFailure),
+
+  *result = maybe;
+  if !maybe {
+    return Err(Error::GenericFailure);
   }
+
+  Ok(())
 }
