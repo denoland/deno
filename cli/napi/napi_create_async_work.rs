@@ -20,14 +20,6 @@ fn napi_create_async_work(
   data: *mut c_void,
   result: *mut napi_async_work,
 ) -> Result {
-  // let env = &mut *(env as *mut Env);
-  // let resource = if async_resource.is_null() {
-  //   v8::Object::new(env.scope)
-  // } else {
-  //   transmute(async_resource)
-  // };
-
-  // let resource_name: v8::Local<v8::String> = transmute(async_resource_name);
   let mut work = AsyncWork {
     data,
     execute,
