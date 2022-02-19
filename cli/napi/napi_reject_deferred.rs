@@ -1,4 +1,5 @@
 use deno_core::napi::*;
+use std::ptr::NonNull;
 
 #[napi_sym::napi_sym]
 fn napi_reject_deferred(
@@ -8,9 +9,14 @@ fn napi_reject_deferred(
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
 
-  let resolver = &*(deferred as *const v8::Global<v8::Value>);
-  let resolver = v8::Local::new(env.scope, resolver);
-  let resolver: v8::Local<v8::PromiseResolver> = v8::Local::cast(resolver);
+  let deferred_ptr =
+    NonNull::new_unchecked(deferred as *mut v8::PromiseResolver);
+  let resolver_global = v8::Global::<v8::PromiseResolver>::from_raw(
+    &mut *env.isolate_ptr,
+    deferred_ptr,
+  );
+  let resolver =
+    v8::Local::<v8::PromiseResolver>::new(env.scope, resolver_global);
   resolver
     .reject(env.scope, std::mem::transmute(error))
     .unwrap();

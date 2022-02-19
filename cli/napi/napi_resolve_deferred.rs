@@ -1,4 +1,5 @@
 use deno_core::napi::*;
+use std::ptr::NonNull;
 
 #[napi_sym::napi_sym]
 fn napi_resolve_deferred(
@@ -7,7 +8,14 @@ fn napi_resolve_deferred(
   result: napi_value,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
-  let resolver: v8::Local<v8::PromiseResolver> = std::mem::transmute(deferred);
+  let deferred_ptr =
+    NonNull::new_unchecked(deferred as *mut v8::PromiseResolver);
+  let resolver_global = v8::Global::<v8::PromiseResolver>::from_raw(
+    &mut *env.isolate_ptr,
+    deferred_ptr,
+  );
+  let resolver =
+    v8::Local::<v8::PromiseResolver>::new(env.scope, resolver_global);
   resolver
     .resolve(env.scope, std::mem::transmute(result))
     .unwrap();
