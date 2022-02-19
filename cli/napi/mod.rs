@@ -107,6 +107,7 @@ pub mod napi_is_typedarray;
 pub mod napi_module_register;
 pub mod napi_new_instance;
 pub mod napi_object_freeze;
+pub mod napi_object_seal;
 pub mod napi_open_escapable_handle_scope;
 pub mod napi_open_handle_scope;
 pub mod napi_queue_async_work;
