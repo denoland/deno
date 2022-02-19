@@ -577,7 +577,7 @@ If the flag is set, restrict these messages to errors.",
 }
 
 fn bench_subcommand<'a>() -> App<'a> {
-  compile_args(App::new("bench"))
+  runtime_args(App::new("bench"), true, false)
     .setting(AppSettings::TrailingVarArg)
     .arg(
       Arg::new("ignore")
@@ -1892,7 +1892,7 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
 }
 
 fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, false);
 
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),

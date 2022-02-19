@@ -453,6 +453,16 @@ declare namespace Deno {
     options: Omit<TestDefinition, "fn" | "name">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
+
+  /** Register a function which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   */
+  export function bench(
+    name: string,
+    fn: () => void | Promise<void>,
+  ): void;
+
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *

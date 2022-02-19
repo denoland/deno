@@ -3,7 +3,9 @@
 use crate::cache;
 use crate::cache::CacherLoader;
 use crate::colors;
+use crate::compat;
 use crate::create_main_worker;
+use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -21,6 +23,13 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
+// TODO(bartlomieju): remove me
+use crate::tools::test::create_reporter;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestReporter;
+use crate::tools::test::TestResult;
+use crate::tools::test::TestStepResult;
+use crate::tools::test::TestSummary;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -72,8 +81,12 @@ async fn check_specifiers(
   specifiers: Vec<ModuleSpecifier>,
   lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
+  let module_specifiers = specifiers
+    .into_iter()
+    .map(|s| (s, ModuleKind::Esm))
+    .collect();
   ps.prepare_module_load(
-    specifiers,
+    module_specifiers,
     false,
     lib,
     Permissions::allow_all(),
@@ -168,7 +181,7 @@ async fn bench_specifiers(
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
         let future =
-          bench_specifier(ps, permissions, specifier, mode, sender, options);
+          bench_specifier(ps, permissions, specifier, sender, options);
 
         run_basic(future)
       });
@@ -178,10 +191,10 @@ async fn bench_specifiers(
   });
 
   let join_stream = stream::iter(join_handles)
+    .buffer_unordered(1)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter =
-    create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
+  let mut reporter = create_reporter(false, log_level != Some(Level::Error));
 
   let handler = {
     tokio::task::spawn_blocking(move || {
@@ -288,11 +301,9 @@ pub async fn run_benchmarks(
   let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let specifiers = fetch_specifiers(
-    &ps,
     bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
     bench_flags.ignore.clone(),
-  )
-  .await?;
+  )?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));

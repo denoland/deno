@@ -521,6 +521,7 @@
   }
 
   const tests = [];
+  const benches = [];
 
   // Main test function provided by Deno.
   function test(
@@ -620,6 +621,104 @@
     ArrayPrototypePush(tests, testDef);
   }
 
+  // Main test function provided by Deno.
+  function bench(
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
+  ) {
+    let testDef;
+    const defaults = {
+      ignore: false,
+      only: false,
+      sanitizeOps: true,
+      sanitizeResources: true,
+      sanitizeExit: true,
+      permissions: null,
+    };
+
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
+        throw new TypeError("The test name can't be empty");
+      }
+      if (typeof optionsOrFn === "function") {
+        testDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing test function");
+        }
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+          );
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError(
+            "Unexpected 'name' field in options, test name is already provided as the first argument.",
+          );
+        }
+        testDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The test function must have a name");
+      }
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Unexpected second argument to Deno.test()");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Unexpected third argument to Deno.test()");
+      }
+      testDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
+    } else {
+      let fn;
+      let name;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+          );
+        }
+        name = nameOrFnOrOptions.name ?? fn.name;
+      } else {
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a test function.",
+          );
+        }
+        fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
+      }
+      if (!name) {
+        throw new TypeError("The test name can't be empty");
+      }
+      testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
+    }
+
+    testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
+
+    if (testDef.permissions) {
+      testDef.fn = withPermissions(
+        testDef.fn,
+        testDef.permissions,
+      );
+    }
+
+    ArrayPrototypePush(benches, testDef);
+  }
+
   function formatError(error) {
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
       const message = error
@@ -671,6 +770,43 @@
 
     try {
       await test.fn(step);
+      const failCount = step.failedChildStepsCount();
+      return failCount === 0 ? "ok" : {
+        "failed": formatError(
+          new Error(
+            `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
+          ),
+        ),
+      };
+    } catch (error) {
+      return {
+        "failed": formatError(error),
+      };
+    } finally {
+      step.finalized = true;
+      // ensure the children report their result
+      for (const child of step.children) {
+        child.reportResult();
+      }
+    }
+  }
+
+  async function runBench(bench, description) {
+    if (bench.ignore) {
+      return "ignored";
+    }
+
+    const step = new TestStep({
+      name: bench.name,
+      parent: undefined,
+      rootTestDescription: description,
+      sanitizeOps: bench.sanitizeOps,
+      sanitizeResources: bench.sanitizeResources,
+      sanitizeExit: bench.sanitizeExit,
+    });
+
+    try {
+      await bench.fn(step);
       const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
         "failed": formatError(
@@ -784,6 +920,47 @@
       reportTestWait(description);
 
       const result = await runTest(test, description);
+      const elapsed = DateNow() - earlier;
+
+      reportTestResult(description, result, elapsed);
+    }
+
+    globalThis.console = originalConsole;
+  }
+
+  async function runBenchmarks({
+    filter = null,
+  } = {}) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+
+    const origin = getTestOrigin();
+    const originalConsole = globalThis.console;
+
+    globalThis.console = new Console(reportTestConsoleOutput);
+
+    const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
+    const filtered = ArrayPrototypeFilter(
+      only.length > 0 ? only : benches,
+      createTestFilter(filter),
+    );
+
+    reportTestPlan({
+      origin,
+      total: filtered.length,
+      filteredOut: benches.length - filtered.length,
+      usedOnly: only.length > 0,
+    });
+
+    for (const bench of filtered) {
+      const description = {
+        origin,
+        name: bench.name,
+      };
+      const earlier = DateNow();
+
+      reportTestWait(description);
+
+      const result = await runBench(bench, description);
       const elapsed = DateNow() - earlier;
 
       reportTestResult(description, result, elapsed);
@@ -1132,9 +1309,11 @@
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    runBenchmarks,
   };
 
   window.__bootstrap.testing = {
     test,
+    bench,
   };
 })(this);
