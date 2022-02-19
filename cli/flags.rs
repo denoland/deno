@@ -5130,7 +5130,6 @@ mod tests {
       "--location",
       "https:foo",
       "--allow-net",
-      "--allow-none",
       "dir1/",
       "dir2/",
       "--",
