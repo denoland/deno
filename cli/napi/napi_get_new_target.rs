@@ -3,16 +3,11 @@ use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
 fn napi_get_new_target(
-  env: napi_env,
-  cbinfo: napi_callback_info,
-  _result: *mut napi_value,
+  env: &mut Env,
+  cbinfo: &CallbackInfo,
+  result: &mut v8::Local<v8::Value>,
 ) -> Result {
-  let mut _env = &mut *(env as *mut Env);
-
-  let cbinfo: &CallbackInfo = &*(cbinfo as *const CallbackInfo);
-  let _args = &*(cbinfo.args as *const v8::FunctionCallbackArguments);
-
-  // TODO: need v8 binding
-
+  let info = &*(cbinfo.args as *const v8::FunctionCallbackArguments);
+  *result = info.new_target();
   Ok(())
 }
