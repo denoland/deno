@@ -207,6 +207,9 @@
 
     async accept() {
       const res = await opAccept(this.rid, this.addr.transport);
+      if (this.addr.transport == "tcp") {
+        return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
+      }
       return new Conn(res.rid, res.remoteAddr, res.localAddr);
     }
 
@@ -320,12 +323,13 @@
       });
     }
 
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.net = {
     connect,
     Conn,
+    TcpConn,
     opConnect,
     listen,
     opListen,
