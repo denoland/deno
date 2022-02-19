@@ -1,43 +1,30 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache;
-use crate::cache::CacherLoader;
-use crate::colors;
+// use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
 use crate::emit;
-use crate::file_fetcher::File;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
+// use crate::file_fetcher::File;
+// use crate::file_watcher;
+// use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
-use crate::fs_util::is_supported_test_ext;
-use crate::graph_util::contains_specifier;
-use crate::graph_util::graph_valid;
 use crate::located_script_name;
-use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
-use crate::tools::coverage::CoverageCollector;
 // TODO(bartlomieju): remove me
 use crate::tools::test::create_reporter;
 use crate::tools::test::TestEvent;
-use crate::tools::test::TestReporter;
 use crate::tools::test::TestResult;
 use crate::tools::test::TestStepResult;
 use crate::tools::test::TestSummary;
 
-use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
@@ -45,20 +32,11 @@ use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
-use rand::rngs::SmallRng;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::io::Write;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::time::Duration;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,7 +49,7 @@ fn fetch_specifiers(
   include: Vec<String>,
   ignore: Vec<PathBuf>,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  collect_specifiers(include.clone(), &ignore, is_supported_bench_path)
+  collect_specifiers(include, &ignore, is_supported_bench_path)
 }
 
 /// Type check a collection of module and document specifiers.
@@ -333,8 +311,8 @@ pub async fn run_benchmarks(
 }
 
 pub async fn run_benchmarks_with_watch(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  _flags: Flags,
+  _bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   todo!()
 }
