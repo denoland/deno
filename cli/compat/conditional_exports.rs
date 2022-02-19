@@ -66,7 +66,11 @@ fn throw_exports_not_found(
   base: &Path,
 ) -> AnyError {
   errors::err_package_path_not_exported(
-    package_json_path.join(".").to_string_lossy().to_string(),
+    package_json_path
+      .parent()
+      .unwrap()
+      .to_string_lossy()
+      .to_string(),
     subpath,
     Some(base.to_string_lossy().to_string()),
   )
@@ -513,7 +517,11 @@ fn throw_invalid_package_target(
   base: &Path,
 ) -> AnyError {
   errors::err_invalid_package_target(
-    package_json_path.join(".").to_string_lossy().to_string(),
+    package_json_path
+      .parent()
+      .unwrap()
+      .to_string_lossy()
+      .to_string(),
     subpath,
     target,
     internal,
