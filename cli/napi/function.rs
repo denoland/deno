@@ -26,12 +26,9 @@ pub fn create_function<'a>(
   );
 
   let function = v8::Function::builder(
-    |handle_scope: &mut v8::HandleScope,
+    |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
-      let context = v8::Context::new(handle_scope);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
       let data = args.data().unwrap();
       let data_array = v8::Local::<v8::Array>::try_from(data).unwrap();
 
@@ -102,12 +99,9 @@ pub fn create_function_template<'a>(
   );
 
   let function = v8::FunctionTemplate::builder(
-    |handle_scope: &mut v8::HandleScope,
+    |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
-      let context = v8::Context::new(handle_scope);
-      let scope = &mut v8::ContextScope::new(handle_scope, context);
-
       let data = args.data().unwrap();
       let data_array = v8::Local::<v8::Array>::try_from(data).unwrap();
 

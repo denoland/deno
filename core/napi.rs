@@ -290,21 +290,21 @@ impl EnvShared {
 
 #[repr(C)]
 // #[derive(Debug)]
-pub struct Env<'a, 'b, 'c> {
-  pub scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
+pub struct Env<'a, 'b> {
+  pub scope: &'a mut v8::HandleScope<'b>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
 }
 
-unsafe impl Send for Env<'_, '_, '_> {}
-unsafe impl Sync for Env<'_, '_, '_> {}
+unsafe impl Send for Env<'_, '_> {}
+unsafe impl Sync for Env<'_, '_> {}
 
-impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
+impl<'a, 'b> Env<'a, 'b> {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
-    scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
+    scope: &'a mut v8::HandleScope<'b>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
     let sc = sender.clone();
@@ -322,7 +322,7 @@ impl<'a, 'b, 'c> Env<'a, 'b, 'c> {
 
   pub fn with_new_scope(
     &self,
-    scope: &'a mut v8::ContextScope<'b, v8::HandleScope<'c>>,
+    scope: &'a mut v8::HandleScope<'b>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
     let sc = sender.clone();
@@ -356,10 +356,9 @@ pub fn dlopen_func<'s>(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let external = v8::Local::<v8::External>::try_from(args.data().unwrap()).unwrap();
+  let external =
+    v8::Local::<v8::External>::try_from(args.data().unwrap()).unwrap();
   let value = external.value() as *mut v8::OwnedIsolate;
-  let context = v8::Context::new(scope);
-  let scope = &mut v8::ContextScope::new(scope, context);
 
   let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
   let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));

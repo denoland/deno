@@ -176,7 +176,7 @@ pub extern "C" fn uv_async_init(
 #[no_mangle]
 pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
   let sender = unsafe { (*async_).sender.as_ref().unwrap() };
-  let fut = Box::new(move |scope: &mut v8::ContextScope<v8::HandleScope>| {
+  let fut = Box::new(move |scope: &mut v8::HandleScope| {
     drop(scope);
     unsafe { ((*async_).callback)(async_) };
   });

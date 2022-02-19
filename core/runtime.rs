@@ -7,6 +7,7 @@ use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::futures::channel::mpsc;
 
+use crate::bindings::external_references;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -14,7 +15,6 @@ use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
-use crate::bindings::external_references;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -46,8 +46,7 @@ use std::task::Context;
 use std::task::Poll;
 
 type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
-pub type PendingNapiAsyncWork =
-  Box<dyn FnOnce(&mut v8::ContextScope<v8::HandleScope>)>;
+pub type PendingNapiAsyncWork = Box<dyn FnOnce(&mut v8::HandleScope)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -292,30 +291,35 @@ impl JsRuntime {
     let global_context;
 
     let align = std::mem::align_of::<usize>();
-    let layout = unsafe { std::alloc::Layout::from_size_align_unchecked(std::mem::size_of::<*mut v8::OwnedIsolate>(), align) };
-    let mut isolate_ptr: *mut *mut v8::OwnedIsolate = unsafe { std::alloc::alloc(layout) as *mut _ };
+    let layout = unsafe {
+      std::alloc::Layout::from_size_align_unchecked(
+        std::mem::size_of::<*mut v8::OwnedIsolate>(),
+        align,
+      )
+    };
+    let mut isolate_ptr: *mut *mut v8::OwnedIsolate =
+      unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let refs = external_references(isolate_ptr as *mut _);
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      
-      let mut creator =
-        v8::SnapshotCreator::new(Some(&refs));
+
+      let mut creator = v8::SnapshotCreator::new(Some(&refs));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         unsafe { isolate_ptr.write(&mut isolate) };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        
-        let context = bindings::initialize_context(Some(isolate_ptr as *mut _), scope);
+
+        let context =
+          bindings::initialize_context(Some(isolate_ptr as *mut _), scope);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
       (isolate, Some(creator))
     } else {
-      
       let mut params = options
         .create_params
         .take()
@@ -1545,11 +1549,8 @@ impl JsRuntime {
 
   fn poll_napi(&mut self, cx: &mut Context) -> Result<bool, Error> {
     let state_rc = Self::state(self.v8_isolate());
+    let scope = &mut self.handle_scope();
     let mut state = state_rc.borrow_mut();
-    let scope = &mut v8::HandleScope::with_context(
-      self.v8_isolate(),
-      state.global_context.clone().unwrap(),
-    );
 
     while let Poll::Ready(Some(async_work_fut)) =
       state.napi_async_work_receiver.poll_next_unpin(cx)
@@ -1558,15 +1559,12 @@ impl JsRuntime {
     }
     drop(state); // Drop borrow, `work` can call back into the runtime.
 
-    let context = v8::Context::new(scope);
-    let context_scope = &mut v8::ContextScope::new(scope, context);
-
     // `work` can call back into the runtime. It can also schedule an async task
     // but we don't know that now. We need to make the runtime re-poll to make
     // sure no pending NAPI tasks exist.
     let mut maybe_scheduling = false;
     while let Some(work) = state_rc.borrow_mut().pending_napi_async_work.pop() {
-      work(context_scope);
+      work(scope);
       maybe_scheduling = true;
     }
 

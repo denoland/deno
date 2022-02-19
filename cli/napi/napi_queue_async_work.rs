@@ -8,7 +8,7 @@ fn napi_queue_async_work(env: napi_env, work: napi_async_work) -> Result {
   let env_ptr = &mut *(env as *mut Env);
   let sender = env_ptr.async_work_sender.clone();
   let isolate_ptr = env_ptr.isolate_ptr;
-  let fut = Box::new(move |scope: &mut v8::ContextScope<v8::HandleScope>| {
+  let fut = Box::new(move |scope: &mut v8::HandleScope| {
     let mut env = Env::new(isolate_ptr, scope, sender);
     let env_ptr = &mut env as *mut _ as napi_env;
     (work.execute)(env_ptr, work.data);

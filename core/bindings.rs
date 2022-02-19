@@ -24,6 +24,7 @@ use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
 use std::option::Option;
+use std::os::raw::c_void;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -31,7 +32,6 @@ use v8::MapFnTo;
 use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
-use std::os::raw::c_void;
 
 const UNDEFINED_OP_ID_MSG: &str =
   "invalid op id: received `undefined` instead of an integer.
@@ -117,7 +117,7 @@ pub fn external_references(isolate_ptr: *mut c_void) -> v8::ExternalReferences {
     },
     v8::ExternalReference {
       pointer: isolate_ptr,
-    }
+    },
   ])
 }
 pub fn script_origin<'a>(
@@ -248,11 +248,13 @@ pub fn set_func_with_external<T>(
   obj: v8::Local<v8::Object>,
   name: &'static str,
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
-  data: *mut T
+  data: *mut T,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, data as *mut _);
-  let tmpl = v8::FunctionTemplate::builder(callback).data(external.into()).build(scope);
+  let tmpl = v8::FunctionTemplate::builder(callback)
+    .data(external.into())
+    .build(scope);
   let val = tmpl.get_function(scope).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
