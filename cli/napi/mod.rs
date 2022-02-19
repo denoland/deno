@@ -76,6 +76,7 @@ pub mod napi_get_prototype;
 pub mod napi_get_reference_value;
 pub mod napi_get_typedarray_info;
 pub mod napi_get_undefined;
+pub mod napi_get_uv_event_loop;
 pub mod napi_get_value_bigint_int64;
 pub mod napi_get_value_bigint_uint64;
 pub mod napi_get_value_bigint_words;
