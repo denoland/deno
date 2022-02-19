@@ -16,6 +16,8 @@ use std::path::PathBuf;
 use super::package_json::get_package_config;
 use super::package_json::get_package_scope_config;
 use super::package_json::PackageConfig;
+use super::package_json::PackageType;
+
 #[derive(Debug, Default)]
 pub(crate) struct NodeEsmResolver {
   maybe_import_map_resolver: Option<ImportMapResolver>,
@@ -155,7 +157,7 @@ fn node_resolve(
     ResolveResponse::Esm(url)
   } else if url.as_str().ends_with(".js") {
     let package_config = get_package_scope_config(&url_path)?;
-    if package_config.typ == "module" {
+    if package_config.type_ == PackageType::Module {
       ResolveResponse::Esm(url)
     } else {
       ResolveResponse::CommonJs(url)
@@ -438,7 +440,7 @@ pub fn check_if_should_use_esm_loader(
   assert_eq!(main_module.scheme(), "file");
   let main_module = main_module.to_file_path().unwrap();
   let package_config = get_package_scope_config(&main_module)?;
-  Ok(package_config.typ == "module")
+  Ok(package_config.type_ == PackageType::Module)
 }
 
 fn file_exists(path_url: &Path) -> bool {

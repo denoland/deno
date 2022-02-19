@@ -8,6 +8,23 @@ use deno_core::serde_json::Value;
 use std::path::Path;
 use std::path::PathBuf;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PackageType {
+  Module,
+  CommonJs,
+  None,
+}
+
+impl From<&str> for PackageType {
+  fn from(s: &str) -> Self {
+    match s {
+      "module" => Self::Module,
+      "commonjs" => Self::CommonJs,
+      _ => Self::None,
+    }
+  }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct PackageConfig {
   pub exists: bool,
@@ -16,7 +33,7 @@ pub(crate) struct PackageConfig {
   pub main: Option<String>,
   pub name: Option<String>,
   pub pjsonpath: PathBuf,
-  pub typ: String,
+  pub type_: PackageType,
 }
 
 pub(crate) fn get_package_config(
@@ -38,7 +55,7 @@ pub(crate) fn get_package_config(
       exists: false,
       main: None,
       name: None,
-      typ: "none".to_string(),
+      type_: PackageType::None,
       exports: None,
       imports: None,
     };
@@ -81,18 +98,14 @@ pub(crate) fn get_package_config(
   };
 
   // Ignore unknown types for forwards compatibility
-  let typ = if let Some(t) = typ_val {
+  let type_ = if let Some(t) = typ_val {
     if let Some(t) = t.as_str() {
-      if t != "module" && t != "commonjs" {
-        "none".to_string()
-      } else {
-        t.to_string()
-      }
+      PackageType::from(t)
     } else {
-      "none".to_string()
+      PackageType::None
     }
   } else {
-    "none".to_string()
+    PackageType::None
   };
 
   let package_config = PackageConfig {
@@ -100,7 +113,7 @@ pub(crate) fn get_package_config(
     exists: true,
     main,
     name,
-    typ,
+    type_,
     exports,
     imports,
   };
@@ -146,7 +159,7 @@ pub(crate) fn get_package_scope_config(
     exists: false,
     main: None,
     name: None,
-    typ: "none".to_string(),
+    type_: PackageType::None,
     exports: None,
     imports: None,
   };

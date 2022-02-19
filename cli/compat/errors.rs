@@ -47,11 +47,11 @@ pub(crate) fn err_invalid_package_config(
 pub(crate) fn err_module_not_found(
   path: &str,
   base: &Path,
-  typ: &str,
+  type_: &str,
 ) -> AnyError {
   generic_error(format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find {} \"{}\" imported from \"{}\"",
-    typ,
+    type_,
     path,
     base.to_string_lossy()
   ))
