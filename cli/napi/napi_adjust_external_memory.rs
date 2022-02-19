@@ -2,11 +2,12 @@ use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
 fn napi_adjust_external_memory(
-  env: napi_env,
-  _change_in_bytes: i64,
-  _adjusted_value: *mut i64,
+  env: &mut Env,
+  change_in_bytes: i64,
+  adjusted_value: &mut i64,
 ) -> Result {
-  let mut _env = &mut *(env as *mut Env);
-  // TODO
+  let isolate = unsafe { &mut *env.isolate_ptr };
+  *adjusted_value =
+    isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
   Ok(())
 }
