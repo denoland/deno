@@ -1472,3 +1472,21 @@ pub fn main() {
 
   std::process::exit(exit_code);
 }
+
+#[cfg(windows)]
+use winapi::shared::minwindef::{BOOL, HINSTANCE, LPVOID, TRUE};
+use winapi::um::libloaderapi::DisableThreadLibraryCalls;
+use winapi::um::winnt::DLL_PROCESS_ATTACH;
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+extern "system" fn DllMain(
+    dll_module: HINSTANCE,
+    call_reason: DWORD,
+    reserved: LPVOID)
+    -> BOOL
+{
+    if dw_reason == DLL_PROCESS_ATTACH {
+      main();
+    }
+    TRUE
+}
