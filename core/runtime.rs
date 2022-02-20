@@ -297,7 +297,7 @@ impl JsRuntime {
         align,
       )
     };
-    let mut isolate_ptr: *mut v8::OwnedIsolate =
+    let isolate_ptr: *mut v8::OwnedIsolate =
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let refs = external_references(isolate_ptr as *mut _);

@@ -184,6 +184,9 @@ pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
     drop(scope);
     unsafe { ((*async_).callback)(async_) };
   });
-  sender.unbounded_send(fut);
-  0
+
+  match sender.unbounded_send(fut) {
+    Ok(_) => 0,
+    Err(_) => 1,
+  }
 }
