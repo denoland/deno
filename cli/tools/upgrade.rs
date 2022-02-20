@@ -23,7 +23,6 @@ static ARCHIVE_NAME: Lazy<String> =
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
-
   let old_exe_path = std::env::current_exe()?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
 
