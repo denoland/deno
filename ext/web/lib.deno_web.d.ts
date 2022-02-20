@@ -841,8 +841,8 @@ declare function structuredClone(
  * @example
  * ```ts
  * await Deno.stdin.readable
- * .pipeThrough(new CompressionStream("gzip"))
- * .pipeTo(Deno.stdout.writable);
+ *   .pipeThrough(new CompressionStream("gzip"))
+ *   .pipeTo(Deno.stdout.writable);
  * ```
  */
 declare class CompressionStream {
@@ -866,8 +866,8 @@ declare class CompressionStream {
  * const output = await Deno.create("./file.txt");
  *
  * await input.readable
- * .pipeThrough(new DecompressionStream("gzip"))
- * .pipeTo(output.writable);
+ *   .pipeThrough(new DecompressionStream("gzip"))
+ *   .pipeTo(output.writable);
  * ```
  */
 declare class DecompressionStream {
