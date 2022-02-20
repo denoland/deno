@@ -2135,22 +2135,24 @@ declare namespace Deno {
    * in the development of Deno. 'Ops', also called 'bindings', are the go-between
    * between Deno JavaScript and Deno Rust.
    *
-   *      > console.table(Deno.metrics())
-   *      ┌─────────────────────────┬────────┐
-   *      │         (index)         │ Values │
-   *      ├─────────────────────────┼────────┤
-   *      │      opsDispatched      │   3    │
-   *      │    opsDispatchedSync    │   2    │
-   *      │   opsDispatchedAsync    │   1    │
-   *      │ opsDispatchedAsyncUnref │   0    │
-   *      │      opsCompleted       │   3    │
-   *      │    opsCompletedSync     │   2    │
-   *      │    opsCompletedAsync    │   1    │
-   *      │ opsCompletedAsyncUnref  │   0    │
-   *      │    bytesSentControl     │   73   │
-   *      │      bytesSentData      │   0    │
-   *      │      bytesReceived      │  375   │
-   *      └─────────────────────────┴────────┘
+   * ```
+   * > console.table(Deno.metrics())
+   * ┌─────────────────────────┬────────┐
+   * │         (index)         │ Values │
+   * ├─────────────────────────┼────────┤
+   * │      opsDispatched      │   3    │
+   * │    opsDispatchedSync    │   2    │
+   * │   opsDispatchedAsync    │   1    │
+   * │ opsDispatchedAsyncUnref │   0    │
+   * │      opsCompleted       │   3    │
+   * │    opsCompletedSync     │   2    │
+   * │    opsCompletedAsync    │   1    │
+   * │ opsCompletedAsyncUnref  │   0    │
+   * │    bytesSentControl     │   73   │
+   * │      bytesSentData      │   0    │
+   * │      bytesReceived      │  375   │
+   * └─────────────────────────┴────────┘
+   * ```
    */
   export function metrics(): Metrics;
 
@@ -2910,13 +2912,16 @@ declare namespace Deno {
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
    *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
+   * ```ts
+   * const p = Deno.run({
+   *    cmd: ["sleep", "10000"]
+   * });
    *
-   *      Deno.kill(p.pid, "SIGINT");
+   * Deno.kill(p.pid, "SIGINT");
+   * ```
    *
-   * Requires `allow-run` permission. */
+   * Requires `allow-run` permission.
+   */
   export function kill(pid: number, signo: Signal): void;
 
   /** The type of the resource record.
