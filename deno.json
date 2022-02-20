@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "build": "deno run --allow-read --allow-write build.ts",
+    "server": "deno run --allow-net --allow-read server.ts"
+  }
+}

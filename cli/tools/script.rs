@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
 use crate::proc_state::ProcState;
@@ -27,15 +28,14 @@ fn get_scripts_config(
 
 // TODO: make it return error instead
 fn print_available_scripts(scripts_config: HashMap<String, String>) {
-  eprintln!("Available scripts:");
+  eprintln!("{}", colors::green("Available scripts:"));
 
   let mut script_names: Vec<String> =
     scripts_config.clone().into_keys().collect();
   script_names.sort();
 
-  // TODO: eye candy
   for name in script_names {
-    eprintln!("- {}", name);
+    eprintln!("- {}", colors::cyan(&name));
     eprintln!("    {}", scripts_config[&name])
   }
 }
