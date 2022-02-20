@@ -3,7 +3,7 @@ use deno_core::napi::*;
 
 #[napi_sym::napi_sym]
 fn napi_queue_async_work(env: napi_env, work: napi_async_work) -> Result {
-  let work = transmute::<napi_async_work, Box<AsyncWork>>(work);
+  let work: &AsyncWork = unsafe { &*(work as *const AsyncWork) };
 
   let env_ptr = &mut *(env as *mut Env);
   let sender = env_ptr.async_work_sender.clone();

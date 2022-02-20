@@ -1,5 +1,4 @@
 const usb = Deno.core.dlopen(
-  "./node_modules/usb/prebuilds/linux-x64/node.napi.glibc.node",
+  "./node_modules/usb/build/Release/usb_bindings.node",
 );
-
-console.log(usb.getDeviceList());
+await usb.getDeviceList();

@@ -8,7 +8,7 @@ pub struct TsFn {
   pub context: *mut c_void,
   pub thread_counter: usize,
   sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
-  // Must not be used this from outside the js thread!
+  // Must not be used from outside the js thread!
   isolate_ptr: *mut v8::OwnedIsolate,
 }
 
@@ -82,7 +82,6 @@ fn napi_create_threadsafe_function(
   if initial_thread_count <= 0 {
     return Err(Error::InvalidArg);
   }
-
   let value = unsafe { transmute::<napi_value, v8::Local<v8::Value>>(func) };
   let func = v8::Local::<v8::Function>::try_from(value)
     .map_err(|_| Error::FunctionExpected)?;
