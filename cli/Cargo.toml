@@ -14,6 +14,11 @@ description = "Provides the deno executable"
 name = "deno"
 path = "main.rs"
 
+[lib]
+name = "denolib"
+path = "main.rs"
+crate-type = ["cdylib"]
+
 [[bench]]
 name = "deno_bench"
 harness = false
