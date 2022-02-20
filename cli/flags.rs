@@ -140,6 +140,11 @@ pub struct RunFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct ScriptFlags {
+  pub script: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
   pub doc: bool,
@@ -186,6 +191,7 @@ pub enum DenoSubcommand {
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
+  Script(ScriptFlags),
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
@@ -490,6 +496,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     Some(("vendor", m)) => vendor_parse(&mut flags, m),
+    Some(("script", m)) => script_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
@@ -558,6 +565,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
+    .subcommand(script_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
@@ -1243,6 +1251,18 @@ Grant permission to read allow-listed files from disk:
 Deno allows specifying the filename '-' to read the file from stdin.
 
   curl https://deno.land/std/examples/welcome.ts | deno run -",
+    )
+}
+
+fn script_subcommand<'a>() -> App<'a> {
+  App::new("script")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(script_arg())
+    .about("Run a script defined in the configuration file")
+    .long_about(
+      "Run a script defined in the configuration file
+
+  deno script build",
     )
 }
 
@@ -2179,6 +2199,27 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
+}
+
+fn script_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let mut script: Vec<String> = matches
+    .values_of("script_arg")
+    .unwrap_or_default()
+    .map(String::from)
+    .collect();
+
+  let mut script_name = "".to_string();
+  if !script.is_empty() {
+    let script_args = script.split_off(1);
+    script_name = script[0].to_string();
+    for v in script_args {
+      flags.argv.push(v);
+    }
+  }
+
+  flags.subcommand = DenoSubcommand::Script(ScriptFlags {
+    script: script_name,
+  });
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5019,6 +5060,36 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         lock: Some(PathBuf::from("lock.json")),
         reload: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn script_subcommand() {
+    let r =
+      flags_from_vec(svec!["deno", "script", "build", "--", "hello", "world",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Script(ScriptFlags {
+          script: "build".to_string(),
+        }),
+        argv: svec!["--", "hello", "world"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn script_subcommand_empty() {
+    let r = flags_from_vec(svec!["deno", "script",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Script(ScriptFlags {
+          script: "".to_string(),
+        }),
         ..Flags::default()
       }
     );

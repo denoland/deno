@@ -6,6 +6,7 @@ pub mod fmt;
 pub mod installer;
 pub mod lint;
 pub mod repl;
+pub mod script;
 pub mod standalone;
 pub mod test;
 pub mod upgrade;
