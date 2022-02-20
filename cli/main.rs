@@ -1243,11 +1243,10 @@ async fn script_command(
 ) -> Result<i32, AnyError> {
   if script_flags.script.is_empty() {
     tools::script::list_available_scripts(flags).await?;
-    return Ok(0);
+    return Ok(1);
   }
 
-  tools::script::execute_script(flags, &script_flags.script).await?;
-  Ok(0)
+  tools::script::execute_script(flags, &script_flags.script).await
 }
 
 async fn coverage_command(

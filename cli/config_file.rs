@@ -478,6 +478,7 @@ pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
+  pub scripts: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -588,6 +589,19 @@ impl ConfigFile {
       let lint_config: SerializedLintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
       Ok(Some(lint_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_scripts_config(
+    &self,
+  ) -> Result<Option<HashMap<String, String>>, AnyError> {
+    if let Some(config) = self.json.scripts.clone() {
+      let scripts_config: HashMap<String, String> =
+        serde_json::from_value(config)
+          .context("Failed to parse \"scripts\" configuration")?;
+      Ok(Some(scripts_config))
     } else {
       Ok(None)
     }
@@ -729,6 +743,10 @@ mod tests {
           "singleQuote": true,
           "proseWrap": "preserve"
         }
+      },
+      "scripts": {
+        "build": "deno run --allow-read --allow-write build.ts",
+        "server": "deno run --allow-net --allow-read server.ts"
       }
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
@@ -786,6 +804,16 @@ mod tests {
     assert_eq!(fmt_config.options.line_width, Some(80));
     assert_eq!(fmt_config.options.indent_width, Some(4));
     assert_eq!(fmt_config.options.single_quote, Some(true));
+
+    let scripts_config = config_file.to_scripts_config().unwrap().unwrap();
+    assert_eq!(
+      scripts_config["build"],
+      "deno run --allow-read --allow-write build.ts",
+    );
+    assert_eq!(
+      scripts_config["server"],
+      "deno run --allow-net --allow-read server.ts"
+    );
   }
 
   #[test]
