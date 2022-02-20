@@ -8,8 +8,8 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use std::collections::HashMap;
+use std::process::Command;
 use std::sync::Arc;
-use tokio::process::Command;
 
 fn get_scripts_config(
   maybe_config_file: Option<&ConfigFile>,
@@ -55,6 +55,15 @@ pub async fn execute_script(
   let flags = Arc::new(flags);
   let ps = ProcState::build(flags.clone()).await?;
   let scripts_config = get_scripts_config(ps.maybe_config_file.as_ref())?;
+  let config_file_url = &ps.maybe_config_file.as_ref().unwrap().specifier;
+
+  let config_file_path = if config_file_url.scheme() == "file" {
+    config_file_url.to_file_path().unwrap()
+  } else {
+    bail!("Only local configuration files are supported")
+  };
+  let cwd = config_file_path.parent().unwrap();
+
   let maybe_script = scripts_config.get(script_name);
 
   if let Some(script) = maybe_script {
@@ -66,13 +75,19 @@ pub async fn execute_script(
       ("sh", "-c")
     };
     let shell_arg = format!("{} {}", script, flags.argv.join(" "));
+    eprintln!(
+      "{} {} {}",
+      colors::green("Script"),
+      colors::cyan(script_name),
+      shell_arg
+    );
 
     let status = Command::new(shell_name)
       .arg(shell_flag)
       .arg(shell_arg)
+      .current_dir(cwd)
       .status()
-      .await
-      .with_context(|| format!("Failed to execute command: {}", script_name))?;
+      .with_context(|| format!("Failed to execute script: {}", script_name))?;
     // TODO: Is unwrapping to 1 ok here?
     Ok(status.code().unwrap_or(1))
   } else {
