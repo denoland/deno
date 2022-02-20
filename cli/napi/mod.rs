@@ -74,6 +74,7 @@ pub mod napi_get_property;
 pub mod napi_get_property_names;
 pub mod napi_get_prototype;
 pub mod napi_get_reference_value;
+pub mod napi_get_threadsafe_function_context;
 pub mod napi_get_typedarray_info;
 pub mod napi_get_undefined;
 pub mod napi_get_uv_event_loop;
