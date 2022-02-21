@@ -796,7 +796,7 @@
       return "ignored";
     }
 
-    // TODO: remove me/rename
+    // TODO(bartlomieju): remove me/rename
     const step = new TestStep({
       name: bench.name,
       sanitizeOps: bench.sanitizeOps,
@@ -805,7 +805,7 @@
     });
 
     try {
-      // TODO: time each iteration
+      // TODO(bartlomieju): time each iteration
       const iterations = bench.n ?? 100;
       for (let i = 0; i < iterations; i++) {
         await bench.fn(step);
