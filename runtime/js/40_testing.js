@@ -716,7 +716,7 @@
       );
     }
 
-    ArrayPrototypePush(benches, testDef);
+    ArrayPrototypePush(benches, benchDef);
   }
 
   function formatError(error) {
