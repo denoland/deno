@@ -609,7 +609,7 @@
       testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
+    testDef.fn = wrapFnWithSanitizers(testDef.fn, testDef);
 
     if (testDef.permissions) {
       testDef.fn = withPermissions(
@@ -627,7 +627,7 @@
     optionsOrFn,
     maybeFn,
   ) {
-    let testDef;
+    let benchDef;
     const defaults = {
       ignore: false,
       only: false,
@@ -639,25 +639,25 @@
 
     if (typeof nameOrFnOrOptions === "string") {
       if (!nameOrFnOrOptions) {
-        throw new TypeError("The test name can't be empty");
+        throw new TypeError("The bench name can't be empty");
       }
       if (typeof optionsOrFn === "function") {
-        testDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+        benchDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
       } else {
         if (!maybeFn || typeof maybeFn !== "function") {
-          throw new TypeError("Missing test function");
+          throw new TypeError("Missing bench function");
         }
         if (optionsOrFn.fn != undefined) {
           throw new TypeError(
-            "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+            "Unexpected 'fn' field in options, bench function is already provided as the third argument.",
           );
         }
         if (optionsOrFn.name != undefined) {
           throw new TypeError(
-            "Unexpected 'name' field in options, test name is already provided as the first argument.",
+            "Unexpected 'name' field in options, bench name is already provided as the first argument.",
           );
         }
-        testDef = {
+        benchDef = {
           ...defaults,
           ...optionsOrFn,
           fn: maybeFn,
@@ -666,15 +666,15 @@
       }
     } else if (typeof nameOrFnOrOptions === "function") {
       if (!nameOrFnOrOptions.name) {
-        throw new TypeError("The test function must have a name");
+        throw new TypeError("The bench function must have a name");
       }
       if (optionsOrFn != undefined) {
-        throw new TypeError("Unexpected second argument to Deno.test()");
+        throw new TypeError("Unexpected second argument to Deno.bench()");
       }
       if (maybeFn != undefined) {
-        throw new TypeError("Unexpected third argument to Deno.test()");
+        throw new TypeError("Unexpected third argument to Deno.bench()");
       }
-      testDef = {
+      benchDef = {
         ...defaults,
         fn: nameOrFnOrOptions,
         name: nameOrFnOrOptions.name,
@@ -686,7 +686,7 @@
         fn = optionsOrFn;
         if (nameOrFnOrOptions.fn != undefined) {
           throw new TypeError(
-            "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+            "Unexpected 'fn' field in options, bench function is already provided as the second argument.",
           );
         }
         name = nameOrFnOrOptions.name ?? fn.name;
@@ -695,24 +695,24 @@
           !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
         ) {
           throw new TypeError(
-            "Expected 'fn' field in the first argument to be a test function.",
+            "Expected 'fn' field in the first argument to be a bench function.",
           );
         }
         fn = nameOrFnOrOptions.fn;
         name = nameOrFnOrOptions.name ?? fn.name;
       }
       if (!name) {
-        throw new TypeError("The test name can't be empty");
+        throw new TypeError("The bench name can't be empty");
       }
-      testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
+      benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
+    benchDef.fn = wrapFnWithSanitizers(benchDef.fn, benchDef);
 
-    if (testDef.permissions) {
-      testDef.fn = withPermissions(
-        testDef.fn,
-        testDef.permissions,
+    if (benchDef.permissions) {
+      benchDef.fn = withPermissions(
+        benchDef.fn,
+        benchDef.permissions,
       );
     }
 
@@ -796,6 +796,7 @@
       return "ignored";
     }
 
+    // TODO: remove it
     const step = new TestStep({
       name: bench.name,
       parent: undefined,
@@ -1273,7 +1274,7 @@
 
   /**
    * @template T {Function}
-   * @param testFn {T}
+   * @param fn {T}
    * @param opts {{
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -1281,19 +1282,19 @@
    * }}
    * @returns {T}
    */
-  function wrapTestFnWithSanitizers(testFn, opts) {
-    testFn = assertTestStepScopes(testFn);
+  function wrapFnWithSanitizers(fn, opts) {
+    fn = assertTestStepScopes(fn);
 
     if (opts.sanitizeOps) {
-      testFn = assertOps(testFn);
+      fn = assertOps(fn);
     }
     if (opts.sanitizeResources) {
-      testFn = assertResources(testFn);
+      fn = assertResources(fn);
     }
     if (opts.sanitizeExit) {
-      testFn = assertExit(testFn);
+      fn = assertExit(fn);
     }
-    return testFn;
+    return fn;
   }
 
   /**
