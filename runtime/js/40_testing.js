@@ -150,7 +150,7 @@
         await opSanitizerDelay();
       }
 
-      if (step.shouldSkipSanitizers) return;
+      if (step?.shouldSkipSanitizers) return;
 
       const post = core.metrics();
       const postTraces = new Map(core.opCallTraces);
@@ -359,7 +359,7 @@
       const pre = core.resources();
       await fn(step);
 
-      if (step.shouldSkipSanitizers) {
+      if (step?.shouldSkipSanitizers) {
         return;
       }
 
@@ -609,7 +609,7 @@
       testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    testDef.fn = wrapFnWithSanitizers(testDef.fn, testDef);
+    testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
 
     if (testDef.permissions) {
       testDef.fn = withPermissions(
@@ -707,7 +707,7 @@
       benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    benchDef.fn = wrapFnWithSanitizers(benchDef.fn, benchDef);
+    benchDef.fn = wrapBenchFnWithSanitizers(benchDef.fn, benchDef);
 
     if (benchDef.permissions) {
       benchDef.fn = withPermissions(
@@ -791,41 +791,30 @@
     }
   }
 
-  async function runBench(bench, description) {
+  async function runBench(bench) {
     if (bench.ignore) {
       return "ignored";
     }
 
-    // TODO: remove it
+    // TODO: remove me/rename
     const step = new TestStep({
       name: bench.name,
-      parent: undefined,
-      rootTestDescription: description,
       sanitizeOps: bench.sanitizeOps,
       sanitizeResources: bench.sanitizeResources,
       sanitizeExit: bench.sanitizeExit,
     });
 
     try {
-      await bench.fn(step);
-      const failCount = step.failedChildStepsCount();
-      return failCount === 0 ? "ok" : {
-        "failed": formatError(
-          new Error(
-            `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
-          ),
-        ),
-      };
+      // TODO: time each iteration
+      const iterations = bench.n ?? 100;
+      for (let i = 0; i < iterations; i++) {
+        await bench.fn(step);
+      }
+      return "ok";
     } catch (error) {
       return {
         "failed": formatError(error),
       };
-    } finally {
-      step.finalized = true;
-      // ensure the children report their result
-      for (const child of step.children) {
-        child.reportResult();
-      }
     }
   }
 
@@ -961,7 +950,7 @@
 
       reportTestWait(description);
 
-      const result = await runBench(bench, description);
+      const result = await runBench(bench);
       const elapsed = DateNow() - earlier;
 
       reportTestResult(description, result, elapsed);
@@ -1282,9 +1271,22 @@
    * }}
    * @returns {T}
    */
-  function wrapFnWithSanitizers(fn, opts) {
+  function wrapTestFnWithSanitizers(fn, opts) {
     fn = assertTestStepScopes(fn);
 
+    if (opts.sanitizeOps) {
+      fn = assertOps(fn);
+    }
+    if (opts.sanitizeResources) {
+      fn = assertResources(fn);
+    }
+    if (opts.sanitizeExit) {
+      fn = assertExit(fn);
+    }
+    return fn;
+  }
+
+  function wrapBenchFnWithSanitizers(fn, opts) {
     if (opts.sanitizeOps) {
       fn = assertOps(fn);
     }
