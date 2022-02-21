@@ -288,14 +288,20 @@ impl EnvShared {
   }
 }
 
+pub enum ThreadSafeFunctionStatus {
+  Alive,
+  Dead,
+}
+
 #[repr(C)]
-// #[derive(Debug)]
 pub struct Env<'a, 'b> {
   pub scope: &'a mut v8::HandleScope<'b>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
+  pub threadsafe_function_sender:
+    mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
 
 unsafe impl Send for Env<'_, '_> {}
@@ -306,6 +312,7 @@ impl<'a, 'b> Env<'a, 'b> {
     isolate_ptr: *mut v8::OwnedIsolate,
     scope: &'a mut v8::HandleScope<'b>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
+    threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   ) -> Self {
     let sc = sender.clone();
     ASYNC_WORK_SENDER.with(|s| {
@@ -317,9 +324,11 @@ impl<'a, 'b> Env<'a, 'b> {
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
+      threadsafe_function_sender,
     }
   }
 
+  // TODO(@littledivy): Do we even need this?
   pub fn with_new_scope(
     &self,
     scope: &'a mut v8::HandleScope<'b>,
@@ -335,6 +344,7 @@ impl<'a, 'b> Env<'a, 'b> {
       shared: self.shared,
       open_handle_scopes: self.open_handle_scopes,
       async_work_sender: sender,
+      threadsafe_function_sender: self.threadsafe_function_sender.clone(),
     }
   }
 
@@ -388,9 +398,10 @@ pub fn dlopen_func<'s>(
 
   let state_rc = JsRuntime::state(scope);
   let async_work_sender = state_rc.borrow().napi_async_work_sender.clone();
+  let tsfn_sender = state_rc.borrow().napi_threadsafe_function_sender.clone();
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
-  let mut env = Env::new(value, scope, async_work_sender);
+  let mut env = Env::new(value, scope, async_work_sender, tsfn_sender);
   env.shared = env_shared_ptr;
   unsafe {
     (env_ptr as *mut Env).write(env);

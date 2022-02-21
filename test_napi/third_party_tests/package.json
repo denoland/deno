@@ -12,6 +12,7 @@
     "@swc/cli": "^0.1.55",
     "@swc/core": "^1.2.143",
     "@tauri-apps/cli": "^1.0.0-rc.5",
+    "@three-em/node": "^0.2.3",
     "dprint-node": "^1.0.5",
     "fs-xattr": "^0.4.0",
     "msgpackr-extract": "1.1.0-napi",

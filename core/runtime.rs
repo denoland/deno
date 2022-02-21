@@ -15,6 +15,7 @@ use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
+use crate::napi;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -174,6 +175,14 @@ pub(crate) struct JsRuntimeState {
   pub(crate) napi_async_work_sender:
     mpsc::UnboundedSender<PendingNapiAsyncWork>,
   napi_async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
+  // Runtime does not keep track of the total number of active threads.
+  // Each threadsafe function must keep track of the threads and only report
+  // creation and death to the runtime.
+  active_threadsafe_functions: usize,
+  napi_threadsafe_function_reciever:
+    mpsc::UnboundedReceiver<napi::ThreadSafeFunctionStatus>,
+  pub(crate) napi_threadsafe_function_sender:
+    mpsc::UnboundedSender<napi::ThreadSafeFunctionStatus>,
 }
 
 impl Drop for JsRuntime {
@@ -375,7 +384,7 @@ impl JsRuntime {
 
     let op_state = Rc::new(RefCell::new(op_state));
     let (sender, receiver) = mpsc::unbounded();
-
+    let (tsfn_sender, tsfn_receiver) = mpsc::unbounded();
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
@@ -401,6 +410,9 @@ impl JsRuntime {
       pending_napi_async_work: Vec::new(),
       napi_async_work_sender: sender,
       napi_async_work_receiver: receiver,
+      napi_threadsafe_function_sender: tsfn_sender,
+      napi_threadsafe_function_reciever: tsfn_receiver,
+      active_threadsafe_functions: 0,
     })));
 
     let module_map = ModuleMap::new(loader, op_state);
@@ -1561,12 +1573,29 @@ impl JsRuntime {
     {
       state.pending_napi_async_work.push(async_work_fut);
     }
-    drop(state); // Drop borrow, `work` can call back into the runtime.
+
+    while let Poll::Ready(Some(tsfn_status)) =
+      state.napi_threadsafe_function_reciever.poll_next_unpin(cx)
+    {
+      match tsfn_status {
+        napi::ThreadSafeFunctionStatus::Alive => {
+          state.active_threadsafe_functions += 1
+        }
+        napi::ThreadSafeFunctionStatus::Dead => {
+          state.active_threadsafe_functions -= 1
+        }
+      };
+    }
 
     // `work` can call back into the runtime. It can also schedule an async task
     // but we don't know that now. We need to make the runtime re-poll to make
     // sure no pending NAPI tasks exist.
     let mut maybe_scheduling = false;
+    if state.active_threadsafe_functions > 0 {
+      maybe_scheduling = true;
+    }
+
+    drop(state); // Drop borrow, `work` can call back into the runtime.
 
     loop {
       let mut state = state_rc.borrow_mut();

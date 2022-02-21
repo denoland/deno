@@ -484,6 +484,20 @@
     "@tauri-apps/cli-linux-x64-musl" "1.0.0-rc.5"
     "@tauri-apps/cli-win32-x64-msvc" "1.0.0-rc.5"
 
+"@three-em/node-darwin-arm64@0.2.0":
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/@three-em/node-darwin-arm64/-/node-darwin-arm64-0.2.0.tgz#64bf322a574277f1434dd447b51e9357c997ee12"
+  integrity sha512-bW7xDQJiYQ/Yc25hAnSWPkEwj4rZ+grQjRUkTFq8Mf8H5u1ngL8ex/XGcwbvZ1YUzbA/oXStn+xQk9uRvvuEiA==
+
+"@three-em/node@^0.2.3":
+  version "0.2.3"
+  resolved "https://registry.yarnpkg.com/@three-em/node/-/node-0.2.3.tgz#4ba2b9e58caa7ab3f3470cb7c4a17b6b1a9398ab"
+  integrity sha512-B1uaDzaaGtJ1BavIa3/SBYR1eSpKSFvkvL/mWqUdPKtzSJvxpY3+oBCu/AFyf8IEnRue8FWCztNgghiZr5FZsw==
+  dependencies:
+    detect-libc "^1.0.3"
+  optionalDependencies:
+    "@three-em/node-darwin-arm64" "0.2.0"
+
 "@tootallnate/once@1":
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/@tootallnate/once/-/once-1.1.2.tgz#ccb91445360179a04e7fe6aff78c00ffc1eeaf82"
