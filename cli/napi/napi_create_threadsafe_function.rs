@@ -1,6 +1,7 @@
 use deno_core::futures::channel::mpsc;
 use deno_core::napi::*;
 use std::sync::mpsc::channel;
+use std::mem::forget;
 
 pub struct TsFn {
   pub maybe_func: Option<v8::Global<v8::Function>>,
@@ -27,6 +28,8 @@ impl TsFn {
         .unbounded_send(ThreadSafeFunctionStatus::Dead)
         .map_err(|_| Error::GenericFailure)?;
       drop(self);
+    } else {
+      forget(self);
     }
     Ok(())
   }
@@ -40,14 +43,14 @@ impl TsFn {
       let sender = self.sender.clone();
       let tsfn_sender = self.tsfn_sender.clone();
       let call = Box::new(move |scope: &mut v8::HandleScope| {
-        let func: Option<v8::Local<v8::Value>> =
-          js_func.map(|func| func.open(scope).to_object(scope).unwrap().into());
+        let func = js_func.unwrap();
+        let func: v8::Local<v8::Value> = func.open(scope).to_object(scope).unwrap().into();
         let mut env = Env::new(isolate_ptr, scope, sender, tsfn_sender);
-
+                
         unsafe {
           call_js_cb(
             &mut env as *mut _ as *mut c_void,
-            transmute::<Option<v8::Local<v8::Value>>, napi_value>(func),
+            transmute::<v8::Local<v8::Value>, napi_value>(func),
             context,
             data,
           )
