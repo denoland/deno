@@ -6,6 +6,39 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.19.0 / 2022.02.17
+
+- feat: Add Deno.FsFile, deprecate Deno.File (#13660)
+- feat: Add hint to permission prompt to display allow flag (#13695)
+- feat: deno vendor (#13670)
+- feat: never prompt for hrtime permission (#13696)
+- feat: permission prompt by default (#13650)
+- feat(compat): support --compat in web workers (#13629)
+- feat(compile): Replace bundling with eszip in deno compile (#13563)
+- feat(coverage): add "--output" flag (#13289)
+- feat(ext/console): better circular information in object inspection (#13555)
+- feat(ext/http): add support for unix domain sockets (#13628)
+- feat(ext/net): Add Conn.setNoDelay and Conn.setKeepAlive (#13103)
+- feat(ext/web): add CompressionStream API (#11728)
+- feat(lsp): add redirect diagnostic and quick fix (#13580)
+- feat(lsp): provide completions from import map if available (#13624)
+- feat(lsp): support linking to symbols in JSDoc on hover (#13631)
+- feat(runtime): stabilize addSignalListener API (#13438)
+- feat(runtime): web streams in fs & net APIs (#13615)
+- feat(test): better errors for resource sanitizer (#13296)
+- feat(test): improved op sanitizer errors + traces (#13676)
+- feat(watch): add "--no-clear-screen" flag (#13454)
+- fix(compat): ESM resolver for package subpath (#13599)
+- fix(ext/console): fix uncaught TypeError in css styling (#13567)
+- fix(ext/console): print circular ref indicator in cyan (#13684)
+- fix(ext/crypto): optional additionalData in encrypt/decrypt (#13669)
+- fix(ext/crypto): support EC p256 private key material in exportKey (#13547)
+- fix(lsp): do not panic getting root_uri to auto discover configuration file
+  (#13603)
+- fix(lsp): independent diagnostic publishing should include all diagnostic
+  sources on each publish (#13483)
+- fix(lsp): op_exists handles bad specifiers (#13612)
+
 ### 1.18.2 / 2022.02.03
 
 - feat(unstable): add Deno.getUid (#13496)

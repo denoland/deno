@@ -3,12 +3,8 @@
 //! This module helps deno implement timers and performance APIs.
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -21,26 +17,6 @@ use std::time::Instant;
 pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;
   fn check_unstable(&self, state: &OpState, api_name: &'static str);
-}
-
-pub fn init<P: TimersPermission + 'static>() -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/timers",
-      "01_timers.js",
-      "02_performance.js",
-    ))
-    .ops(vec![
-      ("op_now", op_sync(op_now::<P>)),
-      ("op_timer_handle", op_sync(op_timer_handle)),
-      ("op_sleep", op_async(op_sleep)),
-      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
-    ])
-    .state(|state| {
-      state.put(StartTime::now());
-      Ok(())
-    })
-    .build()
 }
 
 pub type StartTime = Instant;

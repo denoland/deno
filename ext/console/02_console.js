@@ -1189,7 +1189,7 @@
     if (circular !== undefined) {
       const index = MapPrototypeGet(circular, value);
       if (index !== undefined) {
-        refIndex = `<ref *${index}> `;
+        refIndex = cyan(`<ref *${index}> `);
       }
     }
 

@@ -9,3 +9,4 @@ pub mod repl;
 pub mod standalone;
 pub mod test;
 pub mod upgrade;
+pub mod vendor;

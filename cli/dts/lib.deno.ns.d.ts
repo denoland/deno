@@ -795,7 +795,7 @@ declare namespace Deno {
     },
   ): IterableIterator<Uint8Array>;
 
-  /** Synchronously open a file and return an instance of `Deno.File`.  The
+  /** Synchronously open a file and return an instance of `Deno.FsFile`.  The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options.  It is the callers responsibility to close the file when finished
    * with it.
@@ -808,9 +808,9 @@ declare namespace Deno {
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
-  export function openSync(path: string | URL, options?: OpenOptions): File;
+  export function openSync(path: string | URL, options?: OpenOptions): FsFile;
 
-  /** Open a file and resolve to an instance of `Deno.File`.  The
+  /** Open a file and resolve to an instance of `Deno.FsFile`.  The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options.  It is the callers responsibility to close the file when finished
    * with it.
@@ -826,10 +826,10 @@ declare namespace Deno {
   export function open(
     path: string | URL,
     options?: OpenOptions,
-  ): Promise<File>;
+  ): Promise<FsFile>;
 
   /** Creates a file if none exists or truncates an existing file and returns
-   *  an instance of `Deno.File`.
+   *  an instance of `Deno.FsFile`.
    *
    * ```ts
    * const file = Deno.createSync("/foo/bar.txt");
@@ -837,10 +837,10 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function createSync(path: string | URL): File;
+  export function createSync(path: string | URL): FsFile;
 
   /** Creates a file if none exists or truncates an existing file and resolves to
-   *  an instance of `Deno.File`.
+   *  an instance of `Deno.FsFile`.
    *
    * ```ts
    * const file = await Deno.create("/foo/bar.txt");
@@ -848,7 +848,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
-  export function create(path: string | URL): Promise<File>;
+  export function create(path: string | URL): Promise<FsFile>;
 
   /** Synchronously read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
@@ -1070,6 +1070,38 @@ declare namespace Deno {
   export function close(rid: number): void;
 
   /** The Deno abstraction for reading and writing files. */
+  export class FsFile
+    implements
+      Reader,
+      ReaderSync,
+      Writer,
+      WriterSync,
+      Seeker,
+      SeekerSync,
+      Closer {
+    readonly rid: number;
+    constructor(rid: number);
+    write(p: Uint8Array): Promise<number>;
+    writeSync(p: Uint8Array): number;
+    truncate(len?: number): Promise<void>;
+    truncateSync(len?: number): void;
+    read(p: Uint8Array): Promise<number | null>;
+    readSync(p: Uint8Array): number | null;
+    seek(offset: number, whence: SeekMode): Promise<number>;
+    seekSync(offset: number, whence: SeekMode): number;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
+    close(): void;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
+  }
+
+  /**
+   * @deprecated Use `Deno.FsFile` instead. `Deno.File` will be removed in Deno 2.0.
+   *
+   * The Deno abstraction for reading and writing files.
+   */
   export class File
     implements
       Reader,
@@ -1092,14 +1124,26 @@ declare namespace Deno {
     stat(): Promise<FileInfo>;
     statSync(): FileInfo;
     close(): void;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
   }
 
   /** A handle for `stdin`. */
-  export const stdin: Reader & ReaderSync & Closer & { readonly rid: number };
+  export const stdin: Reader & ReaderSync & Closer & {
+    readonly rid: number;
+    readonly readable: ReadableStream<Uint8Array>;
+  };
   /** A handle for `stdout`. */
-  export const stdout: Writer & WriterSync & Closer & { readonly rid: number };
+  export const stdout: Writer & WriterSync & Closer & {
+    readonly rid: number;
+    readonly writable: WritableStream<Uint8Array>;
+  };
   /** A handle for `stderr`. */
-  export const stderr: Writer & WriterSync & Closer & { readonly rid: number };
+  export const stderr: Writer & WriterSync & Closer & {
+    readonly rid: number;
+    readonly writable: WritableStream<Uint8Array>;
+  };
 
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
@@ -2208,12 +2252,18 @@ declare namespace Deno {
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer
-      : (Writer & Closer) | null;
-    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer
-      : (Reader & Closer) | null;
-    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer
-      : (Reader & Closer) | null;
+    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer & {
+      writable: WritableStream<Uint8Array>;
+    }
+      : (Writer & Closer & { writable: WritableStream<Uint8Array> }) | null;
+    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer & {
+      readable: ReadableStream<Uint8Array>;
+    }
+      : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
+    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer & {
+      readable: ReadableStream<Uint8Array>;
+    }
+      : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
     /** Wait for the process to exit and return its exit status.
      *
      * Calling this function multiple times will return the same status.

@@ -22,6 +22,8 @@
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
+    PromisePrototypeFinally,
+    StringPrototypeSlice,
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
@@ -47,6 +49,13 @@
   // TODO(bartlomieju): it future use `v8::Private` so it's not visible
   // to users. Currently missing bindings.
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+
+  let opCallTracingEnabled = false;
+  const opCallTraces = new Map();
+
+  function enableOpCallTracing() {
+    opCallTracingEnabled = true;
+  }
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -139,7 +148,17 @@
     const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    if (opCallTracingEnabled) {
+      // Capture a stack trace by creating a new `Error` object. We remove the
+      // first 6 characters (the `Error\n` prefix) to get just the stack trace.
+      const stack = StringPrototypeSlice(new Error().stack, 6);
+      MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
+      p = PromisePrototypeFinally(
+        p,
+        () => MapPrototypeDelete(opCallTraces, promiseId),
+      );
+    }
     // Save the id on the promise so it can later be ref'ed or unref'ed
     p[promiseIdSymbol] = promiseId;
     return p;
@@ -226,6 +245,8 @@
     BadResourcePrototype,
     Interrupted,
     InterruptedPrototype,
+    enableOpCallTracing,
+    opCallTraces,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

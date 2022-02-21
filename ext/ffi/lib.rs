@@ -118,6 +118,19 @@ impl DynamicLibraryResource {
 
     Ok(())
   }
+
+  fn get_static(&self, symbol: String) -> Result<*const c_void, AnyError> {
+    // By default, Err returned by this function does not tell
+    // which symbol wasn't exported. So we'll modify the error
+    // message to include the name of symbol.
+    match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+      Ok(value) => Ok(Ok(value)),
+      Err(err) => Err(generic_error(format!(
+        "Failed to register symbol {}: {}",
+        symbol, err
+      ))),
+    }?
+  }
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
@@ -128,6 +141,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
+      ("op_ffi_get_static", op_sync(op_ffi_get_static)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
@@ -351,10 +365,28 @@ struct ForeignFunction {
   result: NativeType,
 }
 
+// ForeignStatic's name and type fields are read and used by
+// serde_v8 to determine which variant a ForeignSymbol is.
+// They are not used beyond that and are thus marked with underscores.
+#[derive(Deserialize, Debug)]
+struct ForeignStatic {
+  #[serde(rename(deserialize = "name"))]
+  _name: Option<String>,
+  #[serde(rename(deserialize = "type"))]
+  _type: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum ForeignSymbol {
+  ForeignFunction(ForeignFunction),
+  ForeignStatic(ForeignStatic),
+}
+
 #[derive(Deserialize, Debug)]
 struct FfiLoadArgs {
   path: String,
-  symbols: HashMap<String, ForeignFunction>,
+  symbols: HashMap<String, ForeignSymbol>,
 }
 
 // `path` is only used on Windows.
@@ -458,8 +490,15 @@ where
     symbols: HashMap::new(),
   };
 
-  for (symbol, foreign_fn) in args.symbols {
-    resource.register(symbol, foreign_fn)?;
+  for (symbol, foreign_symbol) in args.symbols {
+    match foreign_symbol {
+      ForeignSymbol::ForeignStatic(_) => {
+        // No-op: Statics will be handled separately and are not part of the Rust-side resource.
+      }
+      ForeignSymbol::ForeignFunction(foreign_fn) => {
+        resource.register(symbol, foreign_fn)?;
+      }
+    }
   }
 
   Ok(state.resource_table.add(resource))
@@ -629,6 +668,71 @@ async fn op_ffi_call_ptr_nonblocking(
   tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
     .await
     .unwrap()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiGetArgs {
+  rid: ResourceId,
+  name: String,
+  r#type: NativeType,
+}
+
+fn op_ffi_get_static(
+  state: &mut deno_core::OpState,
+  args: FfiGetArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let data_ptr = resource.get_static(args.name)? as *const u8;
+
+  Ok(match args.r#type {
+    NativeType::Void => {
+      unreachable!();
+    }
+    NativeType::U8 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u8) })
+    }
+    NativeType::I8 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i8) })
+    }
+    NativeType::U16 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u16) })
+    }
+    NativeType::I16 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i16) })
+    }
+    NativeType::U32 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u32) })
+    }
+    NativeType::I32 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i32) })
+    }
+    NativeType::U64 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const u64) })
+    }
+    NativeType::I64 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const i64) })
+    }
+    NativeType::USize => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const usize) })
+    }
+    NativeType::ISize => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const isize) })
+    }
+    NativeType::F32 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const f32) })
+    }
+    NativeType::F64 => {
+      json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
+    }
+    NativeType::Pointer => {
+      json!(U32x2::from(data_ptr as *const u8 as u64))
+    }
+  })
 }
 
 fn op_ffi_call(
