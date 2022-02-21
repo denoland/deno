@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-// use crate::colors;
+use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
 use crate::emit;
@@ -14,12 +14,6 @@ use crate::fs_util::is_supported_bench_path;
 use crate::located_script_name;
 use crate::ops;
 use crate::proc_state::ProcState;
-// TODO(bartlomieju): remove me
-use crate::tools::test::create_reporter;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestResult;
-use crate::tools::test::TestStepResult;
-use crate::tools::test::TestSummary;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -33,16 +27,206 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
 use serde::Deserialize;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Deserialize)]
 struct BenchSpecifierOptions {
   compat_mode: bool,
   filter: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchDescription {
+  pub origin: String,
+  pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BenchOutput {
+  Console(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BenchResult {
+  Ok,
+  Ignored,
+  Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchPlan {
+  pub origin: String,
+  pub total: usize,
+  pub filtered_out: usize,
+  pub used_only: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BenchEvent {
+  Plan(BenchPlan),
+  Wait(BenchDescription),
+  Output(BenchOutput),
+  Result(BenchDescription, BenchResult, u64),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BenchSummary {
+  pub total: usize,
+  pub passed: usize,
+  pub failed: usize,
+  pub ignored: usize,
+  pub filtered_out: usize,
+  pub measured: usize,
+  pub failures: Vec<(BenchDescription, String)>,
+}
+
+impl BenchSummary {
+  pub fn new() -> Self {
+    Self {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      ignored: 0,
+      filtered_out: 0,
+      measured: 0,
+      failures: Vec::new(),
+    }
+  }
+
+  fn has_failed(&self) -> bool {
+    self.failed > 0 || !self.failures.is_empty()
+  }
+
+  fn has_pending(&self) -> bool {
+    self.total - self.passed - self.failed - self.ignored > 0
+  }
+}
+
+pub trait BenchReporter {
+  fn report_plan(&mut self, plan: &BenchPlan);
+  fn report_wait(&mut self, description: &BenchDescription);
+  fn report_output(&mut self, output: &BenchOutput);
+  fn report_result(
+    &mut self,
+    description: &BenchDescription,
+    result: &BenchResult,
+    elapsed: u64,
+  );
+  fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration);
+}
+
+struct PrettyBenchReporter {
+  echo_output: bool,
+}
+
+impl PrettyBenchReporter {
+  fn new(echo_output: bool) -> Self {
+    Self { echo_output }
+  }
+
+  fn force_report_wait(&mut self, description: &BenchDescription) {
+    print!("test {} ...", description.name);
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+  }
+}
+
+/// A function that converts a milisecond elapsed time to a string that
+/// represents a human readable version of that time.
+fn human_elapsed(elapsed: u128) -> String {
+  if elapsed < 1_000 {
+    return format!("({}ms)", elapsed);
+  }
+  if elapsed < 1_000 * 60 {
+    return format!("({}s)", elapsed / 1000);
+  }
+
+  let seconds = elapsed / 1_000;
+  let minutes = seconds / 60;
+  let seconds_remainder = seconds % 60;
+  format!("({}m{}s)", minutes, seconds_remainder)
+}
+
+impl BenchReporter for PrettyBenchReporter {
+  fn report_plan(&mut self, plan: &BenchPlan) {
+    let inflection = if plan.total == 1 { "bench" } else { "benches" };
+    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+  }
+
+  fn report_wait(&mut self, description: &BenchDescription) {
+    self.force_report_wait(description);
+  }
+
+  fn report_output(&mut self, output: &BenchOutput) {
+    if self.echo_output {
+      match output {
+        BenchOutput::Console(line) => print!("{}", line),
+      }
+    }
+  }
+
+  fn report_result(
+    &mut self,
+    _description: &BenchDescription,
+    result: &BenchResult,
+    elapsed: u64,
+  ) {
+    let status = match result {
+      BenchResult::Ok => colors::green("ok").to_string(),
+      BenchResult::Ignored => colors::yellow("ignored").to_string(),
+      BenchResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+  }
+
+  fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration) {
+    if !summary.failures.is_empty() {
+      println!("\nfailures:\n");
+      for (description, error) in &summary.failures {
+        println!("{}", description.name);
+        println!("{}", error);
+        println!();
+      }
+
+      println!("failures:\n");
+      for (description, _) in &summary.failures {
+        println!("\t{}", description.name);
+      }
+    }
+
+    let status = if summary.has_failed() || summary.has_pending() {
+      colors::red("FAILED").to_string()
+    } else {
+      colors::green("ok").to_string()
+    };
+
+    println!(
+      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      status,
+      summary.passed,
+      summary.failed,
+      summary.ignored,
+      summary.measured,
+      summary.filtered_out,
+      colors::gray(human_elapsed(elapsed.as_millis())),
+    );
+  }
+}
+
+fn create_reporter(echo_output: bool) -> Box<dyn BenchReporter + Send> {
+  Box::new(PrettyBenchReporter::new(echo_output))
 }
 
 fn fetch_specifiers(
@@ -82,14 +266,14 @@ async fn bench_specifier(
   ps: ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  channel: Sender<TestEvent>,
+  channel: Sender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::bench::init(channel.clone())],
   );
 
   // Enable op call tracing in core to enable better debugging of op sanitizer
@@ -147,7 +331,7 @@ async fn bench_specifiers(
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
 
-  let (sender, receiver) = channel::<TestEvent>();
+  let (sender, receiver) = channel::<BenchEvent>();
 
   let join_handles = specifiers.iter().map(move |specifier| {
     let ps = ps.clone();
@@ -172,17 +356,17 @@ async fn bench_specifiers(
     .buffer_unordered(1)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(false, log_level != Some(Level::Error));
+  let mut reporter = create_reporter(log_level != Some(Level::Error));
 
   let handler = {
     tokio::task::spawn_blocking(move || {
       let earlier = Instant::now();
-      let mut summary = TestSummary::new();
+      let mut summary = BenchSummary::new();
       let mut used_only = false;
 
       for event in receiver.iter() {
         match event {
-          TestEvent::Plan(plan) => {
+          BenchEvent::Plan(plan) => {
             summary.total += plan.total;
             summary.filtered_out += plan.filtered_out;
 
@@ -193,52 +377,29 @@ async fn bench_specifiers(
             reporter.report_plan(&plan);
           }
 
-          TestEvent::Wait(description) => {
+          BenchEvent::Wait(description) => {
             reporter.report_wait(&description);
           }
 
-          TestEvent::Output(output) => {
+          BenchEvent::Output(output) => {
             reporter.report_output(&output);
           }
 
-          TestEvent::Result(description, result, elapsed) => {
+          BenchEvent::Result(description, result, elapsed) => {
             match &result {
-              TestResult::Ok => {
+              BenchResult::Ok => {
                 summary.passed += 1;
               }
-              TestResult::Ignored => {
+              BenchResult::Ignored => {
                 summary.ignored += 1;
               }
-              TestResult::Failed(error) => {
+              BenchResult::Failed(error) => {
                 summary.failed += 1;
                 summary.failures.push((description.clone(), error.clone()));
               }
             }
 
             reporter.report_result(&description, &result, elapsed);
-          }
-
-          TestEvent::StepWait(description) => {
-            reporter.report_step_wait(&description);
-          }
-
-          TestEvent::StepResult(description, result, duration) => {
-            match &result {
-              TestStepResult::Ok => {
-                summary.passed_steps += 1;
-              }
-              TestStepResult::Ignored => {
-                summary.ignored_steps += 1;
-              }
-              TestStepResult::Failed(_) => {
-                summary.failed_steps += 1;
-              }
-              TestStepResult::Pending(_) => {
-                summary.pending_steps += 1;
-              }
-            }
-
-            reporter.report_step_result(&description, &result, duration);
           }
         }
       }

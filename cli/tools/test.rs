@@ -309,7 +309,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_output(&mut self, output: &TestOutput) {
     if self.echo_output {
       match output {
-        TestOutput::Console(line) => println!("{}", line),
+        TestOutput::Console(line) => print!("{}", line),
       }
     }
   }

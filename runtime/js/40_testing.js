@@ -822,6 +822,10 @@
     return core.opSync("op_get_test_origin");
   }
 
+  function getBenchOrigin() {
+    return core.opSync("op_get_bench_origin");
+  }
+
   function reportTestPlan(plan) {
     core.opSync("op_dispatch_test_event", {
       plan,
@@ -855,6 +859,30 @@
   function reportTestStepResult(testDescription, result, elapsed) {
     core.opSync("op_dispatch_test_event", {
       stepResult: [testDescription, result, elapsed],
+    });
+  }
+
+  function reportBenchPlan(plan) {
+    core.opSync("op_dispatch_bench_event", {
+      plan,
+    });
+  }
+
+  function reportBenchConsoleOutput(console) {
+    core.opSync("op_dispatch_bench_event", {
+      output: { console },
+    });
+  }
+
+  function reportBenchWait(test) {
+    core.opSync("op_dispatch_bench_event", {
+      wait: test,
+    });
+  }
+
+  function reportBenchResult(test, result, elapsed) {
+    core.opSync("op_dispatch_bench_event", {
+      result: [test, result, elapsed],
     });
   }
 
@@ -923,10 +951,10 @@
   } = {}) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
-    const origin = getTestOrigin();
+    const origin = getBenchOrigin();
     const originalConsole = globalThis.console;
 
-    globalThis.console = new Console(reportTestConsoleOutput);
+    globalThis.console = new Console(reportBenchConsoleOutput);
 
     const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
     const filtered = ArrayPrototypeFilter(
@@ -934,7 +962,7 @@
       createTestFilter(filter),
     );
 
-    reportTestPlan({
+    reportBenchPlan({
       origin,
       total: filtered.length,
       filteredOut: benches.length - filtered.length,
@@ -948,12 +976,12 @@
       };
       const earlier = DateNow();
 
-      reportTestWait(description);
+      reportBenchWait(description);
 
       const result = await runBench(bench);
       const elapsed = DateNow() - earlier;
 
-      reportTestResult(description, result, elapsed);
+      reportBenchResult(description, result, elapsed);
     }
 
     globalThis.console = originalConsole;
