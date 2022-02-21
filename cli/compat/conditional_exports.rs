@@ -470,7 +470,7 @@ fn resolve_package_target_string(
   let mut resolved = package_json_path.to_path_buf();
   resolved.set_file_name(&target);
   let resolved = resolved.clean();
-  let package_path = package_json_path.join("..").clean();
+  let package_path = package_json_path.parent().unwrap();
 
   if !resolved.starts_with(&package_path) {
     return Err(throw_invalid_package_target(
