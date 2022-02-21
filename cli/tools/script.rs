@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
+use crate::flags::ScriptFlags;
 use crate::proc_state::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -26,7 +27,6 @@ fn get_scripts_config(
   }
 }
 
-// TODO: make it return error instead
 fn print_available_scripts(scripts_config: HashMap<String, String>) {
   eprintln!("{}", colors::green("Available scripts:"));
 
@@ -40,31 +40,28 @@ fn print_available_scripts(scripts_config: HashMap<String, String>) {
   }
 }
 
-pub async fn list_available_scripts(flags: Flags) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
-  let ps = ProcState::build(flags.clone()).await?;
-  let scripts_config = get_scripts_config(ps.maybe_config_file.as_ref())?;
-  print_available_scripts(scripts_config);
-  Ok(())
-}
-
 pub async fn execute_script(
   flags: Flags,
-  script_name: &str,
+  script_flags: ScriptFlags,
 ) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let ps = ProcState::build(flags.clone()).await?;
   let scripts_config = get_scripts_config(ps.maybe_config_file.as_ref())?;
   let config_file_url = &ps.maybe_config_file.as_ref().unwrap().specifier;
-
   let config_file_path = if config_file_url.scheme() == "file" {
     config_file_url.to_file_path().unwrap()
   } else {
     bail!("Only local configuration files are supported")
   };
-  let cwd = config_file_path.parent().unwrap();
 
-  let maybe_script = scripts_config.get(script_name);
+  if script_flags.script.is_empty() {
+    print_available_scripts(scripts_config);
+    return Ok(1);
+  }
+
+  let cwd = config_file_path.parent().unwrap();
+  let script_name = script_flags.script;
+  let maybe_script = scripts_config.get(&script_name);
 
   if let Some(script) = maybe_script {
     let (shell_name, shell_flag) = if cfg!(windows) {
@@ -78,7 +75,7 @@ pub async fn execute_script(
     eprintln!(
       "{} {} {}",
       colors::green("Script"),
-      colors::cyan(script_name),
+      colors::cyan(&script_name),
       shell_arg
     );
 

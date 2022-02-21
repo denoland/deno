@@ -1,5 +1,0 @@
-{
-  "scripts": {
-    "foo": "deno run example_script_deno.js"
-  }
-}

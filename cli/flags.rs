@@ -1257,6 +1257,7 @@ Deno allows specifying the filename '-' to read the file from stdin.
 fn script_subcommand<'a>() -> App<'a> {
   App::new("script")
     .setting(AppSettings::TrailingVarArg)
+    .arg(config_arg())
     .arg(script_arg())
     .about("Run a script defined in the configuration file")
     .long_about(
@@ -2202,6 +2203,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn script_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
   let mut script: Vec<String> = matches
     .values_of("script_arg")
     .unwrap_or_default()
@@ -5090,6 +5092,21 @@ mod tests {
         subcommand: DenoSubcommand::Script(ScriptFlags {
           script: "".to_string(),
         }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn script_subcommand_config() {
+    let r = flags_from_vec(svec!["deno", "script", "--config", "deno.jsonc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Script(ScriptFlags {
+          script: "".to_string(),
+        }),
+        config_path: Some("deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
