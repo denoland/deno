@@ -1,5 +1,6 @@
 #![allow(unused_mut)]
 pub mod function;
+pub mod napi_acquire_threadsafe_function;
 pub mod napi_add_env_cleanup_hook;
 pub mod napi_add_finalizer;
 pub mod napi_adjust_external_memory;
@@ -12,9 +13,9 @@ pub mod napi_coerce_to_bool;
 pub mod napi_coerce_to_number;
 pub mod napi_coerce_to_object;
 pub mod napi_coerce_to_string;
+pub mod napi_create_array;
 pub mod napi_create_array_with_length;
 pub mod napi_create_arraybuffer;
-pub mod napi_create_array;
 pub mod napi_create_async_work;
 pub mod napi_create_bigint_int64;
 pub mod napi_create_bigint_uint64;

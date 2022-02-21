@@ -16,6 +16,9 @@ fn napi_call_function(
   let args: &[v8::Local<v8::Value>] =
     std::mem::transmute(std::slice::from_raw_parts(argv, argc));
   let ret = func.call(env.scope, recv, args).unwrap();
-  *result = std::mem::transmute(ret);
+  if !result.is_null() {
+    *result = std::mem::transmute(ret);
+  }
+
   Ok(())
 }

@@ -1,4 +1,4 @@
 const serialport = Deno.core.dlopen(
-  "node_modules/@serialport/bindings-cpp/prebuilds/darwin-x64+arm64/node.napi.node"
+  "node_modules/@serialport/bindings-cpp/prebuilds/darwin-x64+arm64/node.napi.node",
 );
-console.log(serialport.list(console.log))
+console.log(serialport.list(console.log));

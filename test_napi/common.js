@@ -1,4 +1,8 @@
-export { assert, assertEquals, assertRejects } from "../test_util/std/testing/asserts.ts";
+export {
+  assert,
+  assertEquals,
+  assertRejects,
+} from "../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {

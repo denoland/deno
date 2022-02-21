@@ -4,17 +4,28 @@ use deno_core::napi::*;
 fn napi_create_string_latin1(
   env: napi_env,
   string: *const u8,
-  length: usize,
+  length: isize,
   result: *mut napi_value,
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
-  let string = std::slice::from_raw_parts(string, length);
-  
-  match v8::String::new_from_one_byte(env.scope, string, v8::NewStringType::Normal) {
+
+  let string = if length == -1 {
+    std::ffi::CStr::from_ptr(string as *const _)
+      .to_str()
+      .unwrap()
+      .as_bytes()
+  } else {
+    std::slice::from_raw_parts(string, length as usize)
+  };
+  match v8::String::new_from_one_byte(
+    env.scope,
+    string,
+    v8::NewStringType::Normal,
+  ) {
     Some(v8str) => {
       let value: v8::Local<v8::Value> = v8str.into();
       *result = std::mem::transmute(value);
-    },
+    }
     None => return Err(Error::GenericFailure),
   }
 
