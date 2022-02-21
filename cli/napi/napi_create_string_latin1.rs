@@ -9,10 +9,14 @@ fn napi_create_string_latin1(
 ) -> Result {
   let mut env = &mut *(env as *mut Env);
   let string = std::slice::from_raw_parts(string, length);
-  let v8str =
-    v8::String::new_from_one_byte(env.scope, string, v8::NewStringType::Normal)
-      .unwrap();
-  let value: v8::Local<v8::Value> = v8str.into();
-  *result = std::mem::transmute(value);
+  
+  match v8::String::new_from_one_byte(env.scope, string, v8::NewStringType::Normal) {
+    Some(v8str) => {
+      let value: v8::Local<v8::Value> = v8str.into();
+      *result = std::mem::transmute(value);
+    },
+    None => return Err(Error::GenericFailure),
+  }
+
   Ok(())
 }
