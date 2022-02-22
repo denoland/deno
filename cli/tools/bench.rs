@@ -26,6 +26,8 @@ use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
+use num_format::Locale;
+use num_format::ToFormattedString;
 use serde::Deserialize;
 use std::io::Write;
 use std::path::PathBuf;
@@ -206,10 +208,14 @@ impl BenchReporter for PrettyBenchReporter {
       BenchResult::Ok => {
         let ns_op = current_bench.measures.iter().sum::<u128>()
           / current_bench.iterations as u128;
+        let min_op = current_bench.measures.iter().min().unwrap_or(&0);
+        let max_op = current_bench.measures.iter().max().unwrap_or(&0);
         format!(
-          "{} iterations {}ns/op {}",
+          "{} iterations {} ns/iter ({}..{} ns/iter) {}",
           current_bench.iterations,
-          ns_op,
+          ns_op.to_formatted_string(&Locale::en),
+          min_op.to_formatted_string(&Locale::en),
+          max_op.to_formatted_string(&Locale::en),
           colors::green("ok")
         )
       }
