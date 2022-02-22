@@ -803,9 +803,14 @@ async fn bundle_command(
         })
         .collect();
 
-      if let Some(import_map) = ps.flags.import_map_path.as_ref() {
-        paths_to_watch
-          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      if let Ok(Some(import_map_path)) =
+        config_file::resolve_import_map_specifier(
+          ps.flags.import_map_path.as_deref(),
+          ps.maybe_config_file.as_ref(),
+        )
+        .map(|ms| ms.map(|ref s| s.to_file_path().ok()).flatten())
+      {
+        paths_to_watch.push(import_map_path);
       }
 
       Ok((paths_to_watch, graph, ps))
@@ -1047,9 +1052,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         paths_to_watch.extend(watch_paths);
       }
 
-      if let Some(import_map) = ps.flags.import_map_path.as_ref() {
-        paths_to_watch
-          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      if let Ok(Some(import_map_path)) =
+        config_file::resolve_import_map_specifier(
+          ps.flags.import_map_path.as_deref(),
+          ps.maybe_config_file.as_ref(),
+        )
+        .map(|ms| ms.map(|ref s| s.to_file_path().ok()).flatten())
+      {
+        paths_to_watch.push(import_map_path);
       }
 
       Ok((paths_to_watch, main_module, ps))
