@@ -309,9 +309,12 @@ impl UnaryPermission<ReadDescriptor> {
     }
   }
 
-  pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let (resolved_path, display_path) = resolved_and_display_path(path);
+  pub fn request(
+    &mut self,
+    path: Option<&Path>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path)?;
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
         if permission_prompt(
@@ -345,7 +348,7 @@ impl UnaryPermission<ReadDescriptor> {
       } else {
         state
       }
-    }
+    })
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
@@ -364,7 +367,7 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
+    let (resolved_path, display_path) = resolved_and_display_path(path)?;
     let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
@@ -460,9 +463,12 @@ impl UnaryPermission<WriteDescriptor> {
     }
   }
 
-  pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let (resolved_path, display_path) = resolved_and_display_path(path);
+  pub fn request(
+    &mut self,
+    path: Option<&Path>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path)?;
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
         if permission_prompt(
@@ -496,7 +502,7 @@ impl UnaryPermission<WriteDescriptor> {
       } else {
         state
       }
-    }
+    })
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
@@ -515,7 +521,7 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
+    let (resolved_path, display_path) = resolved_and_display_path(path)?;
     let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
@@ -998,9 +1004,12 @@ impl UnaryPermission<FfiDescriptor> {
     }
   }
 
-  pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let (resolved_path, display_path) = resolved_and_display_path(path);
+  pub fn request(
+    &mut self,
+    path: Option<&Path>,
+  ) -> Result<PermissionState, AnyError> {
+    Ok(if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path)?;
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
         if permission_prompt(
@@ -1034,7 +1043,7 @@ impl UnaryPermission<FfiDescriptor> {
       } else {
         state
       }
-    }
+    })
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
@@ -1052,7 +1061,7 @@ impl UnaryPermission<FfiDescriptor> {
 
   pub fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     if let Some(path) = path {
-      let (resolved_path, display_path) = resolved_and_display_path(path);
+      let (resolved_path, display_path) = resolved_and_display_path(path)?;
       let (result, prompted) = self.query(Some(&resolved_path)).check(
         self.name,
         Some(&format!("\"{}\"", display_path.display())),
@@ -1412,10 +1421,12 @@ pub fn resolve_ffi_allowlist(
 
 /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
 /// can be displayed without leaking the CWD when not allowed.
-fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
-  let resolved_path = resolve_from_cwd(path).unwrap();
+fn resolved_and_display_path(
+  path: &Path,
+) -> Result<(PathBuf, PathBuf), AnyError> {
+  let resolved_path = resolve_from_cwd(path)?;
   let display_path = path.to_path_buf();
-  (resolved_path, display_path)
+  Ok((resolved_path, display_path))
 }
 
 fn escalation_error() -> AnyError {
@@ -2042,6 +2053,7 @@ mod tests {
   use super::*;
   use deno_core::resolve_url_or_path;
   use deno_core::serde_json::json;
+  use deno_crypto::rand::Rng;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -2419,15 +2431,15 @@ mod tests {
     {
       let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
       prompt_value.set(true);
-      assert_eq!(perms.read.request(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(Path::new("/foo"))).unwrap(), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.read.request(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(Path::new("/foo/bar"))).unwrap(), PermissionState::Granted);
       prompt_value.set(false);
-      assert_eq!(perms.write.request(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.write.request(Some(Path::new("/foo"))).unwrap(), PermissionState::Denied);
       assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       prompt_value.set(true);
-      assert_eq!(perms.write.request(None), PermissionState::Denied);
+      assert_eq!(perms.write.request(None).unwrap(), PermissionState::Denied);
       prompt_value.set(true);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
       prompt_value.set(false);
@@ -2443,10 +2455,10 @@ mod tests {
       prompt_value.set(false);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(Some(Path::new("deno"))).unwrap(), PermissionState::Granted);
       assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(Some(Path::new("deno"))).unwrap(), PermissionState::Granted);
       prompt_value.set(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       prompt_value.set(true);
@@ -2873,5 +2885,22 @@ mod tests {
     )
     .unwrap();
     assert_eq!(worker_perms.write.denied_list, main_perms.write.denied_list);
+  }
+
+  #[test]
+  fn fs_test_while_deleted_dir_with_relative_path() {
+    let mut perms = Permissions::allow_all();
+    let mut rng = deno_crypto::rand::thread_rng();
+    let unique = rng.gen::<u32>();
+    let tmp = std::env::temp_dir().join(format!("{:08x}", unique));
+    std::fs::create_dir(&tmp).unwrap();
+    std::env::set_current_dir(&tmp).unwrap();
+    let pathname = std::path::Path::new("./foo");
+    std::fs::create_dir(pathname).unwrap();
+    std::env::set_current_dir(pathname).unwrap();
+    std::fs::remove_dir(std::env::current_dir().unwrap()).unwrap();
+    assert!(perms.write.check(&pathname.join("x")).is_err());
+    assert!(perms.read.check(&pathname.join("x")).is_err());
+    assert!(perms.ffi.check(Some(&pathname.join("x"))).is_err());
   }
 }

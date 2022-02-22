@@ -100,8 +100,8 @@ pub fn op_request_permission(
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.request(path.map(Path::new)),
-    "write" => permissions.write.request(path.map(Path::new)),
+    "read" => permissions.read.request(path.map(Path::new))?,
+    "write" => permissions.write.request(path.map(Path::new))?,
     "net" => permissions.net.request(
       match args.host.as_deref() {
         None => None,
@@ -111,7 +111,9 @@ pub fn op_request_permission(
     ),
     "env" => permissions.env.request(args.variable.as_deref()),
     "run" => permissions.run.request(args.command.as_deref()),
-    "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
+    "ffi" => permissions
+      .ffi
+      .request(args.path.as_deref().map(Path::new))?,
     "hrtime" => permissions.hrtime.request(),
     n => {
       return Err(custom_error(
