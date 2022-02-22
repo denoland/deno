@@ -1,4 +1,4 @@
-const xattr = Deno.core.dlopen(
+const xattr = Deno.core.napiOpen(
   "node_modules/fs-xattr/build/Release/xattr.node",
 );
 

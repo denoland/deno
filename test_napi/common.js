@@ -13,5 +13,5 @@ const [libPrefix, libSuffix] = {
 
 export function loadTestLibrary() {
   const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
-  return Deno.core.dlopen(specifier);
+  return Deno.core.napiOpen(specifier);
 }

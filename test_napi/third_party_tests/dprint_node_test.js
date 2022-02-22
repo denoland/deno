@@ -1,4 +1,4 @@
-const dprint = Deno.core.dlopen(
+const dprint = Deno.core.napiOpen(
   "./node_modules/dprint-node/dprint-node.linux-x64-gnu.node",
 );
 

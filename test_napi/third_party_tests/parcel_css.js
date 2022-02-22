@@ -1,4 +1,4 @@
-const lib = Deno.core.dlopen(
+const lib = Deno.core.napiOpen(
   "./node_modules/@parcel/css-darwin-arm64/parcel-css.darwin-arm64.node",
 );
 

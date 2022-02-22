@@ -7,7 +7,7 @@ use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 #[cfg(feature = "napi")]
-use crate::napi::dlopen_func;
+use crate::napi::napi_open_func;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::Op;
@@ -114,7 +114,7 @@ pub fn external_references(isolate_ptr: *mut c_void) -> v8::ExternalReferences {
     },
     #[cfg(feature = "napi")]
     v8::ExternalReference {
-      function: dlopen_func.map_fn_to(),
+      function: napi_open_func.map_fn_to(),
     },
     v8::ExternalReference {
       pointer: isolate_ptr,
@@ -235,7 +235,7 @@ pub fn initialize_context<'s>(
 
   if let Some(isolate_ptr) = isolate_ptr {
     #[cfg(feature = "napi")]
-    set_func_with_external(scope, core_val, "dlopen", dlopen_func, isolate_ptr);
+    set_func_with_external(scope, core_val, "napiOpen", napi_open_func, isolate_ptr);
   }
 
   // Direct bindings on `window`.

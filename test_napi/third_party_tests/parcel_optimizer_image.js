@@ -1,4 +1,4 @@
-const lib = Deno.core.dlopen(
+const lib = Deno.core.napiOpen(
   "./node_modules/@parcel/optimizer-image/parcel-image.darwin-arm64.node",
 );
 

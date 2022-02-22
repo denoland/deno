@@ -1,4 +1,4 @@
-const lib = Deno.core.dlopen(
+const lib = Deno.core.napiOpen(
   "./node_modules/@parcel/fs-search/fs-search.darwin-arm64.node",
 );
 

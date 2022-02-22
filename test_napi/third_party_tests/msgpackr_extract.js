@@ -1,4 +1,4 @@
-const msgpackrExtract = Deno.core.dlopen(
+const msgpackrExtract = Deno.core.napiOpen(
   "node_modules/msgpackr-extract/prebuilds/darwin-arm64/node.napi.glibc.node",
 );
 

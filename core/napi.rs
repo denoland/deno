@@ -364,7 +364,7 @@ impl<'a, 'b> Env<'a, 'b> {
   }
 }
 
-pub fn dlopen_func<'s>(
+pub fn napi_open_func<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,

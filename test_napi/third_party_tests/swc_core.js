@@ -1,4 +1,4 @@
-const swc = Deno.core.dlopen(
+const swc = Deno.core.napiOpen(
   "node_modules/@swc/core-darwin-arm64/swc.darwin-arm64.node",
 );
 

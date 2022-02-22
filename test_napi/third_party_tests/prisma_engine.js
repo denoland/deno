@@ -1,4 +1,4 @@
-const prismaQueryEngine = Deno.core.dlopen(
+const prismaQueryEngine = Deno.core.napiOpen(
   "node_modules/@prisma/engines/libquery_engine-darwin-arm64.dylib.node",
 );
 

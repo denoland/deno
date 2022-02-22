@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-const three_em = Deno.core.dlopen(
+const three_em = Deno.core.napiOpen(
   "node_modules/@three-em/node-darwin-arm64/three_em_node.darwin-arm64.node",
 );
 

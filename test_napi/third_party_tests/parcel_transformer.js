@@ -1,4 +1,4 @@
-const lib = Deno.core.dlopen(
+const lib = Deno.core.napiOpen(
   "./node_modules/@parcel/transformer-js/parcel-swc.darwin-arm64.node",
 );
 
