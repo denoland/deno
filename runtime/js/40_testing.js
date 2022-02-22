@@ -897,13 +897,13 @@
     };
   }
 
-  function reportIterationStart(i) {
+  function reportIterationStart() {
     core.opSync("op_dispatch_bench_event", {
       iterationStart: 0,
     });
   }
 
-  function reportIterationFinish(i) {
+  function reportIterationFinish() {
     core.opSync("op_dispatch_bench_event", {
       iterationFinish: 0,
     });
