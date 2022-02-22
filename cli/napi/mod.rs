@@ -1,9 +1,23 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 #![allow(unused_mut)]
 #![allow(non_camel_case_types)]
+
+//! Symbols to be exported are now defined in this JSON file.
+//! The `#[napi_sym]` macro checks for missing entries and panics.
+//!
+//! `./tools/napi/generate_link_win.js` is used to generate the LINK `cli/exports.def` on Windows,
+//! which is also checked into git.
+//!
+//! To add a new napi function:
+//! 1. Place `#[napi_sym]` on top of your implementation.
+//! 2. Add the function's identifier to this JSON list.
+//! 3. Finally, run `./tools/napi/generate_link_win.js` to update `cli/exports.def`.
 
 pub mod function;
 pub mod threadsafe_functions;
 
+pub mod js_values;
 pub mod napi_add_env_cleanup_hook;
 pub mod napi_add_finalizer;
 pub mod napi_adjust_external_memory;
@@ -11,41 +25,8 @@ pub mod napi_call_function;
 pub mod napi_cancel_async_work;
 pub mod napi_close_escapable_handle_scope;
 pub mod napi_close_handle_scope;
-pub mod napi_coerce_to_bool;
-pub mod napi_coerce_to_number;
-pub mod napi_coerce_to_object;
-pub mod napi_coerce_to_string;
-pub mod napi_create_array;
-pub mod napi_create_array_with_length;
-pub mod napi_create_arraybuffer;
 pub mod napi_create_async_work;
-pub mod napi_create_bigint_int64;
-pub mod napi_create_bigint_uint64;
-pub mod napi_create_bigint_words;
-pub mod napi_create_buffer;
-pub mod napi_create_buffer_copy;
-pub mod napi_create_dataview;
-pub mod napi_create_date;
-pub mod napi_create_double;
-pub mod napi_create_error;
-pub mod napi_create_external;
-pub mod napi_create_external_arraybuffer;
-pub mod napi_create_external_buffer;
-pub mod napi_create_function;
-pub mod napi_create_int32;
-pub mod napi_create_int64;
-pub mod napi_create_object;
-pub mod napi_create_promise;
-pub mod napi_create_range_error;
-pub mod napi_create_reference;
-pub mod napi_create_string_latin1;
-pub mod napi_create_string_utf16;
-pub mod napi_create_string_utf8;
-pub mod napi_create_symbol;
-pub mod napi_create_type_error;
 #[allow(non_upper_case_globals)]
-pub mod napi_create_typedarray;
-pub mod napi_create_uint32;
 pub mod napi_define_class;
 pub mod napi_define_properties;
 pub mod napi_delete_async_work;

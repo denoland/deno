@@ -70,15 +70,16 @@ impl TsFn {
           }
         }
 
-        // Receiver migh have been already dropped
+        // Receiver might have been already dropped
         let _ = tx.send(());
       });
       // This call should never fail
       self.sender.unbounded_send(call).unwrap();
     } else if let Some(js_func) = js_func {
       let call = Box::new(move |scope: &mut v8::HandleScope| {
+        // TODO(@littledivy): Call js_func.
         let _func = js_func.open(scope);
-        // Receiver migh have been already dropped
+        // Receiver might have been already dropped
         let _ = tx.send(());
       });
       // This call should never fail
