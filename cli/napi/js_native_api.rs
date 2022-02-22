@@ -1,0 +1,2126 @@
+use deno_core::napi::*;
+use v8::BackingStore;
+use v8::UniqueRef;
+
+use super::function::create_function;
+use super::function::create_function_template;
+use super::function::CallbackInfo;
+use super::util::get_array_buffer_ptr;
+use std::ptr::NonNull;
+
+#[napi_sym::napi_sym]
+fn napi_create_array(env: napi_env, result: *mut napi_value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::Array::new(env.scope, 0).into();
+  *result = std::mem::transmute::<v8::Local<v8::Value>, napi_value>(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_array_with_length(
+  env: napi_env,
+  len: i32,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::Array::new(env.scope, len).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_arraybuffer(
+  env: napi_env,
+  len: usize,
+  data: *mut *mut u8,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value = v8::ArrayBuffer::new(env.scope, len);
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(value);
+  }
+  let value: v8::Local<v8::Value> = value.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_bigint_int64(
+  env: napi_env,
+  value: i64,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> =
+    v8::BigInt::new_from_i64(env.scope, value).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_bigint_uint64(
+  env: napi_env,
+  value: u64,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> =
+    v8::BigInt::new_from_u64(env.scope, value).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_bigint_words(
+  env: napi_env,
+  sign_bit: bool,
+  words: *const u64,
+  word_count: usize,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::BigInt::new_from_words(
+    env.scope,
+    sign_bit,
+    std::slice::from_raw_parts(words, word_count),
+  )
+  .unwrap()
+  .into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_buffer(
+  env: napi_env,
+  len: usize,
+  data: *mut *mut u8,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value = v8::ArrayBuffer::new(env.scope, len);
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(value);
+  }
+  let value = v8::Uint8Array::new(env.scope, value, 0, len).unwrap();
+  let value: v8::Local<v8::Value> = value.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_buffer_copy(
+  env: napi_env,
+  len: usize,
+  data: *mut u8,
+  result_data: *mut *mut u8,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value = v8::ArrayBuffer::new(env.scope, len);
+  let ptr = get_array_buffer_ptr(value);
+  std::ptr::copy(data, ptr, len);
+  if !result_data.is_null() {
+    *result_data = ptr;
+  }
+  let value = v8::Uint8Array::new(env.scope, value, 0, len).unwrap();
+  let value: v8::Local<v8::Value> = value.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_coerce_to_bool(
+  env: napi_env,
+  value: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let coerced = value.to_boolean(env.scope);
+  let value: v8::Local<v8::Value> = coerced.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_coerce_to_number(
+  env: napi_env,
+  value: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let coerced = value.to_number(env.scope).unwrap();
+  let value: v8::Local<v8::Value> = coerced.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_coerce_to_object(
+  env: napi_env,
+  value: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let coerced = value.to_object(env.scope).unwrap();
+  let value: v8::Local<v8::Value> = coerced.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_coerce_to_string(
+  env: napi_env,
+  value: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let coerced = value.to_string(env.scope).unwrap();
+  let value: v8::Local<v8::Value> = coerced.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_dataview(
+  env: napi_env,
+  len: usize,
+  data: *mut *mut u8,
+  byte_offset: usize,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value = v8::ArrayBuffer::new(env.scope, len);
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(value);
+  }
+  let context = env.scope.get_current_context();
+  let global = context.global(env.scope);
+  let data_view_name = v8::String::new(env.scope, "DataView").unwrap();
+  let data_view = global.get(env.scope, data_view_name.into()).unwrap();
+  let data_view = v8::Local::<v8::Function>::try_from(data_view).unwrap();
+  let byte_offset = v8::Number::new(env.scope, byte_offset as f64);
+  let byte_length = v8::Number::new(env.scope, len as f64);
+  let value = data_view
+    .new_instance(
+      env.scope,
+      &[value.into(), byte_offset.into(), byte_length.into()],
+    )
+    .unwrap();
+  let value: v8::Local<v8::Value> = value.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_date(
+  env: napi_env,
+  time: f64,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> =
+    v8::Date::new(env.scope, time).unwrap().into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_double(
+  env: napi_env,
+  value: f64,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::Number::new(env.scope, value).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_error(
+  env: napi_env,
+  code: napi_value,
+  msg: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let _code: v8::Local<v8::Value> = std::mem::transmute(code);
+  let msg: v8::Local<v8::Value> = std::mem::transmute(msg);
+
+  let msg = msg.to_string(env.scope).unwrap();
+
+  let error = v8::Exception::error(env.scope, msg);
+  *result = std::mem::transmute(error);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_external(
+  env: napi_env,
+  value: *mut c_void,
+  _finalize_cb: napi_finalize,
+  _finalize_hint: *mut c_void,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::External::new(env.scope, value).into();
+  // TODO: finalization
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+pub type BackingStoreDeleterCallback = unsafe extern "C" fn(
+  data: *mut c_void,
+  byte_length: usize,
+  deleter_data: *mut c_void,
+);
+extern "C" {
+  fn v8__ArrayBuffer__NewBackingStore__with_data(
+    data: *mut c_void,
+    byte_length: usize,
+    deleter: BackingStoreDeleterCallback,
+    deleter_data: *mut c_void,
+  ) -> *mut BackingStore;
+}
+
+pub extern "C" fn backing_store_deleter_callback(
+  data: *mut c_void,
+  byte_length: usize,
+  _deleter_data: *mut c_void,
+) {
+  let slice_ptr = ptr::slice_from_raw_parts_mut(data as *mut u8, byte_length);
+  let b = unsafe { Box::from_raw(slice_ptr) };
+  drop(b);
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_external_arraybuffer(
+  env: napi_env,
+  data: *mut c_void,
+  byte_length: usize,
+  _finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let _slice = std::slice::from_raw_parts(data as *mut u8, byte_length);
+  // TODO: finalization
+  let store: UniqueRef<BackingStore> =
+    std::mem::transmute(v8__ArrayBuffer__NewBackingStore__with_data(
+      data,
+      byte_length,
+      backing_store_deleter_callback,
+      finalize_hint,
+    ));
+
+  let ab = v8::ArrayBuffer::with_backing_store(env.scope, &store.make_shared());
+  let value: v8::Local<v8::Value> = ab.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_external_buffer(
+  env: napi_env,
+  byte_length: isize,
+  data: *mut c_void,
+  _finalize_cb: napi_finalize,
+  _finalize_hint: *mut c_void,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let slice = if byte_length == -1 {
+    std::ffi::CStr::from_ptr(data as *const _).to_bytes()
+  } else {
+    std::slice::from_raw_parts(data as *mut u8, byte_length as usize)
+  };
+  // TODO: make this not copy the slice
+  // TODO: finalization
+  let store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
+    slice.to_vec().into_boxed_slice(),
+  );
+  let ab = v8::ArrayBuffer::with_backing_store(env.scope, &store.make_shared());
+  let value = v8::Uint8Array::new(env.scope, ab, 0, slice.len()).unwrap();
+  let value: v8::Local<v8::Value> = value.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_function(
+  env: &mut Env,
+  name: *const u8,
+  length: isize,
+  cb: napi_callback,
+  cb_info: napi_callback_info,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let name = match name.is_null() {
+    true => None,
+    false => Some(name),
+  };
+  let name = name.map(|name| {
+    if length == -1 {
+      std::ffi::CStr::from_ptr(name as *const _).to_str().unwrap()
+    } else {
+      let name = std::slice::from_raw_parts(name, length as usize);
+      std::str::from_utf8(name).unwrap()
+    }
+  });
+  let function = create_function(env, name, cb, cb_info);
+  let value: v8::Local<v8::Value> = function.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_int32(
+  env: napi_env,
+  value: i32,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> =
+    v8::Number::new(env.scope, value as f64).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_int64(
+  env: napi_env,
+  value: i64,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> =
+    v8::Number::new(env.scope, value as f64).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_object(env: napi_env, result: *mut napi_value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object = v8::Object::new(env.scope);
+  *result = std::mem::transmute(object);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_promise(
+  env: napi_env,
+  deferred: *mut napi_deferred,
+  promise_out: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let resolver = v8::PromiseResolver::new(env.scope).unwrap();
+  let mut global = v8::Global::new(env.scope, resolver);
+  let mut global_ptr = global.into_raw();
+  let promise: v8::Local<v8::Value> = resolver.get_promise(env.scope).into();
+  *deferred = global_ptr.as_mut() as *mut _ as napi_deferred;
+  *promise_out = std::mem::transmute(promise);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_range_error(
+  env: napi_env,
+  _code: napi_value,
+  msg: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code: v8::Local<v8::Value> = std::mem::transmute(code);
+  let msg: v8::Local<v8::Value> = std::mem::transmute(msg);
+
+  let msg = msg.to_string(env.scope).unwrap();
+
+  let error = v8::Exception::range_error(env.scope, msg);
+  *result = std::mem::transmute(error);
+
+  Ok(())
+}
+
+//
+
+// TODO: properly implement ref counting stuff
+#[napi_sym::napi_sym]
+fn napi_create_reference(
+  env: napi_env,
+  value: napi_value,
+  _initial_refcount: u32,
+  result: *mut napi_ref,
+) -> Result {
+  let mut _env = &mut *(env as *mut Env);
+  *result = value;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_string_latin1(
+  env: napi_env,
+  string: *const u8,
+  length: isize,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let string = if length == -1 {
+    std::ffi::CStr::from_ptr(string as *const _)
+      .to_str()
+      .unwrap()
+      .as_bytes()
+  } else {
+    std::slice::from_raw_parts(string, length as usize)
+  };
+  match v8::String::new_from_one_byte(
+    env.scope,
+    string,
+    v8::NewStringType::Normal,
+  ) {
+    Some(v8str) => {
+      let value: v8::Local<v8::Value> = v8str.into();
+      *result = std::mem::transmute(value);
+    }
+    None => return Err(Error::GenericFailure),
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_string_utf16(
+  env: napi_env,
+  string: *const u16,
+  length: usize,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let string = std::slice::from_raw_parts(string, length);
+  let v8str =
+    v8::String::new_from_two_byte(env.scope, string, v8::NewStringType::Normal)
+      .unwrap();
+  let value: v8::Local<v8::Value> = v8str.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_string_utf8(
+  env: napi_env,
+  string: *const u8,
+  length: isize,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let string = if length == -1 {
+    std::ffi::CStr::from_ptr(string as *const _)
+      .to_str()
+      .unwrap()
+  } else {
+    let string = std::slice::from_raw_parts(string, length as usize);
+    std::str::from_utf8(string).unwrap()
+  };
+  let v8str = v8::String::new(env.scope, string).unwrap();
+  let value: v8::Local<v8::Value> = v8str.into();
+  *result = std::mem::transmute(value);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_symbol(
+  env: napi_env,
+  description: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let description = match description.is_null() {
+    true => None,
+    false => Some(
+      std::mem::transmute::<napi_value, v8::Local<v8::Value>>(description)
+        .to_string(env.scope)
+        .unwrap(),
+    ),
+  };
+  let sym = v8::Symbol::new(env.scope, description);
+  let local: v8::Local<v8::Value> = sym.into();
+  *result = transmute(local);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_type_error(
+  env: napi_env,
+  _code: napi_value,
+  msg: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code: v8::Local<v8::Value> = std::mem::transmute(code);
+  let msg: v8::Local<v8::Value> = std::mem::transmute(msg);
+
+  let msg = msg.to_string(env.scope).unwrap();
+
+  let error = v8::Exception::type_error(env.scope, msg);
+  *result = std::mem::transmute(error);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_typedarray(
+  env: napi_env,
+  ty: napi_typedarray_type,
+  length: usize,
+  arraybuffer: napi_value,
+  byte_offset: usize,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let ab: v8::Local<v8::Value> = std::mem::transmute(arraybuffer);
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(ab).unwrap();
+  let typedarray: v8::Local<v8::Value> = match ty {
+    napi_uint8_array => v8::Uint8Array::new(env.scope, ab, byte_offset, length)
+      .unwrap()
+      .into(),
+    napi_uint8_clamped_array => {
+      v8::Uint8ClampedArray::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    napi_int8_array => v8::Int8Array::new(env.scope, ab, byte_offset, length)
+      .unwrap()
+      .into(),
+    napi_uint16_array => {
+      v8::Uint16Array::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    napi_int16_array => v8::Int16Array::new(env.scope, ab, byte_offset, length)
+      .unwrap()
+      .into(),
+    napi_uint32_array => {
+      v8::Uint32Array::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    napi_int32_array => v8::Int32Array::new(env.scope, ab, byte_offset, length)
+      .unwrap()
+      .into(),
+    napi_float32_array => {
+      v8::Float32Array::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    napi_float64_array => {
+      v8::Float64Array::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    napi_bigint64_array => {
+      v8::BigInt64Array::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    napi_biguint64_array => {
+      v8::BigUint64Array::new(env.scope, ab, byte_offset, length)
+        .unwrap()
+        .into()
+    }
+    _ => {
+      return Err(Error::InvalidArg);
+    }
+  };
+  *result = std::mem::transmute(typedarray);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_uint32(
+  env: napi_env,
+  value: u32,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> =
+    v8::Number::new(env.scope, value as f64).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_bigint_int64(
+  env: napi_env,
+  value: napi_value,
+  result: *mut i64,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let bigint = value.to_big_int(env.scope).unwrap();
+  *result = bigint.i64_value().0;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_bigint_uint64(
+  env: napi_env,
+  value: napi_value,
+  result: *mut u64,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let bigint = value.to_big_int(env.scope).unwrap();
+  *result = bigint.u64_value().0;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_bigint_words(
+  env: napi_env,
+  value: napi_value,
+  sign_bit: *mut i32,
+  size: *mut usize,
+  out_words: *mut u64,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let bigint = value.to_big_int(env.scope).unwrap();
+
+  let out_words = std::slice::from_raw_parts_mut(out_words, *size);
+  let mut words = Vec::with_capacity(bigint.word_count());
+  let (sign, _) = bigint.to_words_array(words.as_mut_slice());
+  *sign_bit = sign as i32;
+
+  for (i, word) in out_words.iter_mut().enumerate() {
+    *word = words[i];
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_bool(
+  env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = value.boolean_value(env.scope);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_double(
+  env: napi_env,
+  value: napi_value,
+  result: *mut f64,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = value.number_value(env.scope).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_external(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut *mut c_void,
+) -> Result {
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let ext = v8::Local::<v8::External>::try_from(value).unwrap();
+  *result = ext.value();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_int32(
+  env: napi_env,
+  value: napi_value,
+  result: *mut i32,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = value.int32_value(env.scope).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_int64(
+  env: napi_env,
+  value: napi_value,
+  result: *mut i64,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = value.integer_value(env.scope).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_string_latin1(
+  env: napi_env,
+  value: napi_value,
+  buf: *mut u8,
+  bufsize: usize,
+  result: *mut usize,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+
+  if !value.is_string() && !value.is_string_object() {
+    return Err(Error::StringExpected);
+  }
+
+  let v8str = value.to_string(env.scope).unwrap();
+  let string_len = v8str.utf8_length(env.scope);
+
+  if buf.is_null() {
+    *result = string_len;
+  } else if bufsize != 0 {
+    let buffer = std::slice::from_raw_parts_mut(buf, bufsize - 1);
+    let copied = v8str.write_one_byte(
+      env.scope,
+      buffer,
+      0,
+      v8::WriteOptions::NO_NULL_TERMINATION,
+    );
+    buf.add(copied).write(0);
+    if !result.is_null() {
+      *result = copied;
+    }
+  } else if !result.is_null() {
+    *result = string_len;
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_string_utf8(
+  env: napi_env,
+  value: napi_value,
+  buf: *mut u8,
+  bufsize: usize,
+  result: *mut usize,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+
+  if !value.is_string() && !value.is_string_object() {
+    return Err(Error::StringExpected);
+  }
+
+  let v8str = value.to_string(env.scope).unwrap();
+  let string_len = v8str.utf8_length(env.scope);
+
+  if buf.is_null() {
+    *result = string_len;
+  } else if bufsize != 0 {
+    let buffer = std::slice::from_raw_parts_mut(buf, bufsize - 1);
+    let copied = v8str.write_utf8(
+      env.scope,
+      buffer,
+      None,
+      v8::WriteOptions::NO_NULL_TERMINATION
+        | v8::WriteOptions::REPLACE_INVALID_UTF8,
+    );
+    buf.add(copied).write(0);
+    if !result.is_null() {
+      *result = copied;
+    }
+  } else if !result.is_null() {
+    *result = string_len;
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_string_utf16(
+  env: napi_env,
+  value: napi_value,
+  buf: *mut u16,
+  bufsize: usize,
+  result: *mut usize,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+
+  if !value.is_string() && !value.is_string_object() {
+    return Err(Error::StringExpected);
+  }
+
+  let v8str = value.to_string(env.scope).unwrap();
+  let string_len = v8str.length();
+
+  if buf.is_null() {
+    *result = string_len;
+  } else if bufsize != 0 {
+    let buffer = std::slice::from_raw_parts_mut(buf, bufsize - 1);
+    let copied =
+      v8str.write(env.scope, buffer, 0, v8::WriteOptions::NO_NULL_TERMINATION);
+    buf.add(copied).write(0);
+    if !result.is_null() {
+      *result = copied;
+    }
+  } else if !result.is_null() {
+    *result = string_len;
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_value_uint32(
+  env: napi_env,
+  value: napi_value,
+  result: *mut u32,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = value.uint32_value(env.scope).unwrap();
+  Ok(())
+}
+
+// TODO
+#[napi_sym::napi_sym]
+fn napi_add_finalizer(
+  _env: napi_env,
+  _js_object: napi_value,
+  _native_object: *const c_void,
+  _finalize_cb: napi_finalize,
+  _finalize_hint: *const c_void,
+  _result: *mut napi_ref,
+) -> Result {
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_adjust_external_memory(
+  env: &mut Env,
+  change_in_bytes: i64,
+  adjusted_value: &mut i64,
+) -> Result {
+  let isolate = unsafe { &mut *env.isolate_ptr };
+  *adjusted_value =
+    isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_call_function(
+  env: napi_env,
+  recv: napi_value,
+  func: napi_value,
+  argc: usize,
+  argv: *const napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let recv: v8::Local<v8::Value> = std::mem::transmute(recv);
+  let func: v8::Local<v8::Value> = std::mem::transmute(func);
+  let func = v8::Local::<v8::Function>::try_from(func).unwrap();
+  let args: &[v8::Local<v8::Value>] =
+    std::mem::transmute(std::slice::from_raw_parts(argv, argc));
+  let ret = func.call(env.scope, recv, args).unwrap();
+  if !result.is_null() {
+    *result = std::mem::transmute(ret);
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_close_escapable_handle_scope(
+  env: napi_env,
+  _scope: napi_escapable_handle_scope,
+) -> Result {
+  let mut _env = &mut *(env as *mut Env);
+  // TODO: do this properly
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_close_handle_scope(env: napi_env, scope: napi_handle_scope) -> Result {
+  let env = &mut *(env as *mut Env);
+  if env.open_handle_scopes == 0 {
+    return Err(Error::HandleScopeMismatch);
+  }
+  let _scope = &mut *(scope as *mut v8::HandleScope);
+  // drop(scope);
+  env.open_handle_scopes -= 1;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_define_class(
+  env: napi_env,
+  utf8name: *const c_char,
+  // TODO
+  _length: usize,
+  constructor: napi_callback,
+  callback_data: *mut c_void,
+  property_count: usize,
+  properties: *const napi_property_descriptor,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let name = std::ffi::CStr::from_ptr(utf8name).to_str().unwrap();
+  let tpl: v8::Local<v8::FunctionTemplate> = std::mem::transmute(
+    create_function_template(env, Some(name), constructor, callback_data),
+  );
+  let napi_properties = std::slice::from_raw_parts(properties, property_count);
+  for p in napi_properties {
+    let name = if !p.utf8name.is_null() {
+      let name_str = CStr::from_ptr(p.utf8name).to_str().unwrap();
+      v8::String::new(env.scope, name_str).unwrap()
+    } else {
+      std::mem::transmute(p.name)
+    };
+
+    if !(p.method as *const c_void).is_null() {
+      let function: v8::Local<v8::FunctionTemplate> = std::mem::transmute(
+        create_function_template(env, None, p.method, p.data),
+      );
+      let proto = tpl.prototype_template(env.scope);
+      proto.set(name.into(), function.into());
+    } else if !(p.getter as *const c_void).is_null()
+      || !(p.setter as *const c_void).is_null()
+    {
+      let getter: Option<v8::Local<v8::FunctionTemplate>> =
+        if !(p.getter as *const c_void).is_null() {
+          Some(std::mem::transmute(create_function_template(
+            env, None, p.getter, p.data,
+          )))
+        } else {
+          None
+        };
+      let setter: Option<v8::Local<v8::FunctionTemplate>> =
+        if !(p.setter as *const c_void).is_null() {
+          Some(std::mem::transmute(create_function_template(
+            env, None, p.setter, p.data,
+          )))
+        } else {
+          None
+        };
+
+      let proto = tpl.prototype_template(env.scope);
+
+      let base_name = CStr::from_ptr(p.utf8name).to_str().unwrap();
+      let getter_name =
+        v8::String::new(env.scope, format!("get_{}", base_name).as_str())
+          .unwrap();
+      let setter_name =
+        v8::String::new(env.scope, format!("set_{}", base_name).as_str())
+          .unwrap();
+
+      // TODO: use set_accessor & set_accessor_with_setter
+      match (getter, setter) {
+        (Some(getter), None) => {
+          proto.set(getter_name.into(), getter.into());
+        }
+        (Some(getter), Some(setter)) => {
+          proto.set(getter_name.into(), getter.into());
+          proto.set(setter_name.into(), setter.into());
+        }
+        (None, Some(setter)) => {
+          proto.set(setter_name.into(), setter.into());
+        }
+        (None, None) => unreachable!(),
+      }
+    } else {
+      let proto = tpl.prototype_template(env.scope);
+      proto.set(name.into(), std::mem::transmute(p.value));
+    }
+  }
+
+  let value: v8::Local<v8::Value> = tpl.get_function(env.scope).unwrap().into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_define_properties(
+  env: napi_env,
+  obj: napi_value,
+  property_count: usize,
+  properties: *const napi_property_descriptor,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let object: v8::Local<v8::Object> = std::mem::transmute(obj);
+  let properties = std::slice::from_raw_parts(properties, property_count);
+
+  for property in properties {
+    let name = if !property.utf8name.is_null() {
+      let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
+      v8::String::new(env.scope, name_str).unwrap()
+    } else {
+      std::mem::transmute(property.name)
+    };
+
+    let method_ptr = property.method as *mut c_void;
+
+    if !method_ptr.is_null() {
+      let function: v8::Local<v8::Value> = {
+        let function =
+          create_function(env, None, property.method, property.data);
+        let value: v8::Local<v8::Value> = function.into();
+        std::mem::transmute(value)
+      };
+      object.set(env.scope, name.into(), function).unwrap();
+    }
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_delete_element(
+  env: napi_env,
+  value: napi_value,
+  index: u32,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  *result = obj.delete_index(env.scope, index).unwrap_or(false);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_delete_property(
+  env: napi_env,
+  value: napi_value,
+  key: napi_value,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  *result = obj
+    .delete(env.scope, std::mem::transmute(key))
+    .unwrap_or(false);
+  Ok(())
+}
+
+// TODO: properly implement ref counting stuff
+#[napi_sym::napi_sym]
+fn napi_delete_reference(env: napi_env, _nref: napi_ref) -> Result {
+  let mut _env = &mut *(env as *mut Env);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_detach_arraybuffer(_env: napi_env, value: napi_value) -> Result {
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
+  ab.detach();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_escape_handle(
+  _env: napi_env,
+  _handle_scope: napi_escapable_handle_scope,
+  _escapee: napi_value,
+  _result: *mut napi_value,
+) -> Result {
+  // TODO
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_all_property_names(_env: napi_env) -> Result {
+  // TODO
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_and_clear_last_exception(
+  env: napi_env,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  // TODO: just return undefined for now we don't cache
+  // exceptions in env.
+  let value: v8::Local<v8::Value> = v8::undefined(env.scope).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_array_length(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut u32,
+) -> Result {
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = v8::Local::<v8::Array>::try_from(value).unwrap().length();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_arraybuffer_info(
+  _env: napi_env,
+  value: napi_value,
+  data: *mut *mut u8,
+  length: *mut usize,
+) -> Result {
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let buf = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(buf);
+  }
+  *length = buf.byte_length();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_boolean(
+  env: napi_env,
+  value: bool,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::Boolean::new(env.scope, value).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_buffer_info(
+  env: napi_env,
+  value: napi_value,
+  data: *mut *mut u8,
+  length: *mut usize,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let buf = v8::Local::<v8::Uint8Array>::try_from(value).unwrap();
+  let buffer_name = v8::String::new(env.scope, "buffer").unwrap();
+  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+    buf.get(env.scope, buffer_name.into()).unwrap(),
+  )
+  .unwrap();
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(abuf);
+  }
+  *length = abuf.byte_length();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_cb_info(
+  _env: napi_env,
+  cbinfo: napi_callback_info,
+  argc: *mut i32,
+  argv: *mut napi_value,
+  this_arg: *mut napi_value,
+  cb_data: *mut *mut c_void,
+) -> Result {
+  let cbinfo: &CallbackInfo = &*(cbinfo as *const CallbackInfo);
+  let args = &*(cbinfo.args as *const v8::FunctionCallbackArguments);
+
+  if !cb_data.is_null() {
+    *cb_data = cbinfo.cb_info;
+  }
+
+  if !this_arg.is_null() {
+    let mut this: v8::Local<v8::Value> = args.this().into();
+    *this_arg = std::mem::transmute(this);
+  }
+
+  let len = args.length();
+  let mut v_argc = len;
+  if !argc.is_null() {
+    v_argc = *argc;
+    *argc = len;
+  }
+
+  if !argv.is_null() {
+    let mut v_argv = std::slice::from_raw_parts_mut(argv, v_argc as usize);
+    for i in 0..v_argc {
+      let mut arg = args.get(i);
+      v_argv[i as usize] = std::mem::transmute(arg);
+    }
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_dataview_info(
+  env: napi_env,
+  value: napi_value,
+  data: *mut *mut u8,
+  length: *mut usize,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let buf = v8::Local::<v8::DataView>::try_from(value).unwrap();
+  let buffer_name = v8::String::new(env.scope, "buffer").unwrap();
+  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+    buf.get(env.scope, buffer_name.into()).unwrap(),
+  )
+  .unwrap();
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(abuf);
+  }
+  *length = abuf.byte_length();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_date_value(
+  env: napi_env,
+  value: napi_value,
+  result: *mut f64,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let date = v8::Local::<v8::Date>::try_from(value).unwrap();
+  *result = date.number_value(env.scope).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_element(
+  env: napi_env,
+  object: napi_value,
+  index: u32,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object: v8::Local<v8::Value> = std::mem::transmute(object);
+  let array = v8::Local::<v8::Array>::try_from(object).unwrap();
+  let value: v8::Local<v8::Value> = array.get_index(env.scope, index).unwrap();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_global(env: napi_env, result: *mut napi_value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let context = env.scope.get_current_context();
+  let global = context.global(env.scope);
+  let value: v8::Local<v8::Value> = global.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_instance_data(env: napi_env, result: *mut *mut c_void) -> Result {
+  let env = &mut *(env as *mut Env);
+  let shared = env.shared();
+  *result = shared.instance_data;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_last_error_info(
+  _env: napi_env,
+  error_code: *mut *const napi_extended_error_info,
+) -> Result {
+  // let err_info = napi_extended_error_info {
+  //   error_message: std::ptr::null(),
+  //   engine_reserved: std::ptr::null_mut(),
+  //   engine_error_code: 0,
+  //   status_code: napi_ok,
+  // };
+
+  // *error_code = &err_info as *const napi_extended_error_info;
+  *error_code = std::ptr::null();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_named_property(
+  env: napi_env,
+  object: napi_value,
+  utf8_name: *const c_char,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object: v8::Local<v8::Value> = std::mem::transmute(object);
+  let utf8_name = std::ffi::CStr::from_ptr(utf8_name);
+  let name = v8::String::new(env.scope, &utf8_name.to_string_lossy()).unwrap();
+  let value: v8::Local<v8::Value> = object
+    .to_object(env.scope)
+    .unwrap()
+    .get(env.scope, name.into())
+    .unwrap();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_new_target(
+  _env: &mut Env,
+  cbinfo: &CallbackInfo,
+  result: &mut v8::Local<v8::Value>,
+) -> Result {
+  let info = &*(cbinfo.args as *const v8::FunctionCallbackArguments);
+  *result = info.new_target();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_null(env: napi_env, result: *mut napi_value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let value: v8::Local<v8::Value> = v8::null(env.scope).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_property(
+  env: napi_env,
+  object: napi_value,
+  key: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object: v8::Local<v8::Object> = std::mem::transmute(object);
+  let key: v8::Local<v8::Value> = std::mem::transmute(key);
+  let value: v8::Local<v8::Value> = object.get(env.scope, key).unwrap();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_property_names(
+  env: napi_env,
+  object: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object: v8::Local<v8::Value> = std::mem::transmute(object);
+  let array: v8::Local<v8::Array> = object
+    .to_object(env.scope)
+    .unwrap()
+    .get_property_names(env.scope)
+    .unwrap();
+  let value: v8::Local<v8::Value> = array.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_prototype(
+  env: napi_env,
+  value: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  let proto = obj.get_prototype(env.scope).unwrap();
+  *result = std::mem::transmute(proto);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_reference_value(
+  _env: napi_env,
+  reference: napi_ref,
+  result: *mut napi_value,
+) -> Result {
+  // TODO
+  *result = transmute(reference);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_typedarray_info(
+  env: napi_env,
+  value: napi_value,
+  data: *mut *mut u8,
+  length: *mut usize,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let buf = v8::Local::<v8::TypedArray>::try_from(value).unwrap();
+  let buffer_name = v8::String::new(env.scope, "buffer").unwrap();
+  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
+    buf.get(env.scope, buffer_name.into()).unwrap(),
+  )
+  .unwrap();
+  if !data.is_null() {
+    *data = get_array_buffer_ptr(abuf);
+  }
+  *length = abuf.byte_length();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_undefined(env: napi_env, result: *mut napi_value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = v8::undefined(env.scope).into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+pub const NAPI_VERSION: u32 = 8;
+
+#[napi_sym::napi_sym]
+fn napi_get_version(_: napi_env, version: *mut u32) -> Result {
+  *version = NAPI_VERSION;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_has_element(
+  env: napi_env,
+  value: napi_value,
+  index: u32,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  *result = obj.has_index(env.scope, index).unwrap_or(false);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_has_named_property(
+  env: napi_env,
+  value: napi_value,
+  key: *const c_char,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  let key = CStr::from_ptr(key).to_str().unwrap();
+  let key = v8::String::new(env.scope, key).unwrap();
+  *result = obj.has(env.scope, key.into()).unwrap_or(false);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_has_own_property(
+  env: napi_env,
+  object: napi_value,
+  key: napi_value,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = transmute::<napi_value, _>(object);
+  let object = value.to_object(env.scope).unwrap();
+
+  let key: v8::Local<v8::Value> = transmute::<napi_value, _>(key);
+  if !key.is_name() {
+    return Err(Error::NameExpected);
+  }
+
+  let maybe = object
+    .has_own_property(env.scope, v8::Local::<v8::Name>::try_from(key).unwrap())
+    .unwrap_or(false);
+
+  *result = maybe;
+  if !maybe {
+    return Err(Error::GenericFailure);
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_has_property(
+  env: napi_env,
+  value: napi_value,
+  key: napi_value,
+  result: *mut bool,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  *result = obj
+    .has(env.scope, std::mem::transmute(key))
+    .unwrap_or(false);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_instanceof(
+  env: &mut Env,
+  value: v8::Local<v8::Value>,
+  constructor: v8::Local<v8::Value>,
+  result: *mut bool,
+) -> Result {
+  let ctor = constructor.to_object(env.scope).unwrap();
+  if !ctor.is_function() {
+    return Err(Error::FunctionExpected);
+  }
+  let maybe = value.instance_of(env.scope, ctor);
+  match maybe {
+    Some(res) => {
+      *result = res;
+      Ok(())
+    }
+    None => Err(Error::GenericFailure),
+  }
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_array(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  *result = value.is_array();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_arraybuffer(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  *result = value.is_array_buffer();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_buffer(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  // TODO: should we assume Buffer as Uint8Array in Deno?
+  // or use std/node polyfill?
+  *result = value.is_typed_array();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_dataview(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  *result = value.is_data_view();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_date(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  *result = value.is_date();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_detached_arraybuffer(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
+  // TODO: what is API for checking if ArrayBuffer is detached?
+  // there's only is_detachable I could find.
+  *result = false;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_error(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  // TODO
+  *result = value.is_object();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_exception_pending(env: napi_env, result: *mut bool) -> Result {
+  let mut _env = &mut *(env as *mut Env);
+  // TODO
+  *result = false;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_promise(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  *result = value.is_promise();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_is_typedarray(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut bool,
+) -> Result {
+  let value: v8::Local<v8::Value> = transmute(value);
+  *result = value.is_typed_array();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_new_instance(
+  env: napi_env,
+  constructor: napi_value,
+  argc: usize,
+  argv: *const napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let constructor: v8::Local<v8::Value> = std::mem::transmute(constructor);
+  let constructor = v8::Local::<v8::Function>::try_from(constructor).unwrap();
+  let args: &[v8::Local<v8::Value>] =
+    std::mem::transmute(std::slice::from_raw_parts(argv, argc));
+  let inst = constructor.new_instance(env.scope, args).unwrap();
+  let value: v8::Local<v8::Value> = inst.into();
+  *result = std::mem::transmute(value);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_object_freeze(env: &mut Env, object: v8::Local<v8::Value>) -> Result {
+  let object = object.to_object(env.scope).unwrap();
+  let maybe = object.set_integrity_level(env.scope, v8::IntegrityLevel::Frozen);
+
+  match maybe {
+    Some(_) => Ok(()),
+    None => Err(Error::GenericFailure),
+  }
+}
+
+#[napi_sym::napi_sym]
+fn napi_object_seal(env: &mut Env, object: v8::Local<v8::Value>) -> Result {
+  let object = object.to_object(env.scope).unwrap();
+  let maybe = object.set_integrity_level(env.scope, v8::IntegrityLevel::Sealed);
+
+  match maybe {
+    Some(_) => Ok(()),
+    None => Err(Error::GenericFailure),
+  }
+}
+
+#[napi_sym::napi_sym]
+fn napi_open_escapable_handle_scope(
+  _env: napi_env,
+  _result: *mut napi_escapable_handle_scope,
+) -> Result {
+  // TODO: do this properly
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_open_handle_scope(
+  env: napi_env,
+  result: *mut napi_handle_scope,
+) -> Result {
+  let env = &mut *(env as *mut Env);
+  let _isolate = unsafe { &mut **env.isolate_ptr };
+
+  *result = env.scope as *mut _ as napi_handle_scope;
+  env.open_handle_scopes += 1;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_reference_ref() -> Result {
+  // TODO
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_reference_unref() -> Result {
+  // TODO
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_reject_deferred(
+  env: napi_env,
+  deferred: napi_deferred,
+  error: napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let deferred_ptr =
+    NonNull::new_unchecked(deferred as *mut v8::PromiseResolver);
+  let resolver_global = v8::Global::<v8::PromiseResolver>::from_raw(
+    &mut *env.isolate_ptr,
+    deferred_ptr,
+  );
+  let resolver =
+    v8::Local::<v8::PromiseResolver>::new(env.scope, resolver_global);
+  resolver
+    .reject(env.scope, std::mem::transmute(error))
+    .unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_remove_wrap(env: napi_env, value: *mut v8::Value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  let shared = &*(env.shared as *const EnvShared);
+  let napi_wrap = v8::Local::new(env.scope, &shared.napi_wrap);
+  obj.delete_private(env.scope, napi_wrap).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_resolve_deferred(
+  env: napi_env,
+  deferred: napi_deferred,
+  result: napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let deferred_ptr =
+    NonNull::new_unchecked(deferred as *mut v8::PromiseResolver);
+  let resolver_global = v8::Global::<v8::PromiseResolver>::from_raw(
+    &mut *env.isolate_ptr,
+    deferred_ptr,
+  );
+  let resolver =
+    v8::Local::<v8::PromiseResolver>::new(env.scope, resolver_global);
+  resolver
+    .resolve(env.scope, std::mem::transmute(result))
+    .unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_run_script(
+  env: napi_env,
+  script: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  let script: v8::Local<v8::Value> = std::mem::transmute(script);
+  if !script.is_string() {
+    return Err(Error::StringExpected);
+  }
+  let script = script.to_string(env.scope).unwrap();
+
+  let script = v8::Script::compile(env.scope, script, None);
+  if script.is_none() {
+    return Err(Error::GenericFailure);
+  }
+  let script = script.unwrap();
+  let rv = script.run(env.scope);
+
+  if let Some(rv) = rv {
+    *result = std::mem::transmute(rv);
+  } else {
+    return Err(Error::GenericFailure);
+  }
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_set_element(
+  env: napi_env,
+  object: napi_value,
+  index: u32,
+  value: napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object: v8::Local<v8::Value> = std::mem::transmute(object);
+  let array = v8::Local::<v8::Array>::try_from(object).unwrap();
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  array.set_index(env.scope, index, value).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_set_instance_data(
+  env: napi_env,
+  data: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
+) -> Result {
+  let env = &mut *(env as *mut Env);
+  let shared = env.shared_mut();
+  shared.instance_data = data;
+  shared.data_finalize = if !(finalize_cb as *const c_void).is_null() {
+    Some(finalize_cb)
+  } else {
+    None
+  };
+  shared.data_finalize_hint = finalize_hint;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_set_named_property(
+  env: napi_env,
+  object: napi_value,
+  name: *const c_char,
+  value: napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let name = CStr::from_ptr(name).to_str().unwrap();
+  let object: v8::Local<v8::Object> = std::mem::transmute(object);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let name = v8::String::new(env.scope, name).unwrap();
+  object.set(env.scope, name.into(), value).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_set_property(
+  env: napi_env,
+  object: napi_value,
+  property: napi_value,
+  value: napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let object: v8::Local<v8::Value> = std::mem::transmute(object);
+  let object = object.to_object(env.scope).unwrap();
+  let property: v8::Local<v8::Value> = std::mem::transmute(property);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  object.set(env.scope, property, value).unwrap();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_strict_equals(
+  _env: napi_env,
+  lhs: napi_value,
+  rhs: napi_value,
+  result: *mut bool,
+) -> Result {
+  let lhs: v8::Local<v8::Value> = std::mem::transmute(lhs);
+  let rhs: v8::Local<v8::Value> = std::mem::transmute(rhs);
+  *result = lhs.strict_equals(rhs);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_throw(env: napi_env, error: napi_value) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let error = transmute(error);
+  env.scope.throw_exception(error);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_throw_error(
+  env: napi_env,
+  _code: *const c_char,
+  msg: *const c_char,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code = CStr::from_ptr(code).to_str().unwrap();
+  let msg = CStr::from_ptr(msg).to_str().unwrap();
+
+  // let code = v8::String::new(env.scope, code).unwrap();
+  let msg = v8::String::new(env.scope, msg).unwrap();
+
+  let error = v8::Exception::error(env.scope, msg);
+  env.scope.throw_exception(error);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_throw_range_error(
+  env: napi_env,
+  _code: *const c_char,
+  msg: *const c_char,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code = CStr::from_ptr(code).to_str().unwrap();
+  let msg = CStr::from_ptr(msg).to_str().unwrap();
+
+  // let code = v8::String::new(env.scope, code).unwrap();
+  let msg = v8::String::new(env.scope, msg).unwrap();
+
+  let error = v8::Exception::range_error(env.scope, msg);
+  env.scope.throw_exception(error);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_throw_type_error(
+  env: napi_env,
+  _code: *const c_char,
+  msg: *const c_char,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code = CStr::from_ptr(code).to_str().unwrap();
+  let msg = CStr::from_ptr(msg).to_str().unwrap();
+
+  // let code = v8::String::new(env.scope, code).unwrap();
+  let msg = v8::String::new(env.scope, msg).unwrap();
+
+  let error = v8::Exception::type_error(env.scope, msg);
+  env.scope.throw_exception(error);
+
+  Ok(())
+}
+
+pub fn get_value_type(value: v8::Local<v8::Value>) -> Option<napi_valuetype> {
+  if value.is_undefined() {
+    Some(napi_undefined)
+  } else if value.is_null() {
+    Some(napi_null)
+  } else if value.is_external() {
+    Some(napi_external)
+  } else if value.is_boolean() {
+    Some(napi_boolean)
+  } else if value.is_number() {
+    Some(napi_number)
+  } else if value.is_big_int() {
+    Some(napi_bigint)
+  } else if value.is_string() {
+    Some(napi_string)
+  } else if value.is_symbol() {
+    Some(napi_symbol)
+  } else if value.is_function() {
+    Some(napi_function)
+  } else if value.is_object() {
+    Some(napi_object)
+  } else {
+    None
+  }
+}
+
+#[napi_sym::napi_sym]
+fn napi_typeof(
+  _env: napi_env,
+  value: napi_value,
+  result: *mut napi_valuetype,
+) -> Result {
+  if value.is_null() {
+    *result = napi_undefined;
+    return Ok(());
+  }
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let ty = get_value_type(value);
+  if let Some(ty) = ty {
+    *result = ty;
+    Ok(())
+  } else {
+    return Err(Error::InvalidArg);
+  }
+}
+
+#[napi_sym::napi_sym]
+fn napi_unwrap(
+  env: napi_env,
+  value: napi_value,
+  result: *mut *mut c_void,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  let shared = &*(env.shared as *const EnvShared);
+  let napi_wrap = v8::Local::new(env.scope, &shared.napi_wrap);
+  let ext = obj.get_private(env.scope, napi_wrap).unwrap();
+  let ext = v8::Local::<v8::External>::try_from(ext).unwrap();
+  *result = ext.value();
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_wrap(
+  env: napi_env,
+  value: *mut v8::Value,
+  native_object: *mut c_void,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let obj = value.to_object(env.scope).unwrap();
+  let shared = &*(env.shared as *const EnvShared);
+  let napi_wrap = v8::Local::new(env.scope, &shared.napi_wrap);
+  let ext = v8::External::new(env.scope, native_object);
+  obj.set_private(env.scope, napi_wrap, ext.into());
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn node_api_throw_syntax_error(
+  env: napi_env,
+  _code: *const c_char,
+  msg: *const c_char,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code = CStr::from_ptr(code).to_str().unwrap();
+  let msg = CStr::from_ptr(msg).to_str().unwrap();
+
+  // let code = v8::String::new(env.scope, code).unwrap();
+  let msg = v8::String::new(env.scope, msg).unwrap();
+
+  let error = v8::Exception::syntax_error(env.scope, msg);
+  env.scope.throw_exception(error);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn node_api_create_syntax_error(
+  env: napi_env,
+  _code: napi_value,
+  msg: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let mut env = &mut *(env as *mut Env);
+
+  // let code: v8::Local<v8::Value> = std::mem::transmute(code);
+  let msg: v8::Local<v8::Value> = std::mem::transmute(msg);
+
+  let msg = msg.to_string(env.scope).unwrap();
+
+  let error = v8::Exception::syntax_error(env.scope, msg);
+  *result = std::mem::transmute(error);
+
+  Ok(())
+}
