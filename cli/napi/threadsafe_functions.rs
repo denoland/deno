@@ -138,3 +138,64 @@ fn napi_create_threadsafe_function(
 
   Ok(())
 }
+
+#[napi_sym::napi_sym]
+fn napi_acquire_threadsafe_function(
+  tsfn: napi_threadsafe_function,
+  _mode: napi_threadsafe_function_release_mode,
+) -> Result {
+  let tsfn: &mut TsFn = unsafe { &mut *(tsfn as *mut TsFn) };
+  tsfn.acquire()?;
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_unref_threadsafe_function(
+  _env: &mut Env,
+  tsfn: napi_threadsafe_function,
+) -> Result {
+  let _tsfn: &TsFn = unsafe { &*(tsfn as *const TsFn) };
+
+  Ok(())
+}
+
+/// Maybe called from any thread.
+#[napi_sym::napi_sym]
+pub fn napi_get_threadsafe_function_context(
+  func: napi_threadsafe_function,
+  result: *mut *const c_void,
+) -> Result {
+  let tsfn: &TsFn = unsafe { &*(func as *const TsFn) };
+  *result = tsfn.context;
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_call_threadsafe_function(
+  func: napi_threadsafe_function,
+  data: *mut c_void,
+  is_blocking: napi_threadsafe_function_call_mode,
+) -> Result {
+  let tsfn: &TsFn = unsafe { &*(func as *const TsFn) };
+  let _func = tsfn.call(data, is_blocking != 0);
+
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_ref_threadsafe_function() -> Result {
+  // TODO
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_release_threadsafe_function(
+  tsfn: napi_threadsafe_function,
+  _mode: napi_threadsafe_function_release_mode,
+) -> Result {
+  let tsfn: Box<TsFn> = unsafe { Box::from_raw(tsfn as *mut TsFn) };
+  tsfn.release()?;
+
+  Ok(())
+}

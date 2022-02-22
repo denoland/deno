@@ -2,12 +2,12 @@
 #![allow(non_camel_case_types)]
 
 pub mod function;
-pub mod napi_acquire_threadsafe_function;
+pub mod threadsafe_functions;
+
 pub mod napi_add_env_cleanup_hook;
 pub mod napi_add_finalizer;
 pub mod napi_adjust_external_memory;
 pub mod napi_call_function;
-pub mod napi_call_threadsafe_function;
 pub mod napi_cancel_async_work;
 pub mod napi_close_escapable_handle_scope;
 pub mod napi_close_handle_scope;
@@ -42,7 +42,6 @@ pub mod napi_create_string_latin1;
 pub mod napi_create_string_utf16;
 pub mod napi_create_string_utf8;
 pub mod napi_create_symbol;
-pub mod napi_create_threadsafe_function;
 pub mod napi_create_type_error;
 #[allow(non_upper_case_globals)]
 pub mod napi_create_typedarray;
@@ -78,7 +77,6 @@ pub mod napi_get_property;
 pub mod napi_get_property_names;
 pub mod napi_get_prototype;
 pub mod napi_get_reference_value;
-pub mod napi_get_threadsafe_function_context;
 pub mod napi_get_typedarray_info;
 pub mod napi_get_undefined;
 pub mod napi_get_uv_event_loop;
@@ -117,11 +115,9 @@ pub mod napi_object_seal;
 pub mod napi_open_escapable_handle_scope;
 pub mod napi_open_handle_scope;
 pub mod napi_queue_async_work;
-pub mod napi_ref_threadsafe_function;
 pub mod napi_reference_ref;
 pub mod napi_reference_unref;
 pub mod napi_reject_deferred;
-pub mod napi_release_threadsafe_function;
 pub mod napi_remove_env_cleanup_hook;
 pub mod napi_remove_wrap;
 pub mod napi_resolve_deferred;
@@ -136,7 +132,6 @@ pub mod napi_throw_error;
 pub mod napi_throw_range_error;
 pub mod napi_throw_type_error;
 pub mod napi_typeof;
-pub mod napi_unref_threadsafe_function;
 pub mod napi_unwrap;
 pub mod napi_wrap;
 pub mod node_api_create_syntax_error;
