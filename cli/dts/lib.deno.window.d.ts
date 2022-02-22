@@ -86,9 +86,9 @@ declare function addEventListener(
 /** Remove a previously registered event listener from the global scope
  *
  * ```ts
- * const lstnr = () => { console.log('hello'); };
- * addEventListener('load', lstnr);
- * removeEventListener('load', lstnr);
+ * const listener = () => { console.log('hello'); };
+ * addEventListener('load', listener);
+ * removeEventListener('load', listener);
  * ```
  */
 declare function removeEventListener(
