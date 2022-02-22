@@ -812,10 +812,13 @@ declare class MessagePort extends EventTarget {
 /**
  * Creates a deep copy of a given value using the structured clone algorithm.
  *
- * Unlike a shallow copy, a deep copy does not hold the same references as the source object, meaning its properties can be changed without affecting the source.
- * For more details, see [MDN](https://developer.mozilla.org/en-US/docs/Glossary/Deep_copy).
+ * Unlike a shallow copy, a deep copy does not hold the same references as the
+ * source object, meaning its properties can be changed without affecting the
+ * source. For more details, see
+ * [MDN](https://developer.mozilla.org/en-US/docs/Glossary/Deep_copy).
  *
- * Throws a `DataCloneError` if any part of the input value is not serializable.
+ * Throws a `DataCloneError` if any part of the input value is not
+ * serializable.
  *
  * @example
  * ```ts
@@ -826,7 +829,8 @@ declare class MessagePort extends EventTarget {
  * console.log(deepCopy.x, object.x); // 1 0
  *
  * const shallowCopy = object;
- * shallowCopy.x = 1; // shallowCopy.x is pointing to the same location in memory as object.x
+ * shallowCopy.x = 1;
+ * // shallowCopy.x is pointing to the same location in memory as object.x
  * console.log(shallowCopy.x, object.x); // 1 1
  * ```
  */
@@ -847,9 +851,11 @@ declare function structuredClone(
  */
 declare class CompressionStream {
   /**
-   * Creates a new `CompressionStream` object which compresses a stream of data.
+   * Creates a new `CompressionStream` object which compresses a stream of
+   * data.
    *
-   * Throws a `TypeError` if the format passed to the constructor is not supported.
+   * Throws a `TypeError` if the format passed to the constructor is not
+   * supported.
    */
   constructor(format: string);
 
@@ -872,9 +878,11 @@ declare class CompressionStream {
  */
 declare class DecompressionStream {
   /**
-   * Creates a new `DecompressionStream` object which decompresses a stream of data.
+   * Creates a new `DecompressionStream` object which decompresses a stream of
+   * data.
    *
-   * Throws a `TypeError` if the format passed to the constructor is not supported.
+   * Throws a `TypeError` if the format passed to the constructor is not
+   * supported.
    */
   constructor(format: string);
 
