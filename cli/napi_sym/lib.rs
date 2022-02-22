@@ -1,13 +1,28 @@
 use proc_macro::TokenStream;
 use quote::quote;
+use serde::Deserialize;
+
+static NAPI_EXPORTS: &str =
+  include_str!("../../tools/napi/symbol_exports.json");
+
+#[derive(Deserialize)]
+struct SymbolExports {
+  pub symbols: Vec<String>,
+}
 
 #[proc_macro_attribute]
 pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
 
+  let exports: SymbolExports =
+    serde_json::from_str(NAPI_EXPORTS).expect("failed to parse exports");
   let name = &func.sig.ident;
+  assert!(
+    exports.symbols.contains(&name.to_string()),
+    "tools/napi/symbol_exports.json is out of sync!"
+  );
+
   let block = &func.block;
-  // TODO(@littledivy): make first argument &'a mut env::Env?
   let inputs = &func.sig.inputs;
   let output = &func.sig.output;
   let ret_ty = match output {
@@ -18,17 +33,11 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
       #[no_mangle]
       pub unsafe extern "C" fn #name(#inputs) -> napi_status {
         let mut inner = || -> #ret_ty {
-          let result = #block;
-          result
+          #block
         };
-        let result = inner();
-        match result {
-          Ok(_) => napi_ok,
-          Err(err) => {
-            let status: napi_status = err.into();
-            status
-          },
-        }
+        inner()
+          .map(|_| napi_ok)
+          .unwrap_or_else(|e| e.into())
       }
   })
 }

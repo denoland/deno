@@ -235,7 +235,13 @@ pub fn initialize_context<'s>(
 
   if let Some(isolate_ptr) = isolate_ptr {
     #[cfg(feature = "napi")]
-    set_func_with_external(scope, core_val, "napiOpen", napi_open_func, isolate_ptr);
+    set_func_with_external(
+      scope,
+      core_val,
+      "napiOpen",
+      napi_open_func,
+      isolate_ptr,
+    );
   }
 
   // Direct bindings on `window`.

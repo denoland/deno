@@ -14,3 +14,5 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }

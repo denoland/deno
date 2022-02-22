@@ -778,6 +778,7 @@ dependencies = [
  "rustyline-derive",
  "semver-parser 0.10.2",
  "serde",
+ "serde_json",
  "shell-escape",
  "sourcemap",
  "tempfile",
@@ -2438,6 +2439,8 @@ version = "0.0.1"
 dependencies = [
  "proc-macro2 1.0.36",
  "quote 1.0.14",
+ "serde",
+ "serde_json",
  "syn 1.0.85",
 ]
 
