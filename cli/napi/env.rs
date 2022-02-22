@@ -41,10 +41,10 @@ pub unsafe extern "C" fn napi_fatal_error(
 /// It's an N-API symbol
 #[no_mangle]
 pub unsafe extern "C" fn napi_fatal_exception(
-  env: napi_env,
+  env: *mut Env,
   value: napi_value,
-) -> ! {
-  let mut env = &mut *(env as *mut Env);
+) -> Result {
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value: v8::Local<v8::Value> = std::mem::transmute(value);
   let error = value.to_rust_string_lossy(env.scope);
   panic!(
@@ -56,31 +56,32 @@ pub unsafe extern "C" fn napi_fatal_exception(
 // TODO: properly implement
 #[napi_sym::napi_sym]
 fn napi_add_env_cleanup_hook(
-  env: napi_env,
+  env: *mut Env,
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  let mut _env = &mut *(env as *mut Env);
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   Ok(())
 }
 
 // TODO: properly implement
 #[napi_sym::napi_sym]
 fn napi_remove_env_cleanup_hook(
-  env: napi_env,
+  env: *mut Env,
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  let mut _env = &mut *(env as *mut Env);
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   Ok(())
 }
 
 #[napi_sym::napi_sym]
 fn node_api_get_module_file_name(
-  env: napi_env,
+  env: *mut Env,
   result: *mut *const c_char,
 ) -> Result {
-  let env = &mut *(env as *mut Env);
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+
   let shared = env.shared();
   *result = shared.filename;
   Ok(())
@@ -97,32 +98,28 @@ fn napi_module_register(module: *const NapiModule) -> Result {
 }
 
 #[napi_sym::napi_sym]
-fn napi_get_uv_event_loop(_env: &mut Env, uv_loop: *mut *mut ()) -> Result {
-  // Don't error out because addons maybe pass this to
+fn napi_get_uv_event_loop(_env: *mut Env, uv_loop: *mut *mut ()) -> Result {
+  // Don't error out because addons may pass this to
   // our libuv _polyfills_.
   *uv_loop = std::ptr::null_mut();
   Ok(())
 }
+
+const NODE_VERSION: napi_node_version = napi_node_version {
+  major: 17,
+  minor: 4,
+  patch: 0,
+  release: "Deno\0".as_ptr() as *const i8,
+};
+
 #[napi_sym::napi_sym]
 fn napi_get_node_version(
-  _: napi_env,
+  env: *mut Env,
   result: *mut *const napi_node_version,
 ) -> Result {
-  NODE_VERSION.with(|version| {
-    *result = version as *const napi_node_version;
-  });
+  let _: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  crate::check_arg!(result);
+
+  *result = &NODE_VERSION as *const napi_node_version;
   Ok(())
-}
-thread_local! {
-  static NODE_VERSION: napi_node_version = {
-    let release = std::ffi::CString::new("Deno N-API").unwrap();
-    let release_ptr = release.as_ptr();
-    std::mem::forget(release);
-    napi_node_version {
-      major: 17,
-      minor: 4,
-      patch: 0,
-      release: release_ptr,
-    }
-  }
 }

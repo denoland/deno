@@ -10,6 +10,7 @@ use std::ptr::NonNull;
 
 // Macro to check napi arguments.
 // If nullptr, return Err(Error::InvalidArg).
+#[macro_export]
 macro_rules! check_arg {
   ($ptr: expr) => {
     if $ptr.is_null() {
