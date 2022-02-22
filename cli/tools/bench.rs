@@ -57,7 +57,7 @@ pub enum BenchOutput {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
-  Ok,
+  Ok((u64, Vec<u64>)),
   Ignored,
   Failed(String),
 }
@@ -136,7 +136,7 @@ impl PrettyBenchReporter {
   }
 
   fn force_report_wait(&mut self, description: &BenchDescription) {
-    print!("test {} ...", description.name);
+    print!("test {} ... ", description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
   }
@@ -183,7 +183,15 @@ impl BenchReporter for PrettyBenchReporter {
     elapsed: u64,
   ) {
     let status = match result {
-      BenchResult::Ok => colors::green("ok").to_string(),
+      BenchResult::Ok((iters, perf)) => {
+        let ns_op = perf.iter().sum::<u64>() / iters;
+        format!(
+          "{} iterations {}ms/op {}",
+          iters,
+          ns_op,
+          colors::green("ok")
+        )
+      }
       BenchResult::Ignored => colors::yellow("ignored").to_string(),
       BenchResult::Failed(_) => colors::red("FAILED").to_string(),
     };
@@ -213,7 +221,7 @@ impl BenchReporter for PrettyBenchReporter {
     };
 
     println!(
-      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      "\nbench result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
       status,
       summary.passed,
       summary.failed,
@@ -387,7 +395,7 @@ async fn bench_specifiers(
 
           BenchEvent::Result(description, result, elapsed) => {
             match &result {
-              BenchResult::Ok => {
+              BenchResult::Ok(_) => {
                 summary.passed += 1;
               }
               BenchResult::Ignored => {

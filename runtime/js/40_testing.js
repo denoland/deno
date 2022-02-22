@@ -807,10 +807,16 @@
     try {
       // TODO(bartlomieju): time each iteration
       const iterations = bench.n ?? 100;
+      const perf = [];
+
       for (let i = 0; i < iterations; i++) {
+        const s = performance.now();
         await bench.fn(step);
+        perf.push(performance.now() - s);
       }
-      return "ok";
+      return {
+        "ok": [iterations, perf],
+      };
     } catch (error) {
       return {
         "failed": formatError(error),
