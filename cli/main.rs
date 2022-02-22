@@ -805,7 +805,7 @@ async fn bundle_command(
 
       if let Ok(Some(import_map_path)) =
         config_file::resolve_import_map_specifier(
-          &ps.flags,
+          ps.flags.import_map_path.as_deref(),
           ps.maybe_config_file.as_ref(),
         )
         .map(|ms| ms.map(|ref s| s.to_file_path().ok()).flatten())
@@ -1054,7 +1054,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
 
       if let Ok(Some(import_map_path)) =
         config_file::resolve_import_map_specifier(
-          &ps.flags,
+          ps.flags.import_map_path.as_deref(),
           ps.maybe_config_file.as_ref(),
         )
         .map(|ms| ms.map(|ref s| s.to_file_path().ok()).flatten())

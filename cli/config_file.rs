@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags;
 use crate::fs_util::canonicalize_path;
 use crate::fs_util::specifier_parent;
 use crate::fs_util::specifier_to_file_path;
@@ -228,13 +227,13 @@ pub fn json_merge(a: &mut Value, b: &Value) {
   }
 }
 
-/// Based on flags and an optional configuration file, return a resolved module
-/// specifier to an import map.
+/// Based on an optional command line import map path and an optional
+/// configuration file, return a resolved module specifier to an import map.
 pub fn resolve_import_map_specifier(
-  flags: &flags::Flags,
+  maybe_import_map_path: Option<&str>,
   maybe_config_file: Option<&ConfigFile>,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
-  if let Some(import_map_path) = &flags.import_map_path {
+  if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
       if config_file.to_import_map_path().is_some() {
         log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", crate::colors::yellow("Warning"), config_file.specifier);
@@ -971,6 +970,7 @@ mod tests {
     assert!(err.to_string().contains("Unable to parse config file"));
   }
 
+  #[cfg(not(windows))]
   #[test]
   fn resolve_import_map_config_file() {
     let config_text = r#"{
@@ -979,10 +979,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      &flags::Flags::default(),
-      Some(&config_file),
-    );
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(
@@ -999,10 +996,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("https://example.com/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      &flags::Flags::default(),
-      Some(&config_file),
-    );
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(
@@ -1021,13 +1015,8 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      &flags::Flags {
-        import_map_path: Some("import-map.json".to_string()),
-        ..Default::default()
-      },
-      Some(&config_file),
-    );
+    let actual =
+      resolve_import_map_specifier(Some("import-map.json"), Some(&config_file));
     let import_map_path =
       std::env::current_dir().unwrap().join("import-map.json");
     let expected_specifier =
@@ -1043,10 +1032,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      &flags::Flags::default(),
-      Some(&config_file),
-    );
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
@@ -1054,7 +1040,7 @@ mod tests {
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(&flags::Flags::default(), None);
+    let actual = resolve_import_map_specifier(None, None);
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);

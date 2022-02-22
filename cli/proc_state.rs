@@ -153,7 +153,7 @@ impl ProcState {
 
     let maybe_import_map_specifier =
       crate::config_file::resolve_import_map_specifier(
-        &flags,
+        flags.import_map_path.as_deref(),
         maybe_config_file.as_ref(),
       )?;
 
