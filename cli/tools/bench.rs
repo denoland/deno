@@ -155,7 +155,7 @@ impl PrettyBenchReporter {
   }
 
   fn force_report_wait(&mut self, description: &BenchDescription) {
-    print!("test {} ... ", description.name);
+    print!("bench {} ... ", description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
   }
@@ -463,12 +463,12 @@ async fn bench_specifiers(
 
       if used_only {
         return Err(generic_error(
-          "Test failed because the \"only\" option was used",
+          "Bench failed because the \"only\" option was used",
         ));
       }
 
       if summary.failed > 0 {
-        return Err(generic_error("Test failed"));
+        return Err(generic_error("Bench failed"));
       }
 
       Ok(())
