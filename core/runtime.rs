@@ -15,6 +15,7 @@ use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
+#[cfg(feature = "napi")]
 use crate::napi;
 use crate::ops::*;
 use crate::Extension;
@@ -47,6 +48,7 @@ use std::task::Context;
 use std::task::Poll;
 
 type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
+#[cfg(feature = "napi")]
 pub type PendingNapiAsyncWork = Box<dyn FnOnce(&mut v8::HandleScope)>;
 
 pub enum Snapshot {
@@ -171,16 +173,22 @@ pub(crate) struct JsRuntimeState {
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
 
+  #[cfg(feature = "napi")]
   pub(crate) pending_napi_async_work: Vec<PendingNapiAsyncWork>,
+  #[cfg(feature = "napi")]
   pub(crate) napi_async_work_sender:
     mpsc::UnboundedSender<PendingNapiAsyncWork>,
+  #[cfg(feature = "napi")]
   napi_async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
   // Runtime does not keep track of the total number of active threads.
   // Each threadsafe function must keep track of the threads and only report
   // creation and death to the runtime.
+  #[cfg(feature = "napi")]
   active_threadsafe_functions: usize,
+  #[cfg(feature = "napi")]
   napi_threadsafe_function_reciever:
     mpsc::UnboundedReceiver<napi::ThreadSafeFunctionStatus>,
+  #[cfg(feature = "napi")]
   pub(crate) napi_threadsafe_function_sender:
     mpsc::UnboundedSender<napi::ThreadSafeFunctionStatus>,
 }
@@ -315,7 +323,7 @@ impl JsRuntime {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
 
-      let mut creator = v8::SnapshotCreator::new(Some(&refs));
+      let mut creator = v8::SnapshotCreator::new(Some(refs));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -383,7 +391,9 @@ impl JsRuntime {
     }
 
     let op_state = Rc::new(RefCell::new(op_state));
+    #[cfg(feature = "napi")]
     let (sender, receiver) = mpsc::unbounded();
+    #[cfg(feature = "napi")]
     let (tsfn_sender, tsfn_receiver) = mpsc::unbounded();
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
@@ -407,11 +417,17 @@ impl JsRuntime {
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
+      #[cfg(feature = "napi")]
       pending_napi_async_work: Vec::new(),
+      #[cfg(feature = "napi")]
       napi_async_work_sender: sender,
+      #[cfg(feature = "napi")]
       napi_async_work_receiver: receiver,
+      #[cfg(feature = "napi")]
       napi_threadsafe_function_sender: tsfn_sender,
+      #[cfg(feature = "napi")]
       napi_threadsafe_function_reciever: tsfn_receiver,
+      #[cfg(feature = "napi")]
       active_threadsafe_functions: 0,
     })));
 
@@ -818,7 +834,10 @@ impl JsRuntime {
     // Ops
     let maybe_scheduling_napi = {
       self.resolve_async_ops(cx)?;
+      #[cfg(feature = "napi")]
       let m = self.poll_napi(cx)?;
+      #[cfg(not(feature = "napi"))]
+      let m = false;
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
@@ -858,8 +877,11 @@ impl JsRuntime {
       .as_ref()
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
+    #[cfg(feature = "napi")]
     let has_pending_napi_work =
       maybe_scheduling_napi || !state.pending_napi_async_work.is_empty();
+    #[cfg(not(feature = "napi"))]
+    let has_pending_napi_work = false;
 
     if !has_pending_refed_ops
       && !has_pending_dyn_imports
@@ -1563,6 +1585,7 @@ impl JsRuntime {
     exception_to_err_result(scope, exception, true)
   }
 
+  #[cfg(feature = "napi")]
   fn poll_napi(&mut self, cx: &mut Context) -> Result<bool, Error> {
     let state_rc = Self::state(self.v8_isolate());
     let scope = &mut self.handle_scope();

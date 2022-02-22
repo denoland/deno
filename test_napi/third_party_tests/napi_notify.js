@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 const notify = Deno.core.dlopen(
   "node_modules/@napi-rs/notify-darwin-arm64/notify.darwin-arm64.node",
 );

@@ -27,7 +27,7 @@ path = "./bench/lsp_bench_standalone.rs"
 [build-dependencies]
 deno_broadcast_channel = { version = "0.31.0", path = "../ext/broadcast_channel" }
 deno_console = { version = "0.37.0", path = "../ext/console" }
-deno_core = { version = "0.119.0", path = "../core" }
+deno_core = { version = "0.119.0", path = "../core", features = ["napi"] }
 deno_crypto = { version = "0.51.0", path = "../ext/crypto" }
 deno_fetch = { version = "0.60.0", path = "../ext/fetch" }
 deno_net = { version = "0.29.0", path = "../ext/net" }
@@ -46,7 +46,7 @@ winres = "=0.1.11"
 
 [dependencies]
 deno_ast = { version = "0.11.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
-deno_core = { version = "0.119.0", path = "../core" }
+deno_core = { version = "0.119.0", path = "../core", features = ["napi"] }
 deno_doc = "0.31.0"
 deno_graph = "0.23.0"
 deno_lint = { version = "0.25.0", features = ["docs"] }

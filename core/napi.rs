@@ -1,3 +1,6 @@
+#![allow(non_camel_case_types)]
+#![allow(non_upper_case_globals)]
+
 pub use std::ffi::CStr;
 pub use std::mem::transmute;
 pub use std::os::raw::c_char;

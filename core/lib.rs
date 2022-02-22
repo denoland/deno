@@ -10,8 +10,7 @@ mod gotham_state;
 mod inspector;
 mod module_specifier;
 mod modules;
-#[allow(non_camel_case_types)]
-#[allow(non_upper_case_globals)]
+#[cfg(feature = "napi")]
 pub mod napi;
 mod normalize_path;
 mod ops;
