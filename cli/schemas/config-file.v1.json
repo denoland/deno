@@ -185,6 +185,10 @@
         }
       }
     },
+    "importMap": {
+      "description": "The location of an import map to be used when resolving modules. If an import map is explicitly specified, it will override this value.",
+      "type": "string"
+    },
     "lint": {
       "description": "Configuration for linter",
       "type": "object",
