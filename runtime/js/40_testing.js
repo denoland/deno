@@ -707,7 +707,10 @@
       benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    benchDef.fn = wrapBenchFnWithSanitizers(benchDef.fn, benchDef);
+    benchDef.fn = wrapBenchFnWithSanitizers(
+      reportBenchIteration(benchDef.fn),
+      benchDef,
+    );
 
     if (benchDef.permissions) {
       benchDef.fn = withPermissions(
@@ -808,9 +811,7 @@
       const iterations = bench.n;
 
       for (let i = 0; i < iterations; i++) {
-        reportIterationStart(i);
         await bench.fn(step);
-        reportIterationFinish(i);
       }
       return "ok";
     } catch (error) {
@@ -888,15 +889,23 @@
     });
   }
 
+  function reportBenchIteration(fn) {
+    return async function benchIteration(step) {
+      reportIterationStart();
+      await fn(step);
+      reportIterationFinish();
+    };
+  }
+
   function reportIterationStart(i) {
     core.opSync("op_dispatch_bench_event", {
-      iterationStart: i,
+      iterationStart: 0,
     });
   }
 
   function reportIterationFinish(i) {
     core.opSync("op_dispatch_bench_event", {
-      iterationFinish: i,
+      iterationFinish: 0,
     });
   }
 
