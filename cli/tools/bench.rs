@@ -46,6 +46,7 @@ struct BenchSpecifierOptions {
 pub struct BenchDescription {
   pub origin: String,
   pub name: String,
+  pub iterations: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -57,7 +58,7 @@ pub enum BenchOutput {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
-  Ok((u64, Vec<u64>)),
+  Ok,
   Ignored,
   Failed(String),
 }
@@ -77,10 +78,19 @@ pub enum BenchEvent {
   Plan(BenchPlan),
   Wait(BenchDescription),
   Output(BenchOutput),
+  IterationStart(u64),
+  IterationFinish(u64),
   Result(BenchDescription, BenchResult, u64),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
+pub struct BenchMeasures {
+  pub iterations: u64,
+  pub current_start: Instant,
+  pub measures: Vec<u128>,
+}
+
+#[derive(Debug, Clone)]
 pub struct BenchSummary {
   pub total: usize,
   pub passed: usize,
@@ -88,6 +98,8 @@ pub struct BenchSummary {
   pub ignored: usize,
   pub filtered_out: usize,
   pub measured: usize,
+  pub measures: Vec<BenchMeasures>,
+  pub current_bench: BenchMeasures,
   pub failures: Vec<(BenchDescription, String)>,
 }
 
@@ -100,6 +112,12 @@ impl BenchSummary {
       ignored: 0,
       filtered_out: 0,
       measured: 0,
+      measures: Vec::new(),
+      current_bench: BenchMeasures {
+        iterations: 0,
+        current_start: Instant::now(),
+        measures: vec![],
+      },
       failures: Vec::new(),
     }
   }
@@ -122,6 +140,7 @@ pub trait BenchReporter {
     description: &BenchDescription,
     result: &BenchResult,
     elapsed: u64,
+    current_bench: &BenchMeasures,
   );
   fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration);
 }
@@ -181,13 +200,15 @@ impl BenchReporter for PrettyBenchReporter {
     _description: &BenchDescription,
     result: &BenchResult,
     elapsed: u64,
+    current_bench: &BenchMeasures,
   ) {
     let status = match result {
-      BenchResult::Ok((iters, perf)) => {
-        let ns_op = perf.iter().sum::<u64>() / iters;
+      BenchResult::Ok => {
+        let ns_op = current_bench.measures.iter().sum::<u128>()
+          / current_bench.iterations as u128;
         format!(
-          "{} iterations {}ms/op {}",
-          iters,
+          "{} iterations {}ns/op {}",
+          current_bench.iterations,
           ns_op,
           colors::green("ok")
         )
@@ -387,15 +408,35 @@ async fn bench_specifiers(
 
           BenchEvent::Wait(description) => {
             reporter.report_wait(&description);
+            summary.current_bench = BenchMeasures {
+              iterations: description.iterations,
+              current_start: Instant::now(),
+              measures: Vec::with_capacity(
+                description.iterations.try_into().unwrap(),
+              ),
+            };
           }
 
           BenchEvent::Output(output) => {
             reporter.report_output(&output);
           }
 
+          BenchEvent::IterationStart(_iteration) => {
+            summary.current_bench.current_start = Instant::now();
+          }
+
+          BenchEvent::IterationFinish(_iteration) => {
+            let duration_of_iter =
+              Instant::now() - summary.current_bench.current_start;
+            summary
+              .current_bench
+              .measures
+              .push(duration_of_iter.as_nanos())
+          }
+
           BenchEvent::Result(description, result, elapsed) => {
             match &result {
-              BenchResult::Ok(_) => {
+              BenchResult::Ok => {
                 summary.passed += 1;
               }
               BenchResult::Ignored => {
@@ -407,7 +448,12 @@ async fn bench_specifiers(
               }
             }
 
-            reporter.report_result(&description, &result, elapsed);
+            reporter.report_result(
+              &description,
+              &result,
+              elapsed,
+              &summary.current_bench,
+            );
           }
         }
       }

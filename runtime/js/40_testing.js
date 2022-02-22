@@ -805,18 +805,14 @@
     });
 
     try {
-      // TODO(bartlomieju): time each iteration
-      const iterations = bench.n ?? 100;
-      const perf = [];
+      const iterations = bench.n;
 
       for (let i = 0; i < iterations; i++) {
-        const s = performance.now();
+        reportIterationStart(i);
         await bench.fn(step);
-        perf.push(performance.now() - s);
+        reportIterationFinish(i);
       }
-      return {
-        "ok": [iterations, perf],
-      };
+      return "ok";
     } catch (error) {
       return {
         "failed": formatError(error),
@@ -880,15 +876,27 @@
     });
   }
 
-  function reportBenchWait(test) {
+  function reportBenchWait(description) {
     core.opSync("op_dispatch_bench_event", {
-      wait: test,
+      wait: description,
     });
   }
 
-  function reportBenchResult(test, result, elapsed) {
+  function reportBenchResult(description, result, elapsed) {
     core.opSync("op_dispatch_bench_event", {
-      result: [test, result, elapsed],
+      result: [description, result, elapsed],
+    });
+  }
+
+  function reportIterationStart(i) {
+    core.opSync("op_dispatch_bench_event", {
+      iterationStart: i,
+    });
+  }
+
+  function reportIterationFinish(i) {
+    core.opSync("op_dispatch_bench_event", {
+      iterationFinish: i,
     });
   }
 
@@ -976,10 +984,13 @@
     });
 
     for (const bench of filtered) {
+      const iterations = bench.n ?? 100;
       const description = {
         origin,
         name: bench.name,
+        iterations,
       };
+      bench.n = iterations;
       const earlier = DateNow();
 
       reportBenchWait(description);
