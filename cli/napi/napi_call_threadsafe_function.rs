@@ -8,7 +8,7 @@ fn napi_call_threadsafe_function(
   is_blocking: napi_threadsafe_function_call_mode,
 ) -> Result {
   let tsfn: &TsFn = unsafe { &*(func as *const TsFn) };
-  let func = tsfn.call(data, is_blocking != 0);
+  let _func = tsfn.call(data, is_blocking != 0);
 
   Ok(())
 }

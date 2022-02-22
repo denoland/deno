@@ -1,4 +1,6 @@
 #![allow(unused_mut)]
+#![allow(non_camel_case_types)]
+
 pub mod function;
 pub mod napi_acquire_threadsafe_function;
 pub mod napi_add_env_cleanup_hook;
@@ -183,8 +185,9 @@ pub extern "C" fn uv_async_init(
 #[no_mangle]
 pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
   let sender = unsafe { (*async_).sender.as_ref().unwrap() };
-  let fut = Box::new(move |scope: &mut v8::HandleScope| {
-    drop(scope);
+  let fut = Box::new(move |_scope: &mut v8::HandleScope| {
+    // TODO(bartlomieju): dropping a reference does nothing
+    // drop(scope);
     unsafe { ((*async_).callback)(async_) };
   });
 

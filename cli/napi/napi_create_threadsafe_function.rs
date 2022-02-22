@@ -70,17 +70,19 @@ impl TsFn {
           }
         }
 
-        // TODO: Reciever may be dropped
-        tx.send(());
+        // Receiver migh have been already dropped
+        let _ = tx.send(());
       });
-      self.sender.unbounded_send(call);
+      // This call should never fail
+      self.sender.unbounded_send(call).unwrap();
     } else if let Some(js_func) = js_func {
       let call = Box::new(move |scope: &mut v8::HandleScope| {
-        let func = js_func.open(scope);
-        // TODO: Reciever may be dropped
-        tx.send(());
+        let _func = js_func.open(scope);
+        // Receiver migh have been already dropped
+        let _ = tx.send(());
       });
-      self.sender.unbounded_send(call);
+      // This call should never fail
+      self.sender.unbounded_send(call).unwrap();
     }
 
     if is_blocking {
@@ -103,7 +105,7 @@ fn napi_create_threadsafe_function(
   maybe_call_js_cb: Option<napi_threadsafe_function_call_js>,
   result: *mut napi_threadsafe_function,
 ) -> Result {
-  if initial_thread_count <= 0 {
+  if initial_thread_count == 0 {
     return Err(Error::InvalidArg);
   }
   let maybe_func = func
