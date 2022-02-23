@@ -373,24 +373,30 @@ impl Flags {
   }
 
   /// Extract path arguments for config search paths.
-  pub fn config_path_args(&self) -> Vec<PathBuf> {
+  pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
     if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
-      files.clone()
+      Some(files.clone())
     } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
-      files.clone()
+      Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if let Ok(p) = module_specifier.to_file_path() {
-          vec![p]
+        if module_specifier.scheme() == "file" {
+          if let Ok(p) = module_specifier.to_file_path() {
+            Some(vec![p])
+          } else {
+            Some(vec![])
+          }
         } else {
-          vec![]
+          // When the entrypoint doesn't have file: scheme,
+          // then doesn't discover config file
+          None
         }
       } else {
-        vec![]
+        Some(vec![])
       }
     } else {
-      vec![]
+      Some(vec![])
     }
   }
 
@@ -4942,24 +4948,29 @@ mod tests {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![std::env::current_dir().unwrap().join("foo.js")]
+      Some(vec![std::env::current_dir().unwrap().join("foo.js")])
     );
+
+    let flags =
+      flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
+        .unwrap();
+    assert_eq!(flags.config_path_args(), None);
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args().is_empty());
+    assert!(flags.config_path_args().unwrap().is_empty());
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
   }
 

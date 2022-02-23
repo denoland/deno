@@ -164,17 +164,18 @@ const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
   if let Some(config_path) = flags.config_path.as_ref() {
     Ok(Some(ConfigFile::read(config_path)?))
-  } else {
+  } else if let Some(config_path_args) = flags.config_path_args() {
     let mut checked = HashSet::new();
-    for f in flags.config_path_args() {
+    for f in config_path_args {
       if let Some(cf) = discover_from(&f, &mut checked)? {
         return Ok(Some(cf));
       }
     }
-
     // From CWD walk up to root looking for deno.json or deno.jsonc
     let cwd = std::env::current_dir()?;
     discover_from(&cwd, &mut checked)
+  } else {
+    Ok(None)
   }
 }
 
