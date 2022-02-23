@@ -114,7 +114,7 @@ trust-dns-client = "=0.20.3"
 trust-dns-server = "=0.20.3"
 
 [target.'cfg(unix)'.dev-dependencies]
-nix = { version = "=0.23.1", default-features = false }
+nix = { version = "=0.23.0", default-features = false }
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

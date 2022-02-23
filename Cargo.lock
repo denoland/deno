@@ -763,7 +763,7 @@ dependencies = [
  "log",
  "lspower",
  "napi_sym",
- "nix 0.23.1",
+ "nix",
  "notify",
  "num_cpus",
  "once_cell",
@@ -1038,7 +1038,7 @@ dependencies = [
  "log",
  "lzzzz",
  "netif",
- "nix 0.23.1",
+ "nix",
  "notify",
  "once_cell",
  "regex",
@@ -2483,19 +2483,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nix"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f866317acbd3a240710c63f065ffb1e4fd466259045ccb504130b7f668f35c6"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if 1.0.0",
- "libc",
- "memoffset",
-]
-
-[[package]]
 name = "notify"
 version = "5.0.0-pre.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3353,7 +3340,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.22.1",
+ "nix",
  "radix_trie",
  "scopeguard",
  "smallvec",
