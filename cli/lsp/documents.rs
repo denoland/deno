@@ -23,7 +23,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolveResponse;
 use deno_graph::Module;
 use deno_graph::Resolved;
 use lspower::lsp;
@@ -37,7 +36,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([(
@@ -547,32 +545,6 @@ pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
       line: range.end.line as u32,
       character: range.end.character as u32,
     },
-  }
-}
-
-fn to_deno_graph_range(
-  specifier: &ModuleSpecifier,
-  maybe_range: Option<&lsp::Range>,
-) -> deno_graph::Range {
-  let specifier = specifier.clone();
-  if let Some(range) = maybe_range {
-    deno_graph::Range {
-      specifier,
-      start: deno_graph::Position {
-        line: range.start.line as usize,
-        character: range.start.character as usize,
-      },
-      end: deno_graph::Position {
-        line: range.end.line as usize,
-        character: range.end.character as usize,
-      },
-    }
-  } else {
-    deno_graph::Range {
-      specifier,
-      start: deno_graph::Position::zeroed(),
-      end: deno_graph::Position::zeroed(),
-    }
   }
 }
 
