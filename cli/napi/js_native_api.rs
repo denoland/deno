@@ -2067,7 +2067,7 @@ fn napi_typeof(
     *result = ty;
     Ok(())
   } else {
-    return Err(Error::InvalidArg);
+    Err(Error::InvalidArg)
   }
 }
 

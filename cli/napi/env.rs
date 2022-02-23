@@ -36,14 +36,8 @@ pub unsafe extern "C" fn napi_fatal_error(
   );
 }
 
-/// # Safety
-///
-/// It's an N-API symbol
-#[no_mangle]
-pub unsafe extern "C" fn napi_fatal_exception(
-  env: *mut Env,
-  value: napi_value,
-) -> Result {
+#[napi_sym::napi_sym]
+fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value: v8::Local<v8::Value> = std::mem::transmute(value);
   let error = value.to_rust_string_lossy(env.scope);
@@ -60,7 +54,7 @@ fn napi_add_env_cleanup_hook(
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   Ok(())
 }
 
@@ -71,7 +65,7 @@ fn napi_remove_env_cleanup_hook(
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   Ok(())
 }
 
