@@ -302,7 +302,7 @@ fn main() {
   );
 
   #[cfg(not(target_os = "windows"))]
-  println!("cargo:rustc-link-arg=-rdynamic");
+  println!("cargo:rustc-link-bin=deno=-rdynamic");
 
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
