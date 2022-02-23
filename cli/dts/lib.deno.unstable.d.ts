@@ -176,9 +176,15 @@ declare namespace Deno {
     nonblocking?: NonBlocking;
   }
 
-  /** A foreign function interface descriptor */
-  export interface ForeignFunctionInterface {
-    [name: string]: ForeignFunction;
+  export interface ForeignStatic<Type extends NativeType = NativeType> {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    type: Exclude<Type, "void">;
+  }
+
+  /** A foreign library interface descriptor */
+  export interface ForeignLibraryInterface {
+    [name: string]: ForeignFunction | ForeignStatic;
   }
 
   /** All possible number types interfacing with foreign functions */
@@ -203,20 +209,23 @@ declare namespace Deno {
     },
   ];
 
-  /** Infers a foreign function */
-  type StaticForeignFunction<T extends ForeignFunction> = (
-    ...args: StaticForeignFunctionParameters<T["parameters"]>
-  ) => ConditionalAsync<
-    T["nonblocking"],
-    StaticForeignFunctionResult<T["result"]>
-  >;
+  /** Infers a foreign symbol */
+  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+    T extends ForeignFunction ? (
+      ...args: StaticForeignFunctionParameters<T["parameters"]>
+    ) => ConditionalAsync<
+      T["nonblocking"],
+      StaticForeignFunctionResult<T["result"]>
+    >
+      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+      : never;
 
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
 
-  /** Infers a foreign function interface */
-  type StaticForeignFunctionInterface<T extends ForeignFunctionInterface> = {
-    [K in keyof T]: StaticForeignFunction<T[K]>;
+  /** Infers a foreign library interface */
+  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
+    [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
   type TypedArray =
@@ -313,9 +322,9 @@ declare namespace Deno {
   }
 
   /** A dynamic library resource */
-  export interface DynamicLibrary<S extends ForeignFunctionInterface> {
-    /** All of the registered symbols along with functions for calling them */
-    symbols: StaticForeignFunctionInterface<S>;
+  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
+    /** All of the registered library along with functions for calling them */
+    symbols: StaticForeignLibraryInterface<S>;
     close(): void;
   }
 
@@ -323,7 +332,7 @@ declare namespace Deno {
    *
    * Opens a dynamic library and registers symbols
    */
-  export function dlopen<S extends ForeignFunctionInterface>(
+  export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;

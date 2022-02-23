@@ -84,8 +84,8 @@ pin-project = "=1.0.8"
 rand = { version = "=0.8.4", features = ["small_rng"] }
 regex = "=1.5.4"
 ring = "=0.16.20"
-rustyline = { version = "=9.0.0", default-features = false }
-rustyline-derive = "=0.5.0"
+rustyline = { version = "=9.1.2", default-features = false }
+rustyline-derive = "=0.6.0"
 semver-parser = "=0.10.2"
 serde = { version = "=1.0.133", features = ["derive"] }
 shell-escape = "=0.1.5"

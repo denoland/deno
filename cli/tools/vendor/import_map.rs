@@ -213,12 +213,7 @@ fn handle_dep_specifier(
       return;
     }
 
-    if referrer.origin() == specifier.origin() {
-      let imports = import_map.scope(base_specifier);
-      imports.add(sub_path.to_string(), &specifier);
-    } else {
-      import_map.imports.add(text.to_string(), &specifier);
-    }
+    import_map.imports.add(text.to_string(), &specifier);
   } else {
     let expected_relative_specifier_text =
       mappings.relative_specifier_text(referrer, &specifier);
