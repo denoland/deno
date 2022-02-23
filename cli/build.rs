@@ -292,7 +292,7 @@ fn main() {
 
   #[cfg(target_os = "windows")]
   println!(
-    "cargo:rustc-env=LINK=/DEF:{}",
+    "cargo:rustc-link-arg-bin=deno=/DEF:{}",
     std::path::Path::new("exports.def")
       .canonicalize()
       .expect(
