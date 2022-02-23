@@ -373,6 +373,9 @@ impl Flags {
   }
 
   /// Extract path arguments for config search paths.
+  /// If it returns Some(vec), the config should be discovered
+  /// from the current dir after trying to discover from each entry in vec.
+  /// If it returns None, the config file shouldn't be discovered at all.
   pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
     if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
@@ -388,8 +391,8 @@ impl Flags {
             Some(vec![])
           }
         } else {
-          // When the entrypoint doesn't have file: scheme,
-          // then doesn't discover config file
+          // When the entrypoint doesn't have file: scheme (it's the remote
+          // script), then we don't auto discover config file.
           None
         }
       } else {
