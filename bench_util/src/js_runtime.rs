@@ -18,10 +18,11 @@ fn loop_code(iters: u64, src: &str) -> String {
   format!(r#"for(let i=0; i < {}; i++) {{ {} }}"#, iters, src,)
 }
 
+#[derive(Copy, Clone)]
 pub struct BenchOptions {
-  benching_inner: u64,
-  profiling_inner: u64,
-  profiling_outer: u64,
+  pub benching_inner: u64,
+  pub profiling_inner: u64,
+  pub profiling_outer: u64,
 }
 
 impl Default for BenchOptions {
