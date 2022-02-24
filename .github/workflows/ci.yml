@@ -39,6 +39,14 @@ jobs:
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: lint
             profile: debug
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+            job: test
+            profile: release
+            use_static_crt: true
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+            job: test
+            profile: debug
+            use_static_crt: true
 
       # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
@@ -333,8 +341,15 @@ jobs:
       - name: Build debug
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'debug' && !matrix.use_sysroot
+          matrix.profile == 'debug' && !matrix.use_sysroot && !matrix.use_static_crt
         run: cargo build --locked --all-targets
+
+      - name: Build debug (static)
+        if: matrix.job == 'test' && matrix.profile == 'debug' && matrix.use_static_crt
+        run: |
+          chmod +x ./tools/build_gnu_static_crt.sh
+          ./tools/build_gnu_static_crt.sh
+          cargo build -p test_ffi -p test_util
 
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
@@ -345,7 +360,7 @@ jobs:
       - name: Build release
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'release' && !matrix.use_sysroot &&
+          matrix.profile == 'release' && !matrix.use_sysroot && !matrix.use_static_crt &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: cargo build --release --locked --all-targets
@@ -353,7 +368,7 @@ jobs:
       - name: Build release (in sysroot)
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'release' && matrix.use_sysroot
+          matrix.profile == 'release' && matrix.use_sysroot && !matrix.use_static_crt
         run: |
           sudo chroot /sysroot   \
                su -l "$(whoami)" \
@@ -412,14 +427,22 @@ jobs:
         shell: bash
         run: |
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-
+      
       - name: Test debug
         if: |
           matrix.job == 'test' && matrix.profile == 'debug' &&
-          !matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
+          !matrix.use_sysroot && !matrix.use_static_crt && !startsWith(github.ref, 'refs/tags/')
         run: |
           cargo test --locked --doc
           cargo test --locked
+
+      - name: Test debug (static)
+        if: |
+          matrix.job == 'test' && matrix.profile == 'debug' &&
+          matrix.use_static_crt && !startsWith(github.ref, 'refs/tags/')
+        run: cargo test --target x86_64-unknown-linux-gnu --locked
+        env:
+          RUSTFLAGS: "-Ctarget-feature=+crt-static"
 
       - name: Test fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
@@ -430,7 +453,7 @@ jobs:
       - name: Test release
         if: |
           matrix.job == 'test' && matrix.profile == 'release' &&
-          !matrix.use_sysroot &&
+          !matrix.use_sysroot && !matrix.use_static_crt &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: cargo test --release --locked
