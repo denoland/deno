@@ -2093,6 +2093,7 @@
     };
 
     timeEnd = (label = "default") => {
+      const endTime = DateNow();
       label = String(label);
 
       if (!MapPrototypeHas(timerMap, label)) {
@@ -2102,7 +2103,7 @@
 
       const startTime = MapPrototypeGet(timerMap, label);
       MapPrototypeDelete(timerMap, label);
-      const duration = DateNow() - startTime;
+      const duration = endTime - startTime;
 
       this.info(`${label}: ${duration}ms`);
     };
