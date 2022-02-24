@@ -158,11 +158,11 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let media_type = MediaType::from(specifier);
 
   Ok(File {
+    specifier: ModuleSpecifier::from_file_path(deno_runtime::fs_util::canonicalize_path(local.as_path())?).unwrap(),
     local,
     maybe_types: None,
     media_type,
     source: Arc::new(source),
-    specifier: specifier.clone(),
     maybe_headers: None,
   })
 }
