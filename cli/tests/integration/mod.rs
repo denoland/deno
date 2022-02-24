@@ -1360,3 +1360,21 @@ async fn http2_request_url() {
     })
     .await;
 }
+
+#[test]
+fn symlinked_specifier() {
+  let status = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(
+      util::testdata_path()
+        .join("symlink_specifier")
+        .join("foo")
+        .join("a_symlink.ts"),
+    )
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
