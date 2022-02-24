@@ -465,29 +465,65 @@ impl Inner {
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
     self.maybe_cache_server = None;
-    let maybe_import_map = self.config.get_workspace_settings().import_map;
-    if let Some(import_map_str) = &maybe_import_map {
-      lsp_log!("Setting import map from: \"{}\"", import_map_str);
-      let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
-      {
-        Ok(url)
+    let maybe_import_map_url = if let Some(import_map_str) =
+      self.config.get_workspace_settings().import_map
+    {
+      lsp_log!(
+        "Setting import map from workspace settings: \"{}\"",
+        import_map_str
+      );
+      if let Some(config_file) = &self.maybe_config_file {
+        if let Some(import_map_path) = config_file.to_import_map_path() {
+          lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
+        }
+      }
+      if let Ok(url) = Url::from_file_path(&import_map_str) {
+        Some(url)
       } else if import_map_str.starts_with("data:") {
-        Url::parse(import_map_str).map_err(|_| {
-          anyhow!("Bad data url for import map: {:?}", import_map_str)
-        })
+        Some(Url::parse(&import_map_str).map_err(|_| {
+          anyhow!("Bad data url for import map: {}", import_map_str)
+        })?)
       } else if let Some(root_uri) = &self.root_uri {
         let root_path = fs_util::specifier_to_file_path(root_uri)?;
-        let import_map_path = root_path.join(import_map_str);
-        Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {:?}", import_map_str)
-        })
+        let import_map_path = root_path.join(&import_map_str);
+        Some(Url::from_file_path(import_map_path).map_err(|_| {
+          anyhow!("Bad file path for import map: {}", import_map_str)
+        })?)
       } else {
-        Err(anyhow!(
+        return Err(anyhow!(
           "The path to the import map (\"{}\") is not resolvable.",
           import_map_str
-        ))
-      }?;
-
+        ));
+      }
+    } else if let Some(config_file) = &self.maybe_config_file {
+      if let Some(import_map_path) = config_file.to_import_map_path() {
+        lsp_log!(
+          "Setting import map from configuration file: \"{}\"",
+          import_map_path
+        );
+        let specifier =
+          if let Ok(config_file_path) = config_file.specifier.to_file_path() {
+            let import_map_file_path = config_file_path
+              .parent()
+              .ok_or_else(|| {
+                anyhow!("Bad config file specifier: {}", config_file.specifier)
+              })?
+              .join(&import_map_path);
+            ModuleSpecifier::from_file_path(import_map_file_path).unwrap()
+          } else {
+            deno_core::resolve_import(
+              &import_map_path,
+              config_file.specifier.as_str(),
+            )?
+          };
+        Some(specifier)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+    if let Some(import_map_url) = maybe_import_map_url {
       let import_map_json = if import_map_url.scheme() == "data" {
         get_source_from_data_url(&import_map_url)?.0
       } else {
@@ -508,6 +544,7 @@ impl Inner {
       self.maybe_import_map_uri = Some(import_map_url);
       self.maybe_import_map = Some(Arc::new(import_map));
     } else {
+      self.maybe_import_map_uri = None;
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -854,13 +891,13 @@ impl Inner {
     if let Err(err) = self.update_cache() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::WARNING, err).await;
-    }
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_config_file() {
+      self.client.show_message(MessageType::WARNING, err).await;
+    }
+    if let Err(err) = self.update_import_map().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
@@ -889,15 +926,6 @@ impl Inner {
       .map(|f| self.url_map.normalize_url(&f.uri))
       .collect();
 
-    // if the current import map has changed, we need to reload it
-    if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if changes.iter().any(|uri| import_map_uri == uri) {
-        if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::WARNING, err).await;
-        }
-        touched = true;
-      }
-    }
     // if the current tsconfig has changed, we need to reload it
     if let Some(config_file) = &self.maybe_config_file {
       if changes.iter().any(|uri| config_file.specifier == *uri) {
@@ -905,6 +933,16 @@ impl Inner {
           self.client.show_message(MessageType::WARNING, err).await;
         }
         if let Err(err) = self.update_tsconfig().await {
+          self.client.show_message(MessageType::WARNING, err).await;
+        }
+        touched = true;
+      }
+    }
+    // if the current import map, or config file has changed, we need to reload
+    // reload the import map
+    if let Some(import_map_uri) = &self.maybe_import_map_uri {
+      if changes.iter().any(|uri| import_map_uri == uri) || touched {
+        if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
