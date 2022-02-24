@@ -929,10 +929,21 @@ fn encode(
       return;
     }
   };
-  let text_str = text.to_rust_string_lossy(scope);
-  let zbuf: ZeroCopyBuf = text_str.into_bytes().into();
 
-  rv.set(to_v8(scope, zbuf).unwrap())
+  let capacity = text.utf8_length(scope);
+  let backing_store =
+    v8::ArrayBuffer::new_backing_store(scope, capacity).make_shared();
+  let length = text.write_utf8(
+    scope,
+    unsafe { &mut *(&backing_store[..capacity] as *const _ as *mut [u8]) },
+    None,
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  );
+
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store);
+  let u8array = v8::Uint8Array::new(scope, ab, 0, length).unwrap();
+  rv.set(u8array.into())
 }
 
 fn decode(
