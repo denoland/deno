@@ -805,10 +805,20 @@
       sanitizeOps: bench.sanitizeOps,
       sanitizeResources: bench.sanitizeResources,
       sanitizeExit: bench.sanitizeExit,
+      warmup: false,
     });
 
     try {
+      const warmupIterations = bench.warmupIterations;
+      step.warmup = true;
+      // TODO(bartlomieju): fixme, runs sanitizers and actually collects
+      // measurements
+      for (let i = 0; i < warmupIterations; i++) {
+        await bench.fn(step);
+      }
+
       const iterations = bench.n;
+      step.warmup = false;
 
       for (let i = 0; i < iterations; i++) {
         await bench.fn(step);
@@ -994,12 +1004,14 @@
 
     for (const bench of filtered) {
       const iterations = bench.n ?? 100;
+      const warmupIterations = bench.warmup ?? 100;
       const description = {
         origin,
         name: bench.name,
         iterations,
       };
       bench.n = iterations;
+      bench.warmupIterations = warmupIterations;
       const earlier = DateNow();
 
       reportBenchWait(description);

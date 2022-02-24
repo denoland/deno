@@ -10,6 +10,12 @@ declare namespace Deno {
     ignore?: boolean;
     /** Specify number of iterations benchmark should perform. Defaults to 100. */
     n?: number;
+    /** Specify number of warmup iterations benchmark should perform. Defaults 
+     * to 100. 
+     * 
+     * These iterations are not measured. It allows the code to be optimized
+     * by JIT compiler before measuring its performance. */
+    warmup?: number;
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to true and fail the bench suite. */
     only?: boolean;
