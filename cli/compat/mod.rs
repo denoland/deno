@@ -5,9 +5,7 @@ mod esm_resolver;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::serde_v8;
 use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 
@@ -137,40 +135,6 @@ pub(crate) fn add_global_require(
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
   Ok(())
-}
-
-pub(crate) async fn resolve_cjs_module(
-  js_runtime: &mut JsRuntime,
-  fake_main: &str,
-  referrer_mod: &str,
-  mod_to_resolve: &str,
-) -> Result<String, AnyError> {
-  let source_code = &format!(
-    r#"(async function resolveCjsModule(main) {{
-      const CJSModule = await import("{}");
-      const require = CJSModule.createRequire(main);
-      require("{}");
-      const referrerMod = CJSModule.default._cache["{}"];
-      const resolvedMod = CJSModule.default._resolveFilename("{}", referrerMod);
-      return resolvedMod;
-    }})('{}');
-    "#,
-    MODULE_URL_STR.as_str(),
-    escape_for_single_quote_string(referrer_mod),
-    escape_for_single_quote_string(referrer_mod),
-    escape_for_single_quote_string(mod_to_resolve),
-    fake_main,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  let value = js_runtime.resolve_value(value).await?;
-  let resolved_specifier = {
-    let scope = &mut js_runtime.handle_scope();
-    let local = v8::Local::<v8::Value>::new(scope, value);
-    serde_v8::from_v8(scope, local)?
-  };
-  Ok(resolved_specifier)
 }
 
 fn escape_for_single_quote_string(text: &str) -> String {

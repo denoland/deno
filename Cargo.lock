@@ -763,7 +763,7 @@ dependencies = [
  "log",
  "lspower",
  "nix",
- "node_resolve",
+ "node_resolver",
  "notify",
  "num_cpus",
  "once_cell",
@@ -2460,8 +2460,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "node_resolve"
+name = "node_resolver"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e35ed1604f6f4e33b51926d6be3bc09423f35eec776165c460c313dc2970ea5a"
 dependencies = [
  "anyhow",
  "serde",
