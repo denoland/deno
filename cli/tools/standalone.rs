@@ -5,11 +5,17 @@ use crate::flags::CheckFlag;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::RunFlags;
+use crate::standalone::Metadata;
+use crate::standalone::MAGIC_TRAILER;
+use crate::ProcState;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest::Client;
+use deno_runtime::permissions::Permissions;
 use std::env;
 use std::fs::read;
 use std::fs::File;
@@ -19,9 +25,6 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-
-use crate::standalone::Metadata;
-use crate::standalone::MAGIC_TRAILER;
 
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
@@ -85,17 +88,38 @@ async fn download_base_binary(
 
 /// This functions creates a standalone deno binary by appending a bundle
 /// and magic trailer to the currently executing binary.
-pub fn create_standalone_binary(
+pub async fn create_standalone_binary(
   mut original_bin: Vec<u8>,
   eszip: eszip::EszipV2,
   entrypoint: ModuleSpecifier,
   flags: Flags,
+  ps: ProcState,
 ) -> Result<Vec<u8>, AnyError> {
   let mut eszip_archive = eszip.into_bytes();
 
   let ca_data = match &flags.ca_file {
     Some(ca_file) => Some(read(ca_file)?),
     None => None,
+  };
+  let maybe_import_map: Option<(Url, String)> = match flags
+    .import_map_path
+    .as_ref()
+  {
+    None => None,
+    Some(import_map_url) => {
+      let import_map_specifier = deno_core::resolve_url_or_path(import_map_url)
+        .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
+      let file = ps
+        .file_fetcher
+        .fetch(&import_map_specifier, &mut Permissions::allow_all())
+        .await
+        .context(format!(
+          "Unable to load '{}' import map",
+          import_map_specifier
+        ))?;
+
+      Some((import_map_specifier, file.source.to_string()))
+    }
   };
   let metadata = Metadata {
     argv: flags.argv.clone(),
@@ -111,6 +135,7 @@ pub fn create_standalone_binary(
     ca_stores: flags.ca_stores,
     ca_data,
     entrypoint,
+    maybe_import_map,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
 
@@ -233,7 +258,7 @@ pub fn compile_to_runtime_flags(
     coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,
     ignore: vec![],
-    import_map_path: None,
+    import_map_path: flags.import_map_path.clone(),
     inspect_brk: None,
     inspect: None,
     location: flags.location.clone(),
