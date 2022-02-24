@@ -396,19 +396,21 @@ async fn compile_command(
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags =
-    tools::standalone::compile_to_runtime_flags(&flags, compile_flags.args)?;
+  let run_flags = tools::standalone::compile_to_runtime_flags(
+    &flags,
+    compile_flags.args.clone(),
+  )?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.and_then(|output| {
-    if fs_util::path_has_trailing_slash(&output) {
+  let output = compile_flags.output.as_ref().and_then(|output| {
+    if fs_util::path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {
-      Some(output)
+      Some(output.to_path_buf())
     }
   }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
@@ -422,6 +424,8 @@ async fn compile_command(
   .map_err(|_| {
     generic_error("There should only be one reference to ModuleGraph")
   })?;
+
+  graph.valid().unwrap();
 
   let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
@@ -441,7 +445,9 @@ async fn compile_command(
     eszip,
     module_specifier.clone(),
     run_flags,
-  )?;
+    ps,
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 

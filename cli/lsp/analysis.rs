@@ -14,7 +14,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
@@ -60,18 +59,6 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
-
-static DENO_TYPES_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#).unwrap()
-});
-
-static TRIPLE_SLASH_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap());
-
-static PATH_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap());
-static TYPES_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap());
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 

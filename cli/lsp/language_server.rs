@@ -8,10 +8,8 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use deno_graph::Resolved;
 use import_map::ImportMap;
 use log::error;
-use log::info;
 use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
@@ -20,7 +18,6 @@ use lspower::lsp::*;
 use serde_json::from_value;
 use std::env;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
 
@@ -34,7 +31,6 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
-use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticsServer;
@@ -53,7 +49,6 @@ use super::registries::ModuleRegistry;
 use super::registries::ModuleRegistryOptions;
 use super::text;
 use super::tsc;
-use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
@@ -65,7 +60,6 @@ use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
-use crate::logger;
 use crate::proc_state::import_map_from_text;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -2484,7 +2478,7 @@ impl lspower::LanguageServer for LanguageServer {
       tokio::spawn(async move {
         if let Ok(configs) = client
           .specifier_configurations(
-            specifiers.iter().map(|(s)| s.client_uri.clone()).collect(),
+            specifiers.iter().map(|s| s.client_uri.clone()).collect(),
           )
           .await
         {

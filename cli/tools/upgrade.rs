@@ -23,6 +23,13 @@ static ARCHIVE_NAME: Lazy<String> =
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
+  let old_exe_path = std::env::current_exe()?;
+  let permissions = fs::metadata(&old_exe_path)?.permissions();
+
+  if permissions.readonly() {
+    bail!("You do not have write permission to {:?}", old_exe_path);
+  }
+
   let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
@@ -114,9 +121,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
 
   println!("Deno is upgrading to version {}", &install_version);
 
-  let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data, cfg!(windows))?;
-  let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
