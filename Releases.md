@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.19.1 / 2022.02.24
+
+- feat(ext/ffi): Support read only global statics (#13662)
+- fix(compile): Support import maps (#13756)
+- fix(upgrade): move the file permission check to the beginning of the upgrade
+  process (#13726)
+- fix(vendor): do not add absolute specifiers to scopes (#13710)
+
 ### 1.19.0 / 2022.02.17
 
 - feat: Add Deno.FsFile, deprecate Deno.File (#13660)

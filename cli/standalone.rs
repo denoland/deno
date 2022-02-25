@@ -6,6 +6,7 @@ use crate::flags::Flags;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
+use crate::ImportMapResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
@@ -19,6 +20,7 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::create_default_root_cert_store;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -28,6 +30,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use import_map::parse_from_json;
 use log::Level;
 use std::env::current_exe;
 use std::io::BufReader;
@@ -51,6 +54,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
 }
 
@@ -119,17 +123,26 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-struct EmbeddedModuleLoader(eszip::EszipV2);
+struct EmbeddedModuleLoader {
+  eszip: eszip::EszipV2,
+  maybe_import_map_resolver: Option<ImportMapResolver>,
+}
 
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
     specifier: &str,
-    base: &str,
+    referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let resolve = deno_core::resolve_import(specifier, base)?;
-    Ok(resolve)
+    let referrer = deno_core::resolve_url_or_path(referrer).unwrap();
+    self.maybe_import_map_resolver.as_ref().map_or_else(
+      || {
+        deno_core::resolve_import(specifier, referrer.as_str())
+          .map_err(|err| err.into())
+      },
+      |r| r.resolve(specifier, &referrer).to_result(),
+    )
   }
 
   fn load(
@@ -143,7 +156,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let is_data_uri = get_source_from_data_url(&module_specifier).ok();
 
     let module = self
-      .0
+      .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
 
@@ -208,7 +221,16 @@ pub async fn run(
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
-  let module_loader = Rc::new(EmbeddedModuleLoader(eszip));
+  let module_loader = Rc::new(EmbeddedModuleLoader {
+    eszip,
+    maybe_import_map_resolver: metadata.maybe_import_map.map(
+      |(base, source)| {
+        ImportMapResolver::new(Arc::new(
+          parse_from_json(&base, &source).unwrap().import_map,
+        ))
+      },
+    ),
+  });
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
   });
@@ -247,7 +269,9 @@ pub async fn run(
     bootstrap: BootstrapOptions {
       apply_source_maps: false,
       args: metadata.argv,
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: false,
       location: metadata.location,

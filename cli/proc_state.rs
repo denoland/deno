@@ -151,26 +151,26 @@ impl ProcState {
 
     let maybe_config_file = crate::config_file::discover(&flags)?;
 
-    let maybe_import_map: Option<Arc<ImportMap>> =
-      match flags.import_map_path.as_ref() {
-        None => None,
-        Some(import_map_url) => {
-          let import_map_specifier =
-            deno_core::resolve_url_or_path(import_map_url).context(format!(
-              "Bad URL (\"{}\") for import map.",
-              import_map_url
-            ))?;
-          let file = file_fetcher
-            .fetch(&import_map_specifier, &mut Permissions::allow_all())
-            .await
-            .context(format!(
-              "Unable to load '{}' import map",
-              import_map_specifier
-            ))?;
-          let import_map =
-            import_map_from_text(&import_map_specifier, &file.source)?;
-          Some(Arc::new(import_map))
-        }
+    let maybe_import_map_specifier =
+      crate::config_file::resolve_import_map_specifier(
+        flags.import_map_path.as_deref(),
+        maybe_config_file.as_ref(),
+      )?;
+
+    let maybe_import_map =
+      if let Some(import_map_specifier) = maybe_import_map_specifier {
+        let file = file_fetcher
+          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .await
+          .context(format!(
+            "Unable to load '{}' import map",
+            import_map_specifier
+          ))?;
+        let import_map =
+          import_map_from_text(&import_map_specifier, &file.source)?;
+        Some(Arc::new(import_map))
+      } else {
+        None
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
@@ -190,13 +190,10 @@ impl ProcState {
     );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
     > = if flags.compat {
@@ -597,7 +594,7 @@ impl SourceMapGetter for ProcState {
     if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using .split_terminator() instead of .split())
+        // (due to internally using_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
         if line_number >= lines.len() {
           format!(

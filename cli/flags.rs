@@ -157,6 +157,7 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
+  pub trace_ops: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -381,24 +382,33 @@ impl Flags {
   }
 
   /// Extract path arguments for config search paths.
-  pub fn config_path_args(&self) -> Vec<PathBuf> {
+  /// If it returns Some(vec), the config should be discovered
+  /// from the current dir after trying to discover from each entry in vec.
+  /// If it returns None, the config file shouldn't be discovered at all.
+  pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
     if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
-      files.clone()
+      Some(files.clone())
     } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
-      files.clone()
+      Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if let Ok(p) = module_specifier.to_file_path() {
-          vec![p]
+        if module_specifier.scheme() == "file" {
+          if let Ok(p) = module_specifier.to_file_path() {
+            Some(vec![p])
+          } else {
+            Some(vec![])
+          }
         } else {
-          vec![]
+          // When the entrypoint doesn't have file: scheme (it's the remote
+          // script), then we don't auto discover config file.
+          None
         }
       } else {
-        vec![]
+        Some(vec![])
       }
     } else {
-      vec![]
+      Some(vec![])
     }
   }
 
@@ -1315,6 +1325,12 @@ fn test_subcommand<'a>() -> App<'a> {
       Arg::new("no-run")
         .long("no-run")
         .help("Cache test modules, but don't run tests")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::new("trace-ops")
+        .long("trace-ops")
+        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
         .takes_value(false),
     )
     .arg(
@@ -2285,6 +2301,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   let no_run = matches.is_present("no-run");
+  let trace_ops = matches.is_present("trace-ops");
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
   let filter = matches.value_of("filter").map(String::from);
@@ -2327,8 +2344,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
     } else {
-      // TODO(caspervonb) drop the dependency on num_cpus when https://doc.rust-lang.org/std/thread/fn.available_concurrency.html becomes stable.
-      NonZeroUsize::new(num_cpus::get()).unwrap()
+      std::thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else {
     NonZeroUsize::new(1).unwrap()
@@ -2357,6 +2374,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     shuffle,
     allow_none,
     concurrent_jobs,
+    trace_ops,
   });
 }
 
@@ -4513,7 +4531,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4527,6 +4545,7 @@ mod tests {
           ignore: vec![],
           shuffle: None,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: true,
         }),
         unstable: true,
         coverage_dir: Some("cov".to_string()),
@@ -4595,6 +4614,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+          trace_ops: false,
         }),
         ..Flags::default()
       }
@@ -4620,6 +4640,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         ..Flags::default()
       }
@@ -4649,6 +4670,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         enable_testing_features: true,
         ..Flags::default()
@@ -4672,6 +4694,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: None,
         ..Flags::default()
@@ -4695,6 +4718,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -4719,6 +4743,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -5037,24 +5062,29 @@ mod tests {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![std::env::current_dir().unwrap().join("foo.js")]
+      Some(vec![std::env::current_dir().unwrap().join("foo.js")])
     );
+
+    let flags =
+      flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
+        .unwrap();
+    assert_eq!(flags.config_path_args(), None);
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args().is_empty());
+    assert!(flags.config_path_args().unwrap().is_empty());
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
   }
 

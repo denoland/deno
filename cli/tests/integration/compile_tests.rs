@@ -451,6 +451,40 @@ fn standalone_runtime_flags() {
 }
 
 #[test]
+fn standalone_import_map() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("import_map.exe")
+  } else {
+    dir.path().join("import_map")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--import-map")
+    .arg("standalone_import_map.json")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./standalone_import_map.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
   let dir = TempDir::new().expect("tempdir fail");

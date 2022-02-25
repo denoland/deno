@@ -16,7 +16,7 @@ pub(crate) use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.126.0/";
+static STD_URL_STR: &str = "https://deno.land/std@0.127.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -138,7 +138,7 @@ pub(crate) fn add_global_require(
 }
 
 fn escape_for_single_quote_string(text: &str) -> String {
-  text.replace(r"\", r"\\").replace("'", r"\'")
+  text.replace('\\', r"\\").replace('\'', r"\'")
 }
 
 pub fn setup_builtin_modules(
