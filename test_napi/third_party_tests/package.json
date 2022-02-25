@@ -24,6 +24,7 @@
     "msgpackr-extract": "1.1.0-napi",
     "node-gyp": "^8.4.1",
     "skia-canvas": "^0.9.28",
+    "sqlite3": "^5.0.2",
     "usb": "^2.0.3",
     "usb-enum": "^0.0.1"
   }
