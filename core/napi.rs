@@ -297,8 +297,9 @@ pub enum ThreadSafeFunctionStatus {
 }
 
 #[repr(C)]
-pub struct Env<'a, 'b> {
-  pub scope: &'a mut v8::HandleScope<'b>,
+pub struct Env {
+// pub struct Env<'a, 'b> {
+  // pub scope: &'a mut v8::HandleScope<'b>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
@@ -307,8 +308,10 @@ pub struct Env<'a, 'b> {
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
 
-unsafe impl Send for Env<'_, '_> {}
-unsafe impl Sync for Env<'_, '_> {}
+// unsafe impl Send for Env<'_, '_> {}
+// unsafe impl Sync for Env<'_, '_> {}
+unsafe impl Send for Env {}
+unsafe impl Sync for Env {}
 
 impl<'a, 'b> Env<'a, 'b> {
   pub fn new(

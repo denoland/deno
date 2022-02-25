@@ -1,6 +1,7 @@
 {
   "symbols": [
     "node_api_create_syntax_error",
+    "napi_make_callback",
     "napi_has_named_property",
     "napi_coerce_to_object",
     "napi_get_arraybuffer_info",

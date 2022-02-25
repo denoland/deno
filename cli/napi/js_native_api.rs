@@ -685,6 +685,37 @@ fn napi_create_uint32(
 }
 
 #[napi_sym::napi_sym]
+fn napi_make_callback(
+  env: *mut Env,
+  async_context: *mut c_void,
+  recv: napi_value,
+  func: napi_value,
+  argc: isize,
+  argv: *const napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  check_arg!(recv);
+  if argc > 0 {
+    check_arg!(argv);
+  }
+  
+  if !async_context.is_null() {
+    eprintln!("napi_make_callback: async_context is not supported");
+  }
+
+  let recv = unsafe { transmute::<napi_value, v8::Local<v8::Value>>(recv) };
+  let func = unsafe { transmute::<napi_value, v8::Local<v8::Value>>(func) };
+  
+  let func = v8::Local::<v8::Function>::try_from(func).map_err(|_| Error::FunctionExpected)?;
+  let argv: &[v8::Local<v8::Value>] = unsafe { transmute(std::slice::from_raw_parts(argv, argc as usize)) };
+  
+  let ret = func.call(env.scope, recv, argv);
+  *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
 fn napi_get_value_bigint_int64(
   env: *mut Env,
   value: napi_value,
