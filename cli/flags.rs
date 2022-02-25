@@ -4456,6 +4456,7 @@ mod tests {
           trace_ops: true,
         }),
         unstable: true,
+        no_prompt: true,
         coverage_dir: Some("cov".to_string()),
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
@@ -4524,6 +4525,7 @@ mod tests {
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
           trace_ops: false,
         }),
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4550,6 +4552,7 @@ mod tests {
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4580,6 +4583,7 @@ mod tests {
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
+        no_prompt: true,
         enable_testing_features: true,
         ..Flags::default()
       }
@@ -4604,6 +4608,7 @@ mod tests {
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
+        no_prompt: true,
         watch: None,
         ..Flags::default()
       }
@@ -4628,6 +4633,7 @@ mod tests {
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
+        no_prompt: true,
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -4655,6 +4661,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        no_prompt: true,
         ..Flags::default()
       }
     );
