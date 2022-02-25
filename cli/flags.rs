@@ -150,6 +150,7 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
+  pub trace_ops: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -1273,6 +1274,12 @@ fn test_subcommand<'a>() -> App<'a> {
         .takes_value(false),
     )
     .arg(
+      Arg::new("trace-ops")
+        .long("trace-ops")
+        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
+        .takes_value(false),
+    )
+    .arg(
       Arg::new("doc")
         .long("doc")
         .help("UNSTABLE: type check code blocks")
@@ -2199,6 +2206,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   let no_run = matches.is_present("no-run");
+  let trace_ops = matches.is_present("trace-ops");
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
   let filter = matches.value_of("filter").map(String::from);
@@ -2271,6 +2279,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     shuffle,
     allow_none,
     concurrent_jobs,
+    trace_ops,
   });
 }
 
@@ -4427,7 +4436,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4441,6 +4450,7 @@ mod tests {
           ignore: vec![],
           shuffle: None,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: true,
         }),
         unstable: true,
         coverage_dir: Some("cov".to_string()),
@@ -4509,6 +4519,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+          trace_ops: false,
         }),
         ..Flags::default()
       }
@@ -4534,6 +4545,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         ..Flags::default()
       }
@@ -4563,6 +4575,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         enable_testing_features: true,
         ..Flags::default()
@@ -4586,6 +4599,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: None,
         ..Flags::default()
@@ -4609,6 +4623,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -4633,6 +4648,7 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
