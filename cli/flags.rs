@@ -2240,8 +2240,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
     } else {
-      // TODO(caspervonb) drop the dependency on num_cpus when https://doc.rust-lang.org/std/thread/fn.available_concurrency.html becomes stable.
-      NonZeroUsize::new(num_cpus::get()).unwrap()
+      std::thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else {
     NonZeroUsize::new(1).unwrap()

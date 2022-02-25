@@ -1090,14 +1090,10 @@ pub async fn run_tests_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file

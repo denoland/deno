@@ -538,8 +538,7 @@ async fn generate_ts_diagnostics(
     let version = snapshot
       .documents
       .get(&specifier)
-      .map(|d| d.maybe_lsp_version())
-      .flatten();
+      .and_then(|d| d.maybe_lsp_version());
     // check if the specifier is enabled again just in case TS returns us
     // diagnostics for a disabled specifier
     let ts_diagnostics = if config.specifier_enabled(&specifier) {
@@ -555,8 +554,7 @@ async fn generate_ts_diagnostics(
     let version = snapshot
       .documents
       .get(&specifier)
-      .map(|d| d.maybe_lsp_version())
-      .flatten();
+      .and_then(|d| d.maybe_lsp_version());
     diagnostics_vec.push((specifier, version, Vec::new()));
   }
   Ok(diagnostics_vec)
