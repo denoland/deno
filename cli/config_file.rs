@@ -614,8 +614,7 @@ impl ConfigFile {
       .json
       .compiler_options
       .as_ref()
-      .map(|co| co.get("checkJs").map(|v| v.as_bool()).flatten())
-      .flatten()
+      .and_then(|co| co.get("checkJs").and_then(|v| v.as_bool()))
       .unwrap_or(false)
   }
 

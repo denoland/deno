@@ -870,8 +870,7 @@ impl Inner {
         params
           .settings
           .as_object()
-          .map(|settings| settings.get(SETTINGS_SECTION))
-          .flatten()
+          .and_then(|settings| settings.get(SETTINGS_SECTION))
           .cloned()
       };
 
@@ -1075,8 +1074,7 @@ impl Inner {
     {
       let dep_maybe_types_dependency = dep
         .get_code()
-        .map(|s| self.documents.get(s))
-        .flatten()
+        .and_then(|s| self.documents.get(s))
         .map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
@@ -1242,7 +1240,7 @@ impl Inner {
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
-              asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten(),
+              asset_or_doc.maybe_parsed_source().and_then(|r| r.ok()),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {}", err);
@@ -1426,8 +1424,7 @@ impl Inner {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
-    let parsed_source =
-      asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten();
+    let parsed_source = asset_or_doc.maybe_parsed_source().and_then(|r| r.ok());
     let line_index = asset_or_doc.line_index();
     let code_lenses = code_lens::collect(
       &specifier,
@@ -1501,8 +1498,7 @@ impl Inner {
     if let Some(document_highlights) = maybe_document_highlights {
       let result = document_highlights
         .into_iter()
-        .map(|dh| dh.to_highlight(line_index.clone()))
-        .flatten()
+        .flat_map(|dh| dh.to_highlight(line_index.clone()))
         .collect();
       self.performance.measure(mark);
       Ok(Some(result))

@@ -151,7 +151,7 @@ async fn get_latest_release_version(
     .await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
 
-  Ok(version.replace("v", ""))
+  Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(

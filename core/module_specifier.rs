@@ -397,7 +397,7 @@ mod tests {
       // Relative local path.
       let expected_url = format!(
         "file:///{}/tests/006_url_imports.ts",
-        cwd_str.replace("\\", "/")
+        cwd_str.replace('\\', "/")
       );
       tests.extend(vec![
         (r"tests/006_url_imports.ts", expected_url.to_string()),
