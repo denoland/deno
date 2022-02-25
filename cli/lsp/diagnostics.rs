@@ -29,15 +29,11 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use lspower::lsp;
 use std::collections::HashMap;
-use std::collections::HashSet;
-use std::mem;
 use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
-use tokio::time::sleep;
 use tokio::time::Duration;
-use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 pub(crate) type SnapshotForDiagnostics =
@@ -80,7 +76,7 @@ impl DiagnosticsPublisher {
       // in case they're not keep track of that
       let diagnostics_by_version =
         all_diagnostics.entry(specifier.clone()).or_default();
-      let mut version_diagnostics =
+      let version_diagnostics =
         diagnostics_by_version.entry(version).or_default();
       version_diagnostics.extend(diagnostics);
 
@@ -180,6 +176,7 @@ impl DiagnosticsServer {
     self.ts_diagnostics.invalidate_all();
   }
 
+  #[allow(unused_must_use)]
   pub(crate) fn start(&mut self) {
     let (tx, mut rx) = mpsc::unbounded_channel::<SnapshotForDiagnostics>();
     self.channel = Some(tx);
@@ -574,7 +571,6 @@ struct DiagnosticDataSpecifier {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataRedirect {
-  pub specifier: ModuleSpecifier,
   pub redirect: ModuleSpecifier,
 }
 
@@ -1033,7 +1029,6 @@ let c: number = "a";
 
   #[tokio::test]
   async fn test_cancelled_ts_diagnostics_request() {
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let (snapshot, _) = setup(&[(
       "file:///a.ts",
       r#"export let a: string = 5;"#,
