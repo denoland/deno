@@ -211,11 +211,11 @@
 
       let msg = `Test case is leaking async ops.
 
-      - ${ArrayPrototypeJoin(details, "\n - ")}`;
+- ${ArrayPrototypeJoin(details, "\n - ")}`;
 
       if (!isOpCallTracingEnabled) {
         msg +=
-          `\nTo get more details where ops are leaked run again with --trace-ops flag.`;
+          `\n\nTo get more details where ops are leaked, run again with --trace-ops flag.`;
       }
 
       throw msg;

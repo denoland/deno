@@ -146,7 +146,7 @@ itest!(allow_none {
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --unstable test/ops_sanitizer_unstable.ts",
+  args: "test --unstable --trace-ops test/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_unstable.out",
 });
@@ -157,9 +157,15 @@ itest!(ops_sanitizer_timeout_failure {
 });
 
 itest!(ops_sanitizer_multiple_timeout_tests {
-  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  args: "test --trace-ops test/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_multiple_timeout_tests.out",
+});
+
+itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
+  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
 });
 
 itest!(ops_sanitizer_nexttick {
