@@ -5,17 +5,9 @@ const sqlite3 = Deno.core.napiOpen(
 const db = new sqlite3.Database(':memory:');
 
 db.serialize(function() {
-  db.run("CREATE TABLE lorem (info TEXT)");
+  console.log(db)
+  (new sqlite3.Statement(this, "CREATE TABLE lorem (info TEXT)")).run([]);
 
-  const stmt = db.prepare("INSERT INTO lorem VALUES (?)");
-  for (var i = 0; i < 10; i++) {
-      stmt.run("Ipsum " + i);
-  }
-  stmt.finalize();
-
-  db.each("SELECT rowid AS id, info FROM lorem", function(err, row) {
-      console.log(row.id + ": " + row.info);
-  });
 });
 
 db.close();

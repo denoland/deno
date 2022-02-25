@@ -43,11 +43,17 @@ impl TsFn {
       let sender = self.sender.clone();
       let tsfn_sender = self.tsfn_sender.clone();
       let call = Box::new(move |scope: &mut v8::HandleScope| {
+        let ctx = scope.get_current_context();
         match js_func {
           Some(func) => {
             let func: v8::Local<v8::Value> =
               func.open(scope).to_object(scope).unwrap().into();
-            let mut env = Env::new(isolate_ptr, sender, tsfn_sender);
+            let mut env = Env::new(
+              isolate_ptr,
+              v8::Global::new(scope, ctx),
+              sender,
+              tsfn_sender,
+            );
             unsafe {
               call_js_cb(
                 &mut env as *mut _ as *mut c_void,
@@ -58,7 +64,12 @@ impl TsFn {
             };
           }
           None => {
-            let mut env = Env::new(isolate_ptr, sender, tsfn_sender);
+            let mut env = Env::new(
+              isolate_ptr,
+              v8::Global::new(scope, ctx),
+              sender,
+              tsfn_sender,
+            );
             unsafe {
               call_js_cb(
                 &mut env as *mut _ as *mut c_void,

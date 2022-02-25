@@ -19,7 +19,7 @@ pub fn create_function<'a>(
   let scope = &mut env.scope();
   let method_ptr = v8::External::new(scope, cb as *mut c_void);
   let cb_info_ext = v8::External::new(scope, unsafe { transmute(cb_info) });
-  
+
   let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
 
   let data_array = v8::Array::new_with_elements(
@@ -94,7 +94,7 @@ pub fn create_function_template<'a>(
   let scope = &mut env.scope();
   let method_ptr = v8::External::new(scope, cb as *mut c_void);
   let cb_info_ext = v8::External::new(scope, unsafe { transmute(cb_info) });
-  
+
   let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
 
   let data_array = v8::Array::new_with_elements(

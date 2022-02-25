@@ -298,8 +298,9 @@ pub enum ThreadSafeFunctionStatus {
 
 #[repr(C)]
 pub struct Env {
-// pub struct Env<'a, 'b> {
+  // pub struct Env<'a, 'b> {
   // pub scope: &'a mut v8::HandleScope<'b>,
+  context: v8::Global<v8::Context>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
@@ -318,6 +319,7 @@ impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     // scope: &'a mut v8::HandleScope<'b>,
+    context: v8::Global<v8::Context>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   ) -> Self {
@@ -328,6 +330,7 @@ impl Env {
     Self {
       // scope,
       isolate_ptr,
+      context,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -352,6 +355,7 @@ impl Env {
       open_handle_scopes: self.open_handle_scopes,
       async_work_sender: sender,
       threadsafe_function_sender: self.threadsafe_function_sender.clone(),
+      context: self.context.clone(),
     }
   }
 
@@ -367,10 +371,16 @@ impl Env {
     self.async_work_sender.unbounded_send(async_work).unwrap();
   }
 
-  pub fn scope(&self) -> v8::HandleScope {
-    let mut scope = v8::HandleScope::new(unsafe { &mut **self.isolate_ptr });
-    let context = v8::Context::new(&mut scope);
-    v8::HandleScope::with_context(unsafe { &mut **self.isolate_ptr }, context.clone())
+  // TODO(@littledivy): Painful hack. ouch.
+  pub fn scope(&self) -> v8::CallbackScope {
+    let persistent_context = self.context.clone();
+    let data = persistent_context.into_raw();
+    let context = unsafe {
+      transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(data)
+    };
+    use core::ptr::NonNull;
+    unsafe { v8::Global::from_raw(&mut **self.isolate_ptr, data) };
+    unsafe { v8::CallbackScope::new(context) }
   }
 }
 
@@ -414,7 +424,13 @@ pub fn napi_open_func<'s>(
   let tsfn_sender = state_rc.borrow().napi_threadsafe_function_sender.clone();
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
-  let mut env = Env::new(value, async_work_sender, tsfn_sender);
+  let ctx = scope.get_current_context();
+  let mut env = Env::new(
+    value,
+    v8::Global::new(scope, ctx),
+    async_work_sender,
+    tsfn_sender,
+  );
   env.shared = env_shared_ptr;
   unsafe {
     (env_ptr as *mut Env).write(env);
@@ -446,7 +462,7 @@ pub fn napi_open_func<'s>(
       return;
     }
   };
-  
+
   MODULE.with(|cell| {
     let slot = *cell.borrow();
     match slot {
