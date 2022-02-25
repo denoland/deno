@@ -10,18 +10,20 @@ pub struct CallbackInfo {
 }
 
 pub fn create_function<'a>(
-  env: &'a mut Env,
+  env_ptr: *mut Env,
   name: Option<&str>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
-  let method_ptr = v8::External::new(env.scope, cb as *mut c_void);
-  let cb_info_ext = v8::External::new(env.scope, unsafe { transmute(cb_info) });
-  let env_ptr = env as *mut _ as *mut c_void;
-  let env_ext = v8::External::new(env.scope, env_ptr);
+  let env: &mut Env = unsafe { &mut *env_ptr };
+  let scope = &mut env.scope();
+  let method_ptr = v8::External::new(scope, cb as *mut c_void);
+  let cb_info_ext = v8::External::new(scope, unsafe { transmute(cb_info) });
+  
+  let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
 
   let data_array = v8::Array::new_with_elements(
-    env.scope,
+    scope,
     &[method_ptr.into(), cb_info_ext.into(), env_ext.into()],
   );
 
@@ -53,7 +55,7 @@ pub fn create_function<'a>(
       let env_ptr = env_ptr.value() as *mut Env;
       let sender = unsafe { (*(env_ptr)).async_work_sender.clone() };
 
-      let mut env = unsafe { (*(env_ptr)).with_new_scope(scope, sender) };
+      let mut env = unsafe { (*(env_ptr)).with_new_scope(sender) };
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {
@@ -71,11 +73,11 @@ pub fn create_function<'a>(
     },
   )
   .data(data_array.into())
-  .build(env.scope)
+  .build(scope)
   .unwrap();
 
   if let Some(name) = name {
-    let v8str = v8::String::new(env.scope, name).unwrap();
+    let v8str = v8::String::new(scope, name).unwrap();
     function.set_name(v8str);
   }
 
@@ -83,18 +85,20 @@ pub fn create_function<'a>(
 }
 
 pub fn create_function_template<'a>(
-  env: &'a mut Env,
+  env_ptr: *mut Env,
   name: Option<&str>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::FunctionTemplate> {
-  let method_ptr = v8::External::new(env.scope, cb as *mut c_void);
-  let cb_info_ext = v8::External::new(env.scope, unsafe { transmute(cb_info) });
-  let env_ptr = env as *mut _ as *mut c_void;
-  let env_ext = v8::External::new(env.scope, env_ptr);
+  let env: &mut Env = unsafe { &mut *env_ptr };
+  let scope = &mut env.scope();
+  let method_ptr = v8::External::new(scope, cb as *mut c_void);
+  let cb_info_ext = v8::External::new(scope, unsafe { transmute(cb_info) });
+  
+  let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
 
   let data_array = v8::Array::new_with_elements(
-    env.scope,
+    scope,
     &[method_ptr.into(), cb_info_ext.into(), env_ext.into()],
   );
 
@@ -126,7 +130,7 @@ pub fn create_function_template<'a>(
       let env_ptr = env_ptr.value() as *mut Env;
       let sender = unsafe { (*(env_ptr)).async_work_sender.clone() };
 
-      let mut env = unsafe { (*(env_ptr)).with_new_scope(scope, sender) };
+      let mut env = unsafe { (*(env_ptr)).with_new_scope(sender) };
       let env_ptr = &mut env as *mut _ as *mut c_void;
 
       let mut info = CallbackInfo {
@@ -144,10 +148,10 @@ pub fn create_function_template<'a>(
     },
   )
   .data(data_array.into())
-  .build(env.scope);
+  .build(scope);
 
   if let Some(name) = name {
-    let v8str = v8::String::new(env.scope, name).unwrap();
+    let v8str = v8::String::new(scope, name).unwrap();
     function.set_class_name(v8str);
   }
 

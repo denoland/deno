@@ -313,10 +313,11 @@ pub struct Env {
 unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
-impl<'a, 'b> Env<'a, 'b> {
+// impl<'a, 'b> Env<'a, 'b> {
+impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
-    scope: &'a mut v8::HandleScope<'b>,
+    // scope: &'a mut v8::HandleScope<'b>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   ) -> Self {
@@ -325,7 +326,7 @@ impl<'a, 'b> Env<'a, 'b> {
       s.replace(Some(sc));
     });
     Self {
-      scope,
+      // scope,
       isolate_ptr,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
@@ -337,7 +338,7 @@ impl<'a, 'b> Env<'a, 'b> {
   // TODO(@littledivy): Do we even need this?
   pub fn with_new_scope(
     &self,
-    scope: &'a mut v8::HandleScope<'b>,
+    // scope: &'a mut v8::HandleScope<'b>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   ) -> Self {
     let sc = sender.clone();
@@ -345,7 +346,7 @@ impl<'a, 'b> Env<'a, 'b> {
       s.replace(Some(sc));
     });
     Self {
-      scope,
+      // scope,
       isolate_ptr: self.isolate_ptr,
       shared: self.shared,
       open_handle_scopes: self.open_handle_scopes,
@@ -364,6 +365,12 @@ impl<'a, 'b> Env<'a, 'b> {
 
   pub fn add_async_work(&mut self, async_work: PendingNapiAsyncWork) {
     self.async_work_sender.unbounded_send(async_work).unwrap();
+  }
+
+  pub fn scope(&self) -> v8::HandleScope {
+    let mut scope = v8::HandleScope::new(unsafe { &mut **self.isolate_ptr });
+    let context = v8::Context::new(&mut scope);
+    v8::HandleScope::with_context(unsafe { &mut **self.isolate_ptr }, context.clone())
   }
 }
 
@@ -407,7 +414,7 @@ pub fn napi_open_func<'s>(
   let tsfn_sender = state_rc.borrow().napi_threadsafe_function_sender.clone();
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
-  let mut env = Env::new(value, scope, async_work_sender, tsfn_sender);
+  let mut env = Env::new(value, async_work_sender, tsfn_sender);
   env.shared = env_shared_ptr;
   unsafe {
     (env_ptr as *mut Env).write(env);
@@ -439,7 +446,7 @@ pub fn napi_open_func<'s>(
       return;
     }
   };
-
+  
   MODULE.with(|cell| {
     let slot = *cell.borrow();
     match slot {
