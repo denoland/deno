@@ -521,7 +521,6 @@ async fn test_specifier(
       json!({
         "filter": options.filter,
         "shuffle": options.shuffle,
-        "opCallTracingEnabled": options.trace_ops,
       }),
     ),
   )?;

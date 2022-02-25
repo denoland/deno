@@ -34,7 +34,6 @@
     TypeError,
   } = window.__bootstrap.primordials;
 
-  let isOpCallTracingEnabled = false;
   const opSanitizerDelayResolveQueue = [];
 
   // Even if every resource is closed by the end of a test, there can be a delay
@@ -213,7 +212,7 @@
 
 - ${ArrayPrototypeJoin(details, "\n - ")}`;
 
-      if (!isOpCallTracingEnabled) {
+      if (!core.isOpCallTracingEnabled()) {
         msg +=
           `\n\nTo get more details where ops are leaked, run again with --trace-ops flag.`;
       }
@@ -743,9 +742,7 @@
   async function runTests({
     filter = null,
     shuffle = null,
-    opCallTracingEnabled = false,
   } = {}) {
-    isOpCallTracingEnabled = opCallTracingEnabled;
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
