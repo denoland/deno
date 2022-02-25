@@ -146,7 +146,9 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
         apply_source_maps: true,
-        cpu_count: num_cpus::get(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
         debug_flag: ps
           .flags
           .log_level
@@ -247,7 +249,9 @@ pub fn create_main_worker(
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
       args: ps.flags.argv.clone(),
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.flags.enable_testing_features,
       location: ps.flags.location.clone(),
@@ -477,14 +481,10 @@ async fn info_command(
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
@@ -649,14 +649,10 @@ async fn create_graph_and_maybe_check(
   };
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .maybe_config_file
-    .as_ref()
-    .map(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    })
-    .flatten();
+  let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+    cf.to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+  });
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
@@ -802,10 +798,7 @@ async fn bundle_command(
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
@@ -1003,14 +996,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       };
       let maybe_import_map_resolver =
         ps.maybe_import_map.clone().map(ImportMapResolver::new);
-      let maybe_jsx_resolver = ps
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| {
-          cf.to_maybe_jsx_import_source_module()
-            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-        })
-        .flatten();
+      let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      });
       let maybe_resolver = if maybe_jsx_resolver.is_some() {
         maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
       } else {
@@ -1041,10 +1030,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 

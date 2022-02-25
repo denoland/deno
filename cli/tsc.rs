@@ -737,7 +737,7 @@ mod tests {
         .to_string()
         .replace(":///", "_")
         .replace("://", "_")
-        .replace("/", "-");
+        .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
       let response = fs::read_to_string(&source_path)
         .map(|c| {

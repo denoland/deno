@@ -138,7 +138,7 @@ pub(crate) fn add_global_require(
 }
 
 fn escape_for_single_quote_string(text: &str) -> String {
-  text.replace(r"\", r"\\").replace("'", r"\'")
+  text.replace('\\', r"\\").replace('\'', r"\'")
 }
 
 pub fn setup_builtin_modules(
