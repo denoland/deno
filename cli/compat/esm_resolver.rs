@@ -549,7 +549,7 @@ fn resolve_package_target_string(
 
   if invalid_segment_re.is_match(&subpath) {
     let request = if pattern {
-      match_.replace("*", &subpath)
+      match_.replace('*', &subpath)
     } else {
       format!("{}{}", match_, subpath)
     };
@@ -1234,7 +1234,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.126.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.127.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     assert!(matches!(actual, ResolveResponse::Esm(_)));
