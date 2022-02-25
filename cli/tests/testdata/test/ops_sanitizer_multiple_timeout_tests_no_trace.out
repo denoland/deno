@@ -10,14 +10,14 @@ Test case is leaking async ops.
 
 - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call.
 
-To get more details where ops are leaked, run again with --trace-ops flag.
+To get more details where ops were leaked, run again with --trace-ops flag.
 
 test 2
 Test case is leaking async ops.
 
 - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call.
 
-To get more details where ops are leaked, run again with --trace-ops flag.
+To get more details where ops were leaked, run again with --trace-ops flag.
 
 failures:
 

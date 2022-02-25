@@ -214,7 +214,7 @@
 
       if (!core.isOpCallTracingEnabled()) {
         msg +=
-          `\n\nTo get more details where ops are leaked, run again with --trace-ops flag.`;
+          `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
       }
 
       throw msg;
