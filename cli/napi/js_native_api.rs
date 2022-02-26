@@ -1241,7 +1241,7 @@ fn napi_get_and_clear_last_exception(
   // TODO: just return undefined for now we don't cache
   // exceptions in env.
   let value: v8::Local<v8::Value> = v8::undefined(&mut env.scope()).into();
-  *result = std::mem::transmute(value);
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
   Ok(())
 }
 
@@ -1331,7 +1331,6 @@ fn napi_get_cb_info(
   let len = args.length();
   let mut v_argc = len;
   if !argc.is_null() {
-    v_argc = *argc;
     *argc = len;
   }
 
@@ -1400,10 +1399,10 @@ fn napi_get_element(
 #[napi_sym::napi_sym]
 fn napi_get_global(env: *mut Env, result: *mut napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let context = &mut env.scope().get_current_context();
-  let global = context.global(&mut env.scope());
+  let scope = &mut env.scope();
+  let global = env.context.open(scope).global(scope);
   let value: v8::Local<v8::Value> = global.into();
-  *result = std::mem::transmute(value);
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
   Ok(())
 }
 
@@ -1420,15 +1419,14 @@ fn napi_get_last_error_info(
   _env: *mut Env,
   error_code: *mut *const napi_extended_error_info,
 ) -> Result {
-  // let err_info = napi_extended_error_info {
-  //   error_message: std::ptr::null(),
-  //   engine_reserved: std::ptr::null_mut(),
-  //   engine_error_code: 0,
-  //   status_code: napi_ok,
-  // };
+  let err_info = Box::new(napi_extended_error_info {
+    error_message: std::ptr::null(),
+    engine_reserved: std::ptr::null_mut(),
+    engine_error_code: 0,
+    status_code: napi_ok,
+  });
 
-  // *error_code = &err_info as *const napi_extended_error_info;
-  *error_code = std::ptr::null();
+  *error_code = Box::into_raw(err_info);
   Ok(())
 }
 
@@ -1648,11 +1646,17 @@ fn napi_has_property(
 
 #[napi_sym::napi_sym]
 fn napi_instanceof(
-  env: &mut Env,
-  value: v8::Local<v8::Value>,
-  constructor: v8::Local<v8::Value>,
+  env: *mut Env,
+  value: napi_value,
+  constructor: napi_value,
   result: *mut bool,
 ) -> Result {
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  check_arg!(constructor);
+  check_arg!(value);
+
+  let value: v8::Local<v8::Value> = transmute(value);
+  let constructor: v8::Local<v8::Value> = transmute(constructor);
   let ctor = constructor
     .to_object(&mut env.scope())
     .ok_or(Error::ObjectExpected)?;

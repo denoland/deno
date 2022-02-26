@@ -300,7 +300,7 @@ pub enum ThreadSafeFunctionStatus {
 pub struct Env {
   // pub struct Env<'a, 'b> {
   // pub scope: &'a mut v8::HandleScope<'b>,
-  context: v8::Global<v8::Context>,
+  pub context: v8::Global<v8::Context>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
