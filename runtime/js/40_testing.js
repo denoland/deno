@@ -812,17 +812,17 @@
       sanitizeOps: bench.sanitizeOps,
       sanitizeResources: bench.sanitizeResources,
       sanitizeExit: bench.sanitizeExit,
-      warmup: false,
+      // warmup: false,
     });
 
     try {
-      const warmupIterations = bench.warmupIterations;
-      step.warmup = true;
+      // const warmupIterations = bench.warmupIterations;
+      // step.warmup = true;
       // TODO(bartlomieju): fixme, runs sanitizers and actually collects
       // measurements
-      for (let i = 0; i < warmupIterations; i++) {
-        await bench.fn(step);
-      }
+      // for (let i = 0; i < warmupIterations; i++) {
+      //   await bench.fn(step);
+      // }
 
       const iterations = bench.n;
       step.warmup = false;

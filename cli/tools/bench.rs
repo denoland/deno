@@ -157,7 +157,10 @@ impl PrettyBenchReporter {
   }
 
   fn force_report_wait(&mut self, description: &BenchDescription) {
-    print!("bench {} ... ", description.name);
+    print!(
+      "bench {} ... {} iterations ",
+      description.name, description.iterations
+    );
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
   }
@@ -211,8 +214,7 @@ impl BenchReporter for PrettyBenchReporter {
         let min_op = current_bench.measures.iter().min().unwrap_or(&0);
         let max_op = current_bench.measures.iter().max().unwrap_or(&0);
         format!(
-          "{} iterations {} ns/iter ({}..{} ns/iter) {}",
-          current_bench.iterations,
+          "{} ns/iter ({}..{} ns/iter) {}",
           ns_op.to_formatted_string(&Locale::en),
           min_op.to_formatted_string(&Locale::en),
           max_op.to_formatted_string(&Locale::en),
@@ -248,7 +250,7 @@ impl BenchReporter for PrettyBenchReporter {
     };
 
     println!(
-      "\nbench result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      "\nbench result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}",
       status,
       summary.passed,
       summary.failed,
