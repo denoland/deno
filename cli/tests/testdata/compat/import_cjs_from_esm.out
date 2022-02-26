@@ -1,7 +1,1 @@
-{
-  a: "A",
-  b: "B",
-  foo: "foo",
-  bar: "bar",
-  fizz: { buzz: { buzz: "buzz", fizz: "FIZZ" } }
-}
+{ a: "A", b: "B", foo: "foo", bar: "bar", fizz: { buzz: "buzz", fizz: "FIZZ" } }

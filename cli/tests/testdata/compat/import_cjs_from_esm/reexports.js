@@ -1,1 +1,1 @@
-module.exports.buzz = require("./reexports2.js");
+module.exports = require("./reexports2.js");

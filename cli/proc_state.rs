@@ -650,9 +650,6 @@ impl ProcState {
         })?;
         let analysis = parsed_source.analyze_cjs();
 
-        // TODO:
-        // And recurse again if there are reexports!
-
         source.push(format!(
           "const reexport{} = require(\"{}\");",
           idx, reexport
