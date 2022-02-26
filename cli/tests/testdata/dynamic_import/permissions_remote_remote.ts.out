@@ -1,0 +1,5 @@
+error: Uncaught (in promise) TypeError: Requires net access to "example.com", run again with the --allow-net flag
+    at http://localhost:4545/dynamic_import/static_remote.ts:2:8
+await import(
+^
+    at async file:///[WILDCARD]/dynamic_import/permissions_remote_remote.ts:1:1

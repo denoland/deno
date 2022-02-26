@@ -1,11 +1,13 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const {
     Date,
+    DatePrototype,
     MathTrunc,
+    ObjectPrototypeIsPrototypeOf,
     SymbolAsyncIterator,
     SymbolIterator,
   } = window.__bootstrap.primordials;
@@ -277,7 +279,7 @@
   }
 
   function toUnixTimeFromEpoch(value) {
-    if (value instanceof Date) {
+    if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       const time = value.valueOf();
       const seconds = MathTrunc(time / 1e3);
       const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
@@ -385,6 +387,22 @@
     await core.opAsync("op_fsync_async", rid);
   }
 
+  function flockSync(rid, exclusive) {
+    core.opSync("op_flock_sync", rid, exclusive === true);
+  }
+
+  async function flock(rid, exclusive) {
+    await core.opAsync("op_flock_async", rid, exclusive === true);
+  }
+
+  function funlockSync(rid) {
+    core.opSync("op_funlock_sync", rid);
+  }
+
+  async function funlock(rid) {
+    await core.opAsync("op_funlock_async", rid);
+  }
+
   window.__bootstrap.fs = {
     cwd,
     chdir,
@@ -433,5 +451,9 @@
     fdatasyncSync,
     fsync,
     fsyncSync,
+    flock,
+    flockSync,
+    funlock,
+    funlockSync,
   };
 })(this);

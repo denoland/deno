@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: Module not found "[WILDCARD]/bad-module.ts".
+  const _badModule = await import("./bad-module.ts");
+                     ^
+    at async file://[WILDCARD]/error_005_missing_dynamic_import.ts:2:22

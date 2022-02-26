@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use dissimilar::{diff as difference, Chunk};
@@ -215,7 +215,7 @@ mod tests {
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
     assert_eq!(
-      colors::strip_ansi_codes(&diff(diff_text1, diff_text2,)),
+      test_util::strip_ansi_codes(&diff(diff_text1, diff_text2,)),
       expected_output,
     );
   }

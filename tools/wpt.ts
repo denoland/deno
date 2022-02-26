@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
 
@@ -20,6 +20,7 @@ import {
   getExpectation,
   getExpectFailForCase,
   getManifest,
+  inspectBrk,
   json,
   ManifestFolder,
   ManifestTestOptions,
@@ -161,6 +162,7 @@ async function run() {
         test.url,
         test.options,
         createReportTestCase(test.expectation),
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -312,6 +314,7 @@ async function update() {
         test.url,
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -647,8 +650,20 @@ function discoverTestsToRun(
           const url = new URL(path, "http://web-platform.test:8000");
           if (
             !url.pathname.endsWith(".any.html") &&
-            !url.pathname.endsWith(".window.html")
+            !url.pathname.endsWith(".window.html") &&
+            !url.pathname.endsWith(".worker.html") &&
+            !url.pathname.endsWith(".worker-module.html")
           ) {
+            continue;
+          }
+          // These tests require an HTTP2 compatible server.
+          if (url.pathname.includes(".h2.")) {
+            continue;
+          }
+          // Streaming fetch requests need a server that supports chunked
+          // encoding, which the WPT test server does not. Unfortunately this
+          // also disables some useful fetch tests.
+          if (url.pathname.includes("request-upload")) {
             continue;
           }
           const finalPath = url.pathname + url.search;

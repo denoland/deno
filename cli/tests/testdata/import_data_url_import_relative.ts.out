@@ -1,0 +1,2 @@
+error: invalid URL: relative URL with a cannot-be-a-base base
+    at data:application/javascript;base64,ZXhwb3J0IHsgYSB9IGZyb20gIi4vYS50cyI7Cg==:1:19

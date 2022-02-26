@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use tempfile::TempDir;
@@ -7,33 +7,32 @@ use test_util as util;
 #[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
-    util::root_path().join("cli/tests/badly_formatted.mjs");
+    util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted_js = t.path().join("badly_formatted.js");
   let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
     .expect("Failed to copy file");
 
-  let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+  let fixed_md = util::testdata_path().join("badly_formatted_fixed.md");
   let badly_formatted_original_md =
-    util::root_path().join("cli/tests/badly_formatted.md");
+    util::testdata_path().join("badly_formatted.md");
   let badly_formatted_md = t.path().join("badly_formatted.md");
   let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
     .expect("Failed to copy file");
 
-  let fixed_json =
-    util::root_path().join("cli/tests/badly_formatted_fixed.json");
+  let fixed_json = util::testdata_path().join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
-    util::root_path().join("cli/tests/badly_formatted.json");
+    util::testdata_path().join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_json, &badly_formatted_json)
     .expect("Failed to copy file");
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg(format!(
       "--ignore={},{},{}",
@@ -52,7 +51,7 @@ fn fmt_test() {
 
   // Check without ignore.
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("--check")
     .arg(badly_formatted_js_str)
@@ -66,7 +65,7 @@ fn fmt_test() {
 
   // Format the source file.
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg(badly_formatted_js_str)
     .arg(badly_formatted_md_str)
@@ -91,7 +90,7 @@ fn fmt_test() {
 fn fmt_stdin_error() {
   use std::io::Write;
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("-")
     .stdin(std::process::Stdio::piped())
@@ -112,7 +111,7 @@ fn fmt_stdin_error() {
 #[test]
 fn fmt_ignore_unexplicit_files() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
     .arg("fmt")
     .arg("--check")
@@ -129,26 +128,20 @@ fn fmt_ignore_unexplicit_files() {
   );
 }
 
-itest!(fmt_check_tests_dir {
-  args: "fmt --check ./ --ignore=.test_coverage",
-  output: "fmt/expected_fmt_check_tests_dir.out",
-  exit_code: 1,
-});
-
 itest!(fmt_quiet_check_fmt_dir {
-  args: "fmt --check --quiet fmt/",
+  args: "fmt --check --quiet fmt/regular/",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(fmt_check_formatted_files {
-    args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md fmt/formatted4.jsonc",
+    args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
     output: "fmt/expected_fmt_check_formatted_files.out",
     exit_code: 0,
   });
 
 itest!(fmt_check_ignore {
-  args: "fmt --check --ignore=fmt/formatted1.js fmt/",
+  args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
 });
@@ -181,4 +174,32 @@ itest!(fmt_stdin_check_not_formatted {
   args: "fmt --check -",
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
+});
+
+itest!(fmt_with_config {
+  args: "fmt --config fmt/with_config/deno.jsonc fmt/with_config/subdir",
+  output: "fmt/fmt_with_config.out",
+});
+
+itest!(fmt_with_config_default {
+  args: "fmt fmt/with_config/subdir",
+  output: "fmt/fmt_with_config.out",
+});
+
+// Check if CLI flags take precedence
+itest!(fmt_with_config_and_flags {
+  args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
+  output: "fmt/fmt_with_config_and_flags.out",
+});
+
+itest!(fmt_with_malformed_config {
+  args: "fmt --config fmt/deno.malformed.jsonc",
+  output: "fmt/fmt_with_malformed_config.out",
+  exit_code: 1,
+});
+
+itest!(fmt_with_malformed_config2 {
+  args: "fmt --config fmt/deno.malformed2.jsonc",
+  output: "fmt/fmt_with_malformed_config2.out",
+  exit_code: 1,
 });

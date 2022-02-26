@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -16,7 +16,6 @@ use std::time::SystemTime;
 
 mod http;
 mod lsp;
-mod throughput;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -36,29 +35,46 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
     None,
   ),
   (
     "cold_relative_import",
-    &["run", "--reload", "cli/tests/003_relative_import.ts"],
+    &[
+      "run",
+      "--reload",
+      "cli/tests/testdata/003_relative_import.ts",
+    ],
     None,
   ),
-  ("hello", &["run", "cli/tests/002_hello.ts"], None),
+  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/003_relative_import.ts"],
     None,
   ),
-  ("error_001", &["run", "cli/tests/error_001.ts"], Some(1)),
+  (
+    "error_001",
+    &["run", "cli/tests/testdata/error_001.ts"],
+    Some(1),
+  ),
   (
     "no_check_hello",
-    &["run", "--reload", "--no-check", "cli/tests/002_hello.ts"],
+    &[
+      "run",
+      "--reload",
+      "--no-check",
+      "cli/tests/testdata/002_hello.ts",
+    ],
     None,
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/workers/bench_startup.ts"],
+    &[
+      "run",
+      "--allow-read",
+      "cli/tests/testdata/workers/bench_startup.ts",
+    ],
     None,
   ),
   (
@@ -66,7 +82,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers/bench_round_robin.ts",
+      "cli/tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -75,23 +91,28 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers/bench_large_message.ts",
+      "cli/tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/text_encoder_into_perf.js"],
+    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
+    None,
+  ),
+  (
+    "response_string",
+    &["run", "cli/tests/testdata/response_string_perf.js"],
     None,
   ),
   (
@@ -238,9 +259,9 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   println!("swc {} bytes", swc_size);
   sizes.insert("swc_rlib".to_string(), swc_size);
 
-  let rusty_v8_size = rlib_size(target_dir, "librusty_v8");
-  println!("rusty_v8 {} bytes", rusty_v8_size);
-  sizes.insert("rusty_v8_rlib".to_string(), rusty_v8_size);
+  let v8_size = rlib_size(target_dir, "libv8");
+  println!("v8 {} bytes", v8_size);
+  sizes.insert("rusty_v8_rlib".to_string(), v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
@@ -302,17 +323,6 @@ fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
   }
 
   Ok(sizes)
-}
-
-fn run_throughput(deno_exe: &Path) -> Result<HashMap<String, f64>> {
-  let mut m = HashMap::<String, f64>::new();
-
-  m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
-  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100));
-  m.insert("10M_tcp".to_string(), throughput::tcp(deno_exe, 10)?);
-  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10));
-
-  Ok(m)
 }
 
 fn run_http(target_dir: &Path, new_data: &mut BenchResult) -> Result<()> {
@@ -430,7 +440,6 @@ struct BenchResult {
   req_per_sec: HashMap<String, u64>,
   syscall_count: HashMap<String, u64>,
   thread_count: HashMap<String, u64>,
-  throughput: HashMap<String, f64>,
 }
 
 /*
@@ -473,10 +482,7 @@ fn main() -> Result<()> {
     ..Default::default()
   };
 
-  // Cannot run throughput benchmark on windows because they don't have nc or
-  // pipe.
   if cfg!(not(target_os = "windows")) {
-    new_data.throughput = run_throughput(&deno_exe)?;
     run_http(&target_dir, &mut new_data)?;
   }
 

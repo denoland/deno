@@ -1,4 +1,4 @@
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 let isCI: boolean;
 try {
@@ -9,8 +9,8 @@ try {
 
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-unitTest({
-  perms: { read: true, env: true },
+Deno.test({
+  permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
@@ -22,7 +22,7 @@ unitTest({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/webgpu_computepass_shader.wgsl",
+    "cli/tests/testdata/webgpu_computepass_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -33,13 +33,14 @@ unitTest({
 
   const stagingBuffer = device.createBuffer({
     size: size,
-    usage: 1 | 8,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
   });
 
   const storageBuffer = device.createBuffer({
     label: "Storage Buffer",
     size: size,
-    usage: 0x80 | 8 | 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
+      GPUBufferUsage.COPY_SRC,
     mappedAtCreation: true,
   });
 
@@ -100,8 +101,8 @@ unitTest({
 
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-unitTest({
-  perms: { read: true, env: true },
+Deno.test({
+  permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
@@ -111,7 +112,7 @@ unitTest({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/webgpu_hellotriangle_shader.wgsl",
+    "cli/tests/testdata/webgpu_hellotriangle_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -194,7 +195,10 @@ unitTest({
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
 
-  assertEquals(data, await Deno.readFile("cli/tests/webgpu_hellotriangle.out"));
+  assertEquals(
+    data,
+    await Deno.readFile("cli/tests/testdata/webgpu_hellotriangle.out"),
+  );
 
   outputBuffer.unmap();
 

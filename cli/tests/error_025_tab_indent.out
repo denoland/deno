@@ -1,6 +1,0 @@
-[WILDCARD]error: Uncaught Error: bad
-	throw Error("bad");
-	      ^
-    at foo ([WILDCARD]tests/error_025_tab_indent:2:8)
-    at bar ([WILDCARD]tests/error_025_tab_indent:6:2)
-    at [WILDCARD]tests/error_025_tab_indent:9:1

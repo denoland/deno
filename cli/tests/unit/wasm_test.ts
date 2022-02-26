@@ -1,9 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 // The following blob can be created by taking the following s-expr and pass
 // it through wat2wasm.
@@ -22,7 +17,7 @@ const simpleWasm = new Uint8Array([
   0x00, 0x20, 0x01, 0x6a, 0x0b
 ]);
 
-unitTest(async function wasmInstantiateWorksWithBuffer() {
+Deno.test(async function wasmInstantiateWorksWithBuffer() {
   const { module, instance } = await WebAssembly.instantiate(simpleWasm);
   assertEquals(WebAssembly.Module.exports(module), [{
     name: "add",
@@ -37,9 +32,9 @@ unitTest(async function wasmInstantiateWorksWithBuffer() {
 // V8's default implementation of `WebAssembly.instantiateStreaming()` if you
 // don't set the WASM streaming callback, is to take a byte source. Here we
 // check that our implementation of the callback disallows it.
-unitTest(
+Deno.test(
   async function wasmInstantiateStreamingFailsWithBuffer() {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await WebAssembly.instantiateStreaming(
         // Bypassing the type system
         simpleWasm as unknown as Promise<Response>,
@@ -48,7 +43,20 @@ unitTest(
   },
 );
 
-unitTest(async function wasmInstantiateStreaming() {
+Deno.test(
+  async function wasmInstantiateStreamingNoContentType() {
+    await assertRejects(
+      async () => {
+        const response = Promise.resolve(new Response(simpleWasm));
+        await WebAssembly.instantiateStreaming(response);
+      },
+      TypeError,
+      "Invalid WebAssembly content type.",
+    );
+  },
+);
+
+Deno.test(async function wasmInstantiateStreaming() {
   let isomorphic = "";
   for (const byte of simpleWasm) {
     isomorphic += String.fromCharCode(byte);
@@ -68,13 +76,27 @@ unitTest(async function wasmInstantiateStreaming() {
   assertEquals(add(1, 3), 4);
 });
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { read: true } },
+  async function wasmFileStreaming() {
+    const url = new URL("../testdata/unreachable.wasm", import.meta.url);
+    assert(url.href.startsWith("file://"));
+
+    const { module } = await WebAssembly.instantiateStreaming(fetch(url));
+    assertEquals(WebAssembly.Module.exports(module), [{
+      name: "unreachable",
+      kind: "function",
+    }]);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function wasmStreamingNonTrivial() {
     // deno-dom's WASM file is a real-world non-trivial case that gave us
     // trouble when implementing this.
     await WebAssembly.instantiateStreaming(fetch(
-      "http://localhost:4545/cli/tests/deno_dom_0.1.3-alpha2.wasm",
+      "http://localhost:4545/deno_dom_0.1.3-alpha2.wasm",
     ));
   },
 );

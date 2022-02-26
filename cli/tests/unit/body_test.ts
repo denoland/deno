@@ -1,5 +1,5 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+import { assert, assertEquals } from "./test_util.ts";
 
 // just a hack to get a body object
 // deno-lint-ignore no-explicit-any
@@ -23,7 +23,7 @@ const intArrays = [
   Float32Array,
   Float64Array,
 ];
-unitTest(async function arrayBufferFromByteArrays() {
+Deno.test(async function arrayBufferFromByteArrays() {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;
 
   for (const type of intArrays) {
@@ -34,8 +34,8 @@ unitTest(async function arrayBufferFromByteArrays() {
 });
 
 //FormData
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function bodyMultipartFormData() {
     const response = await fetch(
       "http://localhost:4545/multipart_form_data.txt",
@@ -53,11 +53,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function bodyURLEncodedFormData() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
+      "http://localhost:4545/subdir/form_urlencoded.txt",
     );
     assert(response.body instanceof ReadableStream);
 
@@ -73,14 +73,14 @@ unitTest(
   },
 );
 
-unitTest({ perms: {} }, async function bodyURLSearchParams() {
+Deno.test({ permissions: {} }, async function bodyURLSearchParams() {
   const body = buildBody(new URLSearchParams({ hello: "world" }));
 
   const text = await body.text();
   assertEquals(text, "hello=world");
 });
 
-unitTest(async function bodyArrayBufferMultipleParts() {
+Deno.test(async function bodyArrayBufferMultipleParts() {
   const parts: Uint8Array[] = [];
   let size = 0;
   for (let i = 0; i <= 150000; i++) {

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -70,7 +70,7 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
     | null;
   close(): void;
   postMessage(message: any, transfer: Transferable[]): void;
-  postMessage(message: any, options?: PostMessageOptions): void;
+  postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
     type: K,
     listener: (
@@ -108,7 +108,10 @@ declare var onmessageerror:
   | null;
 declare function close(): void;
 declare function postMessage(message: any, transfer: Transferable[]): void;
-declare function postMessage(message: any, options?: PostMessageOptions): void;
+declare function postMessage(
+  message: any,
+  options?: StructuredSerializeOptions,
+): void;
 declare var navigator: WorkerNavigator;
 declare var onerror:
   | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)

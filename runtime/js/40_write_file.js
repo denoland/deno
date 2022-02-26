@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 ((window) => {
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
@@ -13,6 +13,7 @@
     data,
     options = {},
   ) {
+    options.signal?.throwIfAborted();
     if (options.create !== undefined) {
       const create = !!options.create;
       if (!create) {
@@ -68,12 +69,18 @@
       await chmod(path, options.mode);
     }
 
+    const signal = options?.signal ?? null;
     let nwritten = 0;
-    while (nwritten < data.length) {
-      nwritten += await file.write(TypedArrayPrototypeSubarray(data, nwritten));
+    try {
+      while (nwritten < data.length) {
+        signal?.throwIfAborted();
+        nwritten += await file.write(
+          TypedArrayPrototypeSubarray(data, nwritten),
+        );
+      }
+    } finally {
+      file.close();
     }
-
-    file.close();
   }
 
   function writeTextFileSync(

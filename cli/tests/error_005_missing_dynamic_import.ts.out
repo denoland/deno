@@ -1,4 +1,0 @@
-error: Uncaught (in promise) TypeError: Cannot resolve module "[WILDCARD]/cli/tests/bad-module.ts".
-  const _badModule = await import("./bad-module.ts");
-                     ^
-    at async file://[WILDCARD]/error_005_missing_dynamic_import.ts:2:22

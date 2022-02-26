@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -148,10 +148,7 @@ delete Object.prototype.__proto__;
     // when that file is a module, but this file has no imports or exports.
     // Consider adding an empty 'export {}' to make this file a module.
     1375,
-    // TS1103: 'for-await-of' statement is only allowed within an async function
-    // or async generator.
-    1103,
-    // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
+    // TS2306: File 'file:///Users/rld/src/deno/cli/tests/testdata/subdir/amd_like.js' is
     // not a module.
     2306,
     // TS2688: Cannot find type definition file for '...'.
@@ -166,7 +163,7 @@ delete Object.prototype.__proto__;
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
-    // 'http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js'
+    // 'http://localhost:4545/subdir/mt_application_x_javascript.j4.js'
     // because it would overwrite input file.
     5055,
     // TypeScript is overly opinionated that only CommonJS modules kinds can
@@ -245,6 +242,39 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** Error thrown on cancellation. */
+  class OperationCanceledError extends Error {
+  }
+
+  /**
+   * Inspired by ThrottledCancellationToken in ts server.
+   *
+   * We don't want to continually call back into Rust and so
+   * we throttle cancellation checks to only occur once
+   * in a while.
+   * @implements {ts.CancellationToken}
+   */
+  class ThrottledCancellationToken {
+    #lastCheckTimeMs = 0;
+
+    isCancellationRequested() {
+      const timeMs = Date.now();
+      // TypeScript uses 20ms
+      if ((timeMs - this.#lastCheckTimeMs) < 20) {
+        return false;
+      }
+
+      this.#lastCheckTimeMs = timeMs;
+      return core.opSync("op_is_cancelled", {});
+    }
+
+    throwIfCancellationRequested() {
+      if (this.isCancellationRequested()) {
+        throw new OperationCanceledError();
+      }
+    }
+  }
+
   /** @type {ts.CompilerOptions} */
   let compilationSettings = {};
 
@@ -264,6 +294,10 @@ delete Object.prototype.__proto__;
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
       return core.opSync("op_load", { specifier }).data;
+    },
+    getCancellationToken() {
+      // createLanguageService will call this immediately and cache it
+      return new ThrottledCancellationToken();
     },
     getSourceFile(
       specifier,
@@ -709,10 +743,12 @@ delete Object.prototype.__proto__;
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if ("stack" in e) {
-            error(e.stack);
-          } else {
-            error(e);
+          if (!(e instanceof OperationCanceledError)) {
+            if ("stack" in e) {
+              error(e.stack);
+            } else {
+              error(e);
+            }
           }
           return respond(id, {});
         }
@@ -743,6 +779,16 @@ delete Object.prototype.__proto__;
           languageService.getImplementationAtPosition(
             request.specifier,
             request.position,
+          ),
+        );
+      }
+      case "getNavigateToItems": {
+        return respond(
+          id,
+          languageService.getNavigateToItems(
+            request.search,
+            request.maxResultCount,
+            request.fileName,
           ),
         );
       }
@@ -801,6 +847,15 @@ delete Object.prototype.__proto__;
         return respond(
           id,
           ts.getSupportedCodeFixes(),
+        );
+      }
+      case "getTypeDefinition": {
+        return respond(
+          id,
+          languageService.getTypeDefinitionAtPosition(
+            request.specifier,
+            request.position,
+          ),
         );
       }
       case "prepareCallHierarchy": {

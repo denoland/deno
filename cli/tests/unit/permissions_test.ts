@@ -1,26 +1,25 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(async function permissionInvalidName() {
-  await assertThrowsAsync(async () => {
+Deno.test(async function permissionInvalidName() {
+  await assertRejects(async () => {
     // deno-lint-ignore no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   }, TypeError);
 });
 
-unitTest(async function permissionNetInvalidHost() {
-  await assertThrowsAsync(async () => {
+Deno.test(async function permissionNetInvalidHost() {
+  await assertRejects(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
   }, URIError);
 });
 
-unitTest(async function permissionQueryReturnsEventTarget() {
+Deno.test(async function permissionQueryReturnsEventTarget() {
   const status = await Deno.permissions.query({ name: "hrtime" });
   assert(["granted", "denied", "prompt"].includes(status.state));
   let called = false;
@@ -32,7 +31,7 @@ unitTest(async function permissionQueryReturnsEventTarget() {
   assert(status === (await Deno.permissions.query({ name: "hrtime" })));
 });
 
-unitTest(async function permissionQueryForReadReturnsSameStatus() {
+Deno.test(async function permissionQueryForReadReturnsSameStatus() {
   const status1 = await Deno.permissions.query({
     name: "read",
     path: ".",
@@ -44,16 +43,31 @@ unitTest(async function permissionQueryForReadReturnsSameStatus() {
   assert(status1 === status2);
 });
 
-unitTest(function permissionsIllegalConstructor() {
+Deno.test(function permissionsIllegalConstructor() {
   assertThrows(() => new Deno.Permissions(), TypeError, "Illegal constructor.");
   assertEquals(Deno.Permissions.length, 0);
 });
 
-unitTest(function permissionStatusIllegalConstructor() {
+Deno.test(function permissionStatusIllegalConstructor() {
   assertThrows(
     () => new Deno.PermissionStatus(),
     TypeError,
     "Illegal constructor.",
   );
   assertEquals(Deno.PermissionStatus.length, 0);
+});
+
+Deno.test(async function permissionURL() {
+  await Deno.permissions.query({
+    name: "read",
+    path: new URL(".", import.meta.url),
+  });
+  await Deno.permissions.query({
+    name: "write",
+    path: new URL(".", import.meta.url),
+  });
+  await Deno.permissions.query({
+    name: "run",
+    command: new URL(".", import.meta.url),
+  });
 });

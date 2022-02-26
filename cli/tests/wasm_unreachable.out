@@ -1,3 +1,0 @@
-error: Uncaught RuntimeError: unreachable
-    at <anonymous> (wasm://wasm/[WILDCARD])
-    at [WILDCARD]/cli/tests/wasm_unreachable.js:[WILDCARD]

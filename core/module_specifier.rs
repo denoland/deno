@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
 use std::env::current_dir;
@@ -43,7 +43,7 @@ impl fmt::Display for ModuleResolutionError {
         specifier,
         match maybe_referrer {
           Some(referrer) => format!(" from \"{}\"", referrer),
-          None => format!(""),
+          None => String::new(),
         }
       ),
     }
@@ -54,7 +54,7 @@ impl fmt::Display for ModuleResolutionError {
 pub type ModuleSpecifier = Url;
 
 /// Resolves module using this algorithm:
-/// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+/// <https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier>
 pub fn resolve_import(
   specifier: &str,
   base: &str,
@@ -397,7 +397,7 @@ mod tests {
       // Relative local path.
       let expected_url = format!(
         "file:///{}/tests/006_url_imports.ts",
-        cwd_str.replace("\\", "/")
+        cwd_str.replace('\\', "/")
       );
       tests.extend(vec![
         (r"tests/006_url_imports.ts", expected_url.to_string()),

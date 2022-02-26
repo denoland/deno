@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
@@ -11,12 +11,9 @@ const body = encoder.encode("Hello World");
 for await (const conn of listener) {
   (async () => {
     const requests = Deno.serveHttp(conn);
-    for await (const { respondWith } of requests) {
-      try {
-        respondWith(new Response(body));
-      } catch {
-        // Ignore.
-      }
+    for await (const event of requests) {
+      event.respondWith(new Response(body))
+        .catch((e) => console.log(e));
     }
   })();
 }

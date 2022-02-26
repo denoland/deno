@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "registries": [
+    {
+      "schema": "/x/:module([a-z0-9_]*)@:version?/:path*",
+      "variables": [
+        {
+          "key": "module",
+          "documentation": "/lsp/registries/doc_${module}.json",
+          "url": "/lsp/registries/modules_${module}.json"
+        },
+        {
+          "key": "version",
+          "documentation": "/lsp/registries/doc_${module}_${{version}}.json",
+          "url": "/lsp/registries/${module}_versions_${{version}}.json"
+        },
+        {
+          "key": "path",
+          "documentation": "/lsp/registries/doc_${module}_${{version}}_${path}.json",
+          "url": "/lsp/registries/${module}_${{version}}_${path}.json"
+        }
+      ]
+    },
+    {
+      "schema": "/x/:module([a-z0-9_]*)/:path*",
+      "variables": [
+        {
+          "key": "module",
+          "documentation": "/lsp/registries/doc_${module}.json",
+          "url": "/lsp/registries/modules_${module}.json"
+        },
+        {
+          "key": "path",
+          "documentation": "/lsp/registries/doc_${module}_latest_${path}.json",
+          "url": "/lsp/registries/${module}_latest_${path}.json"
+        }
+      ]
+    },
+    {
+      "schema": "/std@:version?/:path*",
+      "variables": [
+        {
+          "key": "version",
+          "url": "/lsp/registries/std_${{version}}.json"
+        },
+        {
+          "key": "path",
+          "url": "/lsp/registries/std_${{version}}_${path}.json"
+        }
+      ]
+    },
+    {
+      "schema": "/std/:path*",
+      "variables": [
+        {
+          "key": "path",
+          "url": "/lsp/registries/std_latest_${path}.json"
+        }
+      ]
+    }
+  ]
+}

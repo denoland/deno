@@ -1,0 +1,3 @@
+error: Modules imported via https are not allowed to import http modules.
+  Importing: http://localhost:4545/001_hello.js
+    at https://localhost:5545/disallow_http_from_https.js:2:8

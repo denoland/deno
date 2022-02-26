@@ -1,7 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -66,8 +65,9 @@ impl Resource for FsEventsResource {
 /// the complexity.
 #[derive(Serialize, Debug)]
 struct FsEvent {
-  kind: String,
+  kind: &'static str,
   paths: Vec<PathBuf>,
+  flag: Option<&'static str>,
 }
 
 impl From<NotifyEvent> for FsEvent {
@@ -78,12 +78,15 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Create(_) => "create",
       EventKind::Modify(_) => "modify",
       EventKind::Remove(_) => "remove",
-      EventKind::Other => todo!(), // What's this for? Leaving it out for now.
-    }
-    .to_string();
+      EventKind::Other => "other",
+    };
+    let flag = e.flag().map(|f| match f {
+      notify::event::Flag::Rescan => "rescan",
+    });
     FsEvent {
       kind,
       paths: e.paths,
+      flag,
     }
   }
 }
@@ -102,7 +105,7 @@ fn op_fs_events_open(
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(AnyError::from);
       let sender = sender.lock();
       // Ignore result, if send failed it means that watcher was already closed,
@@ -115,11 +118,9 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    state
-      .borrow_mut::<Permissions>()
-      .read
-      .check(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode)?;
+    let path = PathBuf::from(path);
+    state.borrow_mut::<Permissions>().read.check(&path)?;
+    watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {
     watcher,
@@ -135,11 +136,7 @@ async fn op_fs_events_poll(
   rid: ResourceId,
   _: (),
 ) -> Result<Option<FsEvent>, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FsEventsResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;

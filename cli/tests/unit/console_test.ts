@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -13,7 +13,6 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
@@ -32,8 +31,8 @@ function stringify(...args: unknown[]): string {
 }
 
 interface Css {
-  backgroundColor: [number, number, number] | null;
-  color: [number, number, number] | null;
+  backgroundColor: [number, number, number] | string | null;
+  color: [number, number, number] | string | null;
   fontWeight: string | null;
   fontStyle: string | null;
   textDecorationColor: [number, number, number] | null;
@@ -64,7 +63,7 @@ function cssToAnsiEsc(css: Css, prevCss: Css | null = null): string {
 
 // test cases from web-platform-tests
 // via https://github.com/web-platform-tests/wpt/blob/master/console/console-is-a-namespace.any.js
-unitTest(function consoleShouldBeANamespace() {
+Deno.test(function consoleShouldBeANamespace() {
   const prototype1 = Object.getPrototypeOf(console);
   const prototype2 = Object.getPrototypeOf(prototype1);
 
@@ -72,12 +71,12 @@ unitTest(function consoleShouldBeANamespace() {
   assertEquals(prototype2, Object.prototype);
 });
 
-unitTest(function consoleHasRightInstance() {
+Deno.test(function consoleHasRightInstance() {
   assert(console instanceof Console);
   assertEquals({} instanceof Console, false);
 });
 
-unitTest(function consoleTestAssertShouldNotThrowError() {
+Deno.test(function consoleTestAssertShouldNotThrowError() {
   mockConsole((console) => {
     console.assert(true);
     let hasThrown = undefined;
@@ -91,13 +90,13 @@ unitTest(function consoleTestAssertShouldNotThrowError() {
   });
 });
 
-unitTest(function consoleTestStringifyComplexObjects() {
+Deno.test(function consoleTestStringifyComplexObjects() {
   assertEquals(stringify("foo"), "foo");
   assertEquals(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
-unitTest(
+Deno.test(
   function consoleTestStringifyComplexObjectsWithEscapedSequences() {
     assertEquals(
       stringify(
@@ -167,14 +166,14 @@ unitTest(
   },
 );
 
-unitTest(function consoleTestStringifyQuotes() {
+Deno.test(function consoleTestStringifyQuotes() {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
   assertEquals(stringify([`\\,",'`]), `[ \`\\\\,",'\` ]`);
   assertEquals(stringify(["\\,\",',`"]), `[ "\\\\,\\",',\`" ]`);
 });
 
-unitTest(function consoleTestStringifyLongStrings() {
+Deno.test(function consoleTestStringifyLongStrings() {
   const veryLongString = "a".repeat(200);
   // If we stringify an object containing the long string, it gets abbreviated.
   let actual = stringify({ veryLongString });
@@ -185,7 +184,7 @@ unitTest(function consoleTestStringifyLongStrings() {
   assertEquals(actual, veryLongString);
 });
 
-unitTest(function consoleTestStringifyCircular() {
+Deno.test(function consoleTestStringifyCircular() {
   class Base {
     a = 1;
     m1() {}
@@ -226,7 +225,7 @@ unitTest(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{
+  const nestedObjExpected = `<ref *1> {
   num: 1,
   bool: true,
   str: "a",
@@ -246,9 +245,9 @@ unitTest(function consoleTestStringifyCircular() {
     method: [Function: method],
     un: undefined,
     nu: null,
-    nested: [Circular],
+    nested: [Circular *1],
     emptyObj: {},
-    arr: [ 1, "s", false, null, [Circular] ],
+    arr: [ 1, "s", false, null, [Circular *1] ],
     baseClass: Base { a: 1 }
   }
 }`;
@@ -259,6 +258,8 @@ unitTest(function consoleTestStringifyCircular() {
   assertEquals(stringify("s"), "s");
   assertEquals(stringify(false), "false");
   assertEquals(stringify(new Number(1)), "[Number: 1]");
+  assertEquals(stringify(new Number(-0)), "[Number: -0]");
+  assertEquals(stringify(Object(1n)), "[BigInt: 1n]");
   assertEquals(stringify(new Boolean(true)), "[Boolean: true]");
   assertEquals(stringify(new String("deno")), `[String: "deno"]`);
   assertEquals(stringify(/[0-9]*/), "/[0-9]*/");
@@ -279,6 +280,7 @@ unitTest(function consoleTestStringifyCircular() {
   assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
   assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
   assertEquals(stringify(Symbol(1)), `Symbol("1")`);
+  assertEquals(stringify(Object(Symbol(1))), `[Symbol: Symbol("1")]`);
   assertEquals(stringify(null), "null");
   assertEquals(stringify(undefined), "undefined");
   assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
@@ -313,27 +315,27 @@ unitTest(function consoleTestStringifyCircular() {
     "JSON {}",
   );
   assertEquals(
-    stringify(console),
+    stringify(new Console(() => {})),
     `console {
-  log: [Function: bound ],
-  debug: [Function: bound ],
-  info: [Function: bound ],
-  dir: [Function: bound ],
-  dirxml: [Function: bound ],
-  warn: [Function: bound ],
-  error: [Function: bound ],
-  assert: [Function: bound ],
-  count: [Function: bound ],
-  countReset: [Function: bound ],
-  table: [Function: bound ],
-  time: [Function: bound ],
-  timeLog: [Function: bound ],
-  timeEnd: [Function: bound ],
-  group: [Function: bound ],
-  groupCollapsed: [Function: bound ],
-  groupEnd: [Function: bound ],
-  clear: [Function: bound ],
-  trace: [Function: bound ],
+  log: [Function: log],
+  debug: [Function: debug],
+  info: [Function: info],
+  dir: [Function: dir],
+  dirxml: [Function: dir],
+  warn: [Function: warn],
+  error: [Function: error],
+  assert: [Function: assert],
+  count: [Function: count],
+  countReset: [Function: countReset],
+  table: [Function: table],
+  time: [Function: time],
+  timeLog: [Function: timeLog],
+  timeEnd: [Function: timeEnd],
+  group: [Function: group],
+  groupCollapsed: [Function: group],
+  groupEnd: [Function: groupEnd],
+  clear: [Function: clear],
+  trace: [Function: trace],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,
@@ -348,13 +350,24 @@ unitTest(function consoleTestStringifyCircular() {
         return Deno.inspect(this);
       },
     }),
-    "[Circular]",
+    "[Circular *1]",
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 
-unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved() {
+Deno.test(function consoleTestStringifyMultipleCircular() {
+  const y = { a: { b: {} }, foo: { bar: {} } };
+  y.a.b = y.a;
+  y.foo.bar = y.foo;
+  console.log(y);
+  assertEquals(
+    stringify(y),
+    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+  );
+});
+
+Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
   const f = function f() {};
   Reflect.setPrototypeOf(f, null);
   assertEquals(stringify(f), "[Function: f]");
@@ -369,7 +382,7 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved() {
   assertEquals(stringify(agf), "[Function: agf]");
 });
 
-unitTest(function consoleTestStringifyFunctionWithProperties() {
+Deno.test(function consoleTestStringifyFunctionWithProperties() {
   const f = () => "test";
   f.x = () => "foo";
   f.y = 3;
@@ -390,14 +403,14 @@ unitTest(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] {
+  f: <ref *1> [Function: f] {
     x: [Function],
     y: 3,
     z: [Function],
     b: [Function: bar],
     a: Map {},
-    s: [Circular],
-    t: [Function: t] { x: [Circular] }
+    s: [Circular *1],
+    t: [Function: t] { x: [Circular *1] }
   }
 }`,
   );
@@ -413,7 +426,7 @@ unitTest(function consoleTestStringifyFunctionWithProperties() {
   );
 });
 
-unitTest(function consoleTestStringifyWithDepth() {
+Deno.test(function consoleTestStringifyWithDepth() {
   // deno-lint-ignore no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
@@ -436,7 +449,7 @@ unitTest(function consoleTestStringifyWithDepth() {
   );
 });
 
-unitTest(function consoleTestStringifyLargeObject() {
+Deno.test(function consoleTestStringifyLargeObject() {
   const obj = {
     a: 2,
     o: {
@@ -472,7 +485,7 @@ unitTest(function consoleTestStringifyLargeObject() {
   );
 });
 
-unitTest(function consoleTestStringifyIterable() {
+Deno.test(function consoleTestStringifyIterable() {
   const shortArray = [1, 2, 3, 4, 5];
   assertEquals(stringify(shortArray), "[ 1, 2, 3, 4, 5 ]");
 
@@ -768,7 +781,7 @@ unitTest(function consoleTestStringifyIterable() {
   */
 });
 
-unitTest(function consoleTestStringifyIterableWhenGrouped() {
+Deno.test(function consoleTestStringifyIterableWhenGrouped() {
   const withOddNumberOfEls = new Float64Array(
     [
       2.1,
@@ -846,7 +859,7 @@ unitTest(function consoleTestStringifyIterableWhenGrouped() {
   );
 });
 
-unitTest(async function consoleTestStringifyPromises() {
+Deno.test(async function consoleTestStringifyPromises() {
   const pendingPromise = new Promise((_res, _rej) => {});
   assertEquals(stringify(pendingPromise), "Promise { <pending> }");
 
@@ -869,7 +882,7 @@ unitTest(async function consoleTestStringifyPromises() {
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
 });
 
-unitTest(function consoleTestWithCustomInspector() {
+Deno.test(function consoleTestWithCustomInspector() {
   class A {
     [customInspect](): string {
       return "b";
@@ -879,7 +892,7 @@ unitTest(function consoleTestWithCustomInspector() {
   assertEquals(stringify(new A()), "b");
 });
 
-unitTest(function consoleTestWithCustomInspectorUsingInspectFunc() {
+Deno.test(function consoleTestWithCustomInspectorUsingInspectFunc() {
   class A {
     [customInspect](
       inspect: (v: unknown, opts?: Deno.InspectOptions) => string,
@@ -891,7 +904,7 @@ unitTest(function consoleTestWithCustomInspectorUsingInspectFunc() {
   assertEquals(stringify(new A()), "b { c: 1 }");
 });
 
-unitTest(function consoleTestWithCustomInspectorError() {
+Deno.test(function consoleTestWithCustomInspectorError() {
   class A {
     [customInspect](): never {
       throw new Error("BOOM");
@@ -913,7 +926,7 @@ unitTest(function consoleTestWithCustomInspectorError() {
   );
 });
 
-unitTest(function consoleTestWithCustomInspectFunction() {
+Deno.test(function consoleTestWithCustomInspectFunction() {
   function a() {}
   Object.assign(a, {
     [customInspect]() {
@@ -924,7 +937,7 @@ unitTest(function consoleTestWithCustomInspectFunction() {
   assertEquals(stringify(a), "b");
 });
 
-unitTest(function consoleTestWithIntegerFormatSpecifier() {
+Deno.test(function consoleTestWithIntegerFormatSpecifier() {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
@@ -942,7 +955,7 @@ unitTest(function consoleTestWithIntegerFormatSpecifier() {
   );
 });
 
-unitTest(function consoleTestWithFloatFormatSpecifier() {
+Deno.test(function consoleTestWithFloatFormatSpecifier() {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
@@ -957,7 +970,7 @@ unitTest(function consoleTestWithFloatFormatSpecifier() {
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
 
-unitTest(function consoleTestWithStringFormatSpecifier() {
+Deno.test(function consoleTestWithStringFormatSpecifier() {
   assertEquals(stringify("%s"), "%s");
   assertEquals(stringify("%s", undefined), "undefined");
   assertEquals(stringify("%s", "foo"), "foo");
@@ -968,7 +981,7 @@ unitTest(function consoleTestWithStringFormatSpecifier() {
   assertEquals(stringify("%s", Symbol("foo")), "Symbol(foo)");
 });
 
-unitTest(function consoleTestWithObjectFormatSpecifier() {
+Deno.test(function consoleTestWithObjectFormatSpecifier() {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), "42");
   assertEquals(stringify("%o", "foo"), `"foo"`);
@@ -980,13 +993,14 @@ unitTest(function consoleTestWithObjectFormatSpecifier() {
   );
 });
 
-unitTest(function consoleTestWithStyleSpecifier() {
+Deno.test(function consoleTestWithStyleSpecifier() {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
   assertEquals(stripColor(stringify("%cfoo%cbar", "", "color: red")), "foobar");
 });
 
-unitTest(function consoleParseCssColor() {
+Deno.test(function consoleParseCssColor() {
+  assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
@@ -1005,12 +1019,20 @@ unitTest(function consoleParseCssColor() {
   );
 });
 
-unitTest(function consoleParseCss() {
+Deno.test(function consoleParseCss() {
+  assertEquals(
+    parseCss("background-color: inherit"),
+    { ...DEFAULT_CSS, backgroundColor: "inherit" },
+  );
+  assertEquals(
+    parseCss("color: inherit"),
+    { ...DEFAULT_CSS, color: "inherit" },
+  );
   assertEquals(
     parseCss("background-color: red"),
-    { ...DEFAULT_CSS, backgroundColor: [255, 0, 0] },
+    { ...DEFAULT_CSS, backgroundColor: "red" },
   );
-  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: [0, 0, 255] });
+  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: "blue" });
   assertEquals(
     parseCss("font-weight: bold"),
     { ...DEFAULT_CSS, fontWeight: "bold" },
@@ -1045,21 +1067,41 @@ unitTest(function consoleParseCss() {
 
   assertEquals(
     parseCss("color:red;font-weight:bold;"),
-    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+    { ...DEFAULT_CSS, color: "red", fontWeight: "bold" },
   );
   assertEquals(
     parseCss(
       " \t\ncolor \t\n: \t\nred \t\n; \t\nfont-weight \t\n: \t\nbold \t\n; \t\n",
     ),
-    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+    { ...DEFAULT_CSS, color: "red", fontWeight: "bold" },
   );
   assertEquals(
     parseCss("color: red; font-weight: bold, font-style: italic"),
-    { ...DEFAULT_CSS, color: [255, 0, 0] },
+    { ...DEFAULT_CSS, color: "red" },
   );
 });
 
-unitTest(function consoleCssToAnsi() {
+Deno.test(function consoleCssToAnsi() {
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "foo" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "black" }),
+    "_[40m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "inherit" }),
+    "_[39m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "blue" }),
+    "_[34m",
+  );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
     "_[48;2;200;201;202m",
@@ -1099,7 +1141,7 @@ unitTest(function consoleCssToAnsi() {
   );
 });
 
-unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier() {
+Deno.test(function consoleTestWithVariousOrInvalidFormatSpecifier() {
   assertEquals(stringify("%s:%s"), "%s:%s");
   assertEquals(stringify("%i:%i"), "%i:%i");
   assertEquals(stringify("%d:%d"), "%d:%d");
@@ -1115,7 +1157,7 @@ unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier() {
   assertEquals(stringify("abc%", 1), "abc% 1");
 });
 
-unitTest(function consoleTestCallToStringOnLabel() {
+Deno.test(function consoleTestCallToStringOnLabel() {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
   mockConsole((console) => {
     for (const method of methods) {
@@ -1130,7 +1172,7 @@ unitTest(function consoleTestCallToStringOnLabel() {
   });
 });
 
-unitTest(function consoleTestError() {
+Deno.test(function consoleTestError() {
   class MyError extends Error {
     constructor(errStr: string) {
       super(errStr);
@@ -1148,7 +1190,7 @@ unitTest(function consoleTestError() {
   }
 });
 
-unitTest(function consoleTestClear() {
+Deno.test(function consoleTestClear() {
   mockConsole((console, out) => {
     console.clear();
     assertEquals(out.toString(), "\x1b[1;1H" + "\x1b[0J");
@@ -1156,7 +1198,7 @@ unitTest(function consoleTestClear() {
 });
 
 // Test bound this issue
-unitTest(function consoleDetachedLog() {
+Deno.test(function consoleDetachedLog() {
   mockConsole((console) => {
     const log = console.log;
     const dir = console.dir;
@@ -1229,7 +1271,7 @@ function mockConsole(f: ConsoleExamineFunc) {
 }
 
 // console.group test
-unitTest(function consoleGroup() {
+Deno.test(function consoleGroup() {
   mockConsole((console, out) => {
     console.group("1");
     console.log("2");
@@ -1254,7 +1296,7 @@ unitTest(function consoleGroup() {
 });
 
 // console.group with console.warn test
-unitTest(function consoleGroupWarn() {
+Deno.test(function consoleGroupWarn() {
   mockConsole((console, _out, _err, both) => {
     assert(both);
     console.warn("1");
@@ -1284,7 +1326,7 @@ unitTest(function consoleGroupWarn() {
 });
 
 // console.table test
-unitTest(function consoleTable() {
+Deno.test(function consoleTable() {
   mockConsole((console, out) => {
     console.table({ a: "test", b: 1 });
     assertEquals(
@@ -1318,11 +1360,11 @@ unitTest(function consoleTable() {
       `┌───────┬───────┬───────┬────────┐
 │ (idx) │ 0     │ 1     │ Values │
 ├───────┼───────┼───────┼────────┤
-│ 0     │       │       │ 1      │
-│ 1     │       │       │ 2      │
-│ 2     │ 3     │ [ 4 ] │        │
-│ 3     │ 5     │ 6     │        │
-│ 4     │ [ 7 ] │ [ 8 ] │        │
+│     0 │       │       │      1 │
+│     1 │       │       │      2 │
+│     2 │ 3     │ [ 4 ] │        │
+│     3 │ 5     │ 6     │        │
+│     4 │ [ 7 ] │ [ 8 ] │        │
 └───────┴───────┴───────┴────────┘
 `,
     );
@@ -1334,10 +1376,10 @@ unitTest(function consoleTable() {
       `┌────────────┬────────┐
 │ (iter idx) │ Values │
 ├────────────┼────────┤
-│ 0          │ 1      │
-│ 1          │ 2      │
-│ 2          │ 3      │
-│ 3          │ "test" │
+│          0 │ 1      │
+│          1 │ 2      │
+│          2 │ 3      │
+│          3 │ "test" │
 └────────────┴────────┘
 `,
     );
@@ -1354,8 +1396,8 @@ unitTest(function consoleTable() {
       `┌────────────┬─────┬────────┐
 │ (iter idx) │ Key │ Values │
 ├────────────┼─────┼────────┤
-│ 0          │ 1   │ "one"  │
-│ 1          │ 2   │ "two"  │
+│          0 │   1 │ "one"  │
+│          1 │   2 │ "two"  │
 └────────────┴─────┴────────┘
 `,
     );
@@ -1395,11 +1437,11 @@ unitTest(function consoleTable() {
       `┌───────┬────────┬──────────────────────┬────┬────────┐
 │ (idx) │ 0      │ 1                    │ a  │ Values │
 ├───────┼────────┼──────────────────────┼────┼────────┤
-│ 0     │        │                      │    │ 1      │
-│ 1     │        │                      │    │ "test" │
-│ 2     │        │                      │    │ false  │
-│ 3     │        │                      │ 10 │        │
-│ 4     │ "test" │ { b: 20, c: "test" } │    │        │
+│     0 │        │                      │    │ 1      │
+│     1 │        │                      │    │ "test" │
+│     2 │        │                      │    │ false  │
+│     3 │        │                      │ 10 │        │
+│     4 │ "test" │ { b: 20, c: "test" } │    │        │
 └───────┴────────┴──────────────────────┴────┴────────┘
 `,
     );
@@ -1459,9 +1501,9 @@ unitTest(function consoleTable() {
       `┌───────┬─────────┐
 │ (idx) │ Values  │
 ├───────┼─────────┤
-│ 0     │ "Hello" │
-│ 1     │ "你好"  │
-│ 2     │ "Amapá" │
+│     0 │ "Hello" │
+│     1 │ "你好"  │
+│     2 │ "Amapá" │
 └───────┴─────────┘
 `,
     );
@@ -1476,8 +1518,8 @@ unitTest(function consoleTable() {
       `┌───────┬───┬───┐
 │ (idx) │ 0 │ 1 │
 ├───────┼───┼───┤
-│ 0     │ 1 │ 2 │
-│ 1     │ 3 │ 4 │
+│     0 │ 1 │ 2 │
+│     1 │ 3 │ 4 │
 └───────┴───┴───┘
 `,
     );
@@ -1489,9 +1531,9 @@ unitTest(function consoleTable() {
       `┌───────┬───┐
 │ (idx) │ b │
 ├───────┼───┤
-│ 1     │ 5 │
-│ 2     │   │
-│ 3     │ 6 │
+│     1 │ 5 │
+│     2 │   │
+│     3 │ 6 │
 └───────┴───┘
 `,
     );
@@ -1503,10 +1545,10 @@ unitTest(function consoleTable() {
       `┌───────┬───┬───┐
 │ (idx) │ a │ b │
 ├───────┼───┼───┤
-│ 0     │ 0 │   │
-│ 1     │ 1 │ 1 │
-│ 2     │ 2 │   │
-│ 3     │ 3 │ 3 │
+│     0 │ 0 │   │
+│     1 │ 1 │ 1 │
+│     2 │ 2 │   │
+│     3 │ 3 │ 3 │
 └───────┴───┴───┘
 `,
     );
@@ -1521,10 +1563,10 @@ unitTest(function consoleTable() {
       `┌───────┬───┬───┬───┐
 │ (idx) │ a │ b │ c │
 ├───────┼───┼───┼───┤
-│ 0     │ 0 │   │   │
-│ 1     │ 1 │   │ 1 │
-│ 2     │ 2 │   │   │
-│ 3     │ 3 │   │ 3 │
+│     0 │ 0 │   │   │
+│     1 │ 1 │   │ 1 │
+│     2 │ 2 │   │   │
+│     3 │ 3 │   │ 3 │
 └───────┴───┴───┴───┘
 `,
     );
@@ -1532,7 +1574,7 @@ unitTest(function consoleTable() {
 });
 
 // console.log(Error) test
-unitTest(function consoleLogShouldNotThrowError() {
+Deno.test(function consoleLogShouldNotThrowError() {
   mockConsole((console) => {
     let result = 0;
     try {
@@ -1551,8 +1593,15 @@ unitTest(function consoleLogShouldNotThrowError() {
   });
 });
 
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
+  mockConsole((console, out) => {
+    console.log("%cfoo", "color: foo; background-color: bar;");
+    assertEquals(stripColor(out.toString()), "foo\n");
+  });
+});
+
 // console.log(Invalid Date) test
-unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
+Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
@@ -1561,7 +1610,7 @@ unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
 });
 
 // console.dir test
-unitTest(function consoleDir() {
+Deno.test(function consoleDir() {
   mockConsole((console, out) => {
     console.dir("DIR");
     assertEquals(out.toString(), "DIR\n");
@@ -1573,7 +1622,7 @@ unitTest(function consoleDir() {
 });
 
 // console.dir test
-unitTest(function consoleDirXml() {
+Deno.test(function consoleDirXml() {
   mockConsole((console, out) => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
@@ -1585,7 +1634,7 @@ unitTest(function consoleDirXml() {
 });
 
 // console.trace test
-unitTest(function consoleTrace() {
+Deno.test(function consoleTrace() {
   mockConsole((console, _out, err) => {
     console.trace("%s", "custom message");
     assert(err);
@@ -1593,7 +1642,7 @@ unitTest(function consoleTrace() {
   });
 });
 
-unitTest(function inspectString() {
+Deno.test(function inspectString() {
   assertEquals(
     stripColor(Deno.inspect("\0")),
     `"\\x00"`,
@@ -1604,7 +1653,7 @@ unitTest(function inspectString() {
   );
 });
 
-unitTest(function inspectGetters() {
+Deno.test(function inspectGetters() {
   assertEquals(
     stripColor(Deno.inspect({
       get foo() {
@@ -1633,12 +1682,12 @@ unitTest(function inspectGetters() {
   );
 });
 
-unitTest(function inspectPrototype() {
+Deno.test(function inspectPrototype() {
   class A {}
   assertEquals(Deno.inspect(A.prototype), "A {}");
 });
 
-unitTest(function inspectSorted() {
+Deno.test(function inspectSorted() {
   assertEquals(
     stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
     "{ a: 1, b: 2 }",
@@ -1659,7 +1708,7 @@ unitTest(function inspectSorted() {
   );
 });
 
-unitTest(function inspectTrailingComma() {
+Deno.test(function inspectTrailingComma() {
   assertEquals(
     stripColor(Deno.inspect(
       [
@@ -1714,7 +1763,7 @@ unitTest(function inspectTrailingComma() {
   );
 });
 
-unitTest(function inspectCompact() {
+Deno.test(function inspectCompact() {
   assertEquals(
     stripColor(Deno.inspect({ a: 1, b: 2 }, { compact: false })),
     `{
@@ -1724,7 +1773,7 @@ unitTest(function inspectCompact() {
   );
 });
 
-unitTest(function inspectIterableLimit() {
+Deno.test(function inspectIterableLimit() {
   assertEquals(
     stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
     `[ "a", "b", ... 1 more items ]`,
@@ -1746,7 +1795,7 @@ unitTest(function inspectIterableLimit() {
   );
 });
 
-unitTest(function inspectProxy() {
+Deno.test(function inspectProxy() {
   assertEquals(
     stripColor(Deno.inspect(
       new Proxy([1, 2, 3], {}),
@@ -1820,7 +1869,53 @@ unitTest(function inspectProxy() {
   );
 });
 
-unitTest(function inspectColors() {
+Deno.test(function inspectError() {
+  const error1 = new Error("This is an error");
+  const error2 = new Error("This is an error", {
+    cause: new Error("This is a cause error"),
+  });
+
+  assertStringIncludes(
+    stripColor(Deno.inspect(error1)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by Error: This is a cause error",
+  );
+});
+
+Deno.test(function inspectErrorCircular() {
+  const error1 = new Error("This is an error");
+  const error2 = new Error("This is an error", {
+    cause: new Error("This is a cause error"),
+  });
+  error1.cause = error1;
+  error2.cause.cause = error2;
+
+  assertStringIncludes(
+    stripColor(Deno.inspect(error1)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "<ref *1> Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by Error: This is a cause error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by [Circular *1]",
+  );
+});
+
+Deno.test(function inspectColors() {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
 });

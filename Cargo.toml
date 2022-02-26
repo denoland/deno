@@ -1,26 +1,28 @@
-# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
+resolver = "2"
 members = [
   "bench_util",
   "cli",
   "core",
   "runtime",
-  "test_plugin",
+  "serde_v8",
+  "test_ffi",
   "test_util",
-  "extensions/broadcast_channel",
-  "extensions/console",
-  "extensions/crypto",
-  "extensions/fetch",
-  "extensions/http",
-  "extensions/net",
-  "extensions/timers",
-  "extensions/url",
-  "extensions/web",
-  "extensions/webgpu",
-  "extensions/webidl",
-  "extensions/websocket",
-  "extensions/webstorage",
+  "ext/broadcast_channel",
+  "ext/console",
+  "ext/crypto",
+  "ext/fetch",
+  "ext/ffi",
+  "ext/http",
+  "ext/net",
+  "ext/url",
+  "ext/web",
+  "ext/webgpu",
+  "ext/webidl",
+  "ext/websocket",
+  "ext/webstorage",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
@@ -37,6 +39,11 @@ codegen-units = 1
 incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
+
+# Key generation is too slow on `debug`
+#
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
 
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
@@ -60,11 +67,31 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_net]
 opt-level = 3
-[profile.bench.package.rusty_v8]
+[profile.bench.package.num-bigint-dig]
+opt-level = 3
+[profile.bench.package.v8]
 opt-level = 3
 [profile.bench.package.serde_v8]
 opt-level = 3
 [profile.bench.package.serde]
+opt-level = 3
+[profile.bench.package.deno_url]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
+[profile.bench.package.bytes]
+opt-level = 3
+[profile.bench.package.futures-util]
+opt-level = 3
+[profile.bench.package.hyper]
+opt-level = 3
+[profile.bench.package.tokio]
+opt-level = 3
+[profile.bench.package.zstd]
+opt-level = 3
+[profile.bench.package.lzzzz]
+opt-level = 3
+[profile.bench.package.zstd-sys]
 opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
@@ -88,9 +115,29 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_net]
 opt-level = 3
-[profile.release.package.rusty_v8]
+[profile.release.package.num-bigint-dig]
+opt-level = 3
+[profile.release.package.v8]
 opt-level = 3
 [profile.release.package.serde_v8]
 opt-level = 3
 [profile.release.package.serde]
+opt-level = 3
+[profile.release.package.deno_url]
+opt-level = 3
+[profile.release.package.url]
+opt-level = 3
+[profile.release.package.bytes]
+opt-level = 3
+[profile.release.package.futures-util]
+opt-level = 3
+[profile.release.package.hyper]
+opt-level = 3
+[profile.release.package.tokio]
+opt-level = 3
+[profile.release.package.zstd]
+opt-level = 3
+[profile.release.package.lzzzz]
+opt-level = 3
+[profile.release.package.zstd-sys]
 opt-level = 3

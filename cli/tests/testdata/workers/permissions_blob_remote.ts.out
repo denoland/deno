@@ -1,0 +1,4 @@
+error: Uncaught (in worker "") Requires net access to "example.com", run again with the --allow-net flag
+    at blob:null/[WILDCARD]:1:8
+error: Uncaught (in promise) Error: Unhandled error event in child worker.
+    at Worker.#pollControl ([WILDCARD])

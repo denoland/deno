@@ -1,9 +1,8 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
 use deno_core::op_sync;
 use deno_core::serde::Deserialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
@@ -39,7 +38,30 @@ fn create_snapshot(
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
-  std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+  let compressed_snapshot_with_size = {
+    let mut vec = vec![];
+
+    vec.extend_from_slice(
+      &u32::try_from(snapshot.len())
+        .expect("snapshot larger than 4gb")
+        .to_le_bytes(),
+    );
+
+    vec.extend_from_slice(
+      &zstd::block::compress(snapshot_slice, 22)
+        .expect("snapshot compression failed"),
+    );
+
+    vec
+  };
+
+  println!(
+    "Snapshot compressed size: {}",
+    compressed_snapshot_with_size.len()
+  );
+
+  std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
@@ -60,7 +82,7 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
-  op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
+  op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
   op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -69,10 +91,6 @@ fn create_compiler_snapshot(
     deno_broadcast_channel::get_declaration(),
   );
   op_crate_libs.insert("deno.net", deno_net::get_declaration());
-  op_crate_libs
-    .insert("deno.net_unstable", deno_net::get_unstable_declaration());
-  op_crate_libs
-    .insert("deno.http_unstable", deno_http::get_unstable_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -126,14 +144,15 @@ fn create_compiler_snapshot(
     "es2020.string",
     "es2020.symbol.wellknown",
     "es2021",
+    "es2021.intl",
     "es2021.promise",
     "es2021.string",
     "es2021.weakref",
     "esnext",
+    "esnext.error",
     "esnext.intl",
-    "esnext.promise",
+    "esnext.object",
     "esnext.string",
-    "esnext.weakref",
   ];
 
   let path_dts = cwd.join("dts");
@@ -172,14 +191,19 @@ fn create_compiler_snapshot(
     "op_cwd",
     op_sync(move |_state, _args: Value, _: ()| Ok(json!("cache:///"))),
   );
+  // As of TypeScript 4.5, it tries to detect the existence of substitute lib
+  // files, which we currently don't use, so we just return false.
+  js_runtime.register_op(
+    "op_exists",
+    op_sync(move |_state, _args: LoadArgs, _: ()| Ok(json!(false))),
+  );
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
-    op_sync(move |_state, args, _: ()| {
-      let v: LoadArgs = serde_json::from_value(args)?;
+    op_sync(move |_state, args: LoadArgs, _: ()| {
       // we need a basic file to send to tsc to warm it up.
-      if v.specifier == build_specifier {
+      if args.specifier == build_specifier {
         Ok(json!({
           "data": r#"console.log("hello deno!");"#,
           "hash": "1",
@@ -188,7 +212,7 @@ fn create_compiler_snapshot(
         }))
       // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
       // parse out just the name so we can lookup the asset.
-      } else if let Some(caps) = re_asset.captures(&v.specifier) {
+      } else if let Some(caps) = re_asset.captures(&args.specifier) {
         if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
           // if it comes from an op crate, we were supplied with the path to the
           // file.
@@ -208,13 +232,13 @@ fn create_compiler_snapshot(
         } else {
           Err(custom_error(
             "InvalidSpecifier",
-            format!("An invalid specifier was requested: {}", v.specifier),
+            format!("An invalid specifier was requested: {}", args.specifier),
           ))
         }
       } else {
         Err(custom_error(
           "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", v.specifier),
+          format!("An invalid specifier was requested: {}", args.specifier),
         ))
       }
     }),
@@ -298,7 +322,7 @@ fn main() {
   );
   println!(
     "cargo:rustc-env=DENO_WEBGPU_LIB_PATH={}",
-    deno_webgpu::get_declaration().display()
+    deno_webgpu_get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
@@ -319,14 +343,6 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_NET_LIB_PATH={}",
     deno_net::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_NET_UNSTABLE_LIB_PATH={}",
-    deno_net::get_unstable_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_HTTP_UNSTABLE_LIB_PATH={}",
-    deno_http::get_unstable_declaration().display()
   );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
@@ -351,6 +367,11 @@ fn main() {
     ));
     res.compile().unwrap();
   }
+}
+
+fn deno_webgpu_get_declaration() -> PathBuf {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
 }
 
 fn get_js_files(d: &str) -> Vec<PathBuf> {

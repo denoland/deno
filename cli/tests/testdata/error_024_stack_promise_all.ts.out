@@ -1,0 +1,10 @@
+[WILDCARD]Error: Promise.all()
+    at [WILDCARD]/error_024_stack_promise_all.ts:[WILDCARD]
+    at async Promise.all (index 1)
+    at async [WILDCARD]/error_024_stack_promise_all.ts:[WILDCARD]
+error: Uncaught Error: Promise.all()
+    throw new Error("Promise.all()");
+          ^
+    at [WILDCARD]/error_024_stack_promise_all.ts:[WILDCARD]
+    at async Promise.all (index 1)
+    at async [WILDCARD]/error_024_stack_promise_all.ts:[WILDCARD]

@@ -1,17 +1,44 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors::cyan;
 use crate::colors::italic_bold;
 use crate::colors::red;
 use crate::colors::yellow;
 use deno_core::error::{AnyError, JsError, JsStackFrame};
+use deno_core::url::Url;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
+const DATA_URL_ABBREV_THRESHOLD: usize = 150;
 
-// Keep in sync with `runtime/js/40_error_stack.js`.
+pub fn format_file_name(file_name: &str) -> String {
+  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
+    if let Ok(url) = Url::parse(file_name) {
+      if url.scheme() == "data" {
+        let data_path = url.path();
+        if let Some(data_pieces) = data_path.split_once(',') {
+          let data_length = data_pieces.1.len();
+          if let Some(data_start) = data_pieces.1.get(0..20) {
+            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
+              return format!(
+                "{}:{},{}......{}",
+                url.scheme(),
+                data_pieces.0,
+                data_start,
+                data_end
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+  file_name.to_string()
+}
+
+// Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
@@ -22,7 +49,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   }
   let mut result = String::new();
   if let Some(file_name) = &frame.file_name {
-    result += &cyan(&file_name).to_string();
+    result += &cyan(&format_file_name(file_name)).to_string();
   } else {
     if frame.is_eval {
       result +=
@@ -54,7 +81,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   if frame.is_promise_all {
     result += &italic_bold(&format!(
       "Promise.all (index {})",
-      frame.promise_index.unwrap_or_default().to_string()
+      frame.promise_index.unwrap_or_default()
     ))
     .to_string();
     return result;
@@ -101,9 +128,11 @@ fn format_frame(frame: &JsStackFrame) -> String {
   result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn format_stack(
   is_error: bool,
   message_line: &str,
+  cause: Option<&str>,
   source_line: Option<&str>,
   start_column: Option<i64>,
   end_column: Option<i64>,
@@ -124,6 +153,14 @@ fn format_stack(
       "\n{:indent$}    at {}",
       "",
       format_frame(frame),
+      indent = level
+    ));
+  }
+  if let Some(cause) = cause {
+    s.push_str(&format!(
+      "\n{:indent$}Caused by: {}",
+      "",
+      cause,
       indent = level
     ));
   }
@@ -150,12 +187,23 @@ fn format_maybe_source_line(
   if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
     return "".to_string();
   }
+  if source_line.contains("Couldn't format source line: ") {
+    return format!("\n{}", source_line);
+  }
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
   let mut s = String::new();
   let start_column = start_column.unwrap();
   let end_column = end_column.unwrap();
+
+  if start_column as usize >= source_line.len() {
+    return format!(
+      "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
+      crate::colors::yellow("Warning"), start_column + 1,
+    );
+  }
+
   // TypeScript uses `~` always, but V8 would utilise `^` always, even when
   // doing ranges, so here, if we only have one marker (very common with V8
   // errors) we will use `^` instead.
@@ -224,12 +272,19 @@ impl fmt::Display for PrettyJsError {
       )];
     }
 
+    let cause = self
+      .0
+      .cause
+      .clone()
+      .map(|cause| format!("{}", PrettyJsError(*cause)));
+
     write!(
       f,
       "{}",
       &format_stack(
         true,
         &self.0.message,
+        cause.as_deref(),
         self.0.source_line.as_deref(),
         self.0.start_column,
         self.0.end_column,
@@ -246,7 +301,7 @@ impl Error for PrettyJsError {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::colors::strip_ansi_codes;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_format_none_source_line() {

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 function assert(cond) {
@@ -12,14 +12,14 @@ function assertArrayEquals(a1, a2) {
 
   for (const index in a1) {
     if (a1[index] !== a2[index]) {
-      throw Error("assert");
+      throw Error(`assert: (index ${index}) ${a1[index]} !== ${a2[index]}`);
     }
   }
 }
 
 function main() {
   const emptyString = "";
-  const emptyStringSerialized = [34, 0];
+  const emptyStringSerialized = [255, 14, 34, 0];
   assertArrayEquals(Deno.core.serialize(emptyString), emptyStringSerialized);
   assert(
     Deno.core.deserialize(new Uint8Array(emptyStringSerialized)) ===
@@ -29,7 +29,7 @@ function main() {
   const primitiveValueArray = ["test", "a", null, undefined];
   // deno-fmt-ignore
   const primitiveValueArraySerialized = [
-    65, 4, 34, 4, 116, 101, 115, 116,
+    255, 14, 65, 4, 34, 4, 116, 101, 115, 116,
     34, 1, 97, 48, 95, 36, 0, 4,
   ];
   assertArrayEquals(
@@ -48,11 +48,11 @@ function main() {
   circularObject.test = circularObject;
   // deno-fmt-ignore
   const circularObjectSerialized = [
-    111, 34, 4, 116, 101, 115, 116, 94,
-    0, 34, 5, 116, 101, 115, 116, 50,
-    34, 2, 100, 100, 34, 5, 116, 101,
-    115, 116, 51, 34, 2, 97, 97, 123,
-    3,
+    255, 14, 111, 34, 4, 116, 101, 115,
+    116, 94, 0, 34, 5, 116, 101, 115,
+    116, 50, 34, 2, 100, 100, 34, 5,
+    116, 101, 115, 116, 51, 34, 2, 97,
+    97, 123, 3,
   ];
 
   assertArrayEquals(

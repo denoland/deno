@@ -13,12 +13,15 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
+
+
 /// <reference no-default-lib="true"/>
 
+
 interface String {
-  /**
-   * Access string by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): string | undefined;
+    /**
+     * Access string by relative indexing.
+     * @param index index to access.
+     */
+    at(index: number): string | undefined;
 }

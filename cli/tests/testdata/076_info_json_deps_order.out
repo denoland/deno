@@ -1,0 +1,163 @@
+{
+  "roots": [
+    "file://[WILDCARD]/076_info_json_deps_order.ts"
+  ],
+  "modules": [
+    {
+      "dependencies": [
+        {
+          "specifier": "./recursive_imports/A.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 18
+              },
+              "end": {
+                "line": 1,
+                "character": 44
+              }
+            }
+          }
+        }
+      ],
+      "kind": "esm",
+      "local": "[WILDCARD]076_info_json_deps_order.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts"
+    },
+    {
+      "dependencies": [
+        {
+          "specifier": "./B.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/B.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 26
+              }
+            }
+          }
+        },
+        {
+          "specifier": "./common.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 35
+              }
+            }
+          }
+        }
+      ],
+      "kind": "esm",
+      "local": "[WILDCARD]A.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/A.ts"
+    },
+    {
+      "dependencies": [
+        {
+          "specifier": "./C.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/C.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 26
+              }
+            }
+          }
+        },
+        {
+          "specifier": "./common.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 35
+              }
+            }
+          }
+        }
+      ],
+      "kind": "esm",
+      "local": "[WILDCARD]B.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/B.ts"
+    },
+    {
+      "dependencies": [
+        {
+          "specifier": "./A.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 18
+              },
+              "end": {
+                "line": 0,
+                "character": 26
+              }
+            }
+          }
+        },
+        {
+          "specifier": "./common.ts",
+          "code": {
+            "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 22
+              },
+              "end": {
+                "line": 1,
+                "character": 35
+              }
+            }
+          }
+        }
+      ],
+      "kind": "esm",
+      "local": "[WILDCARD]C.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/C.ts"
+    },
+    {
+      "kind": "esm",
+      "local": "[WILDCARD]common.ts",
+      [WILDCARD]
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/recursive_imports/common.ts"
+    }
+  ],
+  "redirects": {}
+}

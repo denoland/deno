@@ -1,0 +1,3 @@
+DANGER: TLS certificate validation is disabled for: deno.land
+error: error sending request for url (https://localhost:5545/subdir/mod2.ts): error trying to connect: invalid peer certificate contents: invalid peer certificate: UnknownIssuer
+    at file:///[WILDCARD]/cafile_url_imports.ts:[WILDCARD]

@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Move to a new file",
+    "kind": "refactor.move.newFile",
+    "isPreferred": false,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 14,
+          "character": 0
+        }
+      },
+      "refactorName": "Move to a new file",
+      "actionName": "Move to a new file"
+    }
+  }
+]

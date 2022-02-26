@@ -1,9 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
-/// <reference lib="deno.net_unstable" />
-/// <reference lib="deno.http_unstable" />
 
 declare namespace Deno {
   /**
@@ -66,7 +64,6 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
-   *
    */
   export function osRelease(): string;
 
@@ -82,7 +79,6 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
-   *
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
 
@@ -107,36 +103,239 @@ declare namespace Deno {
     swapFree: number;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** The information of the network interface */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name */
+    name: string;
+    /** The IP protocol version */
+    family: "IPv4" | "IPv6";
+    /** The IP address */
+    address: string;
+    /** The netmask */
+    netmask: string;
+    /** The IPv6 scope id or null */
+    scopeid: number | null;
+    /** The CIDR range */
+    cidr: string;
+    /** The MAC address */
+    mac: string;
+  }
+
+  /** **Unstable** new API. yet to be vetted.
    *
-   * Open and initialize a plugin.
+   * Returns an array of the network interface informations.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
-   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   *
-   * // The Deno.core namespace is needed to interact with plugins, but this is
-   * // internal so we use ts-ignore to skip type checking these calls.
-   * // @ts-ignore
-   * const { op_test_sync, op_test_async } = Deno.core.ops();
-   *
-   * assert(op_test_sync);
-   * assert(op_test_async);
-   *
-   * // @ts-ignore
-   * const result = Deno.core.opSync("op_test_sync");
-   *
-   * // @ts-ignore
-   * const result = await Deno.core.opAsync("op_test_sync");
+   * console.log(Deno.networkInterfaces());
    * ```
    *
-   * Requires `allow-plugin` permission.
-   *
-   * The plugin system is not stable and will change in the future, hence the
-   * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/main/test_plugin
+   * Requires `allow-env` permission.
    */
-  export function openPlugin(filename: string): number;
+  export function networkInterfaces(): NetworkInterfaceInfo[];
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getUid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getUid(): number | null;
+
+  /** All possible types for interfacing with foreign functions */
+  export type NativeType =
+    | "void"
+    | "u8"
+    | "i8"
+    | "u16"
+    | "i16"
+    | "u32"
+    | "i32"
+    | "u64"
+    | "i64"
+    | "usize"
+    | "isize"
+    | "f32"
+    | "f64"
+    | "pointer";
+
+  /** A foreign function as defined by its parameter and result types */
+  export interface ForeignFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeType = NativeType,
+    NonBlocking extends boolean = boolean,
+  > {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    parameters: Parameters;
+    result: Result;
+    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    nonblocking?: NonBlocking;
+  }
+
+  export interface ForeignStatic<Type extends NativeType = NativeType> {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    type: Exclude<Type, "void">;
+  }
+
+  /** A foreign library interface descriptor */
+  export interface ForeignLibraryInterface {
+    [name: string]: ForeignFunction | ForeignStatic;
+  }
+
+  /** All possible number types interfacing with foreign functions */
+  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
+
+  /** Infers a foreign function return type */
+  type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
+    ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer
+    : never;
+
+  type StaticForeignFunctionParameter<T> = T extends "void" ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
+    : unknown;
+
+  /** Infers a foreign function parameter list. */
+  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+    ...{
+      [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
+    },
+  ];
+
+  /** Infers a foreign symbol */
+  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+    T extends ForeignFunction ? (
+      ...args: StaticForeignFunctionParameters<T["parameters"]>
+    ) => ConditionalAsync<
+      T["nonblocking"],
+      StaticForeignFunctionResult<T["result"]>
+    >
+      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+      : never;
+
+  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
+
+  /** Infers a foreign library interface */
+  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
+    [K in keyof T]: StaticForeignSymbol<T[K]>;
+  };
+
+  type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Uint8ClampedArray
+    | Float32Array
+    | Float64Array
+    | BigInt64Array
+    | BigUint64Array;
+
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
+   */
+  export class UnsafePointer {
+    constructor(value: bigint);
+
+    value: bigint;
+
+    /**
+     * Return the direct memory pointer to the typed array in memory
+     */
+    static of(typedArray: TypedArray): UnsafePointer;
+
+    /**
+     * Returns the value of the pointer which is useful in certain scenarios.
+     */
+    valueOf(): bigint;
+  }
+
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer view to a memory location as specified by the `pointer`
+   * value. The `UnsafePointerView` API mimics the standard built in interface
+   * `DataView` for accessing the underlying types at an memory location
+   * (numbers, strings and raw bytes).
+   */
+  export class UnsafePointerView {
+    constructor(pointer: UnsafePointer);
+
+    pointer: UnsafePointer;
+
+    /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
+    getUint8(offset?: number): number;
+    /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
+    getInt8(offset?: number): number;
+    /** Gets an unsigned 16-bit integer at the specified byte offset from the pointer. */
+    getUint16(offset?: number): number;
+    /** Gets a signed 16-bit integer at the specified byte offset from the pointer. */
+    getInt16(offset?: number): number;
+    /** Gets an unsigned 32-bit integer at the specified byte offset from the pointer. */
+    getUint32(offset?: number): number;
+    /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
+    getInt32(offset?: number): number;
+    /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
+    getBigUint64(offset?: number): bigint;
+    /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
+    getBigInt64(offset?: number): bigint;
+    /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
+    getFloat32(offset?: number): number;
+    /** Gets a signed 64-bit float at the specified byte offset from the pointer. */
+    getFloat64(offset?: number): number;
+    /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
+    getCString(offset?: number): string;
+    /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
+    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
+    /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional offset from the pointer. */
+    copyInto(destination: TypedArray, offset?: number): void;
+  }
+
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a function, for calling functions that are not
+   * present as symbols.
+   */
+  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+    pointer: UnsafePointer;
+    definition: Fn;
+
+    constructor(pointer: UnsafePointer, definition: Fn);
+
+    call(
+      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+    ): ConditionalAsync<
+      Fn["nonblocking"],
+      StaticForeignFunctionResult<Fn["result"]>
+    >;
+  }
+
+  /** A dynamic library resource */
+  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
+    /** All of the registered library along with functions for calling them */
+    symbols: StaticForeignLibraryInterface<S>;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * Opens a dynamic library and registers symbols
+   */
+  export function dlopen<S extends ForeignLibraryInterface>(
+    filename: string | URL,
+    symbols: S,
+  ): DynamicLibrary<S>;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
@@ -147,7 +346,7 @@ declare namespace Deno {
   }
 
   export interface DiagnosticMessageChain {
-    message: string;
+    messageText: string;
     category: DiagnosticCategory;
     code: number;
     next?: DiagnosticMessageChain[];
@@ -271,15 +470,20 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
+    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`,
+     * `"react-jsx", `"react-jsxdev"`.
      * Defaults to `"react"`. */
-    jsx?: "react" | "preserve" | "react-native";
+    jsx?: "react" | "preserve" | "react-native" | "react-jsx" | "react-jsx-dev";
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
     /** Specify the JSX fragment factory function to use when targeting react
      * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
     jsxFragmentFactory?: string;
+    /** Declares the module specifier to be used for importing the `jsx` and
+     * `jsxs` factory functions when using jsx as `"react-jsx"` or
+     * `"react-jsxdev"`. Defaults to `"react"`. */
+    jsxImportSource?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
@@ -440,7 +644,7 @@ declare namespace Deno {
   export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
      * JavaScript bundle that is a single ES module (`"module"`) or a single
-     * file self contained script we executes in an immediately invoked function
+     * file self contained script executed in an immediately invoked function
      * when loaded (`"classic"`). */
     bundle?: "module" | "classic";
     /** If `true` then the sources will be typed checked, returning any
@@ -558,179 +762,6 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  enum LinuxSignal {
-    SIGHUP = 1,
-    SIGINT = 2,
-    SIGQUIT = 3,
-    SIGILL = 4,
-    SIGTRAP = 5,
-    SIGABRT = 6,
-    SIGBUS = 7,
-    SIGFPE = 8,
-    SIGKILL = 9,
-    SIGUSR1 = 10,
-    SIGSEGV = 11,
-    SIGUSR2 = 12,
-    SIGPIPE = 13,
-    SIGALRM = 14,
-    SIGTERM = 15,
-    SIGSTKFLT = 16,
-    SIGCHLD = 17,
-    SIGCONT = 18,
-    SIGSTOP = 19,
-    SIGTSTP = 20,
-    SIGTTIN = 21,
-    SIGTTOU = 22,
-    SIGURG = 23,
-    SIGXCPU = 24,
-    SIGXFSZ = 25,
-    SIGVTALRM = 26,
-    SIGPROF = 27,
-    SIGWINCH = 28,
-    SIGIO = 29,
-    SIGPWR = 30,
-    SIGSYS = 31,
-  }
-  enum MacOSSignal {
-    SIGHUP = 1,
-    SIGINT = 2,
-    SIGQUIT = 3,
-    SIGILL = 4,
-    SIGTRAP = 5,
-    SIGABRT = 6,
-    SIGEMT = 7,
-    SIGFPE = 8,
-    SIGKILL = 9,
-    SIGBUS = 10,
-    SIGSEGV = 11,
-    SIGSYS = 12,
-    SIGPIPE = 13,
-    SIGALRM = 14,
-    SIGTERM = 15,
-    SIGURG = 16,
-    SIGSTOP = 17,
-    SIGTSTP = 18,
-    SIGCONT = 19,
-    SIGCHLD = 20,
-    SIGTTIN = 21,
-    SIGTTOU = 22,
-    SIGIO = 23,
-    SIGXCPU = 24,
-    SIGXFSZ = 25,
-    SIGVTALRM = 26,
-    SIGPROF = 27,
-    SIGWINCH = 28,
-    SIGINFO = 29,
-    SIGUSR1 = 30,
-    SIGUSR2 = 31,
-  }
-
-  /** **UNSTABLE**: Further changes required to make platform independent.
-   *
-   * Signals numbers. This is platform dependent. */
-  export const Signal: typeof MacOSSignal | typeof LinuxSignal;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Represents the stream of signals, implements both `AsyncIterator` and
-   * `PromiseLike`. */
-  export class SignalStream
-    implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: typeof Deno.Signal);
-    then<T, S>(
-      f: (v: void) => T | Promise<T>,
-      g?: (v: void) => S | Promise<S>,
-    ): Promise<T | S>;
-    next(): Promise<IteratorResult<void>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<void>;
-    dispose(): void;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Returns the stream of the given signal number. You can use it as an async
-   * iterator.
-   *
-   * ```ts
-   * for await (const _ of Deno.signal(Deno.Signal.SIGTERM)) {
-   *   console.log("got SIGTERM!");
-   * }
-   * ```
-   *
-   * You can also use it as a promise. In this case you can only receive the
-   * first one.
-   *
-   * ```ts
-   * await Deno.signal(Deno.Signal.SIGTERM);
-   * console.log("SIGTERM received!")
-   * ```
-   *
-   * If you want to stop receiving the signals, you can use `.dispose()` method
-   * of the signal stream object.
-   *
-   * ```ts
-   * const sig = Deno.signal(Deno.Signal.SIGTERM);
-   * setTimeout(() => { sig.dispose(); }, 5000);
-   * for await (const _ of sig) {
-   *   console.log("SIGTERM!")
-   * }
-   * ```
-   *
-   * The above for-await loop exits after 5 seconds when `sig.dispose()` is
-   * called.
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function signal(signo: number): SignalStream;
-
-  /** **UNSTABLE**: new API, yet to be vetted. */
-  export const signals: {
-    /** Returns the stream of SIGALRM signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGALRM)`. */
-    alarm: () => SignalStream;
-    /** Returns the stream of SIGCHLD signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGCHLD)`. */
-    child: () => SignalStream;
-    /** Returns the stream of SIGHUP signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGHUP)`. */
-    hungup: () => SignalStream;
-    /** Returns the stream of SIGINT signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGINT)`. */
-    interrupt: () => SignalStream;
-    /** Returns the stream of SIGIO signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGIO)`. */
-    io: () => SignalStream;
-    /** Returns the stream of SIGPIPE signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGPIPE)`. */
-    pipe: () => SignalStream;
-    /** Returns the stream of SIGQUIT signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGQUIT)`. */
-    quit: () => SignalStream;
-    /** Returns the stream of SIGTERM signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGTERM)`. */
-    terminate: () => SignalStream;
-    /** Returns the stream of SIGUSR1 signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGUSR1)`. */
-    userDefined1: () => SignalStream;
-    /** Returns the stream of SIGUSR2 signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGUSR2)`. */
-    userDefined2: () => SignalStream;
-    /** Returns the stream of SIGWINCH signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGWINCH)`. */
-    windowChange: () => SignalStream;
-  };
-
   export type SetRawOptions = {
     cbreak: boolean;
   };
@@ -794,28 +825,14 @@ declare namespace Deno {
   export function run<
     T extends RunOptions & {
       clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
     } = RunOptions & {
       clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
     },
   >(opt: T): Process<T>;
-
-  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
-   * enum.
-   *
-   * Send a signal to process under given `pid`. This functionality currently
-   * only works on Linux and Mac OS.
-   *
-   * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
-   *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
-   *
-   *      Deno.kill(p.pid, Deno.Signal.SIGINT);
-   *
-   * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: number): void;
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
@@ -834,7 +851,8 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -847,10 +865,17 @@ declare namespace Deno {
    * The options used when creating a [HttpClient].
    */
   export interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
-     */
-    caData?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+    /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
+    /** PEM formatted client certificate chain. */
+    certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
+    privateKey?: string;
   }
 
   export interface Proxy {
@@ -867,7 +892,8 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
@@ -914,7 +940,7 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** *UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * SleepSync puts the main thread to sleep synchronously for a given amount of
    * time in milliseconds.
@@ -925,165 +951,226 @@ declare namespace Deno {
    */
   export function sleepSync(millis: number): void;
 
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestDefinition {
-    /** Specifies the permissions that should be used to run the test.
-     * Set this to "inherit" to keep the calling thread's permissions.
-     * Set this to "none" to revoke all permissions.
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * A generic transport listener for message-oriented protocols. */
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+    /** **UNSTABLE**: new API, yet to be vetted.
      *
-     * Defaults to "inherit".
-    */
-    permissions?: "inherit" | "none" | {
-      /** Specifies if the `net` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `env` permission will be inherited.
-      * If set to `true`, the global `net` permission will be requested.
-      * If set to `false`, the global `net` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      env?: "inherit" | boolean;
-
-      /** Specifies if the `hrtime` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
-      * If set to `true`, the global `hrtime` permission will be requested.
-      * If set to `false`, the global `hrtime` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      hrtime?: "inherit" | boolean;
-
-      /** Specifies if the `net` permission should be requested or revoked.
-      * if set to `"inherit"`, the current `net` permission will be inherited.
-      * if set to `true`, the global `net` permission will be requested.
-      * if set to `false`, the global `net` permission will be revoked.
-      * if set to `string[]`, the `net` permission will be requested with the
-      * specified host strings with the format `"<host>[:<port>]`.
-      *
-      * Defaults to "inherit".
-      *
-      * Examples:
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "inherit",
-      *   permissions: {
-      *     net: "inherit",
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net" })
-      *     assertEquals(status.state, "granted");
-      *   },
-      * });
-      * ```
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "true",
-      *   permissions: {
-      *     net: true,
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net" });
-      *     assertEquals(status.state, "granted");
-      *   },
-      * });
-      * ```
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "false",
-      *   permissions: {
-      *     net: false,
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net" });
-      *     assertEquals(status.state, "denied");
-      *   },
-      * });
-      * ```
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "localhost:8080",
-      *   permissions: {
-      *     net: ["localhost:8080"],
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
-      *     assertEquals(status.state, "granted");
-      *   },
-      * });
-      * ```
-      */
-      net?: "inherit" | boolean | string[];
-
-      /** Specifies if the `plugin` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `plugin` permission will be inherited.
-      * If set to `true`, the global `plugin` permission will be requested.
-      * If set to `false`, the global `plugin` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      plugin?: "inherit" | boolean;
-
-      /** Specifies if the `read` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `read` permission will be inherited.
-      * If set to `true`, the global `read` permission will be requested.
-      * If set to `false`, the global `read` permission will be revoked.
-      * If set to `Array<string | URL>`, the `read` permission will be requested with the
-      * specified file paths.
-      *
-      * Defaults to "inherit".
-      */
-      read?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `run` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `run` permission will be inherited.
-      * If set to `true`, the global `run` permission will be requested.
-      * If set to `false`, the global `run` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      run?: "inherit" | boolean;
-
-      /** Specifies if the `write` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `write` permission will be inherited.
-      * If set to `true`, the global `write` permission will be requested.
-      * If set to `false`, the global `write` permission will be revoked.
-      * If set to `Array<string | URL>`, the `write` permission will be requested with the
-      * specified file paths.
-      *
-      * Defaults to "inherit".
-      */
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
+     * Waits for and resolves to the next message to the `UDPConn`. */
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+    /** UNSTABLE: new API, yet to be vetted.
+     *
+     * Sends a message to the target. */
+    send(p: Uint8Array, addr: Addr): Promise<number>;
+    /** UNSTABLE: new API, yet to be vetted.
+     *
+     * Close closes the socket. Any pending message promises will be rejected
+     * with errors. */
+    close(): void;
+    /** Return the address of the `UDPConn`. */
+    readonly addr: Addr;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
+
+  export interface UnixListenOptions {
+    /** A Path to the Unix Socket. */
+    path: string;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permission. */
+  export function listen(
+    options: UnixListenOptions & { transport: "unix" },
+  ): Listener;
+
+  /** **UNSTABLE**: new API, yet to be vetted
+   *
+   * Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener1 = Deno.listenDatagram({
+   *   port: 80,
+   *   transport: "udp"
+   * });
+   * const listener2 = Deno.listenDatagram({
+   *   hostname: "golang.org",
+   *   port: 80,
+   *   transport: "udp"
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission. */
+  export function listenDatagram(
+    options: ListenOptions & { transport: "udp" },
+  ): DatagramConn;
+
+  /** **UNSTABLE**: new API, yet to be vetted
+   *
+   * Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener = Deno.listenDatagram({
+   *   path: "/foo/bar.sock",
+   *   transport: "unixpacket"
+   * });
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permission. */
+  export function listenDatagram(
+    options: UnixListenOptions & { transport: "unixpacket" },
+  ): DatagramConn;
+
+  export interface UnixConnectOptions {
+    transport: "unix";
+    path: string;
+  }
+
+  /** **UNSTABLE**:  The unix socket transport is unstable as a new API yet to
+   * be vetted.  The TCP transport is considered stable.
+   *
+   * Connects to the hostname (default is "127.0.0.1") and port on the named
+   * transport (default is "tcp"), and resolves to the connection (`Conn`).
+   *
+   * ```ts
+   * const conn1 = await Deno.connect({ port: 80 });
+   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```
+   *
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
+  export function connect(
+    options: ConnectOptions | UnixConnectOptions,
+  ): Promise<Conn>;
+
+  export interface ConnectTlsOptions {
+    /** PEM formatted client certificate chain. */
+    certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
+    privateKey?: string;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface Conn {
+    /**
+     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
+     *
+     * Enable/disable the use of Nagle's algorithm. Defaults to true.
+     */
+    setNoDelay(nodelay?: boolean): void;
+    /**
+     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
+     *
+     * Enable/disable keep-alive functionality.
+     */
+    setKeepAlive(keepalive?: boolean): void;
+  }
+
+  export interface TlsHandshakeInfo {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
+
+  export interface TlsConn extends Conn {
+    /** Runs the client or server handshake protocol to completion if that has
+     * not happened yet. Calling this method is optional; the TLS handshake
+     * will be completed automatically as soon as data is sent or received. */
+    handshake(): Promise<TlsHandshakeInfo>;
+  }
+
+  /** **UNSTABLE** New API, yet to be vetted.
+   *
+   * Create a TLS connection with an attached client certificate.
+   *
+   * ```ts
+   * const conn = await Deno.connectTls({
+   *   hostname: "deno.land",
+   *   port: 443,
+   *   certChain: "---- BEGIN CERTIFICATE ----\n ...",
+   *   privateKey: "---- BEGIN PRIVATE KEY ----\n ...",
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
+
+  export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface StartTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flock(rid: number, exclusive?: boolean): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flockSync(rid: number, exclusive?: boolean): void;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlock(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlockSync(rid: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Make the timer of the given id blocking the event loop from finishing
+   */
+  export function refTimer(id: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Make the timer of the given id not blocking the event loop from finishing
+   */
+  export function unrefTimer(id: number): void;
 }
 
 declare function fetch(
@@ -1129,7 +1216,7 @@ declare interface WorkerOptions {
     namespace?: boolean;
     /** Set to `"none"` to disable all the permissions in the worker. */
     permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
       hrtime?: "inherit" | boolean;
       /** The format of the net access list must be `hostname[:port]`
        * in order to be resolved.
@@ -1137,10 +1224,36 @@ declare interface WorkerOptions {
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
       net?: "inherit" | boolean | string[];
-      plugin?: "inherit" | boolean;
+      ffi?: "inherit" | boolean | Array<string | URL>;
       read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
       write?: "inherit" | boolean | Array<string | URL>;
     };
   };
+}
+
+declare interface WebSocketStreamOptions {
+  protocols?: string[];
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+}
+
+declare interface WebSocketConnection {
+  readable: ReadableStream<string | Uint8Array>;
+  writable: WritableStream<string | Uint8Array>;
+  extensions: string;
+  protocol: string;
+}
+
+declare interface WebSocketCloseInfo {
+  code?: number;
+  reason?: string;
+}
+
+declare class WebSocketStream {
+  constructor(url: string, options?: WebSocketStreamOptions);
+  url: string;
+  connection: Promise<WebSocketConnection>;
+  closed: Promise<WebSocketCloseInfo>;
+  close(closeInfo?: WebSocketCloseInfo): void;
 }

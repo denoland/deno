@@ -1,20 +1,23 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertNotEquals,
+  assertRejects,
   assertStrictEquals,
   assertThrows,
-  assertThrowsAsync,
   Deferred,
   deferred,
-  unitTest,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
+import { readAll } from "../../../test_util/std/io/util.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const cert = await Deno.readTextFile("cli/tests/testdata/tls/localhost.crt");
+const key = await Deno.readTextFile("cli/tests/testdata/tls/localhost.key");
+const caCerts = [await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem")];
 
 async function sleep(msec: number) {
   await new Promise((res, _rej) => setTimeout(res, msec));
@@ -24,23 +27,23 @@ function unreachable(): never {
   throw new Error("Unreachable code reached");
 }
 
-unitTest(async function connectTLSNoPerm() {
-  await assertThrowsAsync(async () => {
-    await Deno.connectTls({ hostname: "github.com", port: 443 });
+Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
+  await assertRejects(async () => {
+    await Deno.connectTls({ hostname: "deno.land", port: 443 });
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function connectTLSInvalidHost() {
     const listener = await Deno.listenTls({
       hostname: "localhost",
       port: 3567,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.connectTls({ hostname: "127.0.0.1", port: 3567 });
     }, TypeError);
 
@@ -48,24 +51,27 @@ unitTest(
   },
 );
 
-unitTest(async function connectTLSCertFileNoReadPerm() {
-  await assertThrowsAsync(async () => {
-    await Deno.connectTls({
-      hostname: "github.com",
-      port: 443,
-      certFile: "cli/tests/tls/RootCA.crt",
-    });
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { net: true, read: false } },
+  async function connectTLSCertFileNoReadPerm() {
+    await assertRejects(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certFile: "cli/tests/testdata/tls/RootCA.crt",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   function listenTLSNonExistentCertKeyFiles() {
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     assertThrows(() => {
@@ -84,27 +90,30 @@ unitTest(
   },
 );
 
-unitTest({ perms: { net: true } }, function listenTLSNoReadPerm() {
-  assertThrows(() => {
-    Deno.listenTls({
-      hostname: "localhost",
-      port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
-    });
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { net: true, read: false } },
+  function listenTLSNoReadPerm() {
+    assertThrows(() => {
+      Deno.listenTls({
+        hostname: "localhost",
+        port: 3500,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-unitTest(
+Deno.test(
   {
-    perms: { read: true, write: true, net: true },
+    permissions: { read: true, write: true, net: true },
   },
   function listenTLSEmptyKeyFile() {
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
@@ -122,14 +131,14 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true, net: true } },
+Deno.test(
+  { permissions: { read: true, write: true, net: true } },
   function listenTLSEmptyCertFile() {
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
@@ -147,8 +156,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function dialAndListenTLS() {
     const resolvable = deferred();
     const hostname = "localhost";
@@ -157,8 +166,8 @@ unitTest(
     const listener = Deno.listenTls({
       hostname,
       port,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
     const response = encoder.encode(
@@ -178,11 +187,60 @@ unitTest(
       },
     );
 
-    const conn = await Deno.connectTls({
-      hostname,
-      port,
-      certFile: "cli/tests/tls/RootCA.pem",
-    });
+    const conn = await Deno.connectTls({ hostname, port, caCerts });
+    assert(conn.rid > 0);
+    const w = new BufWriter(conn);
+    const r = new BufReader(conn);
+    const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
+    const writeResult = await w.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await w.flush();
+    const tpr = new TextProtoReader(r);
+    const statusLine = await tpr.readLine();
+    assert(statusLine !== null, `line must be read: ${String(statusLine)}`);
+    const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+    assert(m !== null, "must be matched");
+    const [_, proto, status, ok] = m;
+    assertEquals(proto, "HTTP/1.1");
+    assertEquals(status, "200");
+    assertEquals(ok, "OK");
+    const headers = await tpr.readMIMEHeader();
+    assert(headers !== null);
+    const contentLength = parseInt(headers.get("content-length")!);
+    const bodyBuf = new Uint8Array(contentLength);
+    await r.readFull(bodyBuf);
+    assertEquals(decoder.decode(bodyBuf), "Hello World\n");
+    conn.close();
+    listener.close();
+    await resolvable;
+  },
+);
+Deno.test(
+  { permissions: { read: false, net: true } },
+  async function listenTlsWithCertAndKey() {
+    const resolvable = deferred();
+    const hostname = "localhost";
+    const port = 3500;
+
+    const listener = Deno.listenTls({ hostname, port, cert, key });
+
+    const response = encoder.encode(
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
+    );
+
+    listener.accept().then(
+      async (conn) => {
+        assert(conn.remoteAddr != null);
+        assert(conn.localAddr != null);
+        await conn.write(response);
+        setTimeout(() => {
+          conn.close();
+          resolvable.resolve();
+        }, 0);
+      },
+    );
+
+    const conn = await Deno.connectTls({ hostname, port, caCerts });
     assert(conn.rid > 0);
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
@@ -221,20 +279,63 @@ async function tlsPair(): Promise<[Deno.Conn, Deno.Conn]> {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/tls/localhost.crt",
-    keyFile: "cli/tests/tls/localhost.key",
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
   });
 
   const acceptPromise = listener.accept();
   const connectPromise = Deno.connectTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/tls/RootCA.pem",
+    caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
   });
   const endpoints = await Promise.all([acceptPromise, connectPromise]);
 
   listener.close();
 
+  return endpoints;
+}
+
+async function tlsAlpn(
+  useStartTls: boolean,
+): Promise<[Deno.TlsConn, Deno.TlsConn]> {
+  const port = getPort();
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    port,
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
+    alpnProtocols: ["deno", "rocks"],
+  });
+
+  const acceptPromise = listener.accept();
+
+  const caCerts = [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")];
+  const clientAlpnProtocols = ["rocks", "rises"];
+  let endpoints: [Deno.TlsConn, Deno.TlsConn];
+
+  if (!useStartTls) {
+    const connectPromise = Deno.connectTls({
+      hostname: "localhost",
+      port,
+      caCerts,
+      alpnProtocols: clientAlpnProtocols,
+    });
+    endpoints = await Promise.all([acceptPromise, connectPromise]);
+  } else {
+    const client = await Deno.connect({
+      hostname: "localhost",
+      port,
+    });
+    const connectPromise = Deno.startTls(client, {
+      hostname: "localhost",
+      caCerts,
+      alpnProtocols: clientAlpnProtocols,
+    });
+    endpoints = await Promise.all([acceptPromise, connectPromise]);
+  }
+
+  listener.close();
   return endpoints;
 }
 
@@ -299,8 +400,40 @@ async function receiveThenSend(
   conn.close();
 }
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsServerAlpnListenConnect() {
+    const [serverConn, clientConn] = await tlsAlpn(false);
+    const [serverHS, clientHS] = await Promise.all([
+      serverConn.handshake(),
+      clientConn.handshake(),
+    ]);
+    assertStrictEquals(serverHS.alpnProtocol, "rocks");
+    assertStrictEquals(clientHS.alpnProtocol, "rocks");
+
+    serverConn.close();
+    clientConn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsServerAlpnListenStartTls() {
+    const [serverConn, clientConn] = await tlsAlpn(true);
+    const [serverHS, clientHS] = await Promise.all([
+      serverConn.handshake(),
+      clientConn.handshake(),
+    ]);
+    assertStrictEquals(serverHS.alpnProtocol, "rocks");
+    assertStrictEquals(clientHS.alpnProtocol, "rocks");
+
+    serverConn.close();
+    clientConn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsServerStreamHalfCloseSendOneByte() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -310,8 +443,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientStreamHalfCloseSendOneByte() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -321,8 +454,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsServerStreamHalfCloseSendOneChunk() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -332,8 +465,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientStreamHalfCloseSendOneChunk() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -343,8 +476,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsServerStreamHalfCloseSendManyBytes() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -354,8 +487,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientStreamHalfCloseSendManyBytes() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -365,8 +498,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsServerStreamHalfCloseSendManyChunks() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -376,8 +509,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientStreamHalfCloseSendManyChunks() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -404,7 +537,7 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
   conn.close();
 
   // Read op should be canceled.
-  await assertThrowsAsync(
+  await assertRejects(
     async () => await readPromise,
     Deno.errors.Interrupted,
   );
@@ -426,8 +559,8 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
   conn.close();
 }
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsServerStreamCancelRead() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -437,8 +570,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientStreamCancelRead() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -470,7 +603,7 @@ async function sendReceiveEmptyBuf(conn: Deno.Conn) {
   n = await conn.write(emptyBuf);
   assertStrictEquals(n, 0);
 
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await conn.write(byteBuf);
   }, Deno.errors.BrokenPipe);
 
@@ -483,8 +616,8 @@ async function sendReceiveEmptyBuf(conn: Deno.Conn) {
   conn.close();
 }
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsStreamSendReceiveEmptyBuf() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -509,8 +642,8 @@ async function closeWriteAndClose(conn: Deno.Conn) {
   conn.close();
 }
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsServerStreamImmediateClose() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -520,8 +653,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientStreamImmediateClose() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -531,8 +664,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsClientAndServerStreamImmediateClose() {
     const [serverConn, clientConn] = await tlsPair();
     await Promise.all([
@@ -552,8 +685,8 @@ async function tlsWithTcpFailureTestImpl(
   const tlsListener = Deno.listenTls({
     hostname: "localhost",
     port: tlsPort,
-    certFile: "cli/tests/tls/localhost.crt",
-    keyFile: "cli/tests/tls/localhost.key",
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
   });
 
   const tcpPort = getPort();
@@ -569,7 +702,7 @@ async function tlsWithTcpFailureTestImpl(
     Deno.connectTls({
       hostname: "localhost",
       port: tcpPort,
-      certFile: "cli/tests/tls/RootCA.crt",
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
     }),
   ]);
 
@@ -626,22 +759,22 @@ async function tlsWithTcpFailureTestImpl(
       }
 
       const tlsTrafficPromise1 = Promise.all([
-        assertThrowsAsync(
+        assertRejects(
           () => sendBytes(tlsConn1, 0x01, 1),
           expectedError,
         ),
-        assertThrowsAsync(
+        assertRejects(
           () => receiveBytes(tlsConn1, 0x02, 1),
           expectedError,
         ),
       ]);
 
       const tlsTrafficPromise2 = Promise.all([
-        assertThrowsAsync(
+        assertRejects(
           () => sendBytes(tlsConn2, 0x02, 1),
           Deno.errors.UnexpectedEof,
         ),
-        assertThrowsAsync(
+        assertRejects(
           () => receiveBytes(tlsConn2, 0x01, 1),
           Deno.errors.UnexpectedEof,
         ),
@@ -683,7 +816,7 @@ async function tlsWithTcpFailureTestImpl(
       switch (failureMode) {
         case "corruption":
           await sendBytes(tcpConn1, 0xff, 1 << 14 /* 16 kB */);
-          await assertThrowsAsync(
+          await assertRejects(
             () => receiveEof(tlsConn1),
             Deno.errors.InvalidData,
           );
@@ -774,64 +907,64 @@ async function tlsWithTcpFailureTestImpl(
   }
 }
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeWithTcpCorruptionImmediately() {
     await tlsWithTcpFailureTestImpl("handshake", 0, "corruption", false);
     await tlsWithTcpFailureTestImpl("handshake", 0, "corruption", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeWithTcpShutdownImmediately() {
     await tlsWithTcpFailureTestImpl("handshake", 0, "shutdown", false);
     await tlsWithTcpFailureTestImpl("handshake", 0, "shutdown", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeWithTcpCorruptionAfter70Bytes() {
     await tlsWithTcpFailureTestImpl("handshake", 76, "corruption", false);
     await tlsWithTcpFailureTestImpl("handshake", 78, "corruption", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeWithTcpShutdownAfter70bytes() {
     await tlsWithTcpFailureTestImpl("handshake", 77, "shutdown", false);
     await tlsWithTcpFailureTestImpl("handshake", 79, "shutdown", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeWithTcpCorruptionAfter200Bytes() {
     await tlsWithTcpFailureTestImpl("handshake", 200, "corruption", false);
     await tlsWithTcpFailureTestImpl("handshake", 202, "corruption", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeWithTcpShutdownAfter200bytes() {
     await tlsWithTcpFailureTestImpl("handshake", 201, "shutdown", false);
     await tlsWithTcpFailureTestImpl("handshake", 203, "shutdown", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsTrafficWithTcpCorruption() {
     await tlsWithTcpFailureTestImpl("traffic", Infinity, "corruption", false);
     await tlsWithTcpFailureTestImpl("traffic", Infinity, "corruption", true);
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsTrafficWithTcpShutdown() {
     await tlsWithTcpFailureTestImpl("traffic", Infinity, "shutdown", false);
     await tlsWithTcpFailureTestImpl("traffic", Infinity, "shutdown", true);
@@ -844,8 +977,8 @@ function createHttpsListener(port: number): Deno.Listener {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "./cli/tests/tls/localhost.crt",
-    keyFile: "./cli/tests/tls/localhost.key",
+    certFile: "./cli/tests/testdata/tls/localhost.crt",
+    keyFile: "./cli/tests/testdata/tls/localhost.key",
   });
 
   serve(listener);
@@ -911,8 +1044,8 @@ async function curl(url: string): Promise<string> {
   }
 }
 
-unitTest(
-  { perms: { read: true, net: true, run: true } },
+Deno.test(
+  { permissions: { read: true, net: true, run: true } },
   async function curlFakeHttpsServer() {
     const port = getPort();
     const listener = createHttpsListener(port);
@@ -935,8 +1068,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, net: true } },
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function startTls() {
     const hostname = "smtp.gmail.com";
     const port = 587;
@@ -983,5 +1116,251 @@ unitTest(
     }
 
     conn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function connectTLSBadClientCertPrivateKey(): Promise<void> {
+    await assertRejects(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: "bad data",
+        privateKey: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.key",
+        ),
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function connectTLSBadPrivateKey(): Promise<void> {
+    await assertRejects(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
+        privateKey: "bad data",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function connectTLSNotPrivateKey(): Promise<void> {
+    await assertRejects(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
+        privateKey: "",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function connectWithClientCert() {
+    // The test_server running on port 4552 responds with 'PASS' if client
+    // authentication was successful. Try it by running test_server and
+    //   curl --key cli/tests/testdata/tls/localhost.key \
+    //        --cert cli/tests/testdata/tls/localhost.crt \
+    //        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4552,
+      certChain: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.crt",
+      ),
+      privateKey: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.key",
+      ),
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function connectTLSCaCerts() {
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4557,
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function connectTLSCertFile() {
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4557,
+      certFile: "cli/tests/testdata/tls/RootCA.pem",
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function startTLSCaCerts() {
+    const plainConn = await Deno.connect({
+      hostname: "localhost",
+      port: 4557,
+    });
+    const conn = await Deno.startTls(plainConn, {
+      hostname: "localhost",
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsHandshakeSuccess() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
+    });
+    const acceptPromise = listener.accept();
+    const connectPromise = Deno.connectTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
+    });
+    const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
+    listener.close();
+
+    await Promise.all([conn1.handshake(), conn2.handshake()]);
+
+    // Begin sending a 10mb blob over the TLS connection.
+    const whole = new Uint8Array(10 << 20); // 10mb.
+    whole.fill(42);
+    const sendPromise = conn1.write(whole);
+
+    // Set up the other end to receive half of the large blob.
+    const half = new Uint8Array(whole.byteLength / 2);
+    const receivePromise = readFull(conn2, half);
+
+    await conn1.handshake();
+    await conn2.handshake();
+
+    // Finish receiving the first 5mb.
+    assertEquals(await receivePromise, half.length);
+
+    // See that we can call `handshake()` in the middle of large reads and writes.
+    await conn1.handshake();
+    await conn2.handshake();
+
+    // Receive second half of large blob. Wait for the send promise and check it.
+    assertEquals(await readFull(conn2, half), half.length);
+    assertEquals(await sendPromise, whole.length);
+
+    await conn1.handshake();
+    await conn2.handshake();
+
+    await conn1.closeWrite();
+    await conn2.closeWrite();
+
+    await conn1.handshake();
+    await conn2.handshake();
+
+    conn1.close();
+    conn2.close();
+
+    async function readFull(conn: Deno.Conn, buf: Uint8Array) {
+      let offset, n;
+      for (offset = 0; offset < buf.length; offset += n) {
+        n = await conn.read(buf.subarray(offset, buf.length));
+        assert(n != null && n > 0);
+      }
+      return offset;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsHandshakeFailure() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    async function server() {
+      const listener = Deno.listenTls({
+        hostname,
+        port,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+      });
+      for await (const conn of listener) {
+        for (let i = 0; i < 10; i++) {
+          // Handshake fails because the client rejects the server certificate.
+          await assertRejects(
+            () => conn.handshake(),
+            Deno.errors.InvalidData,
+            "BadCertificate",
+          );
+        }
+        conn.close();
+        break;
+      }
+    }
+
+    async function connectTlsClient() {
+      const conn = await Deno.connectTls({ hostname, port });
+      // Handshake fails because the server presents a self-signed certificate.
+      await assertRejects(
+        () => conn.handshake(),
+        Deno.errors.InvalidData,
+        "UnknownIssuer",
+      );
+      conn.close();
+    }
+
+    await Promise.all([server(), connectTlsClient()]);
+
+    async function startTlsClient() {
+      const tcpConn = await Deno.connect({ hostname, port });
+      const tlsConn = await Deno.startTls(tcpConn, {
+        hostname: "foo.land",
+        caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+      });
+      // Handshake fails because hostname doesn't match the certificate.
+      await assertRejects(
+        () => tlsConn.handshake(),
+        Deno.errors.InvalidData,
+        "CertNotValidForName",
+      );
+      tlsConn.close();
+    }
+
+    await Promise.all([server(), startTlsClient()]);
   },
 );

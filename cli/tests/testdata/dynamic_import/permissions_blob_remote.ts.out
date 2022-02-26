@@ -1,0 +1,5 @@
+error: Uncaught (in promise) TypeError: Requires net access to "example.com", run again with the --allow-net flag
+    at blob:null/[WILDCARD]:1:8
+await import(URL.createObjectURL(blob));
+^
+    at async file:///[WILDCARD]/dynamic_import/permissions_blob_remote.ts:4:1

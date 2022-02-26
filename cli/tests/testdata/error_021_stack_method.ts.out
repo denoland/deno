@@ -1,0 +1,8 @@
+[WILDCARD]Error: method
+    at A.m ([WILDCARD]/error_021_stack_method.ts:[WILDCARD])
+    at [WILDCARD]/error_021_stack_method.ts:[WILDCARD]
+error: Uncaught Error: method
+    throw new Error("method");
+          ^
+    at A.m ([WILDCARD]/error_021_stack_method.ts:[WILDCARD])
+    at [WILDCARD]/error_021_stack_method.ts:[WILDCARD]

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
@@ -91,7 +91,7 @@ impl DiskCache {
               | Prefix::VerbatimUNC(server, share) => {
                 out.push("UNC");
                 let host = Host::parse(server.to_str().unwrap()).unwrap();
-                let host = host.to_string().replace(":", "_");
+                let host = host.to_string().replace(':', "_");
                 out.push(host);
                 out.push(share);
               }

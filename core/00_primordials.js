@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Based on https://github.com/nodejs/node/blob/889ad35d3d41e376870f785b0c1b669cb732013d/lib/internal/per_context/primordials.js
 // Copyright Joyent, Inc. and other Node contributors.
@@ -206,8 +206,7 @@
     "Date",
     "Error",
     "EvalError",
-    // TODO(lucacasonato): not present in snapshots. Why?
-    // "FinalizationRegistry",
+    "FinalizationRegistry",
     "Float32Array",
     "Float64Array",
     "Function",
@@ -231,8 +230,7 @@
     "Uint8Array",
     "Uint8ClampedArray",
     "WeakMap",
-    // TODO(lucacasonato): not present in snapshots. Why?
-    // "WeakRef",
+    "WeakRef",
     "WeakSet",
   ].forEach((name) => {
     const original = globalThis[name];
@@ -335,8 +333,8 @@
   };
 
   /**
- * @type {typeof primordials.makeSafe}
- */
+   * @type {typeof primordials.makeSafe}
+   */
   const makeSafe = (unsafe, safe) => {
     if (SymbolIterator in unsafe.prototype) {
       const dummy = new unsafe();
@@ -410,25 +408,23 @@
     },
   );
 
-  // TODO(lucacasonato): not present in snapshots. Why?
-  // primordials.SafeFinalizationRegistry = makeSafe(
-  //   FinalizationRegistry,
-  //   class SafeFinalizationRegistry extends FinalizationRegistry {
-  //     constructor(cleanupCallback) {
-  //       super(cleanupCallback);
-  //     }
-  //   },
-  // );
+  primordials.SafeFinalizationRegistry = makeSafe(
+    FinalizationRegistry,
+    class SafeFinalizationRegistry extends FinalizationRegistry {
+      constructor(cleanupCallback) {
+        super(cleanupCallback);
+      }
+    },
+  );
 
-  // TODO(lucacasonato): not present in snapshots. Why?
-  // primordials.SafeWeakRef = makeSafe(
-  //   WeakRef,
-  //   class SafeWeakRef extends WeakRef {
-  //     constructor(target) {
-  //       super(target);
-  //     }
-  //   },
-  // );
+  primordials.SafeWeakRef = makeSafe(
+    WeakRef,
+    class SafeWeakRef extends WeakRef {
+      constructor(target) {
+        super(target);
+      }
+    },
+  );
 
   const SafePromise = makeSafe(
     Promise,

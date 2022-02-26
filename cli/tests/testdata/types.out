@@ -1,0 +1,3 @@
+[WILDCARD]
+declare namespace Deno [WILDCARD]
+declare var window: Window [WILDCARD]

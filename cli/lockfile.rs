@@ -1,11 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::ModuleSpecifier;
 use log::debug;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Result;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
@@ -37,13 +44,15 @@ impl Lockfile {
     }
     let j = json!(&self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
+
+    let format_s = format_json(&s, &Default::default()).unwrap_or(s);
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
       .truncate(true)
       .open(&self.filename)?;
     use std::io::Write;
-    f.write_all(s.as_bytes())?;
+    f.write_all(format_s.as_bytes())?;
     debug!("lockfile write {}", self.filename.display());
     Ok(())
   }
@@ -79,6 +88,43 @@ impl Lockfile {
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.map.insert(specifier.to_string(), checksum);
   }
+}
+
+#[derive(Debug)]
+pub(crate) struct Locker(Option<Arc<Mutex<Lockfile>>>);
+
+impl deno_graph::source::Locker for Locker {
+  fn check_or_insert(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> bool {
+    if let Some(lock_file) = &self.0 {
+      let mut lock_file = lock_file.lock();
+      lock_file.check_or_insert(specifier.as_str(), source)
+    } else {
+      true
+    }
+  }
+
+  fn get_checksum(&self, content: &str) -> String {
+    crate::checksum::gen(&[content.as_bytes()])
+  }
+
+  fn get_filename(&self) -> Option<String> {
+    let lock_file = self.0.as_ref()?.lock();
+    lock_file.filename.to_str().map(|s| s.to_string())
+  }
+}
+
+pub(crate) fn as_maybe_locker(
+  lockfile: Option<Arc<Mutex<Lockfile>>>,
+) -> Option<Rc<RefCell<Box<dyn deno_graph::source::Locker>>>> {
+  lockfile.as_ref().map(|lf| {
+    Rc::new(RefCell::new(
+      Box::new(Locker(Some(lf.clone()))) as Box<dyn deno_graph::source::Locker>
+    ))
+  })
 }
 
 #[cfg(test)]

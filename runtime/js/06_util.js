@@ -1,17 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const {
-    ObjectDefineProperty,
-    StringPrototypeReplace,
-    TypeError,
-    Promise,
     decodeURIComponent,
     Error,
+    ObjectPrototypeIsPrototypeOf,
+    Promise,
+    SafeArrayIterator,
+    StringPrototypeReplace,
+    TypeError,
   } = window.__bootstrap.primordials;
   const { build } = window.__bootstrap.build;
-  const { URL } = window.__bootstrap.url;
+  const { URLPrototype } = window.__bootstrap.url;
   let logDebug = false;
   let logSource = "JS";
 
@@ -26,7 +27,10 @@
     if (logDebug) {
       // if we destructure `console` off `globalThis` too early, we don't bind to
       // the right console, therefore we don't log anything out.
-      globalThis.console.log(`DEBUG ${logSource} -`, ...args);
+      globalThis.console.log(
+        `DEBUG ${logSource} -`,
+        ...new SafeArrayIterator(args),
+      );
     }
   }
 
@@ -53,18 +57,6 @@
     promise.resolve = resolve;
     promise.reject = reject;
     return promise;
-  }
-
-  function immutableDefine(
-    o,
-    p,
-    value,
-  ) {
-    ObjectDefineProperty(o, p, {
-      value,
-      configurable: false,
-      writable: false,
-    });
   }
 
   // Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
@@ -106,7 +98,7 @@
   }
 
   function pathFromURL(pathOrUrl) {
-    if (pathOrUrl instanceof URL) {
+    if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
       if (pathOrUrl.protocol != "file:") {
         throw new TypeError("Must be a file URL.");
       }
@@ -164,7 +156,6 @@
     createResolvable,
     assert,
     AssertionError,
-    immutableDefine,
     pathFromURL,
     writable,
     nonEnumerable,

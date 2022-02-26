@@ -1,0 +1,2 @@
+TypeError: [ERR_MODULE_NOT_FOUND] Cannot find module "file://[WILDCARD]/testdata/compat/foobar.js" imported from "file://[WILDCARD]/testdata/compat/dyn_import_reject.js"
+ERR_MODULE_NOT_FOUND

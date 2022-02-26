@@ -1,25 +1,27 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const {
-    ArrayIsArray,
-    ArrayPrototypeMap,
     Error,
-    Uint8Array,
+    ObjectPrototypeIsPrototypeOf,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { URL } = window.__bootstrap.url;
-  const { Window } = window.__bootstrap.globalInterfaces;
   const { getLocationHref } = window.__bootstrap.location;
-  const { log, pathFromURL } = window.__bootstrap.util;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
-  const { deserializeJsMessageData, serializeJsMessageData } =
-    window.__bootstrap.messagePort;
+  const { serializePermissions } = window.__bootstrap.permissions;
+  const { log } = window.__bootstrap.util;
+  const { defineEventHandler } = window.__bootstrap.event;
+  const {
+    deserializeJsMessageData,
+    serializeJsMessageData,
+    MessagePortPrototype,
+  } = window.__bootstrap.messagePort;
 
   function createWorker(
     specifier,
@@ -28,14 +30,16 @@
     useDenoNamespace,
     permissions,
     name,
+    workerType,
   ) {
     return core.opSync("op_create_worker", {
       hasSourceCode,
       name,
-      permissions,
+      permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
       useDenoNamespace,
+      workerType,
     });
   }
 
@@ -55,138 +59,46 @@
     return core.opAsync("op_host_recv_message", id);
   }
 
-  /**
-   * @param {string} permission
-   * @return {boolean}
-   */
-  function parseUnitPermission(
-    value,
-    permission,
-  ) {
-    if (value !== "inherit" && typeof value !== "boolean") {
-      throw new Error(
-        `Expected 'boolean' for ${permission} permission, ${typeof value} received`,
-      );
-    }
-    return value === "inherit" ? undefined : value;
-  }
-
-  /**
-   * @param {string} permission
-   * @return {(boolean | string[])}
-   * */
-  function parseArrayPermission(
-    value,
-    permission,
-  ) {
-    if (typeof value === "string") {
-      if (value !== "inherit") {
-        throw new Error(
-          `Expected 'array' or 'boolean' for ${permission} permission, "${value}" received`,
-        );
-      }
-    } else if (!ArrayIsArray(value) && typeof value !== "boolean") {
-      throw new Error(
-        `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
-      );
-      //Casts URLs to absolute routes
-    } else if (ArrayIsArray(value)) {
-      value = ArrayPrototypeMap(value, (route) => {
-        if (route instanceof URL) {
-          route = pathFromURL(route);
-        }
-        return route;
-      });
-    }
-
-    return value === "inherit" ? undefined : value;
-  }
-
-  /**
-   * Normalizes data, runs checks on parameters and deletes inherited permissions
-   */
-  function parsePermissions({
-    env = "inherit",
-    hrtime = "inherit",
-    net = "inherit",
-    plugin = "inherit",
-    read = "inherit",
-    run = "inherit",
-    write = "inherit",
-  }) {
-    return {
-      env: parseUnitPermission(env, "env"),
-      hrtime: parseUnitPermission(hrtime, "hrtime"),
-      net: parseArrayPermission(net, "net"),
-      plugin: parseUnitPermission(plugin, "plugin"),
-      read: parseArrayPermission(read, "read"),
-      run: parseUnitPermission(run, "run"),
-      write: parseArrayPermission(write, "write"),
-    };
-  }
-
   class Worker extends EventTarget {
     #id = 0;
     #name = "";
-    #terminated = false;
+
+    // "RUNNING" | "CLOSED" | "TERMINATED"
+    // "TERMINATED" means that any controls or messages received will be
+    // discarded. "CLOSED" means that we have received a control
+    // indicating that the worker is no longer running, but there might
+    // still be messages left to receive.
+    #status = "RUNNING";
 
     constructor(specifier, options = {}) {
       super();
       specifier = String(specifier);
       const {
-        deno = {},
-        name = "unknown",
+        deno,
+        name,
         type = "classic",
       } = options;
 
-      // TODO(Soremwar)
-      // `deno: boolean` is kept for backwards compatibility with the previous
-      // worker options implementation. Remove for 2.0
-      let workerDenoAttributes;
-      if (typeof deno == "boolean") {
-        workerDenoAttributes = {
-          // Change this to enable the Deno namespace by default
-          namespace: deno,
-          permissions: null,
-        };
+      let namespace;
+      let permissions;
+      if (typeof deno == "object") {
+        namespace = deno.namespace ?? false;
+        permissions = deno.permissions ?? undefined;
       } else {
-        workerDenoAttributes = {
-          // Change this to enable the Deno namespace by default
-          namespace: !!(deno?.namespace ?? false),
-          permissions: (deno?.permissions ?? "inherit") === "inherit"
-            ? null
-            : deno?.permissions,
-        };
-
-        // If the permission option is set to "none", all permissions
-        // must be removed from the worker
-        if (workerDenoAttributes.permissions === "none") {
-          workerDenoAttributes.permissions = {
-            env: false,
-            hrtime: false,
-            net: false,
-            plugin: false,
-            read: false,
-            run: false,
-            write: false,
-          };
-        }
+        // Assume `deno: boolean | undefined`.
+        // TODO(Soremwar)
+        // `deno: boolean` is kept for backwards compatibility with the previous
+        // worker options implementation. Remove for 2.0
+        namespace = !!deno;
+        permissions = undefined;
       }
 
-      if (type !== "module") {
-        throw new Error(
-          'Not yet implemented: only "module" type workers are supported',
-        );
-      }
-
-      this.#name = name;
-      const hasSourceCode = false;
-      const sourceCode = core.decode(new Uint8Array());
+      const workerType = webidl.converters["WorkerType"](type);
 
       if (
         StringPrototypeStartsWith(specifier, "./") ||
         StringPrototypeStartsWith(specifier, "../") ||
-        StringPrototypeStartsWith(specifier, "/") || type == "classic"
+        StringPrototypeStartsWith(specifier, "/") || workerType === "classic"
       ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
@@ -194,20 +106,30 @@
         }
       }
 
+      this.#name = name;
+      let hasSourceCode, sourceCode;
+      if (workerType === "classic") {
+        hasSourceCode = true;
+        sourceCode = `importScripts("#");`;
+      } else {
+        hasSourceCode = false;
+        sourceCode = "";
+      }
+
       const id = createWorker(
         specifier,
         hasSourceCode,
         sourceCode,
-        workerDenoAttributes.namespace,
-        workerDenoAttributes.permissions === null
-          ? null
-          : parsePermissions(workerDenoAttributes.permissions),
-        options?.name,
+        namespace,
+        permissions,
+        name,
+        workerType,
       );
       this.#id = id;
       this.#pollControl();
       this.#pollMessages();
     }
+
     #handleError(e) {
       const event = new ErrorEvent("error", {
         cancelable: true,
@@ -229,34 +151,27 @@
     }
 
     #pollControl = async () => {
-      while (!this.#terminated) {
+      while (this.#status === "RUNNING") {
         const [type, data] = await hostRecvCtrl(this.#id);
 
         // If terminate was called then we ignore all messages
-        if (this.#terminated) {
+        if (this.#status === "TERMINATED") {
           return;
         }
 
         switch (type) {
           case 1: { // TerminalError
-            this.#terminated = true;
+            this.#status = "CLOSED";
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              if (globalThis instanceof Window) {
-                throw new Error("Unhandled error event reached main worker.");
-              } else {
-                core.opSync(
-                  "op_worker_unhandled_error",
-                  data.message,
-                );
-              }
+              throw new Error("Unhandled error event in child worker.");
             }
             break;
           }
           case 3: { // Close
             log(`Host got "close" message from worker: ${this.#name}`);
-            this.#terminated = true;
+            this.#status = "CLOSED";
             return;
           }
           default: {
@@ -267,14 +182,16 @@
     };
 
     #pollMessages = async () => {
-      while (!this.terminated) {
+      while (this.#status !== "TERMINATED") {
         const data = await hostRecvMessage(this.#id);
-        if (data === null) break;
-        let message, transfer;
+        if (this.#status === "TERMINATED" || data === null) {
+          return;
+        }
+        let message, transferables;
         try {
           const v = deserializeJsMessageData(data);
           message = v[0];
-          transfer = v[1];
+          transferables = v[1];
         } catch (err) {
           const event = new MessageEvent("messageerror", {
             cancelable: false,
@@ -286,7 +203,9 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transfer,
+          ports: transferables.filter((t) =>
+            ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+          ),
         });
         this.dispatchEvent(event);
       }
@@ -308,31 +227,41 @@
         );
         options = { transfer };
       } else {
-        options = webidl.converters.PostMessageOptions(transferOrOptions, {
-          prefix,
-          context: "Argument 2",
-        });
+        options = webidl.converters.StructuredSerializeOptions(
+          transferOrOptions,
+          {
+            prefix,
+            context: "Argument 2",
+          },
+        );
       }
       const { transfer } = options;
       const data = serializeJsMessageData(message, transfer);
-      if (this.#terminated) return;
-      hostPostMessage(this.#id, data);
+      if (this.#status === "RUNNING") {
+        hostPostMessage(this.#id, data);
+      }
     }
 
     terminate() {
-      if (!this.#terminated) {
-        this.#terminated = true;
+      if (this.#status !== "TERMINATED") {
+        this.#status = "TERMINATED";
         hostTerminateWorker(this.#id);
       }
     }
+
+    [SymbolToStringTag] = "Worker";
   }
 
   defineEventHandler(Worker.prototype, "error");
   defineEventHandler(Worker.prototype, "message");
   defineEventHandler(Worker.prototype, "messageerror");
 
+  webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
+    "classic",
+    "module",
+  ]);
+
   window.__bootstrap.worker = {
-    parsePermissions,
     Worker,
   };
 })(this);

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 
@@ -54,7 +54,7 @@
   function checkRelative(specifier) {
     return StringPrototypeMatch(
         specifier,
-        /^([\.\/\\]|https?:\/{2}|file:\/{2})/,
+        /^([\.\/\\]|https?:\/{2}|file:\/{2}|data:)/,
       )
       ? specifier
       : `./${specifier}`;

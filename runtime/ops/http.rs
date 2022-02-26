@@ -6,8 +6,9 @@ use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
-use deno_net::io::TlsStreamResource;
+use deno_net::ops_tls::TlsStreamResource;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -20,7 +21,7 @@ fn op_http_start(
   tcp_stream_rid: ResourceId,
   _: (),
 ) -> Result<ResourceId, AnyError> {
-  if let Some(resource_rc) = state
+  if let Ok(resource_rc) = state
     .resource_table
     .take::<TcpStreamResource>(tcp_stream_rid)
   {
@@ -29,10 +30,10 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     let addr = tcp_stream.local_addr()?;
-    return deno_http::start_http(state, tcp_stream, addr, "http");
+    return http_create_conn_resource(state, tcp_stream, addr, "http");
   }
 
-  if let Some(resource_rc) = state
+  if let Ok(resource_rc) = state
     .resource_table
     .take::<TlsStreamResource>(tcp_stream_rid)
   {
@@ -41,7 +42,22 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.reunite(write_half);
     let addr = tls_stream.get_ref().0.local_addr()?;
-    return deno_http::start_http(state, tls_stream, addr, "https");
+    return http_create_conn_resource(state, tls_stream, addr, "https");
+  }
+
+  #[cfg(unix)]
+  if let Ok(resource_rc) = state
+    .resource_table
+    .take::<deno_net::io::UnixStreamResource>(tcp_stream_rid)
+  {
+    super::check_unstable(state, "Deno.serveHttp");
+
+    let resource = Rc::try_unwrap(resource_rc)
+      .expect("Only a single use of this resource should happen");
+    let (read_half, write_half) = resource.into_inner();
+    let unix_stream = read_half.reunite(write_half)?;
+    let addr = unix_stream.local_addr()?;
+    return http_create_conn_resource(state, unix_stream, addr, "http+unix");
   }
 
   Err(bad_resource_id())

@@ -1,4 +1,0 @@
-[WILDCARD]
-error: Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.
-  Importing: file:///some/dir/file.js
-    at http://localhost:4545/cli/tests/error_local_static_import_from_remote.js:1:0

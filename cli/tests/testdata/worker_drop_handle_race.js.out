@@ -1,0 +1,8 @@
+error: Uncaught (in worker "") Error
+  throw new Error();
+        ^
+    at [WILDCARD]/workers/drop_handle_race.js:2:9
+    at Object.action (deno:ext/web/02_timers.js:[WILDCARD])
+    at handleTimerMacrotask (deno:ext/web/02_timers.js:[WILDCARD])
+error: Uncaught (in promise) Error: Unhandled error event in child worker.
+    at Worker.#pollControl (deno:runtime/js/11_workers.js:[WILDCARD])

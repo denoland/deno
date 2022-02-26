@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -24,6 +24,14 @@
     return core.opSync("op_system_memory_info");
   }
 
+  function networkInterfaces() {
+    return core.opSync("op_network_interfaces");
+  }
+
+  function getUid() {
+    return core.opSync("op_getuid");
+  }
+
   // This is an internal only method used by the test harness to override the
   // behavior of exit when the exit sanitizer is enabled.
   let exitHandler = null;
@@ -31,7 +39,14 @@
     exitHandler = fn;
   }
 
-  function exit(code = 0) {
+  function exit(code) {
+    // Set exit code first so unload event listeners can override it.
+    if (typeof code === "number") {
+      core.opSync("op_set_exit_code", code);
+    } else {
+      code = 0;
+    }
+
     // Dispatches `unload` only when it's not dispatched yet.
     if (!window[SymbolFor("isUnloadDispatched")]) {
       // Invokes the `unload` hooks before exiting
@@ -44,12 +59,12 @@
       return;
     }
 
-    core.opSync("op_exit", code);
+    core.opSync("op_exit");
     throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
-    core.opSync("op_set_env", { key, value });
+    core.opSync("op_set_env", key, value);
   }
 
   function getEnv(key) {
@@ -76,11 +91,13 @@
   window.__bootstrap.os = {
     env,
     execPath,
-    setExitHandler,
     exit,
-    osRelease,
-    systemMemoryInfo,
+    getUid,
     hostname,
     loadavg,
+    networkInterfaces,
+    osRelease,
+    setExitHandler,
+    systemMemoryInfo,
   };
 })(this);

@@ -1,0 +1,6 @@
+[WILDCARD]error: Uncaught Error: Hello 2
+   throw new Error(`Hello ${A.C}`);
+         ^
+    at a (data:application/typescript;base64,ZW51bSBBIHsKICBBLAog......JHtBLkN9YCk7CiB9CiA=:8:10)
+    at file:///[WILDCARD]/import_data_url_error_stack.ts:3:1
+[WILDCARD]

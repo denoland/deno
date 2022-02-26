@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
@@ -16,8 +16,11 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
+use deno_core::JsRuntime;
 use deno_websocket::tokio_tungstenite::tungstenite;
+use deno_websocket::tokio_tungstenite::WebSocketStream;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -62,12 +65,20 @@ impl InspectorServer {
 
   pub fn register_inspector(
     &self,
-    session_sender: UnboundedSender<InspectorSessionProxy>,
-    deregister_rx: oneshot::Receiver<()>,
     module_url: String,
+    js_runtime: &mut JsRuntime,
+    should_break_on_first_statement: bool,
   ) {
-    let info =
-      InspectorInfo::new(self.host, session_sender, deregister_rx, module_url);
+    let inspector = js_runtime.inspector();
+    let session_sender = inspector.get_session_sender();
+    let deregister_rx = inspector.add_deregister_handler();
+    let info = InspectorInfo::new(
+      self.host,
+      session_sender,
+      deregister_rx,
+      module_url,
+      should_break_on_first_statement,
+    );
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
@@ -102,63 +113,83 @@ where
 
 fn handle_ws_request(
   req: http::Request<hyper::Body>,
-  inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  inspector_map_rc: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
 ) -> http::Result<http::Response<hyper::Body>> {
   let (parts, body) = req.into_parts();
   let req = http::Request::from_parts(parts, ());
 
-  if let Some(new_session_tx) = req
+  let maybe_uuid = req
     .uri()
     .path()
     .strip_prefix("/ws/")
-    .and_then(|s| Uuid::parse_str(s).ok())
-    .and_then(|uuid| {
-      inspector_map
-        .borrow()
-        .get(&uuid)
-        .map(|info| info.new_session_tx.clone())
-    })
-  {
-    let resp = tungstenite::handshake::server::create_response(&req)
-      .map(|resp| resp.map(|_| hyper::Body::empty()))
-      .or_else(|e| match e {
-        tungstenite::error::Error::HttpFormat(http_error) => Err(http_error),
-        _ => http::Response::builder()
-          .status(http::StatusCode::BAD_REQUEST)
-          .body("Not a valid Websocket Request".into()),
-      });
+    .and_then(|s| Uuid::parse_str(s).ok());
 
-    let (parts, _) = req.into_parts();
-    let req = http::Request::from_parts(parts, body);
-
-    if resp.is_ok() {
-      tokio::task::spawn_local(async move {
-        let upgrade_result = hyper::upgrade::on(req).await;
-        let upgraded = if let Ok(u) = upgrade_result {
-          u
-        } else {
-          eprintln!("Inspector server failed to upgrade to WS connection");
-          return;
-        };
-        let websocket =
-          deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
-            upgraded,
-            tungstenite::protocol::Role::Server,
-            None,
-          )
-          .await;
-        let (proxy, pump) = create_websocket_proxy(websocket);
-        eprintln!("Debugger session started.");
-        let _ = new_session_tx.unbounded_send(proxy);
-        pump.await;
-      });
-    }
-    resp
-  } else {
-    http::Response::builder()
-      .status(http::StatusCode::NOT_FOUND)
-      .body("No Valid inspector".into())
+  if maybe_uuid.is_none() {
+    return http::Response::builder()
+      .status(http::StatusCode::BAD_REQUEST)
+      .body("Malformed inspector UUID".into());
   }
+
+  // run in a block to not hold borrow to `inspector_map` for too long
+  let new_session_tx = {
+    let inspector_map = inspector_map_rc.borrow();
+    let maybe_inspector_info = inspector_map.get(&maybe_uuid.unwrap());
+
+    if maybe_inspector_info.is_none() {
+      return http::Response::builder()
+        .status(http::StatusCode::NOT_FOUND)
+        .body("Invalid inspector UUID".into());
+    }
+
+    let info = maybe_inspector_info.unwrap();
+    info.new_session_tx.clone()
+  };
+
+  let resp = tungstenite::handshake::server::create_response(&req)
+    .map(|resp| resp.map(|_| hyper::Body::empty()))
+    .or_else(|e| match e {
+      tungstenite::error::Error::HttpFormat(http_error) => Err(http_error),
+      _ => http::Response::builder()
+        .status(http::StatusCode::BAD_REQUEST)
+        .body("Not a valid Websocket Request".into()),
+    })?;
+
+  let (parts, _) = req.into_parts();
+  let req = http::Request::from_parts(parts, body);
+
+  // spawn a task that will wait for websocket connection and then pump messages between
+  // the socket and inspector proxy
+  tokio::task::spawn_local(async move {
+    let upgrade_result = hyper::upgrade::on(req).await;
+    let upgraded = if let Ok(u) = upgrade_result {
+      u
+    } else {
+      eprintln!("Inspector server failed to upgrade to WS connection");
+      return;
+    };
+    let websocket = WebSocketStream::from_raw_socket(
+      upgraded,
+      tungstenite::protocol::Role::Server,
+      None,
+    )
+    .await;
+
+    // The 'outbound' channel carries messages sent to the websocket.
+    let (outbound_tx, outbound_rx) = mpsc::unbounded();
+    // The 'inbound' channel carries messages received from the websocket.
+    let (inbound_tx, inbound_rx) = mpsc::unbounded();
+
+    let inspector_session_proxy = InspectorSessionProxy {
+      tx: outbound_tx,
+      rx: inbound_rx,
+    };
+
+    eprintln!("Debugger session started.");
+    let _ = new_session_tx.unbounded_send(inspector_session_proxy);
+    pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
+  });
+
+  Ok(resp)
 }
 
 fn handle_json_request(
@@ -200,6 +231,10 @@ async fn server(
         "Debugger listening on {}",
         info.get_websocket_debugger_url()
       );
+      eprintln!("Visit chrome://inspect to connect to the debugger.");
+      if info.should_break_on_first_statement {
+        eprintln!("Deno is waiting for debugger to connect.");
+      }
       if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
         panic!("Inspector UUID already in map");
       }
@@ -279,58 +314,50 @@ async fn server(
   }
 }
 
-/// Creates a future that proxies messages sent and received on a warp WebSocket
-/// to a UnboundedSender/UnboundedReceiver pair. We need this to sidestep
+/// The pump future takes care of forwarding messages between the websocket
+/// and channels. It resolves when either side disconnects, ignoring any
+/// errors.
+///
+/// The future proxies messages sent and received on a warp WebSocket
+/// to a UnboundedSender/UnboundedReceiver pair. We need these "unbounded" channel ends to sidestep
 /// Tokio's task budget, which causes issues when JsRuntimeInspector::poll_sessions()
 /// needs to block the thread because JavaScript execution is paused.
 ///
 /// This works because UnboundedSender/UnboundedReceiver are implemented in the
 /// 'futures' crate, therefore they can't participate in Tokio's cooperative
 /// task yielding.
-///
-/// A tuple is returned, where the first element is a duplex channel that can
-/// be used to send/receive messages on the websocket, and the second element
-/// is a future that does the forwarding.
-fn create_websocket_proxy(
-  websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
-    hyper::upgrade::Upgraded,
-  >,
-) -> (InspectorSessionProxy, impl Future<Output = ()> + Send) {
-  // The 'outbound' channel carries messages sent to the websocket.
-  let (outbound_tx, outbound_rx) = mpsc::unbounded();
+async fn pump_websocket_messages(
+  websocket: WebSocketStream<hyper::upgrade::Upgraded>,
+  inbound_tx: UnboundedSender<String>,
+  outbound_rx: UnboundedReceiver<InspectorMsg>,
+) {
+  let (websocket_tx, websocket_rx) = websocket.split();
 
-  // The 'inbound' channel carries messages received from the websocket.
-  let (inbound_tx, inbound_rx) = mpsc::unbounded();
+  let outbound_pump = outbound_rx
+    .map(|msg| tungstenite::Message::text(msg.content))
+    .map(Ok)
+    .forward(websocket_tx)
+    .map_err(|_| ());
 
-  let proxy = InspectorSessionProxy {
-    tx: outbound_tx,
-    rx: inbound_rx,
-  };
-
-  // The pump future takes care of forwarding messages between the websocket
-  // and channels. It resolves to () when either side disconnects, ignoring any
-  // errors.
-  let pump = async move {
-    let (websocket_tx, websocket_rx) = websocket.split();
-
-    let outbound_pump = outbound_rx
-      .map(|(_maybe_call_id, msg)| tungstenite::Message::text(msg))
-      .map(Ok)
-      .forward(websocket_tx)
-      .map_err(|_| ());
-
-    let inbound_pump = websocket_rx
-      .map(|result| {
-        let result = result.map(|msg| msg.into_data()).map_err(AnyError::from);
-        inbound_tx.unbounded_send(result)
+  let inbound_pump = async move {
+    let _result = websocket_rx
+      .map_err(AnyError::from)
+      .map_ok(|msg| {
+        // Messages that cannot be converted to strings are ignored.
+        if let Ok(msg_text) = msg.into_text() {
+          let _ = inbound_tx.unbounded_send(msg_text);
+        }
       })
-      .map_err(|_| ())
-      .try_collect::<()>();
+      .try_collect::<()>()
+      .await;
 
-    let _ = future::try_join(outbound_pump, inbound_pump).await;
+    // Users don't care if there was an error coming from debugger,
+    // just about the fact that debugger did disconnect.
+    eprintln!("Debugger session ended");
+
+    Ok(())
   };
-
-  (proxy, pump)
+  let _ = future::try_join(outbound_pump, inbound_pump).await;
 }
 
 /// Inspector information that is sent from the isolate thread to the server
@@ -342,6 +369,7 @@ pub struct InspectorInfo {
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
+  pub should_break_on_first_statement: bool,
 }
 
 impl InspectorInfo {
@@ -350,6 +378,7 @@ impl InspectorInfo {
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
+    should_break_on_first_statement: bool,
   ) -> Self {
     Self {
       host,
@@ -358,6 +387,7 @@ impl InspectorInfo {
       new_session_tx,
       deregister_rx,
       url,
+      should_break_on_first_statement,
     }
   }
 
