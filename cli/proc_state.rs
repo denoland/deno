@@ -670,7 +670,14 @@ impl ProcState {
 
     source.push(format!(
       "const mod = require(\"{}\");",
-      specifier.to_file_path().unwrap().to_str().unwrap()
+      specifier
+        .to_file_path()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace('\\', "\\\\")
+        .replace('\'', "\\\'")
+        .replace('\"', "\\\"")
     ));
     source.push("export default mod".to_string());
 
