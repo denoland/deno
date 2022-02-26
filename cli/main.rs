@@ -58,6 +58,7 @@ use crate::flags::RunFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
+use crate::flags::VendorFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
@@ -145,7 +146,9 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
         apply_source_maps: true,
-        cpu_count: num_cpus::get(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
         debug_flag: ps
           .flags
           .log_level
@@ -246,7 +249,9 @@ pub fn create_main_worker(
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
       args: ps.flags.argv.clone(),
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.flags.enable_testing_features,
       location: ps.flags.location.clone(),
@@ -395,19 +400,21 @@ async fn compile_command(
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags =
-    tools::standalone::compile_to_runtime_flags(&flags, compile_flags.args)?;
+  let run_flags = tools::standalone::compile_to_runtime_flags(
+    &flags,
+    compile_flags.args.clone(),
+  )?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.and_then(|output| {
-    if fs_util::path_has_trailing_slash(&output) {
+  let output = compile_flags.output.as_ref().and_then(|output| {
+    if fs_util::path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {
-      Some(output)
+      Some(output.to_path_buf())
     }
   }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
@@ -421,6 +428,8 @@ async fn compile_command(
   .map_err(|_| {
     generic_error("There should only be one reference to ModuleGraph")
   })?;
+
+  graph.valid().unwrap();
 
   let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
@@ -440,7 +449,9 @@ async fn compile_command(
     eszip,
     module_specifier.clone(),
     run_flags,
-  )?;
+    ps,
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -470,14 +481,10 @@ async fn info_command(
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
@@ -642,14 +649,10 @@ async fn create_graph_and_maybe_check(
   };
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .maybe_config_file
-    .as_ref()
-    .map(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    })
-    .flatten();
+  let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+    cf.to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+  });
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
@@ -795,16 +798,18 @@ async fn bundle_command(
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
-      if let Some(import_map) = ps.flags.import_map_path.as_ref() {
-        paths_to_watch
-          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      if let Ok(Some(import_map_path)) =
+        config_file::resolve_import_map_specifier(
+          ps.flags.import_map_path.as_deref(),
+          ps.maybe_config_file.as_ref(),
+        )
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths_to_watch.push(import_map_path);
       }
 
       Ok((paths_to_watch, graph, ps))
@@ -996,14 +1001,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       };
       let maybe_import_map_resolver =
         ps.maybe_import_map.clone().map(ImportMapResolver::new);
-      let maybe_jsx_resolver = ps
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| {
-          cf.to_maybe_jsx_import_source_module()
-            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-        })
-        .flatten();
+      let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      });
       let maybe_resolver = if maybe_jsx_resolver.is_some() {
         maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
       } else {
@@ -1034,10 +1035,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
@@ -1046,9 +1044,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         paths_to_watch.extend(watch_paths);
       }
 
-      if let Some(import_map) = ps.flags.import_map_path.as_ref() {
-        paths_to_watch
-          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      if let Ok(Some(import_map_path)) =
+        config_file::resolve_import_map_specifier(
+          ps.flags.import_map_path.as_deref(),
+          ps.maybe_config_file.as_ref(),
+        )
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths_to_watch.push(import_map_path);
       }
 
       Ok((paths_to_watch, main_module, ps))
@@ -1290,6 +1293,15 @@ async fn upgrade_command(
   Ok(0)
 }
 
+async fn vendor_command(
+  flags: Flags,
+  vendor_flags: VendorFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  tools::vendor::vendor(ps, vendor_flags).await?;
+  Ok(0)
+}
+
 fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
@@ -1367,6 +1379,9 @@ fn get_subcommand(
     DenoSubcommand::Types => types_command(flags).boxed_local(),
     DenoSubcommand::Upgrade(upgrade_flags) => {
       upgrade_command(flags, upgrade_flags).boxed_local()
+    }
+    DenoSubcommand::Vendor(vendor_flags) => {
+      vendor_command(flags, vendor_flags).boxed_local()
     }
   }
 }

@@ -50,10 +50,6 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
-    /** Enable/disable the use of Nagle's algorithm. Defaults to true */
-    setNoDelay(nodelay?: boolean): void;
-    /** Enable/disable keep-alive functionality */
-    setKeepAlive(keepalive?: boolean): void;
 
     readonly readable: ReadableStream<Uint8Array>;
     readonly writable: WritableStream<Uint8Array>;
@@ -97,11 +93,21 @@ declare namespace Deno {
   ): Listener;
 
   export interface ListenTlsOptions extends ListenOptions {
+    /** Server private key in PEM format */
+    key?: string;
+    /** Cert chain in PEM format */
+    cert?: string;
     /** Path to a file containing a PEM formatted CA certificate. Requires
-     * `--allow-read`. */
-    certFile: string;
-    /** Server public key file. Requires `--allow-read`.*/
-    keyFile: string;
+     * `--allow-read`.
+     *
+     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     */
+    certFile?: string;
+    /** Server private key file. Requires `--allow-read`.
+     *
+     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     */
+    keyFile?: string;
 
     transport?: "tcp";
   }

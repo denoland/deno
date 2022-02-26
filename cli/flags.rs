@@ -150,6 +150,7 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
+  pub trace_ops: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -160,6 +161,13 @@ pub struct UpgradeFlags {
   pub version: Option<String>,
   pub output: Option<PathBuf>,
   pub ca_file: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct VendorFlags {
+  pub specifiers: Vec<String>,
+  pub output_path: Option<PathBuf>,
+  pub force: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -182,6 +190,7 @@ pub enum DenoSubcommand {
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
+  Vendor(VendorFlags),
 }
 
 impl Default for DenoSubcommand {
@@ -365,24 +374,33 @@ impl Flags {
   }
 
   /// Extract path arguments for config search paths.
-  pub fn config_path_args(&self) -> Vec<PathBuf> {
+  /// If it returns Some(vec), the config should be discovered
+  /// from the current dir after trying to discover from each entry in vec.
+  /// If it returns None, the config file shouldn't be discovered at all.
+  pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
     if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
-      files.clone()
+      Some(files.clone())
     } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
-      files.clone()
+      Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if let Ok(p) = module_specifier.to_file_path() {
-          vec![p]
+        if module_specifier.scheme() == "file" {
+          if let Ok(p) = module_specifier.to_file_path() {
+            Some(vec![p])
+          } else {
+            Some(vec![])
+          }
         } else {
-          vec![]
+          // When the entrypoint doesn't have file: scheme (it's the remote
+          // script), then we don't auto discover config file.
+          None
         }
       } else {
-        vec![]
+        Some(vec![])
       }
     } else {
-      vec![]
+      Some(vec![])
     }
   }
 
@@ -481,6 +499,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
+    Some(("vendor", m)) => vendor_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
@@ -552,6 +571,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
+    .subcommand(vendor_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -1254,6 +1274,12 @@ fn test_subcommand<'a>() -> App<'a> {
         .takes_value(false),
     )
     .arg(
+      Arg::new("trace-ops")
+        .long("trace-ops")
+        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
+        .takes_value(false),
+    )
+    .arg(
       Arg::new("doc")
         .long("doc")
         .help("UNSTABLE: type check code blocks")
@@ -1410,6 +1436,52 @@ update to a different location, use the --output flag
         .long("canary")
         .help("Upgrade to canary builds"),
     )
+    .arg(ca_file_arg())
+}
+
+fn vendor_subcommand<'a>() -> App<'a> {
+  App::new("vendor")
+    .about("Vendor remote modules into a local directory")
+    .long_about(
+      "Vendor remote modules into a local directory.
+
+Analyzes the provided modules along with their dependencies, downloads
+remote modules to the output directory, and produces an import map that
+maps remote specifiers to the downloaded files.
+
+  deno vendor main.ts
+  deno run --import-map vendor/import_map.json main.ts
+
+Remote modules and multiple modules may also be specified:
+
+  deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
+    )
+    .arg(
+      Arg::new("specifiers")
+        .takes_value(true)
+        .multiple_values(true)
+        .multiple_occurrences(true)
+        .required(true),
+    )
+    .arg(
+      Arg::new("output")
+        .long("output")
+        .help("The directory to output the vendored modules to")
+        .takes_value(true),
+    )
+    .arg(
+      Arg::new("force")
+        .long("force")
+        .short('f')
+        .help(
+          "Forcefully overwrite conflicting files in existing output directory",
+        )
+        .takes_value(false),
+    )
+    .arg(config_arg())
+    .arg(import_map_arg())
+    .arg(lock_arg())
+    .arg(reload_arg())
     .arg(ca_file_arg())
 }
 
@@ -2127,6 +2199,9 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
+  // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
+  // interactive prompts, unless done by user code
+  flags.no_prompt = true;
 
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -2134,6 +2209,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   let no_run = matches.is_present("no-run");
+  let trace_ops = matches.is_present("trace-ops");
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
   let filter = matches.value_of("filter").map(String::from);
@@ -2176,8 +2252,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
     } else {
-      // TODO(caspervonb) drop the dependency on num_cpus when https://doc.rust-lang.org/std/thread/fn.available_concurrency.html becomes stable.
-      NonZeroUsize::new(num_cpus::get()).unwrap()
+      std::thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else {
     NonZeroUsize::new(1).unwrap()
@@ -2206,6 +2282,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     shuffle,
     allow_none,
     concurrent_jobs,
+    trace_ops,
   });
 }
 
@@ -2234,6 +2311,23 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     version,
     output,
     ca_file,
+  });
+}
+
+fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
+  import_map_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches);
+
+  flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
+    specifiers: matches
+      .values_of("specifiers")
+      .map(|p| p.map(ToString::to_string).collect())
+      .unwrap_or_default(),
+    output_path: matches.value_of("output").map(PathBuf::from),
+    force: matches.is_present("force"),
   });
 }
 
@@ -2443,12 +2537,16 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  lock_arg_parse(flags, matches);
+  if matches.is_present("lock-write") {
+    flags.lock_write = true;
+  }
+}
+
+fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
     let lockfile = matches.value_of("lock").unwrap();
     flags.lock = Some(PathBuf::from(lockfile));
-  }
-  if matches.is_present("lock-write") {
-    flags.lock_write = true;
   }
 }
 
@@ -2512,8 +2610,8 @@ mod tests {
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
-    ($($x:expr),*) => (vec![$($x.to_string()),*]);
-}
+    ($($x:expr),* $(,)?) => (vec![$($x.to_string()),*]);
+  }
 
   #[test]
   fn global_flags() {
@@ -4341,7 +4439,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4355,8 +4453,10 @@ mod tests {
           ignore: vec![],
           shuffle: None,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: true,
         }),
         unstable: true,
+        no_prompt: true,
         coverage_dir: Some("cov".to_string()),
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
@@ -4423,7 +4523,9 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+          trace_ops: false,
         }),
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4448,7 +4550,9 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4477,7 +4581,9 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
+        no_prompt: true,
         enable_testing_features: true,
         ..Flags::default()
       }
@@ -4500,7 +4606,9 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
+        no_prompt: true,
         watch: None,
         ..Flags::default()
       }
@@ -4523,7 +4631,9 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
+        no_prompt: true,
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -4547,9 +4657,11 @@ mod tests {
           include: None,
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4865,24 +4977,29 @@ mod tests {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![std::env::current_dir().unwrap().join("foo.js")]
+      Some(vec![std::env::current_dir().unwrap().join("foo.js")])
     );
+
+    let flags =
+      flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
+        .unwrap();
+    assert_eq!(flags.config_path_args(), None);
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args().is_empty());
+    assert!(flags.config_path_args().unwrap().is_empty());
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
       flags.config_path_args(),
-      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+      Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
   }
 
@@ -4894,5 +5011,56 @@ mod tests {
     assert!(&error_message
       .contains("error: The following required arguments were not provided:"));
     assert!(&error_message.contains("--watch=<FILES>..."));
+  }
+
+  #[test]
+  fn vendor_minimal() {
+    let r = flags_from_vec(svec!["deno", "vendor", "mod.ts",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Vendor(VendorFlags {
+          specifiers: svec!["mod.ts"],
+          force: false,
+          output_path: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn vendor_all() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "vendor",
+      "--config",
+      "deno.json",
+      "--import-map",
+      "import_map.json",
+      "--lock",
+      "lock.json",
+      "--force",
+      "--output",
+      "out_dir",
+      "--reload",
+      "mod.ts",
+      "deps.test.ts",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Vendor(VendorFlags {
+          specifiers: svec!["mod.ts", "deps.test.ts"],
+          force: true,
+          output_path: Some(PathBuf::from("out_dir")),
+        }),
+        config_path: Some("deno.json".to_string()),
+        import_map_path: Some("import_map.json".to_string()),
+        lock: Some(PathBuf::from("lock.json")),
+        reload: true,
+        ..Flags::default()
+      }
+    );
   }
 }

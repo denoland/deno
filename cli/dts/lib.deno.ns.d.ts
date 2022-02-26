@@ -2910,11 +2910,13 @@ declare namespace Deno {
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
    *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
+   * ```ts
+   * const p = Deno.run({
+   *   cmd: ["sleep", "10000"]
+   * });
    *
-   *      Deno.kill(p.pid, "SIGINT");
+   * Deno.kill(p.pid, "SIGINT");
+   * ```
    *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: Signal): void;

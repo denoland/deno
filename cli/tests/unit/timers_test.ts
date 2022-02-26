@@ -397,10 +397,12 @@ Deno.test(async function timerMaxCpuBug() {
   clearTimeout(setTimeout(() => {}, 1000));
   // We can check this by counting how many ops have triggered in the interim.
   // Certainly less than 10 ops should have been dispatched in next 100 ms.
-  const { opsDispatched } = Deno.metrics();
+  const { ops: pre } = Deno.metrics();
   await delay(100);
-  const opsDispatched_ = Deno.metrics().opsDispatched;
-  assert(opsDispatched_ - opsDispatched < 10);
+  const { ops: post } = Deno.metrics();
+  const before = pre.op_sleep.opsDispatched;
+  const after = post.op_sleep.opsDispatched;
+  assert(after - before < 10);
 });
 
 Deno.test(async function timerOrdering() {
