@@ -85,7 +85,6 @@ fn node_api_get_module_file_name(
 fn napi_module_register(module: *const NapiModule) -> Result {
   MODULE.with(|cell| {
     let mut slot = cell.borrow_mut();
-    assert!(slot.is_none());
     slot.replace(module);
   });
   Ok(())

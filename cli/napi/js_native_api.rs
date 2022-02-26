@@ -2029,8 +2029,8 @@ fn napi_strict_equals(
   rhs: napi_value,
   result: *mut bool,
 ) -> Result {
-  let lhs: v8::Local<v8::Value> = std::mem::transmute(lhs);
-  let rhs: v8::Local<v8::Value> = std::mem::transmute(rhs);
+  let lhs: v8::Local<v8::Value> = transmute(lhs);
+  let rhs: v8::Local<v8::Value> = transmute(rhs);
   *result = lhs.strict_equals(rhs);
   Ok(())
 }

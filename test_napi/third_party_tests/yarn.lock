@@ -80,6 +80,66 @@
     semver "^7.3.5"
     tar "^6.1.11"
 
+"@napi-rs/canvas-android-arm64@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-android-arm64/-/canvas-android-arm64-0.1.20.tgz#50377f7135a8c907c9f0b4f67ad7f9116b282a49"
+  integrity sha512-HWQPevs1/i5KSsv6hTMD0E9aS5sxJdmxHc3xgwsOdnwWxo8FjmXYoSwwgJhYFb/DBjA1QlSPEyeaWy1sf8jc2w==
+
+"@napi-rs/canvas-darwin-arm64@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-darwin-arm64/-/canvas-darwin-arm64-0.1.20.tgz#ca7dacf077b7345af75cf4f3ed4230e702b5941e"
+  integrity sha512-Aaov5c1fv7UysHmGHVxuarKHYeicPP1+BgokYXN2+HCeVpDfs0X/OhOUkrLsR3dJBiYMkQMEv31SR2Thmu3YEA==
+
+"@napi-rs/canvas-darwin-x64@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-darwin-x64/-/canvas-darwin-x64-0.1.20.tgz#713f5785cd4433400c8f97cf0acdfb3db4ee2a2d"
+  integrity sha512-PTdd6QbcmCbW70zp1uOeN0jgIteTvWWgqfoLg6qlD9XS7wN+oaRPAAjPULqHxMwan+0IogCFp2Orm+WiMuCKKg==
+
+"@napi-rs/canvas-linux-arm-gnueabihf@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-linux-arm-gnueabihf/-/canvas-linux-arm-gnueabihf-0.1.20.tgz#ed75b3fb94cb8c7e5c62eb64fb29afdbb6574156"
+  integrity sha512-Sw1PprxH+XJZj9CIhhFMOPHClkUfMdUoA52IYl5AOSLMnF9YowTRuGXob0LLXKfjVf84Bz0GpAQfuLo9bQgYKQ==
+
+"@napi-rs/canvas-linux-arm64-gnu@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-linux-arm64-gnu/-/canvas-linux-arm64-gnu-0.1.20.tgz#fc2f800b871bc14ac356a200370fc7b13077aa34"
+  integrity sha512-NB0kvdMTFvjWwyVLlDacEKCHpJllc7rAM1wda9UGiRq9VqU9/Rvw8IPiIBAl/M3iInIzYbs8A6ei2nbMxuqctQ==
+
+"@napi-rs/canvas-linux-arm64-musl@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-linux-arm64-musl/-/canvas-linux-arm64-musl-0.1.20.tgz#2c9b4fefb6e00f450315da68f3c13cff33b9c694"
+  integrity sha512-wqmCnvdcZVUIz5o7+O8/4RC8Mpr57tLIf42L4G3DYkkge8YarMqo/XXbG2XjCfGT5JwEmXsoxVwMFWhaa4zKmw==
+
+"@napi-rs/canvas-linux-x64-gnu@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-0.1.20.tgz#c4f7ca63e76cc50674c31d4f114a9ed9c64662e4"
+  integrity sha512-dY6E0AkuwYwCX5OTAp6OUjAZ6MtRoSvmo3hXuA8HnsR4KwFUfGN0Mi026tVEj9eUhgg392mYAhbuzBep0PLPRg==
+
+"@napi-rs/canvas-linux-x64-musl@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-0.1.20.tgz#6c8a8986edd429d4229769fbc7c576fe4f233784"
+  integrity sha512-qQ90KgvgDirfya4ftzqq/C2odalnd67bDJlS7lWRhXjabzFVZq0J5jkknw2C1KHA/+KP6X5+Jw5gsoiaAVKGNw==
+
+"@napi-rs/canvas-win32-x64-msvc@0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas-win32-x64-msvc/-/canvas-win32-x64-msvc-0.1.20.tgz#891900f9f515ffe8926a0a480221fae52b925f72"
+  integrity sha512-feGf0OqukPdpYM40m/hdOADSyvF1JZmdrFnSdRNeh49u+5OnzHMKz3IkteNbklhbb67crK2e8imRAIPGUO5Ntg==
+
+"@napi-rs/canvas@^0.1.20":
+  version "0.1.20"
+  resolved "https://registry.yarnpkg.com/@napi-rs/canvas/-/canvas-0.1.20.tgz#c1917bccc32a425c26d3a1c090791112acf00b35"
+  integrity sha512-w1NUjwBerPpPsp+yQxhNpV15UV2aroM69ChVTgoXxioW4HezFjncw1KI/e3X7dOqt5zSjt8aKcCH3CddsMBNAg==
+  optionalDependencies:
+    "@napi-rs/canvas-android-arm64" "0.1.20"
+    "@napi-rs/canvas-darwin-arm64" "0.1.20"
+    "@napi-rs/canvas-darwin-x64" "0.1.20"
+    "@napi-rs/canvas-linux-arm-gnueabihf" "0.1.20"
+    "@napi-rs/canvas-linux-arm64-gnu" "0.1.20"
+    "@napi-rs/canvas-linux-arm64-musl" "0.1.20"
+    "@napi-rs/canvas-linux-x64-gnu" "0.1.20"
+    "@napi-rs/canvas-linux-x64-musl" "0.1.20"
+    "@napi-rs/canvas-win32-x64-msvc" "0.1.20"
+
 "@napi-rs/notify-android-arm64@^0.0.1":
   version "0.0.1"
   resolved "https://registry.yarnpkg.com/@napi-rs/notify-android-arm64/-/notify-android-arm64-0.0.1.tgz#5e9fbbb4f42387d762b0b29d8df530755639e86e"
@@ -475,6 +535,18 @@
     "@parcel/utils" "^2.2.1"
     chrome-trace-event "^1.0.2"
     nullthrows "^1.1.1"
+
+"@prisma/client@^3.10.0":
+  version "3.10.0"
+  resolved "https://registry.yarnpkg.com/@prisma/client/-/client-3.10.0.tgz#4782fe6f1b0e43c2a11a75ad4bb1098599d1dfb1"
+  integrity sha512-6P4sV7WFuODSfSoSEzCH1qfmWMrCUBk1LIIuTbQf6m1LI/IOpLN4lnqGDmgiBGprEzuWobnGLfe9YsXLn0inrg==
+  dependencies:
+    "@prisma/engines-version" "3.10.0-50.73e60b76d394f8d37d8ebd1f8918c79029f0db86"
+
+"@prisma/engines-version@3.10.0-50.73e60b76d394f8d37d8ebd1f8918c79029f0db86":
+  version "3.10.0-50.73e60b76d394f8d37d8ebd1f8918c79029f0db86"
+  resolved "https://registry.yarnpkg.com/@prisma/engines-version/-/engines-version-3.10.0-50.73e60b76d394f8d37d8ebd1f8918c79029f0db86.tgz#82750856fa637dd89b8f095d2dcc6ac0631231c6"
+  integrity sha512-cVYs5gyQH/qyut24hUvDznCfPrWiNMKNfPb9WmEoiU6ihlkscIbCfkmuKTtspVLWRdl0LqjYEC7vfnPv17HWhw==
 
 "@prisma/engines@^3.10.0-47.938627579146798d30c4cc4c1151dbc620efca0c":
   version "3.10.0-47.938627579146798d30c4cc4c1151dbc620efca0c"

@@ -25,11 +25,34 @@ fn napi_tests() {
   build();
 
   let output = deno_cmd()
-    .arg("run")
+    .current_dir(test_util::napi_tests_path())
+    .arg("test")
     .arg("-A")
-    .arg("strings_test.js")
-    .env("NO_COLOR", "1")
-    .output()
+    .arg("--ignore=third_party_tests/")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(output.status.success());
+}
+
+#[test]
+fn thrid_party_tests() {
+  build();
+
+  let output = deno_cmd()
+    .current_dir(test_util::napi_tests_path().join("third_party_tests/"))
+    .arg("test")
+    .arg("--compat")
+    .arg("-A")
+    .arg("--unstable")
+    .arg("--no-check")
+    .arg("--ignore=node_modules/")
+    .env("DENO_NODE_COMPAT_URL", "file:///Users/divy/gh/deno_std/")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
     .unwrap();
 
   assert!(output.status.success());
