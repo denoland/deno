@@ -62,6 +62,7 @@ impl TsFn {
                 data,
               )
             };
+            std::mem::forget(env);
           }
           None => {
             let mut env = Env::new(
@@ -78,6 +79,8 @@ impl TsFn {
                 data,
               )
             };
+
+            std::mem::forget(env);
           }
         }
 

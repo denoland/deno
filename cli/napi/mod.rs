@@ -35,6 +35,8 @@ pub struct uv_async {
   pub data: Option<*mut c_void>,
   callback: uv_async_cb,
   sender: Option<mpsc::UnboundedSender<deno_core::napi::PendingNapiAsyncWork>>,
+  ref_sender:
+    Option<mpsc::UnboundedSender<deno_core::napi::ThreadSafeFunctionStatus>>,
 }
 
 #[no_mangle]
@@ -51,20 +53,30 @@ pub extern "C" fn uv_async_init(
   unsafe {
     (*async_).callback = cb;
   }
-  deno_core::napi::ASYNC_WORK_SENDER.with(|sender| {
+  deno_core::napi::ASYNC_WORK_SENDER.with(|sender| unsafe {
+    (*async_).sender = Some(sender.borrow().clone().unwrap());
+  });
+
+  deno_core::napi::THREAD_SAFE_FN_SENDER.with(|sender| {
+    sender
+      .borrow()
+      .clone()
+      .unwrap()
+      .unbounded_send(deno_core::napi::ThreadSafeFunctionStatus::Alive)
+      .unwrap();
     unsafe {
-      (*async_).sender.replace(sender.borrow().clone().unwrap());
+      (*async_).ref_sender = Some(sender.borrow().clone().unwrap());
     }
-    0
-  })
+  });
+
+  0
 }
 
 #[no_mangle]
 pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
   let sender = unsafe { (*async_).sender.as_ref().unwrap() };
-  let fut = Box::new(move |_scope: &mut v8::HandleScope| {
-    // TODO(bartlomieju): dropping a reference does nothing
-    // drop(scope);
+  let ref_sender = unsafe { (*async_).ref_sender.as_ref().unwrap() };
+  let fut = Box::new(move |_: &mut v8::HandleScope| {
     unsafe { ((*async_).callback)(async_) };
   });
 

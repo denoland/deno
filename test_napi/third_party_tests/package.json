@@ -6,7 +6,6 @@
   "dependencies": {
     "@bubblex/rusb": "^0.1.4",
     "@napi-rs/notify": "^0.0.1",
-    "@nodegui/nodegui": "^0.46.0",
     "@parcel/css": "^1.2.0",
     "@parcel/fs-search": "^2.2.1",
     "@parcel/hash": "^2.2.1",

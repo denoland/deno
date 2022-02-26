@@ -12,6 +12,7 @@ use crate::futures::channel::mpsc;
 
 pub use crate::runtime::PendingNapiAsyncWork;
 use crate::JsRuntime;
+use core::ptr::NonNull;
 use std::cell::RefCell;
 use std::ffi::CString;
 
@@ -61,6 +62,7 @@ pub const napi_would_deadlock: napi_status = 21;
 thread_local! {
   pub static MODULE: RefCell<Option<*const NapiModule>> = RefCell::new(None);
   pub static ASYNC_WORK_SENDER: RefCell<Option<mpsc::UnboundedSender<PendingNapiAsyncWork>>> = RefCell::new(None);
+  pub static THREAD_SAFE_FN_SENDER: RefCell<Option<mpsc::UnboundedSender<ThreadSafeFunctionStatus>>> = RefCell::new(None);
 }
 
 type napi_addon_register_func =
@@ -300,7 +302,7 @@ pub enum ThreadSafeFunctionStatus {
 pub struct Env {
   // pub struct Env<'a, 'b> {
   // pub scope: &'a mut v8::HandleScope<'b>,
-  pub context: v8::Global<v8::Context>,
+  context: NonNull<v8::Context>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
@@ -327,10 +329,15 @@ impl Env {
     ASYNC_WORK_SENDER.with(|s| {
       s.replace(Some(sc));
     });
+    let ts = threadsafe_function_sender.clone();
+    THREAD_SAFE_FN_SENDER.with(|s| {
+      s.replace(Some(ts));
+    });
+
     Self {
       // scope,
       isolate_ptr,
-      context,
+      context: context.into_raw(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -355,7 +362,7 @@ impl Env {
       open_handle_scopes: self.open_handle_scopes,
       async_work_sender: sender,
       threadsafe_function_sender: self.threadsafe_function_sender.clone(),
-      context: self.context.clone(),
+      context: self.context,
     }
   }
 
@@ -373,13 +380,10 @@ impl Env {
 
   // TODO(@littledivy): Painful hack. ouch.
   pub fn scope(&self) -> v8::CallbackScope {
-    let persistent_context = self.context.clone();
-    let data = persistent_context.into_raw();
+    assert!(!self.isolate_ptr.is_null(), "isolate_ptr is null");
     let context = unsafe {
-      transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(data)
+      transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(self.context)
     };
-    use core::ptr::NonNull;
-    unsafe { v8::Global::from_raw(&mut **self.isolate_ptr, data) };
     unsafe { v8::CallbackScope::new(context) }
   }
 }

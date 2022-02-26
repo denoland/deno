@@ -480,9 +480,6 @@ fn napi_create_range_error(
   Ok(())
 }
 
-//
-
-// TODO: properly implement ref counting stuff
 #[napi_sym::napi_sym]
 fn napi_create_reference(
   env: *mut Env,
@@ -490,8 +487,12 @@ fn napi_create_reference(
   _initial_refcount: u32,
   result: *mut napi_ref,
 ) -> Result {
-  let mut _env = &mut *(env as *mut Env);
-  *result = value;
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+
+  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let global = v8::Global::new(&mut env.scope(), value);
+  let mut global_ptr = global.into_raw();
+  *result = transmute(global_ptr);
   Ok(())
 }
 
@@ -728,7 +729,6 @@ fn napi_make_callback(
     .map_err(|_| Error::FunctionExpected)?;
   let argv: &[v8::Local<v8::Value>] =
     unsafe { transmute(std::slice::from_raw_parts(argv, argc as usize)) };
-
   let ret = func.call(&mut env.scope(), recv, argv);
   *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
   Ok(())
@@ -1219,10 +1219,11 @@ fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
 fn napi_escape_handle(
   _env: *mut Env,
   _handle_scope: napi_escapable_handle_scope,
-  _escapee: napi_value,
-  _result: *mut napi_value,
+  escapee: napi_value,
+  result: *mut napi_value,
 ) -> Result {
   // TODO
+  *result = escapee;
   Ok(())
 }
 
@@ -1399,8 +1400,9 @@ fn napi_get_element(
 #[napi_sym::napi_sym]
 fn napi_get_global(env: *mut Env, result: *mut napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let scope = &mut env.scope();
-  let global = env.context.open(scope).global(scope);
+
+  let context = &mut env.scope().get_current_context();
+  let global = context.global(&mut env.scope());
   let value: v8::Local<v8::Value> = global.into();
   *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
   Ok(())
@@ -1520,12 +1522,20 @@ fn napi_get_prototype(
 
 #[napi_sym::napi_sym]
 fn napi_get_reference_value(
-  _env: *mut Env,
+  env: *mut Env,
   reference: napi_ref,
   result: *mut napi_value,
 ) -> Result {
   // TODO
-  *result = transmute(reference);
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+
+  let raw = transmute::<napi_ref, NonNull<v8::Value>>(reference);
+  let global = v8::Global::from_raw(unsafe { &mut **env.isolate_ptr }, raw);
+  let scope = &mut env.scope();
+  let value = global.open(scope).to_object(scope).unwrap();
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(value.into());
+  // Leak.
+  std::mem::forget(global);
   Ok(())
 }
 
