@@ -549,7 +549,7 @@ fn resolve_package_target_string(
 
   if invalid_segment_re.is_match(&subpath) {
     let request = if pattern {
-      match_.replace("*", &subpath)
+      match_.replace('*', &subpath)
     } else {
       format!("{}{}", match_, subpath)
     };

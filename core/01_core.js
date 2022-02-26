@@ -57,6 +57,10 @@
     opCallTracingEnabled = true;
   }
 
+  function isOpCallTracingEnabled() {
+    return opCallTracingEnabled;
+  }
+
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
     // Move old promise from ring to map
@@ -246,6 +250,7 @@
     Interrupted,
     InterruptedPrototype,
     enableOpCallTracing,
+    isOpCallTracingEnabled,
     opCallTraces,
   });
 

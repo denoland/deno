@@ -199,18 +199,17 @@ impl AssetOrDocument {
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
     self
       .document()
-      .map(|d| d.get_maybe_dependency(position))
-      .flatten()
+      .and_then(|d| d.get_maybe_dependency(position))
   }
 
   pub fn maybe_parsed_source(
     &self,
   ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
-    self.document().map(|d| d.maybe_parsed_source()).flatten()
+    self.document().and_then(|d| d.maybe_parsed_source())
   }
 
   pub fn document_lsp_version(&self) -> Option<i32> {
-    self.document().map(|d| d.maybe_lsp_version()).flatten()
+    self.document().and_then(|d| d.maybe_lsp_version())
   }
 }
 
@@ -347,8 +346,7 @@ impl Document {
         .0
         .maybe_language_id
         .as_ref()
-        .map(|li| li.as_headers())
-        .flatten();
+        .and_then(|li| li.as_headers());
       let parser = SourceParser::default();
       Some(deno_graph::parse_module(
         &self.0.specifier,
@@ -865,8 +863,7 @@ impl Documents {
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
       let fs_version = get_document_path(&self.cache, &specifier)
-        .map(|path| calculate_fs_version(&path))
-        .flatten();
+        .and_then(|path| calculate_fs_version(&path));
       let file_system_doc = file_system_docs.docs.get(&specifier);
       if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
         // attempt to update the file on the file system
@@ -1009,12 +1006,10 @@ impl Documents {
   ) {
     // TODO(@kitsonk) update resolved dependencies?
     self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
-    self.maybe_jsx_resolver = maybe_config_file
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
-      })
-      .flatten();
+    self.maybe_jsx_resolver = maybe_config_file.and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
+    });
     self.imports = Arc::new(
       if let Some(Ok(Some(imports))) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1094,14 +1089,12 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_module().map(|r| r.as_ref().ok()).flatten();
-    let maybe_types_dependency = maybe_module
-      .map(|m| {
-        m.maybe_types_dependency
-          .as_ref()
-          .map(|(_, resolved)| resolved.clone())
-      })
-      .flatten();
+    let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
+    let maybe_types_dependency = maybe_module.and_then(|m| {
+      m.maybe_types_dependency
+        .as_ref()
+        .map(|(_, resolved)| resolved.clone())
+    });
     if let Some(Resolved::Ok { specifier, .. }) = maybe_types_dependency {
       self.resolve_dependency(&specifier)
     } else {

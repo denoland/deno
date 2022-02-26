@@ -158,6 +158,7 @@ struct TestSpecifierOptions {
   fail_fast: Option<NonZeroUsize>,
   filter: Option<String>,
   shuffle: Option<u64>,
+  trace_ops: bool,
 }
 
 impl TestSummary {
@@ -477,9 +478,14 @@ async fn test_specifier(
 
   // Enable op call tracing in core to enable better debugging of op sanitizer
   // failures.
-  worker
-    .execute_script(&located_script_name!(), "Deno.core.enableOpCallTracing();")
-    .unwrap();
+  if options.trace_ops {
+    worker
+      .execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )
+      .unwrap();
+  }
 
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
@@ -1043,6 +1049,7 @@ pub async fn run_tests(
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter,
       shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
     },
   )
   .await?;
@@ -1082,14 +1089,10 @@ pub async fn run_tests_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
@@ -1281,6 +1284,7 @@ pub async fn run_tests_with_watch(
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
           shuffle: test_flags.shuffle,
+          trace_ops: test_flags.trace_ops,
         },
       )
       .await?;

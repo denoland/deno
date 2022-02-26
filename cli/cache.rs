@@ -198,8 +198,7 @@ impl Cacher for FetchCacher {
       .disk_cache
       .get(&filename)
       .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
+      .and_then(|b| String::from_utf8(b).ok())
   }
 
   fn set(

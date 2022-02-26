@@ -774,7 +774,6 @@ dependencies = [
  "nix",
  "node_resolver",
  "notify",
- "num_cpus",
  "once_cell",
  "os_pipe",
  "percent-encoding",

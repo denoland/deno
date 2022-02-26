@@ -190,13 +190,10 @@ impl ProcState {
     );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
     > = if flags.compat {

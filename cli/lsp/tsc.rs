@@ -1402,9 +1402,7 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: maybe_asset_or_document
-          .map(|d| d.document_lsp_version())
-          .flatten(),
+        version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
     }));
@@ -2064,7 +2062,7 @@ impl CompletionEntry {
           return Some(insert_text.clone());
         }
       } else {
-        return Some(self.name.replace("#", ""));
+        return Some(self.name.replace('#', ""));
       }
     }
 

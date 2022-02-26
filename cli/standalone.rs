@@ -269,7 +269,9 @@ pub async fn run(
     bootstrap: BootstrapOptions {
       apply_source_maps: false,
       args: metadata.argv,
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: false,
       location: metadata.location,
