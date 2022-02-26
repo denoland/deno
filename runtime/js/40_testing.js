@@ -208,9 +208,16 @@
         }
       }
 
-      throw `Test case is leaking async ops.
+      let msg = `Test case is leaking async ops.
 
 - ${ArrayPrototypeJoin(details, "\n - ")}`;
+
+      if (!core.isOpCallTracingEnabled()) {
+        msg +=
+          `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
+      }
+
+      throw msg;
     };
   }
 

@@ -7,7 +7,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use lspower::lsp;
 use lspower::lsp::ConfigurationItem;

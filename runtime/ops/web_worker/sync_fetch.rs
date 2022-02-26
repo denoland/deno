@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {
-  let essence = match mime_type.split_once(";") {
+  let essence = match mime_type.split_once(';') {
     Some((essence, _)) => essence,
     None => mime_type,
   };

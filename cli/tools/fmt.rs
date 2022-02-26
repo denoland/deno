@@ -234,7 +234,7 @@ pub fn format_file(
   file_text: &str,
   fmt_options: FmtOptionsConfig,
 ) -> Result<String, AnyError> {
-  let ext = get_extension(file_path).unwrap_or_else(String::new);
+  let ext = get_extension(file_path).unwrap_or_default();
   if matches!(
     ext.as_str(),
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
@@ -589,8 +589,7 @@ where
   let mut errors = join_results.into_iter().filter_map(|join_result| {
     join_result
       .ok()
-      .map(|handle_result| handle_result.err())
-      .flatten()
+      .and_then(|handle_result| handle_result.err())
   });
 
   if let Some(e) = errors.next() {

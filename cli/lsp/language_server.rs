@@ -8,10 +8,8 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use deno_graph::Resolved;
 use import_map::ImportMap;
 use log::error;
-use log::info;
 use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
@@ -20,7 +18,6 @@ use lspower::lsp::*;
 use serde_json::from_value;
 use std::env;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
 
@@ -34,7 +31,6 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
-use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticsServer;
@@ -53,7 +49,6 @@ use super::registries::ModuleRegistry;
 use super::registries::ModuleRegistryOptions;
 use super::text;
 use super::tsc;
-use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
@@ -65,7 +60,6 @@ use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
-use crate::logger;
 use crate::proc_state::import_map_from_text;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -876,8 +870,7 @@ impl Inner {
         params
           .settings
           .as_object()
-          .map(|settings| settings.get(SETTINGS_SECTION))
-          .flatten()
+          .and_then(|settings| settings.get(SETTINGS_SECTION))
           .cloned()
       };
 
@@ -1081,8 +1074,7 @@ impl Inner {
     {
       let dep_maybe_types_dependency = dep
         .get_code()
-        .map(|s| self.documents.get(s))
-        .flatten()
+        .and_then(|s| self.documents.get(s))
         .map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
@@ -1248,7 +1240,7 @@ impl Inner {
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
-              asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten(),
+              asset_or_doc.maybe_parsed_source().and_then(|r| r.ok()),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {}", err);
@@ -1432,8 +1424,7 @@ impl Inner {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
-    let parsed_source =
-      asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten();
+    let parsed_source = asset_or_doc.maybe_parsed_source().and_then(|r| r.ok());
     let line_index = asset_or_doc.line_index();
     let code_lenses = code_lens::collect(
       &specifier,
@@ -1507,8 +1498,7 @@ impl Inner {
     if let Some(document_highlights) = maybe_document_highlights {
       let result = document_highlights
         .into_iter()
-        .map(|dh| dh.to_highlight(line_index.clone()))
-        .flatten()
+        .flat_map(|dh| dh.to_highlight(line_index.clone()))
         .collect();
       self.performance.measure(mark);
       Ok(Some(result))
@@ -2484,7 +2474,7 @@ impl lspower::LanguageServer for LanguageServer {
       tokio::spawn(async move {
         if let Ok(configs) = client
           .specifier_configurations(
-            specifiers.iter().map(|(s)| s.client_uri.clone()).collect(),
+            specifiers.iter().map(|s| s.client_uri.clone()).collect(),
           )
           .await
         {

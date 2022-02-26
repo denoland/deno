@@ -18,16 +18,46 @@ fn loop_code(iters: u64, src: &str) -> String {
   format!(r#"for(let i=0; i < {}; i++) {{ {} }}"#, iters, src,)
 }
 
+#[derive(Copy, Clone)]
+pub struct BenchOptions {
+  pub benching_inner: u64,
+  pub profiling_inner: u64,
+  pub profiling_outer: u64,
+}
+
+impl Default for BenchOptions {
+  fn default() -> Self {
+    Self {
+      benching_inner: 1_000,
+      profiling_inner: 1_000,
+      profiling_outer: 10_000,
+    }
+  }
+}
+
 pub fn bench_js_sync(
   b: &mut Bencher,
   src: &str,
   setup: impl FnOnce() -> Vec<Extension>,
 ) {
+  bench_js_sync_with(b, src, setup, Default::default())
+}
+
+pub fn bench_js_sync_with(
+  b: &mut Bencher,
+  src: &str,
+  setup: impl FnOnce() -> Vec<Extension>,
+  opts: BenchOptions,
+) {
   let mut runtime = create_js_runtime(setup);
   let scope = &mut runtime.handle_scope();
 
   // Increase JS iterations if profiling for nicer flamegraphs
-  let inner_iters = 1000 * if is_profiling() { 10000 } else { 1 };
+  let inner_iters = if is_profiling() {
+    opts.profiling_inner * opts.profiling_outer
+  } else {
+    opts.benching_inner
+  };
   // Looped code
   let looped_src = loop_code(inner_iters, src);
 
@@ -49,6 +79,15 @@ pub fn bench_js_async(
   src: &str,
   setup: impl FnOnce() -> Vec<Extension>,
 ) {
+  bench_js_async_with(b, src, setup, Default::default())
+}
+
+pub fn bench_js_async_with(
+  b: &mut Bencher,
+  src: &str,
+  setup: impl FnOnce() -> Vec<Extension>,
+  opts: BenchOptions,
+) {
   let mut runtime = create_js_runtime(setup);
   let tokio_runtime = tokio::runtime::Builder::new_current_thread()
     .enable_all()
@@ -56,11 +95,16 @@ pub fn bench_js_async(
     .unwrap();
 
   // Looped code
-  let looped = loop_code(1000, src);
+  let inner_iters = if is_profiling() {
+    opts.profiling_inner
+  } else {
+    opts.benching_inner
+  };
+  let looped = loop_code(inner_iters, src);
   let src = looped.as_ref();
 
   if is_profiling() {
-    for _ in 0..10000 {
+    for _ in 0..opts.profiling_outer {
       tokio_runtime.block_on(inner_async(src, &mut runtime));
     }
   } else {

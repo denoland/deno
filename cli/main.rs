@@ -147,7 +147,9 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
         apply_source_maps: true,
-        cpu_count: num_cpus::get(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
         debug_flag: ps
           .flags
           .log_level
@@ -248,7 +250,9 @@ pub fn create_main_worker(
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
       args: ps.flags.argv.clone(),
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.flags.enable_testing_features,
       location: ps.flags.location.clone(),
@@ -397,19 +401,21 @@ async fn compile_command(
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags =
-    tools::standalone::compile_to_runtime_flags(&flags, compile_flags.args)?;
+  let run_flags = tools::standalone::compile_to_runtime_flags(
+    &flags,
+    compile_flags.args.clone(),
+  )?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.and_then(|output| {
-    if fs_util::path_has_trailing_slash(&output) {
+  let output = compile_flags.output.as_ref().and_then(|output| {
+    if fs_util::path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {
-      Some(output)
+      Some(output.to_path_buf())
     }
   }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
@@ -423,6 +429,8 @@ async fn compile_command(
   .map_err(|_| {
     generic_error("There should only be one reference to ModuleGraph")
   })?;
+
+  graph.valid().unwrap();
 
   let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
@@ -442,7 +450,9 @@ async fn compile_command(
     eszip,
     module_specifier.clone(),
     run_flags,
-  )?;
+    ps,
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -472,14 +482,10 @@ async fn info_command(
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
@@ -644,14 +650,10 @@ async fn create_graph_and_maybe_check(
   };
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .maybe_config_file
-    .as_ref()
-    .map(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    })
-    .flatten();
+  let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+    cf.to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+  });
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
@@ -797,10 +799,7 @@ async fn bundle_command(
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
@@ -809,7 +808,7 @@ async fn bundle_command(
           ps.flags.import_map_path.as_deref(),
           ps.maybe_config_file.as_ref(),
         )
-        .map(|ms| ms.map(|ref s| s.to_file_path().ok()).flatten())
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
       }
@@ -1003,14 +1002,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       };
       let maybe_import_map_resolver =
         ps.maybe_import_map.clone().map(ImportMapResolver::new);
-      let maybe_jsx_resolver = ps
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| {
-          cf.to_maybe_jsx_import_source_module()
-            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-        })
-        .flatten();
+      let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      });
       let maybe_resolver = if maybe_jsx_resolver.is_some() {
         maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
       } else {
@@ -1041,10 +1036,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
@@ -1058,7 +1050,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
           ps.flags.import_map_path.as_deref(),
           ps.maybe_config_file.as_ref(),
         )
-        .map(|ms| ms.map(|ref s| s.to_file_path().ok()).flatten())
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
       }

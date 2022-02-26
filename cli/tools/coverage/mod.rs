@@ -312,7 +312,7 @@ fn generate_coverage_report(
       let mut found_lines = line_counts
         .iter()
         .enumerate()
-        .map(|(index, count)| {
+        .flat_map(|(index, count)| {
           // get all the mappings from this destination line to a different src line
           let mut results = source_map
             .tokens()
@@ -324,7 +324,6 @@ fn generate_coverage_report(
           results.dedup_by_key(|(index, _)| *index);
           results.into_iter()
         })
-        .flatten()
         .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
@@ -400,8 +399,7 @@ impl CoverageReporter for LcovCoverageReporter {
       .url
       .to_file_path()
       .ok()
-      .map(|p| p.to_str().map(|p| p.to_string()))
-      .flatten()
+      .and_then(|p| p.to_str().map(|p| p.to_string()))
       .unwrap_or_else(|| coverage_report.url.to_string());
     writeln!(out_writer, "SF:{}", file_path)?;
 
