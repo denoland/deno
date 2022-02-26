@@ -806,23 +806,21 @@
       return "ignored";
     }
 
-    // TODO(bartlomieju): remove me/rename
-    const step = new TestStep({
+    const step = new BenchStep({
       name: bench.name,
       sanitizeOps: bench.sanitizeOps,
       sanitizeResources: bench.sanitizeResources,
       sanitizeExit: bench.sanitizeExit,
-      // warmup: false,
+      warmup: false,
     });
 
     try {
-      // const warmupIterations = bench.warmupIterations;
-      // step.warmup = true;
-      // TODO(bartlomieju): fixme, runs sanitizers and actually collects
-      // measurements
-      // for (let i = 0; i < warmupIterations; i++) {
-      //   await bench.fn(step);
-      // }
+      const warmupIterations = bench.warmupIterations;
+      step.warmup = true;
+
+      for (let i = 0; i < warmupIterations; i++) {
+        await bench.fn(step);
+      }
 
       const iterations = bench.n;
       step.warmup = false;
@@ -830,6 +828,7 @@
       for (let i = 0; i < iterations; i++) {
         await bench.fn(step);
       }
+
       return "ok";
     } catch (error) {
       return {
@@ -908,9 +907,13 @@
 
   function reportBenchIteration(fn) {
     return async function benchIteration(step) {
-      reportIterationStart();
+      if (!step.warmup) {
+        reportIterationStart();
+      }
       await fn(step);
-      reportIterationFinish();
+      if (!step.warmup) {
+        reportIterationFinish();
+      }
     };
   }
 
@@ -1010,8 +1013,9 @@
     });
 
     for (const bench of filtered) {
-      const iterations = bench.n ?? 100;
-      const warmupIterations = bench.warmup ?? 100;
+      // TODO(bartlomieju): probably needs some validation?
+      const iterations = bench.n ?? 1000;
+      const warmupIterations = bench.warmup ?? 1000;
       const description = {
         origin,
         name: bench.name,
@@ -1219,6 +1223,39 @@
         count++;
       }
       return count;
+    }
+  }
+
+  /**
+   * @typedef {{
+   *   fn: () => void | Promise<void>,
+   *   name: string,
+   *   ignore?: boolean,
+   *   sanitizeOps?: boolean,
+   *   sanitizeResources?: boolean,
+   *   sanitizeExit?: boolean,
+   * }} TestStepDefinition
+   *
+   * @typedef {{
+   *   name: string;
+   *   sanitizeOps: boolean,
+   *   sanitizeResources: boolean,
+   *   sanitizeExit: boolean,
+   *   warmup: boolean,
+   * }} BenchStepParams
+   */
+
+  class BenchStep {
+    /** @type {BenchStepParams} */
+    #params;
+
+    /** @param params {TestStepParams} */
+    constructor(params) {
+      this.#params = params;
+    }
+
+    get name() {
+      return this.#params.name;
     }
   }
 

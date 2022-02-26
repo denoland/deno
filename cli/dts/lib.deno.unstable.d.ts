@@ -8,10 +8,10 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    /** Specify number of iterations benchmark should perform. Defaults to 100. */
+    /** Specify number of iterations benchmark should perform. Defaults to 1000. */
     n?: number;
     /** Specify number of warmup iterations benchmark should perform. Defaults
-     * to 100.
+     * to 1000.
      *
      * These iterations are not measured. It allows the code to be optimized
      * by JIT compiler before measuring its performance. */
