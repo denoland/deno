@@ -2192,6 +2192,9 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
+  // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
+  // interactive prompts, unless done by user code
+  flags.no_prompt = true;
 
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -4443,6 +4446,7 @@ mod tests {
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         unstable: true,
+        no_prompt: true,
         coverage_dir: Some("cov".to_string()),
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
@@ -4510,6 +4514,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
         }),
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4535,6 +4540,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
+        no_prompt: true,
         ..Flags::default()
       }
     );
@@ -4564,6 +4570,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
+        no_prompt: true,
         enable_testing_features: true,
         ..Flags::default()
       }
@@ -4587,6 +4594,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
+        no_prompt: true,
         watch: None,
         ..Flags::default()
       }
@@ -4610,6 +4618,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
+        no_prompt: true,
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -4636,6 +4645,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        no_prompt: true,
         ..Flags::default()
       }
     );
