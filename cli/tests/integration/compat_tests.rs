@@ -97,7 +97,7 @@ itest!(compat_worker {
 
 itest!(cjs_esm_interop {
   args:
-    "run --compat --unstable -A --no-check compat/import_cjs_from_esm/main.mjs",
+    "run --compat --unstable -A --quiet --no-check compat/import_cjs_from_esm/main.mjs",
   output: "compat/import_cjs_from_esm.out",
 });
 
