@@ -348,6 +348,11 @@ impl ProcState {
 
     if needs_cjs_esm_translation {
       for module in graph.modules() {
+        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
+        // in compat mode, all files ending with plain `.js` extension are
+        // considered CommonJs modules. Which leads to situation where valid
+        // ESM modules with `.js` extension might undergo translation (it won't
+        // work in this situation).
         if module.kind == ModuleKind::CommonJs {
           let translated_source = self
             .translate_cjs_to_esm(
@@ -600,7 +605,6 @@ impl ProcState {
   async fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
-    // TODO(bartlomieju): could use `maybe_parsed_source` if available
     code: String,
     media_type: MediaType,
   ) -> Result<String, AnyError> {
@@ -625,7 +629,8 @@ impl ProcState {
       let resolved_reexport = node_resolver::node_resolve(
         reexport,
         &specifier.to_file_path().unwrap(),
-        // FIXME(bartlomieju): check what should be proper conditions
+        // FIXME(bartlomieju): check if these conditions are okay, probably
+        // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
         &["deno", "require", "default"],
       )?;
       let reexport_specifier =
@@ -634,7 +639,6 @@ impl ProcState {
       let reexport_file =
         self.file_fetcher.get_source(&reexport_specifier).unwrap();
       // Now perform analysis again
-
       {
         let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
           specifier: reexport_specifier.to_string(),

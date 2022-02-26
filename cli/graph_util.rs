@@ -415,6 +415,9 @@ impl GraphData {
     self.modules.get(specifier)
   }
 
+  // TODO(bartlomieju): after saving translated source
+  // it's never removed, potentially leading to excessive
+  // memory consumption
   pub(crate) fn add_cjs_esm_translation(
     &mut self,
     specifier: &ModuleSpecifier,
