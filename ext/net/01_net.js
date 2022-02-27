@@ -311,19 +311,17 @@
   }
 
   async function connect(options) {
-    let res;
-
     if (options.transport === "unix") {
-      res = await opConnect(options);
+      const res = await opConnect(options);
+      return new Conn(res.rid, res.remoteAddr, res.localAddr);
     } else {
-      res = await opConnect({
+      const res = await opConnect({
         transport: "tcp",
         hostname: "127.0.0.1",
         ...options,
       });
+      return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
     }
-
-    return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.net = {

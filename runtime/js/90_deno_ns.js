@@ -87,6 +87,7 @@
     seek: __bootstrap.files.seek,
     seekSync: __bootstrap.files.seekSync,
     connect: __bootstrap.net.connect,
+    TcpConn: __bootstrap.net.TcpConn,
     listen: __bootstrap.net.listen,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
