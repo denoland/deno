@@ -1,6 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::disk_cache::DiskCache;
+use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
 use deno_core::error::AnyError;
@@ -148,7 +149,7 @@ impl Loader for FetchCacher {
     let file_fetcher = self.file_fetcher.clone();
 
     async move {
-      let load_result = file_fetcher
+      file_fetcher
         .fetch(&specifier, &mut permissions)
         .await
         .map_or_else(
@@ -157,19 +158,19 @@ impl Loader for FetchCacher {
               if err.kind() == std::io::ErrorKind::NotFound {
                 return Ok(None);
               }
+            } else if get_error_class_name(&err) == "NotFound" {
+              return Ok(None);
             }
             Err(err)
           },
           |file| {
-            Ok(Some(LoadResponse {
+            Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
               maybe_headers: file.maybe_headers,
               content: file.source,
             }))
           },
-        );
-
-      (specifier, load_result)
+        )
     }
     .boxed()
   }
@@ -197,8 +198,7 @@ impl Cacher for FetchCacher {
       .disk_cache
       .get(&filename)
       .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
+      .and_then(|b| String::from_utf8(b).ok())
   }
 
   fn set(
@@ -287,12 +287,16 @@ impl Loader for MemoryCacher {
         specifier_str = specifier_str[3..].to_string();
       }
     }
-    let response = self.sources.get(&specifier_str).map(|c| LoadResponse {
-      specifier: specifier.clone(),
-      maybe_headers: None,
-      content: c.to_owned(),
-    });
-    Box::pin(future::ready((specifier.clone(), Ok(response))))
+    let response =
+      self
+        .sources
+        .get(&specifier_str)
+        .map(|c| LoadResponse::Module {
+          specifier: specifier.clone(),
+          maybe_headers: None,
+          content: c.to_owned(),
+        });
+    Box::pin(future::ready(Ok(response)))
   }
 }
 

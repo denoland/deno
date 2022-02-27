@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -29,6 +29,7 @@
     makeTempDir: __bootstrap.fs.makeTempDir,
     makeTempFileSync: __bootstrap.fs.makeTempFileSync,
     makeTempFile: __bootstrap.fs.makeTempFile,
+    memoryUsage: core.memoryUsage,
     mkdirSync: __bootstrap.fs.mkdirSync,
     mkdir: __bootstrap.fs.mkdir,
     chdir: __bootstrap.fs.chdir,
@@ -75,6 +76,7 @@
     write: __bootstrap.io.write,
     writeSync: __bootstrap.io.writeSync,
     File: __bootstrap.files.File,
+    FsFile: __bootstrap.files.FsFile,
     open: __bootstrap.files.open,
     openSync: __bootstrap.files.openSync,
     create: __bootstrap.files.create,
@@ -88,6 +90,7 @@
     listen: __bootstrap.net.listen,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
+    startTls: __bootstrap.tls.startTls,
     shutdown: __bootstrap.net.shutdown,
     fstatSync: __bootstrap.fs.fstatSync,
     fstat: __bootstrap.fs.fstat,
@@ -106,11 +109,11 @@
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     kill: __bootstrap.process.kill,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
   };
 
   __bootstrap.denoNsUnstable = {
-    addSignalListener: __bootstrap.signals.addSignalListener,
-    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
@@ -119,13 +122,14 @@
     hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
+    networkInterfaces: __bootstrap.os.networkInterfaces,
+    getUid: __bootstrap.os.getUid,
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     sleepSync: __bootstrap.timers.sleepSync,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
@@ -135,9 +139,14 @@
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
+    UnsafePointer: __bootstrap.ffi.UnsafePointer,
+    UnsafePointerView: __bootstrap.ffi.UnsafePointerView,
+    UnsafeFnPointer: __bootstrap.ffi.UnsafeFnPointer,
     flock: __bootstrap.fs.flock,
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
+    refTimer: __bootstrap.timers.refTimer,
+    unrefTimer: __bootstrap.timers.unrefTimer,
   };
 })(this);

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {
-  let essence = match mime_type.split_once(";") {
+  let essence = match mime_type.split_once(';') {
     Some((essence, _)) => essence,
     None => mime_type,
   };

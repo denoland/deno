@@ -1,4 +1,4 @@
-# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
 resolver = "2"
@@ -17,7 +17,6 @@ members = [
   "ext/ffi",
   "ext/http",
   "ext/net",
-  "ext/timers",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -80,6 +79,20 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.url]
 opt-level = 3
+[profile.bench.package.bytes]
+opt-level = 3
+[profile.bench.package.futures-util]
+opt-level = 3
+[profile.bench.package.hyper]
+opt-level = 3
+[profile.bench.package.tokio]
+opt-level = 3
+[profile.bench.package.zstd]
+opt-level = 3
+[profile.bench.package.lzzzz]
+opt-level = 3
+[profile.bench.package.zstd-sys]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -113,4 +126,18 @@ opt-level = 3
 [profile.release.package.deno_url]
 opt-level = 3
 [profile.release.package.url]
+opt-level = 3
+[profile.release.package.bytes]
+opt-level = 3
+[profile.release.package.futures-util]
+opt-level = 3
+[profile.release.package.hyper]
+opt-level = 3
+[profile.release.package.tokio]
+opt-level = 3
+[profile.release.package.zstd]
+opt-level = 3
+[profile.release.package.lzzzz]
+opt-level = 3
+[profile.release.package.zstd-sys]
 opt-level = 3

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use tempfile::TempDir;
@@ -128,12 +128,6 @@ fn fmt_ignore_unexplicit_files() {
   );
 }
 
-itest!(fmt_check_tests_dir {
-  args: "fmt --check ./ --ignore=.test_coverage,fmt/fmt_with_config/",
-  output: "fmt/expected_fmt_check_tests_dir.out",
-  exit_code: 1,
-});
-
 itest!(fmt_quiet_check_fmt_dir {
   args: "fmt --check --quiet fmt/regular/",
   output_str: Some(""),
@@ -183,13 +177,18 @@ itest!(fmt_stdin_check_not_formatted {
 });
 
 itest!(fmt_with_config {
-  args: "fmt --config fmt/deno.jsonc fmt/fmt_with_config/",
+  args: "fmt --config fmt/with_config/deno.jsonc fmt/with_config/subdir",
+  output: "fmt/fmt_with_config.out",
+});
+
+itest!(fmt_with_config_default {
+  args: "fmt fmt/with_config/subdir",
   output: "fmt/fmt_with_config.out",
 });
 
 // Check if CLI flags take precedence
 itest!(fmt_with_config_and_flags {
-  args: "fmt --config fmt/deno.jsonc --ignore=fmt/fmt_with_config/a.ts,fmt/fmt_with_config/b.ts",
+  args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
   output: "fmt/fmt_with_config_and_flags.out",
 });
 

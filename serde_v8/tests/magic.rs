@@ -1,9 +1,8 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use serde::{Deserialize, Serialize};
 
 use serde_v8::utils::{js_exec, v8_do};
 use serde_v8::Result;
-use std::convert::TryFrom;
 
 #[derive(Deserialize)]
 struct MagicOp<'s> {

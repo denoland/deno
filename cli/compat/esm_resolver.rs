@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::errors;
 use crate::resolver::ImportMapResolver;
@@ -9,50 +9,51 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
 use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeEsmResolver<'a> {
-  maybe_import_map_resolver: Option<ImportMapResolver<'a>>,
+pub(crate) struct NodeEsmResolver {
+  maybe_import_map_resolver: Option<ImportMapResolver>,
 }
 
-impl<'a> NodeEsmResolver<'a> {
-  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver<'a>>) -> Self {
+impl NodeEsmResolver {
+  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver>) -> Self {
     Self {
       maybe_import_map_resolver,
     }
   }
-
-  pub fn as_resolver(&self) -> &dyn Resolver {
-    self
-  }
 }
 
-impl Resolver for NodeEsmResolver<'_> {
+impl Resolver for NodeEsmResolver {
   fn resolve(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> ResolveResponse {
     // First try to resolve using import map, ignoring any errors
     if !specifier.starts_with("node:") {
       if let Some(import_map_resolver) = &self.maybe_import_map_resolver {
-        if let Ok(specifier) = import_map_resolver.resolve(specifier, referrer)
-        {
-          return Ok(specifier);
+        let response = import_map_resolver.resolve(specifier, referrer);
+        if !matches!(response, ResolveResponse::Err(_)) {
+          return response;
         }
       }
     }
 
+    let current_dir = match std::env::current_dir() {
+      Ok(path) => path,
+      Err(err) => return ResolveResponse::Err(err.into()),
+    };
     let node_resolution =
-      node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?);
+      node_resolve(specifier, referrer.as_str(), &current_dir);
 
     match node_resolution {
-      Ok(specifier) => {
+      Ok(resolve_response) => {
         // If node resolution succeeded, return the specifier
-        Ok(specifier)
+        resolve_response
       }
       Err(err) => {
         // If node resolution failed, check if it's because of unsupported
@@ -61,11 +62,13 @@ impl Resolver for NodeEsmResolver<'_> {
           .to_string()
           .starts_with("[ERR_UNSUPPORTED_ESM_URL_SCHEME]")
         {
-          return deno_core::resolve_import(specifier, referrer.as_str())
-            .map_err(|err| err.into());
+          return match deno_core::resolve_import(specifier, referrer.as_str()) {
+            Ok(specifier) => ResolveResponse::Esm(specifier),
+            Err(err) => ResolveResponse::Err(err.into()),
+          };
         }
 
-        Err(err)
+        ResolveResponse::Err(err)
       }
     }
   }
@@ -79,16 +82,16 @@ fn node_resolve(
   specifier: &str,
   referrer: &str,
   cwd: &std::path::Path,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<ResolveResponse, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
   if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {
-    return Ok(resolved);
+    return Ok(ResolveResponse::Esm(resolved));
   }
 
   if let Ok(url) = Url::parse(specifier) {
     if url.scheme() == "data" {
-      return Ok(url);
+      return Ok(ResolveResponse::Specifier(url));
     }
 
     let protocol = url.scheme();
@@ -99,7 +102,7 @@ fn node_resolve(
       if let Some(resolved) =
         crate::compat::try_resolve_builtin_module(&specifier)
       {
-        return Ok(resolved);
+        return Ok(ResolveResponse::Esm(resolved));
       } else {
         return Err(generic_error(format!("Unknown module {}", specifier)));
       }
@@ -111,7 +114,8 @@ fn node_resolve(
 
     if referrer.starts_with("data:") {
       let referrer_url = Url::parse(referrer)?;
-      return referrer_url.join(specifier).map_err(AnyError::from);
+      let url = referrer_url.join(specifier).map_err(AnyError::from)?;
+      return Ok(ResolveResponse::Specifier(url));
     }
   }
 
@@ -125,9 +129,23 @@ fn node_resolve(
   let conditions = DEFAULT_CONDITIONS;
   let url = module_resolve(specifier, &parent_url, conditions)?;
 
+  let resolve_response = if url.as_str().starts_with("http") {
+    ResolveResponse::Esm(url)
+  } else if url.as_str().ends_with(".js") {
+    let package_config = get_package_scope_config(&url)?;
+    if package_config.typ == "module" {
+      ResolveResponse::Esm(url)
+    } else {
+      ResolveResponse::CommonJs(url)
+    }
+  } else if url.as_str().ends_with(".cjs") {
+    ResolveResponse::CommonJs(url)
+  } else {
+    ResolveResponse::Esm(url)
+  };
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(url)
+  Ok(resolve_response)
 }
 
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
@@ -232,12 +250,12 @@ fn finalize_resolution(
   };
   if is_dir {
     return Err(errors::err_unsupported_dir_import(
-      &path.display().to_string(),
-      &to_file_path_string(base),
+      resolved.as_str(),
+      base.as_str(),
     ));
   } else if !is_file {
     return Err(errors::err_module_not_found(
-      &path.display().to_string(),
+      resolved.as_str(),
       base.as_str(),
       "module",
     ));
@@ -531,7 +549,7 @@ fn resolve_package_target_string(
 
   if invalid_segment_re.is_match(&subpath) {
     let request = if pattern {
-      match_.replace("*", &subpath)
+      match_.replace('*', &subpath)
     } else {
       format!("{}{}", match_, subpath)
     };
@@ -885,7 +903,7 @@ fn parse_package_name(
   }
 
   let package_name = if let Some(index) = separator_index {
-    specifier[0..=index].to_string()
+    specifier[0..index].to_string()
   } else {
     specifier.to_string()
   };
@@ -924,6 +942,20 @@ struct PackageConfig {
   name: Option<String>,
   pjsonpath: PathBuf,
   typ: String,
+}
+
+pub fn check_if_should_use_esm_loader(
+  main_module: &ModuleSpecifier,
+) -> Result<bool, AnyError> {
+  let s = main_module.as_str();
+  if s.ends_with(".mjs") {
+    return Ok(true);
+  }
+  if s.ends_with(".cjs") {
+    return Ok(false);
+  }
+  let package_config = get_package_scope_config(main_module)?;
+  Ok(package_config.typ == "module")
 }
 
 fn get_package_config(
@@ -1136,7 +1168,8 @@ mod tests {
     let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
     let expected =
       Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
-    assert_eq!(actual, expected);
+    assert!(matches!(actual, ResolveResponse::Esm(_)));
+    assert_eq!(actual.to_result().unwrap(), expected);
 
     let actual = node_resolve(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
@@ -1144,12 +1177,11 @@ mod tests {
       &cwd,
     )
     .unwrap();
-    eprintln!("actual {}", actual);
-    assert_eq!(
-      actual,
+    let expected =
       Url::parse("data:application/javascript,console.log(\"Hello%20Deno\");")
-        .unwrap()
-    );
+        .unwrap();
+    assert!(matches!(actual, ResolveResponse::Specifier(_)));
+    assert_eq!(actual.to_result().unwrap(), expected);
   }
 
   #[test]
@@ -1159,7 +1191,24 @@ mod tests {
     let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
     let expected =
       Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
-    assert_eq!(actual, expected);
+    matches!(actual, ResolveResponse::Esm(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
+  }
+
+  #[test]
+  fn package_subpath() {
+    let cwd = testdir("subpath");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
+    matches!(actual, ResolveResponse::CommonJs(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
+    let actual = node_resolve("foo/server.js", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/server.js")).unwrap();
+    matches!(actual, ResolveResponse::CommonJs(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
   }
 
   #[test]
@@ -1169,13 +1218,15 @@ mod tests {
     let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
     let foo_js =
       Url::from_file_path(cwd.join("node_modules/foo/foo.js")).unwrap();
-    assert_eq!(actual, foo_js);
+    assert!(matches!(actual, ResolveResponse::Esm(_)));
+    assert_eq!(actual.to_result().unwrap(), foo_js);
 
     let actual = node_resolve("bar", foo_js.as_str(), &cwd).unwrap();
 
     let bar_js =
       Url::from_file_path(cwd.join("node_modules/bar/bar.js")).unwrap();
-    assert_eq!(actual, bar_js);
+    assert!(matches!(actual, ResolveResponse::Esm(_)));
+    assert_eq!(actual.to_result().unwrap(), bar_js);
   }
 
   #[test]
@@ -1183,15 +1234,15 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.113.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.127.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
-    println!("actual {}", actual);
-    assert_eq!(actual, expected);
+    assert!(matches!(actual, ResolveResponse::Esm(_)));
+    assert_eq!(actual.to_result().unwrap(), expected);
 
     let actual = node_resolve("node:http", main.as_str(), &cwd).unwrap();
-    println!("actual {}", actual);
-    assert_eq!(actual, expected);
+    assert!(matches!(actual, ResolveResponse::Esm(_)));
+    assert_eq!(actual.to_result().unwrap(), expected);
   }
 
   #[test]
@@ -1204,19 +1255,35 @@ mod tests {
       cwd.join("node_modules/imports_exports/import_export.js"),
     )
     .unwrap();
-    assert_eq!(actual, expected);
+    assert!(matches!(actual, ResolveResponse::CommonJs(_)));
+    assert_eq!(actual.to_result().unwrap(), expected);
 
     // check that `imports` mapping works correctly
     let cwd = testdir("conditions/node_modules/imports_exports");
     let main = Url::from_file_path(cwd.join("import_export.js")).unwrap();
     let actual = node_resolve("#dep", main.as_str(), &cwd).unwrap();
     let expected = Url::from_file_path(cwd.join("import_polyfill.js")).unwrap();
-    assert_eq!(actual, expected);
+    assert!(matches!(actual, ResolveResponse::CommonJs(_)));
+    assert_eq!(actual.to_result().unwrap(), expected);
   }
 
   #[test]
   fn test_is_relative_specifier() {
     assert!(is_relative_specifier("./foo.js"));
     assert!(!is_relative_specifier("https://deno.land/std/node/http.ts"));
+  }
+
+  #[test]
+  fn test_check_if_should_use_esm_loader() {
+    let basic = testdir("basic");
+    let main = Url::from_file_path(basic.join("main.js")).unwrap();
+    assert!(check_if_should_use_esm_loader(&main).unwrap());
+
+    let cjs = Url::from_file_path(basic.join("main.cjs")).unwrap();
+    assert!(!check_if_should_use_esm_loader(&cjs).unwrap());
+
+    let not_esm = testdir("not_esm");
+    let main = Url::from_file_path(not_esm.join("main.js")).unwrap();
+    assert!(!check_if_should_use_esm_loader(&main).unwrap());
   }
 }

@@ -1,5 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
+
+import { assertThrows } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -12,19 +14,36 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 const resourcesPre = Deno.resources();
 
 // dlopen shouldn't panic
-try {
+assertThrows(() => {
   Deno.dlopen("cli/src/main.rs", {});
-} catch (_) {
-  console.log("dlopen doesn't panic");
-}
+});
+
+assertThrows(
+  () => {
+    Deno.dlopen(libPath, {
+      non_existent_symbol: {
+        parameters: [],
+        result: "void",
+      },
+    });
+  },
+  Error,
+  "Failed to register symbol non_existent_symbol",
+);
 
 const dylib = Deno.dlopen(libPath, {
-  "print_something": { parameters: [], result: "void" },
-  "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
-  "print_buffer2": {
-    parameters: ["buffer", "usize", "buffer", "usize"],
+  "printSomething": {
+    name: "print_something",
+    parameters: [],
     result: "void",
   },
+  "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
+  "print_buffer2": {
+    parameters: ["pointer", "usize", "pointer", "usize"],
+    result: "void",
+  },
+  "return_buffer": { parameters: [], result: "pointer" },
+  "is_null_ptr": { parameters: ["pointer"], result: "u8" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
@@ -33,20 +52,98 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
-  "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
-  "nonblocking_buffer": {
-    parameters: ["buffer", "usize"],
+  "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
+  "sleep_nonblocking": {
+    name: "sleep_blocking",
+    parameters: ["u64"],
     result: "void",
     nonblocking: true,
   },
+  "sleep_blocking": { parameters: ["u64"], result: "void" },
+  "nonblocking_buffer": {
+    parameters: ["pointer", "usize"],
+    result: "void",
+    nonblocking: true,
+  },
+  "get_add_u32_ptr": {
+    parameters: [],
+    result: "pointer",
+  },
+  "get_sleep_blocking_ptr": {
+    parameters: [],
+    result: "pointer",
+  },
+  "static_u32": {
+    type: "u32",
+  },
+  "static_ptr": {
+    type: "pointer",
+  },
 });
 
-dylib.symbols.print_something();
+dylib.symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
+const ptr = dylib.symbols.return_buffer();
+dylib.symbols.print_buffer(ptr, 8);
+const ptrView = new Deno.UnsafePointerView(ptr);
+const into = new Uint8Array(6);
+const into2 = new Uint8Array(3);
+const into2ptr = Deno.UnsafePointer.of(into2);
+const into2ptrView = new Deno.UnsafePointerView(into2ptr);
+const into3 = new Uint8Array(3);
+ptrView.copyInto(into);
+console.log([...into]);
+ptrView.copyInto(into2, 3);
+console.log([...into2]);
+into2ptrView.copyInto(into3);
+console.log([...into3]);
+const string = new Uint8Array([
+  ...new TextEncoder().encode("Hello from pointer!"),
+  0,
+]);
+const stringPtr = Deno.UnsafePointer.of(string);
+const stringPtrview = new Deno.UnsafePointerView(stringPtr);
+console.log(stringPtrview.getCString());
+console.log(stringPtrview.getCString(11));
+console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
+console.log(Boolean(dylib.symbols.is_null_ptr(null)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
+
+const addU32Ptr = dylib.symbols.get_add_u32_ptr();
+const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
+  parameters: ["u32", "u32"],
+  result: "u32",
+});
+console.log(addU32.call(123, 456));
+
+const sleepBlockingPtr = dylib.symbols.get_sleep_blocking_ptr();
+const sleepNonBlocking = new Deno.UnsafeFnPointer(sleepBlockingPtr, {
+  nonblocking: true,
+  parameters: ["u64"],
+  result: "void",
+});
+const before = performance.now();
+await sleepNonBlocking.call(100);
+console.log(performance.now() - before >= 100);
+
 console.log(dylib.symbols.add_u32(123, 456));
+assertThrows(
+  () => {
+    dylib.symbols.add_u32(-1, 100);
+  },
+  TypeError,
+  "Expected FFI argument to be an unsigned integer, but got Number(-1)",
+);
+assertThrows(
+  () => {
+    dylib.symbols.add_u32(null, 100);
+  },
+  TypeError,
+  "Expected FFI argument to be an unsigned integer, but got Null",
+);
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
 console.log(dylib.symbols.add_i64(123, 456));
@@ -54,6 +151,21 @@ console.log(dylib.symbols.add_usize(123, 456));
 console.log(dylib.symbols.add_isize(123, 456));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+
+// test mutating sync calls
+
+function test_fill_buffer(fillValue, arr) {
+  let buf = new Uint8Array(arr);
+  dylib.symbols.fill_buffer(fillValue, buf, buf.length);
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] !== fillValue) {
+      throw new Error(`Found '${buf[i]}' in buffer, expected '${fillValue}'.`);
+    }
+  }
+}
+
+test_fill_buffer(0, [2, 3, 4]);
+test_fill_buffer(5, [2, 7, 3, 2, 1]);
 
 // Test non blocking calls
 
@@ -80,8 +192,13 @@ dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
 });
 await promise;
 
-const start = performance.now();
-dylib.symbols.sleep_blocking(100).then(() => {
+let start = performance.now();
+dylib.symbols.sleep_blocking(100);
+console.log("After sleep_blocking");
+console.log(performance.now() - start >= 100);
+
+start = performance.now();
+dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
   // Close after task is complete.
@@ -89,6 +206,14 @@ dylib.symbols.sleep_blocking(100).then(() => {
 });
 console.log("Before");
 console.log(performance.now() - start < 100);
+
+console.log("Static u32:", dylib.symbols.static_u32);
+console.log(
+  "Static ptr:",
+  dylib.symbols.static_ptr instanceof Deno.UnsafePointer,
+);
+const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
+console.log("Static ptr value:", view.getUint32());
 
 function cleanup() {
   dylib.close();

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new_current_thread()
@@ -12,4 +12,14 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     .max_blocking_threads(32)
     .build()
     .unwrap()
+}
+
+// TODO(ry) rename to run_local ?
+pub fn run_basic<F, R>(future: F) -> R
+where
+  F: std::future::Future<Output = R>,
+{
+  let rt = create_basic_runtime();
+  let local = tokio::task::LocalSet::new();
+  local.block_on(&rt, future)
 }

@@ -1,0 +1,2 @@
+error: Module not found "file:///[WILDCARD]/nonexistent/jsx-runtime".
+    at file:///[WILDCARD]/deno-jsx-error.jsonc:1:1

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
 use std::path::Path;
@@ -37,7 +37,32 @@ mod not_docs {
     let snapshot = js_runtime.snapshot();
     let snapshot_slice: &[u8] = &*snapshot;
     println!("Snapshot size: {}", snapshot_slice.len());
-    std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+    let compressed_snapshot_with_size = {
+      let mut vec = vec![];
+
+      vec.extend_from_slice(
+        &u32::try_from(snapshot.len())
+          .expect("snapshot larger than 4gb")
+          .to_le_bytes(),
+      );
+
+      lzzzz::lz4_hc::compress_to_vec(
+        snapshot_slice,
+        &mut vec,
+        lzzzz::lz4_hc::CLEVEL_MAX,
+      )
+      .expect("snapshot compression failed");
+
+      vec
+    };
+
+    println!(
+      "Snapshot compressed size: {}",
+      compressed_snapshot_with_size.len()
+    );
+
+    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
     println!("Snapshot written to: {} ", snapshot_path.display());
   }
 
@@ -68,7 +93,7 @@ mod not_docs {
     }
   }
 
-  impl deno_timers::TimersPermission for Permissions {
+  impl deno_web::TimersPermission for Permissions {
     fn allow_hrtime(&mut self) -> bool {
       unreachable!("snapshotting!")
     }
@@ -85,7 +110,7 @@ mod not_docs {
   impl deno_ffi::FfiPermissions for Permissions {
     fn check(
       &mut self,
-      _path: &Path,
+      _path: Option<&Path>,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -120,20 +145,15 @@ mod not_docs {
       deno_console::init(),
       deno_url::init(),
       deno_tls::init(),
-      deno_web::init(deno_web::BlobStore::default(), Default::default()),
-      deno_fetch::init::<Permissions>(
-        "".to_owned(),
-        None,
-        None,
-        None,
-        None,
-        None,
+      deno_web::init::<Permissions>(
+        deno_web::BlobStore::default(),
+        Default::default(),
       ),
+      deno_fetch::init::<Permissions>(Default::default()),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
       deno_webgpu::init(false),
-      deno_timers::init::<Permissions>(),
       deno_broadcast_channel::init(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.

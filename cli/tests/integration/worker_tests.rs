@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 
@@ -98,4 +98,9 @@ itest!(worker_permissions_blob_local {
   output: "workers/permissions_blob_local.ts.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(worker_terminate_tla_crash {
+  args: "run --quiet --reload workers/terminate_tla_crash.js",
+  output: "workers/terminate_tla_crash.js.out",
 });

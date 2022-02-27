@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use test_util as util;
@@ -92,6 +92,12 @@ itest!(lint_with_config {
 itest!(lint_with_config_and_flags {
   args: "lint --config lint/Deno.jsonc --ignore=lint/with_config/a.ts",
   output: "lint/with_config_and_flags.out",
+  exit_code: 1,
+});
+
+itest!(lint_with_config_without_tags {
+  args: "lint --config lint/Deno.no_tags.jsonc lint/with_config/",
+  output: "lint/with_config_without_tags.out",
   exit_code: 1,
 });
 

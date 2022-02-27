@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -22,7 +22,10 @@
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
+    PromisePrototypeFinally,
+    StringPrototypeSlice,
     ObjectAssign,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
@@ -43,6 +46,20 @@
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
+  // TODO(bartlomieju): it future use `v8::Private` so it's not visible
+  // to users. Currently missing bindings.
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+
+  let opCallTracingEnabled = false;
+  const opCallTraces = new Map();
+
+  function enableOpCallTracing() {
+    opCallTracingEnabled = true;
+  }
+
+  function isOpCallTracingEnabled() {
+    return opCallTracingEnabled;
+  }
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -119,6 +136,10 @@
       const err = errorBuilder ? errorBuilder(res.message) : new Error(
         `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
+      // Set .code if error was a known OS error, see error_codes.rs
+      if (res.code) {
+        err.code = res.code;
+      }
       // Strip unwrapOpResult() and errorBuilder() calls from stack trace
       ErrorCaptureStackTrace(err, unwrapOpResult);
       throw err;
@@ -131,7 +152,20 @@
     const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    if (opCallTracingEnabled) {
+      // Capture a stack trace by creating a new `Error` object. We remove the
+      // first 6 characters (the `Error\n` prefix) to get just the stack trace.
+      const stack = StringPrototypeSlice(new Error().stack, 6);
+      MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
+      p = PromisePrototypeFinally(
+        p,
+        () => MapPrototypeDelete(opCallTraces, promiseId),
+      );
+    }
+    // Save the id on the promise so it can later be ref'ed or unref'ed
+    p[promiseIdSymbol] = promiseId;
+    return p;
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
@@ -140,6 +174,18 @@
 
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
+  }
+
+  function read(rid, buf) {
+    return opAsync("op_read", rid, buf);
+  }
+
+  function write(rid, buf) {
+    return opAsync("op_write", rid, buf);
+  }
+
+  function shutdown(rid) {
+    return opAsync("op_shutdown", rid);
   }
 
   function close(rid) {
@@ -172,6 +218,7 @@
       this.name = "BadResource";
     }
   }
+  const BadResourcePrototype = BadResource.prototype;
 
   class Interrupted extends Error {
     constructor(msg) {
@@ -179,6 +226,7 @@
       this.name = "Interrupted";
     }
   }
+  const InterruptedPrototype = Interrupted.prototype;
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
@@ -187,6 +235,9 @@
     ops,
     close,
     tryClose,
+    read,
+    write,
+    shutdown,
     print,
     resources,
     metrics,
@@ -195,7 +246,12 @@
     opresolve,
     syncOpsCache,
     BadResource,
+    BadResourcePrototype,
     Interrupted,
+    InterruptedPrototype,
+    enableOpCallTracing,
+    isOpCallTracingEnabled,
+    opCallTraces,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

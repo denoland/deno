@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -50,13 +50,19 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
   }
+
+  // deno-lint-ignore no-empty-interface
+  export interface TlsHandshakeInfo {}
 
   export interface TlsConn extends Conn {
     /** Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
-    handshake(): Promise<void>;
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   export interface ListenOptions {
@@ -87,11 +93,21 @@ declare namespace Deno {
   ): Listener;
 
   export interface ListenTlsOptions extends ListenOptions {
+    /** Server private key in PEM format */
+    key?: string;
+    /** Cert chain in PEM format */
+    cert?: string;
     /** Path to a file containing a PEM formatted CA certificate. Requires
-     * `--allow-read`. */
-    certFile: string;
-    /** Server public key file. Requires `--allow-read`.*/
-    keyFile: string;
+     * `--allow-read`.
+     *
+     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     */
+    certFile?: string;
+    /** Server private key file. Requires `--allow-read`.
+     *
+     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     */
+    keyFile?: string;
 
     transport?: "tcp";
   }
@@ -127,7 +143,22 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+  export function connect(options: ConnectOptions): Promise<TcpConn>;
+
+  export interface TcpConn extends Conn {
+    /**
+     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
+     *
+     * Enable/disable the use of Nagle's algorithm. Defaults to true.
+     */
+    setNoDelay(nodelay?: boolean): void;
+    /**
+     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
+     *
+     * Enable/disable keep-alive functionality.
+     */
+    setKeepAlive(keepalive?: boolean): void;
+  }
 
   export interface ConnectTlsOptions {
     /** The port to connect to. */
@@ -136,10 +167,10 @@ declare namespace Deno {
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
     /**
+     * Server certificate file.
+     *
      * @deprecated This option is deprecated and will be removed in a future
      * release.
-     *
-     * Server certificate file.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the
@@ -165,6 +196,36 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
+
+  export interface StartTlsOptions {
+    /** A literal IP address or host name that can be resolved to an IP address.
+     * If not specified, defaults to `127.0.0.1`. */
+    hostname?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+  }
+
+  /** Start TLS handshake from an existing connection using an optional list of
+   * CA certificates, and hostname (default is "127.0.0.1"). Specifying CA certs
+   * is optional. By default the configured root certificates are used. Using
+   * this function requires that the other end of the connection is prepared for
+   * a TLS handshake.
+   *
+   * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function startTls(
+    conn: Conn,
+    options?: StartTlsOptions,
+  ): Promise<TlsConn>;
 
   /** Shutdown socket send operations.
    *

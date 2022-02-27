@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   buildMode,
   getPrebuiltToolPath,
@@ -20,17 +20,16 @@ async function dlint() {
     ":!:cli/tests/testdata/swc_syntax_error.ts",
     ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
-    ":!:std/**/testdata/*",
-    ":!:std/**/node_modules/*",
     ":!:cli/bench/node*.js",
+    ":!:cli/bench/testdata/express-router.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
-    ":!:cli/tests/unit/**",
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
   ]);
 
@@ -109,7 +108,14 @@ async function clippy() {
   }
 
   const p = Deno.run({
-    cmd: [...cmd, "--", "-D", "clippy::all"],
+    cmd: [
+      ...cmd,
+      "--",
+      "-D",
+      "clippy::all",
+      "-D",
+      "clippy::await_holding_refcell_ref",
+    ],
   });
   const { success } = await p.status();
   if (!success) {

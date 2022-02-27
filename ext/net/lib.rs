@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub mod io;
 pub mod ops;
@@ -82,7 +82,6 @@ pub fn init<P: NetPermissions + 'static>(
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
   let mut ops_to_register = vec![];
-  ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
   ops_to_register.extend(ops_tls::init::<P>());
   Extension::builder()

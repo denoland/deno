@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -49,7 +49,7 @@ pub(crate) fn err_module_not_found(
   typ: &str,
 ) -> AnyError {
   generic_error(format!(
-    "[ERR_MODULE_NOT_FOUND] Cannot find {} '{}' imported from {}",
+    "[ERR_MODULE_NOT_FOUND] Cannot find {} \"{}\" imported from \"{}\"",
     typ, path, base
   ))
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 // @ts-check
@@ -8,7 +8,6 @@
   const webidl = window.__bootstrap.webidl;
   const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
   const {
-    Boolean,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -16,33 +15,42 @@
     TypeError,
   } = window.__bootstrap.primordials;
 
-  const add = Symbol("add");
-  const signalAbort = Symbol("signalAbort");
-  const remove = Symbol("remove");
-  const aborted = Symbol("aborted");
-  const abortAlgos = Symbol("abortAlgos");
+  const add = Symbol("[[add]]");
+  const signalAbort = Symbol("[[signalAbort]]");
+  const remove = Symbol("[[remove]]");
+  const abortReason = Symbol("[[abortReason]]");
+  const abortAlgos = Symbol("[[abortAlgos]]");
+  const signal = Symbol("[[signal]]");
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class AbortSignal extends EventTarget {
-    static abort() {
+    static abort(reason = undefined) {
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       const signal = new AbortSignal(illegalConstructorKey);
-      signal[signalAbort]();
+      signal[signalAbort](reason);
       return signal;
     }
 
     [add](algorithm) {
+      if (this.aborted) {
+        return;
+      }
       if (this[abortAlgos] === null) {
         this[abortAlgos] = new Set();
       }
       SetPrototypeAdd(this[abortAlgos], algorithm);
     }
 
-    [signalAbort]() {
-      if (this[aborted]) {
+    [signalAbort](
+      reason = new DOMException("The signal has been aborted", "AbortError"),
+    ) {
+      if (this.aborted) {
         return;
       }
-      this[aborted] = true;
+      this[abortReason] = reason;
       if (this[abortAlgos] !== null) {
         for (const algorithm of this[abortAlgos]) {
           algorithm();
@@ -63,36 +71,57 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
-      this[aborted] = false;
+      this[abortReason] = undefined;
       this[abortAlgos] = null;
       this[webidl.brand] = webidl.brand;
     }
 
     get aborted() {
-      return Boolean(this[aborted]);
+      webidl.assertBranded(this, AbortSignalPrototype);
+      return this[abortReason] !== undefined;
+    }
+
+    get reason() {
+      webidl.assertBranded(this, AbortSignalPrototype);
+      return this[abortReason];
+    }
+
+    throwIfAborted() {
+      webidl.assertBranded(this, AbortSignalPrototype);
+      if (this[abortReason] !== undefined) {
+        throw this[abortReason];
+      }
     }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
 
   webidl.configurePrototype(AbortSignal);
+  const AbortSignalPrototype = AbortSignal.prototype;
 
   class AbortController {
-    #signal = new AbortSignal(illegalConstructorKey);
+    [signal] = new AbortSignal(illegalConstructorKey);
 
-    get signal() {
-      return this.#signal;
+    constructor() {
+      this[webidl.brand] = webidl.brand;
     }
 
-    abort() {
-      this.#signal[signalAbort]();
+    get signal() {
+      webidl.assertBranded(this, AbortControllerPrototype);
+      return this[signal];
+    }
+
+    abort(reason) {
+      webidl.assertBranded(this, AbortControllerPrototype);
+      this[signal][signalAbort](reason);
     }
   }
 
   webidl.configurePrototype(AbortController);
+  const AbortControllerPrototype = AbortController.prototype;
 
   webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
     "AbortSignal",
-    AbortSignal,
+    AbortSignal.prototype,
   );
 
   function newSignal() {
@@ -100,16 +129,22 @@
   }
 
   function follow(followingSignal, parentSignal) {
+    if (followingSignal.aborted) {
+      return;
+    }
     if (parentSignal.aborted) {
-      followingSignal[signalAbort]();
+      followingSignal[signalAbort](parentSignal.reason);
     } else {
-      parentSignal[add](() => followingSignal[signalAbort]());
+      parentSignal[add](() =>
+        followingSignal[signalAbort](parentSignal.reason)
+      );
     }
   }
 
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
+    AbortSignalPrototype,
     add,
     signalAbort,
     remove,

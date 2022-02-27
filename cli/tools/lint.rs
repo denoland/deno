@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
@@ -8,13 +8,17 @@
 //! the same functions as ops available in JS runtime.
 use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::LintFlags;
+use crate::flags::{Flags, LintFlags};
 use crate::fmt_errors;
-use crate::fs_util::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
+use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
-use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
+use deno_core::anyhow::anyhow;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -45,15 +49,12 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(
-  maybe_lint_config: Option<LintConfig>,
-  lint_flags: LintFlags,
-  watch: bool,
-) -> Result<(), AnyError> {
+pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
+  let flags = Arc::new(flags);
   let LintFlags {
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
     files: args,
     ignore,
     json,
@@ -66,14 +67,21 @@ pub async fn lint(
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
 
+  let ps = ProcState::build(flags.clone()).await?;
+  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
+    config_file.to_lint_config()?
+  } else {
+    None
+  };
+
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
       include_files = lint_config
         .files
         .include
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
@@ -81,9 +89,13 @@ pub async fn lint(
         .files
         .exclude
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
+  }
+
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
   }
 
   let reporter_kind = if json {
@@ -98,33 +110,32 @@ pub async fn lint(
   // and `--rules-include` CLI flag, only the flag value is taken into account.
   let lint_rules = get_configured_rules(
     maybe_lint_config.as_ref(),
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
   )?;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result = collect_files(
-      &*include_files.clone(),
-      &*exclude_files.clone(),
-      is_supported_ext,
-    )
-    .map(|files| {
-      if let Some(paths) = changed {
-        files
-          .into_iter()
-          .filter(|path| paths.contains(path))
-          .collect::<Vec<_>>()
-      } else {
-        files
-      }
-    });
-    let paths_to_watch = args.clone();
+    let result =
+      collect_files(&include_files, &exclude_files, is_supported_ext).map(
+        |files| {
+          if let Some(paths) = changed {
+            files
+              .iter()
+              .any(|path| paths.contains(path))
+              .then(|| files)
+              .unwrap_or_else(|| [].to_vec())
+          } else {
+            files
+          }
+        },
+      );
+
+    let paths_to_watch = include_files.clone();
+
     async move {
-      if (files_changed || !watch)
-        && matches!(result, Ok(ref files) if files.is_empty())
-      {
+      if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {
@@ -160,13 +171,21 @@ pub async fn lint(
 
     Ok(())
   };
-  if watch {
+  if flags.watch.is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
     }
-    file_watcher::watch_func(resolver, operation, "Lint").await?;
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      file_watcher::PrintConfig {
+        job_name: "Lint".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
+    )
+    .await?;
   } else {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       let reporter_lock =
@@ -483,20 +502,20 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
 
 pub(crate) fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
+  maybe_rules_tags: Option<Vec<String>>,
+  maybe_rules_include: Option<Vec<String>>,
+  maybe_rules_exclude: Option<Vec<String>>,
 ) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
   if maybe_lint_config.is_none()
-    && rules_tags.is_empty()
-    && rules_include.is_empty()
-    && rules_exclude.is_empty()
+    && maybe_rules_tags.is_none()
+    && maybe_rules_include.is_none()
+    && maybe_rules_exclude.is_none()
   {
     return Ok(rules::get_recommended_rules());
   }
 
   let (config_file_tags, config_file_include, config_file_exclude) =
-    if let Some(lint_config) = maybe_lint_config.as_ref() {
+    if let Some(lint_config) = maybe_lint_config {
       (
         lint_config.rules.tags.clone(),
         lint_config.rules.include.clone(),
@@ -506,26 +525,26 @@ pub(crate) fn get_configured_rules(
       (None, None, None)
     };
 
-  let maybe_configured_include = if !rules_include.is_empty() {
-    Some(rules_include)
+  let maybe_configured_include = if maybe_rules_include.is_some() {
+    maybe_rules_include
   } else {
     config_file_include
   };
 
-  let maybe_configured_exclude = if !rules_exclude.is_empty() {
-    Some(rules_exclude)
+  let maybe_configured_exclude = if maybe_rules_exclude.is_some() {
+    maybe_rules_exclude
   } else {
     config_file_exclude
   };
 
-  let configured_tags = if !rules_tags.is_empty() {
-    rules_tags
+  let maybe_configured_tags = if maybe_rules_tags.is_some() {
+    maybe_rules_tags
   } else {
-    config_file_tags.unwrap_or_else(Vec::new)
+    config_file_tags
   };
 
   let configured_rules = rules::get_filtered_rules(
-    Some(configured_tags),
+    maybe_configured_tags.or_else(|| Some(vec!["recommended".to_string()])),
     maybe_configured_exclude,
     maybe_configured_include,
   );
@@ -535,4 +554,37 @@ pub(crate) fn get_configured_rules(
   }
 
   Ok(configured_rules)
+}
+
+#[cfg(test)]
+mod test {
+  use deno_lint::rules::get_recommended_rules;
+
+  use super::*;
+  use crate::config_file::LintRulesConfig;
+
+  #[test]
+  fn recommended_rules_when_no_tags_in_config() {
+    let lint_config = LintConfig {
+      rules: LintRulesConfig {
+        exclude: Some(vec!["no-debugger".to_string()]),
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    let rules =
+      get_configured_rules(Some(&lint_config), None, None, None).unwrap();
+    let mut rule_names = rules
+      .into_iter()
+      .map(|r| r.code().to_string())
+      .collect::<Vec<_>>();
+    rule_names.sort();
+    let mut recommended_rule_names = get_recommended_rules()
+      .into_iter()
+      .map(|r| r.code().to_string())
+      .filter(|n| n != "no-debugger")
+      .collect::<Vec<_>>();
+    recommended_rule_names.sort();
+    assert_eq!(rule_names, recommended_rule_names);
+  }
 }

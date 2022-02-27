@@ -1,9 +1,8 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use serde::ser;
 use serde::ser::Serialize;
 
 use std::cell::RefCell;
-use std::convert::TryInto;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;

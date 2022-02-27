@@ -1,17 +1,19 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { chunkedBodyReader } from "../../../test_util/std/http/_io.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { Buffer } from "../../../test_util/std/io/buffer.ts";
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+import {
+  Buffer,
+  BufReader,
+  BufWriter,
+} from "../../../test_util/std/io/buffer.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
   assertRejects,
+  assertStrictEquals,
   assertThrows,
   deferred,
   delay,
   fail,
-  unitTest,
 } from "./test_util.ts";
 
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
@@ -41,7 +43,7 @@ async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   return decoder.decode(dest.bytes());
 }
 
-unitTest({ permissions: { net: true } }, async function httpServerBasic() {
+Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     for await (const conn of listener) {
@@ -67,7 +69,7 @@ unitTest({ permissions: { net: true } }, async function httpServerBasic() {
   await promise;
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerGetRequestBody() {
     const promise = (async () => {
@@ -101,7 +103,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerStreamResponse() {
     const stream = new TransformStream();
@@ -130,7 +132,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerStreamRequest() {
     const stream = new TransformStream();
@@ -169,7 +171,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerStreamDuplex() {
     const promise = (async () => {
@@ -208,7 +210,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function httpServerClose() {
+Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.serveHttp(await listener.accept());
@@ -219,7 +221,7 @@ unitTest({ permissions: { net: true } }, async function httpServerClose() {
   listener.close();
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerInvalidMethod() {
     const listener = Deno.listen({ port: 4501 });
@@ -239,7 +241,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const hostname = "localhost";
@@ -280,7 +282,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerRegressionHang() {
     const promise = (async () => {
@@ -307,7 +309,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerCancelBodyOnResponseFailure() {
     const promise = (async () => {
@@ -352,7 +354,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerNextRequestErrorExposedInResponse() {
     const promise = (async () => {
@@ -386,7 +388,7 @@ unitTest(
         Deno.errors.Http,
         "connection closed",
       );
-      // The error from `op_http_request_next` reroutes to `respondWith()`.
+      // The error from `op_http_accept` reroutes to `respondWith()`.
       assertEquals(await nextRequestPromise, null);
       listener.close();
     })();
@@ -397,7 +399,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerEmptyBlobResponse() {
     const promise = (async () => {
@@ -419,7 +421,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerNextRequestResolvesOnClose() {
     const httpConnList: Deno.HttpConn[] = [];
@@ -451,7 +453,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   // Issue: https://github.com/denoland/deno/issues/10870
   async function httpServerHang() {
@@ -497,7 +499,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   // Issue: https://github.com/denoland/deno/issues/10930
   async function httpServerStreamingResponse() {
@@ -587,7 +589,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpRequestLatin1Headers() {
     const promise = (async () => {
@@ -633,7 +635,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerRequestWithoutPath() {
     const promise = (async () => {
@@ -678,7 +680,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function httpServerWebSocket() {
+Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     for await (const conn of listener) {
@@ -708,7 +710,7 @@ unitTest({ permissions: { net: true } }, async function httpServerWebSocket() {
   await promise;
 });
 
-unitTest(function httpUpgradeWebSocket() {
+Deno.test(function httpUpgradeWebSocket() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "Upgrade",
@@ -726,7 +728,7 @@ unitTest(function httpUpgradeWebSocket() {
   );
 });
 
-unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
+Deno.test(function httpUpgradeWebSocketMultipleConnectionOptions() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "keep-alive, upgrade",
@@ -738,7 +740,7 @@ unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   assertEquals(response.status, 101);
 });
 
-unitTest(function httpUpgradeWebSocketMultipleUpgradeOptions() {
+Deno.test(function httpUpgradeWebSocketMultipleUpgradeOptions() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "upgrade",
@@ -750,7 +752,7 @@ unitTest(function httpUpgradeWebSocketMultipleUpgradeOptions() {
   assertEquals(response.status, 101);
 });
 
-unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
+Deno.test(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "upgrade",
@@ -762,7 +764,7 @@ unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
   assertEquals(response.status, 101);
 });
 
-unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
+Deno.test(function httpUpgradeWebSocketInvalidUpgradeHeader() {
   assertThrows(
     () => {
       const request = new Request("https://deno.land/", {
@@ -779,7 +781,7 @@ unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
   );
 });
 
-unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
+Deno.test(function httpUpgradeWebSocketWithoutUpgradeHeader() {
   assertThrows(
     () => {
       const request = new Request("https://deno.land/", {
@@ -795,7 +797,7 @@ unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
   );
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpCookieConcatenation() {
     const promise = (async () => {
@@ -826,7 +828,7 @@ unitTest(
 );
 
 // https://github.com/denoland/deno/issues/11651
-unitTest({ permissions: { net: true } }, async function httpServerPanic() {
+Deno.test({ permissions: { net: true } }, async function httpServerPanic() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
   const conn = await listener.accept();
@@ -846,7 +848,7 @@ unitTest({ permissions: { net: true } }, async function httpServerPanic() {
 });
 
 // https://github.com/denoland/deno/issues/11595
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerIncompleteMessage() {
     const listener = Deno.listen({ port: 4501 });
@@ -861,36 +863,25 @@ unitTest(
     const ev = await httpConn.nextRequest();
     const { respondWith } = ev!;
 
-    const { readable, writable } = new TransformStream<Uint8Array>();
-    const writer = writable.getWriter();
-
-    async function writeResponse() {
-      await writer.write(
-        new TextEncoder().encode(
-          "written to the writable side of a TransformStream",
-        ),
-      );
-      await writer.close();
-    }
-
     const errors: Error[] = [];
 
-    const writePromise = writeResponse()
-      .catch((error: Error) => {
+    const readable = new ReadableStream({
+      async pull(controller) {
+        client.close();
+        await delay(1000);
+        controller.enqueue(new TextEncoder().encode(
+          "written to the writable side of a TransformStream",
+        ));
+        controller.close();
+      },
+      cancel(error) {
         errors.push(error);
-      });
+      },
+    });
 
     const res = new Response(readable);
 
-    const respondPromise = respondWith(res)
-      .catch((error: Error) => errors.push(error));
-
-    client.close();
-
-    await Promise.all([
-      writePromise,
-      respondPromise,
-    ]);
+    await respondWith(res).catch((error: Error) => errors.push(error));
 
     httpConn.close();
     listener.close();
@@ -904,7 +895,7 @@ unitTest(
 );
 
 // https://github.com/denoland/deno/issues/11743
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerDoesntLeakResources() {
     const listener = Deno.listen({ port: 4505 });
@@ -928,18 +919,18 @@ unitTest(
 );
 
 // https://github.com/denoland/deno/issues/11926
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function httpServerDoesntLeakResources2() {
     let listener: Deno.Listener;
     let httpConn: Deno.HttpConn;
 
     const promise = (async () => {
-      listener = Deno.listen({ port: 4502 });
+      listener = Deno.listen({ port: 4508 });
       for await (const conn of listener) {
         httpConn = Deno.serveHttp(conn);
         for await (const { request, respondWith } of httpConn) {
-          assertEquals(new URL(request.url).href, "http://127.0.0.1:4502/");
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4508/");
           // not reading request body on purpose
           respondWith(new Response("ok"));
         }
@@ -947,7 +938,7 @@ unitTest(
     })();
 
     const resourcesBefore = Deno.resources();
-    const response = await fetch("http://127.0.0.1:4502", {
+    const response = await fetch("http://127.0.0.1:4508", {
       method: "POST",
       body: "hello world",
     });
@@ -970,7 +961,7 @@ unitTest(
 );
 
 // https://github.com/denoland/deno/pull/12216
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function droppedConnSenderNoPanic() {
     async function server() {
@@ -999,3 +990,317 @@ unitTest(
     await Promise.all([server(), client()]);
   },
 );
+
+// https://github.com/denoland/deno/issues/12193
+Deno.test(
+  { permissions: { net: true } },
+  async function httpConnConcurrentNextRequestCalls() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const promises = new Array(10).fill(null).map(async (_, i) => {
+        const event = await httpConn.nextRequest();
+        assert(event);
+        const { pathname } = new URL(event.request.url);
+        assertStrictEquals(pathname, `/${i}`);
+        const response = new Response(`Response #${i}`);
+        await event.respondWith(response);
+      });
+      await Promise.all(promises);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      for (let i = 0; i < 10; i++) {
+        const response = await fetch(`http://${hostname}:${port}/${i}`);
+        const body = await response.text();
+        assertStrictEquals(body, `Response #${i}`);
+      }
+    }
+
+    await Promise.all([server(), delay(100).then(client)]);
+  },
+);
+
+// https://github.com/denoland/deno/pull/12704
+// https://github.com/denoland/deno/pull/12732
+Deno.test(
+  { permissions: { net: true } },
+  async function httpConnAutoCloseDelayedOnUpgrade() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+
+      const event1 = await httpConn.nextRequest() as Deno.RequestEvent;
+      const event2Promise = httpConn.nextRequest();
+
+      const { socket, response } = Deno.upgradeWebSocket(event1.request);
+      socket.onmessage = (event) => socket.send(event.data);
+      const socketClosed = new Promise<void>((resolve) => {
+        socket.onclose = () => resolve();
+      });
+      event1.respondWith(response);
+
+      const event2 = await event2Promise;
+      assertStrictEquals(event2, null);
+
+      listener.close();
+      await socketClosed;
+    }
+
+    async function client() {
+      const socket = new WebSocket(`ws://${hostname}:${port}/`);
+      socket.onopen = () => socket.send("bla bla");
+      const { data } = await new Promise((res) => socket.onmessage = res);
+      assertStrictEquals(data, "bla bla");
+      socket.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
+// https://github.com/denoland/deno/issues/12741
+// https://github.com/denoland/deno/pull/12746
+// https://github.com/denoland/deno/pull/12798
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function httpServerDeleteRequestHasBody() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const event = await httpConn.nextRequest() as Deno.RequestEvent;
+      assert(event.request.body);
+      const response = new Response();
+      await event.respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = ["curl", "-X", "DELETE", url];
+      const proc = Deno.run({ cmd, stdout: "null", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRespondNonAsciiUint8Array() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.body, null);
+      await respondWith(
+        new Response(new Uint8Array([128]), {}),
+      );
+      httpConn.close();
+    })();
+
+    const resp = await fetch("http://localhost:4501/");
+    assertEquals(resp.status, 200);
+    const body = await resp.arrayBuffer();
+    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+
+    await promise;
+  },
+);
+
+// https://github.com/denoland/deno/pull/13628
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function httpServerOnUnixSocket() {
+    const filePath = Deno.makeTempFileSync();
+
+    const promise = (async () => {
+      const listener = Deno.listen({ path: filePath, transport: "unix" });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          const url = new URL(request.url);
+          assertEquals(url.protocol, "http+unix:");
+          assertEquals(decodeURIComponent(url.host), filePath);
+          assertEquals(url.pathname, "/path/name");
+          await respondWith(new Response("", { headers: {} }));
+          httpConn.close();
+        }
+        break;
+      }
+    })();
+
+    // fetch() does not supports unix domain sockets yet https://github.com/denoland/deno/issues/8821
+    const conn = await Deno.connect({ path: filePath, transport: "unix" });
+    const encoder = new TextEncoder();
+    // The Host header must be present and empty if it is not a Internet host name (RFC2616, Section 14.23)
+    const body = `GET /path/name HTTP/1.1\r\nHost:\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const resp = new Uint8Array(200);
+    const readResult = await conn.read(resp);
+    assertEquals(readResult, 115);
+
+    conn.close();
+
+    await promise;
+  },
+);
+
+function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+  // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
+  const tp = new TextProtoReader(r);
+  let finished = false;
+  const chunks: Array<{
+    offset: number;
+    data: Uint8Array;
+  }> = [];
+  async function read(buf: Uint8Array): Promise<number | null> {
+    if (finished) return null;
+    const [chunk] = chunks;
+    if (chunk) {
+      const chunkRemaining = chunk.data.byteLength - chunk.offset;
+      const readLength = Math.min(chunkRemaining, buf.byteLength);
+      for (let i = 0; i < readLength; i++) {
+        buf[i] = chunk.data[chunk.offset + i];
+      }
+      chunk.offset += readLength;
+      if (chunk.offset === chunk.data.byteLength) {
+        chunks.shift();
+        // Consume \r\n;
+        if ((await tp.readLine()) === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+      }
+      return readLength;
+    }
+    const line = await tp.readLine();
+    if (line === null) throw new Deno.errors.UnexpectedEof();
+    // TODO(bartlomieju): handle chunk extension
+    const [chunkSizeString] = line.split(";");
+    const chunkSize = parseInt(chunkSizeString, 16);
+    if (Number.isNaN(chunkSize) || chunkSize < 0) {
+      throw new Deno.errors.InvalidData("Invalid chunk size");
+    }
+    if (chunkSize > 0) {
+      if (chunkSize > buf.byteLength) {
+        let eof = await r.readFull(buf);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        const restChunk = new Uint8Array(chunkSize - buf.byteLength);
+        eof = await r.readFull(restChunk);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        } else {
+          chunks.push({
+            offset: 0,
+            data: restChunk,
+          });
+        }
+        return buf.byteLength;
+      } else {
+        const bufToFill = buf.subarray(0, chunkSize);
+        const eof = await r.readFull(bufToFill);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        // Consume \r\n
+        if ((await tp.readLine()) === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        return chunkSize;
+      }
+    } else {
+      assert(chunkSize === 0);
+      // Consume \r\n
+      if ((await r.readLine()) === null) {
+        throw new Deno.errors.UnexpectedEof();
+      }
+      await readTrailers(h, r);
+      finished = true;
+      return null;
+    }
+  }
+  return { read };
+}
+
+async function readTrailers(
+  headers: Headers,
+  r: BufReader,
+) {
+  const trailers = parseTrailer(headers.get("trailer"));
+  if (trailers == null) return;
+  const trailerNames = [...trailers.keys()];
+  const tp = new TextProtoReader(r);
+  const result = await tp.readMIMEHeader();
+  if (result == null) {
+    throw new Deno.errors.InvalidData("Missing trailer header.");
+  }
+  const undeclared = [...result.keys()].filter(
+    (k) => !trailerNames.includes(k),
+  );
+  if (undeclared.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`,
+    );
+  }
+  for (const [k, v] of result) {
+    headers.append(k, v);
+  }
+  const missingTrailers = trailerNames.filter((k) => !result.has(k));
+  if (missingTrailers.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`,
+    );
+  }
+  headers.delete("trailer");
+}
+
+function parseTrailer(field: string | null): Headers | undefined {
+  if (field == null) {
+    return undefined;
+  }
+  const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
+  if (trailerNames.length === 0) {
+    throw new Deno.errors.InvalidData("Empty trailer header.");
+  }
+  const prohibited = trailerNames.filter((k) => isProhibitedForTrailer(k));
+  if (prohibited.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`,
+    );
+  }
+  return new Headers(trailerNames.map((key) => [key, ""]));
+}
+
+function isProhibitedForTrailer(key: string): boolean {
+  const s = new Set(["transfer-encoding", "content-length", "trailer"]);
+  return s.has(key.toLowerCase());
+}

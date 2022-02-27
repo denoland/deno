@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -73,9 +73,11 @@ declare function prompt(message?: string, defaultValue?: string): string | null;
 /** Registers an event listener in the global scope, which will be called
  * synchronously whenever the event `type` is dispatched.
  *
- *     addEventListener('unload', () => { console.log('All finished!'); });
- *     ...
- *     dispatchEvent(new Event('unload'));
+ * ```ts
+ * addEventListener('unload', () => { console.log('All finished!'); });
+ * ...
+ * dispatchEvent(new Event('unload'));
+ * ```
  */
 declare function addEventListener(
   type: string,
@@ -85,9 +87,11 @@ declare function addEventListener(
 
 /** Remove a previously registered event listener from the global scope
  *
- *     const lstnr = () => { console.log('hello'); };
- *     addEventListener('load', lstnr);
- *     removeEventListener('load', lstnr);
+ * ```ts
+ * const listener = () => { console.log('hello'); };
+ * addEventListener('load', listener);
+ * removeEventListener('load', listener);
+ * ```
  */
 declare function removeEventListener(
   type: string,

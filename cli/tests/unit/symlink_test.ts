@@ -1,13 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function symlinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -22,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function symlinkSyncURL() {
     const testDir = Deno.makeTempDirSync();
@@ -40,13 +39,16 @@ unitTest(
   },
 );
 
-unitTest(function symlinkSyncPerm() {
-  assertThrows(() => {
-    Deno.symlinkSync("oldbaddir", "newbaddir");
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: false, write: false } },
+  function symlinkSyncPerm() {
+    assertThrows(() => {
+      Deno.symlinkSync("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function symlinkSyncAlreadyExist() {
     const existingFile = Deno.makeTempFileSync();
@@ -61,7 +63,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function symlinkSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -76,7 +78,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function symlinkURL() {
     const testDir = Deno.makeTempDirSync();
@@ -94,7 +96,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function symlinkAlreadyExist() {
     const existingFile = Deno.makeTempFileSync();
@@ -105,6 +107,34 @@ unitTest(
       },
       Deno.errors.AlreadyExists,
       `symlink '${existingFile}' -> '${existingFile2}'`,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: ["."] } },
+  async function symlinkNoFullWritePermissions() {
+    await assertRejects(
+      () => Deno.symlink("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+    assertThrows(
+      () => Deno.symlinkSync("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: ["."], write: true } },
+  async function symlinkNoFullReadPermissions() {
+    await assertRejects(
+      () => Deno.symlink("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+    assertThrows(
+      () => Deno.symlinkSync("old", "new"),
+      Deno.errors.PermissionDenied,
     );
   },
 );

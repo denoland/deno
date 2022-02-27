@@ -1,10 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const {
     Set,
+    SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -13,7 +14,9 @@
   }
 
   function pollSignal(rid) {
-    return core.opAsync("op_signal_poll", rid);
+    const promise = core.opAsync("op_signal_poll", rid);
+    core.unrefOp(promise[SymbolFor("Deno.core.internalPromiseId")]);
+    return promise;
   }
 
   function unbindSignal(rid) {

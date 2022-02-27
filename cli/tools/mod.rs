@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub mod coverage;
 pub mod doc;
@@ -9,3 +9,4 @@ pub mod repl;
 pub mod standalone;
 pub mod test;
 pub mod upgrade;
+pub mod vendor;

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use bencher::{DynBenchFn, StaticBenchFn, TestDescAndFn, TestOpts};
 
 pub fn is_profiling() -> bool {
@@ -54,7 +54,7 @@ fn run_profile(test: TestDescAndFn) {
       bencher::bench::run_once(|harness| bencher.run(harness));
     }
     StaticBenchFn(benchfn) => {
-      bencher::bench::run_once(|harness| benchfn(harness));
+      bencher::bench::run_once(benchfn);
     }
   };
 }

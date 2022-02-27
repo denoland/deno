@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -103,6 +103,48 @@ declare namespace Deno {
     swapFree: number;
   }
 
+  /** The information of the network interface */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name */
+    name: string;
+    /** The IP protocol version */
+    family: "IPv4" | "IPv6";
+    /** The IP address */
+    address: string;
+    /** The netmask */
+    netmask: string;
+    /** The IPv6 scope id or null */
+    scopeid: number | null;
+    /** The CIDR range */
+    cidr: string;
+    /** The MAC address */
+    mac: string;
+  }
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns an array of the network interface informations.
+   *
+   * ```ts
+   * console.log(Deno.networkInterfaces());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function networkInterfaces(): NetworkInterfaceInfo[];
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getUid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getUid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"
@@ -117,29 +159,180 @@ declare namespace Deno {
     | "usize"
     | "isize"
     | "f32"
-    | "f64";
+    | "f64"
+    | "pointer";
 
   /** A foreign function as defined by its parameter and result types */
-  export interface ForeignFunction {
-    parameters: (NativeType | "buffer")[];
-    result: NativeType;
+  export interface ForeignFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeType = NativeType,
+    NonBlocking extends boolean = boolean,
+  > {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    parameters: Parameters;
+    result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
-    nonblocking?: boolean;
+    nonblocking?: NonBlocking;
+  }
+
+  export interface ForeignStatic<Type extends NativeType = NativeType> {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    type: Exclude<Type, "void">;
+  }
+
+  /** A foreign library interface descriptor */
+  export interface ForeignLibraryInterface {
+    [name: string]: ForeignFunction | ForeignStatic;
+  }
+
+  /** All possible number types interfacing with foreign functions */
+  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
+
+  /** Infers a foreign function return type */
+  type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
+    ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer
+    : never;
+
+  type StaticForeignFunctionParameter<T> = T extends "void" ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
+    : unknown;
+
+  /** Infers a foreign function parameter list. */
+  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+    ...{
+      [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
+    },
+  ];
+
+  /** Infers a foreign symbol */
+  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+    T extends ForeignFunction ? (
+      ...args: StaticForeignFunctionParameters<T["parameters"]>
+    ) => ConditionalAsync<
+      T["nonblocking"],
+      StaticForeignFunctionResult<T["result"]>
+    >
+      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+      : never;
+
+  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
+
+  /** Infers a foreign library interface */
+  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
+    [K in keyof T]: StaticForeignSymbol<T[K]>;
+  };
+
+  type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Uint8ClampedArray
+    | Float32Array
+    | Float64Array
+    | BigInt64Array
+    | BigUint64Array;
+
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
+   */
+  export class UnsafePointer {
+    constructor(value: bigint);
+
+    value: bigint;
+
+    /**
+     * Return the direct memory pointer to the typed array in memory
+     */
+    static of(typedArray: TypedArray): UnsafePointer;
+
+    /**
+     * Returns the value of the pointer which is useful in certain scenarios.
+     */
+    valueOf(): bigint;
+  }
+
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer view to a memory location as specified by the `pointer`
+   * value. The `UnsafePointerView` API mimics the standard built in interface
+   * `DataView` for accessing the underlying types at an memory location
+   * (numbers, strings and raw bytes).
+   */
+  export class UnsafePointerView {
+    constructor(pointer: UnsafePointer);
+
+    pointer: UnsafePointer;
+
+    /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
+    getUint8(offset?: number): number;
+    /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
+    getInt8(offset?: number): number;
+    /** Gets an unsigned 16-bit integer at the specified byte offset from the pointer. */
+    getUint16(offset?: number): number;
+    /** Gets a signed 16-bit integer at the specified byte offset from the pointer. */
+    getInt16(offset?: number): number;
+    /** Gets an unsigned 32-bit integer at the specified byte offset from the pointer. */
+    getUint32(offset?: number): number;
+    /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
+    getInt32(offset?: number): number;
+    /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
+    getBigUint64(offset?: number): bigint;
+    /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
+    getBigInt64(offset?: number): bigint;
+    /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
+    getFloat32(offset?: number): number;
+    /** Gets a signed 64-bit float at the specified byte offset from the pointer. */
+    getFloat64(offset?: number): number;
+    /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
+    getCString(offset?: number): string;
+    /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
+    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
+    /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional offset from the pointer. */
+    copyInto(destination: TypedArray, offset?: number): void;
+  }
+
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a function, for calling functions that are not
+   * present as symbols.
+   */
+  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+    pointer: UnsafePointer;
+    definition: Fn;
+
+    constructor(pointer: UnsafePointer, definition: Fn);
+
+    call(
+      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+    ): ConditionalAsync<
+      Fn["nonblocking"],
+      StaticForeignFunctionResult<Fn["result"]>
+    >;
   }
 
   /** A dynamic library resource */
-  export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
-    /** All of the registered symbols along with functions for calling them */
-    symbols: { [K in keyof S]: (...args: unknown[]) => unknown };
-
+  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
+    /** All of the registered library along with functions for calling them */
+    symbols: StaticForeignLibraryInterface<S>;
     close(): void;
   }
 
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: Unsafe and new API, beware!
    *
    * Opens a dynamic library and registers symbols
    */
-  export function dlopen<S extends Record<string, ForeignFunction>>(
+  export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
@@ -277,15 +470,20 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
+    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`,
+     * `"react-jsx", `"react-jsxdev"`.
      * Defaults to `"react"`. */
-    jsx?: "react" | "preserve" | "react-native";
+    jsx?: "react" | "preserve" | "react-native" | "react-jsx" | "react-jsx-dev";
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
     /** Specify the JSX fragment factory function to use when targeting react
      * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
     jsxFragmentFactory?: string;
+    /** Declares the module specifier to be used for importing the `jsx` and
+     * `jsxs` factory functions when using jsx as `"react-jsx"` or
+     * `"react-jsxdev"`. Defaults to `"react"`. */
+    jsxImportSource?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
@@ -446,7 +644,7 @@ declare namespace Deno {
   export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
      * JavaScript bundle that is a single ES module (`"module"`) or a single
-     * file self contained script we executes in an immediately invoked function
+     * file self contained script executed in an immediately invoked function
      * when loaded (`"classic"`). */
     bundle?: "module" | "classic";
     /** If `true` then the sources will be typed checked, returning any
@@ -563,40 +761,6 @@ declare namespace Deno {
    * ```
    */
   export function applySourceMap(location: Location): Location;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Registers the given function as a listener of the given signal event.
-   *
-   * ```ts
-   * Deno.addSignalListener("SIGTERM", () => {
-   *   console.log("SIGTERM!")
-   * });
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function addSignalListener(signal: Signal, handler: () => void): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Removes the given signal listener that has been registered with
-   * Deno.addSignalListener.
-   *
-   * ```ts
-   * const listener = () => {
-   *   console.log("SIGTERM!")
-   * };
-   * Deno.addSignalListener("SIGTERM", listener);
-   * Deno.removeSignalListener("SIGTERM", listener);
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function removeSignalListener(
-    signal: Signal,
-    handler: () => void,
-  ): void;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -776,7 +940,7 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** *UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * SleepSync puts the main thread to sleep synchronously for a given amount of
    * time in milliseconds.
@@ -786,187 +950,6 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): void;
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestDefinition {
-    /** Specifies the permissions that should be used to run the test.
-     * Set this to "inherit" to keep the calling thread's permissions.
-     * Set this to "none" to revoke all permissions.
-     *
-     * Defaults to "inherit".
-     */
-    permissions?: "inherit" | "none" | {
-      /** Specifies if the `net` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `env` permission will be inherited.
-       * If set to `true`, the global `net` permission will be requested.
-       * If set to `false`, the global `net` permission will be revoked.
-       *
-       * Defaults to "inherit".
-       */
-      env?: "inherit" | boolean | string[];
-
-      /** Specifies if the `hrtime` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
-       * If set to `true`, the global `hrtime` permission will be requested.
-       * If set to `false`, the global `hrtime` permission will be revoked.
-       *
-       * Defaults to "inherit".
-       */
-      hrtime?: "inherit" | boolean;
-
-      /** Specifies if the `net` permission should be requested or revoked.
-       * if set to `"inherit"`, the current `net` permission will be inherited.
-       * if set to `true`, the global `net` permission will be requested.
-       * if set to `false`, the global `net` permission will be revoked.
-       * if set to `string[]`, the `net` permission will be requested with the
-       * specified host strings with the format `"<host>[:<port>]`.
-       *
-       * Defaults to "inherit".
-       *
-       * Examples:
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "inherit",
-       *   permissions: {
-       *     net: "inherit",
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net" })
-       *     assertEquals(status.state, "granted");
-       *   },
-       * });
-       * ```
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "true",
-       *   permissions: {
-       *     net: true,
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net" });
-       *     assertEquals(status.state, "granted");
-       *   },
-       * });
-       * ```
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "false",
-       *   permissions: {
-       *     net: false,
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net" });
-       *     assertEquals(status.state, "denied");
-       *   },
-       * });
-       * ```
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "localhost:8080",
-       *   permissions: {
-       *     net: ["localhost:8080"],
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
-       *     assertEquals(status.state, "granted");
-       *   },
-       * });
-       * ```
-       */
-      net?: "inherit" | boolean | string[];
-
-      /** Specifies if the `ffi` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `ffi` permission will be inherited.
-       * If set to `true`, the global `ffi` permission will be requested.
-       * If set to `false`, the global `ffi` permission will be revoked.
-       * If set to `Array<string | URL>`, the `ffi` permission will be requested with the
-       * specified file paths.
-       *
-       * Defaults to "inherit".
-       */
-      ffi?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `read` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `read` permission will be inherited.
-       * If set to `true`, the global `read` permission will be requested.
-       * If set to `false`, the global `read` permission will be revoked.
-       * If set to `Array<string | URL>`, the `read` permission will be requested with the
-       * specified file paths.
-       *
-       * Defaults to "inherit".
-       */
-      read?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `run` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `run` permission will be inherited.
-       * If set to `true`, the global `run` permission will be requested.
-       * If set to `false`, the global `run` permission will be revoked.
-       *
-       * Defaults to "inherit".
-       */
-      run?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `write` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `write` permission will be inherited.
-       * If set to `true`, the global `write` permission will be requested.
-       * If set to `false`, the global `write` permission will be revoked.
-       * If set to `Array<string | URL>`, the `write` permission will be requested with the
-       * specified file paths.
-       *
-       * Defaults to "inherit".
-       */
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
-  }
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestContext {
-    /** Run a sub step of the parent test with a given name. Returns a promise
-     * that resolves to a boolean signifying if the step completed successfully.
-     * The returned promise never rejects unless the arguments are invalid.
-     * If the test was ignored, the promise returns `false`.
-     */
-    step(t: TestStepDefinition): Promise<boolean>;
-
-    /** Run a sub step of the parent test with a given name. Returns a promise
-     * that resolves to a boolean signifying if the step completed successfully.
-     * The returned promise never rejects unless the arguments are invalid.
-     * If the test was ignored, the promise returns `false`.
-     */
-    step(
-      name: string,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): Promise<boolean>;
-  }
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestStepDefinition {
-    fn: (t: TestContext) => void | Promise<void>;
-    name: string;
-    ignore?: boolean;
-    /** Check that the number of async completed ops after the test is the same
-     * as number of dispatched ops. Defaults to true. */
-    sanitizeOps?: boolean;
-    /** Ensure the test case does not "leak" resources - ie. the resource table
-     * after the test has exactly the same contents as before the test. Defaults
-     * to true. */
-    sanitizeResources?: boolean;
-    /** Ensure the test case does not prematurely cause the process to exit,
-     * for example via a call to `Deno.exit`. Defaults to true. */
-    sanitizeExit?: boolean;
-  }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -1066,7 +1049,10 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
-    options: ConnectOptions | UnixConnectOptions,
+    options: ConnectOptions,
+  ): Promise<TcpConn>;
+  export function connect(
+    options: UnixConnectOptions,
   ): Promise<Conn>;
 
   export interface ConnectTlsOptions {
@@ -1074,6 +1060,29 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface TlsHandshakeInfo {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
+
+  export interface TlsConn extends Conn {
+    /** Runs the client or server handshake protocol to completion if that has
+     * not happened yet. Calling this method is optional; the TLS handshake
+     * will be completed automatically as soon as data is sent or received. */
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   /** **UNSTABLE** New API, yet to be vetted.
@@ -1093,46 +1102,17 @@ declare namespace Deno {
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
-  export interface StartTlsOptions {
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    /**
-     * @deprecated This option is deprecated and will be removed in a future
-     * release.
+  export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
      *
-     * Server certificate file.
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
      */
-    certFile?: string;
-    /** A list of root certificates that will be used in addition to the
-     * default root certificates to verify the peer's certificate.
-     *
-     * Must be in PEM format. */
-    caCerts?: string[];
+    alpnProtocols?: string[];
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Start TLS handshake from an existing connection using
-   * an optional cert file, hostname (default is "127.0.0.1"). Specifying CA
-   * certs is optional. By default the configured root certificates are used.
-   * Using this function requires that the other end of the connection is
-   * prepared for TLS handshake.
-   *
-   * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
-   * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
-   * ```
-   *
-   * Requires `allow-net` permission.
-   */
-  export function startTls(
-    conn: Conn,
-    options?: StartTlsOptions,
-  ): Promise<TlsConn>;
-
-  export interface ListenTlsOptions {
+  export interface StartTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
@@ -1167,6 +1147,18 @@ declare namespace Deno {
    * Release an advisory file-system lock for the provided file.
    */
   export function funlockSync(rid: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Make the timer of the given id blocking the event loop from finishing
+   */
+  export function refTimer(id: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Make the timer of the given id not blocking the event loop from finishing
+   */
+  export function unrefTimer(id: number): void;
 }
 
 declare function fetch(
@@ -1231,6 +1223,7 @@ declare interface WorkerOptions {
 declare interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
+  headers?: HeadersInit;
 }
 
 declare interface WebSocketConnection {

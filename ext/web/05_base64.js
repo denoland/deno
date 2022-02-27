@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -19,6 +19,7 @@
     ArrayPrototypeMap,
     StringPrototypeCharCodeAt,
     ArrayPrototypeJoin,
+    SafeArrayIterator,
     StringFromCharCode,
     TypedArrayFrom,
     Uint8Array,
@@ -29,14 +30,16 @@
    * @returns {string}
    */
   function atob(data) {
+    const prefix = "Failed to execute 'atob'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
     data = webidl.converters.DOMString(data, {
-      prefix: "Failed to execute 'atob'",
+      prefix,
       context: "Argument 1",
     });
 
     const uint8Array = forgivingBase64Decode(data);
     const result = ArrayPrototypeMap(
-      [...uint8Array],
+      [...new SafeArrayIterator(uint8Array)],
       (byte) => StringFromCharCode(byte),
     );
     return ArrayPrototypeJoin(result, "");
@@ -53,16 +56,19 @@
       prefix,
       context: "Argument 1",
     });
-    const byteArray = ArrayPrototypeMap([...data], (char) => {
-      const charCode = StringPrototypeCharCodeAt(char, 0);
-      if (charCode > 0xff) {
-        throw new DOMException(
-          "The string to be encoded contains characters outside of the Latin1 range.",
-          "InvalidCharacterError",
-        );
-      }
-      return charCode;
-    });
+    const byteArray = ArrayPrototypeMap(
+      [...new SafeArrayIterator(data)],
+      (char) => {
+        const charCode = StringPrototypeCharCodeAt(char, 0);
+        if (charCode > 0xff) {
+          throw new DOMException(
+            "The string to be encoded contains characters outside of the Latin1 range.",
+            "InvalidCharacterError",
+          );
+        }
+        return charCode;
+      },
+    );
     return forgivingBase64Encode(TypedArrayFrom(Uint8Array, byteArray));
   }
 

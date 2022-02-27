@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::inspector_server::InspectorServer;
 use crate::js;
@@ -25,6 +25,8 @@ use deno_web::BlobStore;
 use log::debug;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -49,8 +51,9 @@ pub struct WorkerOptions {
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  // Callback invoked when creating new instance of WebWorker
+  // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
@@ -97,18 +100,19 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(
+      deno_web::init::<Permissions>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<Permissions>(
-        options.user_agent.clone(),
-        options.root_cert_store.clone(),
-        None,
-        None,
-        options.unsafely_ignore_certificate_errors.clone(),
-        None,
-      ),
+      deno_fetch::init::<Permissions>(deno_fetch::Options {
+        user_agent: options.user_agent.clone(),
+        root_cert_store: options.root_cert_store.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        ..Default::default()
+      }),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -118,12 +122,14 @@ impl MainWorker {
       deno_crypto::init(options.seed),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_webgpu::init(unstable),
-      deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(options.create_web_worker_cb.clone()),
+      ops::worker_host::init(
+        options.create_web_worker_cb.clone(),
+        options.web_worker_preload_module_cb.clone(),
+      ),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),
@@ -134,7 +140,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(),
+      ops::os::init(None),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
@@ -158,7 +164,11 @@ impl MainWorker {
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(main_module.to_string(), &mut js_runtime);
+      server.register_inspector(
+        main_module.to_string(),
+        &mut js_runtime,
+        options.should_break_on_first_statement,
+      );
     }
 
     Self {
@@ -177,10 +187,10 @@ impl MainWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    name: &str,
+    script_name: &str,
     source_code: &str,
   ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(name, source_code)?;
+    self.js_runtime.execute_script(script_name, source_code)?;
     Ok(())
   }
 
@@ -226,6 +236,7 @@ impl MainWorker {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier, false).await?;
+    self.wait_for_inspector_session();
     self.evaluate_module(id).await
   }
 
@@ -288,6 +299,47 @@ impl MainWorker {
       };
     }
   }
+
+  /// Return exit code set by the executed code (either in main worker
+  /// or one of child web workers).
+  pub fn get_exit_code(&mut self) -> i32 {
+    let op_state_rc = self.js_runtime.op_state();
+    let op_state = op_state_rc.borrow();
+    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
+    exit_code
+  }
+
+  /// Dispatches "load" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "load" event handlers.
+  pub fn dispatch_load_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('load'))",
+    )
+  }
+
+  /// Dispatches "unload" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "unload" event handlers.
+  pub fn dispatch_unload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('unload'))",
+    )
+  }
 }
 
 #[cfg(test)]
@@ -323,6 +375,7 @@ mod tests {
       root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
+      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,

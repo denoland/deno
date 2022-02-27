@@ -1,13 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertThrows,
-  deferred,
-  delay,
-  unitTest,
-} from "./test_util.ts";
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+import { assertEquals, assertThrows, deferred, delay } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented() {
     assertThrows(
@@ -97,7 +91,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { run: true },
@@ -125,7 +119,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { run: true },
@@ -173,7 +167,7 @@ unitTest(
 );
 
 // This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { run: true, read: true },
@@ -193,7 +187,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { run: true },
@@ -207,5 +201,39 @@ unitTest(
       // deno-lint-ignore no-explicit-any
       Deno.removeSignalListener("SIGINT", "handler" as any);
     });
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  function signalForbiddenSignalTest() {
+    assertThrows(
+      () => Deno.addSignalListener("SIGKILL", () => {}),
+      TypeError,
+      "Binding to signal 'SIGKILL' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSTOP", () => {}),
+      TypeError,
+      "Binding to signal 'SIGSTOP' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGILL", () => {}),
+      TypeError,
+      "Binding to signal 'SIGILL' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGFPE", () => {}),
+      TypeError,
+      "Binding to signal 'SIGFPE' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSEGV", () => {}),
+      TypeError,
+      "Binding to signal 'SIGSEGV' is not allowed",
+    );
   },
 );

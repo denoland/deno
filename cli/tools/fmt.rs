@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -14,15 +14,19 @@ use crate::config_file::ProseWrap;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::FmtFlags;
-use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
+use crate::flags::{Flags, FmtFlags};
+use crate::fs_util::specifier_to_file_path;
+use crate::fs_util::{collect_files, get_extension};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use log::debug;
 use log::info;
+use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -35,8 +39,8 @@ use std::sync::{Arc, Mutex};
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
+  flags: &Flags,
   fmt_flags: FmtFlags,
-  watch: bool,
   maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<(), AnyError> {
   let FmtFlags {
@@ -59,8 +63,8 @@ pub async fn format(
         .files
         .include
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
@@ -68,9 +72,13 @@ pub async fn format(
         .files
         .exclude
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
+  }
+
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
   }
 
   // Now do the same for options
@@ -81,23 +89,33 @@ pub async fn format(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
+
     let result =
       collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
         |files| {
-          let collected_files = if let Some(paths) = changed {
-            files
-              .into_iter()
-              .filter(|path| paths.contains(path))
-              .collect::<Vec<_>>()
+          let refmt_files = if let Some(paths) = changed {
+            if check {
+              files
+                .iter()
+                .any(|path| paths.contains(path))
+                .then(|| files)
+                .unwrap_or_else(|| [].to_vec())
+            } else {
+              files
+                .into_iter()
+                .filter(|path| paths.contains(path))
+                .collect::<Vec<_>>()
+            }
           } else {
             files
           };
-          (collected_files, fmt_options.clone())
+          (refmt_files, fmt_options.clone())
         },
       );
+
     let paths_to_watch = include_files.clone();
     async move {
-      if (files_changed || !watch)
+      if files_changed
         && matches!(result, Ok((ref files, _)) if files.is_empty())
       {
         ResolutionResult::Ignore
@@ -118,16 +136,27 @@ pub async fn format(
     Ok(())
   };
 
-  if watch {
-    file_watcher::watch_func(resolver, operation, "Fmt").await?;
+  if flags.watch.is_some() {
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      file_watcher::PrintConfig {
+        job_name: "Fmt".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
+    )
+    .await?;
   } else {
-    let (files, fmt_options) =
-      if let ResolutionResult::Restart { result, .. } = resolver(None).await {
-        result?
-      } else {
-        return Err(generic_error("No target files found."));
-      };
-    operation((files, fmt_options)).await?;
+    let files =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt)
+        .and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
+    operation((files, fmt_options.clone())).await?;
   }
 
   Ok(())
@@ -138,7 +167,7 @@ pub async fn format(
 fn format_markdown(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   let markdown_config = get_resolved_markdown_config(fmt_options);
   dprint_plugin_markdown::format_text(
     file_text,
@@ -167,7 +196,7 @@ fn format_markdown(
         if matches!(extension, "json" | "jsonc") {
           let mut json_config = get_resolved_json_config(fmt_options);
           json_config.line_width = line_width;
-          dprint_plugin_json::format_text(text, &json_config)
+          dprint_plugin_json::format_text(text, &json_config).map(Cow::Owned)
         } else {
           let fake_filename =
             PathBuf::from(format!("deno_fmt_stdin.{}", extension));
@@ -179,24 +208,24 @@ fn format_markdown(
             text,
             &codeblock_config,
           )
+          .map(Cow::Owned)
         }
       } else {
-        Ok(text.to_string())
+        Ok(Cow::Borrowed(text))
       }
     },
   )
-  .map_err(|e| e.to_string())
 }
 
 /// Formats JSON and JSONC using the rules provided by .deno()
 /// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
 /// See <https://git.io/Jt4ht> for configuration.
-fn format_json(
+pub fn format_json(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   let config = get_resolved_json_config(fmt_options);
-  dprint_plugin_json::format_text(file_text, &config).map_err(|e| e.to_string())
+  dprint_plugin_json::format_text(file_text, &config)
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
@@ -204,8 +233,8 @@ pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: FmtOptionsConfig,
-) -> Result<String, String> {
-  let ext = get_extension(file_path).unwrap_or_else(String::new);
+) -> Result<String, AnyError> {
+  let ext = get_extension(file_path).unwrap_or_default();
   if matches!(
     ext.as_str(),
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
@@ -216,19 +245,17 @@ pub fn format_file(
   } else {
     let config = get_resolved_typescript_config(&fmt_options);
     dprint_plugin_typescript::format_text(file_path, file_text, &config)
-      .map_err(|e| e.to_string())
   }
 }
 
 pub fn format_parsed_source(
   parsed_source: &ParsedSource,
   fmt_options: FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(&fmt_options),
   )
-  .map_err(|e| e.to_string())
 }
 
 async fn check_source_files(
@@ -354,24 +381,18 @@ pub fn format_stdin(
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(generic_error("Failed to read from stdin"));
+    bail!("Failed to read from stdin");
   }
   let file_path = PathBuf::from(format!("_stdin.{}", fmt_flags.ext));
   let fmt_options = resolve_fmt_options(&fmt_flags, fmt_options);
 
-  match format_file(&file_path, &source, fmt_options) {
-    Ok(formatted_text) => {
-      if fmt_flags.check {
-        if formatted_text != source {
-          println!("Not formatted stdin");
-        }
-      } else {
-        stdout().write_all(formatted_text.as_bytes())?;
-      }
+  let formatted_text = format_file(&file_path, &source, fmt_options)?;
+  if fmt_flags.check {
+    if formatted_text != source {
+      println!("Not formatted stdin");
     }
-    Err(e) => {
-      return Err(generic_error(e));
-    }
+  } else {
+    stdout().write_all(formatted_text.as_bytes())?;
   }
   Ok(())
 }
@@ -507,7 +528,8 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
-  let file_bytes = fs::read(&file_path)?;
+  let file_bytes = fs::read(&file_path)
+    .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
@@ -567,8 +589,7 @@ where
   let mut errors = join_results.into_iter().filter_map(|join_result| {
     join_result
       .ok()
-      .map(|handle_result| handle_result.err())
-      .flatten()
+      .and_then(|handle_result| handle_result.err())
   });
 
   if let Some(e) = errors.next() {
@@ -576,4 +597,56 @@ where
   } else {
     Ok(())
   }
+}
+
+/// This function is similar to is_supported_ext but adds additional extensions
+/// supported by `deno fmt`.
+fn is_supported_ext_fmt(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "json"
+        | "jsonc"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
+    )
+  } else {
+    false
+  }
+}
+
+#[test]
+fn test_is_supported_ext_fmt() {
+  assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
+  assert!(is_supported_ext_fmt(Path::new("README.md")));
+  assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+  assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
+  assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
+  assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
+  assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
+  assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
+  assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
+  assert!(is_supported_ext_fmt(Path::new("foo.TS")));
+  assert!(is_supported_ext_fmt(Path::new("foo.TSX")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JS")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
+  assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
+  assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
+  assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
+  assert!(is_supported_ext_fmt(Path::new("foo.json")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
 }

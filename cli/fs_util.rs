@@ -1,7 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::error::Context;
+use deno_core::anyhow::Context;
+use deno_core::error::{uri_error, AnyError};
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
@@ -130,31 +130,9 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs")
-  } else {
-    false
-  }
-}
-
-/// This function is similar to is_supported_ext but adds additional extensions
-/// supported by `deno fmt`.
-pub fn is_supported_ext_fmt(path: &Path) -> bool {
-  if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts"
-        | "tsx"
-        | "js"
-        | "jsx"
-        | "mjs"
-        | "json"
-        | "jsonc"
-        | "md"
-        | "mkd"
-        | "mkdn"
-        | "mdwn"
-        | "mdown"
-        | "markdown"
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts"
     )
   } else {
     false
@@ -163,26 +141,12 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
 
 /// Checks if the path has a basename and extension Deno supports for tests.
 pub fn is_supported_test_path(path: &Path) -> bool {
-  use std::path::Component;
-  if let Some(Component::Normal(basename_os_str)) =
-    path.components().next_back()
-  {
-    let basename = basename_os_str.to_string_lossy();
-    basename.ends_with("_test.ts")
-      || basename.ends_with("_test.tsx")
-      || basename.ends_with("_test.js")
-      || basename.ends_with("_test.mjs")
-      || basename.ends_with("_test.jsx")
-      || basename.ends_with(".test.ts")
-      || basename.ends_with(".test.tsx")
-      || basename.ends_with(".test.js")
-      || basename.ends_with(".test.mjs")
-      || basename.ends_with(".test.jsx")
-      || basename == "test.ts"
-      || basename == "test.tsx"
-      || basename == "test.js"
-      || basename == "test.mjs"
-      || basename == "test.jsx"
+  if let Some(name) = path.file_stem() {
+    let basename = name.to_string_lossy();
+    (basename.ends_with("_test")
+      || basename.ends_with(".test")
+      || basename == "test")
+      && is_supported_ext(path)
   } else {
     false
   }
@@ -198,6 +162,9 @@ pub fn is_supported_test_ext(path: &Path) -> bool {
         | "js"
         | "jsx"
         | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
         | "md"
         | "mkd"
         | "mkdn"
@@ -233,17 +200,14 @@ where
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
-    .filter_map(|i| i.canonicalize().ok())
+    .filter_map(|i| canonicalize_path(i).ok())
     .collect();
-
-  let cur_dir = [std::env::current_dir()?];
-  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        e.path().canonicalize().map_or(false, |c| {
+        canonicalize_path(e.path()).map_or(false, |c| {
           !canonicalized_ignore.iter().any(|i| c.starts_with(i))
         })
       })
@@ -252,7 +216,7 @@ where
         _ => None,
       })
     {
-      target_files.push(entry.into_path().canonicalize()?)
+      target_files.push(canonicalize_path(entry.path())?)
     }
   }
 
@@ -301,13 +265,128 @@ where
   Ok(prepared)
 }
 
-// Asynchronously removes a directory and all its descendants, but does not error
-// when the directory does not exist.
+/// Asynchronously removes a directory and all its descendants, but does not error
+/// when the directory does not exist.
 pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   let result = tokio::fs::remove_dir_all(path).await;
   match result {
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
     _ => result,
+  }
+}
+
+/// Attempts to convert a specifier to a file path. By default, uses the Url
+/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
+/// paths on Windows.
+pub fn specifier_to_file_path(
+  specifier: &ModuleSpecifier,
+) -> Result<PathBuf, AnyError> {
+  let result = if cfg!(windows) {
+    match specifier.to_file_path() {
+      Ok(path) => Ok(path),
+      Err(()) => {
+        // This might be a unix-style path which is used in the tests even on Windows.
+        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+        if specifier.scheme() == "file"
+          && specifier.host().is_none()
+          && specifier.port().is_none()
+          && specifier.path_segments().is_some()
+        {
+          let path_str = specifier.path();
+          match String::from_utf8(
+            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+          ) {
+            Ok(path_str) => Ok(PathBuf::from(path_str)),
+            Err(_) => Err(()),
+          }
+        } else {
+          Err(())
+        }
+      }
+    }
+  } else {
+    specifier.to_file_path()
+  };
+  match result {
+    Ok(path) => Ok(path),
+    Err(()) => Err(uri_error(format!(
+      "Invalid file path.\n  Specifier: {}",
+      specifier
+    ))),
+  }
+}
+
+/// Ensures a specifier that will definitely be a directory has a trailing slash.
+pub fn ensure_directory_specifier(
+  mut specifier: ModuleSpecifier,
+) -> ModuleSpecifier {
+  let path = specifier.path();
+  if !path.ends_with('/') {
+    let new_path = format!("{}/", path);
+    specifier.set_path(&new_path);
+  }
+  specifier
+}
+
+/// Gets the parent of this module specifier.
+pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
+  let mut specifier = specifier.clone();
+  // don't use specifier.segments() because it will strip the leading slash
+  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
+  if segments.iter().all(|s| s.is_empty()) {
+    return specifier;
+  }
+  if let Some(last) = segments.last() {
+    if last.is_empty() {
+      segments.pop();
+    }
+    segments.pop();
+    let new_path = format!("{}/", segments.join("/"));
+    specifier.set_path(&new_path);
+  }
+  specifier
+}
+
+/// This function checks if input path has trailing slash or not. If input path
+/// has trailing slash it will return true else it will return false.
+pub fn path_has_trailing_slash(path: &Path) -> bool {
+  if let Some(path_str) = path.to_str() {
+    if cfg!(windows) {
+      path_str.ends_with('\\')
+    } else {
+      path_str.ends_with('/')
+    }
+  } else {
+    false
+  }
+}
+
+/// Gets a path with the specified file stem suffix.
+///
+/// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
+pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
+  if let Some(file_name) = path.file_name().map(|f| f.to_string_lossy()) {
+    if let Some(file_stem) = path.file_stem().map(|f| f.to_string_lossy()) {
+      if let Some(ext) = path.extension().map(|f| f.to_string_lossy()) {
+        return if file_stem.to_lowercase().ends_with(".d") {
+          path.with_file_name(format!(
+            "{}{}.{}.{}",
+            &file_stem[..file_stem.len() - ".d".len()],
+            suffix,
+            // maintain casing
+            &file_stem[file_stem.len() - "d".len()..],
+            ext
+          ))
+        } else {
+          path.with_file_name(format!("{}{}.{}", file_stem, suffix, ext))
+        };
+      }
+    }
+
+    path.with_file_name(format!("{}{}", file_name, suffix))
+  } else {
+    path.with_file_name(suffix)
   }
 }
 
@@ -373,34 +452,10 @@ mod tests {
     assert!(is_supported_ext(Path::new("foo.JS")));
     assert!(is_supported_ext(Path::new("foo.JSX")));
     assert!(is_supported_ext(Path::new("foo.mjs")));
+    assert!(is_supported_ext(Path::new("foo.mts")));
+    assert!(is_supported_ext(Path::new("foo.cjs")));
+    assert!(is_supported_ext(Path::new("foo.cts")));
     assert!(!is_supported_ext(Path::new("foo.mjsx")));
-  }
-
-  #[test]
-  fn test_is_supported_ext_fmt() {
-    assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
-    assert!(is_supported_ext_fmt(Path::new("README.md")));
-    assert!(is_supported_ext_fmt(Path::new("readme.MD")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
-    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
-    assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
-    assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
-    assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
-    assert!(is_supported_ext_fmt(Path::new("foo.TS")));
-    assert!(is_supported_ext_fmt(Path::new("foo.TSX")));
-    assert!(is_supported_ext_fmt(Path::new("foo.JS")));
-    assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
-    assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
-    assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
-    assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
-    assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
-    assert!(is_supported_ext_fmt(Path::new("foo.json")));
-    assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
   }
 
   #[test]
@@ -408,11 +463,6 @@ mod tests {
     assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
     assert!(is_supported_test_ext(Path::new("README.md")));
     assert!(is_supported_test_ext(Path::new("readme.MD")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
-    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
-    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
     assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
     assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
@@ -423,6 +473,9 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("foo.JS")));
     assert!(is_supported_test_ext(Path::new("foo.JSX")));
     assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(is_supported_test_ext(Path::new("foo.mts")));
+    assert!(is_supported_test_ext(Path::new("foo.cjs")));
+    assert!(is_supported_test_ext(Path::new("foo.cts")));
     assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
     assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
     assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
@@ -630,5 +683,119 @@ mod tests {
         PathBuf::from(expected)
       );
     }
+  }
+
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
+
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
+    }
+  }
+
+  #[test]
+  fn test_ensure_directory_specifier() {
+    run_test("file:///", "file:///");
+    run_test("file:///test", "file:///test/");
+    run_test("file:///test/", "file:///test/");
+    run_test("file:///test/other", "file:///test/other/");
+    run_test("file:///test/other/", "file:///test/other/");
+
+    fn run_test(specifier: &str, expected: &str) {
+      let result =
+        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
+      assert_eq!(result.to_string(), expected);
+    }
+  }
+
+  #[test]
+  fn test_specifier_parent() {
+    run_test("file:///", "file:///");
+    run_test("file:///test", "file:///");
+    run_test("file:///test/", "file:///");
+    run_test("file:///test/other", "file:///test/");
+    run_test("file:///test/other.txt", "file:///test/");
+    run_test("file:///test/other/", "file:///test/");
+
+    fn run_test(specifier: &str, expected: &str) {
+      let result =
+        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
+      assert_eq!(result.to_string(), expected);
+    }
+  }
+
+  #[test]
+  fn test_path_has_trailing_slash() {
+    #[cfg(not(windows))]
+    {
+      run_test("/Users/johndoe/Desktop/deno-project/target/", true);
+      run_test(r"/Users/johndoe/deno-project/target//", true);
+      run_test("/Users/johndoe/Desktop/deno-project", false);
+      run_test(r"/Users/johndoe/deno-project\", false);
+    }
+
+    #[cfg(windows)]
+    {
+      run_test(r"C:\test\deno-project\", true);
+      run_test(r"C:\test\deno-project\\", true);
+      run_test(r"C:\test\file.txt", false);
+      run_test(r"C:\test\file.txt/", false);
+    }
+
+    fn run_test(path_str: &str, expected: bool) {
+      let path = Path::new(path_str);
+      let result = path_has_trailing_slash(path);
+      assert_eq!(result, expected);
+    }
+  }
+
+  #[test]
+  fn test_path_with_stem_suffix() {
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/"), "_2"),
+      PathBuf::from("/_2")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test"), "_2"),
+      PathBuf::from("/test_2")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test.txt"), "_2"),
+      PathBuf::from("/test_2.txt")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test/subdir"), "_2"),
+      PathBuf::from("/test/subdir_2")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test/subdir.other.txt"), "_2"),
+      PathBuf::from("/test/subdir.other_2.txt")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test.d.ts"), "_2"),
+      PathBuf::from("/test_2.d.ts")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test.D.TS"), "_2"),
+      PathBuf::from("/test_2.D.TS")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test.d.mts"), "_2"),
+      PathBuf::from("/test_2.d.mts")
+    );
+    assert_eq!(
+      path_with_stem_suffix(&PathBuf::from("/test.d.cts"), "_2"),
+      PathBuf::from("/test_2.d.cts")
+    );
   }
 }

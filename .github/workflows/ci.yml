@@ -25,18 +25,18 @@ jobs:
           - os: windows-2019
             job: test
             profile: release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: release
             use_sysroot: true
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: bench
             profile: release
             use_sysroot: true
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: lint
             profile: debug
 
@@ -81,10 +81,7 @@ jobs:
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
 
-      - name: Install Rust
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: 1.56.0
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
@@ -106,7 +103,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v2
         with:
-          node-version: 16
+          node-version: 17
 
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')
@@ -124,7 +121,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0
         with:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
@@ -138,7 +135,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         with:
@@ -165,7 +162,7 @@ jobs:
         run: |
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
-          sudo apt-get remove -y --purge man-db
+          sudo apt-get remove --purge -y man-db
           sudo apt-get update
           sudo apt-get install debootstrap
 
@@ -190,18 +187,14 @@ jobs:
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
             sudo dd of=/sysroot/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo chroot /sysroot apt update -y
-          sudo chroot /sysroot apt install --no-install-recommends -y \
-                                           clang-13 lld-13
+          sudo chroot /sysroot apt-get update
+          sudo chroot /sysroot apt-get install --no-install-recommends -y \
+                                               clang-13 lld-13
 
           # Redirect ld invocations to ld.lld-13 inside the chroot environment.
           # Setting the 'LD' environment variable doesn't always work.
           sudo chroot /sysroot bash -c \
                                     'ln -f "$(which ld.lld-13)" "$(which ld)"'
-
-          # Make rust available inside the chroot environment.
-          sudo mkdir -p /sysroot/usr/share/rust
-          sudo mount --rbind /usr/share/rust /sysroot/usr/share/rust
 
           # Make node (needed to run the benchmarks) available.
           sudo ln --target /sysroot/usr/bin "$(which node)"
@@ -216,7 +209,7 @@ jobs:
             fi
 
             # Add cargo, rustc, and deno to $PATH.
-            source /usr/share/rust/.cargo/env
+            source /home/runner/.cargo/env
             export PATH="$PATH:$(pwd)/target/release"
 
             # Rust build configuration.
@@ -266,7 +259,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 0-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 4-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -274,7 +267,7 @@ jobs:
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
         if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
-            github.ref == 'refs/heads/main' 
+            github.ref == 'refs/heads/main'
         with:
           path: |
             ./target
@@ -282,7 +275,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            0-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            4-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -298,7 +291,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            0-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            4-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -405,7 +398,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
 
       - name: Upload canary to dl.deno.land (windows)
         if: |
@@ -418,7 +411,7 @@ jobs:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
 
       - name: Test debug
         if: |
@@ -470,7 +463,7 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug' && 
+          matrix.profile == 'debug' &&
           github.ref == 'refs/heads/main'
         env:
           DENO_BIN: ./target/debug/deno
@@ -508,10 +501,10 @@ jobs:
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: |
           gzip ./wptreport.json
-          gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
-          gsutil cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
           echo $(git rev-parse HEAD) > wpt-latest.txt
-          gsutil cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Upload wpt results to wpt.fyi
         if: |
@@ -521,7 +514,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         env:
-          WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
+          WPT_FYI_USER: deno
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
@@ -581,9 +574,9 @@ jobs:
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/')
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to dl.deno.land (windows)
         if: |
@@ -596,9 +589,9 @@ jobs:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
@@ -621,12 +614,11 @@ jobs:
   publish-canary:
     name: publish canary
     runs-on: ubuntu-20.04
-    needs: ['build']
-    if: github.repository == 'denoland/deno' &&
-        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    needs: ["build"]
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0
         with:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
@@ -635,4 +627,4 @@ jobs:
       - name: Upload canary version file to dl.deno.land
         run: |
           echo ${{ github.sha }} > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt

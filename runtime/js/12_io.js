@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
@@ -7,7 +7,6 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { DOMException } = window.__bootstrap.domException;
   const {
     Uint8Array,
     ArrayPrototypePush,
@@ -102,7 +101,7 @@
       return 0;
     }
 
-    const nread = await core.opAsync("op_read_async", rid, buffer);
+    const nread = await core.read(rid, buffer);
 
     return nread === 0 ? null : nread;
   }
@@ -111,8 +110,8 @@
     return core.opSync("op_write_sync", rid, data);
   }
 
-  async function write(rid, data) {
-    return await core.opAsync("op_write_async", rid, data);
+  function write(rid, data) {
+    return core.write(rid, data);
   }
 
   const READ_PER_ITER = 16 * 1024; // 16kb, see https://github.com/denoland/deno/issues/10157
@@ -123,7 +122,8 @@
   async function readAllInner(r, options) {
     const buffers = [];
     const signal = options?.signal ?? null;
-    while (!signal?.aborted) {
+    while (true) {
+      signal?.throwIfAborted();
       const buf = new Uint8Array(READ_PER_ITER);
       const read = await r.read(buf);
       if (typeof read == "number") {
@@ -132,9 +132,7 @@
         break;
       }
     }
-    if (signal?.aborted) {
-      throw new DOMException("The read operation was aborted.", "AbortError");
-    }
+    signal?.throwIfAborted();
 
     return concatBuffers(buffers);
   }
@@ -200,7 +198,8 @@
     const buf = new Uint8Array(size + 1); // 1B to detect extended files
     let cursor = 0;
     const signal = options?.signal ?? null;
-    while (!signal?.aborted && cursor < size) {
+    while (cursor < size) {
+      signal?.throwIfAborted();
       const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
       const slice = buf.subarray(cursor, sliceEnd);
       const read = await r.read(slice);
@@ -210,9 +209,7 @@
         break;
       }
     }
-    if (signal?.aborted) {
-      throw new DOMException("The read operation was aborted.", "AbortError");
-    }
+    signal?.throwIfAborted();
 
     // Handle truncated or extended files during read
     if (cursor > size) {
