@@ -7,6 +7,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const { listenerCount } = window.__bootstrap.eventTarget;
   const {
     Set,
     SetPrototypeAdd,
@@ -14,7 +15,7 @@
     Symbol,
     TypeError,
   } = window.__bootstrap.primordials;
-  const { setTimeout } = window.__bootstrap.timers;
+  const { setTimeout, refTimer, unrefTimer } = window.__bootstrap.timers;
 
   const add = Symbol("[[add]]");
   const signalAbort = Symbol("[[signalAbort]]");
@@ -26,6 +27,8 @@
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class AbortSignal extends EventTarget {
+    #timerId = null;
+
     static abort(reason = undefined) {
       if (reason !== undefined) {
         reason = webidl.converters.any(reason);
@@ -38,18 +41,21 @@
     static timeout(millis) {
       const prefix = "Failed to call 'AbortSignal.timeout'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      millis = webidl.converters["unsigned long long"]({ enforceRange: true });
+      millis = webidl.converters["unsigned long long"](millis, {
+        enforceRange: true,
+      });
 
       const signal = new AbortSignal(illegalConstructorKey);
-      // TODO(andreubotella): Don't block the event loop from exiting if there
-      // aren't any listeners for the abort event.
-      setTimeout(
-        () =>
+      signal.#timerId = setTimeout(
+        () => {
+          signal.#timerId = null;
           signal[signalAbort](
             new DOMException("Signal timed out.", "TimeoutError"),
-          ),
+          );
+        },
         millis,
       );
+      unrefTimer(signal.#timerId);
       return signal;
     }
 
@@ -109,6 +115,22 @@
       webidl.assertBranded(this, AbortSignalPrototype);
       if (this[abortReason] !== undefined) {
         throw this[abortReason];
+      }
+    }
+
+    // `addEventListener` and `removeEventListener` have to be overriden in
+    // order to ref and unref the timer.
+    addEventListener(...args) {
+      super.addEventListener(...args);
+      if (this.#timerId !== null && listenerCount(this, "abort") > 0) {
+        refTimer(this.#timerId);
+      }
+    }
+
+    removeEventListener(...args) {
+      super.removeEventListener(...args);
+      if (this.#timerId !== null && listenerCount(this, "abort") === 0) {
+        unrefTimer(this.#timerId);
       }
     }
   }
