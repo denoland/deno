@@ -213,7 +213,7 @@ pub struct WriteDescriptor(pub PathBuf);
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
-fn split_cidr_port(addr: &str) -> Option<usize> {
+fn cidr_port_delimiter_position(addr: &str) -> Option<usize> {
   // port specified after mask in CIDR
   if addr.rfind(':') > addr.rfind('/') {
     addr.rfind(':')
@@ -227,7 +227,7 @@ fn is_cidr(mut addr: &str) -> bool {
     return false;
   }
 
-  let port_index = split_cidr_port(addr);
+  let port_index = cidr_port_delimiter_position(addr);
   if let Some(i) = port_index {
     addr = &addr[..i];
   }
@@ -248,7 +248,7 @@ impl NetDescriptor {
 
   pub fn from_string(host: String) -> Self {
     if is_cidr(&host) {
-      return match split_cidr_port(&host) {
+      return match cidr_port_delimiter_position(&host) {
         Some(i) => NetDescriptor(
           host[..i].into(),
           Some(host[(i + 1)..].parse().unwrap()),
@@ -2228,6 +2228,7 @@ mod tests {
       // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
+      ("[2001:fb8:ffff]::", 8000, false),
     ];
 
     for (host, port, is_ok) in domain_tests {
