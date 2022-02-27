@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-const { strictEqual } = require("assert/strict");
+const { strictEqual, deepEqual } = require("assert/strict");
 const assert = require("assert");
 
 Deno.test("dprint-node", () => {
@@ -106,6 +106,103 @@ Deno.test("@swc/core transform", () => {
     assert(typeof output.code == "string");
     assert(typeof output.map == "string");
   });
+});
+
+Deno.test("snappy", () => {
+  const snappy = require("snappy");
+  const original = Deno.readFileSync("test_parcel_optimizer.jpeg");
+  const compressed = snappy.compressSync(original);
+  assert(compressed instanceof Uint8Array);
+});
+
+Deno.test("@node-rs/bcrypt", () => {
+  const bcrypt = require("@node-rs/bcrypt");
+  const hash = bcrypt.hashSync("Hello, Deno!");
+  const hash2 = bcrypt.hashSync(Deno.core.encode("Hello, Deno!"));
+
+  assert(!bcrypt.compareSync("nani?", hash));
+  assert(bcrypt.compareSync("Hello, Deno!", hash));
+  assert(bcrypt.compareSync("Hello, Deno!", hash2));
+});
+
+Deno.test("@node-rs/argon2", () => {
+  const { hash, verify } = require("@node-rs/argon2");
+  const input = Deno.core.encode("Hello, Deno!");
+  hash(input).then(async (hashed) => {
+    assert(await verify(hashed, "Hello, Deno!"));
+  });
+});
+
+Deno.test("@node-rs/xxhash", () => {
+  const { xxh3 } = require("@node-rs/xxhash");
+  strictEqual(xxh3.xxh64("Hello, Deno!"), 2380750014133039911n);
+});
+
+Deno.test("@node-rs/crc32", () => {
+  const { crc32, crc32c } = require("@node-rs/crc32");
+  const a = crc32("Hello, Deno!");
+  const b = crc32c("Hello, Deno!");
+  assert(typeof a == "number");
+  assert(typeof b == "number");
+});
+
+Deno.test("@napi-rs/escape", () => {
+  const { escapeHTML } = require("@napi-rs/escape");
+  const escaped = escapeHTML(`<div>{props.getNumber()}</div>`);
+  strictEqual(escaped, "&lt;div&gt;{props.getNumber()}&lt;&#x2f;div&gt;");
+});
+
+Deno.test("@napi-rs/uuid", () => {
+  const { v4 } = require("@napi-rs/uuid");
+  const uuid = v4();
+  assert(typeof uuid == "string");
+});
+
+// Deno.test("ffi-napi", () => {
+//   const ffi = require('ffi-napi');
+//   const libm = ffi.Library('libm', {
+//     'ceil': [ 'double', [ 'double' ] ]
+//   });
+//   libm.ceil(1.5); // 2
+// })
+
+Deno.test("@napi-rs/blake-hash", async () => {
+  const { blake3, Blake3Hasher } = require("@napi-rs/blake-hash");
+  // deno-fmt-ignore
+  const hash = new Uint8Array([
+    39, 227,  21,  85, 191, 248,  17, 199,
+   213,  49, 181, 224, 192,  23, 144, 216,
+     1,  87, 161, 124, 146, 124, 204, 208,
+    28,  61, 194,  32, 157, 201, 223, 192
+  ]);
+  const hashed = blake3("Hello, Deno!");
+  deepEqual(new Uint8Array(hashed), hash);
+
+  const hasher = new Blake3Hasher();
+  hasher.update("Hello, Deno!");
+  const hex = hasher.digest("hex");
+  strictEqual(
+    hex,
+    "27e31555bff811c7d531b5e0c01790d80157a17c927cccd01c3dc2209dc9dfc0",
+  );
+});
+
+Deno.test("@napi-rs/lzma", () => {
+  const lzma = require("@napi-rs/lzma/lzma");
+  lzma.compress("Hello, Deno!").then(async (compressed) => {
+    assert(compressed instanceof Uint8Array);
+    const decompressed = await lzma.decompress(compressed);
+    assert(decompressed instanceof Uint8Array);
+    deepEqual(decompressed, Deno.core.encode("Hello, Deno!"));
+  });
+});
+
+Deno.test("@napi-rs/ed25519", () => {
+  const ed25519 = require("@napi-rs/ed25519");
+  const message = Deno.core.encode("Hello, Deno!");
+  const { publicKey, privateKey } = ed25519.generateKeyPair();
+  const signature = ed25519.sign(privateKey, message);
+  assert(ed25519.verify(publicKey, message, signature));
 });
 
 Deno.test("@parcel/optimizer-image", () => {
