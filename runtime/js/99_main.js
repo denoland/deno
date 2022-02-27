@@ -377,7 +377,7 @@ delete Object.prototype.__proto__;
         configurable: true,
         enumerable: true,
         get() {
-          webidl.assertBranded(this, Navigator);
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
           return languages[0];
         },
       },
@@ -385,7 +385,7 @@ delete Object.prototype.__proto__;
         configurable: true,
         enumerable: true,
         get() {
-          webidl.assertBranded(this, Navigator);
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
           return languages;
         },
       },
