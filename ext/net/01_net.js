@@ -163,14 +163,6 @@
       return shutdown(this.rid);
     }
 
-    setNoDelay(nodelay = true) {
-      return core.opSync("op_set_nodelay", this.rid, nodelay);
-    }
-
-    setKeepAlive(keepalive = true) {
-      return core.opSync("op_set_keepalive", this.rid, keepalive);
-    }
-
     get readable() {
       if (this.#readable === undefined) {
         this.#readable = readableStreamForRid(this.rid);
@@ -183,6 +175,16 @@
         this.#writable = writableStreamForRid(this.rid);
       }
       return this.#writable;
+    }
+  }
+
+  class TcpConn extends Conn {
+    setNoDelay(nodelay = true) {
+      return core.opSync("op_set_nodelay", this.rid, nodelay);
+    }
+
+    setKeepAlive(keepalive = true) {
+      return core.opSync("op_set_keepalive", this.rid, keepalive);
     }
   }
 
@@ -205,6 +207,9 @@
 
     async accept() {
       const res = await opAccept(this.rid, this.addr.transport);
+      if (this.addr.transport == "tcp") {
+        return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
+      }
       return new Conn(res.rid, res.remoteAddr, res.localAddr);
     }
 
@@ -318,12 +323,13 @@
       });
     }
 
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.net = {
     connect,
     Conn,
+    TcpConn,
     opConnect,
     listen,
     opListen,
