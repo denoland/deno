@@ -158,6 +158,7 @@ struct TestSpecifierOptions {
   fail_fast: Option<NonZeroUsize>,
   filter: Option<String>,
   shuffle: Option<u64>,
+  trace_ops: bool,
 }
 
 impl TestSummary {
@@ -477,9 +478,14 @@ async fn test_specifier(
 
   // Enable op call tracing in core to enable better debugging of op sanitizer
   // failures.
-  worker
-    .execute_script(&located_script_name!(), "Deno.core.enableOpCallTracing();")
-    .unwrap();
+  if options.trace_ops {
+    worker
+      .execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )
+      .unwrap();
+  }
 
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
@@ -1043,6 +1049,7 @@ pub async fn run_tests(
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter,
       shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
     },
   )
   .await?;
@@ -1277,6 +1284,7 @@ pub async fn run_tests_with_watch(
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
           shuffle: test_flags.shuffle,
+          trace_ops: test_flags.trace_ops,
         },
       )
       .await?;

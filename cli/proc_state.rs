@@ -340,6 +340,34 @@ impl ProcState {
       None,
     )
     .await;
+
+    let needs_cjs_esm_translation = graph
+      .modules()
+      .iter()
+      .any(|m| m.kind == ModuleKind::CommonJs);
+
+    if needs_cjs_esm_translation {
+      for module in graph.modules() {
+        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
+        // in compat mode, all files ending with plain `.js` extension are
+        // considered CommonJs modules. Which leads to situation where valid
+        // ESM modules with `.js` extension might undergo translation (it won't
+        // work in this situation).
+        if module.kind == ModuleKind::CommonJs {
+          let translated_source = compat::translate_cjs_to_esm(
+            &self.file_fetcher,
+            &module.specifier,
+            module.maybe_source.as_ref().unwrap().to_string(),
+            module.media_type,
+          )
+          .await?;
+          let mut graph_data = self.graph_data.write();
+          graph_data
+            .add_cjs_esm_translation(&module.specifier, translated_source);
+        }
+      }
+    }
+
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     graph_lock_or_exit(&graph);
@@ -506,7 +534,14 @@ impl ProcState {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => code.as_ref().clone(),
+          | MediaType::Json => {
+            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier)
+            {
+              source.to_owned()
+            } else {
+              code.as_ref().clone()
+            }
+          }
           MediaType::Dts => "".to_string(),
           _ => {
             let emit_path = self

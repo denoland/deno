@@ -772,6 +772,7 @@ dependencies = [
  "log",
  "lspower",
  "nix",
+ "node_resolver",
  "notify",
  "once_cell",
  "os_pipe",
@@ -2464,6 +2465,17 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "node_resolver"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e35ed1604f6f4e33b51926d6be3bc09423f35eec776165c460c313dc2970ea5a"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
