@@ -99,6 +99,12 @@
           "default": true,
           "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type..\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
         },
+        "noImplicitOverride": {
+          "description": "Ensure overriding members in derived classes are marked with an override modifier.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
+        },
         "noImplicitReturns": {
           "description": "Enable error reporting for codepaths that do not explicitly return in a function.",
           "type": "boolean",
