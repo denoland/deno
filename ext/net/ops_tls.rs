@@ -1034,7 +1034,7 @@ where
   let cert = args.cert.as_deref();
   let key = args.key.as_deref();
   let reuse_address = args.reuse_address;
-  let reuse_port = args.reuse_port; 
+  let reuse_port = args.reuse_port;
 
   {
     let permissions = state.borrow_mut::<NP>();
@@ -1082,7 +1082,11 @@ where
   let bind_addr = resolve_addr_sync(hostname, port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let domain = if bind_addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+  let domain = if bind_addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
   let socket = Socket::new(domain, Type::STREAM, None)?;
   if reuse_address.is_some() {
     socket.set_reuse_address(reuse_address.unwrap())?;
@@ -1094,7 +1098,7 @@ where
   socket.bind(&socket_addr)?;
   socket.listen(128)?;
   socket.set_nonblocking(true)?;
-  let std_listener : std::net::TcpListener = socket.into();
+  let std_listener: std::net::TcpListener = socket.into();
   let tcp_listener = TcpListener::from_std(std_listener)?;
   let local_addr = tcp_listener.local_addr()?;
 

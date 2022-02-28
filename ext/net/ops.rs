@@ -436,7 +436,11 @@ fn listen_tcp(
   reuse_address: Option<bool>,
   reuse_port: Option<bool>,
 ) -> Result<(u32, SocketAddr), AnyError> {
-  let domain = if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+  let domain = if addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
   let socket = Socket::new(domain, Type::STREAM, None)?;
   if reuse_address.is_some() {
     socket.set_reuse_address(reuse_address.unwrap())?;
@@ -448,7 +452,7 @@ fn listen_tcp(
   socket.bind(&socket_addr)?;
   socket.listen(128)?;
   socket.set_nonblocking(true)?;
-  let std_listener : std::net::TcpListener = socket.into();
+  let std_listener: std::net::TcpListener = socket.into();
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
