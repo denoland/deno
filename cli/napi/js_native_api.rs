@@ -173,7 +173,9 @@ fn napi_coerce_to_number(
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value: v8::Local<v8::Value> = std::mem::transmute(value);
-  let coerced = value.to_number(&mut env.scope()).unwrap();
+  let coerced = value
+    .to_number(&mut env.scope())
+    .ok_or(Error::NumberExpected)?;
   let value: v8::Local<v8::Value> = coerced.into();
   *result = std::mem::transmute(value);
   Ok(())

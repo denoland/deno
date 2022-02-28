@@ -1,6 +1,7 @@
 use napi_sys::*;
 
 pub mod array;
+pub mod coerce;
 pub mod numbers;
 pub mod promise;
 pub mod properties;
@@ -55,6 +56,7 @@ unsafe extern "C" fn napi_register_module_v1(
   array::init(env, exports);
   properties::init(env, exports);
   promise::init(env, exports);
+  coerce::init(env, exports);
 
   exports
 }
