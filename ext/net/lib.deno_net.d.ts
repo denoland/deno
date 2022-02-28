@@ -76,6 +76,12 @@ declare namespace Deno {
      * You should show the message like `server running on localhost:8080` instead of
      * `server running on 0.0.0.0:8080` if your program supports Windows. */
     hostname?: string;
+    reuseAddress?: boolean;
+    /** SO_REUSEADDR option for socket.
+     * If not specified, defaults to false. */
+    reusePort?: boolean;
+    /** SO_REUSEPORT option for socket.
+     * If not specified, defaults to false. */
   }
 
   /** Listen announces on the local transport address.
@@ -110,6 +116,11 @@ declare namespace Deno {
     keyFile?: string;
 
     transport?: "tcp";
+    /** SO_REUSEADDR option for socket.
+     * If not specified, defaults to false. */
+    reusePort?: boolean;
+    /** SO_REUSEPORT option for socket.
+     * If not specified, defaults to false. */
   }
 
   /** Listen announces on the local transport address over TLS (transport layer

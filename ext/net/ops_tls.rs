@@ -54,6 +54,9 @@ use io::Error;
 use io::Read;
 use io::Write;
 use serde::Deserialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -1011,6 +1014,8 @@ pub struct ListenTlsArgs {
   // TODO(kt3k): Remove this option at v2.0.
   key_file: Option<String>,
   alpn_protocols: Option<Vec<String>>,
+  reuse_address: Option<bool>,
+  reuse_port: Option<bool>,
 }
 
 pub fn op_tls_listen<NP>(
@@ -1028,6 +1033,8 @@ where
   let key_file = args.key_file.as_deref();
   let cert = args.cert.as_deref();
   let key = args.key.as_deref();
+  let reuse_address = args.reuse_address;
+  let reuse_port = args.reuse_port; 
 
   {
     let permissions = state.borrow_mut::<NP>();
@@ -1075,8 +1082,19 @@ where
   let bind_addr = resolve_addr_sync(hostname, port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let std_listener = std::net::TcpListener::bind(bind_addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if bind_addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  if reuse_address.is_some() {
+    socket.set_reuse_address(reuse_address.unwrap())?;
+  }
+  if reuse_port.is_some() {
+    socket.set_reuse_port(reuse_port.unwrap())?;
+  }
+  let socket_addr = socket2::SockAddr::from(bind_addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener : std::net::TcpListener = socket.into();
   let tcp_listener = TcpListener::from_std(std_listener)?;
   let local_addr = tcp_listener.local_addr()?;
 

@@ -24,6 +24,9 @@ use deno_core::ZeroCopyBuf;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -404,9 +407,12 @@ impl Resource for UdpSocketResource {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct IpListenArgs {
   hostname: String,
   port: u16,
+  reuse_address: Option<bool>,
+  reuse_port: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -427,9 +433,22 @@ struct ListenArgs {
 fn listen_tcp(
   state: &mut OpState,
   addr: SocketAddr,
+  reuse_address: Option<bool>,
+  reuse_port: Option<bool>,
 ) -> Result<(u32, SocketAddr), AnyError> {
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  if reuse_address.is_some() {
+    socket.set_reuse_address(reuse_address.unwrap())?;
+  }
+  if reuse_port.is_some() {
+    socket.set_reuse_port(reuse_port.unwrap())?;
+  }
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener : std::net::TcpListener = socket.into();
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
@@ -485,7 +504,7 @@ where
         .next()
         .ok_or_else(|| generic_error("No resolved address found"))?;
       let (rid, local_addr) = if transport == "tcp" {
-        listen_tcp(state, addr)?
+        listen_tcp(state, addr, args.reuse_address, args.reuse_port)?
       } else {
         listen_udp(state, addr)?
       };
