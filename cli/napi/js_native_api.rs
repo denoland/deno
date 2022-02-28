@@ -1051,9 +1051,8 @@ fn napi_close_handle_scope(env: *mut Env, scope: napi_handle_scope) -> Result {
 #[napi_sym::napi_sym]
 fn napi_define_class(
   env_ptr: *mut Env,
-  utf8name: *const c_char,
-  // TODO
-  _length: usize,
+  name: *const c_char,
+  length: isize,
   constructor: napi_callback,
   callback_data: *mut c_void,
   property_count: usize,
@@ -1061,68 +1060,80 @@ fn napi_define_class(
   result: *mut napi_value,
 ) -> Result {
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
-  let name = std::ffi::CStr::from_ptr(utf8name).to_str().unwrap();
-  let tpl: v8::Local<v8::FunctionTemplate> = std::mem::transmute(
-    create_function_template(env_ptr, Some(name), constructor, callback_data),
-  );
+  check_arg!(result);
+  check_arg!(constructor as *const c_void);
+
+  if property_count > 0 {
+    check_arg!(properties);
+  }
+
+  let name = if length == -1 {
+    std::ffi::CStr::from_ptr(name)
+      .to_str()
+      .map_err(|_| Error::InvalidArg)?
+  } else {
+    let slice = std::slice::from_raw_parts(name as *const u8, length as usize);
+    std::str::from_utf8(slice).unwrap()
+  };
+
+  let tpl =
+    create_function_template(env_ptr, Some(name), constructor, callback_data);
+
   let scope = &mut env.scope();
-  let napi_properties = std::slice::from_raw_parts(properties, property_count);
+  let napi_properties: &[napi_property_descriptor] =
+    unsafe { std::slice::from_raw_parts(properties, property_count) };
+
   for p in napi_properties {
     let name = if !p.utf8name.is_null() {
       let name_str = CStr::from_ptr(p.utf8name).to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
     } else {
-      std::mem::transmute(p.name)
+      transmute::<napi_value, v8::Local<v8::String>>(p.name)
     };
 
-    if !(p.method as *const c_void).is_null() {
+    let method = p.method as *const c_void;
+    let getter = p.getter as *const c_void;
+    let setter = p.setter as *const c_void;
+    if !getter.is_null() || !setter.is_null() {
+      let getter: Option<v8::Local<v8::FunctionTemplate>> = if !getter.is_null()
+      {
+        Some(create_function_template(env_ptr, None, p.getter, p.data))
+      } else {
+        None
+      };
+      let setter: Option<v8::Local<v8::FunctionTemplate>> = if !setter.is_null()
+      {
+        Some(create_function_template(env_ptr, None, p.setter, p.data))
+      } else {
+        None
+      };
+
+      let proto = tpl.prototype_template(scope);
+      // if let Some(setter) = setter {
+      //   proto.set_accessor_with_setter(name.into(), getter.unwrap(), setter);
+      // } else {
+      //   proto.set_accessor(name.into(), getter);
+      // }
+      // TODO: use set_accessor & set_accessor_with_setter
+      match (getter, setter) {
+        (Some(getter), None) => {
+          proto.set(name.into(), getter.into());
+        }
+        (Some(getter), Some(setter)) => {
+          proto.set(name.into(), getter.into());
+          proto.set(name.into(), setter.into());
+        }
+        (None, Some(setter)) => {
+          proto.set(name.into(), setter.into());
+        }
+        (None, None) => unreachable!(),
+      }
+    } else if !method.is_null() {
       let function: v8::Local<v8::FunctionTemplate> = std::mem::transmute(
         create_function_template(env_ptr, None, p.method, p.data),
       );
       let proto = tpl.prototype_template(scope);
       proto.set(name.into(), function.into());
-    } else if !(p.getter as *const c_void).is_null()
-      || !(p.setter as *const c_void).is_null()
-    {
-      let getter: Option<v8::Local<v8::FunctionTemplate>> =
-        if !(p.getter as *const c_void).is_null() {
-          Some(std::mem::transmute(create_function_template(
-            env_ptr, None, p.getter, p.data,
-          )))
-        } else {
-          None
-        };
-      let setter: Option<v8::Local<v8::FunctionTemplate>> =
-        if !(p.setter as *const c_void).is_null() {
-          Some(std::mem::transmute(create_function_template(
-            env_ptr, None, p.setter, p.data,
-          )))
-        } else {
-          None
-        };
-
-      let proto = tpl.prototype_template(scope);
-
-      let base_name = CStr::from_ptr(p.utf8name).to_str().unwrap();
-      let getter_name =
-        v8::String::new(scope, format!("get_{}", base_name).as_str()).unwrap();
-      let setter_name =
-        v8::String::new(scope, format!("set_{}", base_name).as_str()).unwrap();
-
-      // TODO: use set_accessor & set_accessor_with_setter
-      match (getter, setter) {
-        (Some(getter), None) => {
-          proto.set(getter_name.into(), getter.into());
-        }
-        (Some(getter), Some(setter)) => {
-          proto.set(getter_name.into(), getter.into());
-          proto.set(setter_name.into(), setter.into());
-        }
-        (None, Some(setter)) => {
-          proto.set(setter_name.into(), setter.into());
-        }
-        (None, None) => unreachable!(),
-      }
     } else {
       let proto = tpl.prototype_template(scope);
       proto.set(name.into(), std::mem::transmute(p.value));

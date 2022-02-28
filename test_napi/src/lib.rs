@@ -1,6 +1,8 @@
 use napi_sys::*;
 
+pub mod array;
 pub mod numbers;
+pub mod properties;
 pub mod strings;
 pub mod typedarray;
 
@@ -49,5 +51,8 @@ unsafe extern "C" fn napi_register_module_v1(
   strings::init(env, exports);
   numbers::init(env, exports);
   typedarray::init(env, exports);
+  array::init(env, exports);
+  properties::init(env, exports);
+
   exports
 }
