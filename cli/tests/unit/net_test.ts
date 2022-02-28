@@ -207,7 +207,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   const listener = Deno.listen({ port: 3500 });
   listener.accept().then(
     async (conn) => {
-      assert(conn instanceof Deno.TcpConn);
       assert(conn.remoteAddr != null);
       assert(conn.localAddr.transport === "tcp");
       assertEquals(conn.localAddr.hostname, "127.0.0.1");
@@ -219,7 +218,6 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
 
   const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
   assert(conn.remoteAddr.transport === "tcp");
-  assert(conn instanceof Deno.TcpConn);
   assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
   assertEquals(conn.remoteAddr.port, 3500);
   assert(conn.localAddr != null);
