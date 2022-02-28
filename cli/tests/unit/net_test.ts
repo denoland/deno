@@ -807,3 +807,50 @@ Deno.test(
     assertEquals(res, "hello world!");
   },
 );
+
+Deno.test({ permissions: { net: true } }, async function netReusePort() {
+  const listener1 = Deno.listen({ hostname: "127.0.0.1", port: 3500, reusePort: true});
+  listener1.accept().then(
+    async (conn) => {
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    },
+  );
+  const listener2 = Deno.listen({ hostname: "127.0.0.1", port: 3500, reusePort: true});
+  listener2.accept().then(
+    async (conn) => {
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    },
+  );
+  
+  const conn1 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const buf = new Uint8Array(1024);
+  const readResult1 = await conn1.read(buf);
+  assertEquals(3, readResult1);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+
+  assert(readResult1 !== null);
+
+  const readResult2 = await conn1.read(buf);
+  assertEquals(readResult2, null);
+  conn1.close();
+  
+  const conn2 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const readResult3 = await conn2.read(buf);
+  assertEquals(3, readResult3);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+
+  assert(readResult3 !== null);
+
+  const readResult4 = await conn2.read(buf);
+  assertEquals(readResult4, null);
+  conn2.close();
+  
+  listener1.close();
+  listener2.close();
+});
