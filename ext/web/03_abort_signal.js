@@ -119,7 +119,10 @@
     }
 
     // `addEventListener` and `removeEventListener` have to be overriden in
-    // order to ref and unref the timer.
+    // order to have the timer block the event loop while there are listeners.
+    // `[add]` and `[remove]` don't ref and unref the timer because they can
+    // only be used by Deno internals, which use it to essentially cancel async
+    // ops which would block the event loop.
     addEventListener(...args) {
       super.addEventListener(...args);
       if (this.#timerId !== null && listenerCount(this, "abort") > 0) {
