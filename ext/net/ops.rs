@@ -932,6 +932,8 @@ mod tests {
     let ip_args = IpListenArgs {
       hostname: String::from(server_addr[0]),
       port: server_addr[1].parse().unwrap(),
+      reuse_address: None,
+      reuse_port: None,
     };
     let connect_args = ConnectArgs {
       transport: String::from("tcp"),
