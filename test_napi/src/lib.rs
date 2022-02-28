@@ -2,6 +2,7 @@ use napi_sys::*;
 
 pub mod array;
 pub mod numbers;
+pub mod promise;
 pub mod properties;
 pub mod strings;
 pub mod typedarray;
@@ -53,6 +54,7 @@ unsafe extern "C" fn napi_register_module_v1(
   typedarray::init(env, exports);
   array::init(env, exports);
   properties::init(env, exports);
+  promise::init(env, exports);
 
   exports
 }
