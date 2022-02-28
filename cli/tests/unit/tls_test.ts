@@ -1075,7 +1075,7 @@ Deno.test(
     const port = 587;
     const encoder = new TextEncoder();
 
-    let conn = await Deno.connect({
+    const conn = await Deno.connect({
       hostname,
       port,
     });
@@ -1102,9 +1102,9 @@ Deno.test(
     // Received the message that the server is ready to establish TLS
     assertEquals(line, "220 2.0.0 Ready to start TLS");
 
-    conn = await Deno.startTls(conn, { hostname });
-    writer = new BufWriter(conn);
-    reader = new TextProtoReader(new BufReader(conn));
+    const tlsConn = await Deno.startTls(conn, { hostname });
+    writer = new BufWriter(tlsConn);
+    reader = new TextProtoReader(new BufReader(tlsConn));
 
     // After that use TLS communication again
     await writer.write(encoder.encode(`EHLO ${hostname}\r\n`));
@@ -1115,7 +1115,7 @@ Deno.test(
       if (line.startsWith("250 ")) break;
     }
 
-    conn.close();
+    tlsConn.close();
   },
 );
 
