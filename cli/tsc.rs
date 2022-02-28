@@ -737,7 +737,7 @@ mod tests {
         .to_string()
         .replace(":///", "_")
         .replace("://", "_")
-        .replace("/", "-");
+        .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
       let response = fs::read_to_string(&source_path)
         .map(|c| {
@@ -1148,6 +1148,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
+    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
@@ -1160,6 +1161,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
+    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
@@ -1172,6 +1174,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
+    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
   }
 }

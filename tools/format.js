@@ -1,11 +1,10 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { getPrebuiltToolPath, getSources, join, ROOT_PATH } from "./util.js";
+import { getPrebuiltToolPath, join, ROOT_PATH } from "./util.js";
 
 async function dprint() {
   const configFile = join(ROOT_PATH, ".dprint.json");
   const execPath = getPrebuiltToolPath("dprint");
-  console.log("dprint");
   const p = Deno.run({
     cmd: [execPath, "fmt", "--config=" + configFile],
   });
@@ -16,29 +15,9 @@ async function dprint() {
   p.close();
 }
 
-async function rustfmt() {
-  const configFile = join(ROOT_PATH, ".rustfmt.toml");
-  const sourceFiles = await getSources(ROOT_PATH, ["*.rs"]);
-
-  if (!sourceFiles.length) {
-    return;
-  }
-
-  console.log(`rustfmt ${sourceFiles.length} file(s)`);
-  const p = Deno.run({
-    cmd: ["rustfmt", "--config-path=" + configFile, "--", ...sourceFiles],
-  });
-  const { success } = await p.status();
-  if (!success) {
-    throw new Error("rustfmt failed");
-  }
-  p.close();
-}
-
 async function main() {
   await Deno.chdir(ROOT_PATH);
   await dprint();
-  await rustfmt();
 
   if (Deno.args.includes("--check")) {
     const git = Deno.run({

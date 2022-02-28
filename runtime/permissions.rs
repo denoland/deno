@@ -2220,7 +2220,7 @@ mod tests {
     ];
 
     for (host, port) in domain_tests {
-      assert!(!perms.net.check(&(host, Some(port))).is_ok());
+      assert!(perms.net.check(&(host, Some(port))).is_err());
     }
   }
 
@@ -2396,13 +2396,13 @@ mod tests {
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
       assert_eq!(perms2.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms1.env.query(None), PermissionState::Granted);
-      assert_eq!(perms1.env.query(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms1.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms2.env.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.env.query(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms1.run.query(None), PermissionState::Granted);
-      assert_eq!(perms1.run.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms1.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.run.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
       assert_eq!(perms1.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
@@ -2433,15 +2433,15 @@ mod tests {
       prompt_value.set(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms.env.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
       prompt_value.set(true);
       assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
@@ -2506,8 +2506,8 @@ mod tests {
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(9000)))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
+      assert_eq!(perms.env.revoke(Some("HOME")), PermissionState::Prompt);
+      assert_eq!(perms.run.revoke(Some("deno")), PermissionState::Prompt);
       assert_eq!(perms.ffi.revoke(Some(Path::new("deno"))), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
@@ -2641,10 +2641,7 @@ mod tests {
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("hOmE").is_ok());
 
-    assert_eq!(
-      perms.env.revoke(Some(&"HomE".to_string())),
-      PermissionState::Prompt
-    );
+    assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
   }
 
   #[test]

@@ -53,6 +53,7 @@ pub(crate) struct GraphData {
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
   configurations: HashSet<ModuleSpecifier>,
+  cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
 impl GraphData {
@@ -254,6 +255,7 @@ impl GraphData {
       modules,
       referrer_map,
       configurations: self.configurations.clone(),
+      cjs_esm_translations: Default::default(),
     })
   }
 
@@ -411,6 +413,27 @@ impl GraphData {
     specifier: &ModuleSpecifier,
   ) -> Option<&'a ModuleEntry> {
     self.modules.get(specifier)
+  }
+
+  // TODO(bartlomieju): after saving translated source
+  // it's never removed, potentially leading to excessive
+  // memory consumption
+  pub(crate) fn add_cjs_esm_translation(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: String,
+  ) {
+    let prev = self
+      .cjs_esm_translations
+      .insert(specifier.to_owned(), source);
+    assert!(prev.is_none());
+  }
+
+  pub(crate) fn get_cjs_esm_translation<'a>(
+    &'a self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&'a String> {
+    self.cjs_esm_translations.get(specifier)
   }
 }
 
