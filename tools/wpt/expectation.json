@@ -3286,15 +3286,11 @@
       "scripting": {
         "reporterror.any.html": [
           "self.reportError(1)",
-          "self.reportError(TypeError)",
           "self.reportError(undefined)",
-          "self.reportError() doesn't invoke getters"
         ],
         "reporterror.any.worker.html": [
           "self.reportError(1)",
-          "self.reportError(TypeError)",
           "self.reportError(undefined)",
-          "self.reportError() doesn't invoke getters"
         ]
       },
       "structured-clone": {
