@@ -62,6 +62,7 @@ delete Object.prototype.__proto__;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
+  const reportError = window.__bootstrap.reportError;
   const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
@@ -211,6 +212,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
+    core.setMacrotaskCallback(reportError.handleReportErrorMacrotask);
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
     version.setVersions(
@@ -444,6 +446,7 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
     structuredClone: util.writable(messagePort.structuredClone),
+    reportError: util.writable(reportError.reportError),
   };
 
   const unstableWindowOrWorkerGlobalScope = {
@@ -588,6 +591,10 @@ delete Object.prototype.__proto__;
     numCpus = cpuCount;
     registerErrors();
 
+    reportError.setPrintException((jsError) =>
+      core.opSync("op_print_exception", jsError)
+    );
+
     const internalSymbol = Symbol("Deno.internal");
 
     const finalDenoNs = {
@@ -677,6 +684,10 @@ delete Object.prototype.__proto__;
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();
+
+    reportError.setPrintException((jsError) =>
+      core.opSync("op_print_exception", jsError)
+    );
 
     globalThis.pollForMessages = pollForMessages;
 

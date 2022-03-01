@@ -81,6 +81,7 @@ pub fn init<P: TimersPermission + 'static>(
       "13_message_port.js",
       "14_compression.js",
       "15_performance.js",
+      "16_report_error.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),

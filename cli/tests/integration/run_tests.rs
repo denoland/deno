@@ -2511,3 +2511,14 @@ itest!(config_not_auto_discovered_for_remote_script {
   output_str: Some("ok\n"),
   http_server: true,
 });
+
+itest!(report_error {
+  args: "run --quiet report_error.ts",
+  output: "report_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(report_error_handled {
+  args: "run --quiet report_error_handled.ts",
+  output: "report_error_handled.ts.out",
+});
