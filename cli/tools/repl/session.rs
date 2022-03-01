@@ -43,6 +43,7 @@ Object.defineProperty(globalThis, "_error", {
 });
 "#;
 
+#[derive(Debug)]
 pub enum EvaluationOutput {
   Value(String),
   Error(String),
@@ -290,6 +291,7 @@ impl ReplSession {
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<String, AnyError> {
+    println!("evaluate_result: {:#?}", evaluate_result);
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
@@ -297,11 +299,7 @@ impl ReplSession {
       "Runtime.callFunctionOn",
       Some(cdp::CallFunctionOnArgs {
         function_declaration: r#"function (object) {
-          try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
-          } catch (err) {
-            return Deno[Deno.internal].inspectArgs(["%o", err]);
-          }
         }"#.to_string(),
         object_id: None,
         arguments: Some(vec![evaluate_result.into()]),
@@ -315,12 +313,13 @@ impl ReplSession {
         throw_on_side_effect: None
       }),
     ).await?;
-
+    println!("inspect_response: {:#?}", inspect_response);
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
     let value = response.result.value.unwrap();
+    println!("value(1): {:#?}", value);
     let s = value.as_str().unwrap();
-
+    println!("value(s): {:#?}", s);
     Ok(s.to_string())
   }
 
@@ -328,6 +327,7 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
+    println!("code: {:#?}", expression);
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
       source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
@@ -355,6 +355,8 @@ impl ReplSession {
       })?
       .text;
 
+    println!("transpiled: {:#?}", transpiled_src);
+
     let value = self
       .evaluate_expression(&format!(
         "'use strict'; void 0;\n{}",
@@ -362,6 +364,7 @@ impl ReplSession {
       ))
       .await?;
 
+    println!("value: {:#?}", value);
     Ok(TsEvaluateResponse {
       ts_code: expression.to_string(),
       value,
