@@ -338,6 +338,9 @@ pub(crate) fn is_instance_of_error<'s>(
   let mut maybe_prototype =
     value.to_object(scope).unwrap().get_prototype(scope);
   while let Some(prototype) = maybe_prototype {
+    if !prototype.is_object() {
+      return false;
+    }
     if prototype.strict_equals(error_prototype) {
       return true;
     }
