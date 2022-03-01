@@ -262,3 +262,15 @@ itest!(steps_invalid_usage {
   exit_code: 1,
   output: "test/steps/invalid_usage.out",
 });
+
+itest!(no_prompt_by_default {
+  args: "test test/no_prompt_by_default.ts",
+  exit_code: 1,
+  output: "test/no_prompt_by_default.out",
+});
+
+itest!(no_prompt_with_denied_perms {
+  args: "test --allow-read test/no_prompt_with_denied_perms.ts",
+  exit_code: 1,
+  output: "test/no_prompt_with_denied_perms.out",
+});
