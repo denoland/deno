@@ -20,7 +20,11 @@ console.log(
 console.log(await getReleasesMdText());
 
 async function getReleasesMdText() {
-  const gitLog = await repo.getGitLogFromTag(`v${originalVersion}`);
+  const gitLog = await repo.getGitLogFromTags(
+    "upstream",
+    `v${originalVersion}`,
+    undefined,
+  );
   const formattedGitLog = gitLog.formatForReleaseMarkdown();
   const formattedDate = getFormattedDate(new Date());
 
