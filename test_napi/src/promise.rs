@@ -20,7 +20,7 @@ extern "C" fn test_promise_resolve(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   assert!(
@@ -34,7 +34,7 @@ extern "C" fn test_promise_reject(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   assert!(
@@ -48,7 +48,7 @@ extern "C" fn test_promise_is(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut is_promise: bool = false;

@@ -4,7 +4,7 @@ use napi_sys::*;
 use std::ptr;
 
 extern "C" fn test_utf8(env: napi_env, info: napi_callback_info) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut ty = -1;
@@ -18,7 +18,7 @@ extern "C" fn test_utf16(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut ty = -1;

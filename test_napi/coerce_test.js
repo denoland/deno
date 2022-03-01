@@ -52,3 +52,21 @@ Deno.test("napi coerce string", function () {
   assertEquals(coerce.test_coerce_string(undefined), "undefined");
   assertEquals(coerce.test_coerce_string(null), "null");
 });
+
+Deno.test("napi coerce object", function () {
+  assertEquals(coerce.test_coerce_object(true), new Boolean(true));
+  assertEquals(coerce.test_coerce_object(false), new Boolean(false));
+  assertEquals(coerce.test_coerce_object(0), new Number(0));
+  assertEquals(coerce.test_coerce_object(69), new Number(0));
+  assertEquals(coerce.test_coerce_object(""), new String(""));
+  assertEquals(
+    coerce.test_coerce_object(Number.MAX_SAFE_INTEGER),
+    new Number(Number.MAX_SAFE_INTEGER),
+  );
+  assertEquals(coerce.test_coerce_object(new Array(10)), new Array(10));
+  assertEquals(
+    coerce.test_coerce_object("Hello, Deno!"),
+    new String("Hello, Deno!"),
+  );
+  assertEquals(coerce.test_coerce_object({}), {});
+});

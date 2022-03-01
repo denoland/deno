@@ -3,6 +3,7 @@ use napi_sys::*;
 pub mod array;
 pub mod coerce;
 pub mod numbers;
+pub mod object_wrap;
 pub mod promise;
 pub mod properties;
 pub mod strings;
@@ -13,6 +14,7 @@ macro_rules! get_callback_info {
   ($env: expr, $callback_info: expr, $size: literal) => {{
     let mut args = [ptr::null_mut(); $size];
     let mut argc = $size;
+    let mut this = ptr::null_mut();
     unsafe {
       assert!(
         napi_get_cb_info(
@@ -20,12 +22,12 @@ macro_rules! get_callback_info {
           $callback_info,
           &mut argc,
           args.as_mut_ptr(),
-          ptr::null_mut(),
+          &mut this,
           ptr::null_mut(),
         ) == napi_ok,
       )
     };
-    (args, argc)
+    (args, argc, this)
   }};
 }
 
@@ -57,6 +59,7 @@ unsafe extern "C" fn napi_register_module_v1(
   properties::init(env, exports);
   promise::init(env, exports);
   coerce::init(env, exports);
+  object_wrap::init(env, exports);
 
   exports
 }

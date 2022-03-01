@@ -8,7 +8,7 @@ extern "C" fn test_array_new(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut ty = -1;
@@ -36,7 +36,7 @@ extern "C" fn test_array_new_with_length(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut ty = -1;

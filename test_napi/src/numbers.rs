@@ -7,7 +7,7 @@ extern "C" fn test_int32(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut ty = -1;
@@ -26,7 +26,7 @@ extern "C" fn test_int64(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc) = crate::get_callback_info!(env, info, 1);
+  let (args, argc, _) = crate::get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let mut ty = -1;
