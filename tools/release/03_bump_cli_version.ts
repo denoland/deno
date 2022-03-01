@@ -9,7 +9,7 @@ const cliCrate = workspace.getCliCrate();
 const originalVersion = cliCrate.version;
 
 // increment the version
-await cliCrate.increment(getVersionIncrement());
+await cliCrate.promptAndIncrement();
 // update the lock file
 await cliCrate.cargoCheck();
 
@@ -18,18 +18,6 @@ console.log(
   "You may use the following as a template for updating Releases.md:\n",
 );
 console.log(await getReleasesMdText());
-
-function getVersionIncrement() {
-  if (confirm("Increment patch?")) {
-    return "patch";
-  } else if (confirm("Increment minor?")) {
-    return "minor";
-  } else if (confirm("Increment major?")) {
-    return "major";
-  } else {
-    throw new Error("No decision.");
-  }
-}
 
 async function getReleasesMdText() {
   const gitLog = await repo.getGitLogFromTag(`v${originalVersion}`);

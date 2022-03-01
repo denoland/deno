@@ -7,7 +7,7 @@ export class DenoWorkspace {
 
   static get rootDirPath() {
     const currentDirPath = path.dirname(path.fromFileUrl(import.meta.url));
-    return path.resolve(currentDirPath, "../../../");
+    return path.resolve(currentDirPath, "../../");
   }
 
   static async load(): Promise<DenoWorkspace> {

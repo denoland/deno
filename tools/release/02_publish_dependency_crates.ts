@@ -9,7 +9,7 @@ const dependencyCrates = getCratesPublishOrder(workspace.getDependencyCrates());
 
 try {
   for (const [i, crate] of dependencyCrates.entries()) {
-    //await crate.publish();
+    await crate.publish();
     console.log(`Published ${i + 1} of ${dependencyCrates.length} crates.`);
   }
 } finally {
