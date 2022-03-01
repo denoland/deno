@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::napi::*;
 
 #[repr(C)]
@@ -122,12 +124,7 @@ pub fn create_function_template<'a>(
         data_array.get_index(scope, 2).unwrap(),
       )
       .unwrap();
-      let env_ptr = env_ptr.value() as *mut Env;
-      let sender = unsafe { (*(env_ptr)).async_work_sender.clone() };
-
-      let mut env = unsafe { (*(env_ptr)).with_new_scope(sender) };
-      let env_ptr = &mut env as *mut _ as *mut c_void;
-
+      let env_ptr = env_ptr.value();
       let mut info = CallbackInfo {
         env: env_ptr,
         cb,

@@ -7,7 +7,6 @@ use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::futures::channel::mpsc;
 
-use crate::bindings::external_references;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -317,7 +316,7 @@ impl JsRuntime {
     let isolate_ptr: *mut v8::OwnedIsolate =
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
-    let refs = external_references(isolate_ptr as *mut _);
+    let refs = bindings::external_references(isolate_ptr as *mut _);
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.

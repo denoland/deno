@@ -41,6 +41,9 @@ JsRuntime::sync_ops_cache() after JsRuntime initialization.";
 pub fn external_references(isolate_ptr: *mut c_void) -> v8::ExternalReferences {
   v8::ExternalReferences::new(&[
     v8::ExternalReference {
+      pointer: isolate_ptr,
+    },
+    v8::ExternalReference {
       function: opcall_async.map_fn_to(),
     },
     v8::ExternalReference {
@@ -115,9 +118,6 @@ pub fn external_references(isolate_ptr: *mut c_void) -> v8::ExternalReferences {
     #[cfg(feature = "napi")]
     v8::ExternalReference {
       function: napi_open_func.map_fn_to(),
-    },
-    v8::ExternalReference {
-      pointer: isolate_ptr,
     },
   ])
 }

@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::napi::*;
 
 #[repr(C)]
@@ -9,7 +11,7 @@ pub struct AsyncWork {
 
 #[napi_sym::napi_sym]
 fn napi_create_async_work(
-  env: *mut Env,
+  _env: *mut Env,
   _async_resource: napi_value,
   _async_resource_name: napi_value,
   execute: napi_async_execute_callback,

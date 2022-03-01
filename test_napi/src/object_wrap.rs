@@ -1,20 +1,18 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_number;
-use napi_sys::ValueType::napi_object;
 use napi_sys::*;
 use std::os::raw::c_void;
 use std::ptr;
 
 pub struct NapiObject {
   counter: i32,
-  wrapper: napi_ref,
+  _wrapper: napi_ref,
 }
 
 impl NapiObject {
-  pub unsafe extern "C" fn new(
-    env: napi_env,
-    info: napi_callback_info,
-  ) -> napi_value {
+  pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
     let mut new_target: napi_value = ptr::null_mut();
     assert!(
       unsafe { napi_get_new_target(env, info, &mut new_target) } == napi_ok
@@ -38,7 +36,7 @@ impl NapiObject {
       let mut wrapper: napi_ref = ptr::null_mut();
       let obj = Box::new(Self {
         counter: value,
-        wrapper,
+        _wrapper: wrapper,
       });
       assert!(
         unsafe {
@@ -59,7 +57,7 @@ impl NapiObject {
     unreachable!();
   }
 
-  pub unsafe extern "C" fn set_value(
+  pub extern "C" fn set_value(
     env: napi_env,
     info: napi_callback_info,
   ) -> napi_value {
@@ -79,11 +77,11 @@ impl NapiObject {
     ptr::null_mut()
   }
 
-  pub unsafe extern "C" fn get_value(
+  pub extern "C" fn get_value(
     env: napi_env,
     info: napi_callback_info,
   ) -> napi_value {
-    let (args, argc, this) = crate::get_callback_info!(env, info, 0);
+    let (_args, argc, this) = crate::get_callback_info!(env, info, 0);
     assert_eq!(argc, 0);
     let mut obj: *mut Self = ptr::null_mut();
     assert!(
@@ -99,11 +97,11 @@ impl NapiObject {
     num
   }
 
-  pub unsafe extern "C" fn increment(
+  pub extern "C" fn increment(
     env: napi_env,
     info: napi_callback_info,
   ) -> napi_value {
-    let (args, argc, this) = crate::get_callback_info!(env, info, 1);
+    let (_args, argc, this) = crate::get_callback_info!(env, info, 0);
     assert_eq!(argc, 0);
     let mut obj: *mut Self = ptr::null_mut();
     assert!(
@@ -111,7 +109,9 @@ impl NapiObject {
         == napi_ok
     );
 
-    (*obj).counter += 1;
+    unsafe {
+      (*obj).counter += 1;
+    }
 
     ptr::null_mut()
   }

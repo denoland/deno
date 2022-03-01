@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use core::ffi::c_void;
 use napi_sys::Status::napi_ok;
 use napi_sys::TypedarrayType::uint8_array;

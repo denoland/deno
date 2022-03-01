@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 
@@ -300,8 +302,6 @@ pub enum ThreadSafeFunctionStatus {
 
 #[repr(C)]
 pub struct Env {
-  // pub struct Env<'a, 'b> {
-  // pub scope: &'a mut v8::HandleScope<'b>,
   context: NonNull<v8::Context>,
   pub isolate_ptr: *mut v8::OwnedIsolate,
   pub open_handle_scopes: usize,
@@ -311,16 +311,12 @@ pub struct Env {
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
 
-// unsafe impl Send for Env<'_, '_> {}
-// unsafe impl Sync for Env<'_, '_> {}
 unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
-// impl<'a, 'b> Env<'a, 'b> {
 impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
-    // scope: &'a mut v8::HandleScope<'b>,
     context: v8::Global<v8::Context>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
@@ -335,34 +331,12 @@ impl Env {
     });
 
     Self {
-      // scope,
       isolate_ptr,
       context: context.into_raw(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
       threadsafe_function_sender,
-    }
-  }
-
-  // TODO(@littledivy): Do we even need this?
-  pub fn with_new_scope(
-    &self,
-    // scope: &'a mut v8::HandleScope<'b>,
-    sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
-  ) -> Self {
-    let sc = sender.clone();
-    ASYNC_WORK_SENDER.with(|s| {
-      s.replace(Some(sc));
-    });
-    Self {
-      // scope,
-      isolate_ptr: self.isolate_ptr,
-      shared: self.shared,
-      open_handle_scopes: self.open_handle_scopes,
-      async_work_sender: sender,
-      threadsafe_function_sender: self.threadsafe_function_sender.clone(),
-      context: self.context,
     }
   }
 

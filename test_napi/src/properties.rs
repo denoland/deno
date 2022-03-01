@@ -1,5 +1,4 @@
-// Based on:
-// https://github.com/nodejs/node/blob/86e976f1f4f9a506385dccec4d83409b5f55964b/test/js-native-api/test_properties/test_properties.c
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use napi_sys::PropertyAttributes::*;
 use napi_sys::Status::napi_ok;

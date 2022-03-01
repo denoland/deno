@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 import { assertEquals, assertRejects, loadTestLibrary } from "./common.js";
 
 const promise = loadTestLibrary();

@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 #![allow(non_upper_case_globals)]
 
 use deno_core::napi::*;
@@ -391,7 +393,7 @@ fn napi_create_function(
   cb_info: napi_callback_info,
   result: *mut napi_value,
 ) -> Result {
-  let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
+  let _: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
   let name = match name.is_null() {
     true => None,
     false => Some(name),
@@ -1864,7 +1866,7 @@ fn napi_open_escapable_handle_scope(
 #[napi_sym::napi_sym]
 fn napi_open_handle_scope(
   env: *mut Env,
-  result: *mut napi_handle_scope,
+  _result: *mut napi_handle_scope,
 ) -> Result {
   let env = &mut *(env as *mut Env);
 
@@ -2052,7 +2054,7 @@ fn napi_strict_equals(
 fn napi_throw(env: *mut Env, error: napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let error = transmute(error);
-  &mut env.scope().throw_exception(error);
+  env.scope().throw_exception(error);
   Ok(())
 }
 
@@ -2071,7 +2073,7 @@ fn napi_throw_error(
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
   let error = v8::Exception::error(&mut env.scope(), msg);
-  &mut env.scope().throw_exception(error);
+  env.scope().throw_exception(error);
 
   Ok(())
 }
@@ -2091,7 +2093,7 @@ fn napi_throw_range_error(
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
   let error = v8::Exception::range_error(&mut env.scope(), msg);
-  &mut env.scope().throw_exception(error);
+  env.scope().throw_exception(error);
 
   Ok(())
 }
@@ -2111,7 +2113,7 @@ fn napi_throw_type_error(
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
   let error = v8::Exception::type_error(&mut env.scope(), msg);
-  &mut env.scope().throw_exception(error);
+  env.scope().throw_exception(error);
 
   Ok(())
 }
@@ -2210,7 +2212,7 @@ fn node_api_throw_syntax_error(
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
   let error = v8::Exception::syntax_error(&mut env.scope(), msg);
-  &mut env.scope().throw_exception(error);
+  env.scope().throw_exception(error);
 
   Ok(())
 }

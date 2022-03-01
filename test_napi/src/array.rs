@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_number;
 use napi_sys::ValueType::napi_object;
