@@ -666,7 +666,6 @@ impl LocalInspectorSession {
         "method": method,
         "params": params,
     });
-    println!("post_message message={:#?}", message);
 
     let stringified_msg = serde_json::to_string(&message).unwrap();
     self.v8_session_tx.unbounded_send(stringified_msg).unwrap();

@@ -95,6 +95,7 @@ pub async fn run(
     match line {
       Ok(line) => {
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
+
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if repl_session.is_closing().await? {
