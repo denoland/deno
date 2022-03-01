@@ -3286,11 +3286,11 @@
       "scripting": {
         "reporterror.any.html": [
           "self.reportError(1)",
-          "self.reportError(undefined)",
+          "self.reportError(undefined)"
         ],
         "reporterror.any.worker.html": [
           "self.reportError(1)",
-          "self.reportError(undefined)",
+          "self.reportError(undefined)"
         ]
       },
       "structured-clone": {
