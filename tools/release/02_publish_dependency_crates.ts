@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo --allow-net=crates.io
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { DenoWorkspace, getCratesPublishOrder } from "./helpers/mod.ts";
+import { DenoWorkspace } from "./deno_workspace.ts";
+import { getCratesPublishOrder } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
 
