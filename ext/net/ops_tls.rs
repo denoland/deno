@@ -1090,6 +1090,8 @@ where
   let socket = Socket::new(domain, Type::STREAM, None)?;
   if reuse_address.is_some() {
     socket.set_reuse_address(reuse_address.unwrap())?;
+  } else {
+    socket.set_reuse_address(true)?;
   }
   if reuse_port.is_some() {
     socket.set_reuse_port(reuse_port.unwrap())?;

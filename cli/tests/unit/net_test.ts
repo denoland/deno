@@ -811,7 +811,7 @@ Deno.test(
 Deno.test({ permissions: { net: true } }, async function netReusePort() {
   const listener1 = Deno.listen({
     hostname: "127.0.0.1",
-    port: 3500,
+    port: 5000,
     reusePort: true,
   });
   listener1.accept().then(
@@ -822,7 +822,7 @@ Deno.test({ permissions: { net: true } }, async function netReusePort() {
   );
   const listener2 = Deno.listen({
     hostname: "127.0.0.1",
-    port: 3500,
+    port: 5000,
     reusePort: true,
   });
   listener2.accept().then(
@@ -832,7 +832,7 @@ Deno.test({ permissions: { net: true } }, async function netReusePort() {
     },
   );
 
-  const conn1 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const conn1 = await Deno.connect({ hostname: "127.0.0.1", port: 5000 });
   const buf = new Uint8Array(1024);
   const readResult1 = await conn1.read(buf);
   assertEquals(3, readResult1);
@@ -846,7 +846,7 @@ Deno.test({ permissions: { net: true } }, async function netReusePort() {
   assertEquals(readResult2, null);
   conn1.close();
 
-  const conn2 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const conn2 = await Deno.connect({ hostname: "127.0.0.1", port: 5000 });
   const readResult3 = await conn2.read(buf);
   assertEquals(3, readResult3);
   assertEquals(1, buf[0]);
