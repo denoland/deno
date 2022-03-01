@@ -188,6 +188,10 @@ interface PluginArray {
     [Symbol.iterator](): IterableIterator<Plugin>;
 }
 
+interface RTCRtpTransceiver {
+    setCodecPreferences(codecs: Iterable<RTCRtpCodecCapability>): void;
+}
+
 interface RTCStatsReport extends ReadonlyMap<string, any> {
 }
 
