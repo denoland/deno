@@ -11,7 +11,7 @@ Deno.test("napi new promise and resolve", async () => {
   assertEquals(await p, 69);
 });
 
-Deno.test("napi new promise and reject", async () => {
+Deno.test("napi new promise and reject", () => {
   const p = promise.test_promise_new();
 
   assertRejects(async () => {

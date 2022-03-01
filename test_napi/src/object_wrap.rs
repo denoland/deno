@@ -12,6 +12,7 @@ pub struct NapiObject {
 }
 
 impl NapiObject {
+  #[allow(clippy::new_ret_no_self)]
   pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
     let mut new_target: napi_value = ptr::null_mut();
     assert!(

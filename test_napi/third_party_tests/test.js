@@ -54,7 +54,7 @@ Deno.test("@tauri-apps/cli", () => {
   const _ = require("@tauri-apps/cli");
 });
 
-Deno.test("@parcel/css", async () => {
+Deno.test("@parcel/css", () => {
   const { transform } = require("@parcel/css");
   const result = transform({
     filename: "test.css",
@@ -166,7 +166,7 @@ Deno.test("@napi-rs/uuid", () => {
 //   libm.ceil(1.5); // 2
 // })
 
-Deno.test("@napi-rs/blake-hash", async () => {
+Deno.test("@napi-rs/blake-hash", () => {
   const { blake3, Blake3Hasher } = require("@napi-rs/blake-hash");
   // deno-fmt-ignore
   const hash = new Uint8Array([
@@ -269,7 +269,7 @@ Deno.test("@parcel/watcher", () => {
   // });
 });
 
-Deno.test("@parcel/fs-search", async () => {
+Deno.test("@parcel/fs-search", () => {
   const { findFirstFile } = require("@parcel/fs-search");
   const file = findFirstFile(
     [
@@ -282,7 +282,7 @@ Deno.test("@parcel/fs-search", async () => {
   strictEqual(file, "./test.js");
 });
 
-Deno.test("@napi-rs/notify", async () => {
+Deno.test("@napi-rs/notify", () => {
   const { watch } = require("@napi-rs/notify");
   const unwatch = watch(".", console.info);
   unwatch();

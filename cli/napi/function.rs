@@ -11,6 +11,7 @@ pub struct CallbackInfo {
   pub args: *const c_void,
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn create_function<'a>(
   env_ptr: *mut Env,
   name: Option<&str>,
@@ -81,6 +82,7 @@ pub fn create_function<'a>(
   function
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn create_function_template<'a>(
   env_ptr: *mut Env,
   name: Option<&str>,
