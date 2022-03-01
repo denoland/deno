@@ -7,4 +7,9 @@ Deno.test("napi object wrap new", function () {
   assertEquals(obj.get_value(), 0);
   obj.set_value(10);
   assertEquals(obj.get_value(), 10);
+  obj.increment();
+  assertEquals(obj.get_value(), 11);
+  obj.increment();
+  obj.set_value(10);
+  assertEquals(obj.get_value(), 10);
 });

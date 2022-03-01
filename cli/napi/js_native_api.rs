@@ -1015,15 +1015,15 @@ fn napi_call_function(
   result: *mut napi_value,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let recv: v8::Local<v8::Value> = std::mem::transmute(recv);
-  let func: v8::Local<v8::Value> = std::mem::transmute(func);
-  let func = v8::Local::<v8::Function>::try_from(func).unwrap();
-  let args: &[v8::Local<v8::Value>] =
-    std::mem::transmute(std::slice::from_raw_parts(argv, argc));
-  let ret = func.call(&mut env.scope(), recv, args).unwrap();
-  if !result.is_null() {
-    *result = std::mem::transmute(ret);
-  }
+  let recv = transmute::<napi_value, v8::Local<v8::Value>>(recv);
+  let func = transmute::<napi_value, v8::Local<v8::Value>>(func);
+  let func = v8::Local::<v8::Function>::try_from(func)
+    .map_err(|_| Error::FunctionExpected)?;
+
+  let argv: &[v8::Local<v8::Value>] =
+    unsafe { transmute(std::slice::from_raw_parts(argv, argc as usize)) };
+  let ret = func.call(&mut env.scope(), recv, argv);
+  *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
 
   Ok(())
 }

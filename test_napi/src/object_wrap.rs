@@ -7,7 +7,7 @@ use std::ptr;
 
 pub struct NapiObject {
   counter: i32,
-  wrapper: napi_ref,
+  _wrapper: napi_ref,
 }
 
 impl NapiObject {
@@ -98,12 +98,30 @@ impl NapiObject {
 
     num
   }
+
+  pub unsafe extern "C" fn increment(
+    env: napi_env,
+    info: napi_callback_info,
+  ) -> napi_value {
+    let (args, argc, this) = crate::get_callback_info!(env, info, 1);
+    assert_eq!(argc, 0);
+    let mut obj: *mut Self = ptr::null_mut();
+    assert!(
+      unsafe { napi_unwrap(env, this, &mut obj as *mut _ as *mut *mut c_void) }
+        == napi_ok
+    );
+
+    (*obj).counter += 1;
+
+    ptr::null_mut()
+  }
 }
 
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     crate::new_property!(env, "set_value\0", NapiObject::set_value),
     crate::new_property!(env, "get_value\0", NapiObject::get_value),
+    crate::new_property!(env, "increment\0", NapiObject::increment),
   ];
 
   let mut cons: napi_value = ptr::null_mut();
