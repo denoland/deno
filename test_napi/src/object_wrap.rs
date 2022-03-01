@@ -7,7 +7,7 @@ use std::ptr;
 
 pub struct NapiObject {
   counter: i32,
-  _wrapper: napi_ref,
+  wrapper: napi_ref,
 }
 
 impl NapiObject {
