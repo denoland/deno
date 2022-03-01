@@ -353,8 +353,17 @@ pub struct CallArgument {
 
 impl From<&RemoteObject> for CallArgument {
   fn from(obj: &RemoteObject) -> Self {
+    let value = if let Some(subtype) = &obj.subtype {
+      if subtype == "null" {
+        Some(serde_json::Value::Null)
+      } else {
+        obj.value.clone()
+      }
+    } else {
+      obj.value.clone()
+    };
     Self {
-      value: obj.value.clone(),
+      value,
       unserializable_value: obj.unserializable_value.clone(),
       object_id: obj.object_id.clone(),
     }

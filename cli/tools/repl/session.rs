@@ -313,13 +313,10 @@ impl ReplSession {
         throw_on_side_effect: None
       }),
     ).await?;
-    println!("inspect_response: {:#?}", inspect_response);
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
     let value = response.result.value.unwrap();
-    println!("value(1): {:#?}", value);
     let s = value.as_str().unwrap();
-    println!("value(s): {:#?}", s);
     Ok(s.to_string())
   }
 
