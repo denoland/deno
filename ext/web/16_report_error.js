@@ -44,9 +44,11 @@
       colno = jsError.frames[0].columnNumber;
     } else {
       const jsError = core.destructureError(new Error());
-      filename = jsError.frames[1].fileName;
-      lineno = jsError.frames[1].lineNumber;
-      colno = jsError.frames[1].columnNumber;
+      if (jsError.frames.length > 1) {
+        filename = jsError.frames[1].fileName;
+        lineno = jsError.frames[1].lineNumber;
+        colno = jsError.frames[1].columnNumber;
+      }
     }
     const event = new ErrorEvent("error", {
       cancelable: true,
