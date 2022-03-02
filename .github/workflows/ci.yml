@@ -88,12 +88,8 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-
-      - name: Install clippy and rustfmt
-        if: matrix.job == 'lint'
-        run: |
-          rustup component add clippy
-          rustup component add rustfmt
+          components: rustfmt, clippy
+          profile: minimal
 
       - name: Install Deno
         if: matrix.job == 'lint'
