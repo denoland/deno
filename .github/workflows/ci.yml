@@ -2,6 +2,10 @@ name: ci
 
 on: [push, pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'test-flaky-ci') && github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: ${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}
@@ -121,7 +125,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0
         with:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
@@ -135,7 +139,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         with:
@@ -259,7 +263,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 3-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 4-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -275,7 +279,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            3-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            4-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -291,7 +295,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            3-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            4-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -618,7 +622,7 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0
         with:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}

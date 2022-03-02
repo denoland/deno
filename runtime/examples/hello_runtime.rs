@@ -22,6 +22,9 @@ async fn main() -> Result<(), AnyError> {
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Web workers are not supported in the example");
   });
+  let web_worker_preload_module_cb = Arc::new(|_| {
+    todo!("Web workers are not supported in the example");
+  });
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
@@ -32,6 +35,7 @@ async fn main() -> Result<(), AnyError> {
       enable_testing_features: false,
       location: None,
       no_color: false,
+      is_tty: false,
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       unstable: false,
@@ -42,6 +46,7 @@ async fn main() -> Result<(), AnyError> {
     user_agent: "hello_runtime".to_string(),
     seed: None,
     js_error_create_fn: None,
+    web_worker_preload_module_cb,
     create_web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,

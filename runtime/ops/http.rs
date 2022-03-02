@@ -59,6 +59,21 @@ fn op_http_start(
     return http_create_conn_resource(state, tls_stream, addr, "https");
   }
 
+  #[cfg(unix)]
+  if let Ok(resource_rc) = state
+    .resource_table
+    .take::<deno_net::io::UnixStreamResource>(tcp_stream_rid)
+  {
+    super::check_unstable(state, "Deno.serveHttp");
+
+    let resource = Rc::try_unwrap(resource_rc)
+      .expect("Only a single use of this resource should happen");
+    let (read_half, write_half) = resource.into_inner();
+    let unix_stream = read_half.reunite(write_half)?;
+    let addr = unix_stream.local_addr()?;
+    return http_create_conn_resource(state, unix_stream, addr, "http+unix");
+  }
+
   Err(bad_resource_id())
 }
 

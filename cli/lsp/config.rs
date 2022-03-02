@@ -1,25 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_runtime::tokio_util::create_basic_runtime;
-use log::error;
 use lsp::WorkspaceFolder;
 use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread;
-use tokio::sync::mpsc;
-
-use super::client::Client;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -219,11 +210,6 @@ impl ConfigSnapshot {
       self.settings.workspace.enable
     }
   }
-}
-
-enum ConfigRequest {
-  All,
-  Specifier(ModuleSpecifier, ModuleSpecifier),
 }
 
 #[derive(Debug, Clone)]

@@ -129,6 +129,29 @@
     }
   },
   {
+    "title": "Convert named imports to default import",
+    "kind": "refactor.rewrite.import.default",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Selection is not an import declaration."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert import",
+      "actionName": "Convert named imports to default import"
+    }
+  },
+  {
     "title": "Convert named imports to namespace import",
     "kind": "refactor.rewrite.import.namespace",
     "isPreferred": false,
@@ -149,29 +172,6 @@
       },
       "refactorName": "Convert import",
       "actionName": "Convert named imports to namespace import"
-    }
-  },
-  {
-    "title": "Convert to optional chain expression",
-    "kind": "refactor.rewrite.expression.optionalChain",
-    "isPreferred": false,
-    "disabled": {
-      "reason": "Could not find convertible access expression"
-    },
-    "data": {
-      "specifier": "file:///a/file.ts",
-      "range": {
-        "start": {
-          "line": 0,
-          "character": 0
-        },
-        "end": {
-          "line": 1,
-          "character": 0
-        }
-      },
-      "refactorName": "Convert to optional chain expression",
-      "actionName": "Convert to optional chain expression"
     }
   }
 ]

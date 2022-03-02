@@ -478,6 +478,99 @@ fn lsp_import_map_data_url() {
 }
 
 #[test]
+fn lsp_import_map_config_file() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+
+  let deno_import_map_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.import_map.jsonc")).unwrap();
+  fs::write(
+    temp_dir.path().join("deno.import_map.jsonc"),
+    deno_import_map_jsonc,
+  )
+  .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.import_map.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+  let import_map =
+    serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
+  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
+  fs::create_dir(temp_dir.path().join("lib")).unwrap();
+  fs::write(
+    temp_dir.path().join("lib").join("b.ts"),
+    r#"export const b = "b";"#,
+  )
+  .unwrap();
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": uri
+        },
+        "position": {
+          "line": 2,
+          "character": 12
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value":"(alias) const b: \"b\"\nimport b"
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 12
+        },
+        "end": {
+          "line": 2,
+          "character": 13
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_import_assertions() {
   let mut client = init("initialize_params_import_map.json");
   client
@@ -544,6 +637,196 @@ fn lsp_import_assertions() {
     maybe_res,
     Some(load_fixture("code_action_response_import_assertion.json"))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_import_map_import_completions() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let import_map =
+    serde_json::to_vec_pretty(&load_fixture("import-map-completions.json"))
+      .unwrap();
+  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
+  fs::create_dir(temp_dir.path().join("lib")).unwrap();
+  fs::write(
+    temp_dir.path().join("lib").join("b.ts"),
+    r#"export const b = "b";"#,
+  )
+  .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("importMap".to_string(), json!("import-map.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"/~/b.ts\";\nimport * as b from \"\""
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": uri
+        },
+        "position": {
+          "line": 1,
+          "character": 20
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "\""
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "isIncomplete": false,
+      "items": [
+        {
+          "label": ".",
+          "kind": 19,
+          "detail": "(local)",
+          "sortText": "1",
+          "insertText": "."
+        },
+        {
+          "label": "..",
+          "kind": 19,
+          "detail": "(local)",
+          "sortText": "1",
+          "insertText": ".."
+        },
+        {
+          "label": "std",
+          "kind": 19,
+          "detail": "(import map)",
+          "sortText": "std",
+          "insertText": "std"
+        },
+        {
+          "label": "fs",
+          "kind": 17,
+          "detail": "(import map)",
+          "sortText": "fs",
+          "insertText": "fs"
+        },
+        {
+          "label": "/~",
+          "kind": 19,
+          "detail": "(import map)",
+          "sortText": "/~",
+          "insertText": "/~"
+        }
+      ]
+    }))
+  );
+
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": uri,
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 20
+              },
+              "end": {
+                "line": 1,
+                "character": 20
+              }
+            },
+            "text": "/~/"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": uri
+        },
+        "position": {
+          "line": 1,
+          "character": 23
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "/"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "isIncomplete": false,
+      "items": [
+        {
+          "label": "b.ts",
+          "kind": 9,
+          "detail": "(import map)",
+          "sortText": "1",
+          "filterText": "/~/b.ts",
+          "textEdit": {
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 20
+              },
+              "end": {
+                "line": 1,
+                "character": 23
+              }
+            },
+            "newText": "/~/b.ts"
+          }
+        }
+      ]
+    }))
+  );
+
   shutdown(&mut client);
 }
 
@@ -1466,6 +1749,71 @@ fn lsp_hover_typescript_types() {
         }
       }
     })
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_hover_jsdoc_symbol_link() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export function hello() {}\n"
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { hello } from \"./b.ts\";\n\nhello();\n\nconst b = \"b\";\n\n/** JSDoc {@link hello} and {@linkcode b} */\nfunction a() {}\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 7,
+          "character": 10
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "function a(): void"
+        },
+        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
+      ],
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 9
+        },
+        "end": {
+          "line": 7,
+          "character": 10
+        }
+      }
+    }))
   );
   shutdown(&mut client);
 }

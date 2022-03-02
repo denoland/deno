@@ -164,7 +164,7 @@ impl Loader for FetchCacher {
             Err(err)
           },
           |file| {
-            Ok(Some(LoadResponse {
+            Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
               maybe_headers: file.maybe_headers,
               content: file.source,
@@ -198,8 +198,7 @@ impl Cacher for FetchCacher {
       .disk_cache
       .get(&filename)
       .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
+      .and_then(|b| String::from_utf8(b).ok())
   }
 
   fn set(
@@ -288,11 +287,15 @@ impl Loader for MemoryCacher {
         specifier_str = specifier_str[3..].to_string();
       }
     }
-    let response = self.sources.get(&specifier_str).map(|c| LoadResponse {
-      specifier: specifier.clone(),
-      maybe_headers: None,
-      content: c.to_owned(),
-    });
+    let response =
+      self
+        .sources
+        .get(&specifier_str)
+        .map(|c| LoadResponse::Module {
+          specifier: specifier.clone(),
+          maybe_headers: None,
+          content: c.to_owned(),
+        });
     Box::pin(future::ready(Ok(response)))
   }
 }

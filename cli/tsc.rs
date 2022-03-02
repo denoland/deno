@@ -96,6 +96,7 @@ pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
       ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
       ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
       ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
       ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
       ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
       ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
@@ -737,11 +738,11 @@ mod tests {
         .to_string()
         .replace(":///", "_")
         .replace("://", "_")
-        .replace("/", "-");
+        .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
       let response = fs::read_to_string(&source_path)
         .map(|c| {
-          Some(deno_graph::source::LoadResponse {
+          Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
             maybe_headers: None,
             content: Arc::new(c),
@@ -1148,6 +1149,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
+    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
@@ -1160,6 +1162,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
+    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
@@ -1172,6 +1175,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
+    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
   }
 }

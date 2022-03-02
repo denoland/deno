@@ -49,6 +49,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use import_map::parse_from_json;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
@@ -64,7 +65,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::Flags,
+  pub flags: Arc<flags::Flags>,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
@@ -89,7 +90,7 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
+  pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -150,26 +151,26 @@ impl ProcState {
 
     let maybe_config_file = crate::config_file::discover(&flags)?;
 
-    let maybe_import_map: Option<Arc<ImportMap>> =
-      match flags.import_map_path.as_ref() {
-        None => None,
-        Some(import_map_url) => {
-          let import_map_specifier =
-            deno_core::resolve_url_or_path(import_map_url).context(format!(
-              "Bad URL (\"{}\") for import map.",
-              import_map_url
-            ))?;
-          let file = file_fetcher
-            .fetch(&import_map_specifier, &mut Permissions::allow_all())
-            .await
-            .context(format!(
-              "Unable to load '{}' import map",
-              import_map_specifier
-            ))?;
-          let import_map =
-            import_map_from_text(&import_map_specifier, &file.source)?;
-          Some(Arc::new(import_map))
-        }
+    let maybe_import_map_specifier =
+      crate::config_file::resolve_import_map_specifier(
+        flags.import_map_path.as_deref(),
+        maybe_config_file.as_ref(),
+      )?;
+
+    let maybe_import_map =
+      if let Some(import_map_specifier) = maybe_import_map_specifier {
+        let file = file_fetcher
+          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .await
+          .context(format!(
+            "Unable to load '{}' import map",
+            import_map_specifier
+          ))?;
+        let import_map =
+          import_map_from_text(&import_map_specifier, &file.source)?;
+        Some(Arc::new(import_map))
+      } else {
+        None
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
@@ -189,13 +190,10 @@ impl ProcState {
     );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
     > = if flags.compat {
@@ -342,6 +340,34 @@ impl ProcState {
       None,
     )
     .await;
+
+    let needs_cjs_esm_translation = graph
+      .modules()
+      .iter()
+      .any(|m| m.kind == ModuleKind::CommonJs);
+
+    if needs_cjs_esm_translation {
+      for module in graph.modules() {
+        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
+        // in compat mode, all files ending with plain `.js` extension are
+        // considered CommonJs modules. Which leads to situation where valid
+        // ESM modules with `.js` extension might undergo translation (it won't
+        // work in this situation).
+        if module.kind == ModuleKind::CommonJs {
+          let translated_source = compat::translate_cjs_to_esm(
+            &self.file_fetcher,
+            &module.specifier,
+            module.maybe_source.as_ref().unwrap().to_string(),
+            module.media_type,
+          )
+          .await?;
+          let mut graph_data = self.graph_data.write();
+          graph_data
+            .add_cjs_esm_translation(&module.specifier, translated_source);
+        }
+      }
+    }
+
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     graph_lock_or_exit(&graph);
@@ -508,7 +534,14 @@ impl ProcState {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => code.as_ref().clone(),
+          | MediaType::Json => {
+            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier)
+            {
+              source.to_owned()
+            } else {
+              code.as_ref().clone()
+            }
+          }
           MediaType::Dts => "".to_string(),
           _ => {
             let emit_path = self
@@ -596,7 +629,7 @@ impl SourceMapGetter for ProcState {
     if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using .split_terminator() instead of .split())
+        // (due to internally using_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
         if line_number >= lines.len() {
           format!(
@@ -617,7 +650,7 @@ pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
 ) -> Result<ImportMap, AnyError> {
-  let result = ImportMap::from_json_with_diagnostics(specifier, json_text)?;
+  let result = parse_from_json(specifier, json_text)?;
   if !result.diagnostics.is_empty() {
     warn!(
       "Import map diagnostics:\n{}",

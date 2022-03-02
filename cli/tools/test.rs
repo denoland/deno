@@ -158,6 +158,7 @@ struct TestSpecifierOptions {
   fail_fast: Option<NonZeroUsize>,
   filter: Option<String>,
   shuffle: Option<u64>,
+  trace_ops: bool,
 }
 
 impl TestSummary {
@@ -475,6 +476,17 @@ async fn test_specifier(
     None
   };
 
+  // Enable op call tracing in core to enable better debugging of op sanitizer
+  // failures.
+  if options.trace_ops {
+    worker
+      .execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )
+      .unwrap();
+  }
+
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {
@@ -702,7 +714,7 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
-  ps: ProcState,
+  ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
   lib: emit::TypeLib,
@@ -972,7 +984,7 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
-  ps: ProcState,
+  ps: &ProcState,
   include: Vec<String>,
   ignore: Vec<PathBuf>,
   include_inline: bool,
@@ -999,10 +1011,10 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    ps.clone(),
+    &ps,
     test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
     test_flags.ignore.clone(),
     test_flags.doc,
@@ -1013,34 +1025,31 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  let lib = if flags.unstable {
+  let lib = if ps.flags.unstable {
     emit::TypeLib::UnstableDenoWindow
   } else {
     emit::TypeLib::DenoWindow
   };
 
-  check_specifiers(
-    ps.clone(),
-    permissions.clone(),
-    specifiers_with_mode.clone(),
-    lib,
-  )
-  .await?;
+  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone(), lib)
+    .await?;
 
   if test_flags.no_run {
     return Ok(());
   }
 
+  let compat = ps.flags.compat;
   test_specifiers(
     ps,
     permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
-      compat_mode: flags.compat,
+      compat_mode: compat,
       concurrent_jobs: test_flags.concurrent_jobs,
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter,
       shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
     },
   )
   .await?;
@@ -1052,8 +1061,9 @@ pub async fn run_tests_with_watch(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
+  let flags = Arc::new(flags);
   let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.permissions_options());
 
   let lib = if flags.unstable {
     emit::TypeLib::UnstableDenoWindow
@@ -1079,14 +1089,10 @@ pub async fn run_tests_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
@@ -1233,6 +1239,7 @@ pub async fn run_tests_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+    let flags = flags.clone();
     let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -1242,7 +1249,7 @@ pub async fn run_tests_with_watch(
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        ps.clone(),
+        &ps,
         include.clone(),
         ignore.clone(),
         test_flags.doc,
@@ -1256,7 +1263,7 @@ pub async fn run_tests_with_watch(
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(
-        ps.clone(),
+        &ps,
         permissions.clone(),
         specifiers_with_mode.clone(),
         lib,
@@ -1268,7 +1275,7 @@ pub async fn run_tests_with_watch(
       }
 
       test_specifiers(
-        ps.clone(),
+        ps,
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
@@ -1277,6 +1284,7 @@ pub async fn run_tests_with_watch(
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
           shuffle: test_flags.shuffle,
+          trace_ops: test_flags.trace_ops,
         },
       )
       .await?;
