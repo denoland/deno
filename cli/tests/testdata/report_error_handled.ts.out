@@ -3,7 +3,7 @@
   cancelable: true,
   message: "Uncaught Error: foo",
   filename: "[WILDCARD]/report_error_handled.ts",
-  lineno: 14,
+  lineno: 13,
   colno: 13,
   error: Error: foo
     at [WILDCARD]/report_error_handled.ts:13:13

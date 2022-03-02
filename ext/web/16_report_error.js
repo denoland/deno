@@ -35,9 +35,14 @@
     webidl.requiredArguments(arguments.length, 1, { prefix });
     const jsError = core.destructureError(error);
     const message = jsError.message;
-    const filename = jsError.scriptResourceName;
-    const lineno = jsError.lineNumber;
-    const colno = jsError.startColumn + 1;
+    let filename = "";
+    let lineno = 0;
+    let colno = 0;
+    if (jsError.frames.length > 0) {
+      filename = jsError.frames[0].fileName;
+      lineno = jsError.frames[0].lineNumber;
+      colno = jsError.frames[0].columnNumber;
+    }
     const event = new ErrorEvent("error", {
       cancelable: true,
       message,
