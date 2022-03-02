@@ -2,6 +2,7 @@
 
 use super::code_lens;
 use super::config;
+use super::documents::AssetOrDocument;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -155,6 +156,7 @@ impl TsServer {
 
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
+  specifier: ModuleSpecifier,
   text: Arc<String>,
   length: usize,
   line_index: Arc<LineIndex>,
@@ -167,14 +169,19 @@ struct AssetDocumentInner {
 pub struct AssetDocument(Arc<AssetDocumentInner>);
 
 impl AssetDocument {
-  pub fn new(text: impl AsRef<str>) -> Self {
+  pub fn new(specifier: ModuleSpecifier, text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
     Self(Arc::new(AssetDocumentInner {
+      specifier,
       text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.0.specifier
   }
 
   pub fn with_navigation_tree(
@@ -216,7 +223,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
     .map(|(k, v)| {
       let url_str = format!("asset:///{}", k);
       let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(v);
+      let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, Some(asset))
     })
     .collect();
@@ -332,14 +339,15 @@ async fn get_asset(
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument::new(text));
+    let maybe_asset = Some(AssetDocument::new(specifier.clone(), text));
     Ok(maybe_asset)
   } else {
     let res = ts_server
       .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
       .await?;
     let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset = maybe_text.map(AssetDocument::new);
+    let maybe_asset =
+      maybe_text.map(|text| AssetDocument::new(specifier.clone(), text));
     Ok(maybe_asset)
   }
 }
@@ -1420,6 +1428,7 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
+    asset_or_doc: &AssetOrDocument,
     line_index: Arc<LineIndex>,
   ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
@@ -1452,7 +1461,9 @@ impl Classifications {
         );
       } else {
         log::error!(
-          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          "unexpected positions\nspecifier: {}\nopen: {}\nstart_pos: {:?}\nend_pos: {:?}",
+          asset_or_doc.specifier(),
+          asset_or_doc.is_open(),
           start_pos,
           end_pos
         );
