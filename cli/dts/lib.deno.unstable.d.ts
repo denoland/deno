@@ -1049,7 +1049,10 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
-    options: ConnectOptions | UnixConnectOptions,
+    options: ConnectOptions,
+  ): Promise<TcpConn>;
+  export function connect(
+    options: UnixConnectOptions,
   ): Promise<Conn>;
 
   export interface ConnectTlsOptions {
@@ -1064,21 +1067,6 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
-  }
-
-  export interface Conn {
-    /**
-     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
-     *
-     * Enable/disable the use of Nagle's algorithm. Defaults to true.
-     */
-    setNoDelay(nodelay?: boolean): void;
-    /**
-     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
-     *
-     * Enable/disable keep-alive functionality.
-     */
-    setKeepAlive(keepalive?: boolean): void;
   }
 
   export interface TlsHandshakeInfo {

@@ -1438,32 +1438,78 @@ Deno.test(async function testAesGcmEncrypt() {
     ["encrypt", "decrypt"],
   );
 
-  // deno-fmt-ignore
-  const iv = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11]);
-  const data = new Uint8Array([1, 2, 3]);
+  const nonces = [{
+    iv: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+    ciphertext: new Uint8Array([
+      50,
+      223,
+      112,
+      178,
+      166,
+      156,
+      255,
+      110,
+      125,
+      138,
+      95,
+      141,
+      82,
+      47,
+      14,
+      164,
+      134,
+      247,
+      22,
+    ]),
+  }, {
+    iv: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+    ciphertext: new Uint8Array([
+      210,
+      101,
+      81,
+      216,
+      151,
+      9,
+      192,
+      197,
+      62,
+      254,
+      28,
+      132,
+      89,
+      106,
+      40,
+      29,
+      175,
+      232,
+      201,
+    ]),
+  }];
+  for (const { iv, ciphertext: fixture } of nonces) {
+    const data = new Uint8Array([1, 2, 3]);
 
-  const cipherText = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    data,
-  );
+    const cipherText = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      data,
+    );
 
-  assert(cipherText instanceof ArrayBuffer);
-  assertEquals(cipherText.byteLength, 19);
-  assertEquals(
-    new Uint8Array(cipherText),
-    // deno-fmt-ignore
-    new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
-  );
+    assert(cipherText instanceof ArrayBuffer);
+    assertEquals(cipherText.byteLength, 19);
+    assertEquals(
+      new Uint8Array(cipherText),
+      fixture,
+    );
 
-  const plainText = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    cipherText,
-  );
-  assert(plainText instanceof ArrayBuffer);
-  assertEquals(plainText.byteLength, 3);
-  assertEquals(new Uint8Array(plainText), data);
+    const plainText = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      cipherText,
+    );
+    assert(plainText instanceof ArrayBuffer);
+    assertEquals(plainText.byteLength, 3);
+    assertEquals(new Uint8Array(plainText), data);
+  }
 });
 
 async function roundTripSecretJwk(

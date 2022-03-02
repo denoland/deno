@@ -34,6 +34,17 @@ fn pty_multiline() {
 }
 
 #[test]
+fn pty_null() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("null");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("null"));
+  });
+}
+
+#[test]
 fn pty_unpaired_braces() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(")");
