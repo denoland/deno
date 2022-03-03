@@ -4,8 +4,6 @@ use super::errors;
 use crate::resolver::ImportMapResolver;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
@@ -143,7 +141,7 @@ fn node_resolve(
   // eprintln!("parent_url {} {}", specifier, parent_url.as_str());
 
   // let url = module_resolve(specifier, &parent_url, conditions)?;
-  let result = node_resolver::node_resolve(
+  let result = node_resolver::resolve(
     specifier,
     &parent_url.to_file_path().unwrap(),
     conditions,
@@ -179,12 +177,6 @@ fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
     .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
 }
 
-#[derive(Clone, Debug)]
-struct PackageConfig {
-  exists: bool,
-  typ: String,
-}
-
 pub fn check_if_should_use_esm_loader(
   main_module: &ModuleSpecifier,
 ) -> Result<bool, AnyError> {
@@ -199,66 +191,9 @@ pub fn check_if_should_use_esm_loader(
   Ok(package_config.typ == "module")
 }
 
-fn get_package_config(
-  path: PathBuf,
-  specifier: &str,
-  maybe_base: Option<&ModuleSpecifier>,
-) -> Result<PackageConfig, AnyError> {
-  // TODO(bartlomieju):
-  // if let Some(existing) = package_json_cache.get(path) {
-  //   return Ok(existing.clone());
-  // }
-
-  let result = std::fs::read_to_string(&path);
-
-  let source = result.unwrap_or_else(|_| "".to_string());
-  if source.is_empty() {
-    let package_config = PackageConfig {
-      exists: false,
-      typ: "none".to_string(),
-    };
-    // TODO(bartlomieju):
-    // package_json_cache.set(package_json_path, package_config.clone());
-    return Ok(package_config);
-  }
-
-  let package_json: Value = serde_json::from_str(&source).map_err(|err| {
-    let base_msg = maybe_base.map(|base| {
-      format!("\"{}\" from {}", specifier, to_file_path(base).display())
-    });
-    errors::err_invalid_package_config(
-      &path.display().to_string(),
-      base_msg,
-      Some(err.to_string()),
-    )
-  })?;
-
-  let typ_val = package_json.get("type");
-
-  // Ignore unknown types for forwards compatibility
-  let typ = if let Some(t) = typ_val {
-    if let Some(t) = t.as_str() {
-      if t != "module" && t != "commonjs" {
-        "none".to_string()
-      } else {
-        t.to_string()
-      }
-    } else {
-      "none".to_string()
-    }
-  } else {
-    "none".to_string()
-  };
-
-  let package_config = PackageConfig { exists: true, typ };
-  // TODO(bartlomieju):
-  // package_json_cache.set(package_json_path, package_config.clone());
-  Ok(package_config)
-}
-
 fn get_package_scope_config(
   resolved: &ModuleSpecifier,
-) -> Result<PackageConfig, AnyError> {
+) -> Result<node_resolver::PackageJson, AnyError> {
   let mut package_json_url = resolved.join("./package.json")?;
 
   loop {
@@ -268,13 +203,10 @@ fn get_package_scope_config(
       break;
     }
 
-    let package_config = get_package_config(
-      to_file_path(&package_json_url),
-      resolved.as_str(),
-      None,
-    )?;
-
-    if package_config.exists {
+    let result =
+      node_resolver::PackageJson::load(to_file_path(&package_json_url));
+    // TODO(bartlomieju): ignores all errors, instead of checking for "No such file or directory"
+    if let Ok(package_config) = result {
       return Ok(package_config);
     }
 
@@ -289,9 +221,14 @@ fn get_package_scope_config(
     }
   }
 
-  let package_config = PackageConfig {
-    exists: false,
+  let package_config = node_resolver::PackageJson {
+    // exists: false,
     typ: "none".to_string(),
+    exports_map: None,
+    imports: None,
+    main: None,
+    name: None,
+    path: PathBuf::new(),
   };
 
   // TODO(bartlomieju):
@@ -413,12 +350,6 @@ mod tests {
     let expected = Url::from_file_path(cwd.join("import_polyfill.js")).unwrap();
     assert!(matches!(actual, ResolveResponse::CommonJs(_)));
     assert_eq!(actual.to_result().unwrap(), expected);
-  }
-
-  #[test]
-  fn test_is_relative_specifier() {
-    assert!(is_relative_specifier("./foo.js"));
-    assert!(!is_relative_specifier("https://deno.land/std/node/http.ts"));
   }
 
   #[test]
