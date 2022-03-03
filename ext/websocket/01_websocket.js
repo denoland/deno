@@ -31,16 +31,6 @@
     SymbolIterator,
   } = window.__bootstrap.primordials;
 
-  webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
-    // Union for (sequence<DOMString> or DOMString)
-    if (webidl.type(V) === "Object" && V !== null) {
-      if (V[SymbolIterator] !== undefined) {
-        return webidl.converters["sequence<DOMString>"](V, opts);
-      }
-    }
-    return webidl.converters.DOMString(V, opts);
-  };
-
   webidl.converters["WebSocketSend"] = (V, opts) => {
     // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {

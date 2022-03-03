@@ -617,6 +617,16 @@
     converters.DOMString,
   );
 
+  converters["sequence<DOMString> or DOMString"] = (V, opts) => {
+    // Union for (sequence<DOMString> or DOMString)
+    if (type(V) === "Object" && V !== null) {
+      if (V[SymbolIterator] !== undefined) {
+        return converters["sequence<DOMString>"](V, opts);
+      }
+    }
+    return converters.DOMString(V, opts);
+  };
+
   function requiredArguments(length, required, opts = {}) {
     if (length < required) {
       const errMsg = `${

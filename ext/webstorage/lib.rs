@@ -24,6 +24,7 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
     .js(include_js_files!(
       prefix "deno:ext/webstorage",
       "01_webstorage.js",
+      "02_webstorage.js",
     ))
     .ops(vec![
       ("op_webstorage_length", op_sync(op_webstorage_length)),
