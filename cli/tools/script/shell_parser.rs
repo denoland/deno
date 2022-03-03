@@ -1,20 +1,27 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+
 use super::combinators::assert;
+use super::combinators::assert_exists;
 use super::combinators::char;
 use super::combinators::delimited;
 use super::combinators::many0;
 use super::combinators::many_till;
 use super::combinators::map;
+use super::combinators::maybe;
 use super::combinators::or;
 use super::combinators::skip_whitespace;
 use super::combinators::tag;
 use super::combinators::take_while;
 use super::combinators::terminated;
 use super::combinators::with_error_context;
-use super::combinators::FailureParseError;
 use super::combinators::ParseError;
 use super::combinators::ParseResult;
+
+// Shell grammar rules this is loosely based on:
+// https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_10_02
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -48,7 +55,7 @@ pub enum Operator {
 }
 
 impl Operator {
-  pub fn as_str(&self) -> &str {
+  pub fn as_str(&self) -> &'static str {
     match self {
       Operator::AndAnd => "&&",
       Operator::And => "&",
@@ -70,52 +77,94 @@ impl EnvVar {
   }
 }
 
-pub fn parse_expr(input: &str) -> ParseResult<Expr> {
+/// Note: Only used to detect redirects in order to give a better error.
+/// Redirects are not part of the first pass of this feature.
+pub struct Redirect {
+  pub maybe_fd: Option<usize>,
+  pub op: RedirectOp,
+  pub word: Option<String>,
+}
+
+pub enum RedirectOp {
+  /// >
+  Redirect,
+  /// >>
+  Append,
+}
+
+pub fn parse(input: &str) -> Result<Expr, AnyError> {
+  fn error_for_input(message: &str, input: &str) -> Result<Expr, AnyError> {
+    bail!(
+      "{}\n  {}\n  ~",
+      message,
+      input.chars().take(60).collect::<String>()
+    )
+  }
+
+  match parse_expr(input) {
+    Ok((_, expr)) => Ok(expr),
+    Err(ParseError::Backtrace) => {
+      if input.trim().is_empty() {
+        bail!("Empty command.")
+      } else {
+        error_for_input("Invalid character for command.", input)
+      }
+    }
+    Err(ParseError::Failure(e)) => error_for_input(&e.message, e.input),
+  }
+}
+
+fn parse_expr(input: &str) -> ParseResult<Expr> {
   let (input, command) = parse_command(input)?;
-  if let Ok((input, op)) = parse_operator(input) {
-    let (input, right_command) =
-      assert(parse_expr, "Expected command following operator.")(input)?;
-    Ok((
-      input,
-      Expr::BinExpr(BinExpr {
-        left: Box::new(Expr::Command(command)),
-        op,
-        right: Box::new(right_command),
-      }),
-    ))
-  } else {
-    Ok((input, Expr::Command(command)))
+  if parse_redirect(input).is_ok() {
+    return ParseError::fail(input, "Redirects are currently not supported.");
+  }
+  match parse_operator(input) {
+    Ok((input, op)) => {
+      let (input, right_command) = assert_exists(
+        parse_expr,
+        "Expected command following operator.",
+      )(input)?;
+      Ok((
+        input,
+        Expr::BinExpr(BinExpr {
+          left: Box::new(Expr::Command(command)),
+          op,
+          right: Box::new(right_command),
+        }),
+      ))
+    }
+    Err(ParseError::Backtrace) => Ok((input, Expr::Command(command))),
+    Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
   }
 }
 
 fn parse_command(input: &str) -> ParseResult<ShellCommand> {
   let (input, env_vars) = parse_env_vars(input)?;
-  let (input, args) = parse_shell_args(input)?;
-  Ok((input, ShellCommand { env_vars, args }))
+  let (input, args) = parse_command_args(input)?;
+  if args.is_empty() {
+    ParseError::backtrace()
+  } else {
+    Ok((input, ShellCommand { env_vars, args }))
+  }
 }
 
-fn parse_shell_args(input: &str) -> ParseResult<Vec<String>> {
+fn parse_command_args(input: &str) -> ParseResult<Vec<String>> {
   many_till(
-    terminated(parse_shell_arg, |input| {
-      assert_whitespace_or_end(input)?;
-      skip_whitespace(input)
-    }),
-    parse_operator,
+    terminated(parse_shell_arg, assert_whitespace_or_end_and_skip),
+    or(map(parse_operator, |_| ()), map(parse_redirect, |_| ())),
   )(input)
 }
 
 fn parse_shell_arg(input: &str) -> ParseResult<String> {
-  or(
-    parse_quoted_string,
-    map(parse_plain_string, |v| v.to_string()),
-  )(input)
+  or(parse_quoted_string, map(parse_word, |v| v.to_string()))(input)
 }
 
 fn parse_operator(input: &str) -> ParseResult<Operator> {
   fn operator_kind<'a>(
     operator: Operator,
   ) -> impl Fn(&'a str) -> ParseResult<'a, Operator> {
-    map(tag(operator.as_str().to_string()), move |_| operator)
+    map(tag(operator.as_str()), move |_| operator)
   }
 
   terminated(
@@ -130,18 +179,34 @@ fn parse_operator(input: &str) -> ParseResult<Operator> {
   )(input)
 }
 
+fn parse_redirect(input: &str) -> ParseResult<Redirect> {
+  // https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_07
+  let (input, maybe_fd) = maybe(parse_usize)(input)?;
+  let (input, op) = or(
+    map(or(tag(">"), tag(">|")), |_| RedirectOp::Redirect),
+    map(tag(">>"), |_| RedirectOp::Append),
+  )(input)?;
+  let (input, word) = maybe(parse_word)(input)?;
+
+  Ok((
+    input,
+    Redirect {
+      maybe_fd,
+      op,
+      word: word.map(ToString::to_string),
+    },
+  ))
+}
+
 fn parse_env_vars(input: &str) -> ParseResult<Vec<EnvVar>> {
-  many0(terminated(parse_env_var, |input| {
-    assert_whitespace_or_end(input)?;
-    skip_whitespace(input)
-  }))(input)
+  many0(terminated(parse_env_var, skip_whitespace))(input)
 }
 
 fn parse_env_var(input: &str) -> ParseResult<EnvVar> {
   let (input, name) = parse_env_var_name(input)?;
   let (input, _) = char('=')(input)?;
   let (input, value) = with_error_context(
-    parse_env_var_value,
+    terminated(parse_env_var_value, assert_whitespace_or_end),
     concat!(
       "Environment variable values may only be assigned quoted strings ",
       "or a plain string (consisting only of letters, numbers, and underscores)",
@@ -156,35 +221,57 @@ fn parse_env_var_name(input: &str) -> ParseResult<&str> {
 }
 
 fn parse_env_var_value(input: &str) -> ParseResult<String> {
-  or(
-    parse_quoted_string,
-    map(parse_plain_string, |v| v.to_string()),
+  or(parse_quoted_string, map(parse_word, |v| v.to_string()))(input)
+}
+
+fn parse_word(input: &str) -> ParseResult<&str> {
+  assert(
+    take_while(|c| !is_special_char(c)),
+    |result| {
+      result
+        .ok()
+        .map(|(_, text)| !is_reserved_word(text))
+        .unwrap_or(true)
+    },
+    "Unsupported reserved word.",
   )(input)
 }
 
-fn parse_plain_string(input: &str) -> ParseResult<&str> {
-  let (input, value) = take_while(|c| !is_special_char(c))(input)?;
-  assert_whitespace_or_end(input)?;
-  Ok((input, value))
+fn assert_whitespace_or_end_and_skip(input: &str) -> ParseResult<()> {
+  terminated(assert_whitespace_or_end, skip_whitespace)(input)
 }
 
-fn assert_whitespace_or_end(input: &str) -> Result<(), ParseError> {
+fn assert_whitespace_or_end(input: &str) -> ParseResult<()> {
   if let Some(next_char) = input.chars().next() {
     if !next_char.is_whitespace() {
-      return Err(ParseError::Failure(FailureParseError {
-        input,
-        message:
-          "Unsupported character. Expected whitespace or end of command."
-            .to_string(),
-      }));
+      return ParseError::fail(input, "Unsupported character.");
     }
   }
-  Ok(())
+  Ok((input, ()))
 }
 
 fn is_special_char(c: char) -> bool {
   // https://github.com/yarnpkg/berry/blob/master/packages/yarnpkg-parsers/sources/grammars/shell.pegjs
   "(){}<>$|&; \t\"'".contains(c)
+}
+
+fn is_reserved_word(text: &str) -> bool {
+  matches!(
+    text,
+    "if"
+      | "then"
+      | "else"
+      | "elif"
+      | "fi"
+      | "do"
+      | "done"
+      | "case"
+      | "esac"
+      | "while"
+      | "until"
+      | "for"
+      | "in"
+  )
 }
 
 // TODO(THIS PR): need to hard error when someone uses shell expansion in a string
@@ -224,14 +311,30 @@ fn parse_quoted_string(input: &str) -> ParseResult<String> {
     delimited(
       char('\''),
       inner_quoted('\''),
-      assert(char('\''), "Expected closing single quote."),
+      assert_exists(char('\''), "Expected closing single quote."),
     ),
     delimited(
       char('"'),
       inner_quoted('"'),
-      assert(char('"'), "Expected closing double quote."),
+      assert_exists(char('"'), "Expected closing double quote."),
     ),
   )(input)
+}
+
+fn parse_usize(input: &str) -> ParseResult<usize> {
+  let mut value = 0;
+  let mut byte_index = 0;
+  for c in input.chars() {
+    if c.is_ascii_digit() {
+      value = value * 10 + (c.to_digit(10).unwrap() as usize);
+    } else if byte_index == 0 {
+      return ParseError::backtrace();
+    } else {
+      break;
+    }
+    byte_index += c.len_utf8();
+  }
+  Ok((&input[byte_index..], value))
 }
 
 #[cfg(test)]
@@ -240,10 +343,31 @@ mod test {
   use pretty_assertions::assert_eq;
 
   #[test]
-  fn test_parse() {
+  fn test_main() {
+    assert_eq!(parse("").err().unwrap().to_string(), "Empty command.");
+    assert_eq!(
+      parse("&& testing").err().unwrap().to_string(),
+      concat!("Invalid character for command.\n", "  && testing\n", "  ~",),
+    );
+    assert_eq!(
+      parse("test { test").err().unwrap().to_string(),
+      concat!("Unsupported character.\n", "  { test\n", "  ~",),
+    );
+    assert_eq!(
+      parse("test > redirect").err().unwrap().to_string(),
+      concat!(
+        "Redirects are currently not supported.\n",
+        "  > redirect\n",
+        "  ~",
+      ),
+    );
+  }
+
+  #[test]
+  fn test_parse_expr() {
     run_test(
       parse_expr,
-      "Name=Value OtherVar=Other command arg1 && command2 arg12 arg13",
+      "Name=Value OtherVar=Other command arg1 && command2 arg12 arg13 || command3 & command4 | command5",
       Ok(Expr::BinExpr(BinExpr {
         left: Box::new(Expr::Command(ShellCommand {
           env_vars: vec![
@@ -253,15 +377,42 @@ mod test {
           args: vec!["command".to_string(), "arg1".to_string()],
         })),
         op: Operator::AndAnd,
-        right: Box::new(Expr::Command(ShellCommand {
-          env_vars: vec![],
-          args: vec![
-            "command2".to_string(),
-            "arg12".to_string(),
-            "arg13".to_string(),
-          ],
+        right: Box::new(Expr::BinExpr(BinExpr {
+          left: Box::new(Expr::Command(ShellCommand {
+            env_vars: vec![],
+            args: vec![
+              "command2".to_string(),
+              "arg12".to_string(),
+              "arg13".to_string(),
+            ],
+          })),
+          op: Operator::OrOr,
+          right: Box::new(Expr::BinExpr(BinExpr {
+            left: Box::new(Expr::Command(ShellCommand {
+              env_vars: vec![],
+              args: vec!["command3".to_string()],
+            })),
+            op: Operator::And,
+            right: Box::new(Expr::BinExpr(BinExpr {
+              left: Box::new(Expr::Command(ShellCommand {
+                env_vars: vec![],
+                args: vec!["command4".to_string()],
+              })),
+              op: Operator::Or,
+              right: Box::new(Expr::Command(ShellCommand {
+                env_vars: vec![],
+                args: vec!["command5".to_string()],
+              })),
+            })),
+          })),
         })),
       })),
+    );
+
+    run_test(
+      parse_expr,
+      "test &&",
+      Err("Expected command following operator."),
     );
   }
 
@@ -300,48 +451,89 @@ mod test {
       }),
       " command_name",
     );
+    run_test(
+      parse_env_var,
+      "Name=$(test)",
+      Err(concat!(
+        "Environment variable values may only be assigned quoted strings or a ",
+        "plain string (consisting only of letters, numbers, and underscores)\n\n",
+        "Unsupported character.")),
+    );
   }
 
   #[test]
   fn test_quoted_string() {
-    run_quoted_string_test("'test'", Ok("test"));
-    run_quoted_string_test(r#"'te\\'"#, Ok(r#"te\\"#));
-    run_quoted_string_test(r#"'te\'st'"#, Ok("te'st"));
-    run_quoted_string_test("'  '", Ok("  "));
-    run_quoted_string_test("'  ", Err("Expected closing single quote."));
+    run_string_test(parse_quoted_string, "'test'", Ok("test"));
+    run_string_test(parse_quoted_string, r#"'te\\'"#, Ok(r#"te\\"#));
+    run_string_test(parse_quoted_string, r#"'te\'st'"#, Ok("te'st"));
+    run_string_test(parse_quoted_string, "'  '", Ok("  "));
+    run_string_test(
+      parse_quoted_string,
+      "'  ",
+      Err("Expected closing single quote."),
+    );
 
-    run_quoted_string_test(r#""  ""#, Ok("  "));
-    run_quoted_string_test(r#""test""#, Ok("test"));
-    run_quoted_string_test(r#""te\"st""#, Ok(r#"te"st"#));
-    run_quoted_string_test(r#""  "#, Err("Expected closing double quote."));
+    run_string_test(parse_quoted_string, r#""  ""#, Ok("  "));
+    run_string_test(parse_quoted_string, r#""test""#, Ok("test"));
+    run_string_test(parse_quoted_string, r#""te\"st""#, Ok(r#"te"st"#));
+    run_string_test(
+      parse_quoted_string,
+      r#""  "#,
+      Err("Expected closing double quote."),
+    );
 
-    run_quoted_string_test_with_end(r#""test" asdf"#, Ok("test"), " asdf");
+    run_string_test_with_end(
+      parse_quoted_string,
+      r#""test" asdf"#,
+      Ok("test"),
+      " asdf",
+    );
   }
 
-  fn run_quoted_string_test(input: &str, expected: Result<&str, &str>) {
-    run_quoted_string_test_with_end(input, expected, "")
+  #[test]
+  fn test_parse_word() {
+    run_test(parse_word, "if", Err("Unsupported reserved word."));
   }
 
-  fn run_quoted_string_test_with_end(
+  #[test]
+  fn test_parse_usize() {
+    run_test(parse_usize, "999", Ok(999));
+    run_test(parse_usize, "11", Ok(11));
+    run_test(parse_usize, "0", Ok(0));
+    run_test_with_end(parse_usize, "1>", Ok(1), ">");
+    run_test(parse_usize, "-1", Err("backtrace"));
+    run_test(parse_usize, "a", Err("backtrace"));
+  }
+
+  fn run_string_test(
+    combinator: impl Fn(&str) -> ParseResult<String>,
+    input: &str,
+    expected: Result<&str, &str>,
+  ) {
+    run_string_test_with_end(combinator, input, expected, "")
+  }
+
+  fn run_string_test_with_end(
+    combinator: impl Fn(&str) -> ParseResult<String>,
     input: &str,
     expected: Result<&str, &str>,
     expected_end: &str,
   ) {
     let expected = expected.map(ToOwned::to_owned);
-    run_test_with_end(parse_quoted_string, input, expected, expected_end);
+    run_test_with_end(combinator, input, expected, expected_end);
   }
 
-  fn run_test<T: PartialEq + std::fmt::Debug>(
-    combinator: impl Fn(&str) -> ParseResult<T>,
-    input: &str,
+  fn run_test<'a, T: PartialEq + std::fmt::Debug>(
+    combinator: impl Fn(&'a str) -> ParseResult<'a, T>,
+    input: &'a str,
     expected: Result<T, &str>,
   ) {
     run_test_with_end(combinator, input, expected, "");
   }
 
-  fn run_test_with_end<T: PartialEq + std::fmt::Debug>(
-    combinator: impl Fn(&str) -> ParseResult<T>,
-    input: &str,
+  fn run_test_with_end<'a, T: PartialEq + std::fmt::Debug>(
+    combinator: impl Fn(&'a str) -> ParseResult<'a, T>,
+    input: &'a str,
     expected: Result<T, &str>,
     expected_end: &str,
   ) {

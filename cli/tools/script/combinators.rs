@@ -2,20 +2,32 @@
 
 // Inspired by nom, but simplified and with custom errors.
 
+#[derive(Debug)]
 pub enum ParseError<'a> {
   /// Parsing should completely fail.
   Failure(FailureParseError<'a>),
   Backtrace,
 }
 
+#[derive(Debug)]
 pub struct FailureParseError<'a> {
   pub input: &'a str,
   pub message: String,
 }
 
 impl<'a> ParseError<'a> {
-  pub fn fail<O>(input: &'a str, message: String) -> ParseResult<'a, O> {
-    Err(ParseError::Failure(FailureParseError { input, message }))
+  pub fn fail<O>(
+    input: &'a str,
+    message: impl AsRef<str>,
+  ) -> ParseResult<'a, O> {
+    Err(ParseError::Failure(FailureParseError {
+      input,
+      message: message.as_ref().to_owned(),
+    }))
+  }
+
+  pub fn backtrace<O>() -> ParseResult<'a, O> {
+    Err(ParseError::Backtrace)
   }
 }
 
@@ -32,7 +44,10 @@ pub fn char<'a>(c: char) -> impl Fn(&'a str) -> ParseResult<'a, char> {
 }
 
 /// Recognizes a string.
-pub fn tag<'a>(value: String) -> impl Fn(&'a str) -> ParseResult<'a, &'a str> {
+pub fn tag<'a>(
+  value: impl AsRef<str>,
+) -> impl Fn(&'a str) -> ParseResult<'a, &'a str> {
+  let value = value.as_ref().to_string();
   move |input| {
     if input.starts_with(&value) {
       Ok((&input[value.len()..], &input[..value.len()]))
@@ -42,6 +57,7 @@ pub fn tag<'a>(value: String) -> impl Fn(&'a str) -> ParseResult<'a, &'a str> {
   }
 }
 
+/// Takes while the condition is true.
 pub fn take_while(
   cond: impl Fn(char) -> bool,
 ) -> impl Fn(&str) -> ParseResult<&str> {
@@ -55,6 +71,18 @@ pub fn take_while(
   }
 }
 
+/// Maps a success to `Some(T)` and a backtrace to `None`.
+pub fn maybe<'a, O>(
+  combinator: impl Fn(&'a str) -> ParseResult<O>,
+) -> impl Fn(&'a str) -> ParseResult<Option<O>> {
+  move |input| match combinator(input) {
+    Ok((input, value)) => Ok((input, Some(value))),
+    Err(ParseError::Backtrace) => Ok((input, None)),
+    Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
+  }
+}
+
+/// Maps the combinator by a function.
 pub fn map<'a, O, R>(
   combinator: impl Fn(&'a str) -> ParseResult<O>,
   func: impl Fn(O) -> R,
@@ -65,6 +93,7 @@ pub fn map<'a, O, R>(
   }
 }
 
+/// Checks for either to match.
 pub fn or<'a, O>(
   a: impl Fn(&'a str) -> ParseResult<'a, O>,
   b: impl Fn(&'a str) -> ParseResult<'a, O>,
@@ -76,6 +105,19 @@ pub fn or<'a, O>(
   }
 }
 
+/// Returns the second value and discards the first.
+pub fn preceded<'a, First, Second>(
+  first: impl Fn(&'a str) -> ParseResult<'a, First>,
+  second: impl Fn(&'a str) -> ParseResult<'a, Second>,
+) -> impl Fn(&'a str) -> ParseResult<'a, Second> {
+  move |input| {
+    let (input, _) = first(input)?;
+    let (input, return_value) = second(input)?;
+    Ok((input, return_value))
+  }
+}
+
+/// Returns the first value and discards the second.
 pub fn terminated<'a, First, Second>(
   first: impl Fn(&'a str) -> ParseResult<'a, First>,
   second: impl Fn(&'a str) -> ParseResult<'a, Second>,
@@ -87,6 +129,7 @@ pub fn terminated<'a, First, Second>(
   }
 }
 
+/// Gets a second value that is delimited by a first and third.
 pub fn delimited<'a, First, Second, Third>(
   first: impl Fn(&'a str) -> ParseResult<'a, First>,
   second: impl Fn(&'a str) -> ParseResult<'a, Second>,
@@ -107,31 +150,47 @@ pub fn ensure_backtrace<'a, O>(
   move |input| {
     match combinator(input) {
       Ok(result) => Ok(result),
-      Err(ParseError::Failure(_)) => {
-        // switch to backtrace
-        Err(ParseError::Backtrace)
-      }
+      // switch to backtrace
+      Err(ParseError::Failure(_)) => ParseError::backtrace(),
       Err(err) => Err(err),
     }
   }
 }
 
-pub fn assert<'a, O>(
+/// Asserts that a combinator resolves. If backtracing occurs, returns a failure.
+pub fn assert_exists<'a, O>(
   combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
   message: &'static str,
 ) -> impl Fn(&'a str) -> ParseResult<'a, O> {
-  move |input| match combinator(input) {
-    Ok(result) => Ok(result),
-    Err(ParseError::Failure(err)) => {
-      let mut message = message.to_string();
-      message.push_str("\n\n");
-      message.push_str(&err.message);
-      ParseError::fail(err.input, message)
+  assert(combinator, |result| result.is_ok(), message)
+}
+
+/// Asserts that a given condition is true about the combinator.
+/// Otherwise returns an error with the message.
+pub fn assert<'a, O>(
+  combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
+  condition: impl Fn(Result<&(&'a str, O), &ParseError<'a>>) -> bool,
+  message: &'static str,
+) -> impl Fn(&'a str) -> ParseResult<'a, O> {
+  move |input| {
+    let result = combinator(input);
+    if condition(result.as_ref()) {
+      result
+    } else {
+      match combinator(input) {
+        Err(ParseError::Failure(err)) => {
+          let mut message = message.to_string();
+          message.push_str("\n\n");
+          message.push_str(&err.message);
+          ParseError::fail(err.input, message)
+        }
+        _ => ParseError::fail(input, message),
+      }
     }
-    Err(ParseError::Backtrace) => ParseError::fail(input, message.to_string()),
   }
 }
 
+/// Provides some context to a failure.
 pub fn with_error_context<'a, O>(
   combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
   message: &'static str,
@@ -148,13 +207,15 @@ pub fn with_error_context<'a, O>(
   }
 }
 
+/// Keeps consuming a combinator into an array until a condition
+/// is met or backtracing occurs.
 pub fn many_till<'a, O, OCondition>(
   combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
   condition: impl Fn(&'a str) -> ParseResult<'a, OCondition>,
 ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<O>> {
   move |mut input| {
     let mut results = Vec::new();
-    while !input.is_empty() && condition(input).is_err() {
+    while !input.is_empty() && is_backtrace(condition(input))? {
       match combinator(input) {
         Ok((result_input, value)) => {
           results.push(value);
@@ -170,17 +231,15 @@ pub fn many_till<'a, O, OCondition>(
   }
 }
 
-/// Applies the parser 0 or more times and returns the
+/// Applies the parser 0 or more times and returns a vector
+/// of all the parsed results.
 pub fn many0<'a, O>(
   combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
 ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<O>> {
-  many_till(combinator, |_| {
-    // tells it to keep going
-    let result: ParseResult<()> = Err(ParseError::Backtrace);
-    result
-  })
+  many_till(combinator, |_| ParseError::backtrace::<()>())
 }
 
+/// Skips the whitespace.
 pub fn skip_whitespace(input: &str) -> ParseResult<()> {
   for (pos, c) in input.char_indices() {
     if !c.is_whitespace() {
@@ -189,4 +248,12 @@ pub fn skip_whitespace(input: &str) -> ParseResult<()> {
   }
 
   Ok(("", ()))
+}
+
+fn is_backtrace<O>(result: ParseResult<O>) -> Result<bool, ParseError> {
+  match result {
+    Ok(_) => Ok(false),
+    Err(ParseError::Backtrace) => Ok(true),
+    Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
+  }
 }
