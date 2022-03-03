@@ -25,7 +25,7 @@ use super::combinators::ParseResult;
 // https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_10_02
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Pipeline {
+pub enum Part {
   Command(ShellCommand),
   List(List),
 }
@@ -33,9 +33,9 @@ pub enum Pipeline {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ListOperator {
   // &&
-  AndAnd,
+  And,
   // ||
-  OrOr,
+  Or,
   // ;
   Sequential,
   // &
@@ -45,8 +45,8 @@ pub enum ListOperator {
 impl ListOperator {
   pub fn as_str(&self) -> &'static str {
     match self {
-      ListOperator::AndAnd => "&&",
-      ListOperator::OrOr => "||",
+      ListOperator::And => "&&",
+      ListOperator::Or => "||",
       ListOperator::Sequential => ";",
       ListOperator::Async => "&",
     }
@@ -55,16 +55,16 @@ impl ListOperator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct List {
-  pub left: Box<Pipeline>,
+  pub left: Box<Part>,
   pub op: ListOperator,
-  pub right: Box<Pipeline>,
+  pub right: Box<Part>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SequentialList {
-  pub left: Box<Pipeline>,
+  pub left: Box<Part>,
   pub op: ListOperator,
-  pub right: Box<Pipeline>,
+  pub right: Box<Part>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,8 +100,8 @@ pub enum RedirectOp {
   Append,
 }
 
-pub fn parse(input: &str) -> Result<Pipeline, AnyError> {
-  fn error_for_input(input: &str, message: &str) -> Result<Pipeline, AnyError> {
+pub fn parse(input: &str) -> Result<Part, AnyError> {
+  fn error_for_input(input: &str, message: &str) -> Result<Part, AnyError> {
     bail!(
       "{}\n  {}\n  ~",
       message,
@@ -109,7 +109,7 @@ pub fn parse(input: &str) -> Result<Pipeline, AnyError> {
     )
   }
 
-  fn handle_trailing_input(input: &str) -> Result<Pipeline, AnyError> {
+  fn handle_trailing_input(input: &str) -> Result<Part, AnyError> {
     if parse_redirect(input).is_ok() {
       error_for_input(input, "Redirects are currently not supported.")
     } else if parse_pipeline_op(input).is_ok() {
@@ -119,7 +119,7 @@ pub fn parse(input: &str) -> Result<Pipeline, AnyError> {
     }
   }
 
-  match parse_async_pipeline(input) {
+  match parse_sequential_list(input) {
     Ok((input, expr)) => {
       if input.trim().is_empty() {
         Ok(expr)
@@ -138,54 +138,56 @@ pub fn parse(input: &str) -> Result<Pipeline, AnyError> {
   }
 }
 
-fn parse_async_pipeline(input: &str) -> ParseResult<Pipeline> {
-  parse_generic_pipeline(
-    parse_sequential_pipeline,
+fn parse_async_list(input: &str) -> ParseResult<Part> {
+  // todo(THIS PR): this is wrong. Actually async parts just need an ending `&`
+  // and they are lower precedence then sequential lists
+  parse_generic_list(
+    parse_sequential_list,
     parse_async_list_op,
-    parse_sequential_pipeline,
+    parse_async_list,
   )(input)
 }
 
-fn parse_sequential_pipeline(input: &str) -> ParseResult<Pipeline> {
-  parse_generic_pipeline(
-    parse_boolean_pipeline,
+fn parse_sequential_list(input: &str) -> ParseResult<Part> {
+  parse_generic_list(
+    parse_boolean_list,
     parse_sequential_list_op,
-    parse_boolean_pipeline,
+    parse_sequential_list,
   )(input)
 }
 
-fn parse_boolean_pipeline(input: &str) -> ParseResult<Pipeline> {
-  parse_generic_pipeline(
-    map(parse_command, Pipeline::Command),
+fn parse_boolean_list(input: &str) -> ParseResult<Part> {
+  parse_generic_list(
+    map(parse_command, Part::Command),
     parse_boolean_list_op,
-    parse_boolean_pipeline,
+    parse_boolean_list,
   )(input)
 }
 
-fn parse_generic_pipeline<'a>(
-  parse_left_pipeline: impl Fn(&'a str) -> ParseResult<'a, Pipeline>,
+fn parse_generic_list<'a>(
+  parse_left_part: impl Fn(&'a str) -> ParseResult<'a, Part>,
   parse_op: impl Fn(&'a str) -> ParseResult<'a, ListOperator>,
-  parse_right_pipeline: impl Fn(&'a str) -> ParseResult<'a, Pipeline>,
-) -> impl Fn(&'a str) -> ParseResult<'a, Pipeline> {
+  parse_right_part: impl Fn(&'a str) -> ParseResult<'a, Part>,
+) -> impl Fn(&'a str) -> ParseResult<'a, Part> {
   move |input| {
-    let (input, left_pipeline) = parse_left_pipeline(input)?;
+    let (input, left_part) = parse_left_part(input)?;
 
     match parse_op(input) {
       Ok((input, op)) => {
-        let (input, right_command) = assert_exists(
-          &parse_right_pipeline,
+        let (input, right_part) = assert_exists(
+          &parse_right_part,
           "Expected command following operator.",
         )(input)?;
         Ok((
           input,
-          Pipeline::List(List {
-            left: Box::new(left_pipeline),
+          Part::List(List {
+            left: Box::new(left_part),
             op,
-            right: Box::new(right_command),
+            right: Box::new(right_part),
           }),
         ))
       }
-      Err(ParseError::Backtrace) => Ok((input, left_pipeline)),
+      Err(ParseError::Backtrace) => Ok((input, left_part)),
       Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
     }
   }
@@ -230,8 +232,8 @@ fn parse_list_op(input: &str) -> ParseResult<ListOperator> {
 
 fn parse_boolean_list_op(input: &str) -> ParseResult<ListOperator> {
   or(
-    parse_single_list_op(ListOperator::AndAnd),
-    parse_single_list_op(ListOperator::OrOr),
+    parse_single_list_op(ListOperator::And),
+    parse_single_list_op(ListOperator::Or),
   )(input)
 }
 
@@ -475,22 +477,22 @@ mod test {
   }
 
   #[test]
-  fn test_parse_async_pipeline() {
+  fn test_parse_async_list() {
     run_test(
-      parse_async_pipeline,
+      parse_async_list,
       "Name=Value OtherVar=Other command arg1 || command2 arg12 arg13 ; command3 && command4 & command5",
-      Ok(Pipeline::List(List {
-        left: Box::new(Pipeline::List(List {
-          left: Box::new(Pipeline::List(List {
-            left: Box::new(Pipeline::Command(ShellCommand {
+      Ok(Part::List(List {
+        left: Box::new(Part::List(List {
+          left: Box::new(Part::List(List {
+            left: Box::new(Part::Command(ShellCommand {
               env_vars: vec![
                 EnvVar::new("Name".to_string(), "Value".to_string()),
                 EnvVar::new("OtherVar".to_string(), "Other".to_string()),
               ],
               args: vec!["command".to_string(), "arg1".to_string()],
             })),
-            op: ListOperator::OrOr,
-            right: Box::new(Pipeline::Command(ShellCommand {
+            op: ListOperator::Or,
+            right: Box::new(Part::Command(ShellCommand {
               env_vars: vec![],
               args: vec![
                 "command2".to_string(),
@@ -500,20 +502,20 @@ mod test {
             })),
           })),
           op: ListOperator::Sequential,
-          right: Box::new(Pipeline::List(List {
-            left: Box::new(Pipeline::Command(ShellCommand {
+          right: Box::new(Part::List(List {
+            left: Box::new(Part::Command(ShellCommand {
               env_vars: vec![],
               args: vec!["command3".to_string()],
             })),
-            op: ListOperator::AndAnd,
-            right: Box::new(Pipeline::Command(ShellCommand {
+            op: ListOperator::And,
+            right: Box::new(Part::Command(ShellCommand {
               env_vars: vec![],
               args: vec!["command4".to_string()],
             })),
           }))
         })),
         op: ListOperator::Async,
-        right: Box::new(Pipeline::Command(ShellCommand {
+        right: Box::new(Part::Command(ShellCommand {
           env_vars: vec![],
           args: vec!["command5".to_string()],
         })),
@@ -521,7 +523,30 @@ mod test {
     );
 
     run_test(
-      parse_async_pipeline,
+      parse_async_list,
+      "command1 ; command2 ; A='b' command3",
+      Ok(Part::List(List {
+        left: Box::new(Part::Command(ShellCommand {
+          env_vars: vec![],
+          args: vec!["command1".to_string()],
+        })),
+        op: ListOperator::Sequential,
+        right: Box::new(Part::List(List {
+          left: Box::new(Part::Command(ShellCommand {
+            env_vars: vec![],
+            args: vec!["command2".to_string()],
+          })),
+          op: ListOperator::Sequential,
+          right: Box::new(Part::Command(ShellCommand {
+            env_vars: vec![EnvVar::new("A".to_string(), "b".to_string())],
+            args: vec!["command3".to_string()],
+          })),
+        })),
+      })),
+    );
+
+    run_test(
+      parse_async_list,
       "test &&",
       Err("Expected command following operator."),
     );
