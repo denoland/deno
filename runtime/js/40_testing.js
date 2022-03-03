@@ -1226,23 +1226,11 @@
 
   /**
    * @typedef {{
-   *   fn: () => void | Promise<void>,
-   *   name: string,
-   *   ignore?: boolean,
-   *   sanitizeOps?: boolean,
-   *   sanitizeResources?: boolean,
-   *   sanitizeExit?: boolean,
-   * }} TestStepDefinition
-   *
-   * @typedef {{
    *   name: string;
-   *   sanitizeOps: boolean,
-   *   sanitizeResources: boolean,
    *   sanitizeExit: boolean,
    *   warmup: boolean,
    * }} BenchStepParams
    */
-
   class BenchStep {
     /** @type {BenchStepParams} */
     #params;
