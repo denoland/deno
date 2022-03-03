@@ -157,7 +157,7 @@ fn parse_command_args(input: &str) -> ParseResult<Vec<String>> {
 }
 
 fn parse_shell_arg(input: &str) -> ParseResult<String> {
-  or(parse_quoted_string, map(parse_word, |v| v.to_string()))(input)
+  or(parse_quoted_string, map(parse_word, ToString::to_string))(input)
 }
 
 fn parse_operator(input: &str) -> ParseResult<Operator> {
@@ -237,6 +237,80 @@ fn parse_word(input: &str) -> ParseResult<&str> {
   )(input)
 }
 
+fn parse_quoted_string(input: &str) -> ParseResult<String> {
+  or(
+    map(parse_single_quoted_string, ToString::to_string),
+    parse_double_quoted_string,
+  )(input)
+}
+
+fn parse_single_quoted_string(input: &str) -> ParseResult<&str> {
+  // single quoted strings cannot contain a single quote
+  // https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_02_02
+  delimited(
+    char('\''),
+    take_while(|c| c != '\''),
+    assert_exists(char('\''), "Expected closing single quote."),
+  )(input)
+}
+
+fn parse_double_quoted_string(input: &str) -> ParseResult<String> {
+  // https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_02_03
+  // Double quotes may have escaped
+  delimited(
+    char('"'),
+    |input| {
+      // this doesn't seem like the nom way of doing things, but it was a
+      // quick implementation
+      let mut new_text = String::new();
+      let mut last_escape = false;
+      let mut index = 0;
+      for c in input.chars() {
+        if c == '"' && !last_escape {
+          break;
+        }
+
+        if last_escape {
+          if !"\"$`".contains(c) {
+            new_text.push('\\');
+          }
+          new_text.push(c);
+          last_escape = false;
+        } else if c == '\\' {
+          last_escape = true;
+        } else {
+          if matches!(c, '$' | '`') {
+            return ParseError::fail(
+              &input[index..],
+              "Substitution in strings is currently not supported.",
+            );
+          }
+          new_text.push(c);
+        }
+        index += 1;
+      }
+      Ok((&input[index..], new_text))
+    },
+    assert_exists(char('"'), "Expected closing double quote."),
+  )(input)
+}
+
+fn parse_usize(input: &str) -> ParseResult<usize> {
+  let mut value = 0;
+  let mut byte_index = 0;
+  for c in input.chars() {
+    if c.is_ascii_digit() {
+      value = value * 10 + (c.to_digit(10).unwrap() as usize);
+    } else if byte_index == 0 {
+      return ParseError::backtrace();
+    } else {
+      break;
+    }
+    byte_index += c.len_utf8();
+  }
+  Ok((&input[byte_index..], value))
+}
+
 fn assert_whitespace_or_end_and_skip(input: &str) -> ParseResult<()> {
   terminated(assert_whitespace_or_end, skip_whitespace)(input)
 }
@@ -272,69 +346,6 @@ fn is_reserved_word(text: &str) -> bool {
       | "for"
       | "in"
   )
-}
-
-// TODO(THIS PR): need to hard error when someone uses shell expansion in a string
-fn parse_quoted_string(input: &str) -> ParseResult<String> {
-  fn inner_quoted<'a>(
-    quote_char: char,
-  ) -> impl Fn(&'a str) -> ParseResult<'a, String> {
-    move |input| {
-      // this doesn't seem like the nom way of doing things, but it was a
-      // quick implementation
-      let mut new_text = String::new();
-      let mut last_escape = false;
-      let mut index = 0;
-      for c in input.chars() {
-        if c == quote_char && !last_escape {
-          break;
-        }
-
-        if last_escape {
-          if c != quote_char {
-            new_text.push('\\');
-          }
-          new_text.push(c);
-          last_escape = false;
-        } else if c == '\\' {
-          last_escape = true;
-        } else {
-          new_text.push(c);
-        }
-        index += 1;
-      }
-      Ok((&input[index..], new_text))
-    }
-  }
-
-  or(
-    delimited(
-      char('\''),
-      inner_quoted('\''),
-      assert_exists(char('\''), "Expected closing single quote."),
-    ),
-    delimited(
-      char('"'),
-      inner_quoted('"'),
-      assert_exists(char('"'), "Expected closing double quote."),
-    ),
-  )(input)
-}
-
-fn parse_usize(input: &str) -> ParseResult<usize> {
-  let mut value = 0;
-  let mut byte_index = 0;
-  for c in input.chars() {
-    if c.is_ascii_digit() {
-      value = value * 10 + (c.to_digit(10).unwrap() as usize);
-    } else if byte_index == 0 {
-      return ParseError::backtrace();
-    } else {
-      break;
-    }
-    byte_index += c.len_utf8();
-  }
-  Ok((&input[byte_index..], value))
 }
 
 #[cfg(test)]
@@ -462,24 +473,42 @@ mod test {
   }
 
   #[test]
-  fn test_quoted_string() {
+  fn test_single_quotes() {
     run_string_test(parse_quoted_string, "'test'", Ok("test"));
     run_string_test(parse_quoted_string, r#"'te\\'"#, Ok(r#"te\\"#));
-    run_string_test(parse_quoted_string, r#"'te\'st'"#, Ok("te'st"));
+    run_string_test_with_end(
+      parse_quoted_string,
+      r#"'te\'st'"#,
+      Ok(r#"te\"#),
+      "st'",
+    );
     run_string_test(parse_quoted_string, "'  '", Ok("  "));
     run_string_test(
       parse_quoted_string,
       "'  ",
       Err("Expected closing single quote."),
     );
+  }
 
+  #[test]
+  fn test_double_quotes() {
     run_string_test(parse_quoted_string, r#""  ""#, Ok("  "));
     run_string_test(parse_quoted_string, r#""test""#, Ok("test"));
-    run_string_test(parse_quoted_string, r#""te\"st""#, Ok(r#"te"st"#));
+    run_string_test(parse_quoted_string, r#""te\"\$\`st""#, Ok(r#"te"$`st"#));
     run_string_test(
       parse_quoted_string,
       r#""  "#,
       Err("Expected closing double quote."),
+    );
+    run_string_test(
+      parse_quoted_string,
+      r#""$Test""#,
+      Err("Substitution in strings is currently not supported."),
+    );
+    run_string_test(
+      parse_quoted_string,
+      r#""asdf`""#,
+      Err("Substitution in strings is currently not supported."),
     );
 
     run_string_test_with_end(
