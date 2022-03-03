@@ -19,9 +19,6 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to true and fail the bench suite. */
     only?: boolean;
-    /** Check that the number of async completed ops after the bench is the same
-     * as number of dispatched ops. Defaults to true. */
-    sanitizeOps?: boolean;
     /** Ensure the bench case does not "leak" resources - ie. the resource table
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */

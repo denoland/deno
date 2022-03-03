@@ -1397,9 +1397,6 @@
   }
 
   function wrapBenchFnWithSanitizers(fn, opts) {
-    if (opts.sanitizeOps) {
-      fn = assertOps(fn);
-    }
     if (opts.sanitizeResources) {
       fn = assertResources(fn);
     }
