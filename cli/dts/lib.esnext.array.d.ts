@@ -17,12 +17,6 @@ and limitations under the License.
 
 interface Array<T> {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): T | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -47,12 +41,6 @@ interface Array<T> {
  }
 
 interface ReadonlyArray<T> {
-  /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): T | undefined;
-
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -79,12 +67,6 @@ interface ReadonlyArray<T> {
 
 interface Int8Array {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -109,12 +91,6 @@ interface Int8Array {
 
 interface Uint8Array {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -138,12 +114,6 @@ interface Uint8Array {
 }
 
 interface Uint8ClampedArray {
-  /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -170,12 +140,6 @@ interface Uint8ClampedArray {
 
 interface Int16Array {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -199,12 +163,6 @@ interface Int16Array {
 }
 
 interface Uint16Array {
-  /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -230,12 +188,6 @@ interface Uint16Array {
 
 interface Int32Array {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -259,12 +211,6 @@ interface Int32Array {
 }
 
 interface Uint32Array {
-  /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -290,12 +236,6 @@ interface Uint32Array {
 
 interface Float32Array {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -319,12 +259,6 @@ interface Float32Array {
 }
 
 interface Float64Array {
-  /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): number | undefined;
-
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
@@ -350,12 +284,6 @@ interface Float64Array {
 
 interface BigInt64Array {
   /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): bigint | undefined;
-
-  /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
    * @param predicate find calls predicate once for each element of the array, in ascending
@@ -379,12 +307,6 @@ interface BigInt64Array {
 }
 
 interface BigUint64Array {
-  /**
-   * Access item by relative indexing.
-   * @param index index to access.
-   */
-  at(index: number): bigint | undefined;
-
   /**
    * Returns the value of the last element in the array where predicate is true, and undefined
    * otherwise.
