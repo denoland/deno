@@ -49,7 +49,7 @@ fn thrid_party_tests() {
     .arg("--unstable")
     .arg("--no-check")
     .arg("--ignore=node_modules/")
-    .env("DENO_NODE_COMPAT_URL", "file:///Users/divy/gh/deno_std/")
+    .env("DENO_NODE_COMPAT_URL", "https://raw.githubusercontent.com/littledivy/deno_std/load_native_module/")
     .spawn()
     .unwrap()
     .wait_with_output()
