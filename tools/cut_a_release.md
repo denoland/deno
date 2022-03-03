@@ -44,8 +44,8 @@ Before starting the process write a message in company's #general channel:
 
 5. Pull the latest `main` branch and make sure the commit from the merged PR is
    there. Create a tag with the version number (_without_ `v` prefix), eg.
-   `deno tag 0.122.0 <commit_hash>`, then push the tag to the
-   `denoland/deno_std` repository, eg. `git push upstream 0.122.0`.
+   `git tag 0.122.0 <commit_hash>`, then push the tag to the `denoland/deno_std`
+   repository, eg. `git push upstream 0.122.0`.
 
 6. Once CI passes, copy contents of `Releases.md` you added, and create a new
    release on GitHub (https://github.com/denoland/deno_std/releases).
