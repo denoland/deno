@@ -12,6 +12,12 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
 
+// todo(THIS PR): remove these attributes before merge
+#[allow(dead_code)]
+mod combinators;
+#[allow(dead_code)]
+mod shell_parser;
+
 fn get_scripts_config(
   maybe_config_file: Option<&ConfigFile>,
 ) -> Result<HashMap<String, String>, AnyError> {
