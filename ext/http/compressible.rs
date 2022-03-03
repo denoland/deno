@@ -634,3 +634,27 @@ pub fn is_content_compressible(
   }
   false
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn content_type_none() {
+    assert!(!is_content_compressible(None));
+  }
+
+  #[test]
+  fn non_compressible_content_type() {
+    assert!(!is_content_compressible(Some(&ByteString(
+      b"application/vnd.deno+json".to_vec()
+    ))));
+  }
+
+  #[test]
+  fn ncompressible_content_type() {
+    assert!(is_content_compressible(Some(&ByteString(
+      b"application/json".to_vec()
+    ))));
+  }
+}
