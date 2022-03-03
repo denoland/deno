@@ -524,7 +524,7 @@ async fn op_http_write_headers(
   for (key, value) in &headers {
     match &*key.to_ascii_lowercase() {
       b"cache-control" => {
-        if let Some(value) = std::str::from_utf8(&value).ok() {
+        if let Ok(value) = std::str::from_utf8(&value) {
           if let Some(cache_control) = CacheControl::from_value(value) {
             // We skip compression if the cache-control header value is set to
             // "no-transform"
@@ -538,7 +538,7 @@ async fn op_http_write_headers(
       }
       b"content-type" => {
         if !value.is_empty() {
-          content_type_header = Some(value.clone());
+          content_type_header = Some(value);
         }
       }
       b"content-encoding" => {
@@ -549,13 +549,13 @@ async fn op_http_write_headers(
       // we may need to modify or change.
       b"etag" => {
         if !value.is_empty() {
-          etag_header = Some(value.clone());
+          etag_header = Some(value);
           continue;
         }
       }
       b"vary" => {
         if !value.is_empty() {
-          vary_header = Some(value.clone());
+          vary_header = Some(value);
           continue;
         }
       }
@@ -566,7 +566,7 @@ async fn op_http_write_headers(
 
   if headers_allow_compression {
     body_compressible =
-      compressible::is_content_compressible(content_type_header.as_ref());
+      compressible::is_content_compressible(content_type_header);
   }
 
   let body: Response<Body>;
@@ -579,11 +579,16 @@ async fn op_http_write_headers(
       // data to make sure cache services do not serve uncompressed data to
       // clients that support compression.
       let vary_value = if let Some(value) = vary_header {
-        let value_str = std::str::from_utf8(value.as_ref()).unwrap();
-        if !value_str.to_lowercase().contains("accept-encoding") {
-          format!("Accept-Encoding, {}", value_str)
+        if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+          if !value_str.to_lowercase().contains("accept-encoding") {
+            format!("Accept-Encoding, {}", value_str)
+          } else {
+            value_str.to_string()
+          }
         } else {
-          value_str.to_string()
+          // the header value wasn't valid UTF8, so it would have been a
+          // problem anyways, so sending a default header.
+          "Accept-Encoding".to_string()
         }
       } else {
         "Accept-Encoding".to_string()
@@ -602,11 +607,14 @@ async fn op_http_write_headers(
         // If user provided a ETag header for uncompressed data, we need to
         // ensure it is a Weak Etag header ("W/").
         if let Some(value) = etag_header {
-          let value_str = std::str::from_utf8(value.as_ref()).unwrap();
-          if !value_str.starts_with("W/") {
-            builder = builder.header("etag", format!("W/{}", value_str));
+          if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+            if !value_str.starts_with("W/") {
+              builder = builder.header("etag", format!("W/{}", value_str));
+            } else {
+              builder = builder.header("etag", value.as_ref());
+            }
           } else {
-            builder = builder.header("etag", value_str);
+            builder = builder.header("etag", value.as_ref());
           }
         }
 
