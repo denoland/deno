@@ -524,13 +524,16 @@ async fn op_http_write_headers(
   for (key, value) in &headers {
     match &*key.to_ascii_lowercase() {
       b"cache-control" => {
-        let value = std::str::from_utf8(value.as_ref()).unwrap();
-        if let Some(cache_control) = CacheControl::from_value(value) {
-          // We skip compression if the cache-control header value is set to
-          // "no-transform"
-          if cache_control.no_transform {
-            headers_allow_compression = false;
+        if let Some(value) = std::str::from_utf8(&value).ok() {
+          if let Some(cache_control) = CacheControl::from_value(value) {
+            // We skip compression if the cache-control header value is set to
+            // "no-transform"
+            if cache_control.no_transform {
+              headers_allow_compression = false;
+            }
           }
+        } else {
+          headers_allow_compression = false;
         }
       }
       b"content-type" => {
