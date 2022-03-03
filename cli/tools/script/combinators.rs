@@ -250,6 +250,16 @@ pub fn skip_whitespace(input: &str) -> ParseResult<()> {
   Ok(("", ()))
 }
 
+/// Checks if a combinator is false without consuming the input.
+pub fn if_not<'a, O>(
+  combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
+) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
+  move |input| match combinator(input) {
+    Ok(_) => ParseError::backtrace(),
+    Err(_) => Ok((input, ())),
+  }
+}
+
 fn is_backtrace<O>(result: ParseResult<O>) -> Result<bool, ParseError> {
   match result {
     Ok(_) => Ok(false),

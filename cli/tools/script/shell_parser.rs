@@ -7,6 +7,7 @@ use super::combinators::assert;
 use super::combinators::assert_exists;
 use super::combinators::char;
 use super::combinators::delimited;
+use super::combinators::if_not;
 use super::combinators::many0;
 use super::combinators::many_till;
 use super::combinators::map;
@@ -24,45 +25,52 @@ use super::combinators::ParseResult;
 // https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_10_02
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum Pipeline {
   Command(ShellCommand),
-  BinExpr(BinExpr),
+  List(List),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ListOperator {
+  // &&
+  AndAnd,
+  // ||
+  OrOr,
+  // ;
+  Sequential,
+  // &
+  Async,
+}
+
+impl ListOperator {
+  pub fn as_str(&self) -> &'static str {
+    match self {
+      ListOperator::AndAnd => "&&",
+      ListOperator::OrOr => "||",
+      ListOperator::Sequential => ";",
+      ListOperator::Async => "&",
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BinExpr {
-  pub left: Box<Expr>,
-  pub op: Operator,
-  pub right: Box<Expr>,
+pub struct List {
+  pub left: Box<Pipeline>,
+  pub op: ListOperator,
+  pub right: Box<Pipeline>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SequentialList {
+  pub left: Box<Pipeline>,
+  pub op: ListOperator,
+  pub right: Box<Pipeline>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShellCommand {
   pub env_vars: Vec<EnvVar>,
   pub args: Vec<String>,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Operator {
-  // &&
-  AndAnd,
-  // &
-  And,
-  // ||
-  OrOr,
-  // |
-  Or,
-}
-
-impl Operator {
-  pub fn as_str(&self) -> &'static str {
-    match self {
-      Operator::AndAnd => "&&",
-      Operator::And => "&",
-      Operator::OrOr => "||",
-      Operator::Or => "|",
-    }
-  }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -92,8 +100,8 @@ pub enum RedirectOp {
   Append,
 }
 
-pub fn parse(input: &str) -> Result<Expr, AnyError> {
-  fn error_for_input(message: &str, input: &str) -> Result<Expr, AnyError> {
+pub fn parse(input: &str) -> Result<Pipeline, AnyError> {
+  fn error_for_input(input: &str, message: &str) -> Result<Pipeline, AnyError> {
     bail!(
       "{}\n  {}\n  ~",
       message,
@@ -101,41 +109,85 @@ pub fn parse(input: &str) -> Result<Expr, AnyError> {
     )
   }
 
-  match parse_expr(input) {
-    Ok((_, expr)) => Ok(expr),
+  fn handle_trailing_input(input: &str) -> Result<Pipeline, AnyError> {
+    if parse_redirect(input).is_ok() {
+      error_for_input(input, "Redirects are currently not supported.")
+    } else if parse_pipeline_op(input).is_ok() {
+      error_for_input(input, "Pipelines are currently not supported.")
+    } else {
+      error_for_input(input, "Invalid character for command.")
+    }
+  }
+
+  match parse_async_pipeline(input) {
+    Ok((input, expr)) => {
+      if input.trim().is_empty() {
+        Ok(expr)
+      } else {
+        handle_trailing_input(input)
+      }
+    }
     Err(ParseError::Backtrace) => {
       if input.trim().is_empty() {
         bail!("Empty command.")
       } else {
-        error_for_input("Invalid character for command.", input)
+        handle_trailing_input(input)
       }
     }
-    Err(ParseError::Failure(e)) => error_for_input(&e.message, e.input),
+    Err(ParseError::Failure(e)) => error_for_input(e.input, &e.message),
   }
 }
 
-fn parse_expr(input: &str) -> ParseResult<Expr> {
-  let (input, command) = parse_command(input)?;
-  if parse_redirect(input).is_ok() {
-    return ParseError::fail(input, "Redirects are currently not supported.");
-  }
-  match parse_operator(input) {
-    Ok((input, op)) => {
-      let (input, right_command) = assert_exists(
-        parse_expr,
-        "Expected command following operator.",
-      )(input)?;
-      Ok((
-        input,
-        Expr::BinExpr(BinExpr {
-          left: Box::new(Expr::Command(command)),
-          op,
-          right: Box::new(right_command),
-        }),
-      ))
+fn parse_async_pipeline(input: &str) -> ParseResult<Pipeline> {
+  parse_generic_pipeline(
+    parse_sequential_pipeline,
+    parse_async_list_op,
+    parse_sequential_pipeline,
+  )(input)
+}
+
+fn parse_sequential_pipeline(input: &str) -> ParseResult<Pipeline> {
+  parse_generic_pipeline(
+    parse_boolean_pipeline,
+    parse_sequential_list_op,
+    parse_boolean_pipeline,
+  )(input)
+}
+
+fn parse_boolean_pipeline(input: &str) -> ParseResult<Pipeline> {
+  parse_generic_pipeline(
+    map(parse_command, Pipeline::Command),
+    parse_boolean_list_op,
+    parse_boolean_pipeline,
+  )(input)
+}
+
+fn parse_generic_pipeline<'a>(
+  parse_left_pipeline: impl Fn(&'a str) -> ParseResult<'a, Pipeline>,
+  parse_op: impl Fn(&'a str) -> ParseResult<'a, ListOperator>,
+  parse_right_pipeline: impl Fn(&'a str) -> ParseResult<'a, Pipeline>,
+) -> impl Fn(&'a str) -> ParseResult<'a, Pipeline> {
+  move |input| {
+    let (input, left_pipeline) = parse_left_pipeline(input)?;
+
+    match parse_op(input) {
+      Ok((input, op)) => {
+        let (input, right_command) = assert_exists(
+          &parse_right_pipeline,
+          "Expected command following operator.",
+        )(input)?;
+        Ok((
+          input,
+          Pipeline::List(List {
+            left: Box::new(left_pipeline),
+            op,
+            right: Box::new(right_command),
+          }),
+        ))
+      }
+      Err(ParseError::Backtrace) => Ok((input, left_pipeline)),
+      Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
     }
-    Err(ParseError::Backtrace) => Ok((input, Expr::Command(command))),
-    Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
   }
 }
 
@@ -152,30 +204,61 @@ fn parse_command(input: &str) -> ParseResult<ShellCommand> {
 fn parse_command_args(input: &str) -> ParseResult<Vec<String>> {
   many_till(
     terminated(parse_shell_arg, assert_whitespace_or_end_and_skip),
-    or(map(parse_operator, |_| ()), map(parse_redirect, |_| ())),
+    or(
+      map(parse_list_op, |_| ()),
+      or(map(parse_redirect, |_| ()), parse_pipeline_op),
+    ),
   )(input)
 }
 
 fn parse_shell_arg(input: &str) -> ParseResult<String> {
-  or(parse_quoted_string, map(parse_word, ToString::to_string))(input)
+  let (input, value) =
+    or(parse_quoted_string, map(parse_word, ToString::to_string))(input)?;
+  if value.trim().is_empty() {
+    ParseError::backtrace()
+  } else {
+    Ok((input, value))
+  }
 }
 
-fn parse_operator(input: &str) -> ParseResult<Operator> {
-  fn operator_kind<'a>(
-    operator: Operator,
-  ) -> impl Fn(&'a str) -> ParseResult<'a, Operator> {
-    map(tag(operator.as_str()), move |_| operator)
-  }
+fn parse_list_op(input: &str) -> ParseResult<ListOperator> {
+  or(
+    parse_boolean_list_op,
+    or(parse_sequential_list_op, parse_async_list_op),
+  )(input)
+}
 
-  terminated(
-    or(
-      operator_kind(Operator::AndAnd),
-      or(
-        operator_kind(Operator::And),
-        or(operator_kind(Operator::OrOr), operator_kind(Operator::Or)),
-      ),
+fn parse_boolean_list_op(input: &str) -> ParseResult<ListOperator> {
+  or(
+    parse_single_list_op(ListOperator::AndAnd),
+    parse_single_list_op(ListOperator::OrOr),
+  )(input)
+}
+
+fn parse_sequential_list_op(input: &str) -> ParseResult<ListOperator> {
+  parse_single_list_op(ListOperator::Sequential)(input)
+}
+
+fn parse_async_list_op(input: &str) -> ParseResult<ListOperator> {
+  parse_single_list_op(ListOperator::Async)(input)
+}
+
+fn parse_single_list_op<'a>(
+  operator: ListOperator,
+) -> impl Fn(&'a str) -> ParseResult<'a, ListOperator> {
+  map(
+    terminated(
+      tag(operator.as_str()),
+      terminated(if_not(special_char), skip_whitespace),
     ),
-    skip_whitespace,
+    move |_| operator,
+  )
+}
+
+fn parse_pipeline_op(input: &str) -> ParseResult<()> {
+  terminated(
+    map(char('|'), |_| ()),
+    terminated(if_not(special_char), skip_whitespace),
   )(input)
 }
 
@@ -226,7 +309,7 @@ fn parse_env_var_value(input: &str) -> ParseResult<String> {
 
 fn parse_word(input: &str) -> ParseResult<&str> {
   assert(
-    take_while(|c| !is_special_char(c)),
+    take_while(|c| !c.is_whitespace() && !is_special_char(c)),
     |result| {
       result
         .ok()
@@ -324,9 +407,18 @@ fn assert_whitespace_or_end(input: &str) -> ParseResult<()> {
   Ok((input, ()))
 }
 
+fn special_char(input: &str) -> ParseResult<char> {
+  if let Some((index, next_char)) = input.char_indices().next() {
+    if is_special_char(next_char) {
+      return Ok((&input[index..], next_char));
+    }
+  }
+  ParseError::backtrace()
+}
+
 fn is_special_char(c: char) -> bool {
   // https://github.com/yarnpkg/berry/blob/master/packages/yarnpkg-parsers/sources/grammars/shell.pegjs
-  "(){}<>$|&; \t\"'".contains(c)
+  "(){}<>$|&;\t\"'".contains(c)
 }
 
 fn is_reserved_word(text: &str) -> bool {
@@ -362,7 +454,7 @@ mod test {
     );
     assert_eq!(
       parse("test { test").err().unwrap().to_string(),
-      concat!("Unsupported character.\n", "  { test\n", "  ~",),
+      concat!("Invalid character for command.\n", "  { test\n", "  ~",),
     );
     assert_eq!(
       parse("test > redirect").err().unwrap().to_string(),
@@ -372,56 +464,64 @@ mod test {
         "  ~",
       ),
     );
+    assert_eq!(
+      parse("test | other").err().unwrap().to_string(),
+      concat!(
+        "Pipelines are currently not supported.\n",
+        "  | other\n",
+        "  ~",
+      ),
+    );
   }
 
   #[test]
-  fn test_parse_expr() {
+  fn test_parse_async_pipeline() {
     run_test(
-      parse_expr,
-      "Name=Value OtherVar=Other command arg1 && command2 arg12 arg13 || command3 & command4 | command5",
-      Ok(Expr::BinExpr(BinExpr {
-        left: Box::new(Expr::Command(ShellCommand {
-          env_vars: vec![
-            EnvVar::new("Name".to_string(), "Value".to_string()),
-            EnvVar::new("OtherVar".to_string(), "Other".to_string()),
-          ],
-          args: vec!["command".to_string(), "arg1".to_string()],
-        })),
-        op: Operator::AndAnd,
-        right: Box::new(Expr::BinExpr(BinExpr {
-          left: Box::new(Expr::Command(ShellCommand {
-            env_vars: vec![],
-            args: vec![
-              "command2".to_string(),
-              "arg12".to_string(),
-              "arg13".to_string(),
-            ],
+      parse_async_pipeline,
+      "Name=Value OtherVar=Other command arg1 || command2 arg12 arg13 ; command3 && command4 & command5",
+      Ok(Pipeline::List(List {
+        left: Box::new(Pipeline::List(List {
+          left: Box::new(Pipeline::List(List {
+            left: Box::new(Pipeline::Command(ShellCommand {
+              env_vars: vec![
+                EnvVar::new("Name".to_string(), "Value".to_string()),
+                EnvVar::new("OtherVar".to_string(), "Other".to_string()),
+              ],
+              args: vec!["command".to_string(), "arg1".to_string()],
+            })),
+            op: ListOperator::OrOr,
+            right: Box::new(Pipeline::Command(ShellCommand {
+              env_vars: vec![],
+              args: vec![
+                "command2".to_string(),
+                "arg12".to_string(),
+                "arg13".to_string(),
+              ],
+            })),
           })),
-          op: Operator::OrOr,
-          right: Box::new(Expr::BinExpr(BinExpr {
-            left: Box::new(Expr::Command(ShellCommand {
+          op: ListOperator::Sequential,
+          right: Box::new(Pipeline::List(List {
+            left: Box::new(Pipeline::Command(ShellCommand {
               env_vars: vec![],
               args: vec!["command3".to_string()],
             })),
-            op: Operator::And,
-            right: Box::new(Expr::BinExpr(BinExpr {
-              left: Box::new(Expr::Command(ShellCommand {
-                env_vars: vec![],
-                args: vec!["command4".to_string()],
-              })),
-              op: Operator::Or,
-              right: Box::new(Expr::Command(ShellCommand {
-                env_vars: vec![],
-                args: vec!["command5".to_string()],
-              })),
+            op: ListOperator::AndAnd,
+            right: Box::new(Pipeline::Command(ShellCommand {
+              env_vars: vec![],
+              args: vec!["command4".to_string()],
             })),
-          })),
+          }))
+        })),
+        op: ListOperator::Async,
+        right: Box::new(Pipeline::Command(ShellCommand {
+          env_vars: vec![],
+          args: vec!["command5".to_string()],
         })),
       })),
     );
 
     run_test(
-      parse_expr,
+      parse_async_pipeline,
       "test &&",
       Err("Expected command following operator."),
     );
@@ -568,8 +668,8 @@ mod test {
   ) {
     match combinator(input) {
       Ok((input, value)) => {
-        assert_eq!(input, expected_end);
         assert_eq!(value, expected.unwrap());
+        assert_eq!(input, expected_end);
       }
       Err(ParseError::Backtrace) => {
         assert_eq!("backtrace", expected.err().unwrap());
