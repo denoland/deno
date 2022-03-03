@@ -971,10 +971,15 @@ name = "deno_http"
 version = "0.30.0"
 dependencies = [
  "base64 0.13.0",
+ "brotli",
  "bytes",
+ "cache_control",
  "deno_core",
  "deno_websocket",
+ "flate2",
+ "fly-accept-encoding",
  "hyper",
+ "mime",
  "percent-encoding",
  "ring",
  "serde",
@@ -1503,6 +1508,16 @@ dependencies = [
  "crc32fast",
  "libc",
  "miniz_oxide",
+]
+
+[[package]]
+name = "fly-accept-encoding"
+version = "0.2.0-alpha.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "741d3e4ac3bcebc022cd90e7d1ce376515a73db2d53ba7fd3a7e581d6db7fa97"
+dependencies = [
+ "http",
+ "thiserror",
 ]
 
 [[package]]

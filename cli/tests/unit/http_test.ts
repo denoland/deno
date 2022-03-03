@@ -95,7 +95,7 @@ Deno.test(
 
     const resp = new Uint8Array(200);
     const readResult = await conn.read(resp);
-    assertEquals(readResult, 115);
+    assertEquals(readResult, 138);
 
     conn.close();
 
@@ -1165,7 +1165,7 @@ Deno.test(
 
     const resp = new Uint8Array(200);
     const readResult = await conn.read(resp);
-    assertEquals(readResult, 115);
+    assertEquals(readResult, 138);
 
     conn.close();
 
