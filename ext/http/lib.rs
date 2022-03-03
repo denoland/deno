@@ -524,7 +524,7 @@ async fn op_http_write_headers(
   for (key, value) in &headers {
     match &*key.to_ascii_lowercase() {
       b"cache-control" => {
-        if let Ok(value) = std::str::from_utf8(&value) {
+        if let Ok(value) = std::str::from_utf8(value) {
           if let Some(cache_control) = CacheControl::from_value(value) {
             // We skip compression if the cache-control header value is set to
             // "no-transform"
