@@ -1025,7 +1025,9 @@ fn napi_call_function(
   let argv: &[v8::Local<v8::Value>] =
     unsafe { transmute(std::slice::from_raw_parts(argv, argc as usize)) };
   let ret = func.call(&mut env.scope(), recv, argv);
-  *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
+  if !result.is_null() {
+    *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
+  }
 
   Ok(())
 }
