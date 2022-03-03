@@ -12,11 +12,11 @@ name = "test_server"
 path = "src/test_server.rs"
 
 [dependencies]
-anyhow = "1.0.43"
+anyhow = "1.0.55"
 async-stream = "0.3.2"
 atty = "0.2.14"
 base64 = "0.13.0"
-futures = "0.3.16"
+futures = "0.3.21"
 hyper = { version = "0.14.12", features = ["server", "http1", "http2", "runtime"] }
 lazy_static = "1.4.0"
 os_pipe = "0.9.2"
