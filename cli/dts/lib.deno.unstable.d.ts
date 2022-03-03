@@ -19,10 +19,6 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to true and fail the bench suite. */
     only?: boolean;
-    /** Ensure the bench case does not "leak" resources - ie. the resource table
-     * after the test has exactly the same contents as before the test. Defaults
-     * to true. */
-    sanitizeResources?: boolean;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
