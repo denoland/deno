@@ -150,7 +150,7 @@
         await opSanitizerDelay();
       }
 
-      if (step?.shouldSkipSanitizers) return;
+      if (step.shouldSkipSanitizers) return;
 
       const post = core.metrics();
       const postTraces = new Map(core.opCallTraces);
@@ -366,7 +366,7 @@
       const pre = core.resources();
       await fn(step);
 
-      if (step?.shouldSkipSanitizers) {
+      if (step.shouldSkipSanitizers) {
         return;
       }
 
@@ -808,8 +808,6 @@
 
     const step = new BenchStep({
       name: bench.name,
-      sanitizeOps: bench.sanitizeOps,
-      sanitizeResources: bench.sanitizeResources,
       sanitizeExit: bench.sanitizeExit,
       warmup: false,
     });
@@ -1373,7 +1371,7 @@
 
   /**
    * @template T {Function}
-   * @param fn {T}
+   * @param testFn {T}
    * @param opts {{
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -1381,21 +1379,29 @@
    * }}
    * @returns {T}
    */
-  function wrapTestFnWithSanitizers(fn, opts) {
-    fn = assertTestStepScopes(fn);
+  function wrapTestFnWithSanitizers(testFn, opts) {
+    testFn = assertTestStepScopes(testFn);
 
     if (opts.sanitizeOps) {
-      fn = assertOps(fn);
+      testFn = assertOps(testFn);
     }
     if (opts.sanitizeResources) {
-      fn = assertResources(fn);
+      testFn = assertResources(testFn);
     }
     if (opts.sanitizeExit) {
-      fn = assertExit(fn);
+      testFn = assertExit(testFn);
     }
-    return fn;
+    return testFn;
   }
 
+  /**
+   * @template T {Function}
+   * @param fn {T}
+   * @param opts {{
+   *   sanitizeExit: boolean,
+   * }}
+   * @returns {T}
+   */
   function wrapBenchFnWithSanitizers(fn, opts) {
     if (opts.sanitizeExit) {
       fn = assertExit(fn);

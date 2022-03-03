@@ -162,7 +162,7 @@ struct TestSpecifierOptions {
 }
 
 impl TestSummary {
-  pub fn new() -> TestSummary {
+  fn new() -> TestSummary {
     TestSummary {
       total: 0,
       passed: 0,
@@ -187,7 +187,7 @@ impl TestSummary {
   }
 }
 
-pub trait TestReporter {
+trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
   fn report_output(&mut self, output: &TestOutput);
@@ -310,7 +310,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_output(&mut self, output: &TestOutput) {
     if self.echo_output {
       match output {
-        TestOutput::Console(line) => print!("{}", line),
+        TestOutput::Console(line) => println!("{}", line),
       }
     }
   }
@@ -437,7 +437,7 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-pub fn create_reporter(
+fn create_reporter(
   concurrent: bool,
   echo_output: bool,
 ) -> Box<dyn TestReporter + Send> {
