@@ -1,6 +1,3 @@
-const c = require("@napi-rs/canvas-darwin-arm64").GlobalFonts;
-
-console.log(new c()._families);
 const { createCanvas } = require("@napi-rs/canvas");
 
 const canvas = createCanvas(300, 320);
@@ -19,4 +16,5 @@ ctx.lineTo(250, 140);
 ctx.closePath();
 ctx.stroke();
 
-canvas.encode("png");
+canvas.encode("png").then(console.log);
+

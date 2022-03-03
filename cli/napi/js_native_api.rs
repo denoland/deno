@@ -1114,26 +1114,42 @@ fn napi_define_class(
         None
       };
 
-      let proto = tpl.prototype_template(scope);
-      // if let Some(setter) = setter {
-      //   proto.set_accessor_with_setter(name.into(), getter.unwrap(), setter);
-      // } else {
-      //   proto.set_accessor(name.into(), getter);
-      // }
-      // TODO: use set_accessor & set_accessor_with_setter
-      match (getter, setter) {
-        (Some(getter), None) => {
-          proto.set(name.into(), getter.into());
-        }
-        (Some(getter), Some(setter)) => {
-          proto.set(name.into(), getter.into());
-          proto.set(name.into(), setter.into());
-        }
-        (None, Some(setter)) => {
-          proto.set(name.into(), setter.into());
-        }
-        (None, None) => unreachable!(),
+      let mut accessor_property = v8::NONE;
+      if getter.is_some()
+        && setter.is_some()
+        && (p.attributes & napi_writable) == 0
+      {
+        accessor_property = accessor_property + v8::READ_ONLY;
       }
+      if p.attributes & napi_enumerable == 0 {
+        accessor_property = accessor_property + v8::DONT_ENUM;
+      }
+      if p.attributes & napi_configurable == 0 {
+        accessor_property = accessor_property + v8::DONT_DELETE;
+      }
+
+      let proto = tpl.prototype_template(scope);
+      proto.set_accessor_property(
+        name.into(),
+        getter,
+        setter,
+        accessor_property,
+      );
+
+      // // TODO: use set_accessor & set_accessor_with_setter
+      // match (getter, setter) {
+      //   (Some(getter), None) => {
+      //     proto.set(name.into(), getter.into());
+      //   }
+      //   (Some(getter), Some(setter)) => {
+      //     proto.set(name.into(), getter.into());
+      //     proto.set(name.into(), setter.into());
+      //   }
+      //   (None, Some(setter)) => {
+      //     proto.set(name.into(), setter.into());
+      //   }
+      //   (None, None) => unreachable!(),
+      // }
     } else if !method.is_null() {
       let function: v8::Local<v8::FunctionTemplate> = std::mem::transmute(
         create_function_template(env_ptr, None, p.method, p.data),

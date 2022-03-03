@@ -18,27 +18,28 @@ Deno.test("dprint-node", () => {
   assert(result.length > 0);
 });
 
-// Deno.test("@napi-rs/canvas", () => {
-//   const { createCanvas } = require('@napi-rs/canvas')
+Deno.test("@napi-rs/canvas", async () => {
+  const { createCanvas } = require('@napi-rs/canvas')
 
-//   const canvas = createCanvas(300, 320)
-//   const ctx = canvas.getContext('2d')
+  const canvas = createCanvas(300, 320)
+  const ctx = canvas.getContext('2d')
 
-//   // Do some random stuff, make sure it works.
-//   ctx.lineWidth = 10;
-//   ctx.strokeStyle = '#03a9f4';
-//   ctx.fillStyle = '#03a9f4';
-//   ctx.strokeRect(75, 140, 150, 110);
-//   ctx.fillRect(130, 190, 40, 60);
-//   ctx.beginPath()
-//   ctx.moveTo(50, 140)
-//   ctx.lineTo(150, 60)
-//   ctx.lineTo(250, 140)
-//   ctx.closePath()
-//   ctx.stroke()
+  // Do some random stuff, make sure it works.
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#03a9f4';
+  ctx.fillStyle = '#03a9f4';
+  ctx.strokeRect(75, 140, 150, 110);
+  ctx.fillRect(130, 190, 40, 60);
+  ctx.beginPath()
+  ctx.moveTo(50, 140)
+  ctx.lineTo(150, 60)
+  ctx.lineTo(250, 140)
+  ctx.closePath()
+  ctx.stroke()
 
-//   canvas.encode('png');
-// });
+  assert(canvas.data() instanceof Uint8Array);
+  assert(await canvas.encode('png') instanceof Uint8Array);
+});
 
 Deno.test("@parcel/hash", () => {
   const { hashString, hashBuffer, Hash } = require("@parcel/hash");
@@ -321,8 +322,8 @@ Deno.test("msgpackr-extract", () => {
   strictEqual(result, undefined);
 });
 
-// Deno.test("sqlite3", async () => {
-//   const { Database } = require("sqlite3");
-//   const db = new Database(":memory:");
-//   db.close();
-// });
+Deno.test("sqlite3", async () => {
+  const { Database } = require("sqlite3");
+  const db = new Database(":memory:");
+  db.close();
+});

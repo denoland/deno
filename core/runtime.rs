@@ -831,18 +831,12 @@ impl JsRuntime {
     self.pump_v8_message_loop();
 
     // Ops
-    let maybe_scheduling_napi = {
+    {
       self.resolve_async_ops(cx)?;
-      #[cfg(feature = "napi")]
-      let m = self.poll_napi(cx)?;
-      #[cfg(not(feature = "napi"))]
-      let m = false;
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
-      m
-    };
-
+    }
     // Dynamic module loading - ie. modules loaded using "import()"
     {
       let poll_imports = self.prepare_dyn_imports(cx)?;
@@ -855,6 +849,11 @@ impl JsRuntime {
 
       self.check_promise_exceptions()?;
     }
+
+    #[cfg(feature = "napi")]
+    let maybe_scheduling_napi = self.poll_napi(cx)?;
+    #[cfg(not(feature = "napi"))]
+    let maybe_scheduling_napi = false;
 
     // Top level module
     self.evaluate_pending_module();
