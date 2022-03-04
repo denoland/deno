@@ -536,6 +536,12 @@ async fn op_http_write_headers(
           headers_allow_compression = false;
         }
       }
+      b"content-range" => {
+        // we skip compression if the `content-range` header value is set, as it
+        // indicates the contents of the body were negotiated based directly
+        // with the user code and we can't compress the response
+        headers_allow_compression = false;
+      }
       b"content-type" => {
         if !value.is_empty() {
           content_type_header = Some(value);
@@ -655,6 +661,8 @@ async fn op_http_write_headers(
     }
     None => {
       // If no buffer was passed, the caller will stream the response body.
+
+      // TODO(@kitsonk) had compression for streamed bodies.
 
       // Set the user provided ETag & Vary headers for a streaming response
       if let Some(value) = etag_header {
