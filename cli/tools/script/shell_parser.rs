@@ -3,6 +3,8 @@
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 
+use crate::tools::script::combinators::ParseErrorFailure;
+
 use super::combinators::assert;
 use super::combinators::assert_exists;
 use super::combinators::char;
@@ -106,25 +108,14 @@ pub enum RedirectOp {
 }
 
 pub fn parse(input: &str) -> Result<SequentialList, AnyError> {
-  fn error_for_input(
-    input: &str,
-    message: &str,
+  fn error_for_failure(
+    e: ParseErrorFailure,
   ) -> Result<SequentialList, AnyError> {
     bail!(
       "{}\n  {}\n  ~",
-      message,
-      input.chars().take(60).collect::<String>()
+      e.message,
+      e.input.chars().take(60).collect::<String>()
     )
-  }
-
-  fn handle_trailing_input(input: &str) -> Result<SequentialList, AnyError> {
-    if parse_redirect(input).is_ok() {
-      error_for_input(input, "Redirects are currently not supported.")
-    } else if parse_pipeline_op(input).is_ok() {
-      error_for_input(input, "Pipelines are currently not supported.")
-    } else {
-      error_for_input(input, "Invalid character for command.")
-    }
   }
 
   match parse_sequential_list(input) {
@@ -136,11 +127,13 @@ pub fn parse(input: &str) -> Result<SequentialList, AnyError> {
           Ok(expr)
         }
       } else {
-        handle_trailing_input(input)
+        error_for_failure(fail_for_trailing_input(input))
       }
     }
-    Err(ParseError::Backtrace) => handle_trailing_input(input),
-    Err(ParseError::Failure(e)) => error_for_input(e.input, &e.message),
+    Err(ParseError::Backtrace) => {
+      error_for_failure(fail_for_trailing_input(input))
+    }
+    Err(ParseError::Failure(e)) => error_for_failure(e),
   }
 }
 
@@ -406,7 +399,7 @@ fn assert_whitespace_or_end_and_skip(input: &str) -> ParseResult<()> {
 fn assert_whitespace_or_end(input: &str) -> ParseResult<()> {
   if let Some(next_char) = input.chars().next() {
     if !next_char.is_whitespace() {
-      return ParseError::fail(input, "Unsupported character.");
+      return Err(ParseError::Failure(fail_for_trailing_input(input)));
     }
   }
   Ok((input, ()))
@@ -422,8 +415,7 @@ fn special_char(input: &str) -> ParseResult<char> {
 }
 
 fn is_special_char(c: char) -> bool {
-  // https://github.com/yarnpkg/berry/blob/master/packages/yarnpkg-parsers/sources/grammars/shell.pegjs
-  "(){}<>$|&;\t\"'".contains(c)
+  "*~(){}<>$|&;\"'".contains(c)
 }
 
 fn is_reserved_word(text: &str) -> bool {
@@ -445,6 +437,18 @@ fn is_reserved_word(text: &str) -> bool {
   )
 }
 
+fn fail_for_trailing_input(input: &str) -> ParseErrorFailure {
+  if parse_redirect(input).is_ok() {
+    ParseErrorFailure::new(input, "Redirects are currently not supported.")
+  } else if parse_pipeline_op(input).is_ok() {
+    ParseErrorFailure::new(input, "Pipelines are currently not supported.")
+  } else if input.starts_with('*') {
+    ParseErrorFailure::new(input, "Globs are currently not supported.")
+  } else {
+    ParseErrorFailure::new(input, "Unsupported character.")
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -455,11 +459,11 @@ mod test {
     assert_eq!(parse("").err().unwrap().to_string(), "Empty command.");
     assert_eq!(
       parse("&& testing").err().unwrap().to_string(),
-      concat!("Invalid character for command.\n", "  && testing\n", "  ~",),
+      concat!("Unsupported character.\n", "  && testing\n", "  ~",),
     );
     assert_eq!(
       parse("test { test").err().unwrap().to_string(),
-      concat!("Invalid character for command.\n", "  { test\n", "  ~",),
+      concat!("Unsupported character.\n", "  { test\n", "  ~",),
     );
     assert_eq!(
       parse("test > redirect").err().unwrap().to_string(),
@@ -476,6 +480,10 @@ mod test {
         "  | other\n",
         "  ~",
       ),
+    );
+    assert_eq!(
+      parse("cp test/* other").err().unwrap().to_string(),
+      concat!("Globs are currently not supported.\n", "  * other\n", "  ~",),
     );
   }
 

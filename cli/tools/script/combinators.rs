@@ -4,15 +4,24 @@
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
-  /// Parsing should completely fail.
-  Failure(FailureParseError<'a>),
   Backtrace,
+  /// Parsing should completely fail.
+  Failure(ParseErrorFailure<'a>),
 }
 
 #[derive(Debug)]
-pub struct FailureParseError<'a> {
+pub struct ParseErrorFailure<'a> {
   pub input: &'a str,
   pub message: String,
+}
+
+impl<'a> ParseErrorFailure<'a> {
+  pub fn new(input: &'a str, message: impl AsRef<str>) -> Self {
+    ParseErrorFailure {
+      input,
+      message: message.as_ref().to_owned(),
+    }
+  }
 }
 
 impl<'a> ParseError<'a> {
@@ -20,10 +29,7 @@ impl<'a> ParseError<'a> {
     input: &'a str,
     message: impl AsRef<str>,
   ) -> ParseResult<'a, O> {
-    Err(ParseError::Failure(FailureParseError {
-      input,
-      message: message.as_ref().to_owned(),
-    }))
+    Err(ParseError::Failure(ParseErrorFailure::new(input, message)))
   }
 
   pub fn backtrace<O>() -> ParseResult<'a, O> {
