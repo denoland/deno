@@ -674,16 +674,16 @@ impl JsRuntime {
   }
 
   fn pump_v8_message_loop(&mut self) {
-    let scope = &mut self.handle_scope();
+    let isolate = &mut self.v8_isolate();
     while v8::Platform::pump_message_loop(
       &v8::V8::get_current_platform(),
-      scope,
+      isolate,
       false, // don't block if there are no tasks
     ) {
       // do nothing
     }
 
-    scope.perform_microtask_checkpoint();
+    isolate.perform_microtask_checkpoint();
   }
 
   pub fn poll_value(
