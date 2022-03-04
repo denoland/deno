@@ -17,6 +17,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use encoding_rs::mem::decode_latin1;
 use encoding_rs::mem::is_str_latin1;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -161,7 +162,11 @@ fn op_base64_atob(
   input: String,
   _: (),
 ) -> Result<String, AnyError> {
-  Ok(String::from_utf8(b64_decode(input)?)?)
+  let buf = b64_decode(input)?;
+  match decode_latin1(&buf) {
+    Cow::Owned(s) => Ok(s),
+    Cow::Borrowed(_) => Ok(unsafe { String::from_utf8_unchecked(buf) }), // Avoid copy if already Latin1
+  }
 }
 
 fn b64_decode(input: String) -> Result<Vec<u8>, AnyError> {
