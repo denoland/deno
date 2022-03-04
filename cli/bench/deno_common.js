@@ -37,6 +37,13 @@ function benchStats(name, n, t1, t2) {
     `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`;
 }
 
+function benchBase64RoundTrip() {
+  const input = "long-string".repeat(99999);
+  benchSync("base64_roundtrip", 10, () => {
+    atob(btoa(input));
+  });
+}
+
 function benchUrlParse() {
   benchSync("url_parse", 5e4, (i) => {
     new URL(`http://www.google.com/${i}`);
@@ -110,6 +117,7 @@ async function main() {
   // A common "language feature", that should be fast
   // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
+  benchBase64RoundTrip();
   // IO ops
   benchReadZero();
   benchWriteNull();
