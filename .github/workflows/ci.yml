@@ -362,6 +362,11 @@ jobs:
           sudo chroot /sysroot   \
                su -l "$(whoami)" \
                   -c "cargo build --release --locked --all-targets"
+      - uses: actions/upload-artifact@v3
+        if: startsWith(matrix.os, 'ubuntu') && matrix.profile == 'release' && matrix.use_sysroot
+        with:
+          name: deno
+          path: target/release/deno
       - name: Pre-release (linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
