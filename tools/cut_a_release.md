@@ -44,8 +44,8 @@ Before starting the process write a message in company's #general channel:
 
 5. Pull the latest `main` branch and make sure the commit from the merged PR is
    there. Create a tag with the version number (_without_ `v` prefix), eg.
-   `deno tag 0.122.0 <commit_hash>`, then push the tag to the
-   `denoland/deno_std` repository, eg. `git push upstream 0.122.0`.
+   `git tag 0.122.0 <commit_hash>`, then push the tag to the `denoland/deno_std`
+   repository, eg. `git push upstream 0.122.0`.
 
 6. Once CI passes, copy contents of `Releases.md` you added, and create a new
    release on GitHub (https://github.com/denoland/deno_std/releases).
@@ -89,7 +89,8 @@ verify on GitHub that everything looks correct.
 
 6. Once all crates are published merge the PR.
 
-7. Update your main branch and checkout another branch (e.g. `release_#.#.#`).
+7. Update your local branch (`v1.XX` for patch or `main` for minor) and checkout
+   another branch (e.g. `release_#.#.#`).
 
 8. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
 
@@ -118,7 +119,8 @@ verify on GitHub that everything looks correct.
 17. Wait for CI pipeline on the created tag branch to pass.
 
     The CI pipeline will create a release draft on GitHub
-    (https://github.com/denoland/deno/releases).
+    (https://github.com/denoland/deno/releases). Update the draft with the
+    contents of `Releases.md` that you previously added.
 
 18. Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release draft
     and to https://console.cloud.google.com/storage/browser/dl.deno.land
