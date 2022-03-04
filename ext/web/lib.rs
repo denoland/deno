@@ -17,6 +17,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use encoding_rs::mem::is_str_latin1;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
@@ -85,6 +86,8 @@ pub fn init<P: TimersPermission + 'static>(
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
       ("op_base64_encode", op_sync(op_base64_encode)),
+      ("op_base64_atob", op_sync(op_base64_atob)),
+      ("op_base64_btoa", op_sync(op_base64_btoa)),
       (
         "op_encoding_normalize_label",
         op_sync(op_encoding_normalize_label),
@@ -146,21 +149,33 @@ pub fn init<P: TimersPermission + 'static>(
 }
 
 fn op_base64_decode(
-  _state: &mut OpState,
+  _: &mut OpState,
   input: String,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let mut input: &str = &input.replace(|c| char::is_ascii_whitespace(&c), "");
+  Ok(b64_decode(input)?.into())
+}
+
+fn op_base64_atob(
+  _: &mut OpState,
+  input: String,
+  _: (),
+) -> Result<String, AnyError> {
+  Ok(String::from_utf8(b64_decode(input)?)?)
+}
+
+fn b64_decode(input: String) -> Result<Vec<u8>, AnyError> {
+  let mut input = input.into_bytes();
+  input.retain(|c| !c.is_ascii_whitespace());
+
   // "If the length of input divides by 4 leaving no remainder, then:
   //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
   //  remove them from input."
-  if input.len() % 4 == 0 {
-    if input.ends_with("==") {
-      input = &input[..input.len() - 2]
-    } else if input.ends_with('=') {
-      input = &input[..input.len() - 1]
-    }
-  }
+  let input = match input.len() % 4 == 0 {
+    true if input.ends_with(b"==") => &input[..input.len() - 2],
+    true if input.ends_with(b"=") => &input[..input.len() - 1],
+    _ => &input,
+  };
 
   // "If the length of input divides by 4 leaving a remainder of 1,
   //  throw an InvalidCharacterError exception and abort these steps."
@@ -170,38 +185,48 @@ fn op_base64_decode(
     );
   }
 
-  if input
-    .chars()
-    .any(|c| c != '+' && c != '/' && !c.is_alphanumeric())
-  {
-    return Err(
+  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
+    .decode_allow_trailing_bits(true);
+  let out = base64::decode_config(&input, cfg).map_err(|err| match err {
+    base64::DecodeError::InvalidByte(_, _) => {
       DomExceptionInvalidCharacterError::new(
         "Failed to decode base64: invalid character",
       )
-      .into(),
-    );
-  }
-
-  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
-    .decode_allow_trailing_bits(true);
-  let out = base64::decode_config(&input, cfg).map_err(|err| {
-    DomExceptionInvalidCharacterError::new(&format!(
+    }
+    _ => DomExceptionInvalidCharacterError::new(&format!(
       "Failed to decode base64: {:?}",
       err
-    ))
+    )),
   })?;
-  Ok(ZeroCopyBuf::from(out))
+
+  Ok(out)
 }
 
 fn op_base64_encode(
-  _state: &mut OpState,
+  _: &mut OpState,
   s: ZeroCopyBuf,
   _: (),
 ) -> Result<String, AnyError> {
+  Ok(b64_encode(&s))
+}
+
+fn op_base64_btoa(
+  _: &mut OpState,
+  s: String,
+  _: (),
+) -> Result<String, AnyError> {
+  if !is_str_latin1(&s) {
+    return Err(DomExceptionInvalidCharacterError::new(
+      "The string to be encoded contains characters outside of the Latin1 range."
+    ).into());
+  }
+  Ok(b64_encode(&s))
+}
+
+fn b64_encode(s: impl AsRef<[u8]>) -> String {
   let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
     .decode_allow_trailing_bits(true);
-  let out = base64::encode_config(&s, cfg);
-  Ok(out)
+  base64::encode_config(s.as_ref(), cfg)
 }
 
 #[derive(Deserialize)]
