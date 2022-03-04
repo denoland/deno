@@ -78,7 +78,7 @@ pub fn maybe<'a, O>(
   move |input| match combinator(input) {
     Ok((input, value)) => Ok((input, Some(value))),
     Err(ParseError::Backtrace) => Ok((input, None)),
-    Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
+    Err(err) => Err(err),
   }
 }
 
@@ -221,11 +221,40 @@ pub fn many_till<'a, O, OCondition>(
           results.push(value);
           input = result_input;
         }
-        Err(ParseError::Failure(e)) => return Err(ParseError::Failure(e)),
         Err(ParseError::Backtrace) => {
           return Ok((input, results));
         }
+        Err(err) => return Err(err),
       }
+    }
+    Ok((input, results))
+  }
+}
+
+/// Keeps consuming a combinator into an array until a condition
+/// is met or backtracing occurs.
+pub fn separated_list<'a, O, OSeparator>(
+  combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
+  separator: impl Fn(&'a str) -> ParseResult<'a, OSeparator>,
+) -> impl Fn(&'a str) -> ParseResult<'a, Vec<O>> {
+  move |mut input| {
+    let mut results = Vec::new();
+    while !input.is_empty() {
+      match combinator(input) {
+        Ok((result_input, value)) => {
+          results.push(value);
+          input = result_input;
+        }
+        Err(ParseError::Backtrace) => {
+          return Ok((input, results));
+        }
+        Err(err) => return Err(err),
+      }
+      input = match separator(input) {
+        Ok((input, _)) => input,
+        Err(ParseError::Backtrace) => break,
+        Err(err) => return Err(err),
+      };
     }
     Ok((input, results))
   }
@@ -264,6 +293,6 @@ fn is_backtrace<O>(result: ParseResult<O>) -> Result<bool, ParseError> {
   match result {
     Ok(_) => Ok(false),
     Err(ParseError::Backtrace) => Ok(true),
-    Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
+    Err(err) => Err(err),
   }
 }

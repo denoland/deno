@@ -13,6 +13,7 @@ use super::combinators::many_till;
 use super::combinators::map;
 use super::combinators::maybe;
 use super::combinators::or;
+use super::combinators::separated_list;
 use super::combinators::skip_whitespace;
 use super::combinators::tag;
 use super::combinators::take_while;
@@ -25,9 +26,14 @@ use super::combinators::ParseResult;
 // https://pubs.opengroup.org/onlinepubs/009604499/utilities/xcu_chap02.html#tag_02_10_02
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Part {
+pub struct SequentialList {
+  pub items: Vec<SequentialItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SequentialItem {
   Command(ShellCommand),
-  List(List),
+  Async(ShellCommand),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -36,10 +42,6 @@ pub enum ListOperator {
   And,
   // ||
   Or,
-  // ;
-  Sequential,
-  // &
-  Async,
 }
 
 impl ListOperator {
@@ -47,30 +49,33 @@ impl ListOperator {
     match self {
       ListOperator::And => "&&",
       ListOperator::Or => "||",
-      ListOperator::Sequential => ";",
-      ListOperator::Async => "&",
     }
   }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct List {
-  pub left: Box<Part>,
-  pub op: ListOperator,
-  pub right: Box<Part>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SequentialList {
-  pub left: Box<Part>,
-  pub op: ListOperator,
-  pub right: Box<Part>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct ShellCommand {
+  pub body: ShellCommandBody,
+  pub next: Option<Box<NextCommand>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShellCommandBody {
+  /// Command like `MY_VAR=5`
+  EnvVar(EnvVar),
+  Command(Command),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Command {
   pub env_vars: Vec<EnvVar>,
   pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NextCommand {
+  pub op: ListOperator,
+  pub command: ShellCommand,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -100,8 +105,11 @@ pub enum RedirectOp {
   Append,
 }
 
-pub fn parse(input: &str) -> Result<Part, AnyError> {
-  fn error_for_input(input: &str, message: &str) -> Result<Part, AnyError> {
+pub fn parse(input: &str) -> Result<SequentialList, AnyError> {
+  fn error_for_input(
+    input: &str,
+    message: &str,
+  ) -> Result<SequentialList, AnyError> {
     bail!(
       "{}\n  {}\n  ~",
       message,
@@ -109,7 +117,7 @@ pub fn parse(input: &str) -> Result<Part, AnyError> {
     )
   }
 
-  fn handle_trailing_input(input: &str) -> Result<Part, AnyError> {
+  fn handle_trailing_input(input: &str) -> Result<SequentialList, AnyError> {
     if parse_redirect(input).is_ok() {
       error_for_input(input, "Redirects are currently not supported.")
     } else if parse_pipeline_op(input).is_ok() {
@@ -122,92 +130,85 @@ pub fn parse(input: &str) -> Result<Part, AnyError> {
   match parse_sequential_list(input) {
     Ok((input, expr)) => {
       if input.trim().is_empty() {
-        Ok(expr)
+        if expr.items.is_empty() {
+          bail!("Empty command.")
+        } else {
+          Ok(expr)
+        }
       } else {
         handle_trailing_input(input)
       }
     }
-    Err(ParseError::Backtrace) => {
-      if input.trim().is_empty() {
-        bail!("Empty command.")
-      } else {
-        handle_trailing_input(input)
-      }
-    }
+    Err(ParseError::Backtrace) => handle_trailing_input(input),
     Err(ParseError::Failure(e)) => error_for_input(e.input, &e.message),
   }
 }
 
-fn parse_async_list(input: &str) -> ParseResult<Part> {
-  // todo(THIS PR): this is wrong. Actually async parts just need an ending `&`
-  // and they are lower precedence then sequential lists
-  parse_generic_list(
-    parse_sequential_list,
-    parse_async_list_op,
-    parse_async_list,
-  )(input)
+fn parse_sequential_list(input: &str) -> ParseResult<SequentialList> {
+  let (input, items) = separated_list(
+    terminated(parse_sequential_item, skip_whitespace),
+    terminated(
+      skip_whitespace,
+      or(parse_sequential_list_op, parse_async_list_op),
+    ),
+  )(input)?;
+  Ok((input, SequentialList { items }))
 }
 
-fn parse_sequential_list(input: &str) -> ParseResult<Part> {
-  parse_generic_list(
-    parse_boolean_list,
-    parse_sequential_list_op,
-    parse_sequential_list,
-  )(input)
-}
-
-fn parse_boolean_list(input: &str) -> ParseResult<Part> {
-  parse_generic_list(
-    map(parse_command, Part::Command),
-    parse_boolean_list_op,
-    parse_boolean_list,
-  )(input)
-}
-
-fn parse_generic_list<'a>(
-  parse_left_part: impl Fn(&'a str) -> ParseResult<'a, Part>,
-  parse_op: impl Fn(&'a str) -> ParseResult<'a, ListOperator>,
-  parse_right_part: impl Fn(&'a str) -> ParseResult<'a, Part>,
-) -> impl Fn(&'a str) -> ParseResult<'a, Part> {
-  move |input| {
-    let (input, left_part) = parse_left_part(input)?;
-
-    match parse_op(input) {
-      Ok((input, op)) => {
-        let (input, right_part) = assert_exists(
-          &parse_right_part,
-          "Expected command following operator.",
-        )(input)?;
-        Ok((
-          input,
-          Part::List(List {
-            left: Box::new(left_part),
-            op,
-            right: Box::new(right_part),
-          }),
-        ))
-      }
-      Err(ParseError::Backtrace) => Ok((input, left_part)),
-      Err(ParseError::Failure(err)) => Err(ParseError::Failure(err)),
-    }
-  }
+fn parse_sequential_item(input: &str) -> ParseResult<SequentialItem> {
+  let (input, command) = parse_command(input)?;
+  Ok((
+    input,
+    if maybe(parse_async_list_op)(input)?.1.is_some() {
+      SequentialItem::Async(command)
+    } else {
+      SequentialItem::Command(command)
+    },
+  ))
 }
 
 fn parse_command(input: &str) -> ParseResult<ShellCommand> {
-  let (input, env_vars) = parse_env_vars(input)?;
+  let env_vars_input = input;
+  let (input, mut env_vars) = parse_env_vars(input)?;
   let (input, args) = parse_command_args(input)?;
-  if args.is_empty() {
-    ParseError::backtrace()
+  let body = if args.is_empty() {
+    if env_vars.is_empty() {
+      return ParseError::backtrace();
+    }
+    if env_vars.len() > 1 {
+      return ParseError::fail(env_vars_input, "Cannot set multiple environment variables when there is no following command.");
+    } else {
+      ShellCommandBody::EnvVar(env_vars.remove(0))
+    }
   } else {
-    Ok((input, ShellCommand { env_vars, args }))
-  }
+    ShellCommandBody::Command(Command { env_vars, args })
+  };
+  let (input, next_command) = match parse_boolean_list_op(input) {
+    Ok((input, op)) => {
+      let (input, command) = assert_exists(
+        &parse_command,
+        "Expected command following operator.",
+      )(input)?;
+      (input, Some(Box::new(NextCommand { op, command })))
+    }
+    Err(ParseError::Backtrace) => (input, None),
+    Err(err) => return Err(err),
+  };
+
+  Ok((
+    input,
+    ShellCommand {
+      body,
+      next: next_command,
+    },
+  ))
 }
 
 fn parse_command_args(input: &str) -> ParseResult<Vec<String>> {
   many_till(
     terminated(parse_shell_arg, assert_whitespace_or_end_and_skip),
     or(
-      map(parse_list_op, |_| ()),
+      parse_list_op,
       or(map(parse_redirect, |_| ()), parse_pipeline_op),
     ),
   )(input)
@@ -223,37 +224,39 @@ fn parse_shell_arg(input: &str) -> ParseResult<String> {
   }
 }
 
-fn parse_list_op(input: &str) -> ParseResult<ListOperator> {
+fn parse_list_op(input: &str) -> ParseResult<()> {
   or(
-    parse_boolean_list_op,
-    or(parse_sequential_list_op, parse_async_list_op),
+    map(parse_boolean_list_op, |_| ()),
+    map(or(parse_sequential_list_op, parse_async_list_op), |_| ()),
   )(input)
 }
 
 fn parse_boolean_list_op(input: &str) -> ParseResult<ListOperator> {
   or(
-    parse_single_list_op(ListOperator::And),
-    parse_single_list_op(ListOperator::Or),
+    map(parse_op_str(ListOperator::And.as_str()), |_| {
+      ListOperator::And
+    }),
+    map(parse_op_str(ListOperator::Or.as_str()), |_| {
+      ListOperator::Or
+    }),
   )(input)
 }
 
-fn parse_sequential_list_op(input: &str) -> ParseResult<ListOperator> {
-  parse_single_list_op(ListOperator::Sequential)(input)
+fn parse_sequential_list_op(input: &str) -> ParseResult<&str> {
+  parse_op_str(";")(input)
 }
 
-fn parse_async_list_op(input: &str) -> ParseResult<ListOperator> {
-  parse_single_list_op(ListOperator::Async)(input)
+fn parse_async_list_op(input: &str) -> ParseResult<&str> {
+  parse_op_str("&")(input)
 }
 
-fn parse_single_list_op<'a>(
-  operator: ListOperator,
-) -> impl Fn(&'a str) -> ParseResult<'a, ListOperator> {
-  map(
-    terminated(
-      tag(operator.as_str()),
-      terminated(if_not(special_char), skip_whitespace),
-    ),
-    move |_| operator,
+fn parse_op_str<'a>(
+  operator: &str,
+) -> impl Fn(&'a str) -> ParseResult<'a, &'a str> {
+  let operator = operator.to_string();
+  terminated(
+    tag(operator),
+    terminated(if_not(special_char), skip_whitespace),
   )
 }
 
@@ -477,78 +480,129 @@ mod test {
   }
 
   #[test]
-  fn test_parse_async_list() {
+  fn test_sequential_list() {
     run_test(
-      parse_async_list,
-      "Name=Value OtherVar=Other command arg1 || command2 arg12 arg13 ; command3 && command4 & command5",
-      Ok(Part::List(List {
-        left: Box::new(Part::List(List {
-          left: Box::new(Part::List(List {
-            left: Box::new(Part::Command(ShellCommand {
+      parse_sequential_list,
+      "Name=Value OtherVar=Other command arg1 || command2 arg12 arg13 ; command3 && command4 & command5 ; ENV=2 && command6",
+      Ok(SequentialList {
+        items: vec![
+          SequentialItem::Command(ShellCommand {
+            body: ShellCommandBody::Command(Command {
               env_vars: vec![
                 EnvVar::new("Name".to_string(), "Value".to_string()),
                 EnvVar::new("OtherVar".to_string(), "Other".to_string()),
               ],
               args: vec!["command".to_string(), "arg1".to_string()],
+            }),
+            next: Some(Box::new(NextCommand {
+              op: ListOperator::Or,
+              command: ShellCommand {
+                body: ShellCommandBody::Command(Command {
+                  env_vars: vec![],
+                  args: vec![
+                    "command2".to_string(),
+                    "arg12".to_string(),
+                    "arg13".to_string(),
+                  ],
+                }),
+                next: None,
+              }
             })),
-            op: ListOperator::Or,
-            right: Box::new(Part::Command(ShellCommand {
-              env_vars: vec![],
-              args: vec![
-                "command2".to_string(),
-                "arg12".to_string(),
-                "arg13".to_string(),
-              ],
-            })),
-          })),
-          op: ListOperator::Sequential,
-          right: Box::new(Part::List(List {
-            left: Box::new(Part::Command(ShellCommand {
+          }),
+          SequentialItem::Async(ShellCommand {
+            body: ShellCommandBody::Command(Command {
               env_vars: vec![],
               args: vec!["command3".to_string()],
+            }),
+            next: Some(Box::new(NextCommand {
+              op: ListOperator::And,
+              command: ShellCommand {
+                body: ShellCommandBody::Command(Command {
+                  env_vars: vec![],
+                  args: vec!["command4".to_string()],
+                }),
+                next: None,
+              }
             })),
-            op: ListOperator::And,
-            right: Box::new(Part::Command(ShellCommand {
+          }),
+          SequentialItem::Command(ShellCommand {
+            body: ShellCommandBody::Command(Command {
               env_vars: vec![],
-              args: vec!["command4".to_string()],
+              args: vec!["command5".to_string()],
+            }),
+            next: None,
+          }),
+          SequentialItem::Command(ShellCommand {
+            body: ShellCommandBody::EnvVar(EnvVar::new("ENV".to_string(), "2".to_string())),
+            next: Some(Box::new(NextCommand {
+              op: ListOperator::And,
+              command: ShellCommand {
+                body: ShellCommandBody::Command(Command {
+                  env_vars: vec![],
+                  args: vec!["command6".to_string()],
+                }),
+                next: None,
+              }
             })),
-          }))
-        })),
-        op: ListOperator::Async,
-        right: Box::new(Part::Command(ShellCommand {
-          env_vars: vec![],
-          args: vec!["command5".to_string()],
-        })),
-      })),
+          }),
+        ],
+      })
     );
 
     run_test(
-      parse_async_list,
+      parse_sequential_list,
       "command1 ; command2 ; A='b' command3",
-      Ok(Part::List(List {
-        left: Box::new(Part::Command(ShellCommand {
-          env_vars: vec![],
-          args: vec!["command1".to_string()],
-        })),
-        op: ListOperator::Sequential,
-        right: Box::new(Part::List(List {
-          left: Box::new(Part::Command(ShellCommand {
-            env_vars: vec![],
-            args: vec!["command2".to_string()],
-          })),
-          op: ListOperator::Sequential,
-          right: Box::new(Part::Command(ShellCommand {
-            env_vars: vec![EnvVar::new("A".to_string(), "b".to_string())],
-            args: vec!["command3".to_string()],
-          })),
-        })),
-      })),
+      Ok(SequentialList {
+        items: vec![
+          SequentialItem::Command(ShellCommand {
+            body: ShellCommandBody::Command(Command {
+              env_vars: vec![],
+              args: vec!["command1".to_string()],
+            }),
+            next: None,
+          }),
+          SequentialItem::Command(ShellCommand {
+            body: ShellCommandBody::Command(Command {
+              env_vars: vec![],
+              args: vec!["command2".to_string()],
+            }),
+            next: None,
+          }),
+          SequentialItem::Command(ShellCommand {
+            body: ShellCommandBody::Command(Command {
+              env_vars: vec![EnvVar::new("A".to_string(), "b".to_string())],
+              args: vec!["command3".to_string()],
+            }),
+            next: None,
+          }),
+        ],
+      }),
     );
 
     run_test(
-      parse_async_list,
+      parse_sequential_list,
       "test &&",
       Err("Expected command following operator."),
+    );
+
+    run_test(
+      parse_sequential_list,
+      "command &",
+      Ok(SequentialList {
+        items: vec![SequentialItem::Async(ShellCommand {
+          body: ShellCommandBody::Command(Command {
+            args: vec!["command".to_string()],
+            env_vars: vec![],
+          }),
+          next: None,
+        })],
+      }),
+    );
+
+    run_test(
+      parse_sequential_list,
+      "ENV=1 ENV2=3 && test",
+      Err("Cannot set multiple environment variables when there is no following command."),
     );
   }
 
