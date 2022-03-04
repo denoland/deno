@@ -1499,7 +1499,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "http server doesn't compresses body when no-transform is set",
+  name: "http server doesn't compress body when no-transform is set",
   permissions: { net: true },
   async fn() {
     const hostname = "localhost";
