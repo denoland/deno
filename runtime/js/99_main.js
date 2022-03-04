@@ -574,13 +574,14 @@ delete Object.prototype.__proto__;
       args,
       location: locationHref,
       noColor,
+      isTty,
       pid,
       ppid,
       unstableFlag,
       cpuCount,
     } = runtimeOptions;
 
-    colors.setNoColor(noColor);
+    colors.setNoColor(noColor || !isTty);
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
@@ -666,12 +667,13 @@ delete Object.prototype.__proto__;
       unstableFlag,
       pid,
       noColor,
+      isTty,
       args,
       location: locationHref,
       cpuCount,
     } = runtimeOptions;
 
-    colors.setNoColor(noColor);
+    colors.setNoColor(noColor || !isTty);
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();

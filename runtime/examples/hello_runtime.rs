@@ -35,6 +35,7 @@ async fn main() -> Result<(), AnyError> {
       enable_testing_features: false,
       location: None,
       no_color: false,
+      is_tty: false,
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       unstable: false,

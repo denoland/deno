@@ -1,6 +1,6 @@
 [
   {
-    "title": "Import 'abc' from module \"./file00.ts\"",
+    "title": "Add import from \"./file00.ts\"",
     "kind": "quickfix",
     "diagnostics": [
       {
@@ -120,7 +120,7 @@
     }
   },
   {
-    "title": "Import 'def' from module \"./file00.ts\"",
+    "title": "Add import from \"./file00.ts\"",
     "kind": "quickfix",
     "diagnostics": [
       {
