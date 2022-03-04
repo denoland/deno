@@ -1,5 +1,9 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 
+# Patch `hexf-parse` to avoid dependency on GLIBC expf2 
+# due to LLVM optimizations on `2.0.powf(exp)`.
+#
+# TODO(@littledivy): Remove when all `wgpu-hal -> naga` have this fix.
 [patch.crates-io]
 hexf-parse = { git = "https://github.com/littledivy/hexf", branch = "use_libm" }

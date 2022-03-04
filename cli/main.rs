@@ -1430,6 +1430,33 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+// Rust libstd is built against a GLIBC that has copy_file_range.
+// This is a workaround to support versions of GLIBC before 2.27.
+//
+// On versions of GLIBC before 2.27, we must invoke copy_file_range()
+// using syscall(2)
+#[no_mangle]
+pub extern "C" fn copy_file_range(
+  fd_in: i32,
+  off_in: *mut i64,
+  fd_out: i32,
+  off_out: *mut i64,
+  len: usize,
+  flags: i32,
+) -> i64 {
+  unsafe {
+    libc::syscall(
+      libc::SYS_copy_file_range,
+      fd_in,
+      off_in,
+      fd_out,
+      off_out,
+      len,
+      flags,
+    )
+  }
+}
+
 pub fn main() {
   setup_panic_hook();
 
