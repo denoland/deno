@@ -769,6 +769,7 @@ dependencies = [
  "import_map",
  "jsonc-parser",
  "libc",
+ "libm",
  "log",
  "lspower",
  "nix",

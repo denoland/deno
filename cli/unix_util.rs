@@ -69,3 +69,9 @@ pub unsafe extern "C" fn copy_file_range(
     flags,
   )
 }
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn log2f(x: f32) -> f32 {
+  libm::log2f(x)
+}
