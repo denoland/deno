@@ -1437,6 +1437,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 ///
 /// On versions of GLIBC before 2.27, we must invoke copy_file_range()
 /// using syscall(2)
+#[cfg(target_os = "linux")]
 #[no_mangle]
 pub unsafe extern "C" fn copy_file_range(
   fd_in: i32,
