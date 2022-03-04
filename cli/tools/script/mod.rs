@@ -9,12 +9,13 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use std::collections::HashMap;
-use std::process::Command;
 use std::sync::Arc;
 
 // todo(THIS PR): remove these attributes before merge
 #[allow(dead_code)]
 mod combinators;
+#[allow(dead_code)]
+mod interpreter;
 #[allow(dead_code)]
 mod shell_parser;
 
@@ -70,29 +71,18 @@ pub async fn execute_script(
   let maybe_script = scripts_config.get(&script_name);
 
   if let Some(script) = maybe_script {
-    let (shell_name, shell_flag) = if cfg!(windows) {
-      // TODO: allow to use PowerShell?
-      ("cmd", "/C")
-    } else {
-      // TODO: allow to use other shells?
-      ("sh", "-c")
-    };
-    let shell_arg = format!("{} {}", script, flags.argv.join(" "));
-    eprintln!(
-      "{} {} {}",
-      colors::green("Script"),
-      colors::cyan(&script_name),
-      shell_arg
-    );
-
-    let status = Command::new(shell_name)
-      .arg(shell_flag)
-      .arg(shell_arg)
-      .current_dir(cwd)
-      .status()
-      .with_context(|| format!("Failed to execute script: {}", script_name))?;
-    // TODO: Is unwrapping to 1 ok here?
-    Ok(status.code().unwrap_or(1))
+    let seq_list = shell_parser::parse(script)
+      .with_context(|| format!("Error parsing script '{}'.", script_name))?;
+    let env_vars = std::env::vars().collect::<HashMap<String, String>>();
+    let additional_cli_args = Vec::new(); // todo
+    let exit_code = interpreter::execute(
+      seq_list,
+      env_vars,
+      cwd.to_path_buf(),
+      additional_cli_args,
+    )
+    .await?;
+    Ok(exit_code)
   } else {
     eprintln!("Script not found: {}", script_name);
     print_available_scripts(scripts_config);
