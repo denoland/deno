@@ -148,7 +148,7 @@ fn execute_command(
         } else if command.args[0] == "sleep" && command.args.len() == 2 {
           match command.args[1].parse::<f64>() {
             Ok(value_s) => {
-              let ms = (value_s / 1000f64) as u64;
+              let ms = (value_s * 1000f64) as u64;
               tokio::time::sleep(Duration::from_millis(ms)).await;
               Ok(0)
             }
