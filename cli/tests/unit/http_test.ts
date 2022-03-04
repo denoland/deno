@@ -1553,7 +1553,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "http server doesn't compresses body when content-range is set",
+  name: "http server doesn't compress body when content-range is set",
   permissions: { net: true },
   async fn() {
     const hostname = "localhost";
