@@ -27,7 +27,7 @@ itest!(ignore {
 });
 
 itest!(ignore_permissions {
-  args: "bench --unstable --unstable bench/ignore_permissions.ts",
+  args: "bench --unstable bench/ignore_permissions.ts",
   exit_code: 0,
   output: "bench/ignore_permissions.out",
 });
@@ -75,13 +75,13 @@ itest!(no_check {
 });
 
 itest!(allow_all {
-  args: "bench --unstable --unstable --allow-all bench/allow_all.ts",
+  args: "bench  --unstable --allow-all bench/allow_all.ts",
   exit_code: 0,
   output: "bench/allow_all.out",
 });
 
 itest!(allow_none {
-  args: "bench --unstable --unstable bench/allow_none.ts",
+  args: "bench --unstable bench/allow_none.ts",
   exit_code: 1,
   output: "bench/allow_none.out",
 });

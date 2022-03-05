@@ -1,64 +1,64 @@
 Check [WILDCARD]/bench/fail.ts
 running 10 benches from [WILDCARD]/bench/fail.ts
-bench bench0 ... FAILED ([WILDCARD])
-bench bench1 ... FAILED ([WILDCARD])
-bench bench2 ... FAILED ([WILDCARD])
-bench bench3 ... FAILED ([WILDCARD])
-bench bench4 ... FAILED ([WILDCARD])
-bench bench5 ... FAILED ([WILDCARD])
-bench bench6 ... FAILED ([WILDCARD])
-bench bench7 ... FAILED ([WILDCARD])
-bench bench8 ... FAILED ([WILDCARD])
-bench bench9 ... FAILED ([WILDCARD])
+bench bench0 ... 1000 iterations FAILED ([WILDCARD])
+bench bench1 ... 1000 iterations FAILED ([WILDCARD])
+bench bench2 ... 1000 iterations FAILED ([WILDCARD])
+bench bench3 ... 1000 iterations FAILED ([WILDCARD])
+bench bench4 ... 1000 iterations FAILED ([WILDCARD])
+bench bench5 ... 1000 iterations FAILED ([WILDCARD])
+bench bench6 ... 1000 iterations FAILED ([WILDCARD])
+bench bench7 ... 1000 iterations FAILED ([WILDCARD])
+bench bench8 ... 1000 iterations FAILED ([WILDCARD])
+bench bench9 ... 1000 iterations FAILED ([WILDCARD])
 
 failures:
 
-bench 0
+bench0
 Error
     at [WILDCARD]/bench/fail.ts:2:9
     at [WILDCARD]
 
-bench 1
+bench1
 Error
     at [WILDCARD]/bench/fail.ts:5:9
     at [WILDCARD]
 
-bench 2
+bench2
 Error
     at [WILDCARD]/bench/fail.ts:8:9
     at [WILDCARD]
 
-bench 3
+bench3
 Error
     at [WILDCARD]/bench/fail.ts:11:9
     at [WILDCARD]
 
-bench 4
+bench4
 Error
     at [WILDCARD]/bench/fail.ts:14:9
     at [WILDCARD]
 
-bench 5
+bench5
 Error
     at [WILDCARD]/bench/fail.ts:17:9
     at [WILDCARD]
 
-bench 6
+bench6
 Error
     at [WILDCARD]/bench/fail.ts:20:9
     at [WILDCARD]
 
-bench 7
+bench7
 Error
     at [WILDCARD]/bench/fail.ts:23:9
     at [WILDCARD]
 
-bench 8
+bench8
 Error
     at [WILDCARD]/bench/fail.ts:26:9
     at [WILDCARD]
 
-bench 9
+bench9
 Error
     at [WILDCARD]/bench/fail.ts:29:9
     at [WILDCARD]

@@ -1,12 +1,12 @@
 [WILDCARD]
 running 7 benches from [WILDCARD]
-bench read ... FAILED [WILDCARD]
-bench write ... FAILED [WILDCARD]
-bench net ... FAILED [WILDCARD]
-bench env ... FAILED [WILDCARD]
-bench run ... FAILED [WILDCARD]
-bench ffi ... FAILED [WILDCARD]
-bench hrtime ... FAILED [WILDCARD]
+bench read ... 1000 iterations FAILED [WILDCARD]
+bench write ... 1000 iterations FAILED [WILDCARD]
+bench net ... 1000 iterations FAILED [WILDCARD]
+bench env ... 1000 iterations FAILED [WILDCARD]
+bench run ... 1000 iterations FAILED [WILDCARD]
+bench ffi ... 1000 iterations FAILED [WILDCARD]
+bench hrtime ... 1000 iterations FAILED [WILDCARD]
 
 failures:
 

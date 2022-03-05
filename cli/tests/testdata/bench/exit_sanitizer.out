@@ -1,8 +1,8 @@
 Check [WILDCARD]/bench/exit_sanitizer.ts
 running 3 benches from [WILDCARD]/bench/exit_sanitizer.ts
-bench exit(0) ... FAILED ([WILDCARD])
-bench exit(1) ... FAILED ([WILDCARD])
-bench exit(2) ... FAILED ([WILDCARD])
+bench exit(0) ... 1000 iterations FAILED ([WILDCARD])
+bench exit(1) ... 1000 iterations FAILED ([WILDCARD])
+bench exit(2) ... 1000 iterations FAILED ([WILDCARD])
 
 failures:
 
@@ -33,3 +33,4 @@ failures:
 bench result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
 error: Bench failed
+TODO: fixme, should be "Benchmark attempted to exit"
