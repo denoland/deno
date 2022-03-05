@@ -35,12 +35,12 @@ impl ShellCommand {
   }
 
   fn with_stdout_text(stdin: ShellPipe, text: String) -> Self {
-    let (mut tx, stdout) = ShellPipe::channel();
+    let (tx, stdout) = ShellPipe::channel();
     Self {
       stdout,
       wait: async move {
         stdin.drain().await;
-        let _ = tx.send(text.into_bytes()).await;
+        let _ = tx.send(text.into_bytes());
         drop(tx); // close stdout
         ExecuteResult::Continue(0, Vec::new())
       }
@@ -175,7 +175,7 @@ pub fn get_spawnable_command(
     }
 
     let mut child_stdout = child.stdout.take().unwrap();
-    let (mut stdout_tx, stdout) = ShellPipe::channel();
+    let (stdout_tx, stdout) = ShellPipe::channel();
 
     Ok(ShellCommand {
       stdout,
@@ -196,7 +196,7 @@ pub fn get_spawnable_command(
                   Ok(size) => size,
                   Err(_) => break,
                 };
-                if stdout_tx.send(buffer[..size].to_vec()).await.is_err() {
+                if stdout_tx.send(buffer[..size].to_vec()).is_err() {
                   break;
                 }
               }

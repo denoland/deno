@@ -1,44 +1,11 @@
 use deno_core::error::AnyError;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 
-/// This sender and receiver structs cause the sender to wait on the
-/// receiver to signal that it's ready before sending messages across
-/// the channel.
-pub struct ShellPipeReceiver {
-  is_ready: bool,
-  ready: Sender<()>,
-  receiver: Receiver<Vec<u8>>,
-}
-
-impl ShellPipeReceiver {
-  pub async fn recv(&mut self) -> Option<Vec<u8>> {
-    if !self.is_ready {
-      self.ready.send(()).await.unwrap();
-      self.is_ready = true;
-    }
-    self.receiver.recv().await
-  }
-}
-
-pub struct ShellPipeSender {
-  is_ready: bool,
-  ready: Receiver<()>,
-  sender: Sender<Vec<u8>>,
-}
-
-impl ShellPipeSender {
-  pub async fn send(&mut self, value: Vec<u8>) -> Result<(), AnyError> {
-    if !self.is_ready {
-      let _ = self.ready.recv().await;
-      self.is_ready = true;
-    }
-    self.sender.send(value).await?;
-    Ok(())
-  }
-}
+pub type ShellPipeReceiver = UnboundedReceiver<Vec<u8>>;
+pub type ShellPipeSender = UnboundedSender<Vec<u8>>;
 
 /// Used to communicate between commands.
 pub enum ShellPipe {
@@ -50,20 +17,8 @@ pub enum ShellPipe {
 
 impl ShellPipe {
   pub fn channel() -> (ShellPipeSender, ShellPipe) {
-    let (ready_tx, ready_rx) = tokio::sync::mpsc::channel(1);
-    let (data_tx, data_rx) = tokio::sync::mpsc::channel(1);
-    (
-      ShellPipeSender {
-        is_ready: false,
-        ready: ready_rx,
-        sender: data_tx,
-      },
-      ShellPipe::Channel(ShellPipeReceiver {
-        is_ready: false,
-        ready: ready_tx,
-        receiver: data_rx,
-      }),
-    )
+    let (data_tx, data_rx) = tokio::sync::mpsc::unbounded_channel();
+    (data_tx, ShellPipe::Channel(data_rx))
   }
 
   /// Wait on completion and drain the output.
