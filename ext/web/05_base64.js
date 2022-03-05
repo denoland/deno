@@ -12,6 +12,7 @@
   const core = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const { TypeError } = window.__bootstrap.primordials;
 
   /**
    * @param {string} data
