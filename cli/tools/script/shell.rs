@@ -1,13 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-
-use crate::fs_util;
 
 use super::command::get_spawnable_command;
 use super::command::CommandPipe;
@@ -46,9 +43,14 @@ impl EnvState {
   }
 }
 
-enum EnvChange {
+pub enum EnvChange {
   SetEnvVar(EnvVar),
   Cd(PathBuf),
+}
+
+pub enum ExecuteResult {
+  Exit,
+  Continue(i32, Vec<EnvChange>),
 }
 
 pub async fn execute(
@@ -70,8 +72,8 @@ pub async fn execute(
       }));
     } else {
       match execute_sequence(item.sequence, state.clone()).await {
-        ExecuteCommandResult::Exit => return Ok(0),
-        ExecuteCommandResult::Continue(exit_code, changes) => {
+        ExecuteResult::Exit => return Ok(0),
+        ExecuteResult::Continue(exit_code, changes) => {
           state.apply_changes(&changes);
           // use the final sequential item's exit code
           final_exit_code = exit_code;
@@ -86,76 +88,39 @@ pub async fn execute(
   Ok(final_exit_code)
 }
 
-enum ExecuteCommandResult {
-  Exit,
-  Continue(i32, Vec<EnvChange>),
-}
-
 // todo(THIS PR): clean up this function
 fn execute_sequence(
   sequence: Sequence,
   mut state: EnvState,
-) -> BoxFuture<'static, ExecuteCommandResult> {
+) -> BoxFuture<'static, ExecuteResult> {
   // recursive async functions require boxing
   async move {
-    let mut changes = Vec::new();
     match sequence {
       Sequence::EnvVar(var) => {
-        state.apply_env_var(&var);
-        changes.push(EnvChange::SetEnvVar(var));
-        ExecuteCommandResult::Continue(0, changes)
+        ExecuteResult::Continue(0, vec![EnvChange::SetEnvVar(var)])
       }
       Sequence::Command(command) => {
-        let command_result = if command.args[0] == "cd" {
-          if command.args.len() != 2 {
-            Err(anyhow!("cd is expected to have 1 argument."))
-          } else {
-            // affects the parent state
-            let new_dir = state.cwd.join(&command.args[1]);
-            match fs_util::canonicalize_path(&new_dir) {
-              Ok(new_dir) => {
-                state.cwd = new_dir.clone();
-                changes.push(EnvChange::Cd(new_dir));
-                Ok(0)
-              }
-              Err(err) => Err(anyhow!(
-                "Could not cd to {}.\n\n{}",
-                new_dir.display(),
-                err
-              )),
-            }
-          }
-        } else if command.args[0] == "exit" {
-          if command.args.len() != 1 {
-            Err(anyhow!("exit is expected to have no arguments."))
-          } else {
-            return ExecuteCommandResult::Exit;
-          }
-        } else {
-          match get_spawnable_command(
-            &command,
-            &state,
-            CommandPipe::Inherit,
-            false,
-          ) {
-            Ok(command) => command.spawn.await,
-            Err(err) => Err(err),
-          }
-        };
-        match command_result {
-          Ok(code) => ExecuteCommandResult::Continue(code, changes),
+        match get_spawnable_command(
+          &command,
+          &state,
+          CommandPipe::Inherit,
+          false,
+        ) {
+          Ok(command) => command.spawn.await,
           Err(err) => {
             eprintln!("{}", err);
-            ExecuteCommandResult::Continue(1, changes)
+            ExecuteResult::Continue(1, Vec::new())
           }
         }
       }
       Sequence::BooleanList(list) => {
         // todo(THIS PR): clean this up
+        let mut changes = vec![];
         let first_command = execute_sequence(list.current, state.clone()).await;
         let exit_code = match first_command {
-          ExecuteCommandResult::Exit => return ExecuteCommandResult::Exit,
-          ExecuteCommandResult::Continue(exit_code, sub_changes) => {
+          ExecuteResult::Exit => return ExecuteResult::Exit,
+          ExecuteResult::Continue(exit_code, sub_changes) => {
+            state.apply_changes(&sub_changes);
             changes.extend(sub_changes);
             exit_code
           }
@@ -179,14 +144,14 @@ fn execute_sequence(
         };
         if let Some(next) = next {
           match execute_sequence(next, state.clone()).await {
-            ExecuteCommandResult::Exit => ExecuteCommandResult::Exit,
-            ExecuteCommandResult::Continue(exit_code, sub_changes) => {
+            ExecuteResult::Exit => ExecuteResult::Exit,
+            ExecuteResult::Continue(exit_code, sub_changes) => {
               changes.extend(sub_changes);
-              ExecuteCommandResult::Continue(exit_code, changes)
+              ExecuteResult::Continue(exit_code, changes)
             }
           }
         } else {
-          ExecuteCommandResult::Continue(exit_code, changes)
+          ExecuteResult::Continue(exit_code, changes)
         }
       }
       Sequence::Pipeline(_) => todo!(),

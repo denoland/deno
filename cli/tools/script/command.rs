@@ -2,14 +2,17 @@ use std::io::Write;
 use std::process::Stdio;
 use std::time::Duration;
 
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::ChildStdin;
 
+use crate::fs_util;
+
+use super::shell::EnvChange;
 use super::shell::EnvState;
+use super::shell::ExecuteResult;
 use super::shell_parser::Command;
 
 pub enum CommandPipe {
@@ -35,14 +38,15 @@ impl CommandPipe {
 
 pub struct SpawnableCommand {
   pub stdin: CommandPipe,
-  pub spawn: BoxFuture<'static, Result<i32, AnyError>>,
+  pub spawn: BoxFuture<'static, ExecuteResult>,
 }
 
 impl SpawnableCommand {
   fn from_exit_code(exit_code: i32) -> Self {
     Self {
       stdin: CommandPipe::Null,
-      spawn: async move { Ok(exit_code) }.boxed(),
+      spawn: async move { ExecuteResult::Continue(exit_code, Vec::new()) }
+        .boxed(),
     }
   }
 
@@ -50,8 +54,12 @@ impl SpawnableCommand {
     Self {
       stdin: CommandPipe::Null,
       spawn: async move {
-        stdout.write_text(text).await?;
-        Ok(0)
+        if let Err(err) = stdout.write_text(text).await {
+          eprintln!("Error outputting to stdout: {}", err);
+          ExecuteResult::Continue(1, Vec::new())
+        } else {
+          ExecuteResult::Continue(0, Vec::new())
+        }
       }
       .boxed(),
     }
@@ -64,34 +72,78 @@ pub fn get_spawnable_command(
   stdout: CommandPipe,
   take_stdin: bool,
 ) -> Result<SpawnableCommand, AnyError> {
-  if matches!(command.args[0].as_str(), "exit" | "cd") {
-    // will only get here in a pipeline and in a pipeline these commands
-    // do nothing other than returning a `0` exit code
-    Ok(SpawnableCommand::from_exit_code(0))
-  } else if command.args[0] == "pwd" && command.args.len() == 1 {
+  if command.args[0] == "cd" {
+    let args = command.args.clone();
+    let cwd = state.cwd.clone();
+    Ok(SpawnableCommand {
+      stdin: CommandPipe::Null,
+      spawn: async move {
+        if args.len() != 2 {
+          eprintln!("cd is expected to have 1 argument.");
+          ExecuteResult::Continue(1, Vec::new())
+        } else {
+          // affects the parent state
+          let new_dir = cwd.join(&args[1]);
+          match fs_util::canonicalize_path(&new_dir) {
+            Ok(new_dir) => {
+              ExecuteResult::Continue(0, vec![EnvChange::Cd(new_dir)])
+            }
+            Err(err) => {
+              eprintln!("Could not cd to {}.\n\n{}", new_dir.display(), err);
+              ExecuteResult::Continue(1, Vec::new())
+            }
+          }
+        }
+      }
+      .boxed(),
+    })
+  } else if command.args[0] == "exit" {
+    let args = command.args.clone();
+    Ok(SpawnableCommand {
+      stdin: CommandPipe::Null,
+      spawn: async move {
+        if args.len() != 1 {
+          eprintln!("exit had too many arguments.");
+          ExecuteResult::Continue(1, Vec::new())
+        } else {
+          ExecuteResult::Exit
+        }
+      }
+      .boxed(),
+    })
+  } else if command.args[0] == "pwd" {
+    // ignores additional arguments
     Ok(SpawnableCommand::with_stdout_text(
       stdout,
       format!("{}\n", state.cwd.display()),
     ))
-  } else if command.args[0] == "true" && command.args.len() == 1 {
+  } else if command.args[0] == "true" {
+    // ignores additional arguments
     Ok(SpawnableCommand::from_exit_code(0))
-  } else if command.args[0] == "false" && command.args.len() == 1 {
+  } else if command.args[0] == "false" {
+    // ignores additional arguments
     Ok(SpawnableCommand::from_exit_code(1))
-  } else if command.args[0] == "sleep" && command.args.len() == 2 {
-    let sleep_time = command.args[1].clone();
+  } else if command.args[0] == "sleep" {
+    let args = command.args.clone();
     Ok(SpawnableCommand {
       stdin: CommandPipe::Null,
       spawn: async move {
-        match sleep_time.parse::<f64>() {
-          Ok(value_s) => {
-            let ms = (value_s * 1000f64) as u64;
-            tokio::time::sleep(Duration::from_millis(ms)).await;
-            Ok(0)
-          }
-          Err(err) => {
-            Err(anyhow!("Error parsing sleep argument to number: {}", err))
+        // the time to sleep is the sum of all the arguments
+        let mut total_time_ms = 0;
+        for arg in args.iter().skip(1) {
+          match arg.parse::<f64>() {
+            Ok(value_s) => {
+              let ms = (value_s * 1000f64) as u64;
+              total_time_ms += ms;
+            }
+            Err(err) => {
+              eprintln!("Error parsing sleep argument to number: {}", err);
+              return ExecuteResult::Continue(1, Vec::new());
+            }
           }
         }
+        tokio::time::sleep(Duration::from_millis(total_time_ms)).await;
+        ExecuteResult::Continue(0, Vec::new())
       }
       .boxed(),
     })
@@ -130,9 +182,16 @@ pub fn get_spawnable_command(
         CommandPipe::Inherit
       },
       spawn: async move {
-        let status = child.wait().await?;
-        // TODO(THIS PR): Is unwrapping to 1 ok here?
-        Ok(status.code().unwrap_or(1))
+        match child.wait().await {
+          Ok(status) => {
+            // TODO(THIS PR): Is unwrapping to 1 ok here?
+            ExecuteResult::Continue(status.code().unwrap_or(1), Vec::new())
+          }
+          Err(err) => {
+            eprintln!("{}", err);
+            ExecuteResult::Continue(1, Vec::new())
+          }
+        }
       }
       .boxed(),
     })
