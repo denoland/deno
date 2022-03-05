@@ -13,9 +13,8 @@ use std::sync::Arc;
 
 mod combinators;
 mod shell;
-mod shell_command;
 mod shell_parser;
-mod shell_pipe;
+mod shell_types;
 
 fn get_scripts_config(
   maybe_config_file: Option<&ConfigFile>,
