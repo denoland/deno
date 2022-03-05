@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 mod combinators;
 mod command;
-mod interpreter;
+mod shell;
 mod shell_parser;
 
 fn get_scripts_config(
@@ -72,7 +72,7 @@ pub async fn execute_script(
       .with_context(|| format!("Error parsing script '{}'.", script_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
     let additional_cli_args = Vec::new(); // todo
-    let exit_code = interpreter::execute(
+    let exit_code = shell::execute(
       seq_list,
       env_vars,
       cwd.to_path_buf(),

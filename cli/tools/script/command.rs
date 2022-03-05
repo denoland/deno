@@ -9,7 +9,7 @@ use deno_core::futures::FutureExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::ChildStdin;
 
-use super::interpreter::EnvState;
+use super::shell::EnvState;
 use super::shell_parser::Command;
 
 pub enum CommandPipe {
@@ -131,7 +131,7 @@ pub fn get_spawnable_command(
       },
       spawn: async move {
         let status = child.wait().await?;
-        // TODO: Is unwrapping to 1 ok here?
+        // TODO(THIS PR): Is unwrapping to 1 ok here?
         Ok(status.code().unwrap_or(1))
       }
       .boxed(),

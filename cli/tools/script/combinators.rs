@@ -2,6 +2,8 @@
 
 // Inspired by nom, but simplified and with custom errors.
 
+// todo(THIS PR): extract out somewhere else?
+
 #[derive(Debug)]
 pub enum ParseError<'a> {
   Backtrace,

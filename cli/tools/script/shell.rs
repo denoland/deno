@@ -91,7 +91,7 @@ enum ExecuteCommandResult {
   Continue(i32, Vec<EnvChange>),
 }
 
-// todo: clean up this function
+// todo(THIS PR): clean up this function
 fn execute_sequence(
   sequence: Sequence,
   mut state: EnvState,
@@ -151,7 +151,7 @@ fn execute_sequence(
         }
       }
       Sequence::BooleanList(list) => {
-        // todo: clean this up
+        // todo(THIS PR): clean this up
         let first_command = execute_sequence(list.current, state.clone()).await;
         let exit_code = match first_command {
           ExecuteCommandResult::Exit => return ExecuteCommandResult::Exit,
@@ -205,7 +205,7 @@ fn append_cli_args(
     return Ok(list);
   }
 
-  // todo: this part and remove this clippy
+  // todo(THIS PR): this part and remove this clippy
   #[allow(clippy::redundant_pattern_matching)]
   if let Some(_) = list.items.last_mut() {
     todo!();
