@@ -1835,21 +1835,16 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
     if i == 0 {
       continue;
     }
-    dbg!(part, i);
     if i == parts.len() - 1 && (part.is_empty() || *part == "\n") {
-      dbg!("exit 1 true", i);
       return true;
     }
     if let Some(found) = t.1.find(*part) {
-      dbg!("found ", found);
       t = t.1.split_at(found + part.len());
     } else {
-      dbg!("exit false ", i);
       return false;
     }
   }
 
-  dbg!("end ", t.1.len());
   t.1.is_empty()
 }
 
