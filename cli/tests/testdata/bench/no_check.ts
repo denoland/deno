@@ -1,0 +1,1 @@
+Deno.bench();

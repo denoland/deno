@@ -1,0 +1,11 @@
+Check [WILDCARD]/bench/overloads.ts
+running 6 benches from [WILDCARD]/bench/overloads.ts
+bench test0 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench test1 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench test2 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench test3 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench test4 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench test5 ... ignored ([WILDCARD])
+
+bench result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

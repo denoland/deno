@@ -250,7 +250,7 @@ impl BenchReporter for PrettyBenchReporter {
     };
 
     println!(
-      "\nbench result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}",
+      "\nbench result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
       status,
       summary.passed,
       summary.failed,
