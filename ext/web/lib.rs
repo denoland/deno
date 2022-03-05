@@ -170,7 +170,10 @@ fn b64_decode(input: String, padding: bool) -> Result<Vec<u8>, AnyError> {
 
   // If padding is expected, fail if not 4-byte aligned
   // TODO(@AaronO): cleanup
-  if padding && input.len() % 4 != 0 && (input.ends_with(b"==") || input.ends_with(b"=")) {
+  if padding
+    && input.len() % 4 != 0
+    && (input.ends_with(b"==") || input.ends_with(b"="))
+  {
     return Err(
       DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
     );
