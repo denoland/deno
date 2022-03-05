@@ -54,7 +54,7 @@ pub enum ExecuteResult {
 
 pub struct ExecutedSequence {
   pub stdout: ShellPipe,
-  pub wait: BoxFuture<'static, ExecuteResult>,
+  pub task: BoxFuture<'static, ExecuteResult>,
 }
 
 impl ExecutedSequence {
@@ -66,7 +66,7 @@ impl ExecutedSequence {
     let (tx, stdout) = ShellPipe::channel();
     Self {
       stdout,
-      wait: async move {
+      task: async move {
         drop(tx); // close stdout
         execute_result
       }
@@ -78,7 +78,7 @@ impl ExecutedSequence {
     let (tx, stdout) = ShellPipe::channel();
     Self {
       stdout,
-      wait: async move {
+      task: async move {
         let _ = tx.send(text.into_bytes());
         drop(tx); // close stdout
         ExecuteResult::Continue(0, Vec::new())

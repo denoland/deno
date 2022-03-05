@@ -84,7 +84,7 @@ async fn execute_top_sequence(
   let output_task = tokio::task::spawn(async move {
     command.stdout.pipe_to_stdout().await;
   });
-  let result = command.wait.await;
+  let result = command.task.await;
   output_task.await.unwrap();
   result
 }
@@ -104,7 +104,7 @@ fn execute_sequence(
       let (stdout_tx, stdout) = ShellPipe::channel();
       ExecutedSequence {
         stdout,
-        wait: async move {
+        task: async move {
           // todo(THIS PR): clean this up
           let mut changes = vec![];
           let first_result = execute_and_wait_sequence(
@@ -164,9 +164,40 @@ fn execute_sequence(
       }
     }
     Sequence::Pipeline(pipeline) => {
-      #[allow(unused_variables)]
-      let sequences = pipeline.into_vec();
-      todo!()
+      let (stdout_tx, stdout) = ShellPipe::channel();
+      ExecutedSequence {
+        stdout,
+        task: async move {
+          let sequences = pipeline.into_vec();
+          let mut wait_tasks = vec![];
+          let mut last_input = Some(stdin);
+          for sequence in sequences.into_iter() {
+            let executed_sequence = execute_sequence(
+              sequence,
+              state.clone(),
+              last_input.take().unwrap(),
+            );
+            last_input = Some(executed_sequence.stdout);
+            wait_tasks.push(executed_sequence.task);
+          }
+          // todo: something better
+          let output_task = tokio::task::spawn({
+            async move {
+              last_input.unwrap().pipe_to_sender(stdout_tx).await;
+            }
+          });
+          let mut results = futures::future::join_all(wait_tasks).await;
+          output_task.await.unwrap();
+          let last_result = results.pop().unwrap();
+          match last_result {
+            ExecuteResult::Exit => ExecuteResult::Continue(1, Vec::new()),
+            ExecuteResult::Continue(exit_code, _) => {
+              ExecuteResult::Continue(exit_code, Vec::new())
+            }
+          }
+        }
+        .boxed(),
+      }
     }
   }
 }
@@ -184,7 +215,7 @@ async fn execute_and_wait_sequence(
       command.stdout.pipe_to_sender(sender).await;
     }
   });
-  let result = command.wait.await;
+  let result = command.task.await;
   output_task.await.unwrap();
   result
 }
@@ -200,7 +231,7 @@ fn start_command(
     let (tx, stdout) = ShellPipe::channel();
     ExecutedSequence {
       stdout,
-      wait: async move {
+      task: async move {
         drop(tx); // close stdout
         if args.len() != 2 {
           eprintln!("cd is expected to have 1 argument.");
@@ -226,7 +257,7 @@ fn start_command(
     let (tx, stdout) = ShellPipe::channel();
     ExecutedSequence {
       stdout,
-      wait: async move {
+      task: async move {
         drop(tx); // close stdout
         if args.len() != 1 {
           eprintln!("exit had too many arguments.");
@@ -256,7 +287,7 @@ fn start_command(
     let (tx, stdout) = ShellPipe::channel();
     ExecutedSequence {
       stdout,
-      wait: async move {
+      task: async move {
         // the time to sleep is the sum of all the arguments
         let mut total_time_ms = 0;
         for arg in args.iter().skip(1) {
@@ -298,7 +329,7 @@ fn start_command(
     let mut child = match child {
       Ok(child) => child,
       Err(err) => {
-        eprintln!("{}", err);
+        eprintln!("Error launching '{}': {}", &command.args[0], err);
         return ExecutedSequence::from_result(ExecuteResult::Continue(
           1,
           Vec::new(),
@@ -324,7 +355,7 @@ fn start_command(
 
     ExecutedSequence {
       stdout,
-      wait: async move {
+      task: async move {
         let (process_exit_tx, mut process_exit_rx) =
           tokio::sync::mpsc::channel(1);
         // spawn a task to pipe the messages from the process' stdout to the channel
