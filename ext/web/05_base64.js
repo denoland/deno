@@ -37,12 +37,7 @@
       context: "Argument 1",
     });
 
-    const uint8Array = forgivingBase64Decode(data);
-    const result = ArrayPrototypeMap(
-      [...new SafeArrayIterator(uint8Array)],
-      (byte) => StringFromCharCode(byte),
-    );
-    return ArrayPrototypeJoin(result, "");
+    return forgivingBase64Decode(data);
   }
 
   /**
@@ -56,20 +51,7 @@
       prefix,
       context: "Argument 1",
     });
-    const byteArray = ArrayPrototypeMap(
-      [...new SafeArrayIterator(data)],
-      (char) => {
-        const charCode = StringPrototypeCharCodeAt(char, 0);
-        if (charCode > 0xff) {
-          throw new DOMException(
-            "The string to be encoded contains characters outside of the Latin1 range.",
-            "InvalidCharacterError",
-          );
-        }
-        return charCode;
-      },
-    );
-    return forgivingBase64Encode(TypedArrayFrom(Uint8Array, byteArray));
+    return forgivingBase64Encode(data);
   }
 
   window.__bootstrap.base64 = {

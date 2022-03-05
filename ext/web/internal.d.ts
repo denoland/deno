@@ -43,8 +43,8 @@ declare namespace globalThis {
         result: string;
         position: number;
       };
-      forgivingBase64Encode(data: Uint8Array): string;
-      forgivingBase64Decode(data: string): Uint8Array;
+      forgivingBase64Encode(data: string): string;
+      forgivingBase64Decode(data: string): string;
     };
 
     declare var domException: {

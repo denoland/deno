@@ -149,8 +149,25 @@ fn op_base64_decode(
   _state: &mut OpState,
   input: String,
   _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
-  let mut input: &str = &input.replace(|c| char::is_ascii_whitespace(&c), "");
+) -> Result<String, AnyError> {
+  let mut ws = false;
+  let len = input.len();
+  let invalid = input.char_indices().any(|(i, c)| {
+    if char::is_ascii_whitespace(&c) {
+      ws = true;
+    } else if c == '=' {
+      if i != len - 1 && i != len - 2 {
+        return true;
+      }
+    } else if c != '+' && c != '/' && !c.is_alphanumeric() {
+      return true;
+    }
+    false
+  });
+
+  // "Remove all ASCII whitespace from data"
+  let input = if ws { input.replace(|c| char::is_ascii_whitespace(&c), "") } else { input };
+  let mut input: &str = &input;
   // "If the length of input divides by 4 leaving no remainder, then:
   //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
   //  remove them from input."
@@ -170,10 +187,8 @@ fn op_base64_decode(
     );
   }
 
-  if input
-    .chars()
-    .any(|c| c != '+' && c != '/' && !c.is_alphanumeric())
-  {
+  // "If data contains a code point that is not '+', '/', or ASCII alphanumeric then return failure."
+  if invalid {
     return Err(
       DomExceptionInvalidCharacterError::new(
         "Failed to decode base64: invalid character",
@@ -190,14 +205,21 @@ fn op_base64_decode(
       err
     ))
   })?;
-  Ok(ZeroCopyBuf::from(out))
+  Ok(String::from_utf8(out).unwrap())
 }
 
 fn op_base64_encode(
   _state: &mut OpState,
-  s: ZeroCopyBuf,
+  s: String,
   _: (),
 ) -> Result<String, AnyError> {
+  let char_count = s.chars().count();
+  let s = s.into_bytes();
+  if s.len() != char_count {
+    // If the byte vec length is longer than the string length, it means that some characters were not respresentable as a single
+    // byte, ie. some characters were not Latin1.
+    return Err(DomExceptionInvalidCharacterError::new("The string to be encoded contains characters outside of the Latin1 range.").into());
+  }
   let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
     .decode_allow_trailing_bits(true);
   let out = base64::encode_config(&s, cfg);

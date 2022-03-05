@@ -233,7 +233,7 @@
   }
 
   /**
-   * @param {Uint8Array} data
+   * @param {string} data
    * @returns {string}
    */
   function forgivingBase64Encode(data) {
@@ -242,7 +242,7 @@
 
   /**
    * @param {string} data
-   * @returns {Uint8Array}
+   * @returns {string}
    */
   function forgivingBase64Decode(data) {
     return core.opSync("op_base64_decode", data);
