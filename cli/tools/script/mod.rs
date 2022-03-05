@@ -12,9 +12,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod combinators;
-mod command;
 mod shell;
+mod shell_command;
 mod shell_parser;
+mod shell_pipe;
 
 fn get_scripts_config(
   maybe_config_file: Option<&ConfigFile>,

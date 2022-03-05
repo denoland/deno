@@ -6,11 +6,11 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 
-use super::command::get_spawnable_command;
-use super::command::CommandStdout;
+use super::shell_command::get_spawnable_command;
 use super::shell_parser::EnvVar;
 use super::shell_parser::Sequence;
 use super::shell_parser::SequentialList;
+use super::shell_pipe::ShellPipe;
 
 #[derive(Clone)]
 pub struct EnvState {
@@ -100,22 +100,14 @@ fn execute_sequence(
         ExecuteResult::Continue(0, vec![EnvChange::SetEnvVar(var)])
       }
       Sequence::Command(command) => {
-        match get_spawnable_command(
-          &command,
-          &state,
-          CommandStdout::Inherit,
-          false,
-        ) {
+        match get_spawnable_command(&command, &state, ShellPipe::InheritStdin) {
           Ok(command) => {
-            let write_task = tokio::task::spawn(async move {
-              if let Err(err) =
-                command.stdout.write_all(tokio::io::stdout()).await
-              {
-                eprintln!("Error writing: {}", err);
-              }
+            // todo: something better at outputting to stdout?
+            let output_task = tokio::task::spawn(async move {
+              command.stdout.pipe_to_stdout().await;
             });
-            let result = command.spawn.await;
-            write_task.await.unwrap();
+            let result = command.wait.await;
+            output_task.await.unwrap();
             result
           }
           Err(err) => {
@@ -166,8 +158,8 @@ fn execute_sequence(
         }
       }
       Sequence::Pipeline(pipeline) => {
-        // let sequences = pipeline.into_vec();
-        // execute_sequence()
+        #[allow(unused_variables)]
+        let sequences = pipeline.into_vec();
         todo!()
       }
     }
