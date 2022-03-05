@@ -11,12 +11,9 @@ use deno_core::error::AnyError;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// todo(THIS PR): remove these attributes before merge
-#[allow(dead_code)]
 mod combinators;
-#[allow(dead_code)]
+mod command;
 mod interpreter;
-#[allow(dead_code)]
 mod shell_parser;
 
 fn get_scripts_config(

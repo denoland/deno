@@ -1,26 +1,22 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Stdio;
-use std::time::Duration;
 
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 
 use crate::fs_util;
-use crate::tools::script::shell_parser::SequentialItem;
 
+use super::command::get_spawnable_command;
+use super::command::CommandPipe;
 use super::shell_parser::EnvVar;
-use super::shell_parser::ListOperator;
+use super::shell_parser::Sequence;
 use super::shell_parser::SequentialList;
-use super::shell_parser::ShellCommand;
-use super::shell_parser::ShellCommandBody;
 
 #[derive(Clone)]
-struct EnvState {
+pub struct EnvState {
   pub env_vars: HashMap<String, String>,
   pub cwd: PathBuf,
 }
@@ -34,7 +30,7 @@ impl EnvState {
     }
   }
 
-  pub fn apply_change(&mut self, change: &EnvChange) {
+  fn apply_change(&mut self, change: &EnvChange) {
     match change {
       EnvChange::SetEnvVar(var) => self.apply_env_var(var),
       EnvChange::Cd(new_dir) => {
@@ -43,7 +39,7 @@ impl EnvState {
     }
   }
 
-  pub fn apply_changes(&mut self, changes: &[EnvChange]) {
+  fn apply_changes(&mut self, changes: &[EnvChange]) {
     for change in changes {
       self.apply_change(change);
     }
@@ -67,27 +63,18 @@ pub async fn execute(
   let mut async_handles = Vec::new();
   let mut final_exit_code = 0;
   for item in list.items {
-    match item {
-      SequentialItem::Async(item) => {
-        let state = state.clone();
-        async_handles.push(tokio::task::spawn(async move {
-          let result = execute_command(item, state).await;
-          if let ExecuteCommandResult::Continue(_, _, Some(err)) = result {
-            eprintln!("{}", err);
-          }
-        }));
-      }
-      SequentialItem::Command(item) => {
-        match execute_command(item, state.clone()).await {
-          ExecuteCommandResult::Exit => return Ok(0),
-          ExecuteCommandResult::Continue(exit_code, changes, err) => {
-            state.apply_changes(&changes);
-            if let Some(err) = err {
-              eprintln!("{}", err);
-            }
-            // use the final sequential item's exit code
-            final_exit_code = exit_code;
-          }
+    if item.is_async {
+      let state = state.clone();
+      async_handles.push(tokio::task::spawn(async move {
+        execute_sequence(item.sequence, state).await
+      }));
+    } else {
+      match execute_sequence(item.sequence, state.clone()).await {
+        ExecuteCommandResult::Exit => return Ok(0),
+        ExecuteCommandResult::Continue(exit_code, changes) => {
+          state.apply_changes(&changes);
+          // use the final sequential item's exit code
+          final_exit_code = exit_code;
         }
       }
     }
@@ -101,24 +88,25 @@ pub async fn execute(
 
 enum ExecuteCommandResult {
   Exit,
-  Continue(i32, Vec<EnvChange>, Option<AnyError>),
+  Continue(i32, Vec<EnvChange>),
 }
 
-fn execute_command(
-  item: ShellCommand,
+// todo: clean up this function
+fn execute_sequence(
+  sequence: Sequence,
   mut state: EnvState,
 ) -> BoxFuture<'static, ExecuteCommandResult> {
   // recursive async functions require boxing
   async move {
     let mut changes = Vec::new();
-    let body_result: Result<i32, AnyError> = match item.body {
-      ShellCommandBody::EnvVar(var) => {
+    match sequence {
+      Sequence::EnvVar(var) => {
         state.apply_env_var(&var);
         changes.push(EnvChange::SetEnvVar(var));
-        Ok(0)
+        ExecuteCommandResult::Continue(0, changes)
       }
-      ShellCommandBody::Command(command) => {
-        if command.args[0] == "cd" {
+      Sequence::Command(command) => {
+        let command_result = if command.args[0] == "cd" {
           if command.args.len() != 2 {
             Err(anyhow!("cd is expected to have 1 argument."))
           } else {
@@ -126,7 +114,8 @@ fn execute_command(
             let new_dir = state.cwd.join(&command.args[1]);
             match fs_util::canonicalize_path(&new_dir) {
               Ok(new_dir) => {
-                state.cwd = new_dir;
+                state.cwd = new_dir.clone();
+                changes.push(EnvChange::Cd(new_dir));
                 Ok(0)
               }
               Err(err) => Err(anyhow!(
@@ -136,74 +125,71 @@ fn execute_command(
               )),
             }
           }
-        } else if command.args[0] == "pwd" && command.args.len() == 1 {
-          println!("{}", state.cwd.display());
-          Ok(0)
-        } else if command.args[0] == "exit" && command.args.len() == 1 {
-          return ExecuteCommandResult::Exit;
-        } else if command.args[0] == "true" && command.args.len() == 1 {
-          Ok(0)
-        } else if command.args[0] == "false" && command.args.len() == 1 {
-          Ok(1)
-        } else if command.args[0] == "sleep" && command.args.len() == 2 {
-          match command.args[1].parse::<f64>() {
-            Ok(value_s) => {
-              let ms = (value_s * 1000f64) as u64;
-              tokio::time::sleep(Duration::from_millis(ms)).await;
-              Ok(0)
-            }
-            Err(err) => {
-              Err(anyhow!("Error parsing sleep argument to number: {}", err))
-            }
+        } else if command.args[0] == "exit" {
+          if command.args.len() != 1 {
+            Err(anyhow!("exit is expected to have no arguments."))
+          } else {
+            return ExecuteCommandResult::Exit;
           }
-        } else if command.args[0] == "echo" {
-          println!("{}", command.args[1..].join(" "));
-          Ok(0)
         } else {
-          let mut state = state.clone();
-          for env_var in &command.env_vars {
-            state.apply_env_var(env_var);
+          match get_spawnable_command(
+            &command,
+            &state,
+            CommandPipe::Inherit,
+            false,
+          ) {
+            Ok(command) => command.spawn.await,
+            Err(err) => Err(err),
           }
-          let mut sub_command = tokio::process::Command::new(&command.args[0]);
-          let result = sub_command
-            .args(&command.args[1..])
-            .envs(&state.env_vars)
-            .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .current_dir(state.cwd)
-            .status()
-            .await;
-          match result {
-            // TODO: Is unwrapping to 1 ok here?
-            Ok(status) => Ok(status.code().unwrap_or(1)),
-            Err(err) => Err(anyhow!("{}", err)),
+        };
+        match command_result {
+          Ok(code) => ExecuteCommandResult::Continue(code, changes),
+          Err(err) => {
+            eprintln!("{}", err);
+            ExecuteCommandResult::Continue(1, changes)
           }
         }
       }
-    };
-
-    let was_success = body_result.as_ref().map(|c| *c == 0).unwrap_or(false);
-    let mut maybe_next = item.next;
-    while let Some(next) = maybe_next.take() {
-      if next.op == ListOperator::Or && !was_success
-        || next.op == ListOperator::And && was_success
-      {
-        let next_command = execute_command(next.command, state.clone()).await;
-        return match next_command {
-          ExecuteCommandResult::Exit => ExecuteCommandResult::Exit,
-          ExecuteCommandResult::Continue(exit_code, sub_changes, err) => {
+      Sequence::BooleanList(list) => {
+        // todo: clean this up
+        let first_command = execute_sequence(list.current, state.clone()).await;
+        let exit_code = match first_command {
+          ExecuteCommandResult::Exit => return ExecuteCommandResult::Exit,
+          ExecuteCommandResult::Continue(exit_code, sub_changes) => {
             changes.extend(sub_changes);
-            ExecuteCommandResult::Continue(exit_code, changes, err)
+            exit_code
           }
         };
+        let next = if list.op.moves_next_for_exit_code(exit_code) {
+          Some(list.next)
+        } else {
+          let mut next = list.next;
+          loop {
+            // boolean lists always move right on the tree
+            match next {
+              Sequence::BooleanList(list) => {
+                if list.op.moves_next_for_exit_code(exit_code) {
+                  break Some(list.next);
+                }
+                next = list.next;
+              }
+              _ => break None,
+            }
+          }
+        };
+        if let Some(next) = next {
+          match execute_sequence(next, state.clone()).await {
+            ExecuteCommandResult::Exit => ExecuteCommandResult::Exit,
+            ExecuteCommandResult::Continue(exit_code, sub_changes) => {
+              changes.extend(sub_changes);
+              ExecuteCommandResult::Continue(exit_code, changes)
+            }
+          }
+        } else {
+          ExecuteCommandResult::Continue(exit_code, changes)
+        }
       }
-      maybe_next = next.command.next;
-    }
-
-    match body_result {
-      Ok(code) => ExecuteCommandResult::Continue(code, changes, None),
-      Err(err) => ExecuteCommandResult::Continue(1, changes, Some(err)),
+      Sequence::Pipeline(_) => todo!(),
     }
   }
   .boxed()
@@ -219,29 +205,10 @@ fn append_cli_args(
     return Ok(list);
   }
 
-  if let Some(list_item) = list.items.last_mut() {
-    match list_item {
-      SequentialItem::Command(cmd) => {
-        // get the last item
-        let mut cmd = cmd;
-        while let Some(next) = cmd.next.as_mut() {
-          cmd = &mut next.command;
-        }
-
-        match &mut cmd.body {
-          ShellCommandBody::EnvVar(_) => {
-            bail!("Cannot append CLI arguments to a command that updates environment variables.");
-          }
-          ShellCommandBody::Command(cmd) => {
-            cmd.args.extend(args);
-          }
-        }
-      }
-      SequentialItem::Async(_) => {
-        // this ended with an `&`, so error
-        bail!("Cannot append CLI arguments to an async command.");
-      }
-    }
+  // todo: this part and remove this clippy
+  #[allow(clippy::redundant_pattern_matching)]
+  if let Some(_) = list.items.last_mut() {
+    todo!();
   }
 
   Ok(list)

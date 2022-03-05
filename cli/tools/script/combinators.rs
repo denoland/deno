@@ -111,18 +111,6 @@ pub fn or<'a, O>(
   }
 }
 
-/// Returns the second value and discards the first.
-pub fn preceded<'a, First, Second>(
-  first: impl Fn(&'a str) -> ParseResult<'a, First>,
-  second: impl Fn(&'a str) -> ParseResult<'a, Second>,
-) -> impl Fn(&'a str) -> ParseResult<'a, Second> {
-  move |input| {
-    let (input, _) = first(input)?;
-    let (input, return_value) = second(input)?;
-    Ok((input, return_value))
-  }
-}
-
 /// Returns the first value and discards the second.
 pub fn terminated<'a, First, Second>(
   first: impl Fn(&'a str) -> ParseResult<'a, First>,
@@ -146,20 +134,6 @@ pub fn delimited<'a, First, Second, Third>(
     let (input, return_value) = second(input)?;
     let (input, _) = third(input)?;
     Ok((input, return_value))
-  }
-}
-
-/// Ensures backtracing occurs instead of a hard error.
-pub fn ensure_backtrace<'a, O>(
-  combinator: impl Fn(&'a str) -> ParseResult<'a, O>,
-) -> impl Fn(&'a str) -> ParseResult<'a, O> {
-  move |input| {
-    match combinator(input) {
-      Ok(result) => Ok(result),
-      // switch to backtrace
-      Err(ParseError::Failure(_)) => ParseError::backtrace(),
-      Err(err) => Err(err),
-    }
   }
 }
 
