@@ -1,12 +1,15 @@
-use std::io::Write;
 use std::process::Stdio;
 use std::time::Duration;
 
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::process::ChildStdin;
+use tokio::process::ChildStdout;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::fs_util;
 
@@ -15,51 +18,94 @@ use super::shell::EnvState;
 use super::shell::ExecuteResult;
 use super::shell_parser::Command;
 
-pub enum CommandPipe {
-  Child(ChildStdin),
+pub enum CommandStdout {
+  Child(ChildStdout),
+  Channel(UnboundedReceiver<Vec<u8>>),
   Inherit,
   Null,
 }
 
-impl CommandPipe {
-  pub async fn write_text(&mut self, text: String) -> Result<(), AnyError> {
+impl CommandStdout {
+  /// Wait on completion and drain the output.
+  pub async fn drain(self) {
     match self {
-      CommandPipe::Child(child) => {
-        child.write_all(text.as_bytes()).await?;
+      CommandStdout::Child(mut child) => {
+        let mut buffer = [0; 512]; // todo: what is an appropriate buffer size?
+        while let Ok(size) = child.read(&mut buffer).await {
+          // todo: this doesn't seem correct. How to detect the end?
+          if size == 0 {
+            break;
+          }
+        }
       }
-      CommandPipe::Inherit => {
-        write!(std::io::stdout(), "{}", text)?;
+      CommandStdout::Channel(mut rx) => {
+        while rx.recv().await.is_some() {
+          // drain, do nothing
+        }
       }
-      CommandPipe::Null => {}
+      CommandStdout::Inherit | CommandStdout::Null => {}
+    }
+  }
+
+  /// Write everything to the specified writer
+  pub async fn write_all(
+    self,
+    mut writer: impl AsyncWrite + std::marker::Unpin,
+  ) -> Result<(), AnyError> {
+    match self {
+      CommandStdout::Child(mut child) => {
+        let mut buffer = [0; 512]; // todo: what is an appropriate buffer size?
+        while let Ok(size) = child.read(&mut buffer).await {
+          writer.write(&buffer[..size]).await?;
+
+          // todo: this doesn't seem correct. How to detect the end?
+          if size == 0 {
+            break;
+          }
+        }
+      }
+      CommandStdout::Channel(mut rx) => {
+        while let Some(data) = rx.recv().await {
+          writer.write(&data).await?;
+        }
+      }
+      CommandStdout::Inherit | CommandStdout::Null => {}
     }
     Ok(())
   }
 }
 
 pub struct SpawnableCommand {
-  pub stdin: CommandPipe,
+  pub stdout: CommandStdout,
   pub spawn: BoxFuture<'static, ExecuteResult>,
 }
 
 impl SpawnableCommand {
-  fn from_exit_code(exit_code: i32) -> Self {
+  fn from_exit_code(stdin: CommandStdout, exit_code: i32) -> Self {
     Self {
-      stdin: CommandPipe::Null,
-      spawn: async move { ExecuteResult::Continue(exit_code, Vec::new()) }
-        .boxed(),
+      stdout: CommandStdout::Null,
+      spawn: async move {
+        stdin.drain().await;
+        ExecuteResult::Continue(exit_code, Vec::new())
+      }
+      .boxed(),
     }
   }
 
-  fn with_stdout_text(mut stdout: CommandPipe, text: String) -> Self {
+  fn with_stdout_text(stdin: CommandStdout, text: String) -> Self {
+    let (tx, rx) = unbounded_channel();
     Self {
-      stdin: CommandPipe::Null,
+      stdout: CommandStdout::Channel(rx),
       spawn: async move {
-        if let Err(err) = stdout.write_text(text).await {
-          eprintln!("Error outputting to stdout: {}", err);
+        stdin.drain().await;
+        let result = if let Err(err) = tx.send(text.into_bytes()) {
+          eprintln!("Error writing to stdout: {}", err);
           ExecuteResult::Continue(1, Vec::new())
         } else {
           ExecuteResult::Continue(0, Vec::new())
-        }
+        };
+        drop(tx);
+        result
       }
       .boxed(),
     }
@@ -69,15 +115,16 @@ impl SpawnableCommand {
 pub fn get_spawnable_command(
   command: &Command,
   state: &EnvState,
-  stdout: CommandPipe,
-  take_stdin: bool,
+  stdin: CommandStdout,
+  take_stdout: bool,
 ) -> Result<SpawnableCommand, AnyError> {
   if command.args[0] == "cd" {
     let args = command.args.clone();
     let cwd = state.cwd.clone();
     Ok(SpawnableCommand {
-      stdin: CommandPipe::Null,
+      stdout: CommandStdout::Null,
       spawn: async move {
+        stdin.drain().await;
         if args.len() != 2 {
           eprintln!("cd is expected to have 1 argument.");
           ExecuteResult::Continue(1, Vec::new())
@@ -100,8 +147,9 @@ pub fn get_spawnable_command(
   } else if command.args[0] == "exit" {
     let args = command.args.clone();
     Ok(SpawnableCommand {
-      stdin: CommandPipe::Null,
+      stdout: CommandStdout::Null,
       spawn: async move {
+        stdin.drain().await;
         if args.len() != 1 {
           eprintln!("exit had too many arguments.");
           ExecuteResult::Continue(1, Vec::new())
@@ -114,20 +162,21 @@ pub fn get_spawnable_command(
   } else if command.args[0] == "pwd" {
     // ignores additional arguments
     Ok(SpawnableCommand::with_stdout_text(
-      stdout,
+      stdin,
       format!("{}\n", state.cwd.display()),
     ))
   } else if command.args[0] == "true" {
     // ignores additional arguments
-    Ok(SpawnableCommand::from_exit_code(0))
+    Ok(SpawnableCommand::from_exit_code(stdin, 0))
   } else if command.args[0] == "false" {
     // ignores additional arguments
-    Ok(SpawnableCommand::from_exit_code(1))
+    Ok(SpawnableCommand::from_exit_code(stdin, 1))
   } else if command.args[0] == "sleep" {
     let args = command.args.clone();
     Ok(SpawnableCommand {
-      stdin: CommandPipe::Null,
+      stdout: CommandStdout::Null,
       spawn: async move {
+        stdin.drain().await;
         // the time to sleep is the sum of all the arguments
         let mut total_time_ms = 0;
         for arg in args.iter().skip(1) {
@@ -149,7 +198,7 @@ pub fn get_spawnable_command(
     })
   } else if command.args[0] == "echo" {
     Ok(SpawnableCommand::with_stdout_text(
-      stdout,
+      stdin,
       format!("{}\n", command.args[1..].join(" ")),
     ))
   } else {
@@ -158,28 +207,42 @@ pub fn get_spawnable_command(
       state.apply_env_var(env_var);
     }
     let mut sub_command = tokio::process::Command::new(&command.args[0]);
+    let (stdin, stdin_rx) = match stdin {
+      CommandStdout::Channel(rx) => (Stdio::piped(), Some(rx)),
+      CommandStdout::Child(child) => (child.try_into().unwrap(), None),
+      CommandStdout::Inherit => (Stdio::inherit(), None),
+      CommandStdout::Null => (Stdio::null(), None),
+    };
     let mut child = sub_command
       .args(&command.args[1..])
       .envs(&state.env_vars)
-      .stdout(match stdout {
-        CommandPipe::Child(child) => child.try_into().unwrap(),
-        CommandPipe::Inherit => Stdio::inherit(),
-        CommandPipe::Null => Stdio::null(),
-      })
-      .stdin(if take_stdin {
+      .stdout(if take_stdout {
         Stdio::piped()
       } else {
         Stdio::inherit()
       })
+      .stdin(stdin)
       .stderr(Stdio::inherit())
       .current_dir(state.cwd)
       .spawn()?;
+    if let Some(mut channel) = stdin_rx {
+      // spawn a task to pipe the messages from the provided
+      // stdout to this process' stdin
+      let mut child_stdin = child.stdin.take().unwrap();
+      tokio::task::spawn(async move {
+        while let Some(message) = channel.recv().await {
+          if child_stdin.write_all(&message).await.is_err() {
+            return;
+          }
+        }
+      });
+    }
     Ok(SpawnableCommand {
-      stdin: if take_stdin {
-        let child_stdin = child.stdin.take().unwrap();
-        CommandPipe::Child(child_stdin)
+      stdout: if take_stdout {
+        let child_stdout = child.stdout.take().unwrap();
+        CommandStdout::Child(child_stdout)
       } else {
-        CommandPipe::Inherit
+        CommandStdout::Inherit
       },
       spawn: async move {
         match child.wait().await {

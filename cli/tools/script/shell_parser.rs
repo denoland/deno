@@ -62,6 +62,19 @@ pub struct Pipeline {
   pub next: Sequence,
 }
 
+impl Pipeline {
+  pub fn into_vec(self) -> Vec<Sequence> {
+    let mut sequences = vec![self.current];
+    match self.next {
+      Sequence::Pipeline(pipeline) => {
+        sequences.extend(pipeline.into_vec());
+      }
+      next => sequences.push(next),
+    }
+    sequences
+  }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BooleanListOperator {
   // &&

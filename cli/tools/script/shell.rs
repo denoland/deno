@@ -7,7 +7,7 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 
 use super::command::get_spawnable_command;
-use super::command::CommandPipe;
+use super::command::CommandStdout;
 use super::shell_parser::EnvVar;
 use super::shell_parser::Sequence;
 use super::shell_parser::SequentialList;
@@ -103,10 +103,21 @@ fn execute_sequence(
         match get_spawnable_command(
           &command,
           &state,
-          CommandPipe::Inherit,
+          CommandStdout::Inherit,
           false,
         ) {
-          Ok(command) => command.spawn.await,
+          Ok(command) => {
+            let write_task = tokio::task::spawn(async move {
+              if let Err(err) =
+                command.stdout.write_all(tokio::io::stdout()).await
+              {
+                eprintln!("Error writing: {}", err);
+              }
+            });
+            let result = command.spawn.await;
+            write_task.await.unwrap();
+            result
+          }
           Err(err) => {
             eprintln!("{}", err);
             ExecuteResult::Continue(1, Vec::new())
@@ -154,7 +165,11 @@ fn execute_sequence(
           ExecuteResult::Continue(exit_code, changes)
         }
       }
-      Sequence::Pipeline(_) => todo!(),
+      Sequence::Pipeline(pipeline) => {
+        // let sequences = pipeline.into_vec();
+        // execute_sequence()
+        todo!()
+      }
     }
   }
   .boxed()
