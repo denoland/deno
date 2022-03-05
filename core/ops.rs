@@ -82,7 +82,7 @@ where
 
 pub type PromiseId = i32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
-pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static;
+pub type OpFn = dyn Fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue) + 'static;
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {
@@ -157,7 +157,6 @@ pub fn serialize_op_result<R: Serialize + 'static>(
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
   pub resource_table: ResourceTable,
-  pub op_table: OpTable,
   pub get_error_class_fn: GetErrorClassFn,
   pub(crate) tracker: OpsTracker,
   gotham_state: GothamState,
@@ -167,7 +166,6 @@ impl OpState {
   pub(crate) fn new() -> OpState {
     OpState {
       resource_table: Default::default(),
-      op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       tracker: OpsTracker {
         ops: RefCell::new(Vec::with_capacity(256)),
@@ -188,83 +186,5 @@ impl Deref for OpState {
 impl DerefMut for OpState {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.gotham_state
-  }
-}
-
-/// Collection for storing registered ops. The special 'get_op_catalog'
-/// op with OpId `0` is automatically added when the OpTable is created.
-pub struct OpTable(IndexMap<String, Rc<OpFn>>);
-
-impl OpTable {
-  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
-  {
-    let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_none());
-    op_id
-  }
-
-  pub fn op_entries(state: Rc<RefCell<OpState>>) -> Vec<(String, OpId)> {
-    state.borrow().op_table.0.keys().cloned().zip(0..).collect()
-  }
-
-  pub fn route_op(
-    op_id: OpId,
-    state: Rc<RefCell<OpState>>,
-    payload: OpPayload,
-  ) -> Op {
-    let op_fn = state
-      .borrow()
-      .op_table
-      .0
-      .get_index(op_id)
-      .map(|(_, op_fn)| op_fn.clone());
-    match op_fn {
-      Some(f) => (f)(state, payload),
-      None => Op::NotFound,
-    }
-  }
-}
-
-impl Default for OpTable {
-  fn default() -> Self {
-    fn dummy(_state: Rc<RefCell<OpState>>, _p: OpPayload) -> Op {
-      unreachable!()
-    }
-    Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn op_table() {
-    let state = Rc::new(RefCell::new(OpState::new()));
-
-    let foo_id;
-    let bar_id;
-    {
-      let op_table = &mut state.borrow_mut().op_table;
-      foo_id =
-        op_table.register_op("foo", |_, _| Op::Sync(OpResult::Ok(321.into())));
-      assert_eq!(foo_id, 1);
-      bar_id =
-        op_table.register_op("bar", |_, _| Op::Sync(OpResult::Ok(123.into())));
-      assert_eq!(bar_id, 2);
-    }
-
-    let mut catalog_entries = OpTable::op_entries(state);
-    catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());
-    assert_eq!(
-      catalog_entries,
-      vec![
-        ("ops".to_owned(), 0),
-        ("foo".to_owned(), 1),
-        ("bar".to_owned(), 2)
-      ]
-    );
   }
 }

@@ -479,7 +479,7 @@ impl JsRuntime {
       // Register each op after middlewaring it
       let ops = e.init_ops().unwrap_or_default();
       for (name, opfn) in ops {
-        self.register_op(name, macroware(name, opfn));
+        // self.register_op(name, macroware(name, opfn));
       }
     }
     // Restore extensions
@@ -614,27 +614,6 @@ impl JsRuntime {
     self.has_snapshotted = true;
 
     snapshot
-  }
-
-  /// Registers an op that can be called from JavaScript.
-  ///
-  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
-  /// which can be called using the provided `name`.
-  ///
-  /// This function provides byte-level bindings. To pass data via JSON, the
-  /// following functions can be passed as an argument for `op_fn`:
-  /// * [op_sync()](fn.op_sync.html)
-  /// * [op_async()](fn.op_async.html)
-  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
-  {
-    Self::state(self.v8_isolate())
-      .borrow_mut()
-      .op_state
-      .borrow_mut()
-      .op_table
-      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.

@@ -855,6 +855,7 @@ version = "0.121.0"
 dependencies = [
  "anyhow",
  "deno_ast",
+ "deno_ops",
  "futures",
  "indexmap",
  "libc",
@@ -1016,6 +1017,15 @@ dependencies = [
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
+]
+
+[[package]]
+name = "deno_ops"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2 1.0.36",
+ "quote 1.0.14",
+ "syn 1.0.85",
 ]
 
 [[package]]

@@ -105,7 +105,7 @@
 
   function syncOpsCache() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
+    //opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
   }
 
   function opresolve() {

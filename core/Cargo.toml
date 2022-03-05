@@ -26,6 +26,7 @@ serde_json = { version = "1.0.66", features = ["preserve_order"] }
 serde_v8 = { version = "0.32.0", path = "../serde_v8" }
 url = { version = "2.2.2", features = ["serde"] }
 v8 = "0.40.2"
+deno_ops = { path = "../ops" }
 
 [[example]]
 name = "http_bench_json_ops"
