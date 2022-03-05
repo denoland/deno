@@ -4,14 +4,14 @@ use anyhow::Error;
 
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
 pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
-pub type OpPair = (&'static str, Box<OpFn>);
-pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
+pub type OpPair = (&'static str, OpFn);
+pub type OpMiddlewareFn = dyn Fn(&'static str, OpFn) -> OpFn;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops: Option<Vec<OpPair>>,
+  ops_init: Option<Box<dyn Fn(&mut RegisterCtx) + 'static>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   initialized: bool,
@@ -34,14 +34,18 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(&mut self) -> Option<Vec<OpPair>> {
+  pub fn init_ops(&mut self, scope: &mut v8::HandleScope,
+  obj: v8::Local<v8::Object>) {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
     }
     self.initialized = true;
 
-    self.ops.take()
+    if let Some(init) = &self.ops_init {
+      let mut ctx = RegisterCtx { scope, obj };
+      init(&mut ctx);
+    }
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
@@ -62,9 +66,26 @@ impl Extension {
 #[derive(Default)]
 pub struct ExtensionBuilder {
   js: Vec<SourcePair>,
-  ops: Vec<OpPair>,
+  ops_init: Option<Box<dyn Fn(&mut RegisterCtx) + 'static>>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
+}
+
+pub struct RegisterCtx<'a, 'b, 'c> {
+  scope: &'a mut v8::HandleScope<'b>,
+  obj: v8::Local<'c, v8::Object>,
+}
+
+pub fn register<'a, 'b, 'c, F>(ctx: &mut RegisterCtx<'a, 'b, 'c>, name: &'static str, op_fn: F)
+where 
+  F: v8::MapFnTo<v8::FunctionCallback> 
+{
+  crate::bindings::set_func(
+    ctx.scope,
+    ctx.obj,
+    name,
+    op_fn,
+  )
 }
 
 impl ExtensionBuilder {
@@ -73,8 +94,11 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
-    self.ops.extend(ops);
+  pub fn ops<F>(&mut self, ops: F) -> &mut Self 
+  where
+    F: Fn(&mut RegisterCtx) + 'static, 
+  {
+    self.ops_init = Some(Box::new(ops));
     self
   }
 
@@ -88,7 +112,7 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+    F: Fn(&'static str, OpFn) -> OpFn + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
     self
@@ -96,10 +120,9 @@ impl ExtensionBuilder {
 
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
-    let ops = Some(std::mem::take(&mut self.ops));
     Extension {
       js_files,
-      ops,
+      ops_init: self.ops_init.take(),
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
       initialized: false,

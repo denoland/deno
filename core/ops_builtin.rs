@@ -1,8 +1,9 @@
 use crate::error::type_error;
 use crate::include_js_files;
-use deno_ops::op;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
+use deno_ops::op;
+use deno_ops::op_async;
 // use crate::void_op_async;
 // use crate::void_op_sync;
 use crate::Extension;
@@ -15,7 +16,7 @@ use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
 use v8::MapFnTo;
 
-pub (crate) fn external_references(references: &mut Vec<v8::ExternalReference>) {
+pub(crate) fn external_references(references: &mut Vec<v8::ExternalReference>) {
   references.push(v8::ExternalReference {
     function: op_resources.map_fn_to(),
   });
@@ -32,11 +33,11 @@ pub(crate) fn init_builtins() -> Extension {
       "01_core.js",
       "02_error.js",
     ))
-    .ops(vec![
+    .ops(|ctx| {
       // ("op_close", op_sync(op_close)),
       // ("op_try_close", op_sync(op_try_close)),
       // ("op_print", op_sync(op_print)),
-      ("op_resources", Box::new(op_resources)),
+      crate::extensions::register(ctx, "op_resources", op_resources);
       // ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
       // ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
       // (
@@ -44,13 +45,13 @@ pub(crate) fn init_builtins() -> Extension {
       //   op_sync(op_wasm_streaming_set_url),
       // ),
       // ("op_metrics", op_sync(op_metrics)),
-      ("op_void_sync", Box::new(op_void_sync)),
-      // ("op_void_async", void_op_async()),
+      crate::extensions::register(ctx, "op_void_sync", op_void_sync);
+      crate::extensions::register(ctx, "op_void_async", op_void_async);
       // // TODO(@AaronO): track IO metrics for builtin streams
       // ("op_read", op_async(op_read)),
       // ("op_write", op_async(op_write)),
       // ("op_shutdown", op_async(op_shutdown)),
-    ])
+    })
     .build()
 }
 
@@ -71,14 +72,18 @@ pub fn op_resources(
 }
 
 #[op]
-pub fn op_void_sync(
-  state: &mut OpState,
+pub fn op_void_sync(state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+  Ok(())
+}
+
+#[op_async]
+pub async fn op_void_async(
+  state: Rc<RefCell<OpState>>,
   _: (),
   _: (),
 ) -> Result<(), Error> {
   Ok(())
 }
-
 // /// Remove a resource from the resource table.
 // pub fn op_close(
 //   state: &mut OpState,

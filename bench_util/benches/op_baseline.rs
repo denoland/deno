@@ -12,9 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn setup() -> Vec<Extension> {
-  vec![Extension::builder()
-   
-    .build()]
+  vec![Extension::builder().build()]
 }
 
 // // this is a function since async closures aren't stable
@@ -46,8 +44,9 @@ fn bench_op_void_sync(b: &mut Bencher) {
   bench_js_sync(b, r#"Deno.core.op_void_sync(null, null);"#, setup);
 }
 
-benchmark_group!(
-  benches,
-  bench_op_void_sync
-);
+fn bench_op_void_async(b: &mut Bencher) {
+  bench_js_sync(b, r#"Deno.core.op_void_async(1, null, null);"#, setup);
+}
+
+benchmark_group!(benches, bench_op_void_sync, bench_op_void_async,);
 bench_or_profile!(benches);

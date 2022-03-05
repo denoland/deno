@@ -40,7 +40,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
+type PendingOpFuture = OpCall<(PromiseId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -277,6 +277,11 @@ impl JsRuntime {
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
+    // Add builtins extension
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::init_builtins());
+
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
@@ -287,7 +292,7 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope);
+        let context = bindings::initialize_context(scope, &mut options.extensions);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -318,7 +323,7 @@ impl JsRuntime {
         } else {
           // If no snapshot is provided, we initialize the context with empty
           // main source code and source maps.
-          bindings::initialize_context(scope)
+          bindings::initialize_context(scope, &mut options.extensions)
         };
         global_context = v8::Global::new(scope, context);
       }
@@ -369,11 +374,6 @@ impl JsRuntime {
 
     let module_map = ModuleMap::new(loader, op_state);
     isolate.set_slot(Rc::new(RefCell::new(module_map)));
-
-    // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
@@ -477,15 +477,15 @@ impl JsRuntime {
     for e in extensions.iter_mut() {
       e.init_state(&mut op_state.borrow_mut())?;
       // Register each op after middlewaring it
-      let ops = e.init_ops().unwrap_or_default();
-      for (name, opfn) in ops {
+      // let ops = e.init_ops().unwrap_or_default();
+      // for (name, opfn) in ops {
         // self.register_op(name, macroware(name, opfn));
-      }
+      // }
     }
     // Restore extensions
     self.extensions = extensions;
 
-    Ok(())
+    Ok(()) 
   }
 
   /// Grab a Global handle to a function returned by the given expression
@@ -1513,8 +1513,8 @@ impl JsRuntime {
 
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
-        let (promise_id, op_id, resp) = item;
-        op_state.borrow().tracker.track_async_completed(op_id);
+        let (promise_id, resp) = item;
+        // op_state.borrow().tracker.track_async_completed(op_id);
         state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());

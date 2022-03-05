@@ -30,6 +30,7 @@ use v8::MapFnTo;
 use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
+use crate::extensions::Extension;
 
 const UNDEFINED_OP_ID_MSG: &str =
   "invalid op id: received `undefined` instead of an integer.
@@ -38,13 +39,7 @@ JsRuntime::sync_ops_cache() after JsRuntime initialization.";
 
 pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
   Lazy::new(|| {
-    let mut references = vec![
-      // v8::ExternalReference {
-      //   function: opcall_async.map_fn_to(),
-      // },
-      // v8::ExternalReference {
-      //   function: opcall_sync.map_fn_to(),
-      // },
+    v8::ExternalReferences::new(&[
       v8::ExternalReference {
         function: ref_op.map_fn_to(),
       },
@@ -113,11 +108,8 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       },
       v8::ExternalReference {
         function: op_noop_sync.map_fn_to(),
-      }
-    ];
-    crate::ops_builtin::external_references(&mut references);
-
-    v8::ExternalReferences::new(&references)
+      },
+    ])
   });
 
 pub fn script_origin<'a>(
@@ -160,6 +152,7 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
+  extensions: &mut [Extension],
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -233,8 +226,10 @@ pub fn initialize_context<'s>(
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
-  set_func(scope, core_val, "op_resources", crate::ops_builtin::op_resources);
-  set_func(scope, core_val, "op_void_sync", crate::ops_builtin::op_void_sync);
+  for e in extensions {
+    let ops = e.init_ops(scope, core_val);
+  }
+
   scope.escape(context)
 }
 
@@ -543,8 +538,10 @@ fn op_noop_sync<'s>(
 ) {
   // let a = args.get(1);
   // let b = args.get(2);
-  
-  fn op_fn(_: (), _: ()) -> Result<(), ()> { Ok(()) }
+
+  fn op_fn(_: (), _: ()) -> Result<(), ()> {
+    Ok(())
+  }
 
   // let a = serde_v8::from_v8(scope, a).unwrap();
   // let b = serde_v8::from_v8(scope, b).unwrap();
@@ -1505,7 +1502,7 @@ fn is_proxy(
   rv.set(v8::Boolean::new(scope, args.get(0).is_proxy()).into())
 }
 
-fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
+pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
