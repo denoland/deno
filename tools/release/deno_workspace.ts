@@ -67,4 +67,15 @@ export class DenoWorkspace {
   getCrate(name: string) {
     return this.#repo.getCrate(name);
   }
+
+  runFormatter() {
+    return this.#repo.runCommandWithOutput([
+      "deno",
+      "run",
+      "--allow-write",
+      "--allow-read",
+      "--allow-run",
+      "./tools/format.js",
+    ]);
+  }
 }

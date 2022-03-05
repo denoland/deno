@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
+import { path } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
@@ -13,11 +14,23 @@ await cliCrate.promptAndIncrement();
 // update the lock file
 await cliCrate.cargoCheck();
 
-// output the Releases.md markdown text
+// update the Releases.md markdown text
+await updateReleasesMd();
+await workspace.runFormatter();
 console.log(
-  "You may use the following as a template for updating Releases.md:\n",
+  "Updated Release.md -- Please review the output to ensure it's correct.",
 );
-console.log(await getReleasesMdText());
+
+async function updateReleasesMd() {
+  const filePath = path.join(DenoWorkspace.rootDirPath, "Releases.md");
+  const oldFileText = await Deno.readTextFile(filePath);
+  const insertText = await getReleasesMdText();
+
+  await Deno.writeTextFile(
+    filePath,
+    oldFileText.replace(/^### /m, insertText + "\n\n### "),
+  );
+}
 
 async function getReleasesMdText() {
   const gitLog = await repo.getGitLogFromTags(
