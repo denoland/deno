@@ -153,39 +153,37 @@ fn op_base64_decode(
   input: String,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
-  Ok(b64_decode(input, false)?.into())
+  let mut input = input.into_bytes();
+  input.retain(|c| !c.is_ascii_whitespace());
+  Ok(b64_decode(&input)?.into())
 }
 
 fn op_base64_atob(
   _: &mut OpState,
-  input: String,
+  s: ByteString,
   _: (),
 ) -> Result<ByteString, AnyError> {
-  Ok(ByteString(b64_decode(input, true)?))
-}
-
-fn b64_decode(input: String, padding: bool) -> Result<Vec<u8>, AnyError> {
-  let mut input = input.into_bytes();
-  input.retain(|c| !c.is_ascii_whitespace());
+  let mut s = s.0;
+  s.retain(|c| !c.is_ascii_whitespace());
 
   // If padding is expected, fail if not 4-byte aligned
-  // TODO(@AaronO): cleanup
-  if padding
-    && input.len() % 4 != 0
-    && (input.ends_with(b"==") || input.ends_with(b"="))
-  {
+  if s.len() % 4 != 0 && (s.ends_with(b"==") || s.ends_with(b"=")) {
     return Err(
       DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
     );
   }
 
+  Ok(ByteString(b64_decode(&s)?))
+}
+
+fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
   // "If the length of input divides by 4 leaving no remainder, then:
   //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
   //  remove them from input."
   let input = match input.len() % 4 == 0 {
     true if input.ends_with(b"==") => &input[..input.len() - 2],
     true if input.ends_with(b"=") => &input[..input.len() - 1],
-    _ => &input,
+    _ => input,
   };
 
   // "If the length of input divides by 4 leaving a remainder of 1,
@@ -198,7 +196,7 @@ fn b64_decode(input: String, padding: bool) -> Result<Vec<u8>, AnyError> {
 
   let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
     .decode_allow_trailing_bits(true);
-  let out = base64::decode_config(&input, cfg).map_err(|err| match err {
+  let out = base64::decode_config(input, cfg).map_err(|err| match err {
     base64::DecodeError::InvalidByte(_, _) => {
       DomExceptionInvalidCharacterError::new(
         "Failed to decode base64: invalid character",

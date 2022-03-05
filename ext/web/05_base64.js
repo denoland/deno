@@ -25,7 +25,17 @@
       prefix,
       context: "Argument 1",
     });
-    return core.opSync("op_base64_atob", data);
+    try {
+      return core.opSync("op_base64_atob", data);
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new DOMException(
+          "Failed to decode base64: invalid character",
+          "InvalidCharacterError",
+        );
+      }
+      throw e;
+    }
   }
 
   /**
