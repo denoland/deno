@@ -574,7 +574,7 @@ async fn cache_command(
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
+      vec![specifier],
       false,
       lib.clone(),
       Permissions::allow_all(),

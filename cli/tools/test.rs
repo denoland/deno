@@ -737,7 +737,7 @@ async fn check_specifiers(
   if !inline_files.is_empty() {
     let specifiers = inline_files
       .iter()
-      .map(|file| (file.specifier.clone(), ModuleKind::Esm))
+      .map(|file| file.specifier.clone())
       .collect();
 
     for file in inline_files {
@@ -759,7 +759,7 @@ async fn check_specifiers(
     .iter()
     .filter_map(|(specifier, mode)| {
       if *mode != TestMode::Documentation {
-        Some((specifier.clone(), ModuleKind::Esm))
+        Some(specifier.clone())
       } else {
         None
       }
