@@ -12,13 +12,12 @@ use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
+use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use encoding_rs::mem::decode_latin1;
-use encoding_rs::mem::is_str_latin1;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
@@ -154,24 +153,28 @@ fn op_base64_decode(
   input: String,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
-  Ok(b64_decode(input)?.into())
+  Ok(b64_decode(input, false)?.into())
 }
 
 fn op_base64_atob(
   _: &mut OpState,
   input: String,
   _: (),
-) -> Result<String, AnyError> {
-  let buf = b64_decode(input)?;
-  match decode_latin1(&buf) {
-    Cow::Owned(s) => Ok(s),
-    Cow::Borrowed(_) => Ok(unsafe { String::from_utf8_unchecked(buf) }), // Avoid copy if already Latin1
-  }
+) -> Result<ByteString, AnyError> {
+  Ok(ByteString(b64_decode(input, true)?))
 }
 
-fn b64_decode(input: String) -> Result<Vec<u8>, AnyError> {
+fn b64_decode(input: String, padding: bool) -> Result<Vec<u8>, AnyError> {
   let mut input = input.into_bytes();
   input.retain(|c| !c.is_ascii_whitespace());
+
+  // If padding is expected, fail if not 4-byte aligned
+  // TODO(@AaronO): cleanup
+  if padding && input.len() % 4 != 0 && (input.ends_with(b"==") || input.ends_with(b"=")) {
+    return Err(
+      DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
+    );
+  }
 
   // "If the length of input divides by 4 leaving no remainder, then:
   //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
@@ -217,14 +220,9 @@ fn op_base64_encode(
 
 fn op_base64_btoa(
   _: &mut OpState,
-  s: String,
+  s: ByteString,
   _: (),
 ) -> Result<String, AnyError> {
-  if !is_str_latin1(&s) {
-    return Err(DomExceptionInvalidCharacterError::new(
-      "The string to be encoded contains characters outside of the Latin1 range."
-    ).into());
-  }
   Ok(b64_encode(&s))
 }
 

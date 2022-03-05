@@ -11,6 +11,7 @@
 ((window) => {
   const core = Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { DOMException } = window.__bootstrap.domException;
 
   /**
    * @param {string} data
@@ -37,7 +38,17 @@
       prefix,
       context: "Argument 1",
     });
-    return core.opSync("op_base64_btoa", data);
+    try {
+      return core.opSync("op_base64_btoa", data);
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new DOMException(
+          "The string to be encoded contains characters outside of the Latin1 range.",
+          "InvalidCharacterError",
+        );
+      }
+      throw e;
+    }
   }
 
   window.__bootstrap.base64 = {
