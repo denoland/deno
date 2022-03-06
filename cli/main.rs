@@ -328,6 +328,8 @@ fn print_cache_info(
       origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
 
+  let local_storage_dir = origin_dir.join("local_storage");
+
   if json {
     let mut output = json!({
       "denoDir": deno_dir,
@@ -339,33 +341,33 @@ fn print_cache_info(
 
     if location.is_some() {
       output["localStorage"] =
-        serde_json::to_value(origin_dir.join("local_storage"))?;
+        serde_json::to_value(local_storage_dir)?;
     }
 
     write_json_to_stdout(&output)
   } else {
-    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
+    println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir.display());
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Remote modules cache:"),
-      modules_cache
+      modules_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Emitted modules cache:"),
-      typescript_cache
+      typescript_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Language server registries cache:"),
-      registry_cache,
+      registry_cache.display(),
     );
-    println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    println!("{} {}", colors::bold("Origin storage:"), origin_dir.display());
     if location.is_some() {
       println!(
-        "{} {:?}",
+        "{} {}",
         colors::bold("Local Storage:"),
-        origin_dir.join("local_storage"),
+        local_storage_dir.display(),
       );
     }
     Ok(())
