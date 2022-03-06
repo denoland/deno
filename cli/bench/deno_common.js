@@ -39,7 +39,7 @@ function benchStats(name, n, t1, t2) {
 
 function benchB64RtLong() {
   const input = "long-string".repeat(99999);
-  benchSync("b64_rt_long", 10, () => {
+  benchSync("b64_rt_long", 1e2, () => {
     atob(btoa(input));
   });
 }
