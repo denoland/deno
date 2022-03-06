@@ -340,13 +340,16 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] =
-        serde_json::to_value(local_storage_dir)?;
+      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
     }
 
     write_json_to_stdout(&output)
   } else {
-    println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir.display());
+    println!(
+      "{} {}",
+      colors::bold("DENO_DIR location:"),
+      deno_dir.display()
+    );
     println!(
       "{} {}",
       colors::bold("Remote modules cache:"),
@@ -362,7 +365,11 @@ fn print_cache_info(
       colors::bold("Language server registries cache:"),
       registry_cache.display(),
     );
-    println!("{} {}", colors::bold("Origin storage:"), origin_dir.display());
+    println!(
+      "{} {}",
+      colors::bold("Origin storage:"),
+      origin_dir.display()
+    );
     if location.is_some() {
       println!(
         "{} {}",
