@@ -7,8 +7,8 @@ use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::url::form_urlencoded;
 use deno_core::op;
+use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
@@ -29,10 +29,7 @@ pub fn init() -> Extension {
     .ops(|ctx| {
       ctx.register("op_url_parse", op_url_parse);
       ctx.register("op_url_reparse", op_url_reparse);
-      ctx.register(
-        "op_url_parse_search_params",
-        op_url_parse_search_params,
-      );
+      ctx.register("op_url_parse_search_params", op_url_parse_search_params);
       ctx.register(
         "op_url_stringify_search_params",
         op_url_stringify_search_params,

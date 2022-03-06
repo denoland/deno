@@ -25,17 +25,17 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
+use deno_core::RegisterCtx;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -642,14 +642,12 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
-  vec![
-    ("op_tls_start", op_async(op_tls_start::<P>)),
-    ("op_tls_connect", op_async(op_tls_connect::<P>)),
-    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
-    ("op_tls_accept", op_async(op_tls_accept)),
-    ("op_tls_handshake", op_async(op_tls_handshake)),
-  ]
+pub fn init<P: NetPermissions + 'static>(ctx: &mut RegisterCtx) {
+  ctx.register("op_tls_start", op_tls_start::<P>);
+  ctx.register("op_tls_connect", op_tls_connect::<P>);
+  ctx.register("op_tls_listen", op_tls_listen::<P>);
+  ctx.register("op_tls_accept", op_tls_accept);
+  ctx.register("op_tls_handshake", op_tls_handshake);
 }
 
 #[derive(Debug)]
@@ -765,6 +763,7 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op_async]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
@@ -857,6 +856,7 @@ where
   })
 }
 
+#[op_async]
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
@@ -1016,6 +1016,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
@@ -1112,6 +1113,7 @@ where
   })
 }
 
+#[op_async]
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -1163,6 +1165,7 @@ pub async fn op_tls_accept(
   })
 }
 
+#[op_async]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

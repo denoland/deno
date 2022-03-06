@@ -3,13 +3,13 @@
 //! This module helps deno implement timers and performance APIs.
 
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::op_async;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::op;
-use deno_core::op_async;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;

@@ -84,10 +84,7 @@ pub fn init<P: TimersPermission + 'static>(
     .ops(|ctx| {
       ctx.register("op_base64_decode", op_base64_decode);
       ctx.register("op_base64_encode", op_base64_encode);
-      ctx.register(
-        "op_encoding_normalize_label",
-        op_encoding_normalize_label,
-      );
+      ctx.register("op_encoding_normalize_label", op_encoding_normalize_label);
       ctx.register("op_encoding_new_decoder", op_encoding_new_decoder);
       ctx.register("op_encoding_decode", op_encoding_decode);
       ctx.register("op_encoding_encode_into", op_encoding_encode_into);
@@ -95,39 +92,20 @@ pub fn init<P: TimersPermission + 'static>(
       ctx.register("op_blob_slice_part", op_blob_slice_part);
       ctx.register("op_blob_read_part", op_blob_read_part);
       ctx.register("op_blob_remove_part", op_blob_remove_part);
-      ctx.register(
-        "op_blob_create_object_url",
-        op_blob_create_object_url,
-      );
-      ctx.register(
-        "op_blob_revoke_object_url",
-        op_blob_revoke_object_url,
-      );
+      ctx.register("op_blob_create_object_url", op_blob_create_object_url);
+      ctx.register("op_blob_revoke_object_url", op_blob_revoke_object_url);
       ctx.register("op_blob_from_object_url", op_blob_from_object_url);
       ctx.register(
         "op_message_port_create_entangled",
         op_message_port_create_entangled,
       );
-      ctx.register(
-        "op_message_port_post_message",
-        op_message_port_post_message,
-      );
-      ctx.register(
-        "op_message_port_recv_message",
-        op_message_port_recv_message,
-      );
-      ctx.register(
-        "op_compression_new",
-        compression::op_compression_new,
-      );
-      ctx.register(
-        "op_compression_write",
-        compression::op_compression_write,
-      );
-      ctx.register(
-        "op_compression_finish",
-        compression::op_compression_finish,
-      );
+      ctx
+        .register("op_message_port_post_message", op_message_port_post_message);
+      ctx
+        .register("op_message_port_recv_message", op_message_port_recv_message);
+      ctx.register("op_compression_new", compression::op_compression_new);
+      ctx.register("op_compression_write", compression::op_compression_write);
+      ctx.register("op_compression_finish", compression::op_compression_finish);
       ctx.register("op_now", op_now::<P>);
       ctx.register("op_timer_handle", op_timer_handle);
       ctx.register("op_sleep", op_sleep);

@@ -26,6 +26,7 @@ use ctr::flavors::Ctr64BE;
 use ctr::flavors::CtrFlavor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::OsRng;
@@ -79,6 +80,8 @@ pub enum EncryptAlgorithm {
     key_length: usize,
   },
 }
+
+#[op_async]
 pub async fn op_crypto_encrypt(
   _state: Rc<RefCell<OpState>>,
   opts: EncryptOptions,

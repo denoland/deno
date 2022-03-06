@@ -1,4 +1,5 @@
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
@@ -86,6 +87,7 @@ pub enum ImportKeyResult {
   Hmac { raw_data: RawKeyData },
 }
 
+#[op]
 pub fn op_crypto_import_key(
   _state: &mut OpState,
   opts: ImportKeyOptions,

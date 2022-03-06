@@ -5,13 +5,14 @@ use anyhow::Error;
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
 pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
 pub type OpPair = (&'static str, OpFn);
+pub type OpInitFn = dyn Fn(&mut RegisterCtx) + 'static;
 pub type OpMiddlewareFn = dyn Fn(&'static str, OpFn) -> OpFn;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops_init: Option<Box<dyn Fn(&mut RegisterCtx) + 'static>>,
+  ops_init: Option<Box<OpInitFn>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   initialized: bool,
@@ -69,7 +70,7 @@ impl Extension {
 #[derive(Default)]
 pub struct ExtensionBuilder {
   js: Vec<SourcePair>,
-  ops_init: Option<Box<dyn Fn(&mut RegisterCtx) + 'static>>,
+  ops_init: Option<Box<OpInitFn>>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
 }

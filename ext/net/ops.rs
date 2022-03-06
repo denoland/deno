@@ -9,15 +9,15 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
+use deno_core::RegisterCtx;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -50,17 +50,15 @@ use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
-  vec![
-    ("op_net_accept", op_async(op_net_accept)),
-    ("op_net_connect", op_async(op_net_connect::<P>)),
-    ("op_net_listen", op_sync(op_net_listen::<P>)),
-    ("op_dgram_recv", op_async(op_dgram_recv)),
-    ("op_dgram_send", op_async(op_dgram_send::<P>)),
-    ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
-    ("op_set_nodelay", op_sync(op_set_nodelay::<P>)),
-    ("op_set_keepalive", op_sync(op_set_keepalive::<P>)),
-  ]
+pub fn init<P: NetPermissions + 'static>(ctx: &mut RegisterCtx) {
+  ctx.register("op_net_accept", op_net_accept);
+  ctx.register("op_net_connect", op_net_connect::<P>);
+  ctx.register("op_net_listen", op_net_listen::<P>);
+  ctx.register("op_dgram_recv", op_dgram_recv);
+  ctx.register("op_dgram_send", op_dgram_send::<P>);
+  ctx.register("op_dns_resolve", op_dns_resolve::<P>);
+  ctx.register("op_set_nodelay", op_set_nodelay::<P>);
+  ctx.register("op_set_keepalive", op_set_keepalive::<P>);
 }
 
 #[derive(Serialize)]
@@ -158,6 +156,7 @@ async fn accept_tcp(
   })
 }
 
+#[op_async]
 async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
@@ -210,6 +209,7 @@ async fn receive_udp(
   })
 }
 
+#[op_async]
 async fn op_dgram_recv(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
@@ -231,6 +231,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
+#[op_async]
 async fn op_dgram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
@@ -299,6 +300,7 @@ pub struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
+#[op_async]
 pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
@@ -474,6 +476,7 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
+#[op]
 fn op_net_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
@@ -613,6 +616,7 @@ pub struct NameServer {
   port: u16,
 }
 
+#[op_async]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
@@ -681,6 +685,7 @@ where
   Ok(results)
 }
 
+#[op]
 pub fn op_set_nodelay<NP>(
   state: &mut OpState,
   rid: ResourceId,
@@ -692,6 +697,7 @@ pub fn op_set_nodelay<NP>(
   resource.set_nodelay(nodelay)
 }
 
+#[op]
 pub fn op_set_keepalive<NP>(
   state: &mut OpState,
   rid: ResourceId,

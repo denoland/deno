@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::shared::*;
 use deno_core::error::AnyError;
+use deno_core::op_async;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::rand_core::OsRng;
@@ -41,6 +42,7 @@ pub enum GenerateKeyOptions {
   },
 }
 
+#[op_async]
 pub async fn op_crypto_generate_key(
   _state: Rc<RefCell<OpState>>,
   opts: GenerateKeyOptions,

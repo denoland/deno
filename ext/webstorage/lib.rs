@@ -4,9 +4,9 @@
 
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::op;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -32,10 +32,7 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
       ctx.register("op_webstorage_get", op_webstorage_get);
       ctx.register("op_webstorage_remove", op_webstorage_remove);
       ctx.register("op_webstorage_clear", op_webstorage_clear);
-      ctx.register(
-        "op_webstorage_iterate_keys",
-        op_webstorage_iterate_keys,
-      );
+      ctx.register("op_webstorage_iterate_keys", op_webstorage_iterate_keys);
     })
     .state(move |state| {
       if let Some(origin_storage_dir) = &origin_storage_dir {

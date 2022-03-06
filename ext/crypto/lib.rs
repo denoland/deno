@@ -9,8 +9,8 @@ use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -88,24 +88,21 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       "00_crypto.js",
       "01_webidl.js",
     ))
-    .ops(vec![
-      (
-        "op_crypto_get_random_values",
-        op_sync(op_crypto_get_random_values),
-      ),
-      ("op_crypto_generate_key", op_async(op_crypto_generate_key)),
-      ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
-      ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
-      ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
-      ("op_crypto_import_key", op_sync(op_crypto_import_key)),
-      ("op_crypto_export_key", op_sync(op_crypto_export_key)),
-      ("op_crypto_encrypt", op_async(op_crypto_encrypt)),
-      ("op_crypto_decrypt", op_async(op_crypto_decrypt)),
-      ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
-      ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
-      ("op_crypto_wrap_key", op_sync(op_crypto_wrap_key)),
-      ("op_crypto_unwrap_key", op_sync(op_crypto_unwrap_key)),
-    ])
+    .ops(|ctx| {
+      ctx.register("op_crypto_get_random_values", op_crypto_get_random_values);
+      ctx.register("op_crypto_generate_key", op_crypto_generate_key);
+      ctx.register("op_crypto_sign_key", op_crypto_sign_key);
+      ctx.register("op_crypto_verify_key", op_crypto_verify_key);
+      ctx.register("op_crypto_derive_bits", op_crypto_derive_bits);
+      ctx.register("op_crypto_import_key", op_crypto_import_key);
+      ctx.register("op_crypto_export_key", op_crypto_export_key);
+      ctx.register("op_crypto_encrypt", op_crypto_encrypt);
+      ctx.register("op_crypto_decrypt", op_crypto_decrypt);
+      ctx.register("op_crypto_subtle_digest", op_crypto_subtle_digest);
+      ctx.register("op_crypto_random_uuid", op_crypto_random_uuid);
+      ctx.register("op_crypto_wrap_key", op_crypto_wrap_key);
+      ctx.register("op_crypto_unwrap_key", op_crypto_unwrap_key);
+    })
     .state(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));
@@ -115,6 +112,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
     .build()
 }
 
+#[op]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   mut zero_copy: ZeroCopyBuf,
@@ -171,6 +169,7 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+#[op_async]
 pub async fn op_crypto_sign_key(
   _state: Rc<RefCell<OpState>>,
   args: SignArg,
@@ -325,6 +324,7 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+#[op_async]
 pub async fn op_crypto_verify_key(
   _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
@@ -485,6 +485,7 @@ pub struct DeriveKeyArg {
   info: Option<ZeroCopyBuf>,
 }
 
+#[op_async]
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
@@ -790,6 +791,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   }
 }
 
+#[op]
 pub fn op_crypto_random_uuid(
   state: &mut OpState,
   _: (),
@@ -809,6 +811,7 @@ pub fn op_crypto_random_uuid(
   Ok(uuid.to_string())
 }
 
+#[op_async]
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
@@ -832,6 +835,7 @@ pub struct WrapUnwrapKeyArg {
   algorithm: Algorithm,
 }
 
+#[op]
 pub fn op_crypto_wrap_key(
   _state: &mut OpState,
   args: WrapUnwrapKeyArg,
@@ -861,6 +865,7 @@ pub fn op_crypto_wrap_key(
   }
 }
 
+#[op]
 pub fn op_crypto_unwrap_key(
   _state: &mut OpState,
   args: WrapUnwrapKeyArg,

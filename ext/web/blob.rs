@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use deno_core::error::type_error;
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
 use deno_core::op;
 use deno_core::op_async;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;

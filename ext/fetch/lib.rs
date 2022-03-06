@@ -9,8 +9,8 @@ use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -100,14 +100,11 @@ where
       "23_response.js",
       "26_fetch.js",
     ))
-    .ops(vec![
-      ("op_fetch", op_sync(op_fetch::<FP>)),
-      ("op_fetch_send", op_async(op_fetch_send)),
-      (
-        "op_fetch_custom_client",
-        op_sync(op_fetch_custom_client::<FP>),
-      ),
-    ])
+    .ops(|ctx| {
+      ctx.register("op_fetch", op_fetch::<FP>);
+      ctx.register("op_fetch_send", op_fetch_send);
+      ctx.register("op_fetch_custom_client", op_fetch_custom_client::<FP>);
+    })
     .state(move |state| {
       state.put::<Options>(options.clone());
       state.put::<reqwest::Client>({
@@ -197,6 +194,7 @@ pub struct FetchReturn {
   cancel_handle_rid: Option<ResourceId>,
 }
 
+#[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
   args: FetchArgs,
@@ -372,6 +370,7 @@ pub struct FetchResponse {
   response_rid: ResourceId,
 }
 
+#[op_async]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -530,6 +529,7 @@ pub struct CreateHttpClientOptions {
   private_key: Option<String>,
 }
 
+#[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,

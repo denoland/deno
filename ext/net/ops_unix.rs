@@ -16,7 +16,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
-use deno_core::op_async;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -76,7 +75,6 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-#[op_async]
 pub(crate) async fn accept_unix(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
@@ -115,7 +113,6 @@ pub(crate) async fn accept_unix(
   })
 }
 
-#[op_async]
 pub(crate) async fn receive_unix_packet(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,

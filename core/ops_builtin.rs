@@ -31,10 +31,7 @@ pub(crate) fn init_builtins() -> Extension {
       ctx.register("op_resources", op_resources);
       ctx.register("op_wasm_streaming_feed", op_wasm_streaming_feed);
       ctx.register("op_wasm_streaming_abort", op_wasm_streaming_abort);
-      ctx.register(
-        "op_wasm_streaming_set_url",
-        op_wasm_streaming_set_url,
-      );
+      ctx.register("op_wasm_streaming_set_url", op_wasm_streaming_set_url);
       ctx.register("op_metrics", op_metrics);
       ctx.register("op_void_sync", op_void_sync);
       ctx.register("op_void_async", op_void_async);
