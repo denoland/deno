@@ -9,8 +9,7 @@ use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -82,58 +81,58 @@ pub fn init<P: TimersPermission + 'static>(
       "14_compression.js",
       "15_performance.js",
     ))
-    .ops(vec![
-      ("op_base64_decode", op_sync(op_base64_decode)),
-      ("op_base64_encode", op_sync(op_base64_encode)),
-      (
+    .ops(|ctx| {
+      ctx.register("op_base64_decode", op_base64_decode);
+      ctx.register("op_base64_encode", op_base64_encode);
+      ctx.register(
         "op_encoding_normalize_label",
-        op_sync(op_encoding_normalize_label),
-      ),
-      ("op_encoding_new_decoder", op_sync(op_encoding_new_decoder)),
-      ("op_encoding_decode", op_sync(op_encoding_decode)),
-      ("op_encoding_encode_into", op_sync(op_encoding_encode_into)),
-      ("op_blob_create_part", op_sync(op_blob_create_part)),
-      ("op_blob_slice_part", op_sync(op_blob_slice_part)),
-      ("op_blob_read_part", op_async(op_blob_read_part)),
-      ("op_blob_remove_part", op_sync(op_blob_remove_part)),
-      (
+        op_encoding_normalize_label,
+      );
+      ctx.register("op_encoding_new_decoder", op_encoding_new_decoder);
+      ctx.register("op_encoding_decode", op_encoding_decode);
+      ctx.register("op_encoding_encode_into", op_encoding_encode_into);
+      ctx.register("op_blob_create_part", op_blob_create_part);
+      ctx.register("op_blob_slice_part", op_blob_slice_part);
+      ctx.register("op_blob_read_part", op_blob_read_part);
+      ctx.register("op_blob_remove_part", op_blob_remove_part);
+      ctx.register(
         "op_blob_create_object_url",
-        op_sync(op_blob_create_object_url),
-      ),
-      (
+        op_blob_create_object_url,
+      );
+      ctx.register(
         "op_blob_revoke_object_url",
-        op_sync(op_blob_revoke_object_url),
-      ),
-      ("op_blob_from_object_url", op_sync(op_blob_from_object_url)),
-      (
+        op_blob_revoke_object_url,
+      );
+      ctx.register("op_blob_from_object_url", op_blob_from_object_url);
+      ctx.register(
         "op_message_port_create_entangled",
-        op_sync(op_message_port_create_entangled),
-      ),
-      (
+        op_message_port_create_entangled,
+      );
+      ctx.register(
         "op_message_port_post_message",
-        op_sync(op_message_port_post_message),
-      ),
-      (
+        op_message_port_post_message,
+      );
+      ctx.register(
         "op_message_port_recv_message",
-        op_async(op_message_port_recv_message),
-      ),
-      (
+        op_message_port_recv_message,
+      );
+      ctx.register(
         "op_compression_new",
-        op_sync(compression::op_compression_new),
-      ),
-      (
+        compression::op_compression_new,
+      );
+      ctx.register(
         "op_compression_write",
-        op_sync(compression::op_compression_write),
-      ),
-      (
+        compression::op_compression_write,
+      );
+      ctx.register(
         "op_compression_finish",
-        op_sync(compression::op_compression_finish),
-      ),
-      ("op_now", op_sync(op_now::<P>)),
-      ("op_timer_handle", op_sync(op_timer_handle)),
-      ("op_sleep", op_async(op_sleep)),
-      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
-    ])
+        compression::op_compression_finish,
+      );
+      ctx.register("op_now", op_now::<P>);
+      ctx.register("op_timer_handle", op_timer_handle);
+      ctx.register("op_sleep", op_sleep);
+      ctx.register("op_sleep_sync", op_sleep_sync::<P>);
+    })
     .state(move |state| {
       state.put(blob_store.clone());
       if let Some(location) = maybe_location.clone() {
@@ -145,6 +144,7 @@ pub fn init<P: TimersPermission + 'static>(
     .build()
 }
 
+#[op]
 fn op_base64_decode(
   _state: &mut OpState,
   input: String,
@@ -193,6 +193,7 @@ fn op_base64_decode(
   Ok(ZeroCopyBuf::from(out))
 }
 
+#[op]
 fn op_base64_encode(
   _state: &mut OpState,
   s: ZeroCopyBuf,
@@ -212,6 +213,7 @@ struct DecoderOptions {
   fatal: bool,
 }
 
+#[op]
 fn op_encoding_normalize_label(
   _state: &mut OpState,
   label: String,
@@ -227,6 +229,7 @@ fn op_encoding_normalize_label(
   Ok(encoding.name().to_lowercase())
 }
 
+#[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
   options: DecoderOptions,
@@ -266,6 +269,7 @@ struct DecodeOptions {
   stream: bool,
 }
 
+#[op]
 fn op_encoding_decode(
   state: &mut OpState,
   data: ZeroCopyBuf,
@@ -329,6 +333,7 @@ struct EncodeIntoResult {
   written: usize,
 }
 
+#[op]
 fn op_encoding_encode_into(
   _state: &mut OpState,
   input: String,

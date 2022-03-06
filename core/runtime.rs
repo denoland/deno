@@ -156,9 +156,9 @@ pub struct JsRuntimeState {
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
-  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
-  pub(crate) have_unpolled_ops: bool,
+  pub have_unpolled_ops: bool,
   pub op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,

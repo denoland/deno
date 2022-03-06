@@ -28,9 +28,6 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
 
-  // Available on start due to bindings.
-  const { opcallSync, opcallAsync } = window.Deno.core;
-
   let opsCache = {};
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -149,7 +146,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
+    const maybeError = Deno.core[opName](promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -169,7 +166,7 @@
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
+    return unwrapOpResult(Deno.core[opName](arg1, arg2));
   }
 
   function resources() {

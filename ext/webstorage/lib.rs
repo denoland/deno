@@ -4,9 +4,9 @@
 
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_core::op;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -25,18 +25,18 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
       prefix "deno:ext/webstorage",
       "01_webstorage.js",
     ))
-    .ops(vec![
-      ("op_webstorage_length", op_sync(op_webstorage_length)),
-      ("op_webstorage_key", op_sync(op_webstorage_key)),
-      ("op_webstorage_set", op_sync(op_webstorage_set)),
-      ("op_webstorage_get", op_sync(op_webstorage_get)),
-      ("op_webstorage_remove", op_sync(op_webstorage_remove)),
-      ("op_webstorage_clear", op_sync(op_webstorage_clear)),
-      (
+    .ops(|ctx| {
+      ctx.register("op_webstorage_length", op_webstorage_length);
+      ctx.register("op_webstorage_key", op_webstorage_key);
+      ctx.register("op_webstorage_set", op_webstorage_set);
+      ctx.register("op_webstorage_get", op_webstorage_get);
+      ctx.register("op_webstorage_remove", op_webstorage_remove);
+      ctx.register("op_webstorage_clear", op_webstorage_clear);
+      ctx.register(
         "op_webstorage_iterate_keys",
-        op_sync(op_webstorage_iterate_keys),
-      ),
-    ])
+        op_webstorage_iterate_keys,
+      );
+    })
     .state(move |state| {
       if let Some(origin_storage_dir) = &origin_storage_dir {
         state.put(OriginStorageDir(origin_storage_dir.clone()));
@@ -107,6 +107,7 @@ fn get_webstorage(
   Ok(conn)
 }
 
+#[op]
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
@@ -120,6 +121,7 @@ pub fn op_webstorage_length(
   Ok(length)
 }
 
+#[op]
 pub fn op_webstorage_key(
   state: &mut OpState,
   index: u32,
@@ -144,6 +146,7 @@ pub struct SetArgs {
   key_value: String,
 }
 
+#[op]
 pub fn op_webstorage_set(
   state: &mut OpState,
   args: SetArgs,
@@ -171,6 +174,7 @@ pub fn op_webstorage_set(
   Ok(())
 }
 
+#[op]
 pub fn op_webstorage_get(
   state: &mut OpState,
   key_name: String,
@@ -186,6 +190,7 @@ pub fn op_webstorage_get(
   Ok(val)
 }
 
+#[op]
 pub fn op_webstorage_remove(
   state: &mut OpState,
   key_name: String,
@@ -199,6 +204,7 @@ pub fn op_webstorage_remove(
   Ok(())
 }
 
+#[op]
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
@@ -212,6 +218,7 @@ pub fn op_webstorage_clear(
   Ok(())
 }
 
+#[op]
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   persistent: bool,
