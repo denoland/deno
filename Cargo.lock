@@ -115,9 +115,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.53"
+version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
+checksum = "159bb86af3a200e19a068f4224eae4c8bb2d0fa054c7e5d1cacd5cef95e684cd"
 
 [[package]]
 name = "arrayvec"
@@ -750,6 +750,7 @@ dependencies = [
  "deno_lint",
  "deno_net",
  "deno_runtime",
+ "deno_task_shell",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -778,7 +779,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
- "pretty_assertions",
+ "pretty_assertions 0.7.2",
  "rand 0.8.4",
  "regex",
  "ring",
@@ -1058,6 +1059,18 @@ dependencies = [
  "uuid",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno_task_shell"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c991d0beb2147e880bb58a927015784ba56c7c3e7f92ddf58315dc2b543a3fb"
+dependencies = [
+ "anyhow",
+ "futures",
+ "pretty_assertions 1.1.0",
+ "tokio",
 ]
 
 [[package]]
@@ -2874,6 +2887,18 @@ name = "pretty_assertions"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
+dependencies = [
+ "ansi_term",
+ "ctor",
+ "diff",
+ "output_vt100",
+]
+
+[[package]]
+name = "pretty_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76d5b548b725018ab5496482b45cb8bef21e9fed1858a6d674e3a8a0f0bb5d50"
 dependencies = [
  "ansi_term",
  "ctor",

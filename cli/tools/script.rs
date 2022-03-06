@@ -11,11 +11,6 @@ use deno_core::error::AnyError;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-mod combinators;
-mod shell;
-mod shell_parser;
-mod shell_types;
-
 fn get_scripts_config(
   maybe_config_file: Option<&ConfigFile>,
 ) -> Result<HashMap<String, String>, AnyError> {
@@ -68,11 +63,11 @@ pub async fn execute_script(
   let maybe_script = scripts_config.get(&script_name);
 
   if let Some(script) = maybe_script {
-    let seq_list = shell_parser::parse(script)
+    let seq_list = deno_task_shell::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", script_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
     let additional_cli_args = Vec::new(); // todo
-    let exit_code = shell::execute(
+    let exit_code = deno_task_shell::execute(
       seq_list,
       env_vars,
       cwd.to_path_buf(),
