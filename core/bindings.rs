@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::extensions::Extension;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -30,7 +31,6 @@ use v8::MapFnTo;
 use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
-use crate::extensions::Extension;
 
 const UNDEFINED_OP_ID_MSG: &str =
   "invalid op id: received `undefined` instead of an integer.
@@ -226,8 +226,8 @@ pub fn initialize_context<'s>(
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
-  for e in extensions {
-    let ops = e.init_ops(scope, core_val);
+  for ex in extensions {
+    ex.init_ops(scope, core_val);
   }
 
   scope.escape(context)

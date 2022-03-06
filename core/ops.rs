@@ -82,7 +82,8 @@ where
 
 pub type PromiseId = i32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
-pub type OpFn = fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
+pub type OpFn =
+  fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {

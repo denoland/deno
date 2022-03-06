@@ -73,6 +73,8 @@ pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;
 pub use crate::ops::OpResult;
 pub use crate::ops::OpState;
+pub use deno_ops::op;
+pub use deno_ops::op_async;
 // pub use crate::ops::OpTable;
 pub use crate::ops::PromiseId;
 // pub use crate::ops_builtin::op_close;

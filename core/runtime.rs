@@ -138,7 +138,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub(crate) struct JsRuntimeState {
+pub struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
@@ -159,7 +159,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
-  pub(crate) op_state: Rc<RefCell<OpState>>,
+  pub op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
@@ -292,7 +292,8 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &mut options.extensions);
+        let context =
+          bindings::initialize_context(scope, &mut options.extensions);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -430,7 +431,7 @@ impl JsRuntime {
     isolate
   }
 
-  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
@@ -475,17 +476,13 @@ impl JsRuntime {
 
     // Register ops
     for e in extensions.iter_mut() {
+      // ops are already registered during in bindings::initialize_context();
       e.init_state(&mut op_state.borrow_mut())?;
-      // Register each op after middlewaring it
-      // let ops = e.init_ops().unwrap_or_default();
-      // for (name, opfn) in ops {
-        // self.register_op(name, macroware(name, opfn));
-      // }
     }
     // Restore extensions
     self.extensions = extensions;
 
-    Ok(()) 
+    Ok(())
   }
 
   /// Grab a Global handle to a function returned by the given expression

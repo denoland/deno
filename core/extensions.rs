@@ -34,8 +34,11 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(&mut self, scope: &mut v8::HandleScope,
-  obj: v8::Local<v8::Object>) {
+  pub fn init_ops(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    obj: v8::Local<v8::Object>,
+  ) {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
@@ -76,16 +79,13 @@ pub struct RegisterCtx<'a, 'b, 'c> {
   obj: v8::Local<'c, v8::Object>,
 }
 
-pub fn register<'a, 'b, 'c, F>(ctx: &mut RegisterCtx<'a, 'b, 'c>, name: &'static str, op_fn: F)
-where 
-  F: v8::MapFnTo<v8::FunctionCallback> 
-{
-  crate::bindings::set_func(
-    ctx.scope,
-    ctx.obj,
-    name,
-    op_fn,
-  )
+impl<'a, 'b, 'c> RegisterCtx<'a, 'b, 'c> {
+  pub fn register<F>(&mut self, name: &'static str, op_fn: F)
+  where
+    F: v8::MapFnTo<v8::FunctionCallback>,
+  {
+    crate::bindings::set_func(self.scope, self.obj, name, op_fn)
+  }
 }
 
 impl ExtensionBuilder {
@@ -94,9 +94,9 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn ops<F>(&mut self, ops: F) -> &mut Self 
+  pub fn ops<F>(&mut self, ops: F) -> &mut Self
   where
-    F: Fn(&mut RegisterCtx) + 'static, 
+    F: Fn(&mut RegisterCtx) + 'static,
   {
     self.ops_init = Some(Box::new(ops));
     self

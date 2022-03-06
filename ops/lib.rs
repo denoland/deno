@@ -7,24 +7,24 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let name = &func.sig.ident;
   TokenStream::from(quote! {
     pub fn #name<'s>(
-      scope: &mut v8::HandleScope<'s>,
-      args: v8::FunctionCallbackArguments,
-      mut rv: v8::ReturnValue,
+      scope: &mut deno_core::v8::HandleScope<'s>,
+      args: deno_core::v8::FunctionCallbackArguments,
+      mut rv: deno_core::v8::ReturnValue,
     ) {
-      use crate::JsRuntime;
+      use deno_core::JsRuntime;
 
       let a = args.get(0);
       let b = args.get(1);
 
       #func
 
-      let a = serde_v8::from_v8(scope, a).unwrap();
-      let b = serde_v8::from_v8(scope, b).unwrap();
-      let state_rc = JsRuntime::state(scope);
+      let a = deno_core::serde_v8::from_v8(scope, a).unwrap();
+      let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
+      let state_rc = deno_core::JsRuntime::state(scope);
       let state = state_rc.borrow_mut();
       let result = #name(&mut state.op_state.borrow_mut(), a, b).unwrap();
 
-      let ret = serde_v8::to_v8(scope, result).unwrap();
+      let ret = deno_core::serde_v8::to_v8(scope, result).unwrap();
       rv.set(ret);
     }
   })
@@ -46,7 +46,7 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
       use crate::serialize_op_result;
       use crate::PromiseId;
       use crate::bindings::throw_type_error;
-      
+
       let promise_id = args.get(0);
       let promise_id = v8::Local::<v8::Integer>::try_from(promise_id)
         .map(|l| l.value() as PromiseId)

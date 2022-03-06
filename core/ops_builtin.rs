@@ -16,15 +16,6 @@ use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
 use v8::MapFnTo;
 
-pub(crate) fn external_references(references: &mut Vec<v8::ExternalReference>) {
-  references.push(v8::ExternalReference {
-    function: op_resources.map_fn_to(),
-  });
-  references.push(v8::ExternalReference {
-    function: op_void_sync.map_fn_to(),
-  });
-}
-
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -34,25 +25,29 @@ pub(crate) fn init_builtins() -> Extension {
       "02_error.js",
     ))
     .ops(|ctx| {
-      // ("op_close", op_sync(op_close)),
-      // ("op_try_close", op_sync(op_try_close)),
-      // ("op_print", op_sync(op_print)),
-      crate::extensions::register(ctx, "op_resources", op_resources);
-      // ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
-      // ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
-      // (
-      //   "op_wasm_streaming_set_url",
-      //   op_sync(op_wasm_streaming_set_url),
-      // ),
-      // ("op_metrics", op_sync(op_metrics)),
-      crate::extensions::register(ctx, "op_void_sync", op_void_sync);
-      crate::extensions::register(ctx, "op_void_async", op_void_async);
+      ctx.register("op_close", op_close);
+      ctx.register("op_try_close", op_try_close);
+      ctx.register("op_print", op_print);
+      ctx.register("op_resources", op_resources);
+      ctx.register("op_wasm_streaming_feed", op_wasm_streaming_feed);
+      ctx.register("op_wasm_streaming_abort", op_wasm_streaming_abort);
+      ctx.register(
+        "op_wasm_streaming_set_url",
+        op_wasm_streaming_set_url,
+      );
+      ctx.register("op_metrics", op_metrics);
+      ctx.register("op_void_sync", op_void_sync);
+      ctx.register("op_void_async", op_void_async);
       // // TODO(@AaronO): track IO metrics for builtin streams
-      // ("op_read", op_async(op_read)),
-      // ("op_write", op_async(op_write)),
-      // ("op_shutdown", op_async(op_shutdown)),
+      ctx.register("op_read", op_read);
+      ctx.register("op_write", op_write);
+      ctx.register("op_shutdown", op_shutdown);
     })
     .build()
+}
+
+mod deno_core {
+  pub use crate::*;
 }
 
 /// Return map of resources with id as key
@@ -84,48 +79,52 @@ pub async fn op_void_async(
 ) -> Result<(), Error> {
   Ok(())
 }
-// /// Remove a resource from the resource table.
-// pub fn op_close(
-//   state: &mut OpState,
-//   rid: Option<ResourceId>,
-//   _: (),
-// ) -> Result<(), Error> {
-//   // TODO(@AaronO): drop Option after improving type-strictness balance in
-//   // serde_v8
-//   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
-//   state.resource_table.close(rid)?;
-//   Ok(())
-// }
 
-// /// Try to remove a resource from the resource table. If there is no resource
-// /// with the specified `rid`, this is a no-op.
-// pub fn op_try_close(
-//   state: &mut OpState,
-//   rid: Option<ResourceId>,
-//   _: (),
-// ) -> Result<(), Error> {
-//   // TODO(@AaronO): drop Option after improving type-strictness balance in
-//   // serde_v8.
-//   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
-//   let _ = state.resource_table.close(rid);
-//   Ok(())
-// }
+/// Remove a resource from the resource table.
+#[op]
+pub fn op_close(
+  state: &mut OpState,
+  rid: Option<ResourceId>,
+  _: (),
+) -> Result<(), Error> {
+  // TODO(@AaronO): drop Option after improving type-strictness balance in
+  // serde_v8
+  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
+  state.resource_table.close(rid)?;
+  Ok(())
+}
 
-// /// Builtin utility to print to stdout/stderr
-// pub fn op_print(
-//   _state: &mut OpState,
-//   msg: String,
-//   is_err: bool,
-// ) -> Result<(), Error> {
-//   if is_err {
-//     stderr().write_all(msg.as_bytes())?;
-//     stderr().flush().unwrap();
-//   } else {
-//     stdout().write_all(msg.as_bytes())?;
-//     stdout().flush().unwrap();
-//   }
-//   Ok(())
-// }
+/// Try to remove a resource from the resource table. If there is no resource
+/// with the specified `rid`, this is a no-op.
+#[op]
+pub fn op_try_close(
+  state: &mut OpState,
+  rid: Option<ResourceId>,
+  _: (),
+) -> Result<(), Error> {
+  // TODO(@AaronO): drop Option after improving type-strictness balance in
+  // serde_v8.
+  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
+  let _ = state.resource_table.close(rid);
+  Ok(())
+}
+
+/// Builtin utility to print to stdout/stderr
+#[op]
+pub fn op_print(
+  _state: &mut OpState,
+  msg: String,
+  is_err: bool,
+) -> Result<(), Error> {
+  if is_err {
+    stderr().write_all(msg.as_bytes())?;
+    stderr().flush().unwrap();
+  } else {
+    stdout().write_all(msg.as_bytes())?;
+    stdout().flush().unwrap();
+  }
+  Ok(())
+}
 
 pub struct WasmStreamingResource(pub(crate) RefCell<v8::WasmStreaming>);
 
@@ -142,87 +141,94 @@ impl Resource for WasmStreamingResource {
   }
 }
 
-// /// Feed bytes to WasmStreamingResource.
-// pub fn op_wasm_streaming_feed(
-//   state: &mut OpState,
-//   rid: ResourceId,
-//   bytes: ZeroCopyBuf,
-// ) -> Result<(), Error> {
-//   let wasm_streaming =
-//     state.resource_table.get::<WasmStreamingResource>(rid)?;
+/// Feed bytes to WasmStreamingResource.
+#[op]
+pub fn op_wasm_streaming_feed(
+  state: &mut OpState,
+  rid: ResourceId,
+  bytes: ZeroCopyBuf,
+) -> Result<(), Error> {
+  let wasm_streaming =
+    state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-//   wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
 
-//   Ok(())
-// }
+  Ok(())
+}
 
-// /// Abort a WasmStreamingResource.
-// pub fn op_wasm_streaming_abort(
-//   state: &mut OpState,
-//   rid: ResourceId,
-//   exception: serde_v8::Value,
-// ) -> Result<(), Error> {
-//   let wasm_streaming =
-//     state.resource_table.take::<WasmStreamingResource>(rid)?;
+/// Abort a WasmStreamingResource.
+#[op]
+pub fn op_wasm_streaming_abort(
+  state: &mut OpState,
+  rid: ResourceId,
+  exception: serde_v8::Value,
+) -> Result<(), Error> {
+  let wasm_streaming =
+    state.resource_table.take::<WasmStreamingResource>(rid)?;
 
-//   // At this point there are no clones of Rc<WasmStreamingResource> on the
-//   // resource table, and no one should own a reference because we're never
-//   // cloning them. So we can be sure `wasm_streaming` is the only reference.
-//   if let Ok(wsr) = Rc::try_unwrap(wasm_streaming) {
-//     wsr.0.into_inner().abort(Some(exception.v8_value));
-//   } else {
-//     panic!("Couldn't consume WasmStreamingResource.");
-//   }
+  // At this point there are no clones of Rc<WasmStreamingResource> on the
+  // resource table, and no one should own a reference because we're never
+  // cloning them. So we can be sure `wasm_streaming` is the only reference.
+  if let Ok(wsr) = Rc::try_unwrap(wasm_streaming) {
+    wsr.0.into_inner().abort(Some(exception.v8_value));
+  } else {
+    panic!("Couldn't consume WasmStreamingResource.");
+  }
 
-//   Ok(())
-// }
+  Ok(())
+}
 
-// pub fn op_wasm_streaming_set_url(
-//   state: &mut OpState,
-//   rid: ResourceId,
-//   url: String,
-// ) -> Result<(), Error> {
-//   let wasm_streaming =
-//     state.resource_table.get::<WasmStreamingResource>(rid)?;
+#[op]
+pub fn op_wasm_streaming_set_url(
+  state: &mut OpState,
+  rid: ResourceId,
+  url: String,
+) -> Result<(), Error> {
+  let wasm_streaming =
+    state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-//   wasm_streaming.0.borrow_mut().set_url(&url);
+  wasm_streaming.0.borrow_mut().set_url(&url);
 
-//   Ok(())
-// }
+  Ok(())
+}
 
-// pub fn op_metrics(
-//   state: &mut OpState,
-//   _: (),
-//   _: (),
-// ) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
-//   let aggregate = state.tracker.aggregate();
-//   let per_op = state.tracker.per_op();
-//   Ok((aggregate, per_op))
-// }
+#[op]
+pub fn op_metrics(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
+  Ok((aggregate, per_op))
+}
 
-// async fn op_read(
-//   state: Rc<RefCell<OpState>>,
-//   rid: ResourceId,
-//   buf: ZeroCopyBuf,
-// ) -> Result<u32, Error> {
-//   let resource = state.borrow().resource_table.get_any(rid)?;
-//   resource.read(buf).await.map(|n| n as u32)
-// }
+#[op_async]
+async fn op_read(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<u32, Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.read(buf).await.map(|n| n as u32)
+}
 
-// async fn op_write(
-//   state: Rc<RefCell<OpState>>,
-//   rid: ResourceId,
-//   buf: ZeroCopyBuf,
-// ) -> Result<u32, Error> {
-//   let resource = state.borrow().resource_table.get_any(rid)?;
-//   resource.write(buf).await.map(|n| n as u32)
-// }
+#[op_async]
+async fn op_write(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<u32, Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.write(buf).await.map(|n| n as u32)
+}
 
-// async fn op_shutdown(
-//   state: Rc<RefCell<OpState>>,
-//   rid: ResourceId,
-//   _: (),
-// ) -> Result<(), Error> {
-//   let resource = state.borrow().resource_table.get_any(rid)?;
-//   resource.shutdown().await
-// }
+#[op_async]
+async fn op_shutdown(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.shutdown().await
+}
