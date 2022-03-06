@@ -424,12 +424,17 @@ jobs:
 
       # Since all tests are skipped when we're building a tagged commit
       # this is a minimal check to ensure that binary is not corrupted
-      - name: Check Deno Binary
+      - name: Check deno binary
         if: matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: target/release/deno eval "console.log(1+2)" | grep 3
         env:
           NO_COLOR: 1
+
+      # Verify that the binary actually works in the Ubuntu-16.04 sysroot
+      - name: Check deno binary
+        if: matrix.use_sysroot
+        run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
 
       # TODO(ry): Because CI is so slow on for OSX and Windows, we currently
       #           run the Web Platform tests only on Linux.
