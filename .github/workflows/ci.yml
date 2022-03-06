@@ -17,18 +17,18 @@ jobs:
     strategy:
       matrix:
         include:
-          #- os: macos-10.15
-          #  job: test
-          #  profile: fastci
-          #- os: macos-10.15
-          #  job: test
-          #  profile: release
-          #- os: windows-2019
-          #  job: test
-          #  profile: fastci
-          #- os: windows-2019
-          #  job: test
-          #  profile: release
+          - os: macos-10.15
+            job: test
+            profile: fastci
+          - os: macos-10.15
+            job: test
+            profile: release
+          - os: windows-2019
+            job: test
+            profile: fastci
+          - os: windows-2019
+            job: test
+            profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: release
@@ -37,12 +37,12 @@ jobs:
             job: bench
             profile: release
             use_sysroot: true
-          #- os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
-          #  job: test
-          #  profile: debug
-          #- os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
-          #  job: lint
-          #  profile: debug
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+            job: test
+            profile: debug
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+            job: lint
+            profile: debug
 
       # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
@@ -161,7 +161,7 @@ jobs:
         shell: bash
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
 
-      - name: Configure clang, lld, and sysroot
+      - name: Set up incremental LTO and sysroot build
         if: matrix.use_sysroot
         run: |
           # Avoid running man-db triggers, which sometimes takes several minutes
@@ -431,8 +431,8 @@ jobs:
         env:
           NO_COLOR: 1
 
-      # Verify that the binary actually works in the Ubuntu-16.04 sysroot
-      - name: Check deno binary
+      # Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+      - name: Check deno binary (in sysroot)
         if: matrix.use_sysroot
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
 
