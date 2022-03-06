@@ -39,14 +39,20 @@ pub struct SequentialListItem {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sequence {
-  /// `MY_VAR=5`
-  EnvVar(EnvVar),
+  /// `MY_VAR=5` or `export MY_VAR=5`
+  EnvVar(SetEnvVarCommand),
   // cmd_name <args...>
   Command(Command),
   // cmd1 | cmd2
   Pipeline(Box<Pipeline>),
   // cmd1 && cmd2 || cmd3
   BooleanList(Box<BooleanList>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetEnvVarCommand {
+  pub exported: bool,
+  pub var: EnvVar,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -184,21 +190,10 @@ fn parse_sequential_list_item(input: &str) -> ParseResult<SequentialListItem> {
 }
 
 fn parse_sequence(input: &str) -> ParseResult<Sequence> {
-  let env_vars_input = input;
-  let (input, mut env_vars) = parse_env_vars(input)?;
-  let (input, args) = parse_command_args(input)?;
-  let current = if args.is_empty() {
-    if env_vars.is_empty() {
-      return ParseError::backtrace();
-    }
-    if env_vars.len() > 1 {
-      return ParseError::fail(env_vars_input, "Cannot set multiple environment variables when there is no following command.");
-    } else {
-      Sequence::EnvVar(env_vars.remove(0))
-    }
-  } else {
-    Sequence::Command(Command { env_vars, args })
-  };
+  let (input, current) = or(
+    map(parse_set_env_var_command, Sequence::EnvVar),
+    map(parse_command, Sequence::Command),
+  )(input)?;
   let (input, current) = match parse_boolean_list_op(input) {
     Ok((input, op)) => {
       let (input, next_sequence) = assert_exists(
@@ -235,6 +230,40 @@ fn parse_sequence(input: &str) -> ParseResult<Sequence> {
   };
 
   Ok((input, current))
+}
+
+fn parse_set_env_var_command(input: &str) -> ParseResult<SetEnvVarCommand> {
+  let env_vars_input = input;
+  let (input, maybe_export) =
+    maybe(terminated(parse_word_with_text("export"), skip_whitespace))(input)?;
+  let (input, mut env_vars) = parse_env_vars(input)?;
+  if env_vars.is_empty() {
+    return ParseError::backtrace();
+  }
+  let (input, args) = parse_command_args(input)?;
+  if !args.is_empty() {
+    return ParseError::backtrace();
+  }
+  if env_vars.len() > 1 {
+    ParseError::fail(env_vars_input, "Cannot set multiple environment variables when there is no following command.")
+  } else {
+    ParseResult::Ok((
+      input,
+      SetEnvVarCommand {
+        exported: maybe_export.is_some(),
+        var: env_vars.remove(0),
+      },
+    ))
+  }
+}
+
+fn parse_command(input: &str) -> ParseResult<Command> {
+  let (input, env_vars) = parse_env_vars(input)?;
+  let (input, args) = parse_command_args(input)?;
+  if args.is_empty() {
+    return ParseError::backtrace();
+  }
+  ParseResult::Ok((input, Command { env_vars, args }))
 }
 
 fn parse_command_args(input: &str) -> ParseResult<Vec<String>> {
@@ -356,6 +385,19 @@ fn parse_word(input: &str) -> ParseResult<&str> {
     },
     "Unsupported reserved word.",
   )(input)
+}
+
+fn parse_word_with_text(
+  text: &'static str,
+) -> impl Fn(&str) -> ParseResult<&str> {
+  move |input| {
+    let (input, word) = parse_word(input)?;
+    if word == text {
+      ParseResult::Ok((input, word))
+    } else {
+      ParseError::backtrace()
+    }
+  }
 }
 
 fn parse_quoted_string(input: &str) -> ParseResult<String> {
@@ -521,7 +563,7 @@ mod test {
   fn test_sequential_list() {
     run_test(
       parse_sequential_list,
-      "Name=Value OtherVar=Other command arg1 || command2 arg12 arg13 ; command3 && command4 & command5 ; ENV=2 && command6 || command7",
+      "Name=Value OtherVar=Other command arg1 || command2 arg12 arg13 ; command3 && command4 & command5 ; export ENV6=5 ; ENV7=other && command8 || command9",
       Ok(SequentialList {
         items: vec![
           SequentialListItem {
@@ -572,18 +614,28 @@ mod test {
           },
           SequentialListItem {
             is_async: false,
+            sequence: Sequence::EnvVar(SetEnvVarCommand {
+              exported: true,
+              var: EnvVar::new("ENV6".to_string(), "5".to_string()),
+            }),
+          },
+          SequentialListItem {
+            is_async: false,
             sequence: Sequence::BooleanList(Box::new(BooleanList {
-              current: Sequence::EnvVar(EnvVar::new("ENV".to_string(), "2".to_string())),
+              current: Sequence::EnvVar(SetEnvVarCommand {
+                exported: false,
+                var: EnvVar::new("ENV7".to_string(), "other".to_string()),
+              }),
               op: BooleanListOperator::And,
               next: Sequence::BooleanList(Box::new(BooleanList {
                 current: Sequence::Command(Command {
                   env_vars: vec![],
-                  args: vec!["command6".to_string()],
+                  args: vec!["command8".to_string()],
                 }),
                 op: BooleanListOperator::Or,
                 next: Sequence::Command(Command {
                   env_vars: vec![],
-                  args: vec!["command7".to_string()],
+                  args: vec!["command9".to_string()],
                 }),
               })),
             })),

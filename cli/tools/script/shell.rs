@@ -96,9 +96,16 @@ fn execute_sequence(
   stdin: ShellPipe,
 ) -> ExecutedSequence {
   match sequence {
-    Sequence::EnvVar(var) => ExecutedSequence::from_result(
-      ExecuteResult::Continue(0, vec![EnvChange::SetEnvVar(var)]),
-    ),
+    Sequence::EnvVar(set_var) => {
+      ExecutedSequence::from_result(ExecuteResult::Continue(
+        0,
+        if set_var.exported {
+          vec![EnvChange::SetEnvVar(set_var.var)]
+        } else {
+          Vec::new()
+        },
+      ))
+    }
     Sequence::Command(command) => start_command(&command, &state, stdin),
     Sequence::BooleanList(list) => {
       let (stdout_tx, stdout) = ShellPipe::channel();
@@ -313,8 +320,14 @@ fn start_command(
     for env_var in &command.env_vars {
       state.apply_env_var(env_var);
     }
-    let mut sub_command = tokio::process::Command::new(&command.args[0]);
+
+    let mut sub_command = if command.args[0].starts_with("./") {
+      tokio::process::Command::new(state.cwd.join(&command.args[0]))
+    } else {
+      tokio::process::Command::new(&command.args[0])
+    };
     let child = sub_command
+      .current_dir(state.cwd)
       .args(&command.args[1..])
       .envs(&state.env_vars)
       .stdout(Stdio::piped())
@@ -323,7 +336,6 @@ fn start_command(
         ShellPipe::Channel(_) => Stdio::piped(),
       })
       .stderr(Stdio::inherit())
-      .current_dir(state.cwd)
       .spawn();
 
     let mut child = match child {
