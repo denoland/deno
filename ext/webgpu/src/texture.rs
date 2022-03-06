@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -34,6 +35,7 @@ pub struct CreateTextureArgs {
   usage: u32,
 }
 
+#[op]
 pub fn op_webgpu_create_texture(
   state: &mut OpState,
   args: CreateTextureArgs,
@@ -76,6 +78,7 @@ pub struct CreateTextureViewArgs {
   array_layer_count: Option<u32>,
 }
 
+#[op]
 pub fn op_webgpu_create_texture_view(
   state: &mut OpState,
   args: CreateTextureViewArgs,

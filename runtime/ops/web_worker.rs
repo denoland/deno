@@ -5,8 +5,8 @@ mod sync_fetch;
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::CancelFuture;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -18,17 +18,18 @@ use self::sync_fetch::op_worker_sync_fetch;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![
-      ("op_worker_post_message", op_sync(op_worker_post_message)),
-      ("op_worker_recv_message", op_async(op_worker_recv_message)),
+    .ops(|ctx| {
+      ctx.register("op_worker_post_message", op_worker_post_message);
+      ctx.register("op_worker_recv_message", op_worker_recv_message);
       // Notify host that guest worker closes.
-      ("op_worker_close", op_sync(op_worker_close)),
-      ("op_worker_get_type", op_sync(op_worker_get_type)),
-      ("op_worker_sync_fetch", op_sync(op_worker_sync_fetch)),
-    ])
+      ctx.register("op_worker_close", op_worker_close);
+      ctx.register("op_worker_get_type", op_worker_get_type);
+      ctx.register("op_worker_sync_fetch", op_worker_sync_fetch);
+    })
     .build()
 }
 
+#[op]
 fn op_worker_post_message(
   state: &mut OpState,
   data: JsMessageData,
@@ -39,6 +40,7 @@ fn op_worker_post_message(
   Ok(())
 }
 
+#[op_async]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
   _: (),
@@ -55,6 +57,7 @@ async fn op_worker_recv_message(
     .await?
 }
 
+#[op]
 fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   // Notify parent that we're finished
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
@@ -63,6 +66,7 @@ fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[op]
 fn op_worker_get_type(
   state: &mut OpState,
   _: (),

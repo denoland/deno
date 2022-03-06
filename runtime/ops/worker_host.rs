@@ -13,8 +13,8 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
@@ -121,16 +121,13 @@ pub fn init(
 
       Ok(())
     })
-    .ops(vec![
-      ("op_create_worker", op_sync(op_create_worker)),
-      (
-        "op_host_terminate_worker",
-        op_sync(op_host_terminate_worker),
-      ),
-      ("op_host_post_message", op_sync(op_host_post_message)),
-      ("op_host_recv_ctrl", op_async(op_host_recv_ctrl)),
-      ("op_host_recv_message", op_async(op_host_recv_message)),
-    ])
+    .ops(|ctx| {
+      ctx.register("op_create_worker", op_create_worker);
+      ctx.register("op_host_terminate_worker", op_host_terminate_worker);
+      ctx.register("op_host_post_message", op_host_post_message);
+      ctx.register("op_host_recv_ctrl", op_host_recv_ctrl);
+      ctx.register("op_host_recv_message", op_host_recv_message);
+    })
     .build()
 }
 
@@ -147,6 +144,7 @@ pub struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
+#[op]
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
@@ -263,6 +261,7 @@ fn op_create_worker(
   Ok(worker_id)
 }
 
+#[op]
 fn op_host_terminate_worker(
   state: &mut OpState,
   id: WorkerId,
@@ -317,6 +316,7 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
+#[op_async]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
@@ -348,6 +348,7 @@ async fn op_host_recv_ctrl(
   Ok(WorkerControlEvent::Close)
 }
 
+#[op_async]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
@@ -373,6 +374,7 @@ async fn op_host_recv_message(
 }
 
 /// Post message to guest worker as host
+#[op]
 fn op_host_post_message(
   state: &mut OpState,
   id: WorkerId,

@@ -11,8 +11,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
+use deno_core::op;
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
@@ -31,10 +31,10 @@ use tokio::sync::mpsc;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![
-      ("op_fs_events_open", op_sync(op_fs_events_open)),
-      ("op_fs_events_poll", op_async(op_fs_events_poll)),
-    ])
+    .ops(|ctx| {
+      ctx.register("op_fs_events_open", op_fs_events_open);
+      ctx.register("op_fs_events_poll", op_fs_events_poll);
+    })
     .build()
 }
 
@@ -97,6 +97,7 @@ pub struct OpenArgs {
   paths: Vec<String>,
 }
 
+#[op]
 fn op_fs_events_open(
   state: &mut OpState,
   args: OpenArgs,
@@ -131,6 +132,7 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
+#[op_async]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

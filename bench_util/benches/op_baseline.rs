@@ -3,12 +3,12 @@ use deno_bench_util::bencher::{benchmark_group, Bencher};
 use deno_bench_util::{bench_js_async, bench_js_sync};
 
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::op_async;
 use deno_core::serialize_op_result;
 use deno_core::Extension;
 use deno_core::Op;
 use deno_core::OpState;
-use deno_core::op;
-use deno_core::op_async;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,10 +18,7 @@ fn setup() -> Vec<Extension> {
     .ops(|ctx| {
       ctx.register("pi_json", op_pi_json);
       ctx.register("pi_async", op_pi_async);
-      ctx.register(
-        "nop",
-        op_nop,
-      );
+      ctx.register("nop", op_nop);
     })
     .build()]
 }
@@ -71,8 +68,8 @@ fn bench_op_void_async(b: &mut Bencher) {
 }
 
 benchmark_group!(
-  benches, 
-  bench_op_void_sync, 
+  benches,
+  bench_op_void_sync,
   bench_op_void_async,
   bench_op_pi_json,
   bench_op_nop,

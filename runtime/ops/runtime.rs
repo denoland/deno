@@ -3,14 +3,14 @@
 use crate::permissions::Permissions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
-    .ops(vec![("op_main_module", op_sync(op_main_module))])
+    .ops(|ctx| ctx.register("op_main_module", op_main_module))
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
       Ok(())
@@ -18,6 +18,7 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
     .build()
 }
 
+#[op]
 fn op_main_module(
   state: &mut OpState,
   _: (),
