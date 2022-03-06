@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![("op_emit", op_async(op_emit))])
+    .ops(|ctx| ctx.register("op_emit", op_emit))
     .build()
 }
 
@@ -141,6 +141,7 @@ fn to_maybe_jsx_import_source_module(
   }
 }
 
+#[op_async]
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: EmitArgs,

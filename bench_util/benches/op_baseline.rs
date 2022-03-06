@@ -60,11 +60,11 @@ fn bench_is_proxy(b: &mut Bencher) {
 }
 
 fn bench_op_void_sync(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.op_void_sync(null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.ops.op_void_sync(null, null);"#, setup);
 }
 
 fn bench_op_void_async(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.op_void_async(1, null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.ops.op_void_async(1, null, null);"#, setup);
 }
 
 benchmark_group!(

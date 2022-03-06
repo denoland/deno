@@ -9,11 +9,6 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
-use crate::Op;
-use crate::OpId;
-use crate::OpPayload;
-use crate::OpResult;
-use crate::OpState;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
@@ -31,11 +26,6 @@ use v8::MapFnTo;
 use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
-
-const UNDEFINED_OP_ID_MSG: &str =
-  "invalid op id: received `undefined` instead of an integer.
-This error is often caused by a typo in an op name, or not calling
-JsRuntime::sync_ops_cache() after JsRuntime initialization.";
 
 pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
   Lazy::new(|| {
@@ -106,9 +96,6 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to(),
       },
-      v8::ExternalReference {
-        function: op_noop_sync.map_fn_to(),
-      },
     ])
   });
 
@@ -153,6 +140,7 @@ pub fn module_origin<'a>(
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   extensions: &mut [Extension],
+  will_snapshot: bool,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -168,10 +156,11 @@ pub fn initialize_context<'s>(
   let core_key = v8::String::new(scope, "core").unwrap();
   let core_val = v8::Object::new(scope);
   deno_val.set(scope, core_key.into(), core_val.into());
+  let ops_key = v8::String::new(scope, "ops").unwrap();
+  let ops_val = v8::Object::new(scope);
+  core_val.set(scope, ops_key.into(), ops_val.into());
 
   // Bind functions to Deno.core.*
-  // set_func(scope, core_val, "opcallSync", opcall_sync);
-  // set_func(scope, core_val, "opcallAsync", opcall_async);
   set_func(scope, core_val, "refOp", ref_op);
   set_func(scope, core_val, "unrefOp", unref_op);
   set_func(
@@ -226,8 +215,11 @@ pub fn initialize_context<'s>(
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
-  for ex in extensions {
-    ex.init_ops(scope, core_val);
+  // ops are not be used during snapshot.
+  if !will_snapshot {
+    for ex in extensions {
+      ex.init_ops(scope, ops_val);
+    }
   }
 
   scope.escape(context)
@@ -468,159 +460,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
     }
   }
 }
-
-// fn opcall_sync<'s>(
-//   scope: &mut v8::HandleScope<'s>,
-//   args: v8::FunctionCallbackArguments,
-//   mut rv: v8::ReturnValue,
-// ) {
-//   let state_rc = JsRuntime::state(scope);
-//   let state = state_rc.borrow_mut();
-
-//   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-//     .map(|l| l.value() as OpId)
-//     .map_err(Error::from)
-//   {
-//     Ok(op_id) => op_id,
-//     Err(err) => {
-//       let msg = if args.get(0).is_undefined() {
-//         UNDEFINED_OP_ID_MSG.to_string()
-//       } else {
-//         format!("invalid op id: {}", err)
-//       };
-//       throw_type_error(scope, msg);
-//       return;
-//     }
-//   };
-
-//   // opcall(0) returns obj of all ops, handle as special case
-//   if op_id == 0 {
-//     // TODO: Serialize as HashMap when serde_v8 supports maps ...
-//     let ops = OpTable::op_entries(state.op_state.clone());
-//     rv.set(to_v8(scope, ops).unwrap());
-//     return;
-//   }
-
-//   // Deserializable args (may be structured args or ZeroCopyBuf)
-//   let a = args.get(1);
-//   let b = args.get(2);
-
-//   let payload = OpPayload {
-//     scope,
-//     a,
-//     b,
-//     op_id,
-//     promise_id: 0,
-//   };
-//   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
-//   match op {
-//     Op::Sync(result) => {
-//       state.op_state.borrow().tracker.track_sync(op_id);
-//       rv.set(result.to_v8(scope).unwrap());
-//     }
-//     Op::NotFound => {
-//       throw_type_error(scope, format!("Unknown op id: {}", op_id));
-//     }
-//     // Async ops (ref or unref)
-//     _ => {
-//       throw_type_error(
-//         scope,
-//         format!("Can not call an async op [{}] with opSync()", op_id),
-//       );
-//     }
-//   }
-// }
-
-fn op_noop_sync<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  // let a = args.get(1);
-  // let b = args.get(2);
-
-  fn op_fn(_: (), _: ()) -> Result<(), ()> {
-    Ok(())
-  }
-
-  // let a = serde_v8::from_v8(scope, a).unwrap();
-  // let b = serde_v8::from_v8(scope, b).unwrap();
-  // let state_rc = JsRuntime::state(scope);
-  // let state = state_rc.borrow_mut();
-  let result = op_fn((), ()).unwrap();
-
-  let ret = serde_v8::to_v8(scope, result).unwrap();
-  rv.set(ret);
-}
-
-// fn opcall_async<'s>(
-//   scope: &mut v8::HandleScope<'s>,
-//   args: v8::FunctionCallbackArguments,
-//   mut rv: v8::ReturnValue,
-// ) {
-//   let state_rc = JsRuntime::state(scope);
-//   let mut state = state_rc.borrow_mut();
-
-//   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-//     .map(|l| l.value() as OpId)
-//     .map_err(Error::from)
-//   {
-//     Ok(op_id) => op_id,
-//     Err(err) => {
-//       let msg = if args.get(0).is_undefined() {
-//         UNDEFINED_OP_ID_MSG.to_string()
-//       } else {
-//         format!("invalid op id: {}", err)
-//       };
-//       throw_type_error(scope, msg);
-//       return;
-//     }
-//   };
-
-//   // PromiseId
-//   let arg1 = args.get(1);
-//   let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
-//     .map(|l| l.value() as PromiseId)
-//     .map_err(Error::from);
-//   // Fail if promise id invalid (not an int)
-//   let promise_id: PromiseId = match promise_id {
-//     Ok(promise_id) => promise_id,
-//     Err(err) => {
-//       throw_type_error(scope, format!("invalid promise id: {}", err));
-//       return;
-//     }
-//   };
-
-//   // Deserializable args (may be structured args or ZeroCopyBuf)
-//   let a = args.get(2);
-//   let b = args.get(3);
-
-//   let payload = OpPayload {
-//     scope,
-//     a,
-//     b,
-//     op_id,
-//     promise_id,
-//   };
-//   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
-//   match op {
-//     Op::Sync(result) => match result {
-//       OpResult::Ok(_) => throw_type_error(
-//         scope,
-//         format!("Can not call a sync op [{}] with opAsync()", op_id),
-//       ),
-//       OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
-//     },
-//     Op::Async(fut) => {
-//       state.op_state.borrow().tracker.track_async(op_id);
-//       state.pending_ops.push(fut);
-//       state.have_unpolled_ops = true;
-//     }
-//     Op::NotFound => {
-//       throw_type_error(scope, format!("Unknown op id: {}", op_id));
-//     }
-//   }
-// }
 
 fn ref_op<'s>(
   scope: &mut v8::HandleScope<'s>,

@@ -29,6 +29,55 @@
   } = window.__bootstrap.primordials;
 
   let opsCache = {};
+  const opsMetrics = {
+    opsDispatched: 0,
+    opsDispatchedSync: 0,
+    opsDispatchedAsync: 0,
+    opsDispatchedAsyncUnref: 0,
+    opsCompleted: 0,
+    opsCompletedSync: 0,
+    opsCompletedAsync: 0,
+    opsCompletedAsyncUnref: 0,
+    bytesSentControl: 0,
+    bytesSentData: 0,
+    bytesReceived: 0,
+    ops: {},
+  };
+
+  function trackSync(opName) {
+    if (opsMetrics.ops[opName] === undefined) {
+      opsMetrics.ops[opName].ops_dispatched = 0;
+      opsMetrics.ops[opName].ops_completed = 0;
+      opsMetrics.ops[opName].ops_dispatched_sync = 0;
+      opsMetrics.ops[opName].ops_completed_sync = 0;
+      return;
+    }
+    opsMetrics.ops[opName].ops_dispatched += 1;
+    opsMetrics.ops[opName].ops_completed += 1;
+    opsMetrics.ops[opName].ops_dispatched_sync += 1;
+    opsMetrics.ops[opName].ops_completed_sync += 1;
+  }
+
+  function trackAsync(opName) {
+    if (opsMetrics.ops[opName] === undefined) {
+      opsMetrics.ops[opName].ops_dispatched = 0;
+      opsMetrics.ops[opName].ops_dispatched_async = 0;
+      return;
+    }
+    opsMetrics.ops[opName].ops_dispatched += 1;
+    opsMetrics.ops[opName].ops_dispatched_async += 1;
+  }
+
+  function trackAsyncComplete(opName) {
+    if (opsMetrics.ops[opName] === undefined) {
+      opsMetrics.ops[opName].ops_completed = 0;
+      opsMetrics.ops[opName].ops_completed_async = 0;
+      return;
+    }
+    opsMetrics.ops[opName].ops_completed += 1;
+    opsMetrics.ops[opName].ops_completed_async += 1;
+  }
+
   const errorMap = {};
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -105,12 +154,15 @@
     //opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
   }
 
+  const promiseIdOpMap = {};
   function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
+      trackAsyncComplete(promiseIdOpMap[promiseId]);
+      delete promiseIdOpMap[promiseId];
     }
   }
 
@@ -146,7 +198,9 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = Deno.core[opName](promiseId, arg1, arg2);
+    const maybeError = Deno.core.ops[opName](promiseId, arg1, arg2);
+    trackAsync(opName);
+    promiseIdOpMap[promiseId] = opName;
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -166,7 +220,9 @@
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(Deno.core[opName](arg1, arg2));
+    const result = unwrapOpResult(Deno.core.ops[opName](arg1, arg2));
+    trackSync(opName);
+    return result;
   }
 
   function resources() {
@@ -198,12 +254,7 @@
   }
 
   function metrics() {
-    const [aggregate, perOps] = opSync("op_metrics");
-    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      ObjectEntries(opsCache),
-      ([opName, opId]) => [opName, perOps[opId]],
-    ));
-    return aggregate;
+    return opsMetrics;
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the

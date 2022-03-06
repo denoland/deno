@@ -82,6 +82,7 @@ pub enum ImportKeyResult {
   #[serde(rename_all = "camelCase")]
   Ec { raw_data: RawKeyData },
   #[serde(rename_all = "camelCase")]
+  #[allow(dead_code)]
   Aes { raw_data: RawKeyData },
   #[serde(rename_all = "camelCase")]
   Hmac { raw_data: RawKeyData },

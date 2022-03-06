@@ -1,8 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::type_error;
 use crate::gotham_state::GothamState;
-use crate::ops_metrics::OpsTracker;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use anyhow::Error;
@@ -12,11 +10,8 @@ use futures::future::MaybeDone;
 use futures::ready;
 use futures::task::noop_waker;
 use futures::Future;
-use indexmap::IndexMap;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::iter::once;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
@@ -86,29 +81,6 @@ pub type OpFn =
   fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
 pub type OpId = usize;
 
-pub struct OpPayload<'a, 'b, 'c> {
-  pub(crate) scope: &'a mut v8::HandleScope<'b>,
-  pub(crate) a: v8::Local<'c, v8::Value>,
-  pub(crate) b: v8::Local<'c, v8::Value>,
-  pub(crate) op_id: OpId,
-  pub(crate) promise_id: PromiseId,
-}
-
-impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
-  pub fn deserialize<T: DeserializeOwned, U: DeserializeOwned>(
-    self,
-  ) -> Result<(T, U), Error> {
-    let a: T = serde_v8::from_v8(self.scope, self.a)
-      .map_err(Error::from)
-      .map_err(|e| type_error(format!("Error parsing args: {}", e)))?;
-
-    let b: U = serde_v8::from_v8(self.scope, self.b)
-      .map_err(Error::from)
-      .map_err(|e| type_error(format!("Error parsing args: {}", e)))?;
-    Ok((a, b))
-  }
-}
-
 pub enum Op {
   Sync(OpResult),
   Async(OpAsyncFuture),
@@ -159,7 +131,6 @@ pub fn serialize_op_result<R: Serialize + 'static>(
 pub struct OpState {
   pub resource_table: ResourceTable,
   pub get_error_class_fn: GetErrorClassFn,
-  pub(crate) tracker: OpsTracker,
   gotham_state: GothamState,
 }
 
@@ -168,9 +139,6 @@ impl OpState {
     OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
-      tracker: OpsTracker {
-        ops: RefCell::new(Vec::with_capacity(256)),
-      },
       gotham_state: Default::default(),
     }
   }

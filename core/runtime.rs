@@ -15,7 +15,6 @@ use crate::modules::NoopModuleLoader;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
-use crate::OpPayload;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
@@ -293,7 +292,7 @@ impl JsRuntime {
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &mut options.extensions);
+          bindings::initialize_context(scope, &mut options.extensions, true);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -324,7 +323,7 @@ impl JsRuntime {
         } else {
           // If no snapshot is provided, we initialize the context with empty
           // main source code and source maps.
-          bindings::initialize_context(scope, &mut options.extensions)
+          bindings::initialize_context(scope, &mut options.extensions, false)
         };
         global_context = v8::Global::new(scope, context);
       }
@@ -1506,12 +1505,9 @@ impl JsRuntime {
       let mut state = state_rc.borrow_mut();
       state.have_unpolled_ops = false;
 
-      let op_state = state.op_state.clone();
-
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (promise_id, resp) = item;
-        // op_state.borrow().tracker.track_async_completed(op_id);
         state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());

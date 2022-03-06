@@ -1,6 +1,5 @@
 use crate::error::type_error;
 use crate::include_js_files;
-use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
 use crate::Extension;
 use crate::OpState;
@@ -12,7 +11,6 @@ use deno_ops::op_async;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
-use v8::MapFnTo;
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
@@ -30,7 +28,6 @@ pub(crate) fn init_builtins() -> Extension {
       ctx.register("op_wasm_streaming_feed", op_wasm_streaming_feed);
       ctx.register("op_wasm_streaming_abort", op_wasm_streaming_abort);
       ctx.register("op_wasm_streaming_set_url", op_wasm_streaming_set_url);
-      ctx.register("op_metrics", op_metrics);
       ctx.register("op_void_sync", op_void_sync);
       ctx.register("op_void_async", op_void_async);
       // // TODO(@AaronO): track IO metrics for builtin streams
@@ -62,13 +59,13 @@ pub fn op_resources(
 }
 
 #[op]
-pub fn op_void_sync(state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+pub fn op_void_sync(_state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
   Ok(())
 }
 
 #[op_async]
 pub async fn op_void_async(
-  state: Rc<RefCell<OpState>>,
+  _state: Rc<RefCell<OpState>>,
   _: (),
   _: (),
 ) -> Result<(), Error> {
@@ -185,17 +182,6 @@ pub fn op_wasm_streaming_set_url(
   wasm_streaming.0.borrow_mut().set_url(&url);
 
   Ok(())
-}
-
-#[op]
-pub fn op_metrics(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
-  let aggregate = state.tracker.aggregate();
-  let per_op = state.tracker.per_op();
-  Ok((aggregate, per_op))
 }
 
 #[op_async]

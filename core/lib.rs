@@ -13,7 +13,6 @@ mod modules;
 mod normalize_path;
 mod ops;
 pub(crate) mod ops_builtin;
-mod ops_metrics;
 mod resources;
 mod runtime;
 
@@ -76,7 +75,6 @@ pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpCall;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
-pub use crate::ops::OpPayload;
 pub use crate::ops::OpResult;
 pub use crate::ops::OpState;
 pub use crate::ops::PromiseId;

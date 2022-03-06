@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
