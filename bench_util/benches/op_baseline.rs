@@ -5,9 +5,7 @@ use deno_bench_util::{bench_js_async, bench_js_sync};
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::op_async;
-use deno_core::serialize_op_result;
 use deno_core::Extension;
-use deno_core::Op;
 use deno_core::OpState;
 
 use std::cell::RefCell;
@@ -44,11 +42,7 @@ async fn op_pi_async(
 }
 
 fn bench_op_pi_json(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.pi_json(null);"#, setup);
-}
-
-fn bench_op_nop(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.nop(null, null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.opSync("pi_json", null);"#, setup);
 }
 
 fn bench_op_async(b: &mut Bencher) {
@@ -60,11 +54,11 @@ fn bench_is_proxy(b: &mut Bencher) {
 }
 
 fn bench_op_void_sync(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.ops.op_void_sync(null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.opSync("op_void_sync", null, null);"#, setup);
 }
 
 fn bench_op_void_async(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.ops.op_void_async(1, null, null);"#, setup);
+  bench_js_async(b, r#"Deno.core.opAsync("op_void_async", null, null);"#, setup);
 }
 
 benchmark_group!(
@@ -72,7 +66,6 @@ benchmark_group!(
   bench_op_void_sync,
   bench_op_void_async,
   bench_op_pi_json,
-  bench_op_nop,
   bench_op_async,
   bench_is_proxy
 );

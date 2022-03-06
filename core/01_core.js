@@ -28,6 +28,8 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
 
+  const coreOps = Deno.core.ops;
+
   let opsCache = {};
   const opsMetrics = {
     opsDispatched: 0,
@@ -46,10 +48,12 @@
 
   function trackSync(opName) {
     if (opsMetrics.ops[opName] === undefined) {
-      opsMetrics.ops[opName].ops_dispatched = 0;
-      opsMetrics.ops[opName].ops_completed = 0;
-      opsMetrics.ops[opName].ops_dispatched_sync = 0;
-      opsMetrics.ops[opName].ops_completed_sync = 0;
+      opsMetrics.ops[opName] = {
+        ops_dispatched: 0,
+        ops_completed: 0,
+        ops_dispatched_sync: 0,
+        ops_completed_sync: 0,
+      };
       return;
     }
     opsMetrics.ops[opName].ops_dispatched += 1;
@@ -60,8 +64,12 @@
 
   function trackAsync(opName) {
     if (opsMetrics.ops[opName] === undefined) {
-      opsMetrics.ops[opName].ops_dispatched = 0;
-      opsMetrics.ops[opName].ops_dispatched_async = 0;
+      opsMetrics.ops[opName] = {
+        ops_dispatched: 0,
+        ops_dispatched_async: 0,
+        ops_completed: 0,
+        ops_completed_async: 0,
+      };
       return;
     }
     opsMetrics.ops[opName].ops_dispatched += 1;
@@ -69,11 +77,6 @@
   }
 
   function trackAsyncComplete(opName) {
-    if (opsMetrics.ops[opName] === undefined) {
-      opsMetrics.ops[opName].ops_completed = 0;
-      opsMetrics.ops[opName].ops_completed_async = 0;
-      return;
-    }
     opsMetrics.ops[opName].ops_completed += 1;
     opsMetrics.ops[opName].ops_completed_async += 1;
   }
@@ -198,7 +201,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = Deno.core.ops[opName](promiseId, arg1, arg2);
+    const maybeError = coreOps[opName](promiseId, arg1, arg2);
     trackAsync(opName);
     promiseIdOpMap[promiseId] = opName;
     // Handle sync error (e.g: error parsing args)
@@ -220,7 +223,7 @@
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
-    const result = unwrapOpResult(Deno.core.ops[opName](arg1, arg2));
+    const result = unwrapOpResult(coreOps[opName](arg1, arg2));
     trackSync(opName);
     return result;
   }
