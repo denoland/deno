@@ -161,15 +161,24 @@ jobs:
         shell: bash
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
 
-      - name: Install and configure Ubuntu 16.04 sysroot
+      - name: Configure clang, lld, and sysroot
         if: matrix.use_sysroot
         run: |
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
           sudo apt-get remove --purge -y man-db
-          sudo apt-get update
-          sudo apt-get install debootstrap
 
+          # Install debootstrap, clang-13 and lld-13.
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-13.list
+          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
+            gpg --dearmor                                 |
+            sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+          apt-get update
+          apt-get install --no-install-recommends debootstrap clang-13 lld-13
+
+          # Create ubuntu-16.04 sysroot environment, which is used to avoid
+          # depending on a very recent version of glibc.
           # `libc6-dev` is required for building any C source files.
           # `file` and `make` are needed to build libffi-sys.
           # `curl` is needed to build rusty_v8.
@@ -182,9 +191,8 @@ jobs:
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
 
-          # Configure the build environment to use clang-13 to compile C sources
-          # and to use lld as a linker. The ubuntu-16.04 sysroot is used to
-          # avoid depending on a very recent version of glibc.
+          # Configure the build environment. Both Rust and Clang will produce
+          # llvm bitcode only, so we can use lld's incremental LTO support.
           cat >> $GITHUB_ENV << __0
           CARGO_PROFILE_BENCH_INCREMENTAL=false
           CARGO_PROFILE_BENCH_LTO=false
@@ -202,10 +210,8 @@ jobs:
             ${{ env.RUSTFLAGS }}
           __1
           CC=clang-13
-          CFLAGS=-flto=thin
+          CFLAGS=-flto=thin --sysroot=/sysroot
           __0
-
-          cat $GITHUB_ENV
 
       - name: Log versions
         shell: bash
