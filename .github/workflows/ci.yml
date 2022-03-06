@@ -168,14 +168,14 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
 
-          # Install clang-13, lld-13, and debootstrap
+          # Install clang-13, lld-13, and debootstrap.
           echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main" |
             sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-13.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
-          sudo apt-get install --no-install-recommends debootstrap,    \
+          sudo apt-get install --no-install-recommends debootstrap     \
                                                        clang-13 lld-13
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
