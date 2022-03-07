@@ -8,7 +8,38 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let generics = &func.sig.generics;
   let type_params = &func.sig.generics.params;
   let where_clause = &func.sig.generics.where_clause;
+ 
+  let inputs = &func.sig.inputs;
+  let a = match &inputs[1] {
+    syn::FnArg::Typed(pat) => {
+      match *pat.pat {
+        syn::Pat::Wild(_) => quote! {
+          let a = ();
+        },
+        _ => quote! {   
+          let a = args.get(0);
+          let a = deno_core::serde_v8::from_v8(scope, a).unwrap();          
+        }
+      }
+    }
+    _ => unreachable!(),
+  };
 
+  let b = match &inputs[2] {
+    syn::FnArg::Typed(pat) => {
+      match *pat.pat {
+        syn::Pat::Wild(_) => quote! {
+          let b = ();
+        },
+        _ => quote! {
+          let b = args.get(1);
+          let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
+        }
+      }
+    }
+    _ => unreachable!(),
+  };
+  
   TokenStream::from(quote! {
     pub fn #name #generics (
       scope: &mut deno_core::v8::HandleScope,
@@ -17,13 +48,10 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
     ) #where_clause {
       use deno_core::JsRuntime;
 
-      let a = args.get(0);
-      let b = args.get(1);
-
+      #a
+      #b
       #func
 
-      let a = deno_core::serde_v8::from_v8(scope, a).unwrap();
-      let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
       let state_rc = deno_core::JsRuntime::state(scope);
       let state = state_rc.borrow_mut();
       let result = #name::<#type_params>(&mut state.op_state.borrow_mut(), a, b).unwrap();
@@ -41,6 +69,36 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let generics = &func.sig.generics;
   let type_params = &func.sig.generics.params;
   let where_clause = &func.sig.generics.where_clause;
+  let inputs = &func.sig.inputs;
+  let a = match &inputs[1] {
+    syn::FnArg::Typed(pat) => {
+      match *pat.pat {
+        syn::Pat::Wild(_) => quote! {
+          let a = ();
+        },
+        _ => quote! {   
+          let a = args.get(0);
+          let a = deno_core::serde_v8::from_v8(scope, a).unwrap();          
+        }
+      }
+    }
+    _ => unreachable!(),
+  };
+
+  let b = match &inputs[2] {
+    syn::FnArg::Typed(pat) => {
+      match *pat.pat {
+        syn::Pat::Wild(_) => quote! {
+          let b = ();
+        },
+        _ => quote! {
+          let b = args.get(1);
+          let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
+        }
+      }
+    }
+    _ => unreachable!(),
+  };
 
   TokenStream::from(quote! {
     pub fn #name #generics (
@@ -69,23 +127,18 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
       };
 
-      let a = args.get(1);
-      let b = args.get(2);
-
+      #a
+      #b
       #func
-
-      let a = deno_core::serde_v8::from_v8(scope, a).unwrap();
-      let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
       let state_rc = JsRuntime::state(scope);
       let mut state = state_rc.borrow_mut();
+
+      state.have_unpolled_ops = true;
       let op_state = state.op_state.clone();
-      let fut = async move {
+      state.pending_ops.push(OpCall::eager(async move {
         let result = #name::<#type_params>(op_state.clone(), a, b).await;
         (promise_id, serialize_op_result(result, op_state))
-      };
-
-      state.pending_ops.push(OpCall::eager(fut));
-      state.have_unpolled_ops = true;
+      }));      
     }
   })
 }

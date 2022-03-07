@@ -41,11 +41,12 @@
     bytesSentControl: 0,
     bytesSentData: 0,
     bytesReceived: 0,
-    ops: {},
+    ops: new Map(),
   };
 
   function trackSync(opName) {
-    if (opsMetrics.ops[opName] === undefined) {
+    let metrics = opsMetrics.ops[opName];
+    if (metrics === undefined) {
       opsMetrics.ops[opName] = {
         ops_dispatched: 0,
         ops_completed: 0,
@@ -54,14 +55,15 @@
       };
       return;
     }
-    opsMetrics.ops[opName].ops_dispatched += 1;
-    opsMetrics.ops[opName].ops_completed += 1;
-    opsMetrics.ops[opName].ops_dispatched_sync += 1;
-    opsMetrics.ops[opName].ops_completed_sync += 1;
+    metrics.ops_dispatched += 1;
+    metrics.ops_completed += 1;
+    metrics.ops_dispatched_sync += 1;
+    metrics.ops_completed_sync += 1;
   }
 
   function trackAsync(opName) {
-    if (opsMetrics.ops[opName] === undefined) {
+    let metrics = opsMetrics.ops[opName];
+    if (metrics === undefined) {
       opsMetrics.ops[opName] = {
         ops_dispatched: 0,
         ops_dispatched_async: 0,
@@ -70,13 +72,14 @@
       };
       return;
     }
-    opsMetrics.ops[opName].ops_dispatched += 1;
-    opsMetrics.ops[opName].ops_dispatched_async += 1;
+    metrics.ops_dispatched += 1;
+    metrics.ops_dispatched_async += 1;
   }
 
   function trackAsyncComplete(opName) {
-    opsMetrics.ops[opName].ops_completed += 1;
-    opsMetrics.ops[opName].ops_completed_async += 1;
+    let metrics = opsMetrics.ops[opName];
+    metrics.ops_completed += 1;
+    metrics.ops_completed_async += 1;
   }
 
   const errorMap = {};
@@ -153,8 +156,6 @@
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
-      trackAsyncComplete(promiseIdOpMap[promiseId]);
-      delete promiseIdOpMap[promiseId];
     }
   }
 
@@ -190,9 +191,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = Deno.core.ops[opName](promiseId, arg1, arg2);
-    trackAsync(opName);
-    promiseIdOpMap[promiseId] = opName;
+    const maybeError = ops[opName](promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -210,8 +209,9 @@
     p[promiseIdSymbol] = promiseId;
     return p;
   }
+
   function opSync(opName, arg1 = null, arg2 = null) {
-    const result = unwrapOpResult(Deno.core.ops[opName](arg1, arg2));
+    const result = unwrapOpResult(ops[opName](arg1, arg2));
     trackSync(opName);
     return result;
   }

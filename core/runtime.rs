@@ -462,7 +462,7 @@ impl JsRuntime {
       .filter_map(|e| e.init_middleware())
       .collect();
     // macroware wraps an opfn in all the middleware
-    let macroware =
+    let _macroware =
       move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
 
     // Register ops

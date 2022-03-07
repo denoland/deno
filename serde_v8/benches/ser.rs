@@ -4,6 +4,7 @@ use bencher::{benchmark_group, benchmark_main, Bencher};
 use serde::Serialize;
 
 use serde_v8::utils::v8_do;
+use serde_v8::ByteString;
 
 #[derive(Serialize)]
 struct MathOp {
@@ -87,6 +88,26 @@ fn ser_struct_v8_manual(b: &mut Bencher) {
   });
 }
 
+fn ser_bstr_12_b(b: &mut Bencher) {
+  serdo(|scope| {
+    let bstr = ByteString("hello world\n".to_owned().into_bytes());
+    b.iter(|| {
+      let _ = serde_v8::to_v8(scope, &bstr).unwrap();
+    });
+  });
+}
+
+fn ser_bstr_1024_b(b: &mut Bencher) {
+  serdo(|scope| {
+    let mut s = "hello world\n".repeat(100);
+    s.truncate(1024);
+    let bstr = ByteString(s.into_bytes());
+    b.iter(|| {
+      let _ = serde_v8::to_v8(scope, &bstr).unwrap();
+    });
+  });
+}
+
 benchmark_group!(
   benches,
   ser_struct_v8,
@@ -102,5 +123,7 @@ benchmark_group!(
   ser_tuple_v8,
   ser_tuple_json,
   ser_struct_v8_manual,
+  ser_bstr_12_b,
+  ser_bstr_1024_b,
 );
 benchmark_main!(benches);

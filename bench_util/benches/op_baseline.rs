@@ -22,8 +22,8 @@ fn setup() -> Vec<Extension> {
 }
 
 #[op]
-fn op_nop(_: &mut OpState, _: (), _: ()) -> Result<u8, AnyError> {
-  Ok(9)
+fn op_nop(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+  Ok(())
 }
 
 #[op]
@@ -45,6 +45,10 @@ fn bench_op_pi_json(b: &mut Bencher) {
   bench_js_sync(b, r#"Deno.core.opSync("pi_json", null);"#, setup);
 }
 
+fn bench_op_nop(b: &mut Bencher) {
+  bench_js_sync(b, r#"Deno.core.opSync("nop", null, null, null);"#, setup);
+}
+
 fn bench_op_async(b: &mut Bencher) {
   bench_js_async(b, r#"Deno.core.opAsync("pi_async", null);"#, setup);
 }
@@ -53,24 +57,12 @@ fn bench_is_proxy(b: &mut Bencher) {
   bench_js_sync(b, r#"Deno.core.isProxy(42);"#, setup);
 }
 
-fn bench_op_void_sync(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.opSync("op_void_sync", null, null);"#, setup);
-}
-
-fn bench_op_void_async(b: &mut Bencher) {
-  bench_js_async(
-    b,
-    r#"Deno.core.opAsync("op_void_async", null, null);"#,
-    setup,
-  );
-}
-
 benchmark_group!(
   benches,
-  bench_op_void_sync,
-  bench_op_void_async,
   bench_op_pi_json,
+  bench_op_nop,
   bench_op_async,
   bench_is_proxy
 );
+
 bench_or_profile!(benches);

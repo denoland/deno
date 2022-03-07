@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::url::Url;
+use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -84,6 +85,8 @@ pub fn init<P: TimersPermission + 'static>(
     .ops(|ctx| {
       ctx.register("op_base64_decode", op_base64_decode);
       ctx.register("op_base64_encode", op_base64_encode);
+      ctx.register("op_base64_atob", op_base64_atob);
+      ctx.register("op_base64_btoa", op_base64_btoa);
       ctx.register("op_encoding_normalize_label", op_encoding_normalize_label);
       ctx.register("op_encoding_new_decoder", op_encoding_new_decoder);
       ctx.register("op_encoding_decode", op_encoding_decode);
@@ -124,21 +127,43 @@ pub fn init<P: TimersPermission + 'static>(
 
 #[op]
 fn op_base64_decode(
-  _state: &mut OpState,
+  _: &mut OpState,
   input: String,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let mut input: &str = &input.replace(|c| char::is_ascii_whitespace(&c), "");
+  let mut input = input.into_bytes();
+  input.retain(|c| !c.is_ascii_whitespace());
+  Ok(b64_decode(&input)?.into())
+}
+
+#[op]
+fn op_base64_atob(
+  _: &mut OpState,
+  s: ByteString,
+  _: (),
+) -> Result<ByteString, AnyError> {
+  let mut s = s.0;
+  s.retain(|c| !c.is_ascii_whitespace());
+
+  // If padding is expected, fail if not 4-byte aligned
+  if s.len() % 4 != 0 && (s.ends_with(b"==") || s.ends_with(b"=")) {
+    return Err(
+      DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
+    );
+  }
+
+  Ok(ByteString(b64_decode(&s)?))
+}
+
+fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
   // "If the length of input divides by 4 leaving no remainder, then:
   //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
   //  remove them from input."
-  if input.len() % 4 == 0 {
-    if input.ends_with("==") {
-      input = &input[..input.len() - 2]
-    } else if input.ends_with('=') {
-      input = &input[..input.len() - 1]
-    }
-  }
+  let input = match input.len() % 4 == 0 {
+    true if input.ends_with(b"==") => &input[..input.len() - 2],
+    true if input.ends_with(b"=") => &input[..input.len() - 1],
+    _ => input,
+  };
 
   // "If the length of input divides by 4 leaving a remainder of 1,
   //  throw an InvalidCharacterError exception and abort these steps."
@@ -148,39 +173,45 @@ fn op_base64_decode(
     );
   }
 
-  if input
-    .chars()
-    .any(|c| c != '+' && c != '/' && !c.is_alphanumeric())
-  {
-    return Err(
+  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
+    .decode_allow_trailing_bits(true);
+  let out = base64::decode_config(input, cfg).map_err(|err| match err {
+    base64::DecodeError::InvalidByte(_, _) => {
       DomExceptionInvalidCharacterError::new(
         "Failed to decode base64: invalid character",
       )
-      .into(),
-    );
-  }
-
-  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
-    .decode_allow_trailing_bits(true);
-  let out = base64::decode_config(&input, cfg).map_err(|err| {
-    DomExceptionInvalidCharacterError::new(&format!(
+    }
+    _ => DomExceptionInvalidCharacterError::new(&format!(
       "Failed to decode base64: {:?}",
       err
-    ))
+    )),
   })?;
-  Ok(ZeroCopyBuf::from(out))
+
+  Ok(out)
 }
 
 #[op]
 fn op_base64_encode(
-  _state: &mut OpState,
+  _: &mut OpState,
   s: ZeroCopyBuf,
   _: (),
 ) -> Result<String, AnyError> {
+  Ok(b64_encode(&s))
+}
+
+#[op]
+fn op_base64_btoa(
+  _: &mut OpState,
+  s: ByteString,
+  _: (),
+) -> Result<String, AnyError> {
+  Ok(b64_encode(&s))
+}
+
+fn b64_encode(s: impl AsRef<[u8]>) -> String {
   let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
     .decode_allow_trailing_bits(true);
-  let out = base64::encode_config(&s, cfg);
-  Ok(out)
+  base64::encode_config(s.as_ref(), cfg)
 }
 
 #[derive(Deserialize)]
