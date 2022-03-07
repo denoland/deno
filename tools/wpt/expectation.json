@@ -4096,17 +4096,7 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
-      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"./foo\"}] Inputs: [{\"pathname\":\"./foo\"}]",
-      "Pattern: [{\"pathname\":\"../foo\"}] Inputs: [{\"pathname\":\"../foo\"}]",
-      "Pattern: [{\"pathname\":\":foo./\"}] Inputs: [{\"pathname\":\"bar./\"}]",
-      "Pattern: [{\"pathname\":\":foo../\"}] Inputs: [{\"pathname\":\"bar../\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ],
     "urlpattern.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
@@ -4124,17 +4114,7 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
-      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"./foo\"}] Inputs: [{\"pathname\":\"./foo\"}]",
-      "Pattern: [{\"pathname\":\"../foo\"}] Inputs: [{\"pathname\":\"../foo\"}]",
-      "Pattern: [{\"pathname\":\":foo./\"}] Inputs: [{\"pathname\":\"bar./\"}]",
-      "Pattern: [{\"pathname\":\":foo../\"}] Inputs: [{\"pathname\":\"bar../\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ],
     "urlpattern.https.any.html": [
       "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
@@ -4152,17 +4132,7 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
-      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"./foo\"}] Inputs: [{\"pathname\":\"./foo\"}]",
-      "Pattern: [{\"pathname\":\"../foo\"}] Inputs: [{\"pathname\":\"../foo\"}]",
-      "Pattern: [{\"pathname\":\":foo./\"}] Inputs: [{\"pathname\":\"bar./\"}]",
-      "Pattern: [{\"pathname\":\":foo../\"}] Inputs: [{\"pathname\":\"bar../\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ],
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
@@ -4180,17 +4150,7 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
-      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"./foo\"}] Inputs: [{\"pathname\":\"./foo\"}]",
-      "Pattern: [{\"pathname\":\"../foo\"}] Inputs: [{\"pathname\":\"../foo\"}]",
-      "Pattern: [{\"pathname\":\":foo./\"}] Inputs: [{\"pathname\":\"bar./\"}]",
-      "Pattern: [{\"pathname\":\":foo../\"}] Inputs: [{\"pathname\":\"bar../\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ]
   },
   "compression": {

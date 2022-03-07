@@ -97,10 +97,10 @@ verify on GitHub that everything looks correct.
 9. If you are doing a patch release, answer `y` to the _Increment patch?_
    prompt.
 
-10. Use the output of the above command to update `Releases.md`. **If you are
-    cutting a minor release**: make sure that there are no duplicate entries in
-    previous releases; most often commits with `fix` prefix would have been
-    included in patch releases.
+10. The above command will update the `Releases.md` file. Review it and ensure
+    its output is correct. **If you are cutting a minor release**: make sure
+    that there are no duplicate entries in previous releases; most often commits
+    with `fix` prefix would have been included in patch releases.
 
 11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`
     and do a search through the tests to find std urls that need to be updated.
