@@ -203,7 +203,6 @@ jobs:
             -C linker-plugin-lto=true
             -C linker=clang-13
             -C link-arg=-fuse-ld=lld-13
-            -C link-arg=-lpthread
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -214,7 +213,6 @@ jobs:
             -C linker-plugin-lto=true
             -C linker=clang-13
             -C link-arg=-fuse-ld=lld-13
-            -C link-arg=-lpthread
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
