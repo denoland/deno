@@ -671,7 +671,8 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let blocks_regex = Regex::new(r"(?s)<!--.*?-->|(```([^\r\n]*)\r?\n([\S\s]*?)```)")?;
+  let blocks_regex =
+    Regex::new(r"(?s)<!--.*?-->|(```([^\r\n]*)\r?\n([\S\s]*?)```)")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
