@@ -171,6 +171,19 @@ impl Drop for JsRuntime {
     // currently not enforced by the type system.
     self.inspector.take();
 
+    // Cleanup isolate slots
+    unsafe {
+      let isolate = self.v8_isolate();
+      drop(Rc::from_raw(
+        isolate.get_data(Self::STATE_SLOT) as *const RefCell<JsRuntimeState>
+      ));
+      drop(Rc::from_raw(
+        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
+      ));
+      isolate.set_data(Self::STATE_SLOT, std::ptr::null_mut());
+      isolate.set_data(Self::MODULES_SLOT, std::ptr::null_mut());
+    }
+
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
       // a `struct OwnedIsolate` which is not actually owned, hence the need
@@ -268,6 +281,9 @@ pub struct RuntimeOptions {
 }
 
 impl JsRuntime {
+  const STATE_SLOT: u32 = 0;
+  const MODULES_SLOT: u32 = 1;
+
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     let v8_platform = options.v8_platform.take();
@@ -343,7 +359,7 @@ impl JsRuntime {
 
     let op_state = Rc::new(RefCell::new(op_state));
 
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
+    let rc_state = Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
@@ -365,10 +381,19 @@ impl JsRuntime {
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
-    })));
+    }));
+    unsafe {
+      isolate.set_data(Self::STATE_SLOT, Rc::into_raw(rc_state) as *mut c_void);
+    }
 
     let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    let rc_module_map = Rc::new(RefCell::new(module_map));
+    unsafe {
+      isolate.set_data(
+        Self::MODULES_SLOT,
+        Rc::into_raw(rc_module_map) as *mut c_void,
+      );
+    }
 
     // Add builtins extension
     options
@@ -430,14 +455,23 @@ impl JsRuntime {
     isolate
   }
 
-  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
-    s.clone()
+  pub(crate) fn state<'a, 'b>(
+    isolate: &'a v8::Isolate,
+  ) -> &'b RefCell<JsRuntimeState> {
+    unsafe {
+      &*(isolate.get_data(Self::STATE_SLOT) as *const RefCell<JsRuntimeState>)
+    }
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
-    module_map.clone()
+    let rc = unsafe {
+      Rc::from_raw(
+        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
+      )
+    };
+    let cloned = rc.clone();
+    forget(rc);
+    cloned
   }
 
   /// Initializes JS of provided Extensions
@@ -597,12 +631,19 @@ impl JsRuntime {
     self.inspector.take();
 
     // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
+    unsafe {
+      let isolate = self.v8_isolate();
+      drop(Rc::from_raw(
+        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
+      ));
+      isolate.set_data(
+        Self::MODULES_SLOT,
+        Rc::into_raw(Rc::new(RefCell::new(ModuleMap::new(
+          Rc::new(NoopModuleLoader),
+          state.borrow().op_state.clone(),
+        )))) as *mut c_void,
+      );
+    }
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
     std::mem::take(&mut state.borrow_mut().js_sync_cb);
