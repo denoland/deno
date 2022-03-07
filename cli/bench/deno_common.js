@@ -37,10 +37,16 @@ function benchStats(name, n, t1, t2) {
     `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`;
 }
 
-function benchBase64RoundTrip() {
+function benchB64RtLong() {
   const input = "long-string".repeat(99999);
-  benchSync("base64_roundtrip", 10, () => {
+  benchSync("b64_rt_long", 1e2, () => {
     atob(btoa(input));
+  });
+}
+
+function benchB64RtShort() {
+  benchSync("b64_rt_short", 1e6, () => {
+    atob(btoa("123"));
   });
 }
 
@@ -117,7 +123,8 @@ async function main() {
   // A common "language feature", that should be fast
   // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
-  benchBase64RoundTrip();
+  benchB64RtLong();
+  benchB64RtShort();
   // IO ops
   benchReadZero();
   benchWriteNull();
