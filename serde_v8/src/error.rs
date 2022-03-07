@@ -19,6 +19,7 @@ pub enum Error {
   ExpectedBuffer,
 
   ExpectedUtf8,
+  ExpectedLatin1,
 
   LengthMismatch,
 }
