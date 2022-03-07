@@ -63,7 +63,7 @@ pub async fn execute_script(
   let maybe_script = scripts_config.get(&script_name);
 
   if let Some(script) = maybe_script {
-    let seq_list = deno_task_shell::parse(script)
+    let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", script_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
     let additional_cli_args = Vec::new(); // todo

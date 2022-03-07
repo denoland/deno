@@ -1063,9 +1063,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "908f3f7970b4055e56a0eda8ed523fbfa09838e37bbc7298b11d18798b1971cd"
+checksum = "fb8cb3ef513fb521ddbd1d6b94d3dde94195886224ca18adf9715e5ddaf3513e"
 dependencies = [
  "anyhow",
  "futures",
@@ -2250,9 +2250,9 @@ checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
 
 [[package]]
 name = "lock_api"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712a4d093c9976e24e7dbca41db895dabcbac38eb5f4045393d17a95bdfb1109"
+checksum = "88943dd7ef4a2e5a4bfa2753aaab3013e34ce2533d1996fb18ef591e315e2b3b"
 dependencies = [
  "scopeguard",
 ]
