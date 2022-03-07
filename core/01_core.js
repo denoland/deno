@@ -211,11 +211,7 @@
     return p;
   }
   function opSync(opName, arg1 = null, arg2 = null) {
-    const o = Deno.core.ops[opName];
-    if (!o) {
-      throw opName;
-    }
-    const result = unwrapOpResult(o(arg1, arg2));
+    const result = unwrapOpResult(Deno.core.ops[opName](arg1, arg2));
     trackSync(opName);
     return result;
   }
