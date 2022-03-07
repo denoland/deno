@@ -7,7 +7,7 @@
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.event;
-  const {} = window.__bootstrap.primordials;
+  const { NumberIsNaN, ArrayIsArray, Date, DatePrototypeGetMilliseconds, Set, SetPrototypeHas, SetPrototypeAdd, MathMin } = window.__bootstrap.primordials;
 
   webidl.converters.IDBTransactionMode = webidl.createEnumConverter(
     "IDBTransactionMode",
@@ -80,6 +80,132 @@
     ],
   );
 
+  // Ref: https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key
+  /**
+   * @param input {any}
+   * @param seen {Set<any>}
+   * @returns {(Key | null)}
+   */
+  function valueToKey(input, seen = new Set()) {
+    if (SetPrototypeHas(seen, input)) {
+      return null;
+    }
+    if (webidl.type(input) === "Number") {
+      if (NumberIsNaN(input)) {
+        return null;
+      } else {
+        return {
+          type: "number",
+          value: input,
+        };
+      }
+    } else if (input instanceof Date) {
+      const ms = DatePrototypeGetMilliseconds(input);
+      if (NumberIsNaN(ms)) {
+        return null;
+      } else {
+        return {
+          type: "date",
+          value: input,
+        };
+      }
+    } else if (webidl.type(input) === "String") {
+      return {
+        type: "string",
+        value: input,
+      }
+    } else if () { // TODO: is a buffer source type
+      return {
+        type: "binary",
+        value: input.slice(),
+      }
+    } else if (ArrayIsArray(input)) {
+      SetPrototypeAdd(seen, input);
+      const keys = [];
+      for (const entry of input) {
+        const key = valueToKey(entry, seen);
+        if (key === null) {
+          return null;
+        }
+        keys.push(key);
+      }
+      return {
+        type: "array",
+        value: keys,
+      };
+    } else {
+      return null;
+    }
+  }
+
+  // Ref: https://w3c.github.io/IndexedDB/#compare-two-keys
+  function compareTwoKeys(a, b) {
+    const { type: ta, value: va } = a;
+    const { type: tb, value: vb } = b;
+
+    if (ta !== tb) {
+      if (ta === "array") {
+        return 1;
+      } else if (tb === "array") {
+        return -1;
+      } else if (ta === "binary") {
+        return 1;
+      } else if (tb === "binary") {
+        return -1;
+      } else if (ta === "string") {
+        return 1;
+      } else if (tb === "string") {
+        return -1;
+      } else if (ta === "date") {
+        assert(tb === "date");
+        return 1;
+      } else {
+        return -1;
+      }
+    }
+
+    switch (ta) {
+      case "number":
+      case "date": {
+        if (va > vb) {
+          return 1;
+        } else if (va < vb) {
+          return -1;
+        } else {
+          return 0;
+        }
+      }
+      case "string": {
+        if (va > vb) {
+          return 1;
+        } else if (va < vb) {
+          return -1;
+        } else {
+          return 0;
+        }
+      }
+      case "binary": {
+        // TODO
+      }
+      case "array": {
+        const len = MathMin(va.length, vb.length);
+        for (let i = 0; i < len; i++) {
+          const c = compareTwoKeys(va[i], vb[i]);
+          if (c !== 0) {
+            return c;
+          }
+        }
+        if (va.length > vb.length) {
+          return 1;
+        } else if (va.length < vb.length) {
+          return -1;
+        } else {
+          return 0;
+        }
+      }
+    }
+  }
+
   const _result = Symbol("[[result]]");
   const _error = Symbol("[[error]]");
   const _source = Symbol("[[source]]");
@@ -149,6 +275,9 @@
 
   webidl.configurePrototype(IDBOpenDBRequest);
 
+  /** @type {Set<IDBDatabase>} */
+  const connections = new Set();
+
   // Ref: https://w3c.github.io/IndexedDB/#idbfactory
   class IDBFactory {
     constructor() {
@@ -172,7 +301,60 @@
         });
       }
 
-      // TODO
+      if (version === 0) {
+        throw new TypeError(); // TODO
+      }
+
+      const request = webidl.createBranded(IDBOpenDBRequest);
+
+      try {
+        const [newVersion, dbVersion] = core.opSync("op_indexeddb_open", name, version);
+        const connection = webidl.createBranded(IDBDatabase);
+        connection[_name] = name;
+        // TODO: connection[_version] = newVersion;
+        if (dbVersion < newVersion) {
+          for (const conn of connections.values()) {
+            if (!conn[_closePending]) {
+              conn.dispatchEvent(new IDBVersionChangeEvent("versionchange", {
+                bubbles: false,
+                cancelable: false,
+                oldVersion: dbVersion,
+                newVersion,
+              }));
+            }
+          }
+          // TODO: why should connections close?
+          for (const conn of connections.values()) {
+            if (!conn[_closePending]) {
+              request.dispatchEvent(new IDBVersionChangeEvent("blocked", {
+                bubbles: false,
+                cancelable: false,
+                oldVersion: dbVersion,
+                newVersion,
+              }));
+              break;
+            }
+          }
+          // Ref: https://w3c.github.io/IndexedDB/#upgrade-transaction-steps
+          // TODO: Wait until all connections in openConnections are closed.
+          const transaction; // TODO
+          // TODO
+
+        }
+        request[_result] = connection;
+        request[_done] = true;
+        request.dispatchEvent(new Event("success"));
+      } catch (e) {
+        request[_result] = undefined;
+        request[_error] = e;
+        request[_done] = true;
+        request.dispatchEvent(new Event("error", {
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+
+      return request;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbfactory-deletedatabase
@@ -185,6 +367,8 @@
         context: "Argument 1",
       });
 
+      const request = webidl.createBranded(IDBOpenDBRequest);
+
       // TODO
     }
 
@@ -192,7 +376,12 @@
     databases() {
       webidl.assertBranded(this, IDBFactoryPrototype);
 
-      // TODO
+      return Promise.resolve([...connections.values()].map((db) => {
+        return {
+          name: db.name,
+          version: db.version,
+        };
+      }));
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbfactory-cmp
@@ -210,7 +399,16 @@
         context: "Argument 2",
       });
 
-      // TODO
+      const a = valueToKey(first);
+      if (a === null) {
+        throw new DOMException("Data provided does not meet requirements", "DataError");
+      }
+      const b = valueToKey(second);
+      if (b === null) {
+        throw new DOMException("Data provided does not meet requirements", "DataError");
+      }
+
+      return compareTwoKeys(a, b);
     }
   }
   webidl.configurePrototype(IDBFactory);
@@ -218,9 +416,16 @@
 
   const _name = Symbol("[[name]]");
   const _version = Symbol("[[version]]");
+  const _closePending = Symbol("[[closePending]]");
+  const _objectStores = Symbol("[[objectStores]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbdatabase
   // TODO: finalizationRegistry
   class IDBDatabase extends EventTarget {
+    /** @type {boolean} */
+    [_closePending] = false;
+    /** @type {Set<ObjectStore>} */
+    [_objectStores] = new Set();
+
     constructor() {
       super();
       webidl.illegalConstructor();
