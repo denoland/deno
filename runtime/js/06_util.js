@@ -34,19 +34,6 @@
     }
   }
 
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
-    }
-  }
-
   function createResolvable() {
     let resolve;
     let reject;
@@ -154,8 +141,6 @@
     log,
     setLogDebug,
     createResolvable,
-    assert,
-    AssertionError,
     pathFromURL,
     writable,
     nonEnumerable,

@@ -275,6 +275,24 @@
     return StringPrototypeMatch(s, HTTP_BETWEEN_WHITESPACE)?.[1] ?? "";
   }
 
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  /**
+   * @param {unknown} cond
+   * @param {string=} msg
+   * @returns {asserts cond}
+   */
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -299,5 +317,7 @@
     collectHttpQuotedString,
     forgivingBase64Encode,
     forgivingBase64Decode,
+    AssertionError,
+    assert,
   };
 })(globalThis);
