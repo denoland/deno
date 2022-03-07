@@ -97,6 +97,12 @@ itest!(markdown_windows {
   output: "test/markdown_windows.out",
 });
 
+itest!(markdown_ignore_html_comment {
+  args: "test --doc --allow-all test/markdown_with_comment.md",
+  exit_code: 1,
+  output: "test/markdown_with_comment.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
