@@ -70,6 +70,7 @@ impl OpsTracker {
   #[inline]
   fn metrics_mut(&self, id: OpId) -> &mut OpMetrics {
     let ops = self.ops_mut();
+    // TODO(@AaronO): Pre-alloc capacity at runtime init once we forbid post-boot op registrations
     Self::ensure_capacity(ops, id);
     unsafe { ops.get_unchecked_mut(id) }
   }
