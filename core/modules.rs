@@ -1766,7 +1766,6 @@ import "/a.js";
         module_loader: Some(loader),
         ..Default::default()
       });
-      runtime.sync_ops_cache();
       runtime
         .execute_script(
           "file:///dyn_import3.js",

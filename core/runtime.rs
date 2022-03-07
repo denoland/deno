@@ -140,7 +140,6 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
@@ -280,19 +279,19 @@ impl JsRuntime {
     options
       .extensions
       .insert(0, crate::ops_builtin::init_builtins());
-
+    let refs = bindings::external_references(&mut options.extensions);
+    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator =
-        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
+      let mut creator = v8::SnapshotCreator::new(Some(&refs));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &mut options.extensions, true);
+          bindings::initialize_context(scope, &mut options.extensions, false);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -302,7 +301,7 @@ impl JsRuntime {
         .create_params
         .take()
         .unwrap_or_else(v8::Isolate::create_params)
-        .external_references(&**bindings::EXTERNAL_REFERENCES);
+        .external_references(&**refs);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -318,13 +317,9 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = if snapshot_loaded {
-          v8::Context::new(scope)
-        } else {
-          // If no snapshot is provided, we initialize the context with empty
-          // main source code and source maps.
-          bindings::initialize_context(scope, &mut options.extensions, false)
-        };
+        let context =
+          bindings::initialize_context(scope, &mut options.extensions, snapshot_loaded);
+
         global_context = v8::Global::new(scope, context);
       }
       (isolate, None)
@@ -355,7 +350,6 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
-      js_sync_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
@@ -391,10 +385,8 @@ impl JsRuntime {
     }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
-    // Init callbacks (opresolve & syncOpsCache)
+    // Init callbacks (opresolve)
     js_runtime.init_cbs();
-    // Sync ops cache
-    js_runtime.sync_ops_cache();
 
     js_runtime
   }
@@ -500,22 +492,10 @@ impl JsRuntime {
   fn init_cbs(&mut self) {
     let mut scope = self.handle_scope();
     let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
-    let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
     // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
-    state.js_sync_cb.replace(sync_cb);
-  }
-
-  /// Ensures core.js has the latest op-name to op-id mappings
-  pub fn sync_ops_cache(&mut self) {
-    let scope = &mut self.handle_scope();
-    let state_rc = JsRuntime::state(scope);
-    let js_sync_cb_handle = state_rc.borrow().js_sync_cb.clone().unwrap();
-    let js_sync_cb = js_sync_cb_handle.open(scope);
-    let this = v8::undefined(scope).into();
-    js_sync_cb.call(scope, this, &[]);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -601,7 +581,6 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
-    std::mem::take(&mut state.borrow_mut().js_sync_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator

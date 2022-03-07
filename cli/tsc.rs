@@ -11,18 +11,18 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
-use deno_core::serde::de;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_core::OpFn;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
@@ -298,18 +298,6 @@ fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
     .map_err(|err| err.into())
 }
 
-fn op<F, V, R>(op_fn: F) -> Box<OpFn>
-where
-  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
-  V: de::DeserializeOwned,
-  R: Serialize + 'static,
-{
-  op_sync(move |s, args, _: ()| {
-    let state = s.borrow_mut::<State>();
-    op_fn(state, args)
-  })
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateHashArgs {
@@ -318,7 +306,13 @@ struct CreateHashArgs {
   data: String,
 }
 
-fn op_create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[op]
+fn op_create_hash(
+  s: &mut OpState,
+  args: Value,
+  _: (),
+) -> Result<Value, AnyError> {
+  let state = s.borrow_mut::<State>();
   let v: CreateHashArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_create_hash\".")?;
   let mut data = vec![v.data.as_bytes().to_owned()];
@@ -327,7 +321,9 @@ fn op_create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!({ "hash": hash }))
 }
 
-fn op_cwd(state: &mut State, _args: Value) -> Result<String, AnyError> {
+#[op]
+fn op_cwd(s: &mut OpState, _args: Value, _: ()) -> Result<String, AnyError> {
+  let state = s.borrow_mut::<State>();
   if let Some(config_specifier) = &state.maybe_config_specifier {
     let cwd = config_specifier.join("./")?;
     Ok(cwd.to_string())
@@ -350,7 +346,13 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-fn op_emit(state: &mut State, args: EmitArgs) -> Result<Value, AnyError> {
+#[op]
+fn op_emit(
+  state: &mut OpState,
+  args: EmitArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
     _ => {
@@ -403,7 +405,13 @@ struct ExistsArgs {
   specifier: String,
 }
 
-fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
+#[op]
+fn op_exists(
+  state: &mut OpState,
+  args: ExistsArgs,
+  _: (),
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
@@ -443,7 +451,9 @@ fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   }
 }
 
-fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[op]
+fn op_load(state: &mut OpState, args: Value, _: ()) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
   let specifier = normalize_specifier(&v.specifier)
@@ -507,7 +517,13 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
+#[op]
+fn op_resolve(
+  state: &mut OpState,
+  args: ResolveArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
@@ -612,7 +628,13 @@ struct RespondArgs {
   pub stats: emit::Stats,
 }
 
-fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[op]
+fn op_respond(
+  state: &mut OpState,
+  args: Value,
+  _: (),
+) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let v: RespondArgs = serde_json::from_value(args)
     .context("Error converting the result for \"op_respond\".")?;
   state.maybe_response = Some(v);
@@ -623,10 +645,6 @@ fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
 pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
-  let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(compiler_snapshot()),
-    ..Default::default()
-  });
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
   // extensions and remap any that are unacceptable to tsc and add them to the
@@ -654,28 +672,32 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
       }
     })
     .collect();
-
-  {
-    let op_state = runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(
-      request.graph_data,
-      request.hash_data.clone(),
-      request.maybe_config_specifier.clone(),
-      request.maybe_tsbuildinfo.clone(),
-      root_map,
-      remapped_specifiers,
-    ));
-  }
-
-  runtime.register_op("op_cwd", op(op_cwd));
-  runtime.register_op("op_create_hash", op(op_create_hash));
-  runtime.register_op("op_emit", op(op_emit));
-  runtime.register_op("op_exists", op(op_exists));
-  runtime.register_op("op_load", op(op_load));
-  runtime.register_op("op_resolve", op(op_resolve));
-  runtime.register_op("op_respond", op(op_respond));
-  runtime.sync_ops_cache();
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![Extension::builder()
+      .ops(|ctx| {
+        ctx.register("op_cwd", op_cwd);
+        ctx.register("op_create_hash", op_create_hash);
+        ctx.register("op_emit", op_emit);
+        ctx.register("op_exists", op_exists);
+        ctx.register("op_load", op_load);
+        ctx.register("op_resolve", op_resolve);
+        ctx.register("op_respond", op_respond);
+      })
+      .state(move |state| {
+        state.put(State::new(
+          request.graph_data.clone(),
+          request.hash_data.clone(),
+          request.maybe_config_specifier.clone(),
+          request.maybe_tsbuildinfo.clone(),
+          root_map.clone(),
+          remapped_specifiers.clone(),
+        ));
+        Ok(())
+      })
+      .build()],
+    ..Default::default()
+  });
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
   let request_value = json!({

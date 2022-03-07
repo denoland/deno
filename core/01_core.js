@@ -27,10 +27,8 @@
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
-
-  const coreOps = Deno.core.ops;
-
-  let opsCache = {};
+  const ops = window.Deno.core.ops;
+  
   const opsMetrics = {
     opsDispatched: 0,
     opsDispatchedSync: 0,
@@ -148,15 +146,6 @@
     return promise;
   }
 
-  function ops() {
-    return opsCache;
-  }
-
-  function syncOpsCache() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    //opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
-  }
-
   const promiseIdOpMap = {};
   function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
@@ -201,7 +190,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = coreOps[opName](promiseId, arg1, arg2);
+    const maybeError = Deno.core.ops[opName](promiseId, arg1, arg2);
     trackAsync(opName);
     promiseIdOpMap[promiseId] = opName;
     // Handle sync error (e.g: error parsing args)
@@ -221,9 +210,12 @@
     p[promiseIdSymbol] = promiseId;
     return p;
   }
-
   function opSync(opName, arg1 = null, arg2 = null) {
-    const result = unwrapOpResult(coreOps[opName](arg1, arg2));
+    const o = Deno.core.ops[opName];
+    if (!o) {
+      throw opName;
+    }
+    const result = unwrapOpResult(o(arg1, arg2));
     trackSync(opName);
     return result;
   }
@@ -295,7 +287,6 @@
     registerErrorBuilder,
     registerErrorClass,
     opresolve,
-    syncOpsCache,
     BadResource,
     BadResourcePrototype,
     Interrupted,

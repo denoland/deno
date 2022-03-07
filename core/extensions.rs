@@ -47,7 +47,17 @@ impl Extension {
     self.initialized = true;
 
     if let Some(init) = &self.ops_init {
-      let mut ctx = RegisterCtx { scope, obj };
+      let mut ctx = RegisterCtx::Init { scope, obj };
+      init(&mut ctx);
+    }
+  }
+
+  pub fn init_external_references(
+    &mut self,
+    references: &mut Vec<v8::ExternalReference>,
+  ) {
+    if let Some(init) = &self.ops_init {
+      let mut ctx = RegisterCtx::ExternalReference { references };
       init(&mut ctx);
     }
   }
@@ -75,9 +85,14 @@ pub struct ExtensionBuilder {
   middleware: Option<Box<OpMiddlewareFn>>,
 }
 
-pub struct RegisterCtx<'a, 'b, 'c> {
-  scope: &'a mut v8::HandleScope<'b>,
-  obj: v8::Local<'c, v8::Object>,
+pub enum RegisterCtx<'a, 'b, 'c> {
+  Init {
+    scope: &'a mut v8::HandleScope<'b>,
+    obj: v8::Local<'c, v8::Object>,
+  },
+  ExternalReference {
+    references: &'a mut Vec<v8::ExternalReference<'b>>,
+  },
 }
 
 impl<'a, 'b, 'c> RegisterCtx<'a, 'b, 'c> {
@@ -85,7 +100,16 @@ impl<'a, 'b, 'c> RegisterCtx<'a, 'b, 'c> {
   where
     F: v8::MapFnTo<v8::FunctionCallback>,
   {
-    crate::bindings::set_func(self.scope, self.obj, name, op_fn)
+    match self {
+      RegisterCtx::Init { scope, obj } => {
+        crate::bindings::set_func(scope, *obj, name, op_fn)
+      }
+      RegisterCtx::ExternalReference { references } => {
+        references.push(v8::ExternalReference {
+          function: op_fn.map_fn_to(),
+        });
+      }
+    }
   }
 }
 
@@ -151,7 +175,7 @@ macro_rules! include_js_files {
         Box::new(|| {
           let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
           let path = c.join($file);
-          // println!("cargo:rerun-if-changed={}", path.display());
+          println!("cargo:rerun-if-changed={}", path.display());
           let src = std::fs::read_to_string(path)?;
           Ok(src)
         }),

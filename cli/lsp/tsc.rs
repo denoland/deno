@@ -27,7 +27,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
@@ -40,7 +40,7 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_core::OpFn;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
@@ -2502,19 +2502,6 @@ fn normalize_specifier<S: AsRef<str>>(
     .map_err(|err| err.into())
 }
 
-// buffer-less json_sync ops
-fn op_lsp<F, V, R>(op_fn: F) -> Box<OpFn>
-where
-  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
-  V: de::DeserializeOwned,
-  R: Serialize + 'static,
-{
-  op_sync(move |s, args, _: ()| {
-    let state = s.borrow_mut::<State>();
-    op_fn(state, args)
-  })
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
@@ -2524,10 +2511,13 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
+#[op]
 fn op_dispose(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
+  _: (),
 ) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_dispose", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
@@ -2541,7 +2531,13 @@ struct SpecifierArgs {
   specifier: String,
 }
 
-fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
+#[op]
+fn op_exists(
+  state: &mut OpState,
+  args: SpecifierArgs,
+  _: (),
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
   // forrest for the trees as well as it compounds any lsp performance
@@ -2569,10 +2565,13 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source has changed.
+#[op]
 fn op_get_change_range(
-  state: &mut State,
+  state: &mut OpState,
   args: GetChangeRangeArgs,
+  _: (),
 ) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_change_range", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
@@ -2613,10 +2612,13 @@ fn op_get_change_range(
   r
 }
 
+#[op]
 fn op_get_length(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
+  _: (),
 ) -> Result<usize, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) =
@@ -2644,10 +2646,13 @@ struct GetTextArgs {
   end: usize,
 }
 
+#[op]
 fn op_get_text(
-  state: &mut State,
+  state: &mut OpState,
   args: GetTextArgs,
+  _: (),
 ) -> Result<String, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
@@ -2664,14 +2669,23 @@ fn op_get_text(
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
-fn op_is_cancelled(state: &mut State, _: ()) -> Result<bool, AnyError> {
+#[op]
+fn op_is_cancelled(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   Ok(state.token.is_cancelled())
 }
 
+#[op]
 fn op_load(
-  state: &mut State,
+  state: &mut OpState,
   args: SpecifierArgs,
+  _: (),
 ) -> Result<Option<String>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let document = state.state_snapshot.documents.get(&specifier);
@@ -2679,10 +2693,13 @@ fn op_load(
   Ok(document.map(|d| d.content().to_string()))
 }
 
+#[op]
 fn op_resolve(
-  state: &mut State,
+  state: &mut OpState,
   args: ResolveArgs,
+  _: (),
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
@@ -2713,15 +2730,24 @@ fn op_resolve(
   result
 }
 
-fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+#[op]
+fn op_respond(
+  state: &mut OpState,
+  args: Response,
+  _: (),
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   state.response = Some(args);
   Ok(true)
 }
 
+#[op]
 fn op_script_names(
-  state: &mut State,
+  state: &mut OpState,
   _args: Value,
+  _: (),
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  let state = state.borrow_mut::<State>();
   Ok(
     state
       .state_snapshot
@@ -2739,10 +2765,13 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
+#[op]
 fn op_script_version(
-  state: &mut State,
+  state: &mut OpState,
   args: ScriptVersionArgs,
+  _: (),
 ) -> Result<Option<String>, AnyError> {
+  let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
@@ -2775,19 +2804,19 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
-    .ops(vec![
-      ("op_dispose", op_lsp(op_dispose)),
-      ("op_exists", op_lsp(op_exists)),
-      ("op_get_change_range", op_lsp(op_get_change_range)),
-      ("op_get_length", op_lsp(op_get_length)),
-      ("op_get_text", op_lsp(op_get_text)),
-      ("op_is_cancelled", op_lsp(op_is_cancelled)),
-      ("op_load", op_lsp(op_load)),
-      ("op_resolve", op_lsp(op_resolve)),
-      ("op_respond", op_lsp(op_respond)),
-      ("op_script_names", op_lsp(op_script_names)),
-      ("op_script_version", op_lsp(op_script_version)),
-    ])
+    .ops(|ctx| {
+      ctx.register("op_dispose", op_dispose);
+      ctx.register("op_exists", op_exists);
+      ctx.register("op_get_change_range", op_get_change_range);
+      ctx.register("op_get_length", op_get_length);
+      ctx.register("op_get_text", op_get_text);
+      ctx.register("op_is_cancelled", op_is_cancelled);
+      ctx.register("op_load", op_load);
+      ctx.register("op_resolve", op_resolve);
+      ctx.register("op_respond", op_respond);
+      ctx.register("op_script_names", op_script_names);
+      ctx.register("op_script_version", op_script_version);
+    })
     .state(move |state| {
       state.put(State::new(
         Arc::new(StateSnapshot::default()),

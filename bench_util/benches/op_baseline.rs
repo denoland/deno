@@ -58,7 +58,11 @@ fn bench_op_void_sync(b: &mut Bencher) {
 }
 
 fn bench_op_void_async(b: &mut Bencher) {
-  bench_js_async(b, r#"Deno.core.opAsync("op_void_async", null, null);"#, setup);
+  bench_js_async(
+    b,
+    r#"Deno.core.opAsync("op_void_async", null, null);"#,
+    setup,
+  );
 }
 
 benchmark_group!(
