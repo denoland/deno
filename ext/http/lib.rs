@@ -610,6 +610,10 @@ async fn op_http_write_headers(
         body_compressible && data.len() > 20 && accepts_compression;
 
       if should_compress {
+        // Drop 'content-length' header. Hyper will update it using compressed body.
+        if let Some(headers) = builder.headers_mut() {
+          headers.remove("content-length");
+        }
         // If user provided a ETag header for uncompressed data, we need to
         // ensure it is a Weak Etag header ("W/").
         if let Some(value) = etag_header {
@@ -646,7 +650,7 @@ async fn op_http_write_headers(
             // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
             let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
             writer.write_all(&data.into_bytes())?;
-            body = builder.body(writer.finish().unwrap().into())?;
+            body = builder.body(writer.finish()?.into())?;
           }
         }
       } else {
