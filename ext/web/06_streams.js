@@ -21,7 +21,6 @@
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
-    Error,
     Int8ArrayPrototype,
     Int16ArrayPrototype,
     Int32ArrayPrototype,

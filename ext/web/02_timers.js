@@ -6,7 +6,6 @@
   const {
     ArrayPrototypePush,
     ArrayPrototypeShift,
-    Error,
     FunctionPrototypeCall,
     Map,
     MapPrototypeDelete,

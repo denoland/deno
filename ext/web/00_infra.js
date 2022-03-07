@@ -11,6 +11,7 @@
 ((window) => {
   const core = Deno.core;
   const {
+    Error,
     RegExp,
     ArrayPrototypeMap,
     StringPrototypeCharCodeAt,

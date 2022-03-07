@@ -4,7 +4,6 @@
 ((window) => {
   const {
     decodeURIComponent,
-    Error,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     SafeArrayIterator,
