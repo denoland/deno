@@ -7,7 +7,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -658,7 +658,7 @@ fn op_ffi_call_ptr(
   ffi_call(args.into(), &symbol)
 }
 
-#[op_async]
+#[op]
 async fn op_ffi_call_ptr_nonblocking(
   _state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
@@ -755,7 +755,7 @@ fn op_ffi_call(
 }
 
 /// A non-blocking FFI call.
-#[op_async]
+#[op]
 async fn op_ffi_call_nonblocking(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,

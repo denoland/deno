@@ -5,7 +5,7 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use std::cell::RefCell;
@@ -196,7 +196,7 @@ fn op_signal_bind(
 }
 
 #[cfg(unix)]
-#[op_async]
+#[op]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -247,7 +247,7 @@ fn op_signal_unbind(
 }
 
 #[cfg(not(unix))]
-#[op_async]
+#[op]
 async fn op_signal_poll(
   _state: Rc<RefCell<OpState>>,
   _: (),

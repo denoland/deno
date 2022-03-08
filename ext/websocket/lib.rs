@@ -9,7 +9,7 @@ use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -231,7 +231,7 @@ pub struct CreateResponse {
   extensions: String,
 }
 
-#[op_async]
+#[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
@@ -381,7 +381,7 @@ pub enum SendValue {
   Ping,
 }
 
-#[op_async]
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -410,7 +410,7 @@ pub struct CloseArgs {
   reason: Option<String>,
 }
 
-#[op_async]
+#[op]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
@@ -445,7 +445,7 @@ pub enum NextEventResponse {
   Closed,
 }
 
-#[op_async]
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

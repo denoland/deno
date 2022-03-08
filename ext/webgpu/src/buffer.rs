@@ -4,7 +4,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -79,7 +79,7 @@ pub struct BufferGetMapAsyncArgs {
   size: u64,
 }
 
-#[op_async]
+#[op]
 pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
   args: BufferGetMapAsyncArgs,

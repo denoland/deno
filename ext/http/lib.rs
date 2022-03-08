@@ -21,7 +21,7 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -368,7 +368,7 @@ struct NextRequestResponse(
   String,
 );
 
-#[op_async]
+#[op]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -499,7 +499,7 @@ struct RespondArgs(
   Vec<(ByteString, ByteString)>,
 );
 
-#[op_async]
+#[op]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
@@ -696,7 +696,7 @@ async fn op_http_write_headers(
   }
 }
 
-#[op_async]
+#[op]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -737,7 +737,7 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
-#[op_async]
+#[op]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -752,7 +752,7 @@ async fn op_http_shutdown(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_http_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -814,7 +814,7 @@ fn op_http_websocket_accept_header(
   Ok(base64::encode(digest))
 }
 
-#[op_async]
+#[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

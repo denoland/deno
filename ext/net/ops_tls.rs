@@ -26,7 +26,7 @@ use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -763,7 +763,7 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[op_async]
+#[op]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
@@ -856,7 +856,7 @@ where
   })
 }
 
-#[op_async]
+#[op]
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
@@ -1113,7 +1113,7 @@ where
   })
 }
 
-#[op_async]
+#[op]
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -1165,7 +1165,7 @@ pub async fn op_tls_accept(
   })
 }
 
-#[op_async]
+#[op]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

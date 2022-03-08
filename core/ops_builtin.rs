@@ -7,7 +7,6 @@ use crate::Resource;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
-use deno_ops::op_async;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
@@ -63,7 +62,7 @@ pub fn op_void_sync(_state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
   Ok(())
 }
 
-#[op_async]
+#[op]
 pub async fn op_void_async(
   _state: Rc<RefCell<OpState>>,
   _: (),
@@ -184,7 +183,7 @@ pub fn op_wasm_streaming_set_url(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -194,7 +193,7 @@ async fn op_read(
   resource.read(buf).await.map(|n| n as u32)
 }
 
-#[op_async]
+#[op]
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -204,7 +203,7 @@ async fn op_write(
   resource.write(buf).await.map(|n| n as u32)
 }
 
-#[op_async]
+#[op]
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

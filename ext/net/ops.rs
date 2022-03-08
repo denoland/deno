@@ -10,7 +10,7 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
@@ -156,7 +156,7 @@ async fn accept_tcp(
   })
 }
 
-#[op_async]
+#[op]
 async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
@@ -209,7 +209,7 @@ async fn receive_udp(
   })
 }
 
-#[op_async]
+#[op]
 async fn op_dgram_recv(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
@@ -231,7 +231,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
-#[op_async]
+#[op]
 async fn op_dgram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
@@ -300,7 +300,7 @@ pub struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
-#[op_async]
+#[op]
 pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
@@ -616,7 +616,7 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op_async]
+#[op]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,

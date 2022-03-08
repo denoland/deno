@@ -12,7 +12,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
@@ -132,7 +132,7 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
-#[op_async]
+#[op]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

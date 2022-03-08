@@ -16,7 +16,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
+
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -141,7 +141,7 @@ fn to_maybe_jsx_import_source_module(
   }
 }
 
-#[op_async]
+#[op]
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: EmitArgs,

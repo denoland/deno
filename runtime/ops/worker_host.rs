@@ -14,7 +14,7 @@ use crate::web_worker::WorkerId;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::serde::Deserialize;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
@@ -316,7 +316,7 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
-#[op_async]
+#[op]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
@@ -348,7 +348,7 @@ async fn op_host_recv_ctrl(
   Ok(WorkerControlEvent::Close)
 }
 
-#[op_async]
+#[op]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,

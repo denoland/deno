@@ -4,7 +4,7 @@ use deno_bench_util::{bench_js_async, bench_js_sync};
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use deno_core::OpState;
 
@@ -32,7 +32,7 @@ fn op_pi_json(_: &mut OpState, _: (), _: ()) -> Result<i64, AnyError> {
 }
 
 // this is a function since async closures aren't stable
-#[op_async]
+#[op]
 async fn op_pi_async(
   _: Rc<RefCell<OpState>>,
   _: (),

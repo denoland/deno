@@ -3,6 +3,7 @@
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::OpsTracker;
 use anyhow::Error;
 use futures::future::maybe_done;
 use futures::future::FusedFuture;
@@ -12,14 +13,13 @@ use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
-use std::cell::UnsafeCell;
-use crate::OpsTracker;
 
 /// Wrapper around a Future, which causes that Future to be polled immediately.
 /// (Background: ops are stored in a `FuturesUnordered` structure which polls

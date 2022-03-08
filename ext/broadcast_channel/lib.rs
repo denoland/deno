@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -81,7 +81,7 @@ where
   bc.unsubscribe(&resource)
 }
 
-#[op_async]
+#[op]
 pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
   (rid, name): (ResourceId, String),
@@ -95,7 +95,7 @@ where
   bc.send(&resource, name, buf.to_vec()).await
 }
 
-#[op_async]
+#[op]
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

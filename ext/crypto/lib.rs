@@ -10,7 +10,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -169,7 +169,7 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op_async]
+#[op]
 pub async fn op_crypto_sign_key(
   _state: Rc<RefCell<OpState>>,
   args: SignArg,
@@ -324,7 +324,7 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op_async]
+#[op]
 pub async fn op_crypto_verify_key(
   _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
@@ -485,7 +485,7 @@ pub struct DeriveKeyArg {
   info: Option<ZeroCopyBuf>,
 }
 
-#[op_async]
+#[op]
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
@@ -811,7 +811,7 @@ pub fn op_crypto_random_uuid(
   Ok(uuid.to_string())
 }
 
-#[op_async]
+#[op]
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,

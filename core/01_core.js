@@ -28,7 +28,7 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-  const opIds = Object.keys(ops).reduce((a, v, i) => ({ ...a, [v]: i}), {});
+  const opIds = Object.keys(ops).reduce((a, v, i) => ({ ...a, [v]: i }), {});
 
   const errorMap = {};
   // Builtin v8 / JS errors

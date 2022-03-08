@@ -39,8 +39,6 @@ pub use crate::async_cancel::TryCancelable;
 pub use crate::async_cell::AsyncMut;
 pub use crate::async_cell::AsyncMutFuture;
 pub use crate::async_cell::AsyncRef;
-pub use crate::ops_metrics::OpMetrics;
-pub use crate::ops_metrics::OpsTracker;
 pub use crate::async_cell::AsyncRefCell;
 pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
@@ -84,6 +82,8 @@ pub use crate::ops::PromiseId;
 pub use crate::ops_builtin::op_close;
 pub use crate::ops_builtin::op_print;
 pub use crate::ops_builtin::op_resources;
+pub use crate::ops_metrics::OpMetrics;
+pub use crate::ops_metrics::OpsTracker;
 pub use crate::resources::AsyncResult;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
@@ -97,7 +97,6 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
 pub use deno_ops::op;
-pub use deno_ops::op_async;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::ZeroCopyBuf;
 use deno_core::{CancelFuture, Resource};
 use deno_core::{CancelHandle, OpState};
@@ -207,7 +207,7 @@ pub fn op_message_port_post_message(
   resource.port.send(state, data)
 }
 
-#[op_async]
+#[op]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

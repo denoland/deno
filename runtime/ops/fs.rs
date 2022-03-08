@@ -9,7 +9,7 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -173,7 +173,7 @@ fn op_open_sync(
   Ok(rid)
 }
 
-#[op_async]
+#[op]
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
@@ -232,7 +232,7 @@ fn op_seek_sync(
   Ok(pos)
 }
 
-#[op_async]
+#[op]
 async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
   args: SeekArgs,
@@ -270,7 +270,7 @@ fn op_fdatasync_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -306,7 +306,7 @@ fn op_fsync_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -342,7 +342,7 @@ fn op_fstat_sync(
   Ok(get_stat(metadata))
 }
 
-#[op_async]
+#[op]
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -387,7 +387,7 @@ fn op_flock_sync(
   })
 }
 
-#[op_async]
+#[op]
 async fn op_flock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -446,7 +446,7 @@ fn op_funlock_sync(
   })
 }
 
-#[op_async]
+#[op]
 async fn op_funlock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -561,7 +561,7 @@ fn op_mkdir_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_mkdir_async(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
@@ -630,7 +630,7 @@ fn op_chmod_sync(
   }
 }
 
-#[op_async]
+#[op]
 async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
   args: ChmodArgs,
@@ -711,7 +711,7 @@ fn op_chown_sync(
   }
 }
 
-#[op_async]
+#[op]
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
   args: ChownArgs,
@@ -806,7 +806,7 @@ fn op_remove_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
   args: RemoveArgs,
@@ -904,7 +904,7 @@ fn op_copy_file_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
   args: CopyFileArgs,
@@ -1054,7 +1054,7 @@ fn op_stat_sync(
   Ok(get_stat(metadata))
 }
 
-#[op_async]
+#[op]
 async fn op_stat_async(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
@@ -1106,7 +1106,7 @@ fn op_realpath_sync(
   Ok(realpath_str)
 }
 
-#[op_async]
+#[op]
 async fn op_realpath_async(
   state: Rc<RefCell<OpState>>,
   path: String,
@@ -1185,7 +1185,7 @@ fn op_read_dir_sync(
   Ok(entries)
 }
 
-#[op_async]
+#[op]
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
   path: String,
@@ -1267,7 +1267,7 @@ fn op_rename_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
   args: RenameArgs,
@@ -1344,7 +1344,7 @@ fn op_link_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
   args: LinkArgs,
@@ -1460,7 +1460,7 @@ fn op_symlink_sync(
   }
 }
 
-#[op_async]
+#[op]
 async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
   args: SymlinkArgs,
@@ -1549,7 +1549,7 @@ fn op_read_link_sync(
   Ok(targetstr)
 }
 
-#[op_async]
+#[op]
 async fn op_read_link_async(
   state: Rc<RefCell<OpState>>,
   path: String,
@@ -1600,7 +1600,7 @@ fn op_ftruncate_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   args: FtruncateArgs,
@@ -1659,7 +1659,7 @@ fn op_truncate_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
   args: TruncateArgs,
@@ -1773,7 +1773,7 @@ fn op_make_temp_dir_sync(
   Ok(path_str)
 }
 
-#[op_async]
+#[op]
 async fn op_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
@@ -1838,7 +1838,7 @@ fn op_make_temp_file_sync(
   Ok(path_str)
 }
 
-#[op_async]
+#[op]
 async fn op_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
@@ -1905,7 +1905,7 @@ fn op_futime_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   args: FutimeArgs,
@@ -1973,7 +1973,7 @@ fn op_utime_sync(
   Ok(())
 }
 
-#[op_async]
+#[op]
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
   args: UtimeArgs,

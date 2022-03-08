@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RegisterCtx;
@@ -241,7 +241,7 @@ pub struct GpuAdapterDevice {
   is_software: bool,
 }
 
-#[op_async]
+#[op]
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
@@ -440,7 +440,7 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
   }
 }
 
-#[op_async]
+#[op]
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,

@@ -9,7 +9,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
@@ -227,7 +227,7 @@ struct ProcessStatus {
   exit_signal: i32,
 }
 
-#[op_async]
+#[op]
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

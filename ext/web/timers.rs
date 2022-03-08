@@ -4,7 +4,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -81,7 +81,7 @@ pub fn op_timer_handle(
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
-#[op_async]
+#[op]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,

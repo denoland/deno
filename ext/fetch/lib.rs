@@ -10,7 +10,7 @@ use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::op_async;
+
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -370,7 +370,7 @@ pub struct FetchResponse {
   response_rid: ResourceId,
 }
 
-#[op_async]
+#[op]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

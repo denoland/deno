@@ -317,8 +317,11 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &mut options.extensions, snapshot_loaded);
+        let context = bindings::initialize_context(
+          scope,
+          &mut options.extensions,
+          snapshot_loaded,
+        );
 
         global_context = v8::Global::new(scope, context);
       }
@@ -421,7 +424,7 @@ impl JsRuntime {
     );
     isolate
   }
-  
+
   #[inline]
   pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
