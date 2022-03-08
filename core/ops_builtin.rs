@@ -5,6 +5,7 @@ use crate::Extension;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
+use crate::OpMetrics;
 use anyhow::Error;
 use deno_ops::op;
 use std::cell::RefCell;
@@ -33,6 +34,7 @@ pub(crate) fn init_builtins() -> Extension {
       ctx.register("op_read", op_read);
       ctx.register("op_write", op_write);
       ctx.register("op_shutdown", op_shutdown);
+      ctx.register("op_metrics", op_metrics);
     })
     .build()
 }
@@ -98,6 +100,17 @@ pub fn op_try_close(
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
   let _ = state.resource_table.close(rid);
   Ok(())
+}
+
+#[op]
+pub fn op_metrics(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
+  Ok((aggregate, per_op))
 }
 
 /// Builtin utility to print to stdout/stderr

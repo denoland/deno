@@ -17,6 +17,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 
+use deno_core::op;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -33,7 +34,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
-use deno_core::op;
 
 pub fn init() -> Extension {
   Extension::builder()

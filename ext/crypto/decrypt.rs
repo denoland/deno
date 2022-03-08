@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::op;
 use crate::shared::*;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
@@ -25,6 +24,7 @@ use ctr::Ctr;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
 
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;

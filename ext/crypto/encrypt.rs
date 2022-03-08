@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use crate::shared::*;
 
-use deno_core::op;
 use aes::cipher::NewCipher;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
@@ -17,6 +16,7 @@ use aes_gcm::AeadInPlace;
 use aes_gcm::NewAead;
 use aes_gcm::Nonce;
 use ctr::Ctr;
+use deno_core::op;
 
 use block_modes::BlockMode;
 use ctr::cipher::StreamCipher;

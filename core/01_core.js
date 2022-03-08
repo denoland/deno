@@ -190,7 +190,12 @@
   }
 
   function metrics() {
-    return opsMetrics;
+    const [aggregate, perOps] = opSync("op_metrics");
+    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
+      ObjectEntries(opIds),
+      ([opName, opId]) => [opName, perOps[opId]],
+    ));
+    return aggregate;
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
