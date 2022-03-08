@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::shared::*;
 
+use deno_core::op;
 use aes::cipher::NewCipher;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;

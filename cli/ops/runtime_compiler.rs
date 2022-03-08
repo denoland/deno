@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use deno_core::op;
 
 pub fn init() -> Extension {
   Extension::builder()

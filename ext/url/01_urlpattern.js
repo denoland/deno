@@ -68,7 +68,7 @@
         });
       }
 
-      const components = core.ops.op_urlpattern_parse(input, baseURL);
+      const components = core.opSync("op_urlpattern_parse", input, baseURL);
 
       for (const key of ObjectKeys(components)) {
         try {
@@ -144,7 +144,8 @@
         });
       }
 
-      const res = core.ops.op_urlpattern_process_match_input(
+      const res = core.opSync(
+        "op_urlpattern_process_match_input",
         input,
         baseURL,
       );
@@ -183,7 +184,8 @@
         });
       }
 
-      const res = core.ops.op_urlpattern_process_match_input(
+      const res = core.opSync(
+        "op_urlpattern_process_match_input",
         input,
         baseURL,
       );

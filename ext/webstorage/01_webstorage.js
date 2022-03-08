@@ -27,7 +27,7 @@
 
     get length() {
       webidl.assertBranded(this, StoragePrototype);
-      return core.ops.op_webstorage_length(this[_persistent]);
+      return core.opSync("op_webstorage_length", this[_persistent]);
     }
 
     key(index) {
@@ -39,7 +39,7 @@
         context: "Argument 1",
       });
 
-      return core.ops.op_webstorage_key(index, this[_persistent]);
+      return core.opSync("op_webstorage_key", index, this[_persistent]);
     }
 
     setItem(key, value) {
@@ -55,7 +55,7 @@
         context: "Argument 2",
       });
 
-      core.ops.op_webstorage_set({
+      core.opSync("op_webstorage_set", {
         keyName: key,
         keyValue: value,
       }, this[_persistent]);
@@ -70,7 +70,7 @@
         context: "Argument 1",
       });
 
-      return core.ops.op_webstorage_get(key, this[_persistent]);
+      return core.opSync("op_webstorage_get", key, this[_persistent]);
     }
 
     removeItem(key) {
@@ -82,12 +82,12 @@
         context: "Argument 1",
       });
 
-      core.ops.op_webstorage_remove(key, this[_persistent]);
+      core.opSync("op_webstorage_remove", key, this[_persistent]);
     }
 
     clear() {
       webidl.assertBranded(this, StoragePrototype);
-      core.ops.op_webstorage_clear(this[_persistent]);
+      core.opSync("op_webstorage_clear", this[_persistent]);
     }
   }
 

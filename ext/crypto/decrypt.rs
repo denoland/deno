@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::op;
 use crate::shared::*;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;

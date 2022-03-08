@@ -158,7 +158,7 @@
   }
 
   function opSync(opName, arg1, arg2) {
-    return unwrapOpResult(ops[opName](opIds[opName], arg1, arg2));
+    return unwrapOpResult(ops[opName](opIds[opName], null, arg1, arg2));
   }
 
   function resources() {

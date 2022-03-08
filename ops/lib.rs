@@ -17,7 +17,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let a = ();
       },
       _ => quote! {
-        let a = args.get(1);
+        let a = args.get(2);
         let a = deno_core::serde_v8::from_v8(scope, a).unwrap();
       },
     },
@@ -30,7 +30,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let b = ();
       },
       _ => quote! {
-        let b = args.get(2);
+        let b = args.get(3);
         let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
       },
     },
@@ -106,7 +106,6 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         use deno_core::bindings::throw_type_error;
         use deno_core::OpsTracker;
         use deno_core::v8;
-        use deno_core::error::AnyError;
 
         let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
 
