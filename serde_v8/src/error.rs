@@ -6,6 +6,7 @@ use serde::{de, ser};
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
   Message(String),
 
@@ -22,6 +23,7 @@ pub enum Error {
   ExpectedLatin1,
 
   LengthMismatch,
+  IntegerOutOfRange,
 }
 
 impl ser::Error for Error {
