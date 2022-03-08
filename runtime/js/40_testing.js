@@ -630,7 +630,7 @@
     ArrayPrototypePush(tests, testDef);
   }
 
-  // Main test function provided by Deno.
+  // Main bench function provided by Deno.
   function bench(
     nameOrFnOrOptions,
     optionsOrFn,
@@ -1237,7 +1237,7 @@
     /** @type {BenchStepParams} */
     #params;
 
-    /** @param params {TestStepParams} */
+    /** @param params {BenchStepParams} */
     constructor(params) {
       this.#params = params;
     }

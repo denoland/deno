@@ -297,8 +297,7 @@ async fn check_specifiers(
   Ok(())
 }
 
-/// Test a single specifier as documentation containing test programs, an executable test module or
-/// both.
+/// Run a single specifier as an executable bench module.
 async fn bench_specifier(
   ps: ProcState,
   permissions: Permissions,
@@ -312,12 +311,6 @@ async fn bench_specifier(
     permissions,
     vec![ops::bench::init(channel.clone())],
   );
-
-  // Enable op call tracing in core to enable better debugging of op sanitizer
-  // failures.
-  worker
-    .execute_script(&located_script_name!(), "Deno.core.enableOpCallTracing();")
-    .unwrap();
 
   if options.compat_mode {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;

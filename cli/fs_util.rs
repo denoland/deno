@@ -152,7 +152,7 @@ pub fn is_supported_test_path(path: &Path) -> bool {
   }
 }
 
-/// Checks if the path has a basename and extension Deno supports for tests.
+/// Checks if the path has a basename and extension Deno supports for benches.
 pub fn is_supported_bench_path(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
