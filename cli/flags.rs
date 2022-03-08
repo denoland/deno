@@ -140,8 +140,8 @@ pub struct RunFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct ScriptFlags {
-  pub script: String,
+pub struct TaskFlags {
+  pub task: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -192,7 +192,7 @@ pub enum DenoSubcommand {
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
-  Script(ScriptFlags),
+  Task(TaskFlags),
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
@@ -506,7 +506,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     Some(("vendor", m)) => vendor_parse(&mut flags, m),
-    Some(("script", m)) => script_parse(&mut flags, m),
+    Some(("task", m)) => task_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
@@ -575,7 +575,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
-    .subcommand(script_subcommand())
+    .subcommand(task_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
@@ -1264,16 +1264,22 @@ Deno allows specifying the filename '-' to read the file from stdin.
     )
 }
 
-fn script_subcommand<'a>() -> App<'a> {
-  App::new("script")
+fn task_subcommand<'a>() -> App<'a> {
+  App::new("task")
     .setting(AppSettings::TrailingVarArg)
     .arg(config_arg())
-    .arg(script_arg())
-    .about("Run a script defined in the configuration file")
+    .arg(Arg::new("task").help("Task to be executed"))
+    .arg(
+      Arg::new("task_args")
+        .multiple_values(true)
+        .multiple_occurrences(true)
+        .help("Additional arguments passed to the task"),
+    )
+    .about("Run a task defined in the configuration file")
     .long_about(
-      "Run a script defined in the configuration file
+      "Run a task defined in the configuration file
 
-  deno script build",
+  deno task build",
     )
 }
 
@@ -2218,26 +2224,24 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
-fn script_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
-  let mut script: Vec<String> = matches
-    .values_of("script_arg")
-    .unwrap_or_default()
-    .map(String::from)
-    .collect();
 
-  let mut script_name = "".to_string();
-  if !script.is_empty() {
-    let script_args = script.split_off(1);
-    script_name = script[0].to_string();
-    for v in script_args {
+  let mut task_name = "".to_string();
+  if let Some(task) = matches.value_of("task") {
+    task_name = task.to_string();
+
+    let task_args: Vec<String> = matches
+      .values_of("task_args")
+      .unwrap()
+      .map(String::from)
+      .collect();
+    for v in task_args {
       flags.argv.push(v);
     }
   }
 
-  flags.subcommand = DenoSubcommand::Script(ScriptFlags {
-    script: script_name,
-  });
+  flags.subcommand = DenoSubcommand::Task(TaskFlags { task: task_name });
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5108,29 +5112,29 @@ mod tests {
   }
 
   #[test]
-  fn script_subcommand() {
+  fn task_subcommand() {
     let r =
-      flags_from_vec(svec!["deno", "script", "build", "--", "hello", "world",]);
+      flags_from_vec(svec!["deno", "task", "build", "--", "hello", "world",]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Script(ScriptFlags {
-          script: "build".to_string(),
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
         }),
-        argv: svec!["--", "hello", "world"],
+        argv: svec!["hello", "world"],
         ..Flags::default()
       }
     );
   }
 
   #[test]
-  fn script_subcommand_empty() {
-    let r = flags_from_vec(svec!["deno", "script",]);
+  fn task_subcommand_empty() {
+    let r = flags_from_vec(svec!["deno", "task",]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Script(ScriptFlags {
-          script: "".to_string(),
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
         }),
         ..Flags::default()
       }
@@ -5138,13 +5142,13 @@ mod tests {
   }
 
   #[test]
-  fn script_subcommand_config() {
-    let r = flags_from_vec(svec!["deno", "script", "--config", "deno.jsonc"]);
+  fn task_subcommand_config() {
+    let r = flags_from_vec(svec!["deno", "task", "--config", "deno.jsonc"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Script(ScriptFlags {
-          script: "".to_string(),
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
         }),
         config_path: Some("deno.jsonc".to_string()),
         ..Flags::default()

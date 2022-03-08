@@ -55,7 +55,7 @@ use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
-use crate::flags::ScriptFlags;
+use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
@@ -1239,11 +1239,11 @@ async fn run_command(
   Ok(worker.get_exit_code())
 }
 
-async fn script_command(
+async fn task_command(
   flags: Flags,
-  script_flags: ScriptFlags,
+  task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  tools::script::execute_script(flags, script_flags).await
+  tools::task::execute_script(flags, task_flags).await
 }
 
 async fn coverage_command(
@@ -1378,8 +1378,8 @@ fn get_subcommand(
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
     }
-    DenoSubcommand::Script(script_flags) => {
-      script_command(flags, script_flags).boxed_local()
+    DenoSubcommand::Task(task_flags) => {
+      task_command(flags, task_flags).boxed_local()
     }
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()

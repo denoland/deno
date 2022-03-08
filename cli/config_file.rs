@@ -530,7 +530,7 @@ pub struct ConfigFileJson {
   pub import_map: Option<String>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
-  pub scripts: Option<Value>,
+  pub tasks: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -649,14 +649,14 @@ impl ConfigFile {
     }
   }
 
-  pub fn to_scripts_config(
+  pub fn to_tasks_config(
     &self,
   ) -> Result<Option<HashMap<String, String>>, AnyError> {
-    if let Some(config) = self.json.scripts.clone() {
-      let scripts_config: HashMap<String, String> =
+    if let Some(config) = self.json.tasks.clone() {
+      let tasks_config: HashMap<String, String> =
         serde_json::from_value(config)
-          .context("Failed to parse \"scripts\" configuration")?;
-      Ok(Some(scripts_config))
+          .context("Failed to parse \"tasks\" configuration")?;
+      Ok(Some(tasks_config))
     } else {
       Ok(None)
     }
@@ -799,7 +799,7 @@ mod tests {
           "proseWrap": "preserve"
         }
       },
-      "scripts": {
+      "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
         "server": "deno run --allow-net --allow-read server.ts"
       }
@@ -860,13 +860,13 @@ mod tests {
     assert_eq!(fmt_config.options.indent_width, Some(4));
     assert_eq!(fmt_config.options.single_quote, Some(true));
 
-    let scripts_config = config_file.to_scripts_config().unwrap().unwrap();
+    let tasks_config = config_file.to_tasks_config().unwrap().unwrap();
     assert_eq!(
-      scripts_config["build"],
+      tasks_config["build"],
       "deno run --allow-read --allow-write build.ts",
     );
     assert_eq!(
-      scripts_config["server"],
+      tasks_config["server"],
       "deno run --allow-net --allow-read server.ts"
     );
   }
