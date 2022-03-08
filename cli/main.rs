@@ -10,6 +10,7 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
+mod display;
 mod emit;
 mod errors;
 mod file_fetcher;
@@ -755,28 +756,6 @@ fn bundle_module_graph(
   )
 }
 
-/// A function that converts a float to a string the represents a human
-/// readable version of that number.
-fn human_size(size: f64) -> String {
-  let negative = if size.is_sign_positive() { "" } else { "-" };
-  let size = size.abs();
-  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if size < 1_f64 {
-    return format!("{}{}{}", negative, size, "B");
-  }
-  let delimiter = 1024_f64;
-  let exponent = std::cmp::min(
-    (size.ln() / delimiter.ln()).floor() as i32,
-    (units.len() - 1) as i32,
-  );
-  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
-    .parse::<f64>()
-    .unwrap()
-    * 1_f64;
-  let unit = units[exponent as usize];
-  format!("{}{}{}", negative, pretty_bytes, unit)
-}
-
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
@@ -843,7 +822,7 @@ async fn bundle_command(
           "{} {:?} ({})",
           colors::green("Emit"),
           out_file,
-          colors::gray(human_size(output_len as f64))
+          colors::gray(display::human_size(output_len as f64))
         );
         if let Some(bundle_map) = maybe_bundle_map {
           let map_bytes = bundle_map.as_bytes();
@@ -859,7 +838,7 @@ async fn bundle_command(
             "{} {:?} ({})",
             colors::green("Emit"),
             map_out_file,
-            colors::gray(human_size(map_len as f64))
+            colors::gray(display::human_size(map_len as f64))
           );
         }
       } else {
