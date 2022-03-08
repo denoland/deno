@@ -371,14 +371,9 @@ async fn bench_specifiers(
     let options = options.clone();
 
     tokio::task::spawn_blocking(move || {
-      let join_handle = std::thread::spawn(move || {
-        let future =
-          bench_specifier(ps, permissions, specifier, sender, options);
+      let future = bench_specifier(ps, permissions, specifier, sender, options);
 
-        run_basic(future)
-      });
-
-      join_handle.join().unwrap()
+      run_basic(future)
     })
   });
 
