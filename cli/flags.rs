@@ -5126,8 +5126,7 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "task", "build"]);
+    let r = flags_from_vec(svec!["deno", "task", "build"]);
     assert_eq!(
       r.unwrap(),
       Flags {
