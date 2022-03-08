@@ -15,6 +15,7 @@
 
   function listenDatagram(
     options,
+    recvBufferSize = 1024,
   ) {
     let res;
     if (options.transport === "unixpacket") {
@@ -27,7 +28,7 @@
       });
     }
 
-    return new net.Datagram(res.rid, res.localAddr);
+    return new net.Datagram(res.rid, res.localAddr, recvBufferSize);
   }
 
   async function connect(

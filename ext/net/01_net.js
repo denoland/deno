@@ -253,10 +253,10 @@
     #rid = 0;
     #addr = null;
 
-    constructor(rid, addr, bufSize = 1024) {
+    constructor(rid, addr, recvBufferSize = 1024) {
       this.#rid = rid;
       this.#addr = addr;
-      this.bufSize = bufSize;
+      this.bufSize = recvBufferSize;
     }
 
     get rid() {

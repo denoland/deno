@@ -1006,10 +1006,19 @@ declare namespace Deno {
    *   transport: "udp"
    * });
    * ```
+   * Listen with a specific buffer size, if not provided it defaults to 1024.
+   *
+   * ```ts
+   * const listener = Deno.listenDatagram({
+   *   port: 80,
+   *   transport: "udp"
+   * }, 2048);
+   * ```
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
     options: ListenOptions & { transport: "udp" },
+    receivBuffSize?: number,
   ): DatagramConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
@@ -1026,6 +1035,7 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
+    receivBuffSize?: number,
   ): DatagramConn;
 
   export interface UnixConnectOptions {
