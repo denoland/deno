@@ -13,6 +13,7 @@ mod modules;
 mod normalize_path;
 mod ops;
 pub(crate) mod ops_builtin;
+mod ops_metrics;
 mod resources;
 mod runtime;
 
@@ -38,6 +39,8 @@ pub use crate::async_cancel::TryCancelable;
 pub use crate::async_cell::AsyncMut;
 pub use crate::async_cell::AsyncMutFuture;
 pub use crate::async_cell::AsyncRef;
+pub use crate::ops_metrics::OpMetrics;
+pub use crate::ops_metrics::OpsTracker;
 pub use crate::async_cell::AsyncRefCell;
 pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;

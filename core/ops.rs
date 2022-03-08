@@ -18,6 +18,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
+use std::cell::UnsafeCell;
+use crate::OpsTracker;
 
 /// Wrapper around a Future, which causes that Future to be polled immediately.
 /// (Background: ops are stored in a `FuturesUnordered` structure which polls
@@ -131,6 +133,7 @@ pub fn serialize_op_result<R: Serialize + 'static>(
 pub struct OpState {
   pub resource_table: ResourceTable,
   pub get_error_class_fn: GetErrorClassFn,
+  pub tracker: OpsTracker,
   gotham_state: GothamState,
 }
 
@@ -140,6 +143,9 @@ impl OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
+      tracker: OpsTracker {
+        ops: UnsafeCell::new(Vec::with_capacity(256)),
+      },
     }
   }
 }

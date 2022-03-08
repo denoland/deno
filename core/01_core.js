@@ -28,59 +28,7 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-  
-  const opsMetrics = {
-    opsDispatched: 0,
-    opsDispatchedSync: 0,
-    opsDispatchedAsync: 0,
-    opsDispatchedAsyncUnref: 0,
-    opsCompleted: 0,
-    opsCompletedSync: 0,
-    opsCompletedAsync: 0,
-    opsCompletedAsyncUnref: 0,
-    bytesSentControl: 0,
-    bytesSentData: 0,
-    bytesReceived: 0,
-    ops: new Map(),
-  };
-
-  function trackSync(opName) {
-    let metrics = opsMetrics.ops[opName];
-    if (metrics === undefined) {
-      opsMetrics.ops[opName] = {
-        ops_dispatched: 0,
-        ops_completed: 0,
-        ops_dispatched_sync: 0,
-        ops_completed_sync: 0,
-      };
-      return;
-    }
-    metrics.ops_dispatched += 1;
-    metrics.ops_completed += 1;
-    metrics.ops_dispatched_sync += 1;
-    metrics.ops_completed_sync += 1;
-  }
-
-  function trackAsync(opName) {
-    let metrics = opsMetrics.ops[opName];
-    if (metrics === undefined) {
-      opsMetrics.ops[opName] = {
-        ops_dispatched: 0,
-        ops_dispatched_async: 0,
-        ops_completed: 0,
-        ops_completed_async: 0,
-      };
-      return;
-    }
-    metrics.ops_dispatched += 1;
-    metrics.ops_dispatched_async += 1;
-  }
-
-  function trackAsyncComplete(opName) {
-    let metrics = opsMetrics.ops[opName];
-    metrics.ops_completed += 1;
-    metrics.ops_completed_async += 1;
-  }
+  const opIds = Object.keys(ops).reduce((a, v, i) => ({ ...a, [v]: i}), {});
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -149,7 +97,6 @@
     return promise;
   }
 
-  const promiseIdOpMap = {};
   function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
@@ -191,7 +138,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](promiseId, arg1, arg2);
+    const maybeError = ops[opName](opIds[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -210,10 +157,8 @@
     return p;
   }
 
-  function opSync(opName, arg1 = null, arg2 = null) {
-    const result = unwrapOpResult(ops[opName](arg1, arg2));
-    trackSync(opName);
-    return result;
+  function opSync(opName, arg1, arg2) {
+    return unwrapOpResult(ops[opName](opIds[opName], arg1, arg2));
   }
 
   function resources() {

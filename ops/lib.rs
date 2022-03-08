@@ -10,6 +10,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let where_clause = &func.sig.generics.where_clause;
  
   let inputs = &func.sig.inputs;
+  let output = &func.sig.output;
   let a = match &inputs[1] {
     syn::FnArg::Typed(pat) => {
       match *pat.pat {
@@ -17,7 +18,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let a = ();
         },
         _ => quote! {   
-          let a = args.get(0);
+          let a = args.get(1);
           let a = deno_core::serde_v8::from_v8(scope, a).unwrap();          
         }
       }
@@ -32,32 +33,52 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let b = ();
         },
         _ => quote! {
-          let b = args.get(1);
+          let b = args.get(2);
           let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
         }
       }
     }
     _ => unreachable!(),
   };
+
+  // TODO(@littledivy): Optimize Result<(), Err> to skip serde_v8.
+  let ret = match &output {
+    syn::ReturnType::Default => quote! {
+      let ret = ();
+    },
+    _ => quote! {
+      let ret = deno_core::serde_v8::to_v8(scope, result).unwrap();
+      rv.set(ret);
+    }
+  };
   
   TokenStream::from(quote! {
+    #[inline]
     pub fn #name #generics (
       scope: &mut deno_core::v8::HandleScope,
       args: deno_core::v8::FunctionCallbackArguments,
       mut rv: deno_core::v8::ReturnValue,
     ) #where_clause {
       use deno_core::JsRuntime;
+      use deno_core::bindings::throw_type_error;
+      use deno_core::OpsTracker;
+      use deno_core::v8;
+      use deno_core::error::AnyError;
 
+      let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
+      
       #a
       #b
       #func
 
       let state_rc = deno_core::JsRuntime::state(scope);
-      let state = state_rc.borrow_mut();
-      let result = #name::<#type_params>(&mut state.op_state.borrow_mut(), a, b).unwrap();
+      let state = state_rc.borrow();
+      let mut op_state = state.op_state.borrow_mut();
 
-      let ret = deno_core::serde_v8::to_v8(scope, result).unwrap();
-      rv.set(ret);
+      let result = #name::<#type_params>(&mut op_state, a, b).unwrap();
+      op_state.tracker.track_sync(op_id);
+
+      #ret
     }
   })
 }
@@ -77,7 +98,7 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let a = ();
         },
         _ => quote! {   
-          let a = args.get(0);
+          let a = args.get(2);
           let a = deno_core::serde_v8::from_v8(scope, a).unwrap();          
         }
       }
@@ -92,7 +113,7 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let b = ();
         },
         _ => quote! {
-          let b = args.get(1);
+          let b = args.get(3);
           let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
         }
       }
@@ -113,8 +134,9 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
       use deno_core::PromiseId;
       use deno_core::bindings::throw_type_error;
       use deno_core::v8;
+      let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
 
-      let promise_id = args.get(0);
+      let promise_id = args.get(1);
       let promise_id = v8::Local::<v8::Integer>::try_from(promise_id)
         .map(|l| l.value() as PromiseId)
         .map_err(deno_core::anyhow::Error::from);
@@ -130,15 +152,17 @@ pub fn op_async(_attr: TokenStream, item: TokenStream) -> TokenStream {
       #a
       #b
       #func
+
       let state_rc = JsRuntime::state(scope);
       let mut state = state_rc.borrow_mut();
-
+      state.op_state.borrow().tracker.track_async(op_id);
       state.have_unpolled_ops = true;
       let op_state = state.op_state.clone();
       state.pending_ops.push(OpCall::eager(async move {
         let result = #name::<#type_params>(op_state.clone(), a, b).await;
-        (promise_id, serialize_op_result(result, op_state))
-      }));      
+        (promise_id, op_id, serialize_op_result(result, op_state))
+      }));
+      
     }
   })
 }

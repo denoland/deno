@@ -39,7 +39,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = OpCall<(PromiseId, OpResult)>;
+type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -421,7 +421,8 @@ impl JsRuntime {
     );
     isolate
   }
-
+  
+  #[inline]
   pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
@@ -1486,8 +1487,9 @@ impl JsRuntime {
 
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
-        let (promise_id, resp) = item;
+        let (promise_id, op_id, resp) = item;
         state.unrefed_ops.remove(&promise_id);
+        state.op_state.borrow().tracker.track_async_completed(op_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());
       }
