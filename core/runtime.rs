@@ -775,18 +775,8 @@ impl JsRuntime {
     self.pump_v8_message_loop();
 
     // Ops
-    let mut maybe_scheduling = false;
     {
       self.resolve_async_ops(cx)?;
-      {
-        let state = state_rc.borrow();
-        let op_state = state.op_state.clone();
-        for f in &self.event_loop_middlewares {
-          if f(&mut op_state.borrow_mut(), cx) {
-            maybe_scheduling = true;
-          }
-        }
-      }
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
@@ -803,6 +793,18 @@ impl JsRuntime {
       self.evaluate_dyn_imports();
 
       self.check_promise_exceptions()?;
+    }
+
+    // Event loop middlewares
+    let mut maybe_scheduling = false;
+    {
+      let state = state_rc.borrow();
+      let op_state = state.op_state.clone();
+      for f in &self.event_loop_middlewares {
+        if f(&mut op_state.borrow_mut(), cx) {
+          maybe_scheduling = true;
+        }
+      }
     }
 
     // Top level module
