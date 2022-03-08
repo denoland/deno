@@ -554,7 +554,7 @@ fn extract_files_from_regex_blocks(
       }
 
       let maybe_attributes: Option<Vec<_>> = block
-        .get(2)
+        .get(1)
         .map(|attributes| attributes.as_str().split(' ').collect());
 
       let file_media_type = if let Some(attributes) = maybe_attributes {
@@ -584,14 +584,14 @@ fn extract_files_from_regex_blocks(
         return None;
       }
 
-      let line_offset = source[0..block.get(1).unwrap().start()]
+      let line_offset = source[0..block.get(0).unwrap().start()]
         .chars()
         .filter(|c| *c == '\n')
         .count();
 
-      let line_count = block.get(1).unwrap().as_str().split('\n').count();
+      let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
-      let body = block.get(3).unwrap();
+      let body = block.get(2).unwrap();
       let text = body.as_str();
 
       // TODO(caspervonb) generate an inline source map
@@ -674,7 +674,7 @@ fn extract_files_from_fenced_blocks(
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let blocks_regex =
-    Regex::new(r"(?s)<!--.*?-->|(```([^\r\n]*)\r?\n([\S\s]*?)```)")?;
+    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
