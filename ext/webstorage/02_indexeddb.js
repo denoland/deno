@@ -275,7 +275,18 @@
 
   webidl.configurePrototype(IDBOpenDBRequest);
 
-  /** @type {Set<IDBDatabase>} */
+  class Connection {
+    /** @type {Set<IDBDatabase>} */
+    databases = new Set();
+    /** @type {number} */
+    version;
+    /** @type {boolean} */
+    closePending = false;
+    /** @type */
+    objectStoreSet;
+  }
+
+  /** @type {Set<Connection>} */
   const connections = new Set();
 
   // Ref: https://w3c.github.io/IndexedDB/#idbfactory
@@ -418,6 +429,7 @@
   const _version = Symbol("[[version]]");
   const _closePending = Symbol("[[closePending]]");
   const _objectStores = Symbol("[[objectStores]]");
+  const _connection = Symbol("[[connection]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbdatabase
   // TODO: finalizationRegistry
   class IDBDatabase extends EventTarget {
@@ -425,6 +437,8 @@
     [_closePending] = false;
     /** @type {Set<ObjectStore>} */
     [_objectStores] = new Set();
+    /** @type {Connection} */
+    [_connection];
 
     constructor() {
       super();
