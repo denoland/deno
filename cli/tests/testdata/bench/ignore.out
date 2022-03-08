@@ -1,15 +1,15 @@
 Check [WILDCARD]/bench/ignore.ts
 running 10 benches from [WILDCARD]/bench/ignore.ts
-bench bench0 ... ignored ([WILDCARD])
-bench bench1 ... ignored ([WILDCARD])
-bench bench2 ... ignored ([WILDCARD])
-bench bench3 ... ignored ([WILDCARD])
-bench bench4 ... ignored ([WILDCARD])
-bench bench5 ... ignored ([WILDCARD])
-bench bench6 ... ignored ([WILDCARD])
-bench bench7 ... ignored ([WILDCARD])
-bench bench8 ... ignored ([WILDCARD])
-bench bench9 ... ignored ([WILDCARD])
+bench bench0 ... 1000 iterations ignored ([WILDCARD])
+bench bench1 ... 1000 iterations ignored ([WILDCARD])
+bench bench2 ... 1000 iterations ignored ([WILDCARD])
+bench bench3 ... 1000 iterations ignored ([WILDCARD])
+bench bench4 ... 1000 iterations ignored ([WILDCARD])
+bench bench5 ... 1000 iterations ignored ([WILDCARD])
+bench bench6 ... 1000 iterations ignored ([WILDCARD])
+bench bench7 ... 1000 iterations ignored ([WILDCARD])
+bench bench8 ... 1000 iterations ignored ([WILDCARD])
+bench bench9 ... 1000 iterations ignored ([WILDCARD])
 
 bench result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

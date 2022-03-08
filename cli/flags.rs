@@ -1910,6 +1910,10 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
 fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, false);
 
+  // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
+  // interactive prompts, unless done by user code
+  flags.no_prompt = true;
+
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -5187,6 +5191,7 @@ mod tests {
         unstable: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
+        no_prompt: true,
         argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }

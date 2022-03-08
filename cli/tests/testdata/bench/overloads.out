@@ -5,7 +5,7 @@ bench bench1 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/i
 bench bench2 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
 bench bench3 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
 bench bench4 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
-bench bench5 ... ignored ([WILDCARD])
+bench bench5 ... 1000 iterations ignored ([WILDCARD])
 
 bench result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

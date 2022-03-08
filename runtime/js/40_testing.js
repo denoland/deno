@@ -409,12 +409,14 @@
 
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
-  function assertExit(fn) {
+  function assertExit(fn, isTest) {
     return async function exitSanitizer(...params) {
       setExitHandler((exitCode) => {
         assert(
           false,
-          `Test case attempted to exit with exit code: ${exitCode}`,
+          `${
+            isTest ? "Test case" : "Bench"
+          } attempted to exit with exit code: ${exitCode}`,
         );
       });
 
@@ -1377,7 +1379,7 @@
       testFn = assertResources(testFn);
     }
     if (opts.sanitizeExit) {
-      testFn = assertExit(testFn);
+      testFn = assertExit(testFn, true);
     }
     return testFn;
   }
@@ -1392,7 +1394,7 @@
    */
   function wrapBenchFnWithSanitizers(fn, opts) {
     if (opts.sanitizeExit) {
-      fn = assertExit(fn);
+      fn = assertExit(fn, false);
     }
     return fn;
   }
