@@ -813,14 +813,10 @@ async fn test_specifiers(
       let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let join_handle = std::thread::spawn(move || {
-          let future =
-            test_specifier(ps, permissions, specifier, mode, sender, options);
+        let future =
+          test_specifier(ps, permissions, specifier, mode, sender, options);
 
-          run_basic(future)
-        });
-
-        join_handle.join().unwrap()
+        run_basic(future)
       })
     });
 
