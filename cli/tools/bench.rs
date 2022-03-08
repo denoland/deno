@@ -1,25 +1,33 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache;
+use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
 use crate::display;
 use crate::emit;
-// use crate::file_fetcher::File;
-// use crate::file_watcher;
-// use crate::file_watcher::ResolutionResult;
+use crate::file_watcher;
+use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
+use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
+use crate::graph_util::contains_specifier;
+use crate::graph_util::graph_valid;
 use crate::located_script_name;
+use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
@@ -30,6 +38,7 @@ use log::Level;
 use num_format::Locale;
 use num_format::ToFormattedString;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -255,13 +264,6 @@ fn create_reporter(echo_output: bool) -> Box<dyn BenchReporter + Send> {
   Box::new(PrettyBenchReporter::new(echo_output))
 }
 
-fn fetch_specifiers(
-  include: Vec<String>,
-  ignore: Vec<PathBuf>,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  collect_specifiers(include, &ignore, is_supported_bench_path)
-}
-
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
   ps: &ProcState,
@@ -324,7 +326,7 @@ async fn bench_specifier(
 
   worker.dispatch_load_event(&located_script_name!())?;
 
-  let test_result = worker.js_runtime.execute_script(
+  let bench_result = worker.js_runtime.execute_script(
     &located_script_name!(),
     &format!(
       r#"Deno[Deno.internal].runBenchmarks({})"#,
@@ -334,7 +336,7 @@ async fn bench_specifier(
     ),
   )?;
 
-  worker.js_runtime.resolve_value(test_result).await?;
+  worker.js_runtime.resolve_value(bench_result).await?;
 
   worker.dispatch_unload_event(&located_script_name!())?;
 
@@ -478,9 +480,10 @@ pub async fn run_benchmarks(
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&ps.flags.permissions_options());
-  let specifiers = fetch_specifiers(
+  let specifiers = collect_specifiers(
     bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
-    bench_flags.ignore.clone(),
+    &bench_flags.ignore.clone(),
+    is_supported_bench_path,
   )?;
 
   if specifiers.is_empty() {
@@ -510,9 +513,229 @@ pub async fn run_benchmarks(
   Ok(())
 }
 
+// TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
-  _flags: Flags,
-  _bench_flags: BenchFlags,
+  flags: Flags,
+  bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  todo!()
+  let flags = Arc::new(flags);
+  let ps = ProcState::build(flags.clone()).await?;
+  let permissions = Permissions::from_options(&flags.permissions_options());
+
+  let lib = if flags.unstable {
+    emit::TypeLib::UnstableDenoWindow
+  } else {
+    emit::TypeLib::DenoWindow
+  };
+
+  let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
+  let ignore = bench_flags.ignore.clone();
+  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let no_check = ps.flags.check == CheckFlag::None;
+
+  let resolver = |changed: Option<Vec<PathBuf>>| {
+    let mut cache = cache::FetchCacher::new(
+      ps.dir.gen_cache.clone(),
+      ps.file_fetcher.clone(),
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    );
+
+    let paths_to_watch = paths_to_watch.clone();
+    let paths_to_watch_clone = paths_to_watch.clone();
+
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
+    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+    let maybe_imports = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.to_maybe_imports());
+    let files_changed = changed.is_some();
+    let include = include.clone();
+    let ignore = ignore.clone();
+    let check_js = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.get_check_js())
+      .unwrap_or(false);
+
+    async move {
+      let bench_modules =
+        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?;
+
+      let mut paths_to_watch = paths_to_watch_clone;
+      let mut modules_to_reload = if files_changed {
+        Vec::new()
+      } else {
+        bench_modules
+          .iter()
+          .map(|url| (url.clone(), ModuleKind::Esm))
+          .collect()
+      };
+      let maybe_imports = if let Some(result) = maybe_imports {
+        result?
+      } else {
+        None
+      };
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
+      let graph = deno_graph::create_graph(
+        bench_modules
+          .iter()
+          .map(|s| (s.clone(), ModuleKind::Esm))
+          .collect(),
+        false,
+        maybe_imports,
+        cache.as_mut_loader(),
+        maybe_resolver,
+        maybe_locker,
+        None,
+        None,
+      )
+      .await;
+      graph_valid(&graph, !no_check, check_js)?;
+
+      // TODO(@kitsonk) - This should be totally derivable from the graph.
+      for specifier in bench_modules {
+        fn get_dependencies<'a>(
+          graph: &'a deno_graph::ModuleGraph,
+          maybe_module: Option<&'a deno_graph::Module>,
+          // This needs to be accessible to skip getting dependencies if they're already there,
+          // otherwise this will cause a stack overflow with circular dependencies
+          output: &mut HashSet<&'a ModuleSpecifier>,
+          no_check: bool,
+        ) {
+          if let Some(module) = maybe_module {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.get_code() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                    no_check,
+                  );
+                }
+              }
+              if !no_check {
+                if let Some(specifier) = &dep.get_type() {
+                  if !output.contains(specifier) {
+                    output.insert(specifier);
+                    get_dependencies(
+                      graph,
+                      graph.get(specifier),
+                      output,
+                      no_check,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // This bench module and all it's dependencies
+        let mut modules = HashSet::new();
+        modules.insert(&specifier);
+        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
+
+        paths_to_watch.extend(
+          modules
+            .iter()
+            .filter_map(|specifier| specifier.to_file_path().ok()),
+        );
+
+        if let Some(changed) = &changed {
+          for path in changed.iter().filter_map(|path| {
+            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
+          }) {
+            if modules.contains(&&path) {
+              modules_to_reload.push((specifier, ModuleKind::Esm));
+              break;
+            }
+          }
+        }
+      }
+
+      Ok((paths_to_watch, modules_to_reload))
+    }
+    .map(move |result| {
+      if files_changed
+        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
+      {
+        ResolutionResult::Ignore
+      } else {
+        match result {
+          Ok((paths_to_watch, modules_to_reload)) => {
+            ResolutionResult::Restart {
+              paths_to_watch,
+              result: Ok(modules_to_reload),
+            }
+          }
+          Err(e) => ResolutionResult::Restart {
+            paths_to_watch,
+            result: Err(e),
+          },
+        }
+      }
+    })
+  };
+
+  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+    let flags = flags.clone();
+    let filter = bench_flags.filter.clone();
+    let include = include.clone();
+    let ignore = ignore.clone();
+    let lib = lib.clone();
+    let permissions = permissions.clone();
+    let ps = ps.clone();
+
+    async move {
+      let specifiers =
+        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?
+          .iter()
+          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
+          .cloned()
+          .collect::<Vec<ModuleSpecifier>>();
+
+      check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib)
+        .await?;
+
+      bench_specifiers(
+        ps,
+        permissions.clone(),
+        specifiers,
+        BenchSpecifierOptions {
+          compat_mode: flags.compat,
+          filter: filter.clone(),
+        },
+      )
+      .await?;
+
+      Ok(())
+    }
+  };
+
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    file_watcher::PrintConfig {
+      job_name: "Bench".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
+  )
+  .await?;
+
+  Ok(())
 }
