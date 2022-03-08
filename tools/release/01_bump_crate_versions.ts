@@ -1,18 +1,22 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { path } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
-const repo = workspace.repo;
-
 const cliCrate = workspace.getCliCrate();
-const originalVersion = cliCrate.version;
+const originalCliVersion = cliCrate.version;
 
-// increment the version
+// increment the cli version
 await cliCrate.promptAndIncrement();
+
+// increment the dependency crate versions
+for (const crate of workspace.getDependencyCrates()) {
+  await crate.increment("minor");
+}
+
 // update the lock file
-await cliCrate.cargoCheck();
+await workspace.getCliCrate().cargoCheck();
 
 // update the Releases.md markdown text
 await updateReleasesMd();
@@ -33,9 +37,9 @@ async function updateReleasesMd() {
 }
 
 async function getReleasesMdText() {
-  const gitLog = await repo.getGitLogFromTags(
+  const gitLog = await workspace.repo.getGitLogFromTags(
     "upstream",
-    `v${originalVersion}`,
+    `v${originalCliVersion}`,
     undefined,
   );
   const formattedGitLog = gitLog.formatForReleaseMarkdown();
