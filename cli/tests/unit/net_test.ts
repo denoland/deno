@@ -457,6 +457,74 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true } },
+  async function netUdpReceiveBuffSize() {
+    const buffsize = 8;
+    const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
+    const bob = Deno.listenDatagram({ port: 4501, transport: "udp" }, buffsize);
+
+    const sent = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    await alice.send(sent, bob.addr);
+    const [recvd, ] = await bob.receive();
+    assertEquals(recvd.length, 8);
+    assertEquals(sent, recvd);
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function netUnixPacketReceiveBuffSize() {
+    const buffsize = 8;
+    const filePath = await Deno.makeTempFile();
+    const alice = Deno.listenDatagram({
+      path: filePath,
+      transport: "unixpacket",
+    });
+    const bob = Deno.listenDatagram({
+      path: filePath,
+      transport: "unixpacket",
+    }, buffsize);
+
+    const sent = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    await alice.send(sent, bob.addr);
+    const [recvd, ] = await bob.receive();
+    assertEquals(recvd.length, 8);
+    assertEquals(sent, recvd);
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netUdpReceiveWithSetBuffSize() {
+    const buffsize = 3;
+    const alice = Deno.listenDatagram({ port: 3500, transport: "udp" }, buffsize * 2);
+    const bob = Deno.listenDatagram({ port: 4501, transport: "udp" }, buffsize);
+
+    const alicebuff = new Uint8Array([1, 2, 3, 4]);
+    const bobbuff = new Uint8Array([1, 2, 3, 4, 5, 6, 7]);
+
+    await alice.send(alicebuff, bob.addr);
+    const [recvd, ] = await bob.receive();
+    assertEquals(recvd.length, buffsize);
+    assertEquals(new Uint8Array([1, 2, 3]), recvd);
+    
+    await bob.send(bobbuff, alice.addr);
+    const [recvd2, ] = await alice.receive();
+    assertEquals(recvd2.length, buffsize * 2);
+    assertEquals(new Uint8Array([1, 2, 3, 4, 5, 6]), recvd2);
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
