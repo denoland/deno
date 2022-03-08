@@ -160,6 +160,9 @@ declare namespace Deno {
     setKeepAlive(keepalive?: boolean): void;
   }
 
+  // deno-lint-ignore no-empty-interface
+  export interface UnixConn extends Conn {}
+
   export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;
