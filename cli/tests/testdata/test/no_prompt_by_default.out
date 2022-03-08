@@ -12,6 +12,6 @@ failures:
 
 	no prompt
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out (17ms)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD]ms)
 
 error: Test failed
