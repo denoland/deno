@@ -1,6 +1,7 @@
 use crate::OpFn;
 use crate::OpState;
 use anyhow::Error;
+use std::task::Context;
 
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
 pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
@@ -8,6 +9,7 @@ pub type OpPair = (&'static str, OpFn);
 pub type OpInitFn = dyn Fn(&mut RegisterCtx) + 'static;
 pub type OpMiddlewareFn = dyn Fn(&'static str, OpFn) -> OpFn;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
+pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
 
 #[derive(Default)]
 pub struct Extension {
@@ -15,6 +17,7 @@ pub struct Extension {
   ops_init: Option<Box<OpInitFn>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
+  event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
 }
 
@@ -74,6 +77,22 @@ impl Extension {
   pub fn init_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
     self.middleware_fn.take()
   }
+
+  pub fn init_event_loop_middleware(&mut self) -> Option<Box<OpEventLoopFn>> {
+    self.event_loop_middleware.take()
+  }
+
+  pub fn run_event_loop_middleware(
+    &self,
+    op_state: &mut OpState,
+    cx: &mut Context,
+  ) -> bool {
+    self
+      .event_loop_middleware
+      .as_ref()
+      .map(|f| f(op_state, cx))
+      .unwrap_or(false)
+  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
@@ -83,6 +102,7 @@ pub struct ExtensionBuilder {
   ops_init: Option<Box<OpInitFn>>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
+  event_loop_middleware: Option<Box<OpEventLoopFn>>,
 }
 
 pub enum RegisterCtx<'a, 'b, 'c> {
@@ -143,6 +163,14 @@ impl ExtensionBuilder {
     self
   }
 
+  pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
+  where
+    F: Fn(&mut OpState, &mut Context) -> bool + 'static,
+  {
+    self.event_loop_middleware = Some(Box::new(middleware_fn));
+    self
+  }
+
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
     Extension {
@@ -150,6 +178,7 @@ impl ExtensionBuilder {
       ops_init: self.ops_init.take(),
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
+      event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
     }
   }
