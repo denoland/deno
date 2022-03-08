@@ -378,8 +378,10 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let len = v8str.length();
       let mut buffer = Vec::with_capacity(len);
       #[allow(clippy::uninit_vec)]
+      // SAFETY: this is fine, because length == capacity (see previous line),
+      // and we are about to initalize the buffer with data from the v8 string.
       unsafe {
-        buffer.set_len(len);
+        buffer.set_len(len)
       }
       let written = v8str.write_one_byte(
         self.scope,
