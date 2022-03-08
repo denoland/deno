@@ -2233,7 +2233,7 @@ fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
     let task_args: Vec<String> = matches
       .values_of("task_args")
-      .unwrap()
+      .unwrap_or_default()
       .map(String::from)
       .collect();
     for v in task_args {
@@ -5122,6 +5122,18 @@ mod tests {
           task: "build".to_string(),
         }),
         argv: svec!["hello", "world"],
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "task", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
         ..Flags::default()
       }
     );
