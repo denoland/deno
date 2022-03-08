@@ -97,6 +97,12 @@ itest!(markdown_windows {
   output: "test/markdown_windows.out",
 });
 
+itest!(markdown_full_block_names {
+  args: "test --doc --allow-all test/markdown_full_block_names.md",
+  exit_code: 1,
+  output: "test/markdown_full_block_names.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
