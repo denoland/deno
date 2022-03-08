@@ -985,6 +985,7 @@ let c: number = "a";
             enable: false,
             enable_paths: Vec::new(),
             code_lens: Default::default(),
+            testing: Default::default(),
           },
         ),
       );

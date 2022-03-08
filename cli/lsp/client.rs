@@ -17,6 +17,13 @@ use super::config::SpecifierSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 
+#[derive(Debug)]
+pub enum TestingNotification {
+  Module(lsp_custom::TestModuleNotificationParams),
+  DeleteModule(lsp_custom::TestModuleDeleteNotificationParams),
+  Progress(lsp_custom::TestRunProgressParams),
+}
+
 #[derive(Clone)]
 pub struct Client(Arc<dyn ClientTrait>);
 
@@ -49,6 +56,10 @@ impl Client {
     params: lsp_custom::RegistryStateNotificationParams,
   ) {
     self.0.send_registry_state_notification(params).await;
+  }
+
+  pub async fn send_test_notification(&self, params: TestingNotification) {
+    self.0.send_test_notification(params).await;
   }
 
   pub async fn specifier_configurations(
@@ -118,6 +129,10 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   ) -> AsyncReturn<()>;
+  fn send_test_notification(
+    &self,
+    params: TestingNotification,
+  ) -> AsyncReturn<()>;
   fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
@@ -161,6 +176,34 @@ impl ClientTrait for LspowerClient {
           params,
         )
         .await
+    })
+  }
+
+  fn send_test_notification(
+    &self,
+    notification: TestingNotification,
+  ) -> AsyncReturn<()> {
+    let client = self.0.clone();
+    Box::pin(async move {
+      match notification {
+        TestingNotification::Module(params) => {
+          client
+            .send_custom_notification::<lsp_custom::TestModuleNotification>(
+              params,
+            )
+            .await
+        }
+        TestingNotification::DeleteModule(params) => client
+          .send_custom_notification::<lsp_custom::TestModuleDeleteNotification>(
+            params,
+          )
+          .await,
+        TestingNotification::Progress(params) => client
+          .send_custom_notification::<lsp_custom::TestRunProgressNotification>(
+            params,
+          )
+          .await,
+      }
     })
   }
 
@@ -256,6 +299,13 @@ impl ClientTrait for ReplClient {
   fn send_registry_state_notification(
     &self,
     _params: lsp_custom::RegistryStateNotificationParams,
+  ) -> AsyncReturn<()> {
+    Box::pin(future::ready(()))
+  }
+
+  fn send_test_notification(
+    &self,
+    _params: TestingNotification,
   ) -> AsyncReturn<()> {
     Box::pin(future::ready(()))
   }

@@ -776,6 +776,7 @@ dependencies = [
  "fwdansi",
  "http",
  "import_map",
+ "indexmap",
  "jsonc-parser",
  "libc",
  "log",

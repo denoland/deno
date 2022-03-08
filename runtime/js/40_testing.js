@@ -9,7 +9,9 @@
   const { assert } = window.__bootstrap.infra;
   const {
     AggregateErrorPrototype,
+    ArrayIsArray,
     ArrayPrototypeFilter,
+    ArrayPrototypeIncludes,
     ArrayPrototypeJoin,
     ArrayPrototypePush,
     ArrayPrototypeShift,
@@ -750,23 +752,28 @@
     return inspectArgs([error]);
   }
 
+  /** @param {string | string[]} filter */
   function createTestFilter(filter) {
+    if (!filter) {
+      return () => true;
+    }
+
+    const regex =
+      typeof filter === "string" && StringPrototypeStartsWith(filter, "/") &&
+        StringPrototypeEndsWith(filter, "/")
+        ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
+        : undefined;
+
+    const filterIsArray = ArrayIsArray(filter);
+
     return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
-        }
-
-        return StringPrototypeIncludes(def.name, filter);
+      if (regex) {
+        return RegExpPrototypeTest(regex, def.name);
       }
-
-      return true;
+      if (filterIsArray) {
+        return ArrayPrototypeIncludes(filter, def.name);
+      }
+      return StringPrototypeIncludes(def.name, filter);
     };
   }
 
