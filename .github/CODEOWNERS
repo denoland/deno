@@ -13,7 +13,7 @@ cli/dts/        @kitsonk
 cli/lsp/        @dsherret @kitsonk
 cli/schemas/    @kitsonk
 cli/tsc/        @kitsonk
-core/           @bartlomieju
+core/           @AaronO @bartlomieju
 docs/           @ry
 ext/            @bartlomieju @crowlKats @lucacasonato @littledivy
 ext/tls/        @piscisaureus

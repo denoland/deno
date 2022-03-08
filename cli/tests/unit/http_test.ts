@@ -1672,6 +1672,72 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "http server updates content-length header if compression is applied",
+  permissions: { net: true },
+  async fn() {
+    const hostname = "localhost";
+    const port = 4501;
+    let contentLength: string;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      const body = JSON.stringify({
+        hello: "deno",
+        now: "with",
+        compressed: "body",
+      });
+      contentLength = String(body.length);
+      const response = new Response(
+        body,
+        {
+          headers: {
+            "content-type": "application/json",
+            "content-length": contentLength,
+          },
+        },
+      );
+      await respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = [
+        "curl",
+        "-I",
+        "--request",
+        "GET",
+        "--url",
+        url,
+        "--header",
+        "Accept-Encoding: gzip, deflate, br",
+      ];
+      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      const output = decoder.decode(await proc.output());
+      assert(output.includes("vary: Accept-Encoding\r\n"));
+      assert(output.includes("content-encoding: gzip\r\n"));
+      // Ensure the content-length header is updated.
+      assert(!output.includes(`content-length: ${contentLength}\r\n`));
+      assert(output.includes("content-length: 72\r\n"));
+      console.log(output);
+
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+});
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);

@@ -1358,7 +1358,7 @@ declare namespace Deno {
   ): Promise<TcpConn>;
   export function connect(
     options: UnixConnectOptions,
-  ): Promise<Conn>;
+  ): Promise<UnixConn>;
 
   export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */

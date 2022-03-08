@@ -2,6 +2,9 @@
 use std::any::TypeId;
 use std::mem::transmute_copy;
 
+use crate::Buffer;
+use crate::ByteString;
+
 /// Serializable exists to allow boxing values as "objects" to be serialized later,
 /// this is particularly useful for async op-responses. This trait is a more efficient
 /// replacement for erased-serde that makes less allocations, since it's specific to serde_v8
@@ -44,7 +47,6 @@ impl SerializablePkg {
 
 /// Primitive serves as a lightweight serializable wrapper around primitives
 /// so that we can use them for async values
-#[derive(Clone, Copy)]
 pub enum Primitive {
   Unit,
   Bool(bool),
@@ -58,58 +60,76 @@ pub enum Primitive {
   UInt64(u64),
   Float32(f32),
   Float64(f64),
+  String(String),
+  Buffer(Buffer),
+  ByteString(ByteString),
 }
 
 impl serde::Serialize for Primitive {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
   where
     S: serde::Serializer,
   {
-    match *self {
-      Self::Unit => serializer.serialize_unit(),
-      Self::Bool(x) => serializer.serialize_bool(x),
-      Self::Int8(x) => serializer.serialize_i8(x),
-      Self::Int16(x) => serializer.serialize_i16(x),
-      Self::Int32(x) => serializer.serialize_i32(x),
-      Self::Int64(x) => serializer.serialize_i64(x),
-      Self::UInt8(x) => serializer.serialize_u8(x),
-      Self::UInt16(x) => serializer.serialize_u16(x),
-      Self::UInt32(x) => serializer.serialize_u32(x),
-      Self::UInt64(x) => serializer.serialize_u64(x),
-      Self::Float32(x) => serializer.serialize_f32(x),
-      Self::Float64(x) => serializer.serialize_f64(x),
+    match self {
+      Self::Unit => ().serialize(s),
+      Self::Bool(x) => x.serialize(s),
+      Self::Int8(x) => x.serialize(s),
+      Self::Int16(x) => x.serialize(s),
+      Self::Int32(x) => x.serialize(s),
+      Self::Int64(x) => x.serialize(s),
+      Self::UInt8(x) => x.serialize(s),
+      Self::UInt16(x) => x.serialize(s),
+      Self::UInt32(x) => x.serialize(s),
+      Self::UInt64(x) => x.serialize(s),
+      Self::Float32(x) => x.serialize(s),
+      Self::Float64(x) => x.serialize(s),
+      Self::String(x) => x.serialize(s),
+      Self::Buffer(x) => x.serialize(s),
+      Self::ByteString(x) => x.serialize(s),
     }
   }
 }
 
 impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
   fn from(x: T) -> Self {
-    let tid = TypeId::of::<T>();
+    #[inline(always)]
+    fn tc<T, U>(src: T) -> U {
+      let x = unsafe { transmute_copy(&src) };
+      std::mem::forget(src);
+      x
+    }
 
+    let tid = TypeId::of::<T>();
     if tid == TypeId::of::<()>() {
       Self::Primitive(Primitive::Unit)
     } else if tid == TypeId::of::<bool>() {
-      Self::Primitive(Primitive::Bool(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Bool(tc(x)))
     } else if tid == TypeId::of::<i8>() {
-      Self::Primitive(Primitive::Int8(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Int8(tc(x)))
     } else if tid == TypeId::of::<i16>() {
-      Self::Primitive(Primitive::Int16(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Int16(tc(x)))
     } else if tid == TypeId::of::<i32>() {
-      Self::Primitive(Primitive::Int32(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Int32(tc(x)))
     } else if tid == TypeId::of::<i64>() {
-      Self::Primitive(Primitive::Int64(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Int64(tc(x)))
     } else if tid == TypeId::of::<u8>() {
-      Self::Primitive(Primitive::UInt8(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::UInt8(tc(x)))
     } else if tid == TypeId::of::<u16>() {
-      Self::Primitive(Primitive::UInt16(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::UInt16(tc(x)))
     } else if tid == TypeId::of::<u32>() {
-      Self::Primitive(Primitive::UInt32(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::UInt32(tc(x)))
     } else if tid == TypeId::of::<u64>() {
-      Self::Primitive(Primitive::UInt64(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::UInt64(tc(x)))
     } else if tid == TypeId::of::<f32>() {
-      Self::Primitive(Primitive::Float32(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Float32(tc(x)))
     } else if tid == TypeId::of::<f64>() {
-      Self::Primitive(Primitive::Float64(unsafe { transmute_copy(&x) }))
+      Self::Primitive(Primitive::Float64(tc(x)))
+    } else if tid == TypeId::of::<String>() {
+      Self::Primitive(Primitive::String(tc(x)))
+    } else if tid == TypeId::of::<Buffer>() {
+      Self::Primitive(Primitive::Buffer(tc(x)))
+    } else if tid == TypeId::of::<ByteString>() {
+      Self::Primitive(Primitive::ByteString(tc(x)))
     } else {
       Self::Serializable(Box::new(x))
     }
