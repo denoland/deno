@@ -150,8 +150,7 @@ impl TestDefinitions {
     } else {
       specifier
         .path_segments()
-        .map(|s| s.last().map(|s| s.to_string()))
-        .flatten()
+        .and_then(|s| s.last().map(|s| s.to_string()))
         .unwrap_or_else(|| "<unknown>".to_string())
     };
     let tests_map: HashMap<String, lsp_custom::TestData> = self
@@ -342,11 +341,7 @@ fn check_call_expr(
             }
           }
         }
-        if let Some(name) = maybe_name {
-          Some((name, steps))
-        } else {
-          None
-        }
+        maybe_name.map(|name| (name, steps))
       }
       ast::Expr::Fn(fn_expr) => {
         if let Some(ast::Ident { sym, .. }) = fn_expr.ident.as_ref() {
@@ -416,7 +411,7 @@ impl TestStepCollector {
   ) {
     let step = TestDefinition::new_step(
       name.as_ref().to_string(),
-      span.clone(),
+      *span,
       self.parent.clone(),
       self.level,
       steps,
@@ -452,9 +447,9 @@ impl Visit for TestStepCollector {
         ast::Expr::Member(member_expr) => {
           if let Some(test_context) = &self.maybe_test_context {
             if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
-              if ns_prop_ident.sym.to_string() == "step" {
+              if ns_prop_ident.sym.eq("step") {
                 if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                  if ident.sym.to_string() == *test_context {
+                  if ident.sym == *test_context {
                     self.check_call_expr(node, &ns_prop_ident.span);
                   }
                 }
@@ -474,19 +469,18 @@ impl Visit for TestStepCollector {
           match init.as_ref() {
             // Identify destructured assignments of `step` from test context
             ast::Expr::Ident(ident) => {
-              if ident.sym.to_string() == *test_context {
+              if ident.sym == *test_context {
                 if let ast::Pat::Object(object_pat) = &decl.name {
                   for prop in &object_pat.props {
                     match prop {
                       ast::ObjectPatProp::Assign(prop) => {
-                        let name = prop.key.sym.to_string();
-                        if name == "step" {
-                          self.vars.insert(name);
+                        if prop.key.sym.eq("step") {
+                          self.vars.insert(prop.key.sym.to_string());
                         }
                       }
                       ast::ObjectPatProp::KeyValue(prop) => {
                         if let ast::PropName::Ident(key_ident) = &prop.key {
-                          if key_ident.sym.to_string() == "step" {
+                          if key_ident.sym.eq("step") {
                             if let ast::Pat::Ident(value_ident) =
                               &prop.value.as_ref()
                             {
@@ -505,10 +499,10 @@ impl Visit for TestStepCollector {
             // `.step`
             ast::Expr::Member(member_expr) => {
               if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
-                if obj_ident.sym.to_string() == *test_context {
+                if obj_ident.sym == *test_context {
                   if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop
                   {
-                    if prop_ident.sym.to_string() == "step" {
+                    if prop_ident.sym.eq("step") {
                       if let ast::Pat::Ident(binding_ident) = &decl.name {
                         self.vars.insert(binding_ident.id.sym.to_string());
                       }
@@ -550,7 +544,7 @@ impl TestCollector {
     let definition = TestDefinition::new(
       &self.specifier,
       name.as_ref().to_string(),
-      span.clone(),
+      *span,
       steps,
     );
     self.definitions.push(definition);
