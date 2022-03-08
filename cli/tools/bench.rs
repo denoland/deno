@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
+use crate::display;
 use crate::emit;
 // use crate::file_fetcher::File;
 // use crate::file_watcher;
@@ -166,22 +167,6 @@ impl PrettyBenchReporter {
   }
 }
 
-/// A function that converts a milisecond elapsed time to a string that
-/// represents a human readable version of that time.
-fn human_elapsed(elapsed: u128) -> String {
-  if elapsed < 1_000 {
-    return format!("({}ms)", elapsed);
-  }
-  if elapsed < 1_000 * 60 {
-    return format!("({}s)", elapsed / 1000);
-  }
-
-  let seconds = elapsed / 1_000;
-  let minutes = seconds / 60;
-  let seconds_remainder = seconds % 60;
-  format!("({}m{}s)", minutes, seconds_remainder)
-}
-
 impl BenchReporter for PrettyBenchReporter {
   fn report_plan(&mut self, plan: &BenchPlan) {
     let inflection = if plan.total == 1 { "bench" } else { "benches" };
@@ -225,7 +210,11 @@ impl BenchReporter for PrettyBenchReporter {
       BenchResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
   }
 
   fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration) {
@@ -257,7 +246,7 @@ impl BenchReporter for PrettyBenchReporter {
       summary.ignored,
       summary.measured,
       summary.filtered_out,
-      colors::gray(human_elapsed(elapsed.as_millis())),
+      colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
 }
