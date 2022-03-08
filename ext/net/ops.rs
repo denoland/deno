@@ -24,6 +24,9 @@ use deno_core::ZeroCopyBuf;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -428,8 +431,19 @@ fn listen_tcp(
   state: &mut OpState,
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), AnyError> {
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {

@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.19.2 / 2022.03.03
+
+- fix(cli): disable config discovery for remote script (#13745)
+- fix(repl): fix null eval result (#13804)
+- fix(runtime): disable console color for non tty stdout (#13782)
+- fix(test): use --no-prompt by default (#13777)
+
 ### 1.19.1 / 2022.02.24
 
 - feat(ext/ffi): Support read only global statics (#13662)
