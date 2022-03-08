@@ -159,14 +159,14 @@ pub fn initialize_context<'s>(
   if snapshot_loaded {
     let deno_val = global.get(scope, deno_key.into()).unwrap();
     let deno_val = v8::Local::<v8::Object>::try_from(deno_val)
-      .unwrap_or(v8::Object::new(scope));
+      .unwrap_or_else(|_| v8::Object::new(scope));
 
     let core_val = deno_val.get(scope, core_key.into()).unwrap();
     let core_val = v8::Local::<v8::Object>::try_from(core_val)
-      .unwrap_or(v8::Object::new(scope));
+      .unwrap_or_else(|_| v8::Object::new(scope));
     let ops_val = core_val.get(scope, ops_key.into()).unwrap();
     let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
-      .unwrap_or(v8::Object::new(scope));
+      .unwrap_or_else(|_| v8::Object::new(scope));
     for ex in extensions {
       ex.init_ops(scope, ops_val);
     }

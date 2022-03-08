@@ -16,7 +16,6 @@
     ErrorCaptureStackTrace,
     Promise,
     ObjectEntries,
-    ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
     MapPrototypeDelete,

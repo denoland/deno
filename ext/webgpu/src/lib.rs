@@ -112,7 +112,7 @@ pub fn init(unstable: bool) -> Extension {
       "01_webgpu.js",
       "02_idl_types.js",
     ))
-    .ops(|ctx| declare_webgpu_ops(ctx))
+    .ops(declare_webgpu_ops)
     .state(move |state| {
       // TODO: check & possibly streamline this
       // Unstable might be able to be OpMiddleware
