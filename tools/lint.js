@@ -115,6 +115,10 @@ async function clippy() {
       "clippy::all",
       "-D",
       "clippy::await_holding_refcell_ref",
+      "-D",
+      "clippy::missing_safety_doc",
+      "-D",
+      "clippy::undocumented_unsafe_blocks",
     ],
   });
   const { success } = await p.status();
