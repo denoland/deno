@@ -88,7 +88,7 @@ pub fn init<P: NetPermissions + 'static>(
       "02_tls.js",
       "04_net_unstable.js",
     ))
-    .ops(vec![ops::init::<P>(ctx); ops_tls::init::<P>(ctx)])
+    .ops([&ops::init::<P>()[..], &ops_tls::init::<P>()[..]].concat())
     .state(move |state| {
       state.put(DefaultTlsOptions {
         root_cert_store: root_cert_store.clone(),

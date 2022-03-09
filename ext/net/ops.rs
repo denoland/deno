@@ -53,13 +53,13 @@ use std::path::Path;
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
     op_net_accept::decl(),
-    op_net_connect<P>::decl(),
-    op_net_listen<P>::decl(),
+    op_net_connect::decl::<P>(),
+    op_net_listen::decl::<P>(),
     op_dgram_recv::decl(),
-    op_dgram_send<P>::decl(),
-    op_dns_resolve<P>::decl(),
-    op_set_nodelay<P>::decl(),
-    op_set_keepalive<P>::decl(),
+    op_dgram_send::decl::<P>(),
+    op_dns_resolve::decl::<P>(),
+    op_set_nodelay::decl::<P>(),
+    op_set_keepalive::decl::<P>(),
   ]
 }
 

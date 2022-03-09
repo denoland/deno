@@ -104,10 +104,10 @@ pub fn init<P: TimersPermission + 'static>(
       compression::op_compression_new::decl(),
       compression::op_compression_write::decl(),
       compression::op_compression_finish::decl(),
-      op_now<P>::decl(),
+      op_now::decl::<P>(),
       op_timer_handle::decl(),
       op_sleep::decl(),
-      op_sleep_sync<P>::decl(),
+      op_sleep_sync::decl::<P>(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());

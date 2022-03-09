@@ -66,13 +66,13 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           stringify!(#name)
         }
 
-        pub fn v8_cb() -> deno_core::v8::FunctionCallback {
+        pub fn v8_cb #generics () -> deno_core::v8::FunctionCallback #where_clause {
           use deno_core::v8::MapFnTo;
-          Self::v8_func.map_fn_to()
+          Self::v8_func::<#type_params>.map_fn_to()
         }
 
-        pub fn decl() -> (&'static str, deno_core::v8::FunctionCallback) {
-          (Self::name(), Self::v8_cb())
+        pub fn decl #generics ()  -> (&'static str, deno_core::v8::FunctionCallback) #where_clause {
+          (Self::name(), Self::v8_cb::<#type_params>())
         }
 
         #original_func
@@ -130,13 +130,13 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           stringify!(#name)
         }
 
-        pub fn v8_cb() -> deno_core::v8::FunctionCallback {
+        pub fn v8_cb #generics () -> deno_core::v8::FunctionCallback #where_clause {
           use deno_core::v8::MapFnTo;
-          Self::v8_func.map_fn_to()
+          Self::v8_func::<#type_params>.map_fn_to()
         }
 
-        pub fn decl() -> (&'static str, deno_core::v8::FunctionCallback) {
-          (Self::name(), Self::v8_cb())
+        pub fn decl #generics ()  -> (&'static str, deno_core::v8::FunctionCallback) #where_clause {
+          (Self::name(), Self::v8_cb::<#type_params>())
         }
 
         #original_func

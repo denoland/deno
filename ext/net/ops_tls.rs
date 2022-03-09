@@ -644,9 +644,9 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    op_tls_start<P>::decl(),
-    op_tls_connect<P>::decl(),
-    op_tls_listen<P>::decl(),
+    op_tls_start::decl::<P>(),
+    op_tls_connect::decl::<P>(),
+    op_tls_listen::decl::<P>(),
     op_tls_accept::decl(),
     op_tls_handshake::decl(),
   ]
