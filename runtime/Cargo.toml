@@ -60,6 +60,7 @@ deno_webgpu = { version = "0.40.0", path = "../ext/webgpu" }
 deno_webidl = { version = "0.39.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.44.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.34.0", path = "../ext/webstorage" }
+deno_napi = { version = "0.0.1", path = "../ext/napi" }
 
 atty = "0.2.14"
 dlopen = "0.1.8"

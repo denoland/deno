@@ -75,7 +75,7 @@ pub extern "C" fn uv_async_init(
 #[no_mangle]
 pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
   let sender = unsafe { (*async_).sender.as_ref().unwrap() };
-  let fut = Box::new(move |_: &mut v8::HandleScope| {
+  let fut = Box::new(move || {
     unsafe { ((*async_).callback)(async_) };
   });
 

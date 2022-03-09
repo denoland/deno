@@ -1008,6 +1008,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_napi"
+version = "0.0.1"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_net"
 version = "0.31.0"
 dependencies = [
@@ -1033,6 +1040,7 @@ dependencies = [
  "deno_fetch",
  "deno_ffi",
  "deno_http",
+ "deno_napi",
  "deno_net",
  "deno_tls",
  "deno_url",

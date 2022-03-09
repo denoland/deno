@@ -391,6 +391,8 @@ impl WebWorker {
       deno_webgpu::init(unstable),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
+      // napi
+      deno_napi::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];

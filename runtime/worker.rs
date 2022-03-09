@@ -140,6 +140,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
+      deno_napi::init(),
       ops::os::init(None),
       ops::permissions::init(),
       ops::process::init(),

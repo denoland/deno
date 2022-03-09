@@ -50,7 +50,7 @@ fn napi_queue_async_work(env_ptr: *mut Env, work: napi_async_work) -> Result {
   let work: &AsyncWork = unsafe { &*(work as *const AsyncWork) };
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
 
-  let fut = Box::new(move |_: &mut v8::HandleScope| {
+  let fut = Box::new(move || {
     (work.execute)(env_ptr as napi_env, work.data);
     // Note: Must be called from the loop thread.
     (work.complete)(env_ptr as napi_env, napi_ok, work.data);

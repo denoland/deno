@@ -12,7 +12,6 @@ pub use v8;
 
 use crate::futures::channel::mpsc;
 
-pub use crate::runtime::PendingNapiAsyncWork;
 use crate::JsRuntime;
 use core::ptr::NonNull;
 use std::cell::RefCell;
@@ -268,6 +267,21 @@ pub struct napi_node_version {
   pub release: *const c_char,
 }
 
+pub type PendingNapiAsyncWork = Box<dyn FnOnce()>;
+
+pub struct NapiState {
+  // Async tasks.
+  pub pending_napi_async_work: Vec<PendingNapiAsyncWork>,
+  pub napi_async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
+  pub napi_async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
+  // Thread safe functions.
+  pub active_threadsafe_functions: usize,
+  pub napi_threadsafe_function_reciever:
+    mpsc::UnboundedReceiver<ThreadSafeFunctionStatus>,
+  pub napi_threadsafe_function_sender:
+    mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+}
+
 #[repr(C)]
 #[derive(Debug)]
 /// Env that is shared between all contexts in same native module.
@@ -397,9 +411,18 @@ pub fn napi_open_func<'s>(
     env_shared_ptr.write(env_shared);
   }
 
-  let state_rc = JsRuntime::state(scope);
-  let async_work_sender = state_rc.borrow().napi_async_work_sender.clone();
-  let tsfn_sender = state_rc.borrow().napi_threadsafe_function_sender.clone();
+  let (async_work_sender, tsfn_sender) = { 
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+  
+    let op_state = state.op_state.borrow();
+    let napi_state = op_state.borrow::<NapiState>();
+
+    let async_work_sender = napi_state.napi_async_work_sender.clone();
+    let tsfn_sender = napi_state.napi_threadsafe_function_sender.clone();
+    (async_work_sender, tsfn_sender)
+  };  
+
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
   let ctx = scope.get_current_context();

@@ -44,47 +44,47 @@ impl TsFn {
       let isolate_ptr = self.isolate_ptr;
       let sender = self.sender.clone();
       let tsfn_sender = self.tsfn_sender.clone();
-      let call = Box::new(move |scope: &mut v8::HandleScope| {
-        let ctx = scope.get_current_context();
-        match js_func {
-          Some(func) => {
-            let func: v8::Local<v8::Value> =
-              func.open(scope).to_object(scope).unwrap().into();
-            let mut env = Env::new(
-              isolate_ptr,
-              v8::Global::new(scope, ctx),
-              sender,
-              tsfn_sender,
-            );
-            unsafe {
-              call_js_cb(
-                &mut env as *mut _ as *mut c_void,
-                transmute::<v8::Local<v8::Value>, napi_value>(func),
-                context,
-                data,
-              )
-            };
-            std::mem::forget(env);
-          }
-          None => {
-            let mut env = Env::new(
-              isolate_ptr,
-              v8::Global::new(scope, ctx),
-              sender,
-              tsfn_sender,
-            );
-            unsafe {
-              call_js_cb(
-                &mut env as *mut _ as *mut c_void,
-                std::ptr::null_mut(),
-                context,
-                data,
-              )
-            };
+      let call = Box::new(move || {
+        // let ctx = scope.get_current_context();
+        // match js_func {
+        //   Some(func) => {
+        //     let func: v8::Local<v8::Value> =
+        //       func.open(scope).to_object(scope).unwrap().into();
+        //     let mut env = Env::new(
+        //       isolate_ptr,
+        //       v8::Global::new(scope, ctx),
+        //       sender,
+        //       tsfn_sender,
+        //     );
+        //     unsafe {
+        //       call_js_cb(
+        //         &mut env as *mut _ as *mut c_void,
+        //         transmute::<v8::Local<v8::Value>, napi_value>(func),
+        //         context,
+        //         data,
+        //       )
+        //     };
+        //     std::mem::forget(env);
+        //   }
+        //   None => {
+        //     let mut env = Env::new(
+        //       isolate_ptr,
+        //       v8::Global::new(scope, ctx),
+        //       sender,
+        //       tsfn_sender,
+        //     );
+        //     unsafe {
+        //       call_js_cb(
+        //         &mut env as *mut _ as *mut c_void,
+        //         std::ptr::null_mut(),
+        //         context,
+        //         data,
+        //       )
+        //     };
 
-            std::mem::forget(env);
-          }
-        }
+        //     std::mem::forget(env);
+        //   }
+        // }
 
         // Receiver might have been already dropped
         let _ = tx.send(());
@@ -92,9 +92,9 @@ impl TsFn {
       // This call should never fail
       self.sender.unbounded_send(call).unwrap();
     } else if let Some(js_func) = js_func {
-      let call = Box::new(move |scope: &mut v8::HandleScope| {
+      let call = Box::new(move || {
         // TODO(@littledivy): Call js_func.
-        let _func = js_func.open(scope);
+        // let _func = js_func.open(scope);
         // Receiver might have been already dropped
         let _ = tx.send(());
       });
