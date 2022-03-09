@@ -2,30 +2,18 @@ use proc_macro::TokenStream;
 use quote::quote;
 
 #[proc_macro_attribute]
-pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
-  let attr = syn::parse_macro_input!(attr as syn::AttributeArgs);
+pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
   let type_params = &func.sig.generics.params;
   let where_clause = &func.sig.generics.where_clause;
 
-  // Should the macro preserve the original op?
-  // Note that the function is renamed to `original_<NAME>`.
-  // This is useful for testing purposes.
-  //
-  // #[op(preserve_original)]
-  let preserve_original = match attr.get(0).as_ref() {
-    Some(syn::NestedMeta::Meta(syn::Meta::Path(ref attr_ident))) => {
-      if attr_ident.is_ident("preserve_original") {
-        let mut func = func.clone();
-        func.sig.ident = quote::format_ident!("original_{}", &func.sig.ident);
-        quote! { #func }
-      } else {
-        quote! {}
-      }
-    }
-    _ => quote! {},
+  // Preserve the original func as op_foo::func()
+  let original_func = {
+    let mut func = func.clone();
+    func.sig.ident = quote::format_ident!("func");
+    quote! { #func }
   };
 
   let inputs = &func.sig.inputs;
@@ -70,80 +58,116 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let is_async = func.sig.asyncness.is_some();
   if is_async {
     TokenStream::from(quote! {
-      pub fn #name #generics (
-        scope: &mut deno_core::v8::HandleScope,
-        args: deno_core::v8::FunctionCallbackArguments,
-        mut rv: deno_core::v8::ReturnValue,
-      ) #where_clause {
-        use deno_core::JsRuntime;
-        use deno_core::futures::FutureExt;
-        use deno_core::OpCall;
-        use deno_core::serialize_op_result;
-        use deno_core::PromiseId;
-        use deno_core::bindings::throw_type_error;
-        use deno_core::v8;
-        let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
+      #[allow(non_camel_case_types)]
+      pub struct #name;
 
-        let promise_id = args.get(1);
-        let promise_id = v8::Local::<v8::Integer>::try_from(promise_id)
-          .map(|l| l.value() as PromiseId)
-          .map_err(deno_core::anyhow::Error::from);
-        // Fail if promise id invalid (not an int)
-        let promise_id: PromiseId = match promise_id {
-          Ok(promise_id) => promise_id,
-          Err(err) => {
-            throw_type_error(scope, format!("invalid promise id: {}", err));
-            return;
-          }
-        };
+      impl #name {
+        pub fn name() -> &'static str {
+          stringify!(#name)
+        }
+        
+        pub fn v8_cb() -> deno_core::v8::FunctionCallback {
+          use deno_core::v8::MapFnTo;
+          Self::v8_func.map_fn_to()
+        }
+        
+        pub fn decl() -> (&'static str, deno_core::v8::FunctionCallback) {
+          (Self::name(), Self::v8_cb())
+        }
+        
+        #original_func
+      
+        pub fn v8_func #generics (
+          scope: &mut deno_core::v8::HandleScope,
+          args: deno_core::v8::FunctionCallbackArguments,
+          mut rv: deno_core::v8::ReturnValue,
+        ) #where_clause {
+          use deno_core::JsRuntime;
+          use deno_core::futures::FutureExt;
+          use deno_core::OpCall;
+          use deno_core::serialize_op_result;
+          use deno_core::PromiseId;
+          use deno_core::bindings::throw_type_error;
+          use deno_core::v8;
+          let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
 
-        #a
-        #b
-        #func
+          let promise_id = args.get(1);
+          let promise_id = v8::Local::<v8::Integer>::try_from(promise_id)
+            .map(|l| l.value() as PromiseId)
+            .map_err(deno_core::anyhow::Error::from);
+          // Fail if promise id invalid (not an int)
+          let promise_id: PromiseId = match promise_id {
+            Ok(promise_id) => promise_id,
+            Err(err) => {
+              throw_type_error(scope, format!("invalid promise id: {}", err));
+              return;
+            }
+          };
 
-        let state_rc = JsRuntime::state(scope);
-        let mut state = state_rc.borrow_mut();
-        state.op_state.borrow().tracker.track_async(op_id);
-        state.have_unpolled_ops = true;
-        let op_state = state.op_state.clone();
-        state.pending_ops.push(OpCall::eager(async move {
-          let result = #name::<#type_params>(op_state.clone(), a, b).await;
-          (promise_id, op_id, serialize_op_result(result, op_state))
-        }));
+          #a
+          #b
+          #func
+
+          let state_rc = JsRuntime::state(scope);
+          let mut state = state_rc.borrow_mut();
+          state.op_state.borrow().tracker.track_async(op_id);
+          state.have_unpolled_ops = true;
+          let op_state = state.op_state.clone();
+          state.pending_ops.push(OpCall::eager(async move {
+            let result = #name::<#type_params>(op_state.clone(), a, b).await;
+            (promise_id, op_id, serialize_op_result(result, op_state))
+          }));
+        }
       }
-
-      #preserve_original
     })
   } else {
     TokenStream::from(quote! {
-      #[inline]
-      pub fn #name #generics (
-        scope: &mut deno_core::v8::HandleScope,
-        args: deno_core::v8::FunctionCallbackArguments,
-        mut rv: deno_core::v8::ReturnValue,
-      ) #where_clause {
-        use deno_core::JsRuntime;
-        use deno_core::bindings::throw_type_error;
-        use deno_core::OpsTracker;
-        use deno_core::v8;
+      #[allow(non_camel_case_types)]
+      pub struct #name;
+      
+      impl #name {
+        pub fn name() -> &'static str {
+          stringify!(#name)
+        }
+        
+        pub fn v8_cb() -> deno_core::v8::FunctionCallback {
+          use deno_core::v8::MapFnTo;
+          Self::v8_func.map_fn_to()
+        }
+        
+        pub fn decl() -> (&'static str, deno_core::v8::FunctionCallback) {
+          (Self::name(), Self::v8_cb())
+        }
+        
+        #original_func
+        
+        #[inline]
+        pub fn v8_func #generics (
+          scope: &mut deno_core::v8::HandleScope,
+          args: deno_core::v8::FunctionCallbackArguments,
+          mut rv: deno_core::v8::ReturnValue,
+        ) #where_clause {
+          use deno_core::JsRuntime;
+          use deno_core::bindings::throw_type_error;
+          use deno_core::OpsTracker;
+          use deno_core::v8;
 
-        let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
+          let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
 
-        #a
-        #b
-        #func
+          #a
+          #b
+          #func
 
-        let state_rc = deno_core::JsRuntime::state(scope);
-        let state = state_rc.borrow();
-        let mut op_state = state.op_state.borrow_mut();
+          let state_rc = deno_core::JsRuntime::state(scope);
+          let state = state_rc.borrow();
+          let mut op_state = state.op_state.borrow_mut();
 
-        let result = #name::<#type_params>(&mut op_state, a, b).unwrap();
-        op_state.tracker.track_sync(op_id);
+          let result = #name::<#type_params>(&mut op_state, a, b).unwrap();
+          op_state.tracker.track_sync(op_id);
 
-        #ret
+          #ret
+        }
       }
-
-      #preserve_original
     })
   }
 }

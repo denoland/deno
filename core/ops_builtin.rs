@@ -11,7 +11,6 @@ use deno_ops::op;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
-use v8::MapFnTo;
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
@@ -22,26 +21,20 @@ pub(crate) fn init_builtins() -> Extension {
       "02_error.js",
     ))
     .ops(vec![
-      ("op_close", op_close.map_fn_to()),
-      ("op_try_close", op_try_close.map_fn_to()),
-      ("op_print", op_print.map_fn_to()),
-      ("op_resources", op_resources.map_fn_to()),
-      ("op_wasm_streaming_feed", op_wasm_streaming_feed.map_fn_to()),
-      (
-        "op_wasm_streaming_abort",
-        op_wasm_streaming_abort.map_fn_to(),
-      ),
-      (
-        "op_wasm_streaming_set_url",
-        op_wasm_streaming_set_url.map_fn_to(),
-      ),
-      ("op_void_sync", op_void_sync.map_fn_to()),
-      ("op_void_async", op_void_async.map_fn_to()),
+      op_close::decl(),
+      op_try_close::decl(),
+      op_print::decl(),
+      op_resources::decl(),
+      op_wasm_streaming_feed::decl(),
+      op_wasm_streaming_abort::decl(),
+      op_wasm_streaming_set_url::decl(),
+      op_void_sync::decl(),
+      op_void_async::decl(),
       // // TODO(@AaronO): track IO metrics for builtin streams
-      ("op_read", op_read.map_fn_to()),
-      ("op_write", op_write.map_fn_to()),
-      ("op_shutdown", op_shutdown.map_fn_to()),
-      ("op_metrics", op_metrics.map_fn_to()),
+      op_read::decl(),
+      op_write::decl(),
+      op_shutdown::decl(),
+      op_metrics::decl(),
     ])
     .build()
 }
