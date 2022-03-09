@@ -41,11 +41,11 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone, Deserialize)]
 struct BenchSpecifierOptions {
@@ -293,7 +293,7 @@ async fn bench_specifier(
   ps: ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  channel: Sender<BenchEvent>,
+  channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
@@ -352,7 +352,7 @@ async fn bench_specifiers(
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
 
-  let (sender, receiver) = channel::<BenchEvent>();
+  let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
   let join_handles = specifiers.iter().map(move |specifier| {
     let ps = ps.clone();
@@ -375,12 +375,12 @@ async fn bench_specifiers(
   let mut reporter = create_reporter(log_level != Some(Level::Error));
 
   let handler = {
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn(async move {
       let earlier = Instant::now();
       let mut summary = BenchSummary::new();
       let mut used_only = false;
 
-      for event in receiver.iter() {
+      while let Some(event) = receiver.recv().await {
         match event {
           BenchEvent::Plan(plan) => {
             summary.total += plan.total;

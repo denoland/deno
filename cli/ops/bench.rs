@@ -8,10 +8,10 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: Sender<BenchEvent>) -> Extension {
+pub fn init(sender: UnboundedSender<BenchEvent>) -> Extension {
   Extension::builder()
     .ops(vec![
       (
@@ -84,7 +84,7 @@ fn op_dispatch_bench_event(
   event: BenchEvent,
   _: (),
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<Sender<BenchEvent>>().clone();
+  let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(event).ok();
 
   Ok(())
