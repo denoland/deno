@@ -5,8 +5,8 @@ use deno_core::include_js_files;
 use deno_core::op;
 
 use deno_core::Extension;
-use deno_core::OpState;
 use deno_core::OpPair;
+use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
