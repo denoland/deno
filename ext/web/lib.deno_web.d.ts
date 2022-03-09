@@ -906,5 +906,5 @@ declare class DecompressionStream {
  * In Deno, this error will terminate the process if not intercepted like above.
  */
 declare function reportError(
-  error: Error,
+  error: any,
 ): void;
