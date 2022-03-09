@@ -119,10 +119,10 @@ pub fn init<BC: BroadcastChannel + 'static>(
       "01_broadcast_channel.js",
     ))
     .ops(vec![
-      ctx.register("op_broadcast_subscribe", op_broadcast_subscribe::<BC>);
-      ctx.register("op_broadcast_unsubscribe", op_broadcast_unsubscribe::<BC>);
-      ctx.register("op_broadcast_send", op_broadcast_send::<BC>);
-      ctx.register("op_broadcast_recv", op_broadcast_recv::<BC>);
+      op_broadcast_subscribe<BC>::decl(),
+      op_broadcast_unsubscribe<BC>::decl(),
+      op_broadcast_send<BC>::decl(),
+      op_broadcast_recv<BC>::decl(),
     ])
     .state(move |state| {
       state.put(bc.clone());

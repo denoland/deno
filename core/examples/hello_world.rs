@@ -21,12 +21,9 @@ fn main() {
   let ext = Extension::builder()
     .ops(vec![
       // An op for summing an array of numbers
-      ctx.register(
-        "op_sum",
-        // The op-layer automatically deserializes inputs
-        // and serializes the returned Result & value
-        op_sum,
-      );
+      // The op-layer automatically deserializes inputs
+      // and serializes the returned Result & value
+      op_sum::decl(),
     ])
     .build();
 

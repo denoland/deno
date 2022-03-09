@@ -83,10 +83,10 @@ pub fn init<P: TimersPermission + 'static>(
       "15_performance.js",
     ))
     .ops(vec![
-      ctx.register("op_base64_decode", op_base64_decode);
-      ctx.register("op_base64_encode", op_base64_encode);
-      ctx.register("op_base64_atob", op_base64_atob);
-      ctx.register("op_base64_btoa", op_base64_btoa);
+      op_base64_decode::decl(),
+      op_base64_encode::decl(),
+      op_base64_atob::decl(),
+      op_base64_btoa::decl(),
       op_encoding_normalize_label::decl(),
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
@@ -99,17 +99,15 @@ pub fn init<P: TimersPermission + 'static>(
       op_blob_revoke_object_url::decl(),
       op_blob_from_object_url::decl(),
       op_message_port_create_entangled::decl(),
-      ctx
-        .register("op_message_port_post_message", op_message_port_post_message);
-      ctx
-        .register("op_message_port_recv_message", op_message_port_recv_message);
+      op_message_port_post_message::decl(),
+      op_message_port_recv_message::decl(),
       compression::op_compression_new::decl(),
       compression::op_compression_write::decl(),
       compression::op_compression_finish::decl(),
-      ctx.register("op_now", op_now::<P>);
+      op_now<P>::decl(),
       op_timer_handle::decl(),
       op_sleep::decl(),
-      ctx.register("op_sleep_sync", op_sleep_sync::<P>);
+      op_sleep_sync<P>::decl(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());

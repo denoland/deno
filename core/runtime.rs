@@ -2753,7 +2753,7 @@ assertEquals(1, notify_return_value);
     let extension = Extension::builder()
       .ops(vec![
         op_promise_reject::decl(),
-        ctx.register("op_uncaught_exception", op_uncaught_exception),
+        op_uncaught_exception::decl(),
       ])
       .build();
 

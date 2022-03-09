@@ -101,9 +101,9 @@ where
       "26_fetch.js",
     ))
     .ops(vec![
-      ctx.register("op_fetch", op_fetch::<FP>);
+      op_fetch<FP>::decl(),
       op_fetch_send::decl(),
-      ctx.register("op_fetch_custom_client", op_fetch_custom_client::<FP>);
+      op_fetch_custom_client<FP>::decl(),
     ])
     .state(move |state| {
       state.put::<Options>(options.clone());

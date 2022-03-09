@@ -492,11 +492,8 @@ pub fn init<P: WebSocketPermissions + 'static>(
       "02_websocketstream.js",
     ))
     .ops(vec![
-      ctx.register(
-        "op_ws_check_permission_and_cancel_handle",
-        op_ws_check_permission_and_cancel_handle::<P>,
-      );
-      ctx.register("op_ws_create", op_ws_create::<P>);
+      op_ws_check_permission_and_cancel_handle<P>::decl(),
+      op_ws_create<P>::decl(),
       op_ws_send::decl(),
       op_ws_close::decl(),
       op_ws_next_event::decl(),

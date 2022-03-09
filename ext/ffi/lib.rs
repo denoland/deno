@@ -140,24 +140,24 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       "00_ffi.js",
     ))
     .ops(vec![
-      ctx.register("op_ffi_load", op_ffi_load::<P>);
+      op_ffi_load<P>::decl(),
       op_ffi_get_static::decl(),
       op_ffi_call::decl(),
       op_ffi_call_nonblocking::decl(),
       op_ffi_call_ptr::decl(),
       op_ffi_call_ptr_nonblocking::decl(),
-      ctx.register("op_ffi_ptr_of", op_ffi_ptr_of::<P>);
-      ctx.register("op_ffi_buf_copy_into", op_ffi_buf_copy_into::<P>);
-      ctx.register("op_ffi_cstr_read", op_ffi_cstr_read::<P>);
-      ctx.register("op_ffi_read_u8", op_ffi_read_u8::<P>);
-      ctx.register("op_ffi_read_i8", op_ffi_read_i8::<P>);
-      ctx.register("op_ffi_read_u16", op_ffi_read_u16::<P>);
-      ctx.register("op_ffi_read_i16", op_ffi_read_i16::<P>);
-      ctx.register("op_ffi_read_u32", op_ffi_read_u32::<P>);
-      ctx.register("op_ffi_read_i32", op_ffi_read_i32::<P>);
-      ctx.register("op_ffi_read_u64", op_ffi_read_u64::<P>);
-      ctx.register("op_ffi_read_f32", op_ffi_read_f32::<P>);
-      ctx.register("op_ffi_read_f64", op_ffi_read_f64::<P>);
+      op_ffi_ptr_of<P>::decl(),
+      op_ffi_buf_copy_into<P>::decl(),
+      op_ffi_cstr_read<P>::decl(),
+      op_ffi_read_u8<P>::decl(),
+      op_ffi_read_i8<P>::decl(),
+      op_ffi_read_u16<P>::decl(),
+      op_ffi_read_i16<P>::decl(),
+      op_ffi_read_u32<P>::decl(),
+      op_ffi_read_i32<P>::decl(),
+      op_ffi_read_u64<P>::decl(),
+      op_ffi_read_f32<P>::decl(),
+      op_ffi_read_f64<P>::decl(),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
