@@ -92,7 +92,7 @@ where
 pub fn op_sync_cb<F, A, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(
-      Rc<RefCell<OpState>>,
+      &mut OpState,
       A,
       &mut v8::HandleScope,
       Vec<v8::Local<v8::Function>>,
@@ -114,7 +114,7 @@ where
       .collect();
     let result = a
       .map_err(Error::from)
-      .and_then(|a| op_fn(state.clone(), a, payload.scope, fns));
+      .and_then(|a| op_fn(&mut state.borrow_mut(), a, payload.scope, fns));
     Op::Sync(serialize_op_result(result, state))
   })
 }

@@ -35,6 +35,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
+use core::ptr::NonNull;
 
 pub struct Unstable(pub bool);
 
@@ -138,7 +139,7 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
+pub fn init<P: FfiPermissions + 'static>(unstable: bool, isolate_ptr: *mut *mut v8::OwnedIsolate) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/ffi",
@@ -168,9 +169,13 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_read_f32", op_sync(op_ffi_read_f32::<P>)),
       ("op_ffi_read_f64", op_sync(op_ffi_read_f64::<P>)),
     ])
+    .event_loop_middleware(|state, cx| {
+      false
+    })
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
       state.put(Unstable(unstable));
+      state.put(isolate_ptr);
       Ok(())
     })
     .build()
@@ -587,7 +592,9 @@ impl FfiCallPtrArgs {
 fn ffi_call(
   args: FfiCallArgs,
   symbol: &Symbol,
-  functions: Option<(&mut v8::HandleScope, Vec<v8::Local<v8::Function>>)>,
+  // For callbacks
+  functions: Vec<v8::Local<v8::Function>>,
+  mut callback_context: Option<(&mut v8::HandleScope, *mut *mut v8::OwnedIsolate)>,
 ) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -595,7 +602,7 @@ fn ffi_call(
     .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
     .collect();
 
-  let mut cb_offsets = Vec::new();
+  let mut offsets = Vec::new();
   let mut native_values: Vec<NativeValue> = Vec::new();
 
   for (native_type, value) in symbol
@@ -624,7 +631,7 @@ fn ffi_call(
         if let Some(idx) = value.as_u64() {
           // Placeholder to reserve spot for the function `Arg`.
           let native_value = NativeValue { void_value: () };
-          cb_offsets.push(idx as usize);
+          offsets.push(idx as usize);
           native_values.push(native_value);
         }
       }
@@ -635,7 +642,7 @@ fn ffi_call(
     }
   }
 
-  let call_args = symbol
+  let mut call_args = symbol
     .parameter_types
     .clone()
     .into_iter()
@@ -645,52 +652,41 @@ fn ffi_call(
     })
     .collect::<Vec<_>>();
 
-  if !cb_offsets.is_empty() {
-    return Ok(call_symbol_cb(
-      symbol,
-      call_args,
-      cb_offsets,
-      functions.unwrap(),
-    ));
+  if !offsets.is_empty() {
+    for (cb, offset) in functions.into_iter().zip(offsets) {
+      // Grab the persistent for callback & current scope.
+      let (scope, isolate_ptr) = callback_context.as_mut().unwrap();
+      let global = v8::Global::new(scope, cb);
+      let ctx = scope.get_current_context();
+      let ctx_global = v8::Global::new(scope, ctx);
+
+      // NOTE: `into_raw` leaks.
+      let cb_info = CallbackInfo::new(*isolate_ptr, global.into_raw(), ctx_global.into_raw());
+      let signature = &symbol.parameter_types[offset];
+      let (mut info, cif) = match signature {
+        NativeType::Function {
+          ref parameters,
+          ref result,
+        } => (
+          cb_info,
+          Cif::new(
+            parameters.iter().map(libffi::middle::Type::from),
+            libffi::middle::Type::from(*result.clone()),
+          ),
+        ),
+        _ => unreachable!(),
+      };
+
+      let closure =
+        libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
+      call_args[offset] = Arg::new(closure.code_ptr());
+      // So this is a bad API. We need to ensure that the destructor for the closure is not run.
+      // Ideally, `code_ptr()` should consume the closure.
+      std::mem::forget(closure);
+    }
   }
 
   Ok(call_symbol(symbol, call_args))
-}
-
-fn call_symbol_cb(
-  symbol: &Symbol,
-  mut call_args: Vec<Arg>,
-  offsets: Vec<usize>,
-  func: (&mut v8::HandleScope, Vec<v8::Local<v8::Function>>),
-) -> Value {
-  let (scope, cbs) = func;
-
-  for (cb, offset) in cbs.into_iter().zip(offsets) {
-    let cb_info = CallbackInfo::new(scope, cb);
-    let signature = &symbol.parameter_types[offset];
-    let (mut info, cif) = match signature {
-      NativeType::Function {
-        ref parameters,
-        ref result,
-      } => (
-        cb_info,
-        Cif::new(
-          parameters.iter().map(libffi::middle::Type::from),
-          libffi::middle::Type::from(*result.clone()),
-        ),
-      ),
-      _ => unreachable!(),
-    };
-
-    let closure =
-      libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
-    call_args[offset] = Arg::new(closure.code_ptr());
-    // So this is a bad API. We need to ensure that the destructor for the closure.
-    // Ideally, `code_ptr()` should consume the closure.
-    std::mem::forget(closure);
-  }
-
-  call_symbol(symbol, call_args)
 }
 
 fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
@@ -745,19 +741,22 @@ fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
   }
 }
 
-pub struct CallbackInfo<'a, 'b, 'c> {
-  scope: Option<&'a mut v8::HandleScope<'b>>,
-  cb: v8::Local<'c, v8::Function>,
+pub struct CallbackInfo {
+  isolate_ptr: *mut *mut v8::OwnedIsolate,
+  cb: NonNull<v8::Function>,
+  ctx: NonNull<v8::Context>,
 }
 
-impl<'a, 'b, 'c> CallbackInfo<'a, 'b, 'c> {
+impl CallbackInfo {
   pub fn new(
-    scope: &'a mut v8::HandleScope<'b>,
-    cb: v8::Local<'c, v8::Function>,
+    isolate_ptr: *mut *mut v8::OwnedIsolate,
+    cb: NonNull<v8::Function>,
+    ctx: NonNull<v8::Context>,
   ) -> Self {
     Self {
-      scope: Some(scope),
+      isolate_ptr,
       cb,
+      ctx,
     }
   }
 }
@@ -768,12 +767,18 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &mut CallbackInfo,
 ) {
-  let scope = match info.scope.as_mut() {
-    Some(scope) => scope,
-    // TODO: Unwinding this is UB.
-    None => panic!("Scope is already dropped"),
+  let isolate = unsafe { &mut **info.isolate_ptr };
+  let global = v8::Global::from_raw(isolate, info.cb);
+  
+  let context = unsafe {
+    std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(info.ctx)
   };
+  
+  let scope = &mut v8::CallbackScope::new(context);
 
+  let func = global.open(scope).to_object(scope).unwrap();
+  let func = v8::Local::<v8::Function>::try_from(func).unwrap();
+  
   let result = result as *mut c_void;
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
   let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
@@ -805,7 +810,7 @@ unsafe extern "C" fn deno_ffi_callback(
   }
 
   let recv = v8::undefined(scope);
-  let value = match info.cb.call(scope, recv.into(), &params) {
+  let value = match func.call(scope, recv.into(), &params) {
     Some(value) => value,
     None => return,
   };
@@ -866,31 +871,32 @@ unsafe extern "C" fn deno_ffi_callback(
 /// A variant of `op_ffi_call` that has the ability to
 /// pass the given callback to the symbol.
 fn op_ffi_call_cb(
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: &mut deno_core::OpState,
   args: FfiCallArgs,
   scope: &mut v8::HandleScope,
   cb: Vec<v8::Local<v8::Function>>,
 ) -> Result<Value, AnyError> {
   let resource = state
-    .borrow()
     .resource_table
     .get::<DynamicLibraryResource>(args.rid)?;
 
+  let isolate_ptr = state.borrow::<*mut *mut v8::OwnedIsolate>();
+  
   let symbol = resource
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
-  ffi_call(args, symbol, Some((scope, cb)))
+  ffi_call(args, symbol, cb, Some((scope, *isolate_ptr)))
 }
 
 fn op_ffi_call_ptr(
-  _state: &mut deno_core::OpState,
+  state: &mut deno_core::OpState,
   args: FfiCallPtrArgs,
   _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  ffi_call(args.into(), &symbol, None)
+  ffi_call(args.into(), &symbol, vec![], None)
 }
 
 async fn op_ffi_call_ptr_nonblocking(
@@ -899,7 +905,7 @@ async fn op_ffi_call_ptr_nonblocking(
   _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol, None))
+  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol, vec![], None))
     .await
     .unwrap()
 }
@@ -966,6 +972,7 @@ fn op_ffi_get_static(
     NativeType::Pointer => {
       json!(U32x2::from(data_ptr as *const u8 as u64))
     }
+    NativeType::Function { .. } => unreachable!()
   })
 }
 
@@ -982,8 +989,8 @@ fn op_ffi_call(
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
-
-  ffi_call(args, symbol, None)
+  
+  ffi_call(args, symbol, vec![], None)
 }
 
 /// A non-blocking FFI call.
@@ -1002,7 +1009,7 @@ async fn op_ffi_call_nonblocking(
     .ok_or_else(bad_resource_id)?
     .clone();
 
-  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, None))
+  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, vec![], None))
     .await
     .unwrap()
 }

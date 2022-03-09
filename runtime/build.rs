@@ -158,7 +158,7 @@ mod not_docs {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::init::<Permissions>(false),
+      deno_ffi::init::<Permissions>(false, std::ptr::null_mut()),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.
         None,

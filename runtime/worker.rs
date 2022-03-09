@@ -94,6 +94,19 @@ impl MainWorker {
       })
       .build();
 
+    // Allocate isolate pointer.
+    let align = std::mem::align_of::<usize>();
+    // SAFETY: `align` is guaranteed to be non-zero and a power of two.
+    let layout = unsafe {
+      std::alloc::Layout::from_size_align_unchecked(
+        std::mem::size_of::<*mut *mut deno_core::v8::OwnedIsolate>(),
+        align,
+      )
+    };
+    // SAFETY: `layout` is not zero sized. ptr is written to after JsRuntime creation.
+    let isolate_ptr: *mut *mut deno_core::v8::OwnedIsolate =
+      unsafe { std::alloc::alloc(layout) as *mut _ };
+
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -123,7 +136,7 @@ impl MainWorker {
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<Permissions>(unstable, isolate_ptr),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -162,6 +175,13 @@ impl MainWorker {
       extensions,
       ..Default::default()
     });
+
+    // Initialize isolate ptr memory.
+    {
+      let isolate = js_runtime.v8_isolate();
+      // SAFETY: `isolate_ptr` is valid for writes and properly aligned.
+      unsafe { isolate_ptr.write(isolate) };
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
