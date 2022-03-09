@@ -26,7 +26,6 @@ Deno.test(async function testImportArrayBufferKey() {
   await subtle.sign({ name: "HMAC" }, cryptoKey, new Uint8Array(8));
 });
 
-// TODO(@littledivy): Remove this when we enable WPT for sign_verify
 Deno.test(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -99,7 +98,6 @@ const hashPlainTextVector = [
   },
 ];
 
-// TODO(@littledivy): Remove this when we enable WPT for encrypt_decrypt
 Deno.test(async function testEncryptDecrypt() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -717,7 +715,6 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
   }
 });
 
-// TODO(@littledivy): Enable WPT when we have importKey support
 Deno.test(async function testECDH() {
   const namedCurve = "P-256";
   const keyPair = await crypto.subtle.generateKey(
