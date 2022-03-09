@@ -1689,7 +1689,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count2 = dispatch_count.clone();
     let ext = Extension::builder()
-      .ops(|ctx| ctx.register("op_test", op_test))
+      .ops(vec![op_test::decl()])
       .state(move |state| {
         state.put(TestState {
           mode,
@@ -2077,9 +2077,7 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let ext = Extension::builder()
-        .ops(|ctx| ctx.register("op_err", op_err))
-        .build();
+      let ext = Extension::builder().ops(vec![op_err::decl()]).build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
@@ -2493,7 +2491,7 @@ assertEquals(1, notify_return_value);
     }
 
     let extension = Extension::builder()
-      .ops(|ctx| ctx.register("op_async_borrow", op_async_borrow))
+      .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
         Ok(())
@@ -2528,7 +2526,7 @@ assertEquals(1, notify_return_value);
     }
 
     let extension = Extension::builder()
-      .ops(|ctx| ctx.register("op_async_sleep", op_async_sleep))
+      .ops(vec![op_async_sleep::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2608,10 +2606,7 @@ assertEquals(1, notify_return_value);
     }
 
     let extension = Extension::builder()
-      .ops(|ctx| {
-        ctx.register("op_macrotask", op_macrotask);
-        ctx.register("op_next_tick", op_next_tick);
-      })
+      .ops(vec![op_macrotask::decl(), op_next_tick::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2756,10 +2751,10 @@ assertEquals(1, notify_return_value);
     }
 
     let extension = Extension::builder()
-      .ops(|ctx| {
-        ctx.register("op_promise_reject", op_promise_reject);
-        ctx.register("op_uncaught_exception", op_uncaught_exception)
-      })
+      .ops(vec![
+        op_promise_reject::decl(),
+        ctx.register("op_uncaught_exception", op_uncaught_exception),
+      ])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {

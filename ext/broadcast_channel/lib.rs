@@ -118,12 +118,12 @@ pub fn init<BC: BroadcastChannel + 'static>(
       prefix "deno:ext/broadcast_channel",
       "01_broadcast_channel.js",
     ))
-    .ops(|ctx| {
+    .ops(vec![
       ctx.register("op_broadcast_subscribe", op_broadcast_subscribe::<BC>);
       ctx.register("op_broadcast_unsubscribe", op_broadcast_unsubscribe::<BC>);
       ctx.register("op_broadcast_send", op_broadcast_send::<BC>);
       ctx.register("op_broadcast_recv", op_broadcast_recv::<BC>);
-    })
+    ])
     .state(move |state| {
       state.put(bc.clone());
       state.put(Unstable(unstable));

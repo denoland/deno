@@ -69,10 +69,7 @@ static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_read_sync", op_read_sync);
-      ctx.register("op_write_sync", op_write_sync);
-    })
+    .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
     .build()
 }
 

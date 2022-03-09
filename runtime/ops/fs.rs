@@ -37,61 +37,61 @@ use deno_core::error::not_supported;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_open_sync", op_open_sync);
-      ctx.register("op_open_async", op_open_async);
-      ctx.register("op_seek_sync", op_seek_sync);
-      ctx.register("op_seek_async", op_seek_async);
-      ctx.register("op_fdatasync_sync", op_fdatasync_sync);
-      ctx.register("op_fdatasync_async", op_fdatasync_async);
-      ctx.register("op_fsync_sync", op_fsync_sync);
-      ctx.register("op_fsync_async", op_fsync_async);
-      ctx.register("op_fstat_sync", op_fstat_sync);
-      ctx.register("op_fstat_async", op_fstat_async);
-      ctx.register("op_flock_sync", op_flock_sync);
-      ctx.register("op_flock_async", op_flock_async);
-      ctx.register("op_funlock_sync", op_funlock_sync);
-      ctx.register("op_funlock_async", op_funlock_async);
-      ctx.register("op_umask", op_umask);
-      ctx.register("op_chdir", op_chdir);
-      ctx.register("op_mkdir_sync", op_mkdir_sync);
-      ctx.register("op_mkdir_async", op_mkdir_async);
-      ctx.register("op_chmod_sync", op_chmod_sync);
-      ctx.register("op_chmod_async", op_chmod_async);
-      ctx.register("op_chown_sync", op_chown_sync);
-      ctx.register("op_chown_async", op_chown_async);
-      ctx.register("op_remove_sync", op_remove_sync);
-      ctx.register("op_remove_async", op_remove_async);
-      ctx.register("op_copy_file_sync", op_copy_file_sync);
-      ctx.register("op_copy_file_async", op_copy_file_async);
-      ctx.register("op_stat_sync", op_stat_sync);
-      ctx.register("op_stat_async", op_stat_async);
-      ctx.register("op_realpath_sync", op_realpath_sync);
-      ctx.register("op_realpath_async", op_realpath_async);
-      ctx.register("op_read_dir_sync", op_read_dir_sync);
-      ctx.register("op_read_dir_async", op_read_dir_async);
-      ctx.register("op_rename_sync", op_rename_sync);
-      ctx.register("op_rename_async", op_rename_async);
-      ctx.register("op_link_sync", op_link_sync);
-      ctx.register("op_link_async", op_link_async);
-      ctx.register("op_symlink_sync", op_symlink_sync);
-      ctx.register("op_symlink_async", op_symlink_async);
-      ctx.register("op_read_link_sync", op_read_link_sync);
-      ctx.register("op_read_link_async", op_read_link_async);
-      ctx.register("op_ftruncate_sync", op_ftruncate_sync);
-      ctx.register("op_ftruncate_async", op_ftruncate_async);
-      ctx.register("op_truncate_sync", op_truncate_sync);
-      ctx.register("op_truncate_async", op_truncate_async);
-      ctx.register("op_make_temp_dir_sync", op_make_temp_dir_sync);
-      ctx.register("op_make_temp_dir_async", op_make_temp_dir_async);
-      ctx.register("op_make_temp_file_sync", op_make_temp_file_sync);
-      ctx.register("op_make_temp_file_async", op_make_temp_file_async);
-      ctx.register("op_cwd", op_cwd);
-      ctx.register("op_futime_sync", op_futime_sync);
-      ctx.register("op_futime_async", op_futime_async);
-      ctx.register("op_utime_sync", op_utime_sync);
-      ctx.register("op_utime_async", op_utime_async);
-    })
+    .ops(vec![
+      op_open_sync::decl(),
+      op_open_async::decl(),
+      op_seek_sync::decl(),
+      op_seek_async::decl(),
+      op_fdatasync_sync::decl(),
+      op_fdatasync_async::decl(),
+      op_fsync_sync::decl(),
+      op_fsync_async::decl(),
+      op_fstat_sync::decl(),
+      op_fstat_async::decl(),
+      op_flock_sync::decl(),
+      op_flock_async::decl(),
+      op_funlock_sync::decl(),
+      op_funlock_async::decl(),
+      op_umask::decl(),
+      op_chdir::decl(),
+      op_mkdir_sync::decl(),
+      op_mkdir_async::decl(),
+      op_chmod_sync::decl(),
+      op_chmod_async::decl(),
+      op_chown_sync::decl(),
+      op_chown_async::decl(),
+      op_remove_sync::decl(),
+      op_remove_async::decl(),
+      op_copy_file_sync::decl(),
+      op_copy_file_async::decl(),
+      op_stat_sync::decl(),
+      op_stat_async::decl(),
+      op_realpath_sync::decl(),
+      op_realpath_async::decl(),
+      op_read_dir_sync::decl(),
+      op_read_dir_async::decl(),
+      op_rename_sync::decl(),
+      op_rename_async::decl(),
+      op_link_sync::decl(),
+      op_link_async::decl(),
+      op_symlink_sync::decl(),
+      op_symlink_async::decl(),
+      op_read_link_sync::decl(),
+      op_read_link_async::decl(),
+      op_ftruncate_sync::decl(),
+      op_ftruncate_async::decl(),
+      op_truncate_sync::decl(),
+      op_truncate_async::decl(),
+      op_make_temp_dir_sync::decl(),
+      op_make_temp_dir_async::decl(),
+      op_make_temp_file_sync::decl(),
+      op_make_temp_file_async::decl(),
+      op_cwd::decl(),
+      op_futime_sync::decl(),
+      op_futime_async::decl(),
+      op_utime_sync::decl(),
+      op_utime_async::decl(),
+    ])
     .build()
 }
 

@@ -675,15 +675,15 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder()
-      .ops(|ctx| {
-        ctx.register("op_cwd", op_cwd);
-        ctx.register("op_create_hash", op_create_hash);
-        ctx.register("op_emit", op_emit);
-        ctx.register("op_exists", op_exists);
-        ctx.register("op_load", op_load);
-        ctx.register("op_resolve", op_resolve);
-        ctx.register("op_respond", op_respond);
-      })
+      .ops(vec![
+        op_cwd::decl(),
+        op_create_hash::decl(),
+        op_emit::decl(),
+        op_exists::decl(),
+        op_load::decl(),
+        op_resolve::decl(),
+        op_respond::decl(),
+      ])
       .state(move |state| {
         state.put(State::new(
           request.graph_data.clone(),

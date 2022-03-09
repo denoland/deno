@@ -100,11 +100,11 @@ where
       "23_response.js",
       "26_fetch.js",
     ))
-    .ops(|ctx| {
+    .ops(vec![
       ctx.register("op_fetch", op_fetch::<FP>);
-      ctx.register("op_fetch_send", op_fetch_send);
+      op_fetch_send::decl(),
       ctx.register("op_fetch_custom_client", op_fetch_custom_client::<FP>);
-    })
+    ])
     .state(move |state| {
       state.put::<Options>(options.clone());
       state.put::<reqwest::Client>({

@@ -36,9 +36,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub fn init() -> Extension {
-  Extension::builder()
-    .ops(|ctx| ctx.register("op_emit", op_emit))
-    .build()
+  Extension::builder().ops(vec![op_emit::decl()]).build()
 }
 
 #[derive(Debug, Deserialize)]

@@ -10,7 +10,7 @@ use deno_core::OpState;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
-    .ops(|ctx| ctx.register("op_main_module", op_main_module))
+    .ops(vec![op_main_module::decl()])
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
       Ok(())

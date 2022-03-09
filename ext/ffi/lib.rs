@@ -139,13 +139,13 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       prefix "deno:ext/ffi",
       "00_ffi.js",
     ))
-    .ops(|ctx| {
+    .ops(vec![
       ctx.register("op_ffi_load", op_ffi_load::<P>);
-      ctx.register("op_ffi_get_static", op_ffi_get_static);
-      ctx.register("op_ffi_call", op_ffi_call);
-      ctx.register("op_ffi_call_nonblocking", op_ffi_call_nonblocking);
-      ctx.register("op_ffi_call_ptr", op_ffi_call_ptr);
-      ctx.register("op_ffi_call_ptr_nonblocking", op_ffi_call_ptr_nonblocking);
+      op_ffi_get_static::decl(),
+      op_ffi_call::decl(),
+      op_ffi_call_nonblocking::decl(),
+      op_ffi_call_ptr::decl(),
+      op_ffi_call_ptr_nonblocking::decl(),
       ctx.register("op_ffi_ptr_of", op_ffi_ptr_of::<P>);
       ctx.register("op_ffi_buf_copy_into", op_ffi_buf_copy_into::<P>);
       ctx.register("op_ffi_cstr_read", op_ffi_cstr_read::<P>);
@@ -158,7 +158,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ctx.register("op_ffi_read_u64", op_ffi_read_u64::<P>);
       ctx.register("op_ffi_read_f32", op_ffi_read_f32::<P>);
       ctx.register("op_ffi_read_f64", op_ffi_read_f64::<P>);
-    })
+    ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
       state.put(Unstable(unstable));

@@ -491,16 +491,16 @@ pub fn init<P: WebSocketPermissions + 'static>(
       "01_websocket.js",
       "02_websocketstream.js",
     ))
-    .ops(|ctx| {
+    .ops(vec![
       ctx.register(
         "op_ws_check_permission_and_cancel_handle",
         op_ws_check_permission_and_cancel_handle::<P>,
       );
       ctx.register("op_ws_create", op_ws_create::<P>);
-      ctx.register("op_ws_send", op_ws_send);
-      ctx.register("op_ws_close", op_ws_close);
-      ctx.register("op_ws_next_event", op_ws_next_event);
-    })
+      op_ws_send::decl(),
+      op_ws_close::decl(),
+      op_ws_next_event::decl(),
+    ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
       state.put(UnsafelyIgnoreCertificateErrors(

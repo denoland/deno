@@ -71,18 +71,15 @@ pub fn init() -> Extension {
       prefix "deno:ext/http",
       "01_http.js",
     ))
-    .ops(|ctx| {
-      ctx.register("op_http_accept", op_http_accept);
-      ctx.register("op_http_read", op_http_read);
-      ctx.register("op_http_write_headers", op_http_write_headers);
-      ctx.register("op_http_write", op_http_write);
-      ctx.register("op_http_shutdown", op_http_shutdown);
-      ctx.register(
-        "op_http_websocket_accept_header",
-        op_http_websocket_accept_header,
-      );
-      ctx.register("op_http_upgrade_websocket", op_http_upgrade_websocket);
-    })
+    .ops(vec![
+      op_http_accept::decl(),
+      op_http_read::decl(),
+      op_http_write_headers::decl(),
+      op_http_write::decl(),
+      op_http_shutdown::decl(),
+      op_http_websocket_accept_header::decl(),
+      op_http_upgrade_websocket::decl(),
+    ])
     .build()
 }
 

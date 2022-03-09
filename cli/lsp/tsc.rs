@@ -2804,19 +2804,19 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_dispose", op_dispose);
-      ctx.register("op_exists", op_exists);
-      ctx.register("op_get_change_range", op_get_change_range);
-      ctx.register("op_get_length", op_get_length);
-      ctx.register("op_get_text", op_get_text);
-      ctx.register("op_is_cancelled", op_is_cancelled);
-      ctx.register("op_load", op_load);
-      ctx.register("op_resolve", op_resolve);
-      ctx.register("op_respond", op_respond);
-      ctx.register("op_script_names", op_script_names);
-      ctx.register("op_script_version", op_script_version);
-    })
+    .ops(vec![
+      op_dispose::decl(),
+      op_exists::decl(),
+      op_get_change_range::decl(),
+      op_get_length::decl(),
+      op_get_text::decl(),
+      op_is_cancelled::decl(),
+      op_load::decl(),
+      op_resolve::decl(),
+      op_respond::decl(),
+      op_script_names::decl(),
+      op_script_version::decl(),
+    ])
     .state(move |state| {
       state.put(State::new(
         Arc::new(StateSnapshot::default()),

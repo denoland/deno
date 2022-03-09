@@ -46,11 +46,11 @@ fn get_windows_handle(
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_set_raw", op_set_raw);
-      ctx.register("op_isatty", op_isatty);
-      ctx.register("op_console_size", op_console_size);
-    })
+    .ops(vec![
+      op_set_raw::decl(),
+      op_isatty::decl(),
+      op_console_size::decl(),
+    ])
     .build()
 }
 

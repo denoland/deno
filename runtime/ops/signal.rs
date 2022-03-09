@@ -30,11 +30,11 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_signal_bind", op_signal_bind);
-      ctx.register("op_signal_unbind", op_signal_unbind);
-      ctx.register("op_signal_poll", op_signal_poll);
-    })
+    .ops(vec![
+      op_signal_bind::decl(),
+      op_signal_unbind::decl(),
+      op_signal_poll::decl(),
+    ])
     .build()
 }
 

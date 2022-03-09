@@ -16,21 +16,21 @@ use std::sync::Arc;
 
 pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_env", op_env);
-      ctx.register("op_exec_path", op_exec_path);
-      ctx.register("op_exit", op_exit);
-      ctx.register("op_delete_env", op_delete_env);
-      ctx.register("op_get_env", op_get_env);
-      ctx.register("op_getuid", op_getuid);
-      ctx.register("op_hostname", op_hostname);
-      ctx.register("op_loadavg", op_loadavg);
-      ctx.register("op_network_interfaces", op_network_interfaces);
-      ctx.register("op_os_release", op_os_release);
-      ctx.register("op_set_env", op_set_env);
-      ctx.register("op_set_exit_code", op_set_exit_code);
-      ctx.register("op_system_memory_info", op_system_memory_info);
-    })
+    .ops(vec![
+      op_env::decl(),
+      op_exec_path::decl(),
+      op_exit::decl(),
+      op_delete_env::decl(),
+      op_get_env::decl(),
+      op_getuid::decl(),
+      op_hostname::decl(),
+      op_loadavg::decl(),
+      op_network_interfaces::decl(),
+      op_os_release::decl(),
+      op_set_env::decl(),
+      op_set_exit_code::decl(),
+      op_system_memory_info::decl(),
+    ])
     .state(move |state| {
       let exit_code = maybe_exit_code.clone().unwrap_or_default();
       state.put::<Arc<AtomicI32>>(exit_code);

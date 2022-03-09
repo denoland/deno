@@ -26,20 +26,14 @@ pub fn init() -> Extension {
       "00_url.js",
       "01_urlpattern.js",
     ))
-    .ops(|ctx| {
-      ctx.register("op_url_parse", op_url_parse);
-      ctx.register("op_url_reparse", op_url_reparse);
-      ctx.register("op_url_parse_search_params", op_url_parse_search_params);
-      ctx.register(
-        "op_url_stringify_search_params",
-        op_url_stringify_search_params,
-      );
-      ctx.register("op_urlpattern_parse", op_urlpattern_parse);
-      ctx.register(
-        "op_urlpattern_process_match_input",
-        op_urlpattern_process_match_input,
-      );
-    })
+    .ops(vec![
+      op_url_parse::decl(),
+      op_url_reparse::decl(),
+      op_url_parse_search_params::decl(),
+      op_url_stringify_search_params::decl(),
+      op_urlpattern_parse::decl(),
+      op_urlpattern_process_match_input::decl(),
+    ])
     .build()
 }
 

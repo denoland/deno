@@ -33,9 +33,9 @@ use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
-use deno_core::RegisterCtx;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -642,12 +642,14 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>(ctx: &mut RegisterCtx) {
-  ctx.register("op_tls_start", op_tls_start::<P>);
-  ctx.register("op_tls_connect", op_tls_connect::<P>);
-  ctx.register("op_tls_listen", op_tls_listen::<P>);
-  ctx.register("op_tls_accept", op_tls_accept);
-  ctx.register("op_tls_handshake", op_tls_handshake);
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+  vec![
+    op_tls_start<P>::decl(),
+    op_tls_connect<P>::decl(),
+    op_tls_listen<P>::decl(),
+    op_tls_accept::decl(),
+    op_tls_handshake::decl(),
+  ]
 }
 
 #[derive(Debug)]

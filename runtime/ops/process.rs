@@ -29,11 +29,7 @@ use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_run", op_run);
-      ctx.register("op_run_status", op_run_status);
-      ctx.register("op_kill", op_kill);
-    })
+    .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
     .build()
 }
 

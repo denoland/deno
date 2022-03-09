@@ -12,7 +12,7 @@ use deno_net::ops_tls::TlsStreamResource;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| ctx.register("op_http_start", op_http_start))
+    .ops(vec![op_http_start::decl()])
     .build()
 }
 

@@ -18,14 +18,14 @@ use self::sync_fetch::op_worker_sync_fetch;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_worker_post_message", op_worker_post_message);
-      ctx.register("op_worker_recv_message", op_worker_recv_message);
+    .ops(vec![
+      op_worker_post_message::decl(),
+      op_worker_recv_message::decl(),
       // Notify host that guest worker closes.
-      ctx.register("op_worker_close", op_worker_close);
-      ctx.register("op_worker_get_type", op_worker_get_type);
-      ctx.register("op_worker_sync_fetch", op_worker_sync_fetch);
-    })
+      op_worker_close::decl(),
+      op_worker_get_type::decl(),
+      op_worker_sync_fetch::decl(),
+    ])
     .build()
 }
 

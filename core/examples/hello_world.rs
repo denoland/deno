@@ -19,7 +19,7 @@ fn op_sum(_state: &mut OpState, nums: Vec<f64>, _: ()) -> Result<f64, ()> {
 fn main() {
   // Build a deno_core::Extension providing custom ops
   let ext = Extension::builder()
-    .ops(|ctx| {
+    .ops(vec![
       // An op for summing an array of numbers
       ctx.register(
         "op_sum",
@@ -27,7 +27,7 @@ fn main() {
         // and serializes the returned Result & value
         op_sum,
       );
-    })
+    ])
     .build();
 
   // Initialize a runtime instance

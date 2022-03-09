@@ -266,12 +266,12 @@ fn create_compiler_snapshot(
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     extensions: vec![Extension::builder()
-      .ops(|ctx| {
-        ctx.register("op_build_info", op_build_info);
-        ctx.register("op_cwd", op_cwd);
-        ctx.register("op_exists", op_exists);
-        ctx.register("op_load", op_load);
-      })
+      .ops(vec![
+        op_build_info::decl(),
+        op_cwd::decl(),
+        op_exists::decl(),
+        op_load::decl(),
+      ])
       .state(move |state| {
         state.put(op_crate_libs.clone());
         state.put(build_libs.clone());

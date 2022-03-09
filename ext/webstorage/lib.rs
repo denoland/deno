@@ -25,15 +25,15 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
       prefix "deno:ext/webstorage",
       "01_webstorage.js",
     ))
-    .ops(|ctx| {
-      ctx.register("op_webstorage_length", op_webstorage_length);
-      ctx.register("op_webstorage_key", op_webstorage_key);
-      ctx.register("op_webstorage_set", op_webstorage_set);
-      ctx.register("op_webstorage_get", op_webstorage_get);
-      ctx.register("op_webstorage_remove", op_webstorage_remove);
-      ctx.register("op_webstorage_clear", op_webstorage_clear);
-      ctx.register("op_webstorage_iterate_keys", op_webstorage_iterate_keys);
-    })
+    .ops(vec![
+      op_webstorage_length::decl(),
+      op_webstorage_key::decl(),
+      op_webstorage_set::decl(),
+      op_webstorage_get::decl(),
+      op_webstorage_remove::decl(),
+      op_webstorage_clear::decl(),
+      op_webstorage_iterate_keys::decl(),
+    ])
     .state(move |state| {
       if let Some(origin_storage_dir) = &origin_storage_dir {
         state.put(OriginStorageDir(origin_storage_dir.clone()));

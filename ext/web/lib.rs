@@ -82,38 +82,35 @@ pub fn init<P: TimersPermission + 'static>(
       "14_compression.js",
       "15_performance.js",
     ))
-    .ops(|ctx| {
+    .ops(vec![
       ctx.register("op_base64_decode", op_base64_decode);
       ctx.register("op_base64_encode", op_base64_encode);
       ctx.register("op_base64_atob", op_base64_atob);
       ctx.register("op_base64_btoa", op_base64_btoa);
-      ctx.register("op_encoding_normalize_label", op_encoding_normalize_label);
-      ctx.register("op_encoding_new_decoder", op_encoding_new_decoder);
-      ctx.register("op_encoding_decode", op_encoding_decode);
-      ctx.register("op_encoding_encode_into", op_encoding_encode_into);
-      ctx.register("op_blob_create_part", op_blob_create_part);
-      ctx.register("op_blob_slice_part", op_blob_slice_part);
-      ctx.register("op_blob_read_part", op_blob_read_part);
-      ctx.register("op_blob_remove_part", op_blob_remove_part);
-      ctx.register("op_blob_create_object_url", op_blob_create_object_url);
-      ctx.register("op_blob_revoke_object_url", op_blob_revoke_object_url);
-      ctx.register("op_blob_from_object_url", op_blob_from_object_url);
-      ctx.register(
-        "op_message_port_create_entangled",
-        op_message_port_create_entangled,
-      );
+      op_encoding_normalize_label::decl(),
+      op_encoding_new_decoder::decl(),
+      op_encoding_decode::decl(),
+      op_encoding_encode_into::decl(),
+      op_blob_create_part::decl(),
+      op_blob_slice_part::decl(),
+      op_blob_read_part::decl(),
+      op_blob_remove_part::decl(),
+      op_blob_create_object_url::decl(),
+      op_blob_revoke_object_url::decl(),
+      op_blob_from_object_url::decl(),
+      op_message_port_create_entangled::decl(),
       ctx
         .register("op_message_port_post_message", op_message_port_post_message);
       ctx
         .register("op_message_port_recv_message", op_message_port_recv_message);
-      ctx.register("op_compression_new", compression::op_compression_new);
-      ctx.register("op_compression_write", compression::op_compression_write);
-      ctx.register("op_compression_finish", compression::op_compression_finish);
+      compression::op_compression_new::decl(),
+      compression::op_compression_write::decl(),
+      compression::op_compression_finish::decl(),
       ctx.register("op_now", op_now::<P>);
-      ctx.register("op_timer_handle", op_timer_handle);
-      ctx.register("op_sleep", op_sleep);
+      op_timer_handle::decl(),
+      op_sleep::decl(),
       ctx.register("op_sleep_sync", op_sleep_sync::<P>);
-    })
+    ])
     .state(move |state| {
       state.put(blob_store.clone());
       if let Some(location) = maybe_location.clone() {

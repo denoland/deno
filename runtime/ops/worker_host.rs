@@ -121,13 +121,13 @@ pub fn init(
 
       Ok(())
     })
-    .ops(|ctx| {
-      ctx.register("op_create_worker", op_create_worker);
-      ctx.register("op_host_terminate_worker", op_host_terminate_worker);
-      ctx.register("op_host_post_message", op_host_post_message);
-      ctx.register("op_host_recv_ctrl", op_host_recv_ctrl);
-      ctx.register("op_host_recv_message", op_host_recv_message);
-    })
+    .ops(vec![
+      op_create_worker::decl(),
+      op_host_terminate_worker::decl(),
+      op_host_post_message::decl(),
+      op_host_recv_ctrl::decl(),
+      op_host_recv_message::decl(),
+    ])
     .build()
 }
 

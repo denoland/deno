@@ -88,21 +88,21 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       "00_crypto.js",
       "01_webidl.js",
     ))
-    .ops(|ctx| {
-      ctx.register("op_crypto_get_random_values", op_crypto_get_random_values);
-      ctx.register("op_crypto_generate_key", op_crypto_generate_key);
-      ctx.register("op_crypto_sign_key", op_crypto_sign_key);
-      ctx.register("op_crypto_verify_key", op_crypto_verify_key);
-      ctx.register("op_crypto_derive_bits", op_crypto_derive_bits);
-      ctx.register("op_crypto_import_key", op_crypto_import_key);
-      ctx.register("op_crypto_export_key", op_crypto_export_key);
-      ctx.register("op_crypto_encrypt", op_crypto_encrypt);
-      ctx.register("op_crypto_decrypt", op_crypto_decrypt);
-      ctx.register("op_crypto_subtle_digest", op_crypto_subtle_digest);
-      ctx.register("op_crypto_random_uuid", op_crypto_random_uuid);
-      ctx.register("op_crypto_wrap_key", op_crypto_wrap_key);
-      ctx.register("op_crypto_unwrap_key", op_crypto_unwrap_key);
-    })
+    .ops(vec![
+      op_crypto_get_random_values::decl(),
+      op_crypto_generate_key::decl(),
+      op_crypto_sign_key::decl(),
+      op_crypto_verify_key::decl(),
+      op_crypto_derive_bits::decl(),
+      op_crypto_import_key::decl(),
+      op_crypto_export_key::decl(),
+      op_crypto_encrypt::decl(),
+      op_crypto_decrypt::decl(),
+      op_crypto_subtle_digest::decl(),
+      op_crypto_random_uuid::decl(),
+      op_crypto_wrap_key::decl(),
+      op_crypto_unwrap_key::decl(),
+    ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));

@@ -18,11 +18,11 @@ use std::collections::HashMap;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_apply_source_map", op_apply_source_map);
-      ctx.register("op_format_diagnostic", op_format_diagnostic);
-      ctx.register("op_format_file_name", op_format_file_name);
-    })
+    .ops(vec![
+      op_apply_source_map::decl(),
+      op_format_diagnostic::decl(),
+      op_format_file_name::decl(),
+    ])
     .build()
 }
 

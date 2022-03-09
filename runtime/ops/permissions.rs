@@ -13,11 +13,11 @@ use std::path::Path;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_query_permission", op_query_permission);
-      ctx.register("op_revoke_permission", op_revoke_permission);
-      ctx.register("op_request_permission", op_request_permission);
-    })
+    .ops(vec![
+      op_query_permission::decl(),
+      op_revoke_permission::decl(),
+      op_request_permission::decl(),
+    ])
     .build()
 }
 

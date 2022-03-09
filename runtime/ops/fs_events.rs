@@ -31,10 +31,7 @@ use tokio::sync::mpsc;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_fs_events_open", op_fs_events_open);
-      ctx.register("op_fs_events_poll", op_fs_events_poll);
-    })
+    .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
     .build()
 }
 

@@ -14,7 +14,7 @@ type Task = Box<dyn FnOnce()>;
 
 fn main() {
   let my_ext = Extension::builder()
-    .ops(|ctx| ctx.register("op_schedule_task", op_schedule_task))
+    .ops(vec![op_schedule_task::decl()])
     .event_loop_middleware(|state, cx| {
       let recv = state.borrow_mut::<mpsc::UnboundedReceiver<Task>>();
       let mut ref_loop = false;

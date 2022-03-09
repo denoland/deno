@@ -15,9 +15,9 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
-use deno_core::RegisterCtx;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -50,15 +50,17 @@ use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init<P: NetPermissions + 'static>(ctx: &mut RegisterCtx) {
-  ctx.register("op_net_accept", op_net_accept);
-  ctx.register("op_net_connect", op_net_connect::<P>);
-  ctx.register("op_net_listen", op_net_listen::<P>);
-  ctx.register("op_dgram_recv", op_dgram_recv);
-  ctx.register("op_dgram_send", op_dgram_send::<P>);
-  ctx.register("op_dns_resolve", op_dns_resolve::<P>);
-  ctx.register("op_set_nodelay", op_set_nodelay::<P>);
-  ctx.register("op_set_keepalive", op_set_keepalive::<P>);
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+  vec![
+    op_net_accept::decl(),
+    op_net_connect<P>::decl(),
+    op_net_listen<P>::decl(),
+    op_dgram_recv::decl(),
+    op_dgram_send<P>::decl(),
+    op_dns_resolve<P>::decl(),
+    op_set_nodelay<P>::decl(),
+    op_set_keepalive<P>::decl(),
+  ]
 }
 
 #[derive(Serialize)]

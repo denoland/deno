@@ -112,7 +112,7 @@ pub fn init(unstable: bool) -> Extension {
       "01_webgpu.js",
       "02_idl_types.js",
     ))
-    .ops(declare_webgpu_ops)
+    .ops(declare_webgpu_ops())
     .state(move |state| {
       // TODO: check & possibly streamline this
       // Unstable might be able to be OpMiddleware
@@ -565,309 +565,102 @@ pub fn op_webgpu_create_query_set(
   ) => state, WebGpuQuerySet)
 }
 
-fn declare_webgpu_ops(ctx: &mut RegisterCtx) {
-  // Request device/adapter
-  ctx.register("op_webgpu_request_adapter", op_webgpu_request_adapter);
-  ctx.register("op_webgpu_request_device", op_webgpu_request_device);
-  // Query Set
-  ctx.register("op_webgpu_create_query_set", op_webgpu_create_query_set);
-  // buffer
-  ctx.register("op_webgpu_create_buffer", buffer::op_webgpu_create_buffer);
-  ctx.register(
-    "op_webgpu_buffer_get_mapped_range",
-    buffer::op_webgpu_buffer_get_mapped_range,
-  );
-  ctx.register("op_webgpu_buffer_unmap", buffer::op_webgpu_buffer_unmap);
-  // buffer async
-  ctx.register(
-    "op_webgpu_buffer_get_map_async",
-    buffer::op_webgpu_buffer_get_map_async,
-  );
-  // remaining sync ops
+fn declare_webgpu_ops() -> Vec<OpPair> {
+  vec![
+    // Request device/adapter
+    op_webgpu_request_adapter::decl(),
+    op_webgpu_request_device::decl(),
+    // Query Set
+    op_webgpu_create_query_set::decl(),
+    // buffer
+    buffer::op_webgpu_create_buffer::decl(),
+    buffer::op_webgpu_buffer_get_mapped_range::decl(),
+    buffer::op_webgpu_buffer_unmap::decl(),
+    // buffer async
+    buffer::op_webgpu_buffer_get_map_async::decl(),
+    // remaining sync ops
 
-  // texture
-  ctx.register(
-    "op_webgpu_create_texture",
-    texture::op_webgpu_create_texture,
-  );
-  ctx.register(
-    "op_webgpu_create_texture_view",
-    texture::op_webgpu_create_texture_view,
-  );
-  // sampler
-  ctx.register(
-    "op_webgpu_create_sampler",
-    sampler::op_webgpu_create_sampler,
-  );
-  // binding
-  ctx.register(
-    "op_webgpu_create_bind_group_layout",
-    binding::op_webgpu_create_bind_group_layout,
-  );
-  ctx.register(
-    "op_webgpu_create_pipeline_layout",
-    binding::op_webgpu_create_pipeline_layout,
-  );
-  ctx.register(
-    "op_webgpu_create_bind_group",
-    binding::op_webgpu_create_bind_group,
-  );
-  // pipeline
-  ctx.register(
-    "op_webgpu_create_compute_pipeline",
-    pipeline::op_webgpu_create_compute_pipeline,
-  );
-  ctx.register(
-    "op_webgpu_compute_pipeline_get_bind_group_layout",
-    pipeline::op_webgpu_compute_pipeline_get_bind_group_layout,
-  );
-  ctx.register(
-    "op_webgpu_create_render_pipeline",
-    pipeline::op_webgpu_create_render_pipeline,
-  );
-  ctx.register(
-    "op_webgpu_render_pipeline_get_bind_group_layout",
-    pipeline::op_webgpu_render_pipeline_get_bind_group_layout,
-  );
-  // command_encoder
-  ctx.register(
-    "op_webgpu_create_command_encoder",
-    command_encoder::op_webgpu_create_command_encoder,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_begin_render_pass",
-    command_encoder::op_webgpu_command_encoder_begin_render_pass,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_begin_compute_pass",
-    command_encoder::op_webgpu_command_encoder_begin_compute_pass,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_copy_buffer_to_buffer",
-    command_encoder::op_webgpu_command_encoder_copy_buffer_to_buffer,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_copy_buffer_to_texture",
-    command_encoder::op_webgpu_command_encoder_copy_buffer_to_texture,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_copy_texture_to_buffer",
-    command_encoder::op_webgpu_command_encoder_copy_texture_to_buffer,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_copy_texture_to_texture",
-    command_encoder::op_webgpu_command_encoder_copy_texture_to_texture,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_clear_buffer",
-    command_encoder::op_webgpu_command_encoder_clear_buffer,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_push_debug_group",
-    command_encoder::op_webgpu_command_encoder_push_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_pop_debug_group",
-    command_encoder::op_webgpu_command_encoder_pop_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_insert_debug_marker",
-    command_encoder::op_webgpu_command_encoder_insert_debug_marker,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_write_timestamp",
-    command_encoder::op_webgpu_command_encoder_write_timestamp,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_resolve_query_set",
-    command_encoder::op_webgpu_command_encoder_resolve_query_set,
-  );
-  ctx.register(
-    "op_webgpu_command_encoder_finish",
-    command_encoder::op_webgpu_command_encoder_finish,
-  );
-  // render_pass
-  ctx.register(
-    "op_webgpu_render_pass_set_viewport",
-    render_pass::op_webgpu_render_pass_set_viewport,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_scissor_rect",
-    render_pass::op_webgpu_render_pass_set_scissor_rect,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_blend_constant",
-    render_pass::op_webgpu_render_pass_set_blend_constant,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_stencil_reference",
-    render_pass::op_webgpu_render_pass_set_stencil_reference,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_begin_pipeline_statistics_query",
-    render_pass::op_webgpu_render_pass_begin_pipeline_statistics_query,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_end_pipeline_statistics_query",
-    render_pass::op_webgpu_render_pass_end_pipeline_statistics_query,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_write_timestamp",
-    render_pass::op_webgpu_render_pass_write_timestamp,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_execute_bundles",
-    render_pass::op_webgpu_render_pass_execute_bundles,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_end_pass",
-    render_pass::op_webgpu_render_pass_end_pass,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_bind_group",
-    render_pass::op_webgpu_render_pass_set_bind_group,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_push_debug_group",
-    render_pass::op_webgpu_render_pass_push_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_pop_debug_group",
-    render_pass::op_webgpu_render_pass_pop_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_insert_debug_marker",
-    render_pass::op_webgpu_render_pass_insert_debug_marker,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_pipeline",
-    render_pass::op_webgpu_render_pass_set_pipeline,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_index_buffer",
-    render_pass::op_webgpu_render_pass_set_index_buffer,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_set_vertex_buffer",
-    render_pass::op_webgpu_render_pass_set_vertex_buffer,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_draw",
-    render_pass::op_webgpu_render_pass_draw,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_draw_indexed",
-    render_pass::op_webgpu_render_pass_draw_indexed,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_draw_indirect",
-    render_pass::op_webgpu_render_pass_draw_indirect,
-  );
-  ctx.register(
-    "op_webgpu_render_pass_draw_indexed_indirect",
-    render_pass::op_webgpu_render_pass_draw_indexed_indirect,
-  );
-  // compute_pass
-  ctx.register(
-    "op_webgpu_compute_pass_set_pipeline",
-    compute_pass::op_webgpu_compute_pass_set_pipeline,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_dispatch",
-    compute_pass::op_webgpu_compute_pass_dispatch,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_dispatch_indirect",
-    compute_pass::op_webgpu_compute_pass_dispatch_indirect,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_begin_pipeline_statistics_query",
-    compute_pass::op_webgpu_compute_pass_begin_pipeline_statistics_query,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_end_pipeline_statistics_query",
-    compute_pass::op_webgpu_compute_pass_end_pipeline_statistics_query,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_write_timestamp",
-    compute_pass::op_webgpu_compute_pass_write_timestamp,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_end_pass",
-    compute_pass::op_webgpu_compute_pass_end_pass,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_set_bind_group",
-    compute_pass::op_webgpu_compute_pass_set_bind_group,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_push_debug_group",
-    compute_pass::op_webgpu_compute_pass_push_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_pop_debug_group",
-    compute_pass::op_webgpu_compute_pass_pop_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_compute_pass_insert_debug_marker",
-    compute_pass::op_webgpu_compute_pass_insert_debug_marker,
-  );
-  // bundle
-  ctx.register(
-    "op_webgpu_create_render_bundle_encoder",
-    bundle::op_webgpu_create_render_bundle_encoder,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_finish",
-    bundle::op_webgpu_render_bundle_encoder_finish,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_set_bind_group",
-    bundle::op_webgpu_render_bundle_encoder_set_bind_group,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_push_debug_group",
-    bundle::op_webgpu_render_bundle_encoder_push_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_pop_debug_group",
-    bundle::op_webgpu_render_bundle_encoder_pop_debug_group,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_insert_debug_marker",
-    bundle::op_webgpu_render_bundle_encoder_insert_debug_marker,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_set_pipeline",
-    bundle::op_webgpu_render_bundle_encoder_set_pipeline,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_set_index_buffer",
-    bundle::op_webgpu_render_bundle_encoder_set_index_buffer,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_set_vertex_buffer",
-    bundle::op_webgpu_render_bundle_encoder_set_vertex_buffer,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_draw",
-    bundle::op_webgpu_render_bundle_encoder_draw,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_draw_indexed",
-    bundle::op_webgpu_render_bundle_encoder_draw_indexed,
-  );
-  ctx.register(
-    "op_webgpu_render_bundle_encoder_draw_indirect",
-    bundle::op_webgpu_render_bundle_encoder_draw_indirect,
-  );
-  // queue
-  ctx.register("op_webgpu_queue_submit", queue::op_webgpu_queue_submit);
-  ctx.register("op_webgpu_write_buffer", queue::op_webgpu_write_buffer);
-  ctx.register("op_webgpu_write_texture", queue::op_webgpu_write_texture);
-  // shader
-  ctx.register(
-    "op_webgpu_create_shader_module",
-    shader::op_webgpu_create_shader_module,
-  );
+    // texture
+    texture::op_webgpu_create_texture::decl(),
+    texture::op_webgpu_create_texture_view::decl(),
+    // sampler
+    sampler::op_webgpu_create_sampler::decl(),
+    // binding
+    binding::op_webgpu_create_bind_group_layout::decl(),
+    binding::op_webgpu_create_pipeline_layout::decl(),
+    binding::op_webgpu_create_bind_group::decl(),
+    // pipeline
+    pipeline::op_webgpu_create_compute_pipeline::decl(),
+    pipeline::op_webgpu_compute_pipeline_get_bind_group_layout::decl(),
+    pipeline::op_webgpu_create_render_pipeline::decl(),
+    pipeline::op_webgpu_render_pipeline_get_bind_group_layout::decl(),
+    // command_encoder
+    command_encoder::op_webgpu_create_command_encoder::decl(),
+    command_encoder::op_webgpu_command_encoder_begin_render_pass::decl(),
+    command_encoder::op_webgpu_command_encoder_begin_compute_pass::decl(),
+    command_encoder::op_webgpu_command_encoder_copy_buffer_to_buffer::decl(),
+    command_encoder::op_webgpu_command_encoder_copy_buffer_to_texture::decl(),
+    command_encoder::op_webgpu_command_encoder_copy_texture_to_buffer::decl(),
+    command_encoder::op_webgpu_command_encoder_copy_texture_to_texture::decl(),
+    command_encoder::op_webgpu_command_encoder_clear_buffer::decl(),
+    command_encoder::op_webgpu_command_encoder_push_debug_group::decl(),
+    command_encoder::op_webgpu_command_encoder_pop_debug_group::decl(),
+    command_encoder::op_webgpu_command_encoder_insert_debug_marker::decl(),
+    command_encoder::op_webgpu_command_encoder_write_timestamp::decl(),
+    command_encoder::op_webgpu_command_encoder_resolve_query_set::decl(),
+    command_encoder::op_webgpu_command_encoder_finish::decl(),
+    // render_pass
+    render_pass::op_webgpu_render_pass_set_viewport::decl(),
+    render_pass::op_webgpu_render_pass_set_scissor_rect::decl(),
+    render_pass::op_webgpu_render_pass_set_blend_constant::decl(),
+    render_pass::op_webgpu_render_pass_set_stencil_reference::decl(),
+    render_pass::op_webgpu_render_pass_begin_pipeline_statistics_query::decl(),
+    render_pass::op_webgpu_render_pass_end_pipeline_statistics_query::decl(),
+    render_pass::op_webgpu_render_pass_write_timestamp::decl(),
+    render_pass::op_webgpu_render_pass_execute_bundles::decl(),
+    render_pass::op_webgpu_render_pass_end_pass::decl(),
+    render_pass::op_webgpu_render_pass_set_bind_group::decl(),
+    render_pass::op_webgpu_render_pass_push_debug_group::decl(),
+    render_pass::op_webgpu_render_pass_pop_debug_group::decl(),
+    render_pass::op_webgpu_render_pass_insert_debug_marker::decl(),
+    render_pass::op_webgpu_render_pass_set_pipeline::decl(),
+    render_pass::op_webgpu_render_pass_set_index_buffer::decl(),
+    render_pass::op_webgpu_render_pass_set_vertex_buffer::decl(),
+    render_pass::op_webgpu_render_pass_draw::decl(),
+    render_pass::op_webgpu_render_pass_draw_indexed::decl(),
+    render_pass::op_webgpu_render_pass_draw_indirect::decl(),
+    render_pass::op_webgpu_render_pass_draw_indexed_indirect::decl(),
+    // compute_pass
+    compute_pass::op_webgpu_compute_pass_set_pipeline::decl(),
+    compute_pass::op_webgpu_compute_pass_dispatch::decl(),
+    compute_pass::op_webgpu_compute_pass_dispatch_indirect::decl(),
+    compute_pass::op_webgpu_compute_pass_begin_pipeline_statistics_query::decl(
+    ),
+    compute_pass::op_webgpu_compute_pass_end_pipeline_statistics_query::decl(),
+    compute_pass::op_webgpu_compute_pass_write_timestamp::decl(),
+    compute_pass::op_webgpu_compute_pass_end_pass::decl(),
+    compute_pass::op_webgpu_compute_pass_set_bind_group::decl(),
+    compute_pass::op_webgpu_compute_pass_push_debug_group::decl(),
+    compute_pass::op_webgpu_compute_pass_pop_debug_group::decl(),
+    compute_pass::op_webgpu_compute_pass_insert_debug_marker::decl(),
+    // bundle
+    bundle::op_webgpu_create_render_bundle_encoder::decl(),
+    bundle::op_webgpu_render_bundle_encoder_finish::decl(),
+    bundle::op_webgpu_render_bundle_encoder_set_bind_group::decl(),
+    bundle::op_webgpu_render_bundle_encoder_push_debug_group::decl(),
+    bundle::op_webgpu_render_bundle_encoder_pop_debug_group::decl(),
+    bundle::op_webgpu_render_bundle_encoder_insert_debug_marker::decl(),
+    bundle::op_webgpu_render_bundle_encoder_set_pipeline::decl(),
+    bundle::op_webgpu_render_bundle_encoder_set_index_buffer::decl(),
+    bundle::op_webgpu_render_bundle_encoder_set_vertex_buffer::decl(),
+    bundle::op_webgpu_render_bundle_encoder_draw::decl(),
+    bundle::op_webgpu_render_bundle_encoder_draw_indexed::decl(),
+    bundle::op_webgpu_render_bundle_encoder_draw_indirect::decl(),
+    // queue
+    queue::op_webgpu_queue_submit::decl(),
+    queue::op_webgpu_write_buffer::decl(),
+    queue::op_webgpu_write_texture::decl(),
+    // shader
+    shader::op_webgpu_create_shader_module::decl(),
+  ]
 }

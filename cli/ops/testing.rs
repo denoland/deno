@@ -13,12 +13,12 @@ use uuid::Uuid;
 
 pub fn init(sender: Sender<TestEvent>) -> Extension {
   Extension::builder()
-    .ops(|ctx| {
-      ctx.register("op_pledge_test_permissions", op_pledge_test_permissions);
-      ctx.register("op_restore_test_permissions", op_restore_test_permissions);
-      ctx.register("op_get_test_origin", op_get_test_origin);
-      ctx.register("op_dispatch_test_event", op_dispatch_test_event);
-    })
+    .ops(vec![
+      op_pledge_test_permissions::decl(),
+      op_restore_test_permissions::decl(),
+      op_get_test_origin::decl(),
+      op_dispatch_test_event::decl(),
+    ])
     .state(move |state| {
       state.put(sender.clone());
       Ok(())

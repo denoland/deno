@@ -65,18 +65,18 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         pub fn name() -> &'static str {
           stringify!(#name)
         }
-        
+
         pub fn v8_cb() -> deno_core::v8::FunctionCallback {
           use deno_core::v8::MapFnTo;
           Self::v8_func.map_fn_to()
         }
-        
+
         pub fn decl() -> (&'static str, deno_core::v8::FunctionCallback) {
           (Self::name(), Self::v8_cb())
         }
-        
+
         #original_func
-      
+
         pub fn v8_func #generics (
           scope: &mut deno_core::v8::HandleScope,
           args: deno_core::v8::FunctionCallbackArguments,
@@ -124,23 +124,23 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
       #[allow(non_camel_case_types)]
       pub struct #name;
-      
+
       impl #name {
         pub fn name() -> &'static str {
           stringify!(#name)
         }
-        
+
         pub fn v8_cb() -> deno_core::v8::FunctionCallback {
           use deno_core::v8::MapFnTo;
           Self::v8_func.map_fn_to()
         }
-        
+
         pub fn decl() -> (&'static str, deno_core::v8::FunctionCallback) {
           (Self::name(), Self::v8_cb())
         }
-        
+
         #original_func
-        
+
         #[inline]
         pub fn v8_func #generics (
           scope: &mut deno_core::v8::HandleScope,
