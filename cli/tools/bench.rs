@@ -414,7 +414,7 @@ async fn bench_specifiers(
 
           BenchEvent::IterationFinish(_iteration) => {
             let duration_of_iter =
-              Instant::now() - summary.current_bench.current_start;
+              summary.current_bench.current_start.elapsed();
             summary
               .current_bench
               .measures
