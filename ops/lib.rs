@@ -2,12 +2,31 @@ use proc_macro::TokenStream;
 use quote::quote;
 
 #[proc_macro_attribute]
-pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
+  let attr = syn::parse_macro_input!(attr as syn::AttributeArgs);
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
   let type_params = &func.sig.generics.params;
   let where_clause = &func.sig.generics.where_clause;
+
+  // Should the macro preserve the original op?
+  // Note that the function is renamed to `original_<NAME>`.
+  // This is useful for testing purposes.
+  //
+  // #[op(preserve_original)]
+  let preserve_original = match attr.get(0).as_ref() {
+    Some(syn::NestedMeta::Meta(syn::Meta::Path(ref attr_ident))) => {
+      if attr_ident.is_ident("preserve_original") {
+        let mut func = func.clone();
+        func.sig.ident = quote::format_ident!("original_{}", &func.sig.ident);
+        quote! { #func }
+      } else {
+        quote! {}
+      }
+    }
+    _ => quote! {},
+  };
 
   let inputs = &func.sig.inputs;
   let output = &func.sig.output;
@@ -91,8 +110,9 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let result = #name::<#type_params>(op_state.clone(), a, b).await;
           (promise_id, op_id, serialize_op_result(result, op_state))
         }));
-
       }
+
+      #preserve_original
     })
   } else {
     TokenStream::from(quote! {
@@ -122,6 +142,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #ret
       }
+
+      #preserve_original
     })
   }
 }

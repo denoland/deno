@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Error;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -13,10 +14,7 @@ type Task = Box<dyn FnOnce()>;
 
 fn main() {
   let my_ext = Extension::builder()
-    .ops(vec![(
-      "op_schedule_task",
-      deno_core::op_sync(op_schedule_task),
-    )])
+    .ops(|ctx| ctx.register("op_schedule_task", op_schedule_task))
     .event_loop_middleware(|state, cx| {
       let recv = state.borrow_mut::<mpsc::UnboundedReceiver<Task>>();
       let mut ref_loop = false;
@@ -58,6 +56,7 @@ fn main() {
   runtime.block_on(future).unwrap();
 }
 
+#[op]
 fn op_schedule_task(state: &mut OpState, i: u8, _: ()) -> Result<(), Error> {
   let tx = state.borrow_mut::<mpsc::UnboundedSender<Task>>();
   tx.unbounded_send(Box::new(move || println!("Hello, world! x{}", i)))

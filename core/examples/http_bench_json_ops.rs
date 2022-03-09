@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
+use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -119,10 +120,10 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let ext = deno_core::Extension::builder()
-    .ops(vec![
-      ("listen", deno_core::op_sync(op_listen)),
-      ("accept", deno_core::op_async(op_accept)),
-    ])
+    .ops(|ctx| {
+      ctx.register("listen", op_listen);
+      ctx.register("accept", op_accept);
+    })
     .build();
 
   JsRuntime::new(deno_core::RuntimeOptions {
@@ -131,6 +132,7 @@ fn create_js_runtime() -> JsRuntime {
   })
 }
 
+#[op]
 fn op_listen(state: &mut OpState, _: (), _: ()) -> Result<ResourceId, Error> {
   log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -141,6 +143,7 @@ fn op_listen(state: &mut OpState, _: (), _: ()) -> Result<ResourceId, Error> {
   Ok(rid)
 }
 
+#[op]
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

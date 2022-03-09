@@ -306,7 +306,7 @@ struct CreateHashArgs {
   data: String,
 }
 
-#[op]
+#[op(preserve_original)]
 fn op_create_hash(
   s: &mut OpState,
   args: Value,
@@ -346,7 +346,7 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-#[op]
+#[op(preserve_original)]
 fn op_emit(
   state: &mut OpState,
   args: EmitArgs,
@@ -451,7 +451,7 @@ fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   }
 }
 
-#[op]
+#[op(preserve_original)]
 fn op_load(state: &mut OpState, args: Value, _: ()) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
@@ -517,7 +517,7 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-#[op]
+#[op(preserve_original)]
 fn op_resolve(
   state: &mut OpState,
   args: ResolveArgs,
@@ -628,7 +628,7 @@ struct RespondArgs {
   pub stats: emit::Stats,
 }
 
-#[op]
+#[op(preserve_original)]
 fn op_respond(
   state: &mut OpState,
   args: Value,
@@ -874,9 +874,12 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
-    let actual =
-      op_create_hash(&mut state, json!({ "data": "some sort of content" }))
-        .expect("could not invoke op");
+    let actual = original_op_create_hash(
+      &mut state,
+      json!({ "data": "some sort of content" }),
+      (),
+    )
+    .expect("could not invoke op");
     assert_eq!(
       actual,
       json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
@@ -920,13 +923,14 @@ mod tests {
   #[tokio::test]
   async fn test_emit() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit(
+    let actual = original_op_emit(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
         file_name: "cache:///some/file.js".to_string(),
         maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
       },
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -948,7 +952,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_strange_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit(
+    let actual = original_op_emit(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -957,6 +961,7 @@ mod tests {
           vec!["file:///some/file.ts?q=.json".to_string()],
         ),
       },
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -978,13 +983,14 @@ mod tests {
   #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit(
+    let actual = original_op_emit(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
         file_name: "deno:///.tsbuildinfo".to_string(),
         maybe_specifiers: None,
       },
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -1003,9 +1009,10 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load(
+    let actual = original_op_load(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(
@@ -1034,9 +1041,12 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let value =
-      op_load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
-        .expect("should have invoked op");
+    let value = original_op_load(
+      &mut state,
+      json!({ "specifier": "asset:///lib.dom.d.ts" }),
+      (),
+    )
+    .expect("should have invoked op");
     let actual: LoadResponse =
       serde_json::from_value(value).expect("failed to deserialize");
     let expected = get_asset("lib.dom.d.ts").unwrap();
@@ -1053,9 +1063,12 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual =
-      op_load(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
-        .expect("should have invoked op");
+    let actual = original_op_load(
+      &mut state,
+      json!({ "specifier": "deno:///.tsbuildinfo"}),
+      (),
+    )
+    .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
@@ -1069,9 +1082,10 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load(
+    let actual = original_op_load(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(
@@ -1092,12 +1106,13 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve(
+    let actual = original_op_resolve(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
         specifiers: vec!["./b.ts".to_string()],
       },
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
@@ -1111,12 +1126,13 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve(
+    let actual = original_op_resolve(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
         specifiers: vec!["./bad.ts".to_string()],
       },
+      (),
     )
     .expect("should have not errored");
     assert_eq!(
@@ -1128,7 +1144,7 @@ mod tests {
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = op_respond(
+    let actual = original_op_respond(
       &mut state,
       json!({
         "diagnostics": [
@@ -1140,6 +1156,7 @@ mod tests {
         ],
         "stats": [["a", 12]]
       }),
+      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
