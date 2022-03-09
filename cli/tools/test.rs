@@ -822,12 +822,12 @@ async fn test_specifiers(
     create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
 
   let handler = {
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn(async move {
       let earlier = Instant::now();
       let mut summary = TestSummary::new();
       let mut used_only = false;
 
-      while let Some(event) = receiver.blocking_recv() {
+      while let Some(event) = receiver.recv().await {
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
