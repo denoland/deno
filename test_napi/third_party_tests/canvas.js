@@ -17,4 +17,3 @@ ctx.closePath();
 ctx.stroke();
 
 canvas.encode("png").then(console.log);
-

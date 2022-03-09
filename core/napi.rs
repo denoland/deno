@@ -271,14 +271,14 @@ pub type PendingNapiAsyncWork = Box<dyn FnOnce()>;
 
 pub struct NapiState {
   // Async tasks.
-  pub pending_napi_async_work: Vec<PendingNapiAsyncWork>,
-  pub napi_async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
-  pub napi_async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
+  pub pending_async_work: Vec<PendingNapiAsyncWork>,
+  pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
+  pub async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
   // Thread safe functions.
   pub active_threadsafe_functions: usize,
-  pub napi_threadsafe_function_reciever:
+  pub threadsafe_function_receiver:
     mpsc::UnboundedReceiver<ThreadSafeFunctionStatus>,
-  pub napi_threadsafe_function_sender:
+  pub threadsafe_function_sender:
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
 
@@ -411,17 +411,16 @@ pub fn napi_open_func<'s>(
     env_shared_ptr.write(env_shared);
   }
 
-  let (async_work_sender, tsfn_sender) = { 
+  let (async_work_sender, tsfn_sender) = {
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow();
-  
     let op_state = state.op_state.borrow();
     let napi_state = op_state.borrow::<NapiState>();
-
-    let async_work_sender = napi_state.napi_async_work_sender.clone();
-    let tsfn_sender = napi_state.napi_threadsafe_function_sender.clone();
-    (async_work_sender, tsfn_sender)
-  };  
+    (
+      napi_state.async_work_sender.clone(),
+      napi_state.threadsafe_function_sender.clone(),
+    )
+  };
 
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };

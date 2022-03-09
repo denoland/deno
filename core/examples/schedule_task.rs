@@ -17,8 +17,9 @@ fn main() {
       "op_schedule_task",
       deno_core::op_sync(op_schedule_task),
     )])
-    .event_loop_middleware(|state, cx| {
-      let recv = state.borrow_mut::<mpsc::UnboundedReceiver<Task>>();
+    .event_loop_middleware(|op_state_rc, cx| {
+      let mut op_state = op_state_rc.borrow_mut();
+      let recv = op_state.borrow_mut::<mpsc::UnboundedReceiver<Task>>();
       let mut ref_loop = false;
       while let Poll::Ready(Some(call)) = recv.poll_next_unpin(cx) {
         call();
