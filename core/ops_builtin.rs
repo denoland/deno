@@ -11,6 +11,7 @@ use deno_ops::op;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
+use v8::MapFnTo;
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
@@ -20,27 +21,46 @@ pub(crate) fn init_builtins() -> Extension {
       "01_core.js",
       "02_error.js",
     ))
-    .ops(|ctx| {
-      ctx.register("op_close", op_close);
-      ctx.register("op_try_close", op_try_close);
-      ctx.register("op_print", op_print);
-      ctx.register("op_resources", op_resources);
-      ctx.register("op_wasm_streaming_feed", op_wasm_streaming_feed);
-      ctx.register("op_wasm_streaming_abort", op_wasm_streaming_abort);
-      ctx.register("op_wasm_streaming_set_url", op_wasm_streaming_set_url);
-      ctx.register("op_void_sync", op_void_sync);
-      ctx.register("op_void_async", op_void_async);
+    .ops(vec![
+      ("op_close", op_close.map_fn_to()),
+      ("op_try_close", op_try_close.map_fn_to()),
+      ("op_print", op_print.map_fn_to()),
+      ("op_resources", op_resources.map_fn_to()),
+      ("op_wasm_streaming_feed", op_wasm_streaming_feed.map_fn_to()),
+      (
+        "op_wasm_streaming_abort",
+        op_wasm_streaming_abort.map_fn_to(),
+      ),
+      (
+        "op_wasm_streaming_set_url",
+        op_wasm_streaming_set_url.map_fn_to(),
+      ),
+      ("op_void_sync", op_void_sync.map_fn_to()),
+      ("op_void_async", op_void_async.map_fn_to()),
       // // TODO(@AaronO): track IO metrics for builtin streams
-      ctx.register("op_read", op_read);
-      ctx.register("op_write", op_write);
-      ctx.register("op_shutdown", op_shutdown);
-      ctx.register("op_metrics", op_metrics);
-    })
+      ("op_read", op_read.map_fn_to()),
+      ("op_write", op_write.map_fn_to()),
+      ("op_shutdown", op_shutdown.map_fn_to()),
+      ("op_metrics", op_metrics.map_fn_to()),
+    ])
     .build()
 }
 
 mod deno_core {
   pub use crate::*;
+}
+
+#[op]
+pub fn void_op_sync(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+  Ok(())
+}
+
+pub async fn void_op_async(
+  _state: Rc<RefCell<OpState>>,
+  _: (),
+  _: (),
+) -> Result<(), Error> {
+  Ok(())
 }
 
 /// Return map of resources with id as key

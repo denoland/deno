@@ -6,6 +6,7 @@ use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::extensions::OpEventLoopFn;
+use crate::extensions::OpPair;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -281,7 +282,8 @@ impl JsRuntime {
     options
       .extensions
       .insert(0, crate::ops_builtin::init_builtins());
-    let refs = bindings::external_references(&mut options.extensions);
+    let ops = Self::effective_ops(&mut options.extensions);
+    let refs = bindings::external_references(&ops);
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
@@ -292,8 +294,7 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &mut options.extensions, false);
+        let context = bindings::initialize_context(scope, &ops, false);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -319,11 +320,8 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &mut options.extensions,
-          snapshot_loaded,
-        );
+        let context =
+          bindings::initialize_context(scope, &ops, snapshot_loaded);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -457,35 +455,44 @@ impl JsRuntime {
     Ok(())
   }
 
+  /// Applies middleware to ops
+  fn effective_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
+    // Middleware
+    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+      .iter_mut()
+      .filter_map(|e| e.init_middleware())
+      .collect();
+
+    // macroware wraps an opfn in all the middleware
+    let macroware =
+      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+
+    // Flatten ops & apply middlware
+    extensions
+      .iter_mut()
+      .filter_map(|e| e.init_ops())
+      .flatten()
+      .map(|(name, opfn)| (name, macroware(name, opfn)))
+      .collect()
+  }
+
   /// Initializes ops of provided Extensions
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
-    // Middleware
-    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
-      .iter_mut()
-      .filter_map(|e| e.init_middleware())
-      .collect();
-    // macroware wraps an opfn in all the middleware
-    let _macroware =
-      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
-
-    // Register ops
+    // Setup state
     for e in extensions.iter_mut() {
       // ops are already registered during in bindings::initialize_context();
       e.init_state(&mut op_state.borrow_mut())?;
-      // Register each op after middlewaring it
-      // let ops = e.init_ops().unwrap_or_default();
-      // for (name, opfn) in ops {
-      //   self.register_op(name, macroware(name, opfn));
-      // }
 
+      // Setup event-loop middleware
       if let Some(middleware) = e.init_event_loop_middleware() {
         self.event_loop_middlewares.push(middleware);
       }
     }
+
     // Restore extensions
     self.extensions = extensions;
 

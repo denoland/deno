@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::extensions::Extension;
+use crate::extensions::OpPair;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -26,9 +26,7 @@ use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
-pub fn external_references(
-  extensions: &mut [Extension],
-) -> v8::ExternalReferences {
+pub fn external_references(ops: &[OpPair]) -> v8::ExternalReferences {
   let mut refs = vec![
     v8::ExternalReference {
       function: ref_op.map_fn_to(),
@@ -97,9 +95,10 @@ pub fn external_references(
       function: set_wasm_streaming_callback.map_fn_to(),
     },
   ];
-  for ext in extensions {
-    ext.init_external_references(&mut refs);
-  }
+  let op_refs = ops
+    .iter()
+    .map(|(_, opref)| v8::ExternalReference { function: *opref });
+  refs.extend(op_refs);
   v8::ExternalReferences::new(&refs)
 }
 
@@ -143,7 +142,7 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
-  extensions: &mut [Extension],
+  ops: &[OpPair],
   snapshot_loaded: bool,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
@@ -167,13 +166,15 @@ pub fn initialize_context<'s>(
     let ops_val = core_val.get(scope, ops_key.into()).unwrap();
     let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
       .unwrap_or_else(|_| v8::Object::new(scope));
-    for ex in extensions {
-      ex.init_ops(scope, ops_val);
+    for (name, opfn) in ops {
+      set_func_raw(scope, ops_val, name, *opfn);
     }
     return scope.escape(context);
   }
 
   // global.Deno = { core: {} };
+  let deno_key = v8::String::new(scope, "Deno").unwrap();
+  let core_key = v8::String::new(scope, "core").unwrap();
   let deno_val = v8::Object::new(scope);
   global.set(scope, deno_key.into(), deno_val.into());
   let core_val = v8::Object::new(scope);
@@ -235,13 +236,12 @@ pub fn initialize_context<'s>(
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
-  for ex in extensions {
-    ex.init_ops(scope, ops_val);
+  for (name, opfn) in ops {
+    set_func_raw(scope, ops_val, name, *opfn);
   }
   scope.escape(context)
 }
 
-#[inline(always)]
 pub fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
@@ -249,8 +249,19 @@ pub fn set_func(
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
   let key = v8::String::new(scope, name).unwrap();
-  let tmpl = v8::FunctionTemplate::new(scope, callback);
-  let val = tmpl.get_function(scope).unwrap();
+  let val = v8::Function::new(scope, callback).unwrap();
+  val.set_name(key);
+  obj.set(scope, key.into(), val.into());
+}
+
+pub fn set_func_raw(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  name: &'static str,
+  callback: v8::FunctionCallback,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let val = v8::Function::new_raw(scope, callback).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }

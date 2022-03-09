@@ -11,13 +11,15 @@ use deno_core::OpState;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::v8::MapFnTo;
+
 fn setup() -> Vec<Extension> {
   vec![Extension::builder()
-    .ops(|ctx| {
-      ctx.register("pi_json", op_pi_json);
-      ctx.register("pi_async", op_pi_async);
-      ctx.register("nop", op_nop);
-    })
+    .ops(vec![
+      ("pi_json", op_pi_json.map_fn_to()),
+      ("pi_async", op_pi_async.map_fn_to()),
+      ("nop", op_nop.map_fn_to()),
+    ])
     .build()]
 }
 

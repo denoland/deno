@@ -1,20 +1,20 @@
-use crate::OpFn;
+// use crate::OpFn;
 use crate::OpState;
 use anyhow::Error;
 use std::task::Context;
 
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
 pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
-pub type OpPair = (&'static str, OpFn);
-pub type OpInitFn = dyn Fn(&mut RegisterCtx) + 'static;
-pub type OpMiddlewareFn = dyn Fn(&'static str, OpFn) -> OpFn;
+pub type OpFnRef = v8::FunctionCallback;
+pub type OpPair = (&'static str, OpFnRef);
+pub type OpMiddlewareFn = dyn Fn(&'static str, OpFnRef) -> OpFnRef;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
 
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops_init: Option<Box<OpInitFn>>,
+  ops: Option<Vec<OpPair>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
@@ -38,31 +38,14 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(
-    &mut self,
-    scope: &mut v8::HandleScope,
-    obj: v8::Local<v8::Object>,
-  ) {
+  pub fn init_ops(&mut self) -> Option<Vec<OpPair>> {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
     }
     self.initialized = true;
 
-    if let Some(init) = &self.ops_init {
-      let mut ctx = RegisterCtx::Init { scope, obj };
-      init(&mut ctx);
-    }
-  }
-
-  pub fn init_external_references(
-    &mut self,
-    references: &mut Vec<v8::ExternalReference>,
-  ) {
-    if let Some(init) = &self.ops_init {
-      let mut ctx = RegisterCtx::ExternalReference { references };
-      init(&mut ctx);
-    }
+    self.ops.take()
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
@@ -99,38 +82,10 @@ impl Extension {
 #[derive(Default)]
 pub struct ExtensionBuilder {
   js: Vec<SourcePair>,
-  ops_init: Option<Box<OpInitFn>>,
+  ops: Vec<OpPair>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
-}
-
-pub enum RegisterCtx<'a, 'b, 'c> {
-  Init {
-    scope: &'a mut v8::HandleScope<'b>,
-    obj: v8::Local<'c, v8::Object>,
-  },
-  ExternalReference {
-    references: &'a mut Vec<v8::ExternalReference<'b>>,
-  },
-}
-
-impl<'a, 'b, 'c> RegisterCtx<'a, 'b, 'c> {
-  pub fn register<F>(&mut self, name: &'static str, op_fn: F)
-  where
-    F: v8::MapFnTo<v8::FunctionCallback>,
-  {
-    match self {
-      RegisterCtx::Init { scope, obj } => {
-        crate::bindings::set_func(scope, *obj, name, op_fn)
-      }
-      RegisterCtx::ExternalReference { references } => {
-        references.push(v8::ExternalReference {
-          function: op_fn.map_fn_to(),
-        });
-      }
-    }
-  }
 }
 
 impl ExtensionBuilder {
@@ -139,11 +94,8 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn ops<F>(&mut self, ops: F) -> &mut Self
-  where
-    F: Fn(&mut RegisterCtx) + 'static,
-  {
-    self.ops_init = Some(Box::new(ops));
+  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
+    self.ops.extend(ops);
     self
   }
 
@@ -157,7 +109,7 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, OpFn) -> OpFn + 'static,
+    F: Fn(&'static str, OpFnRef) -> OpFnRef + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
     self
@@ -173,9 +125,10 @@ impl ExtensionBuilder {
 
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
+    let ops = Some(std::mem::take(&mut self.ops));
     Extension {
       js_files,
-      ops_init: self.ops_init.take(),
+      ops,
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
       event_loop_middleware: self.event_loop_middleware.take(),
@@ -212,3 +165,29 @@ macro_rules! include_js_files {
     ]
   };
 }
+
+// #[macro_export]
+// macro_rules! ops {
+//   // A flattened group of async[] & sync[] subgroups
+//   ($($wrapper:ident[$($opfn:expr,)+],)+) => {
+//     vec![
+//       $(declare_ops!($wrapper[$($opfn,)+]),)+
+//     ].into_iter().flatten().collect()
+//   };
+
+//   // Async group
+//   (async[$($opfn:expr,)+]) => {
+//     vec![$((
+//       $crate::extensions::op_ident(stringify!($opfn)),
+//       $crate::op_async($opfn),
+//     ),)+]
+//   };
+//
+//   // Sync group
+//   (sync[$($opfn:expr,)+]) => {
+//     vec![$((
+//       $crate::extensions::op_ident(stringify!($opfn)),
+//       $crate::op_sync($opfn),
+//     ),)+]
+//   };
+// }
