@@ -874,7 +874,7 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
-    let actual = op_create_hash::func(
+    let actual = op_create_hash::call(
       &mut state,
       json!({ "data": "some sort of content" }),
       (),
@@ -923,7 +923,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit::func(
+    let actual = op_emit::call(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -952,7 +952,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_strange_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit::func(
+    let actual = op_emit::call(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -983,7 +983,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit::func(
+    let actual = op_emit::call(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -1009,7 +1009,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::func(
+    let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
       (),
@@ -1041,7 +1041,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let value = op_load::func(
+    let value = op_load::call(
       &mut state,
       json!({ "specifier": "asset:///lib.dom.d.ts" }),
       (),
@@ -1063,7 +1063,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::func(
+    let actual = op_load::call(
       &mut state,
       json!({ "specifier": "deno:///.tsbuildinfo"}),
       (),
@@ -1082,7 +1082,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load::func(
+    let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
       (),
@@ -1106,7 +1106,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve::func(
+    let actual = op_resolve::call(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1126,7 +1126,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve::func(
+    let actual = op_resolve::call(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1144,7 +1144,7 @@ mod tests {
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = op_respond::func(
+    let actual = op_respond::call(
       &mut state,
       json!({
         "diagnostics": [

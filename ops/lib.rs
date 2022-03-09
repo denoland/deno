@@ -9,10 +9,10 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let type_params = &func.sig.generics.params;
   let where_clause = &func.sig.generics.where_clause;
 
-  // Preserve the original func as op_foo::func()
+  // Preserve the original func as op_foo::call()
   let original_func = {
     let mut func = func.clone();
-    func.sig.ident = quote::format_ident!("func");
+    func.sig.ident = quote::format_ident!("call");
     quote! { #func }
   };
 

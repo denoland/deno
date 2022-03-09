@@ -883,7 +883,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
-      op_set_nodelay::func::<TestPermission>(state, rid, true).unwrap();
+      op_set_nodelay::call::<TestPermission>(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(socket.nodelay().unwrap());
@@ -895,7 +895,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      op_set_keepalive::func::<TestPermission>(state, rid, true).unwrap();
+      op_set_keepalive::call::<TestPermission>(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
@@ -940,7 +940,7 @@ mod tests {
     };
 
     let connect_fut =
-      op_net_connect::func::<TestPermission>(conn_state, connect_args, ());
+      op_net_connect::call::<TestPermission>(conn_state, connect_args, ());
     let conn = connect_fut.await.unwrap();
 
     let rid = conn.rid;

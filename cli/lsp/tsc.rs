@@ -3873,7 +3873,7 @@ mod tests {
     );
     let performance = Arc::new(Performance::default());
     let mut state = State::new(state_snapshot, performance);
-    let actual = op_exists::func(
+    let actual = op_exists::call(
       &mut state,
       SpecifierArgs {
         specifier: "/error/unknown:something/index.d.ts".to_string(),
