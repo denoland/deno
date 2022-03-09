@@ -2,14 +2,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::shared::*;
-use aes::cipher::generic_array::GenericArray;
-use aes::Aes192;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
-use aes_gcm::AeadCore;
+use aes_gcm::aead::generic_array::typenum::U12;
+use aes_gcm::aead::generic_array::typenum::U16;
+use aes_gcm::aead::generic_array::ArrayLength;
+use aes_gcm::aes::Aes128;
+use aes_gcm::aes::Aes192;
+use aes_gcm::aes::Aes256;
 use aes_gcm::AeadInPlace;
-use aes_gcm::Aes128Gcm;
-use aes_gcm::Aes256Gcm;
 use aes_gcm::NewAead;
 use aes_gcm::Nonce;
 use block_modes::BlockMode;
@@ -25,7 +26,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use elliptic_curve::consts::U12;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::PaddingScheme;
 use serde::Deserialize;
@@ -75,8 +75,6 @@ pub enum DecryptAlgorithm {
     tag_length: usize,
   },
 }
-
-type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
 
 pub async fn op_crypto_decrypt(
   _state: Rc<RefCell<OpState>>,
@@ -221,26 +219,54 @@ where
   Ok(plaintext)
 }
 
-fn decrypt_aes_gcm_gen<B>(
+fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
   key: &[u8],
-  tag: &GenericArray<u8, <B as AeadCore>::TagSize>,
-  nonce: &GenericArray<u8, <B as AeadCore>::NonceSize>,
+  tag: &aes_gcm::Tag,
+  nonce: &[u8],
+  length: usize,
   additional_data: Vec<u8>,
   plaintext: &mut [u8],
-) -> Result<(), AnyError>
-where
-  B: AeadInPlace + NewAead,
-{
-  let cipher =
-    B::new_from_slice(key).map_err(|_| operation_error("Decryption failed"))?;
-  cipher
-    .decrypt_in_place_detached(
-      nonce,
-      additional_data.as_slice(),
-      plaintext,
-      tag,
-    )
-    .map_err(|_| operation_error("Decryption failed"))?;
+) -> Result<(), AnyError> {
+  let nonce = Nonce::from_slice(nonce);
+  match length {
+    128 => {
+      let cipher = aes_gcm::AesGcm::<Aes128, N>::new_from_slice(key)
+        .map_err(|_| operation_error("Decryption failed"))?;
+      cipher
+        .decrypt_in_place_detached(
+          nonce,
+          additional_data.as_slice(),
+          plaintext,
+          tag,
+        )
+        .map_err(|_| operation_error("Decryption failed"))?
+    }
+    192 => {
+      let cipher = aes_gcm::AesGcm::<Aes192, N>::new_from_slice(key)
+        .map_err(|_| operation_error("Decryption failed"))?;
+      cipher
+        .decrypt_in_place_detached(
+          nonce,
+          additional_data.as_slice(),
+          plaintext,
+          tag,
+        )
+        .map_err(|_| operation_error("Decryption failed"))?
+    }
+    256 => {
+      let cipher = aes_gcm::AesGcm::<Aes256, N>::new_from_slice(key)
+        .map_err(|_| operation_error("Decryption failed"))?;
+      cipher
+        .decrypt_in_place_detached(
+          nonce,
+          additional_data.as_slice(),
+          plaintext,
+          tag,
+        )
+        .map_err(|_| operation_error("Decryption failed"))?
+    }
+    _ => return Err(type_error("invalid length")),
+  };
 
   Ok(())
 }
@@ -290,11 +316,6 @@ fn decrypt_aes_gcm(
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
 
-  // Fixed 96-bit nonce
-  if iv.len() != 12 {
-    return Err(type_error("iv length not equal to 12"));
-  }
-
   // The `aes_gcm` crate only supports 128 bits tag length.
   //
   // Note that encryption won't fail, it instead truncates the tag
@@ -303,37 +324,32 @@ fn decrypt_aes_gcm(
     return Err(type_error("tag length not equal to 128"));
   }
 
-  let nonce = Nonce::from_slice(&iv);
-
   let sep = data.len() - (tag_length / 8);
   let tag = &data[sep..];
 
   // The actual ciphertext, called plaintext because it is reused in place.
   let mut plaintext = data[..sep].to_vec();
-  match length {
-    128 => decrypt_aes_gcm_gen::<Aes128Gcm>(
+
+  // Fixed 96-bit or 128-bit nonce
+  match iv.len() {
+    12 => decrypt_aes_gcm_gen::<U12>(
       key,
       tag.into(),
-      nonce,
+      &iv,
+      length,
       additional_data,
       &mut plaintext,
     )?,
-    192 => decrypt_aes_gcm_gen::<Aes192Gcm>(
+    16 => decrypt_aes_gcm_gen::<U16>(
       key,
       tag.into(),
-      nonce,
+      &iv,
+      length,
       additional_data,
       &mut plaintext,
     )?,
-    256 => decrypt_aes_gcm_gen::<Aes256Gcm>(
-      key,
-      tag.into(),
-      nonce,
-      additional_data,
-      &mut plaintext,
-    )?,
-    _ => return Err(type_error("invalid length")),
-  };
+    _ => return Err(type_error("iv length not equal to 12 or 16")),
+  }
 
   Ok(plaintext)
 }

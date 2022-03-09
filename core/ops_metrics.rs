@@ -1,8 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::serde::Serialize;
 use crate::OpId;
-use std::cell::RefCell;
-use std::cell::RefMut;
+use std::cell::UnsafeCell;
 
 // TODO(@AaronO): split into AggregateMetrics & PerOpMetrics
 #[derive(Clone, Default, Debug, Serialize)]
@@ -26,18 +25,18 @@ pub struct OpMetrics {
 // TODO(@AaronO): track errors
 #[derive(Default, Debug)]
 pub struct OpsTracker {
-  pub ops: RefCell<Vec<OpMetrics>>,
+  pub ops: UnsafeCell<Vec<OpMetrics>>,
 }
 
 impl OpsTracker {
   pub fn per_op(&self) -> Vec<OpMetrics> {
-    self.ops.borrow().clone()
+    self.ops_mut().clone()
   }
 
   pub fn aggregate(&self) -> OpMetrics {
     let mut sum = OpMetrics::default();
 
-    for metrics in self.ops.borrow().iter() {
+    for metrics in self.ops_mut().iter() {
       sum.ops_dispatched += metrics.ops_dispatched;
       sum.ops_dispatched_sync += metrics.ops_dispatched_sync;
       sum.ops_dispatched_async += metrics.ops_dispatched_async;
@@ -54,35 +53,47 @@ impl OpsTracker {
     sum
   }
 
-  fn ensure_capacity(&self, op_id: OpId) {
-    let ops = &mut self.ops.borrow_mut();
+  #[allow(clippy::mut_from_ref)]
+  #[inline]
+  fn ops_mut(&self) -> &mut Vec<OpMetrics> {
+    unsafe { &mut *self.ops.get() }
+  }
+
+  #[inline]
+  fn ensure_capacity(ops: &mut Vec<OpMetrics>, op_id: OpId) {
     if op_id >= ops.len() {
-      let delta_len = 1 + op_id - ops.len();
-      ops.extend(vec![OpMetrics::default(); delta_len])
+      ops.resize(1 + op_id, OpMetrics::default())
     }
   }
 
-  fn metrics_mut(&self, id: OpId) -> RefMut<OpMetrics> {
-    self.ensure_capacity(id);
-    RefMut::map(self.ops.borrow_mut(), |ops| ops.get_mut(id).unwrap())
+  #[allow(clippy::mut_from_ref)]
+  #[inline]
+  fn metrics_mut(&self, id: OpId) -> &mut OpMetrics {
+    let ops = self.ops_mut();
+    // TODO(@AaronO): Pre-alloc capacity at runtime init once we forbid post-boot op registrations
+    Self::ensure_capacity(ops, id);
+    unsafe { ops.get_unchecked_mut(id) }
   }
 
+  #[inline]
   pub fn track_sync(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
+    let metrics = self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_completed += 1;
     metrics.ops_dispatched_sync += 1;
     metrics.ops_completed_sync += 1;
   }
 
+  #[inline]
   pub fn track_async(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
+    let metrics = self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_dispatched_async += 1;
   }
 
+  #[inline]
   pub fn track_async_completed(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
+    let metrics = self.metrics_mut(id);
     metrics.ops_completed += 1;
     metrics.ops_completed_async += 1;
   }
