@@ -31,7 +31,7 @@
 
   function reportError(error) {
     checkThis(this);
-    const prefix = "Failed to execute 'reportError' on 'Window'";
+    const prefix = "Failed to call 'reportError'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     const jsError = core.destructureError(error);
     const message = jsError.message;
