@@ -18,6 +18,7 @@
     ArrayPrototypeSort,
     ArrayPrototypeSplice,
     ObjectKeys,
+    SafeArrayIterator,
     StringPrototypeSlice,
     Symbol,
     SymbolFor,
@@ -345,7 +346,12 @@
           "op_url_parse_search_params",
           StringPrototypeSlice(this.search, 1),
         );
-        ArrayPrototypeSplice(params, 0, params.length, ...newParams);
+        ArrayPrototypeSplice(
+          params,
+          0,
+          params.length,
+          ...new SafeArrayIterator(newParams),
+        );
       }
     }
 

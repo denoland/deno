@@ -664,8 +664,13 @@
             );
           }
 
-          // 3. We only support 96-bit nonce for now.
-          if (normalizedAlgorithm.iv.byteLength !== 12) {
+          // 3. We only support 96-bit and 128-bit nonce.
+          if (
+            ArrayPrototypeIncludes(
+              [12, 16],
+              normalizedAlgorithm.iv.byteLength,
+            ) === undefined
+          ) {
             throw new DOMException(
               "Initialization vector length not supported",
               "NotSupportedError",
@@ -691,7 +696,8 @@
             algorithm: "AES-GCM",
             length: key[_algorithm].length,
             iv: normalizedAlgorithm.iv,
-            additionalData: normalizedAlgorithm.additionalData,
+            additionalData: normalizedAlgorithm.additionalData ||
+              null,
             tagLength: normalizedAlgorithm.tagLength,
           }, data);
 
@@ -3781,8 +3787,13 @@
         }
 
         // 2.
-        // We only support 96-bit nonce for now.
-        if (normalizedAlgorithm.iv.byteLength !== 12) {
+        // We only support 96-bit and 128-bit nonce.
+        if (
+          ArrayPrototypeIncludes(
+            [12, 16],
+            normalizedAlgorithm.iv.byteLength,
+          ) === undefined
+        ) {
           throw new DOMException(
             "Initialization vector length not supported",
             "NotSupportedError",
@@ -3825,7 +3836,7 @@
           algorithm: "AES-GCM",
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
-          additionalData: normalizedAlgorithm.additionalData,
+          additionalData: normalizedAlgorithm.additionalData || null,
           tagLength: normalizedAlgorithm.tagLength,
         }, data);
 

@@ -92,7 +92,7 @@ impl PermissionState {
       }
       PermissionState::Prompt if prompt => {
         let msg = Self::fmt_access(name, info);
-        if permission_prompt(&msg) {
+        if permission_prompt(&msg, name) {
           Self::log_perm_access(name, info);
           (Ok(()), true)
         } else {
@@ -135,7 +135,10 @@ impl UnitPermission {
 
   pub fn request(&mut self) -> PermissionState {
     if self.state == PermissionState::Prompt {
-      if permission_prompt(&format!("access to {}", self.description)) {
+      if permission_prompt(
+        &format!("access to {}", self.description),
+        self.name,
+      ) {
         self.state = PermissionState::Granted;
       } else {
         self.state = PermissionState::Denied;
@@ -311,10 +314,10 @@ impl UnaryPermission<ReadDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
-          "read access to \"{}\"",
-          display_path.display()
-        )) {
+        if permission_prompt(
+          &format!("read access to \"{}\"", display_path.display()),
+          self.name,
+        ) {
           self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
         } else {
@@ -331,7 +334,7 @@ impl UnaryPermission<ReadDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("read access") {
+        if permission_prompt("read access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -462,10 +465,10 @@ impl UnaryPermission<WriteDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
-          "write access to \"{}\"",
-          display_path.display()
-        )) {
+        if permission_prompt(
+          &format!("write access to \"{}\"", display_path.display()),
+          self.name,
+        ) {
           self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
         } else {
@@ -482,7 +485,7 @@ impl UnaryPermission<WriteDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("write access") {
+        if permission_prompt("write access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -600,7 +603,10 @@ impl UnaryPermission<NetDescriptor> {
       let state = self.query(Some(host));
       let host = NetDescriptor::new(&host);
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("network access to \"{}\"", host)) {
+        if permission_prompt(
+          &format!("network access to \"{}\"", host),
+          self.name,
+        ) {
           self.granted_list.insert(host);
           PermissionState::Granted
         } else {
@@ -617,7 +623,7 @@ impl UnaryPermission<NetDescriptor> {
     } else {
       let state = self.query::<&str>(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("network access") {
+        if permission_prompt("network access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -755,7 +761,7 @@ impl UnaryPermission<EnvDescriptor> {
     if let Some(env) = env {
       let state = self.query(Some(env));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("env access to \"{}\"", env)) {
+        if permission_prompt(&format!("env access to \"{}\"", env), self.name) {
           self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
         } else {
@@ -772,7 +778,7 @@ impl UnaryPermission<EnvDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("env access") {
+        if permission_prompt("env access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -871,7 +877,7 @@ impl UnaryPermission<RunDescriptor> {
     if let Some(cmd) = cmd {
       let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("run access to \"{}\"", cmd)) {
+        if permission_prompt(&format!("run access to \"{}\"", cmd), self.name) {
           self
             .granted_list
             .insert(RunDescriptor::from_str(cmd).unwrap());
@@ -894,7 +900,7 @@ impl UnaryPermission<RunDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("run access") {
+        if permission_prompt("run access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -997,10 +1003,10 @@ impl UnaryPermission<FfiDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
-          "ffi access to \"{}\"",
-          display_path.display()
-        )) {
+        if permission_prompt(
+          &format!("ffi access to \"{}\"", display_path.display()),
+          self.name,
+        ) {
           self.granted_list.insert(FfiDescriptor(resolved_path));
           PermissionState::Granted
         } else {
@@ -1017,7 +1023,7 @@ impl UnaryPermission<FfiDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("ffi access") {
+        if permission_prompt("ffi access", self.name) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -1126,7 +1132,7 @@ impl Default for Permissions {
       env: Permissions::new_env(&None, false),
       run: Permissions::new_run(&None, false),
       ffi: Permissions::new_ffi(&None, false),
-      hrtime: Permissions::new_hrtime(false, false),
+      hrtime: Permissions::new_hrtime(false),
     }
   }
 }
@@ -1233,12 +1239,12 @@ impl Permissions {
     }
   }
 
-  pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
+  pub fn new_hrtime(state: bool) -> UnitPermission {
     unit_permission_from_flag_bool(
       state,
       "hrtime",
       "high precision time",
-      prompt,
+      false, // never prompt for hrtime
     )
   }
 
@@ -1250,7 +1256,7 @@ impl Permissions {
       env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
       ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt),
-      hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
+      hrtime: Permissions::new_hrtime(opts.allow_hrtime),
     }
   }
 
@@ -1262,7 +1268,7 @@ impl Permissions {
       env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
       ffi: Permissions::new_ffi(&Some(vec![]), false),
-      hrtime: Permissions::new_hrtime(true, false),
+      hrtime: Permissions::new_hrtime(true),
     }
   }
 
@@ -1314,7 +1320,7 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
-impl deno_timers::TimersPermission for Permissions {
+impl deno_web::TimersPermission for Permissions {
   fn allow_hrtime(&mut self) -> bool {
     self.hrtime.check().is_ok()
   }
@@ -1867,7 +1873,7 @@ pub fn create_child_permissions(
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
-fn permission_prompt(message: &str) -> bool {
+fn permission_prompt(message: &str, name: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
@@ -1978,8 +1984,8 @@ fn permission_prompt(message: &str) -> bool {
 
   let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
-    "{}  ️Deno requests {}. Allow? {}",
-    PERMISSION_EMOJI, message, opts
+    "{}  ️Deno requests {}. Run again with --allow-{} to bypass this prompt.\n   Allow? {} ",
+    PERMISSION_EMOJI, message, name, opts
   );
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
@@ -2009,7 +2015,7 @@ fn permission_prompt(message: &str) -> bool {
 // When testing, permission prompt returns the value of STUB_PROMPT_VALUE
 // which we set from the test functions.
 #[cfg(test)]
-fn permission_prompt(_message: &str) -> bool {
+fn permission_prompt(_message: &str, _flag: &str) -> bool {
   STUB_PROMPT_VALUE.load(Ordering::SeqCst)
 }
 
@@ -2214,7 +2220,7 @@ mod tests {
     ];
 
     for (host, port) in domain_tests {
-      assert!(!perms.net.check(&(host, Some(port))).is_ok());
+      assert!(perms.net.check(&(host, Some(port))).is_err());
     }
   }
 
@@ -2370,7 +2376,7 @@ mod tests {
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_hrtime(false, false)
+        ..Permissions::new_hrtime(false)
       },
     };
     #[rustfmt::skip]
@@ -2390,13 +2396,13 @@ mod tests {
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
       assert_eq!(perms2.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms1.env.query(None), PermissionState::Granted);
-      assert_eq!(perms1.env.query(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms1.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms2.env.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.env.query(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms1.run.query(None), PermissionState::Granted);
-      assert_eq!(perms1.run.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms1.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.run.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
       assert_eq!(perms1.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
@@ -2427,15 +2433,15 @@ mod tests {
       prompt_value.set(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms.env.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
       prompt_value.set(true);
       assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
@@ -2486,7 +2492,7 @@ mod tests {
       },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
-        ..Permissions::new_hrtime(false, false)
+        ..Permissions::new_hrtime(false)
       },
     };
     #[rustfmt::skip]
@@ -2500,8 +2506,8 @@ mod tests {
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(9000)))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
+      assert_eq!(perms.env.revoke(Some("HOME")), PermissionState::Prompt);
+      assert_eq!(perms.run.revoke(Some("deno")), PermissionState::Prompt);
       assert_eq!(perms.ffi.revoke(Some(Path::new("deno"))), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
@@ -2516,7 +2522,7 @@ mod tests {
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       ffi: Permissions::new_ffi(&None, true),
-      hrtime: Permissions::new_hrtime(false, true),
+      hrtime: Permissions::new_hrtime(false),
     };
 
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
@@ -2554,10 +2560,7 @@ mod tests {
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("PATH").is_err());
 
-    prompt_value.set(true);
-    assert!(perms.hrtime.check().is_ok());
-    prompt_value.set(false);
-    assert!(perms.hrtime.check().is_ok());
+    assert!(perms.hrtime.check().is_err());
   }
 
   #[test]
@@ -2569,7 +2572,7 @@ mod tests {
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       ffi: Permissions::new_ffi(&None, true),
-      hrtime: Permissions::new_hrtime(false, true),
+      hrtime: Permissions::new_hrtime(false),
     };
 
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
@@ -2638,10 +2641,7 @@ mod tests {
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("hOmE").is_ok());
 
-    assert_eq!(
-      perms.env.revoke(Some(&"HomE".to_string())),
-      PermissionState::Prompt
-    );
+    assert_eq!(perms.env.revoke(Some("HomE")), PermissionState::Prompt);
   }
 
   #[test]
@@ -2787,7 +2787,7 @@ mod tests {
   fn test_create_child_permissions() {
     let mut main_perms = Permissions {
       env: Permissions::new_env(&Some(vec![]), false),
-      hrtime: Permissions::new_hrtime(true, false),
+      hrtime: Permissions::new_hrtime(true),
       net: Permissions::new_net(&Some(svec!["foo", "bar"]), false),
       ..Default::default()
     };
@@ -2846,7 +2846,6 @@ mod tests {
     let worker_perms = create_child_permissions(
       &mut main_perms,
       ChildPermissionsArg {
-        hrtime: ChildUnitPermissionArg::Granted,
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
         ..Default::default()

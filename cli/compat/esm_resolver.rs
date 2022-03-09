@@ -549,7 +549,7 @@ fn resolve_package_target_string(
 
   if invalid_segment_re.is_match(&subpath) {
     let request = if pattern {
-      match_.replace("*", &subpath)
+      match_.replace('*', &subpath)
     } else {
       format!("{}{}", match_, subpath)
     };
@@ -903,7 +903,7 @@ fn parse_package_name(
   }
 
   let package_name = if let Some(index) = separator_index {
-    specifier[0..=index].to_string()
+    specifier[0..index].to_string()
   } else {
     specifier.to_string()
   };
@@ -1196,6 +1196,22 @@ mod tests {
   }
 
   #[test]
+  fn package_subpath() {
+    let cwd = testdir("subpath");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
+    matches!(actual, ResolveResponse::CommonJs(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
+    let actual = node_resolve("foo/server.js", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/server.js")).unwrap();
+    matches!(actual, ResolveResponse::CommonJs(_));
+    assert_eq!(actual.to_result().unwrap(), expected);
+  }
+
+  #[test]
   fn basic_deps() {
     let cwd = testdir("basic_deps");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
@@ -1218,7 +1234,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.123.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.128.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     assert!(matches!(actual, ResolveResponse::Esm(_)));

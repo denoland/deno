@@ -12,6 +12,7 @@ use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::AnyError;
+use deno_core::futures::future::LocalFutureObj;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::serde::Deserialize;
@@ -42,12 +43,23 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
+pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
+  + Sync
+  + Send;
+
 /// A holder for callback that is used to create a new
 /// WebWorker. It's a struct instead of a type alias
 /// because `GothamState` used in `OpState` overrides
-/// value if type alises have the same underlying type
+/// value if type aliases have the same underlying type
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+
+/// A holder for callback that can used to preload some modules into a WebWorker
+/// before actual worker code is executed. It's a struct instead of a type
+/// because `GothamState` used in `OpState` overrides
+/// value if type aliases have the same underlying type
+#[derive(Clone)]
+pub struct PreloadModuleCbHolder(Arc<PreloadModuleCb>);
 
 pub struct WorkerThread {
   // It's an Option so we can take the value before dropping the WorkerThread.
@@ -91,15 +103,21 @@ impl Drop for WorkerThread {
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
-pub fn init(create_web_worker_cb: Arc<CreateWebWorkerCb>) -> Extension {
+pub fn init(
+  create_web_worker_cb: Arc<CreateWebWorkerCb>,
+  preload_module_cb: Arc<PreloadModuleCb>,
+) -> Extension {
   Extension::builder()
     .state(move |state| {
       state.put::<WorkersTable>(WorkersTable::default());
       state.put::<WorkerId>(WorkerId::default());
 
-      let create_module_loader =
+      let create_web_worker_cb_holder =
         CreateWebWorkerCbHolder(create_web_worker_cb.clone());
-      state.put::<CreateWebWorkerCbHolder>(create_module_loader);
+      state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
+      let preload_module_cb_holder =
+        PreloadModuleCbHolder(preload_module_cb.clone());
+      state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
 
       Ok(())
     })
@@ -174,8 +192,10 @@ fn op_create_worker(
   // have access to `exit_code` but the child does?
   let maybe_exit_code = state.try_borrow::<Arc<AtomicI32>>().cloned();
   let worker_id = state.take::<WorkerId>();
-  let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
-  state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
+  let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
+  state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
+  let preload_module_cb = state.take::<PreloadModuleCbHolder>();
+  state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
@@ -197,7 +217,7 @@ fn op_create_worker(
     // - newly spawned thread exits
 
     let (worker, external_handle) =
-      (create_module_loader.0)(CreateWebWorkerArgs {
+      (create_web_worker_cb.0)(CreateWebWorkerArgs {
         name: worker_name,
         worker_id,
         parent_permissions,
@@ -216,7 +236,12 @@ fn op_create_worker(
     // is using `worker.internal_channels`.
     //
     // Host can already push messages and interact with worker.
-    run_web_worker(worker, module_specifier, maybe_source_code)
+    run_web_worker(
+      worker,
+      module_specifier,
+      maybe_source_code,
+      preload_module_cb.0,
+    )
   })?;
 
   // Receive WebWorkerHandle from newly created worker

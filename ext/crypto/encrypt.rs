@@ -7,10 +7,12 @@ use aes::cipher::NewCipher;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
 use aes_gcm::aead::generic_array::typenum::U12;
+use aes_gcm::aead::generic_array::typenum::U16;
+use aes_gcm::aead::generic_array::ArrayLength;
+use aes_gcm::aes::Aes128;
 use aes_gcm::aes::Aes192;
+use aes_gcm::aes::Aes256;
 use aes_gcm::AeadInPlace;
-use aes_gcm::Aes128Gcm;
-use aes_gcm::Aes256Gcm;
 use aes_gcm::NewAead;
 use aes_gcm::Nonce;
 use ctr::Ctr;
@@ -183,6 +185,42 @@ fn encrypt_aes_cbc(
   Ok(ciphertext)
 }
 
+fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
+  key: &[u8],
+  iv: Vec<u8>,
+  length: usize,
+  ciphertext: &mut [u8],
+  additional_data: Vec<u8>,
+) -> Result<aes_gcm::Tag, AnyError> {
+  let nonce = Nonce::<N>::from_slice(&iv);
+  let tag = match length {
+    128 => {
+      let cipher = aes_gcm::AesGcm::<Aes128, N>::new_from_slice(key)
+        .map_err(|_| operation_error("Encryption failed"))?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
+        .map_err(|_| operation_error("Encryption failed"))?
+    }
+    192 => {
+      let cipher = aes_gcm::AesGcm::<Aes192, N>::new_from_slice(key)
+        .map_err(|_| operation_error("Encryption failed"))?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
+        .map_err(|_| operation_error("Encryption failed"))?
+    }
+    256 => {
+      let cipher = aes_gcm::AesGcm::<Aes256, N>::new_from_slice(key)
+        .map_err(|_| operation_error("Encryption failed"))?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, ciphertext)
+        .map_err(|_| operation_error("Encryption failed"))?
+    }
+    _ => return Err(type_error("invalid length")),
+  };
+
+  Ok(tag)
+}
+
 fn encrypt_aes_gcm(
   key: RawKeyData,
   length: usize,
@@ -194,39 +232,24 @@ fn encrypt_aes_gcm(
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
 
-  // Fixed 96-bit nonce
-  if iv.len() != 12 {
-    return Err(type_error("iv length not equal to 12"));
-  }
-
-  let nonce = Nonce::from_slice(&iv);
-
   let mut ciphertext = data.to_vec();
-  let tag = match length {
-    128 => {
-      let cipher = Aes128Gcm::new_from_slice(key)
-        .map_err(|_| operation_error("Encryption failed"))?;
-      cipher
-        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
-        .map_err(|_| operation_error("Encryption failed"))?
-    }
-    192 => {
-      type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
-
-      let cipher = Aes192Gcm::new_from_slice(key)
-        .map_err(|_| operation_error("Encryption failed"))?;
-      cipher
-        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
-        .map_err(|_| operation_error("Encryption failed"))?
-    }
-    256 => {
-      let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|_| operation_error("Encryption failed"))?;
-      cipher
-        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
-        .map_err(|_| operation_error("Encryption failed"))?
-    }
-    _ => return Err(type_error("invalid length")),
+  // Fixed 96-bit OR 128-bit nonce
+  let tag = match iv.len() {
+    12 => encrypt_aes_gcm_general::<U12>(
+      key,
+      iv,
+      length,
+      &mut ciphertext,
+      additional_data,
+    )?,
+    16 => encrypt_aes_gcm_general::<U16>(
+      key,
+      iv,
+      length,
+      &mut ciphertext,
+      additional_data,
+    )?,
+    _ => return Err(type_error("iv length not equal to 12 or 16")),
   };
 
   // Truncated tag to the specified tag length.

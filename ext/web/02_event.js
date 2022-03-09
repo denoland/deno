@@ -31,6 +31,7 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -1061,7 +1062,7 @@
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "message",
           "filename",
           "lineno",
@@ -1122,7 +1123,7 @@
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "wasClean",
           "code",
           "reason",
@@ -1154,7 +1155,7 @@
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "data",
           "origin",
           "lastEventId",
@@ -1187,7 +1188,7 @@
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "detail",
         ],
       }));
@@ -1217,7 +1218,7 @@
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "lengthComputable",
           "loaded",
           "total",

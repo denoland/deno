@@ -38,6 +38,7 @@
     Promise,
     PromisePrototypeThen,
     PromisePrototypeCatch,
+    SafeArrayIterator,
     String,
     StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
@@ -168,7 +169,7 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...req.urlList],
+        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
       };
     }
 
@@ -331,7 +332,7 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...req.urlList];
+      response.urlList = [...new SafeArrayIterator(req.urlList)];
     }
 
     return response;

@@ -35,7 +35,10 @@
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
-          // TODO(lucacasonato): convert chunk to BufferSource
+          chunk = webidl.converters.BufferSource(chunk, {
+            prefix,
+            context: "chunk",
+          });
           const output = core.opSync(
             "op_compression_write",
             rid,
@@ -81,7 +84,10 @@
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
-          // TODO(lucacasonato): convert chunk to BufferSource
+          chunk = webidl.converters.BufferSource(chunk, {
+            prefix,
+            context: "chunk",
+          });
           const output = core.opSync(
             "op_compression_write",
             rid,

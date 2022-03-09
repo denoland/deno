@@ -3,6 +3,7 @@
 mod blob;
 mod compression;
 mod message_port;
+mod timers;
 
 use deno_core::error::range_error;
 use deno_core::error::type_error;
@@ -11,6 +12,7 @@ use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
+use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -47,8 +49,18 @@ use crate::message_port::op_message_port_recv_message;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 
+use crate::timers::op_now;
+use crate::timers::op_sleep;
+use crate::timers::op_sleep_sync;
+use crate::timers::op_timer_handle;
+use crate::timers::StartTime;
+pub use crate::timers::TimersPermission;
+
 /// Load and execute the javascript code.
-pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
+pub fn init<P: TimersPermission + 'static>(
+  blob_store: BlobStore,
+  maybe_location: Option<Url>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/web",
@@ -57,6 +69,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       "01_mimesniff.js",
       "02_event.js",
       "02_structured_clone.js",
+      "02_timers.js",
       "03_abort_signal.js",
       "04_global_interfaces.js",
       "05_base64.js",
@@ -68,10 +81,13 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       "12_location.js",
       "13_message_port.js",
       "14_compression.js",
+      "15_performance.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
       ("op_base64_encode", op_sync(op_base64_encode)),
+      ("op_base64_atob", op_sync(op_base64_atob)),
+      ("op_base64_btoa", op_sync(op_base64_btoa)),
       (
         "op_encoding_normalize_label",
         op_sync(op_encoding_normalize_label),
@@ -116,33 +132,59 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         "op_compression_finish",
         op_sync(compression::op_compression_finish),
       ),
+      ("op_now", op_sync(op_now::<P>)),
+      ("op_timer_handle", op_sync(op_timer_handle)),
+      ("op_sleep", op_async(op_sleep)),
+      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
       if let Some(location) = maybe_location.clone() {
         state.put(Location(location));
       }
+      state.put(StartTime::now());
       Ok(())
     })
     .build()
 }
 
 fn op_base64_decode(
-  _state: &mut OpState,
+  _: &mut OpState,
   input: String,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let mut input: &str = &input.replace(|c| char::is_ascii_whitespace(&c), "");
+  let mut input = input.into_bytes();
+  input.retain(|c| !c.is_ascii_whitespace());
+  Ok(b64_decode(&input)?.into())
+}
+
+fn op_base64_atob(
+  _: &mut OpState,
+  s: ByteString,
+  _: (),
+) -> Result<ByteString, AnyError> {
+  let mut s = s.0;
+  s.retain(|c| !c.is_ascii_whitespace());
+
+  // If padding is expected, fail if not 4-byte aligned
+  if s.len() % 4 != 0 && (s.ends_with(b"==") || s.ends_with(b"=")) {
+    return Err(
+      DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
+    );
+  }
+
+  Ok(ByteString(b64_decode(&s)?))
+}
+
+fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
   // "If the length of input divides by 4 leaving no remainder, then:
   //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
   //  remove them from input."
-  if input.len() % 4 == 0 {
-    if input.ends_with("==") {
-      input = &input[..input.len() - 2]
-    } else if input.ends_with('=') {
-      input = &input[..input.len() - 1]
-    }
-  }
+  let input = match input.len() % 4 == 0 {
+    true if input.ends_with(b"==") => &input[..input.len() - 2],
+    true if input.ends_with(b"=") => &input[..input.len() - 1],
+    _ => input,
+  };
 
   // "If the length of input divides by 4 leaving a remainder of 1,
   //  throw an InvalidCharacterError exception and abort these steps."
@@ -152,38 +194,43 @@ fn op_base64_decode(
     );
   }
 
-  if input
-    .chars()
-    .any(|c| c != '+' && c != '/' && !c.is_alphanumeric())
-  {
-    return Err(
+  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
+    .decode_allow_trailing_bits(true);
+  let out = base64::decode_config(input, cfg).map_err(|err| match err {
+    base64::DecodeError::InvalidByte(_, _) => {
       DomExceptionInvalidCharacterError::new(
         "Failed to decode base64: invalid character",
       )
-      .into(),
-    );
-  }
-
-  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
-    .decode_allow_trailing_bits(true);
-  let out = base64::decode_config(&input, cfg).map_err(|err| {
-    DomExceptionInvalidCharacterError::new(&format!(
+    }
+    _ => DomExceptionInvalidCharacterError::new(&format!(
       "Failed to decode base64: {:?}",
       err
-    ))
+    )),
   })?;
-  Ok(ZeroCopyBuf::from(out))
+
+  Ok(out)
 }
 
 fn op_base64_encode(
-  _state: &mut OpState,
+  _: &mut OpState,
   s: ZeroCopyBuf,
   _: (),
 ) -> Result<String, AnyError> {
+  Ok(b64_encode(&s))
+}
+
+fn op_base64_btoa(
+  _: &mut OpState,
+  s: ByteString,
+  _: (),
+) -> Result<String, AnyError> {
+  Ok(b64_encode(&s))
+}
+
+fn b64_encode(s: impl AsRef<[u8]>) -> String {
   let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
     .decode_allow_trailing_bits(true);
-  let out = base64::encode_config(&s, cfg);
-  Ok(out)
+  base64::encode_config(s.as_ref(), cfg)
 }
 
 #[derive(Deserialize)]

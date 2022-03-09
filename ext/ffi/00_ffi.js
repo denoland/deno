@@ -9,6 +9,7 @@
     Uint8Array,
     BigInt,
     Number,
+    ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     TypeError,
     Error,
@@ -249,10 +250,47 @@
       this.#rid = core.opSync("op_ffi_load", { path, symbols });
 
       for (const symbol in symbols) {
+        if ("type" in symbols[symbol]) {
+          const type = symbols[symbol].type;
+          if (type === "void") {
+            throw new TypeError(
+              "Foreign symbol of type 'void' is not supported.",
+            );
+          }
+
+          const name = symbols[symbol].name || symbol;
+          let value = core.opSync(
+            "op_ffi_get_static",
+            {
+              rid: this.#rid,
+              name,
+              type,
+            },
+          );
+          if (type === "pointer" || type === "u64") {
+            value = unpackU64(value);
+            if (type === "pointer") {
+              value = new UnsafePointer(value);
+            }
+          } else if (type === "i64") {
+            value = unpackI64(value);
+          }
+          ObjectDefineProperty(
+            this.symbols,
+            symbol,
+            {
+              configurable: false,
+              enumerable: true,
+              value,
+              writable: false,
+            },
+          );
+          continue;
+        }
         const isNonBlocking = symbols[symbol].nonblocking;
         const types = symbols[symbol].parameters;
 
-        this.symbols[symbol] = (...args) => {
+        const fn = (...args) => {
           const { parameters, buffers, fn } = prepareArgs(types, args);
 
           if (isNonBlocking) {
@@ -301,6 +339,17 @@
             return result;
           }
         };
+
+        ObjectDefineProperty(
+          this.symbols,
+          symbol,
+          {
+            configurable: false,
+            enumerable: true,
+            value: fn,
+            writable: false,
+          },
+        );
       }
     }
 

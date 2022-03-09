@@ -167,13 +167,17 @@ declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
 
 /** Decodes a string of data which has been encoded using base-64 encoding.
  *
- *     console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'
+ * ```
+ * console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'
+ * ```
  */
 declare function atob(s: string): string;
 
 /** Creates a base-64 ASCII encoded string from the input string.
  *
- *     console.log(btoa("hello world"));  // outputs "aGVsbG8gd29ybGQ="
+ * ```
+ * console.log(btoa("hello world"));  // outputs "aGVsbG8gd29ybGQ="
+ * ```
  */
 declare function btoa(s: string): string;
 
@@ -805,19 +809,81 @@ declare class MessagePort extends EventTarget {
   ): void;
 }
 
+/**
+ * Creates a deep copy of a given value using the structured clone algorithm.
+ *
+ * Unlike a shallow copy, a deep copy does not hold the same references as the
+ * source object, meaning its properties can be changed without affecting the
+ * source. For more details, see
+ * [MDN](https://developer.mozilla.org/en-US/docs/Glossary/Deep_copy).
+ *
+ * Throws a `DataCloneError` if any part of the input value is not
+ * serializable.
+ *
+ * @example
+ * ```ts
+ * const object = { x: 0, y: 1 };
+ *
+ * const deepCopy = structuredClone(object);
+ * deepCopy.x = 1;
+ * console.log(deepCopy.x, object.x); // 1 0
+ *
+ * const shallowCopy = object;
+ * shallowCopy.x = 1;
+ * // shallowCopy.x is pointing to the same location in memory as object.x
+ * console.log(shallowCopy.x, object.x); // 1 1
+ * ```
+ */
 declare function structuredClone(
   value: any,
   options?: StructuredSerializeOptions,
 ): any;
 
+/**
+ * An API for compressing a stream of data.
+ *
+ * @example
+ * ```ts
+ * await Deno.stdin.readable
+ *   .pipeThrough(new CompressionStream("gzip"))
+ *   .pipeTo(Deno.stdout.writable);
+ * ```
+ */
 declare class CompressionStream {
+  /**
+   * Creates a new `CompressionStream` object which compresses a stream of
+   * data.
+   *
+   * Throws a `TypeError` if the format passed to the constructor is not
+   * supported.
+   */
   constructor(format: string);
 
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
 
+/**
+ * An API for decompressing a stream of data.
+ *
+ * @example
+ * ```ts
+ * const input = await Deno.open("./file.txt.gz");
+ * const output = await Deno.create("./file.txt");
+ *
+ * await input.readable
+ *   .pipeThrough(new DecompressionStream("gzip"))
+ *   .pipeTo(output.writable);
+ * ```
+ */
 declare class DecompressionStream {
+  /**
+   * Creates a new `DecompressionStream` object which decompresses a stream of
+   * data.
+   *
+   * Throws a `TypeError` if the format passed to the constructor is not
+   * supported.
+   */
   constructor(format: string);
 
   readonly readable: ReadableStream<Uint8Array>;

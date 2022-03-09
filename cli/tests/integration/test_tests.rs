@@ -97,6 +97,12 @@ itest!(markdown_windows {
   output: "test/markdown_windows.out",
 });
 
+itest!(markdown_full_block_names {
+  args: "test --doc --allow-all test/markdown_full_block_names.md",
+  exit_code: 1,
+  output: "test/markdown_full_block_names.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
@@ -146,7 +152,7 @@ itest!(allow_none {
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --unstable test/ops_sanitizer_unstable.ts",
+  args: "test --unstable --trace-ops test/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_unstable.out",
 });
@@ -157,9 +163,15 @@ itest!(ops_sanitizer_timeout_failure {
 });
 
 itest!(ops_sanitizer_multiple_timeout_tests {
-  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  args: "test --trace-ops test/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_multiple_timeout_tests.out",
+});
+
+itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
+  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
 });
 
 itest!(ops_sanitizer_nexttick {
@@ -255,4 +267,16 @@ itest!(steps_invalid_usage {
   args: "test test/steps/invalid_usage.ts",
   exit_code: 1,
   output: "test/steps/invalid_usage.out",
+});
+
+itest!(no_prompt_by_default {
+  args: "test test/no_prompt_by_default.ts",
+  exit_code: 1,
+  output: "test/no_prompt_by_default.out",
+});
+
+itest!(no_prompt_with_denied_perms {
+  args: "test --allow-read test/no_prompt_with_denied_perms.ts",
+  exit_code: 1,
+  output: "test/no_prompt_with_denied_perms.out",
 });

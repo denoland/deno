@@ -81,7 +81,7 @@ impl Loader for DocLoader {
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map(|file| {
-          Some(LoadResponse {
+          Some(LoadResponse::Module {
             specifier,
             content: file.source.clone(),
             maybe_headers: file.maybe_headers,
@@ -96,7 +96,7 @@ pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let source_file = doc_flags
     .source_file
     .unwrap_or_else(|| "--builtin".to_string());
@@ -122,7 +122,7 @@ pub async fn print_docs(
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
-      Arc::new(get_types(flags.unstable)),
+      Arc::new(get_types(ps.flags.unstable)),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;

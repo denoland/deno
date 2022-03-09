@@ -242,6 +242,39 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** Error thrown on cancellation. */
+  class OperationCanceledError extends Error {
+  }
+
+  /**
+   * Inspired by ThrottledCancellationToken in ts server.
+   *
+   * We don't want to continually call back into Rust and so
+   * we throttle cancellation checks to only occur once
+   * in a while.
+   * @implements {ts.CancellationToken}
+   */
+  class ThrottledCancellationToken {
+    #lastCheckTimeMs = 0;
+
+    isCancellationRequested() {
+      const timeMs = Date.now();
+      // TypeScript uses 20ms
+      if ((timeMs - this.#lastCheckTimeMs) < 20) {
+        return false;
+      }
+
+      this.#lastCheckTimeMs = timeMs;
+      return core.opSync("op_is_cancelled", {});
+    }
+
+    throwIfCancellationRequested() {
+      if (this.isCancellationRequested()) {
+        throw new OperationCanceledError();
+      }
+    }
+  }
+
   /** @type {ts.CompilerOptions} */
   let compilationSettings = {};
 
@@ -261,6 +294,10 @@ delete Object.prototype.__proto__;
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
       return core.opSync("op_load", { specifier }).data;
+    },
+    getCancellationToken() {
+      // createLanguageService will call this immediately and cache it
+      return new ThrottledCancellationToken();
     },
     getSourceFile(
       specifier,
@@ -706,10 +743,12 @@ delete Object.prototype.__proto__;
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if ("stack" in e) {
-            error(e.stack);
-          } else {
-            error(e);
+          if (!(e instanceof OperationCanceledError)) {
+            if ("stack" in e) {
+              error(e.stack);
+            } else {
+              error(e);
+            }
           }
           return respond(id, {});
         }
