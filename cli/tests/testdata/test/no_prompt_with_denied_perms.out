@@ -1,7 +1,17 @@
 Check [WILDCARD]/no_prompt_with_denied_perms.ts
 running 1 test from [WILDCARD]/no_prompt_with_denied_perms.ts
-test no prompt ...
-test result: FAILED. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+test no prompt ... FAILED ([WILDCARD]ms)
 
-error: Uncaught (in promise) PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
+failures:
+
+no prompt
+PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
+
+failures:
+
+	no prompt
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD]ms)
+
+error: Test failed
