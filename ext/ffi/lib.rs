@@ -36,6 +36,7 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 use core::ptr::NonNull;
+use std::mem::MaybeUninit;
 
 pub struct Unstable(pub bool);
 
@@ -139,7 +140,7 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn init<P: FfiPermissions + 'static>(unstable: bool, isolate_ptr: *mut *mut v8::OwnedIsolate) -> Extension {
+pub fn init<P: FfiPermissions + 'static>(unstable: bool, isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/ffi",
@@ -175,7 +176,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool, isolate_ptr: *mut *mut 
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
       state.put(Unstable(unstable));
-      state.put(isolate_ptr);
+      state.put(unsafe { isolate_ptr.assume_init() });
       Ok(())
     })
     .build()
@@ -594,7 +595,7 @@ fn ffi_call(
   symbol: &Symbol,
   // For callbacks
   functions: Vec<v8::Local<v8::Function>>,
-  mut callback_context: Option<(&mut v8::HandleScope, *mut *mut v8::OwnedIsolate)>,
+  mut callback_context: Option<(&mut v8::HandleScope, *mut v8::OwnedIsolate)>,
 ) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -661,7 +662,7 @@ fn ffi_call(
       let ctx_global = v8::Global::new(scope, ctx);
 
       // NOTE: `into_raw` leaks.
-      let cb_info = CallbackInfo::new(*isolate_ptr, global.into_raw(), ctx_global.into_raw());
+      let cb_info = CallbackInfo::new(*isolate_ptr, global.clone().into_raw(), ctx_global.clone().into_raw());
       let signature = &symbol.parameter_types[offset];
       let (mut info, cif) = match signature {
         NativeType::Function {
@@ -742,14 +743,14 @@ fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
 }
 
 pub struct CallbackInfo {
-  isolate_ptr: *mut *mut v8::OwnedIsolate,
+  isolate_ptr: *mut v8::OwnedIsolate,
   cb: NonNull<v8::Function>,
   ctx: NonNull<v8::Context>,
 }
 
 impl CallbackInfo {
   pub fn new(
-    isolate_ptr: *mut *mut v8::OwnedIsolate,
+    isolate_ptr: *mut v8::OwnedIsolate,
     cb: NonNull<v8::Function>,
     ctx: NonNull<v8::Context>,
   ) -> Self {
@@ -767,14 +768,11 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &mut CallbackInfo,
 ) {
-  let isolate = unsafe { &mut **info.isolate_ptr };
+  let isolate: &mut v8::OwnedIsolate = unsafe { &mut *info.isolate_ptr };
   let global = v8::Global::from_raw(isolate, info.cb);
-  
-  let context = unsafe {
-    std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(info.ctx)
-  };
-  
-  let scope = &mut v8::CallbackScope::new(context);
+  let context = v8::Global::from_raw(isolate, info.ctx);
+
+  let scope = &mut v8::HandleScope::with_context(isolate, context);
 
   let func = global.open(scope).to_object(scope).unwrap();
   let func = v8::Local::<v8::Function>::try_from(func).unwrap();
@@ -880,7 +878,7 @@ fn op_ffi_call_cb(
     .resource_table
     .get::<DynamicLibraryResource>(args.rid)?;
 
-  let isolate_ptr = state.borrow::<*mut *mut v8::OwnedIsolate>();
+  let isolate_ptr = state.borrow::<*mut v8::OwnedIsolate>();
   
   let symbol = resource
     .symbols

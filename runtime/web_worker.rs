@@ -390,7 +390,7 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable, std::ptr::null_mut()),
+      deno_ffi::init::<Permissions>(unstable, std::mem::MaybeUninit::uninit()),
       // Permissions ext (worker specific state)
       perm_ext,
     ];

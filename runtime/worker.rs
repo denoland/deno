@@ -30,6 +30,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::mem::MaybeUninit;
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -95,18 +96,8 @@ impl MainWorker {
       .build();
 
     // Allocate isolate pointer.
-    let align = std::mem::align_of::<usize>();
-    // SAFETY: `align` is guaranteed to be non-zero and a power of two.
-    let layout = unsafe {
-      std::alloc::Layout::from_size_align_unchecked(
-        std::mem::size_of::<*mut *mut deno_core::v8::OwnedIsolate>(),
-        align,
-      )
-    };
-    // SAFETY: `layout` is not zero sized. ptr is written to after JsRuntime creation.
-    let isolate_ptr: *mut *mut deno_core::v8::OwnedIsolate =
-      unsafe { std::alloc::alloc(layout) as *mut _ };
-
+    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> = MaybeUninit::uninit();
+    
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -180,7 +171,7 @@ impl MainWorker {
     {
       let isolate = js_runtime.v8_isolate();
       // SAFETY: `isolate_ptr` is valid for writes and properly aligned.
-      unsafe { isolate_ptr.write(isolate) };
+      isolate_ptr.write(isolate);
     }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
