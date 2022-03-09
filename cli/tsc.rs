@@ -306,7 +306,7 @@ struct CreateHashArgs {
   data: String,
 }
 
-#[op(preserve_original)]
+#[op]
 fn op_create_hash(
   s: &mut OpState,
   args: Value,
@@ -346,7 +346,7 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-#[op(preserve_original)]
+#[op]
 fn op_emit(
   state: &mut OpState,
   args: EmitArgs,
@@ -451,7 +451,7 @@ fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   }
 }
 
-#[op(preserve_original)]
+#[op]
 fn op_load(state: &mut OpState, args: Value, _: ()) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
@@ -517,7 +517,7 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-#[op(preserve_original)]
+#[op]
 fn op_resolve(
   state: &mut OpState,
   args: ResolveArgs,
@@ -628,7 +628,7 @@ struct RespondArgs {
   pub stats: emit::Stats,
 }
 
-#[op(preserve_original)]
+#[op]
 fn op_respond(
   state: &mut OpState,
   args: Value,
@@ -874,7 +874,7 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
-    let actual = original_op_create_hash(
+    let actual = op_create_hash::func(
       &mut state,
       json!({ "data": "some sort of content" }),
       (),
@@ -923,7 +923,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit() {
     let mut state = setup(None, None, None).await;
-    let actual = original_op_emit(
+    let actual = op_emit::func(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -952,7 +952,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_strange_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = original_op_emit(
+    let actual = op_emit::func(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -983,7 +983,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = original_op_emit(
+    let actual = op_emit::func(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
@@ -1009,7 +1009,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = original_op_load(
+    let actual = op_load::func(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
       (),
@@ -1041,7 +1041,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let value = original_op_load(
+    let value = op_load::func(
       &mut state,
       json!({ "specifier": "asset:///lib.dom.d.ts" }),
       (),
@@ -1063,7 +1063,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = original_op_load(
+    let actual = op_load::func(
       &mut state,
       json!({ "specifier": "deno:///.tsbuildinfo"}),
       (),
@@ -1082,7 +1082,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = original_op_load(
+    let actual = op_load::func(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
       (),
@@ -1106,7 +1106,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = original_op_resolve(
+    let actual = op_resolve::func(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1126,7 +1126,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = original_op_resolve(
+    let actual = op_resolve::func(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1144,7 +1144,7 @@ mod tests {
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = original_op_respond(
+    let actual = op_respond::func(
       &mut state,
       json!({
         "diagnostics": [

@@ -2531,7 +2531,7 @@ struct SpecifierArgs {
   specifier: String,
 }
 
-#[op(preserve_original)]
+#[op]
 fn op_exists(
   state: &mut OpState,
   args: SpecifierArgs,
@@ -3873,7 +3873,7 @@ mod tests {
     );
     let performance = Arc::new(Performance::default());
     let mut state = State::new(state_snapshot, performance);
-    let actual = original_op_exists(
+    let actual = op_exists::func(
       &mut state,
       SpecifierArgs {
         specifier: "/error/unknown:something/index.d.ts".to_string(),

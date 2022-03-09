@@ -300,7 +300,7 @@ pub struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
-#[op(preserve_original)]
+#[op]
 pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
@@ -616,7 +616,7 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op(preserve_original)]
+#[op]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
@@ -685,7 +685,7 @@ where
   Ok(results)
 }
 
-#[op(preserve_original)]
+#[op]
 pub fn op_set_nodelay<NP>(
   state: &mut OpState,
   rid: ResourceId,
@@ -697,7 +697,7 @@ pub fn op_set_nodelay<NP>(
   resource.set_nodelay(nodelay)
 }
 
-#[op(preserve_original)]
+#[op]
 pub fn op_set_keepalive<NP>(
   state: &mut OpState,
   rid: ResourceId,
@@ -883,7 +883,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
-      original_op_set_nodelay::<TestPermission>(state, rid, true).unwrap();
+      op_set_nodelay::func::<TestPermission>(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(socket.nodelay().unwrap());
@@ -895,7 +895,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      original_op_set_keepalive::<TestPermission>(state, rid, true).unwrap();
+      op_set_keepalive::func::<TestPermission>(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
@@ -940,7 +940,7 @@ mod tests {
     };
 
     let connect_fut =
-      original_op_net_connect::<TestPermission>(conn_state, connect_args, ());
+      op_net_connect::func::<TestPermission>(conn_state, connect_args, ());
     let conn = connect_fut.await.unwrap();
 
     let rid = conn.rid;
