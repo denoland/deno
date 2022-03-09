@@ -50,11 +50,11 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -445,7 +445,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: Sender<TestEvent>,
+  channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
@@ -793,7 +793,7 @@ async fn test_specifiers(
     specifiers_with_mode
   };
 
-  let (sender, receiver) = channel::<TestEvent>();
+  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -827,7 +827,7 @@ async fn test_specifiers(
       let mut summary = TestSummary::new();
       let mut used_only = false;
 
-      for event in receiver.iter() {
+      while let Some(event) = receiver.blocking_recv() {
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
