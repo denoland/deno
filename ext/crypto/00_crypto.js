@@ -998,7 +998,6 @@
         case "AES-KW": {
           return exportKeyAES(format, key, innerKey);
         }
-        // TODO(@littledivy): ECDSA
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
