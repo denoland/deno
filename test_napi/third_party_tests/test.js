@@ -322,8 +322,8 @@ Deno.test("msgpackr-extract", () => {
   strictEqual(result, undefined);
 });
 
-Deno.test("sqlite3", async () => {
-  const { Database } = require("sqlite3");
-  const db = new Database(":memory:");
-  db.close();
-});
+// Deno.test("sqlite3", async () => {
+//   const { Database } = require("sqlite3");
+//   const db = new Database(":memory:");
+//   db.close();
+// });
