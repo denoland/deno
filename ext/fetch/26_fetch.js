@@ -408,10 +408,11 @@
    * @param {RequestInfo} input
    * @param {RequestInit} init
    */
-  async function fetch(input, init = {}) {
+  function fetch(input, init = {}) {
     // There is an async dispatch later that causes a stack trace disconnect.
-    // We reconnect it by assigning the result of that dispatch to `opPromise`
-    // and awaiting it in this function.
+    // We reconnect it by assigning the result of that dispatch to `opPromise`,
+    // awaiting `opPromise` in an inner function also named `fetch()` and
+    // returning the result from that.
     let opPromise = undefined;
     // 1.
     const result = new Promise((resolve, reject) => {
@@ -483,9 +484,12 @@
         },
       );
     });
-    result.catch(() => {});
     if (opPromise) {
-      await opPromise.catch(() => {});
+      PromisePrototypeCatch(result, () => {});
+      return (async function fetch() {
+        await opPromise;
+        return result;
+      })();
     }
     return result;
   }
