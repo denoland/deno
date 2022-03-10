@@ -483,6 +483,7 @@
         },
       );
     });
+    result.catch(() => {});
     if (opPromise) {
       await opPromise.catch(() => {});
     }
