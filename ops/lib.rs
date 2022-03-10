@@ -230,12 +230,12 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           #func
 
           // SAFETY: Unchecked cast to external since deno_core guarantees args.data() is a v8 External.
-          let state_rc_raw = unsafe {
+          let state_refcell_raw = unsafe {
             deno_core::v8::Local::<deno_core::v8::External>::cast(args.data().unwrap_unchecked())
           }.value();
 
           // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-          let state = unsafe { &*(state_rc_raw as *const std::cell::RefCell<deno_core::OpState>) };
+          let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<deno_core::OpState>) };
 
           let mut op_state = state.borrow_mut();
           let result = #name::<#type_params>(&mut op_state, a, b);
