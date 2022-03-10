@@ -282,6 +282,11 @@ impl JsRuntime {
       .js_error_create_fn
       .unwrap_or_else(|| Rc::new(JsError::create));
 
+    // Add builtins extension
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::init_builtins());
+
     let ops = Self::effective_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
 
@@ -291,10 +296,6 @@ impl JsRuntime {
 
     let op_state = Rc::new(RefCell::new(op_state));
 
-    // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
     let refs = bindings::external_references(&ops, op_state.clone());
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;

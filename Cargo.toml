@@ -68,6 +68,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_http]
 opt-level = 3
+[profile.bench.package.deno_web]
+opt-level = 3
 [profile.bench.package.deno_net]
 opt-level = 3
 [profile.bench.package.num-bigint-dig]
@@ -119,6 +121,8 @@ opt-level = 3
 [profile.release.package.deno_http]
 opt-level = 3
 [profile.release.package.deno_net]
+opt-level = 3
+[profile.release.package.deno_web]
 opt-level = 3
 [profile.release.package.num-bigint-dig]
 opt-level = 3
