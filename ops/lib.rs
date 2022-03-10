@@ -25,7 +25,17 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
       },
       _ => quote! {
         let a = args.get(2);
-        let a = deno_core::serde_v8::from_v8(scope, a).unwrap();
+        let a = match deno_core::serde_v8::from_v8(scope, a) {
+          Ok(v) => v,
+          Err(err) => {
+            // Throw TypeError
+            let msg = format!("Error parsing args: {}", deno_core::anyhow::Error::from(err));
+            let message = v8::String::new(scope, msg.as_ref()).unwrap();
+            let exception = v8::Exception::type_error(scope, message);
+            scope.throw_exception(exception);
+            return;
+          }
+        };
       },
     },
     _ => unreachable!(),
@@ -38,7 +48,17 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
       },
       _ => quote! {
         let b = args.get(3);
-        let b = deno_core::serde_v8::from_v8(scope, b).unwrap();
+        let b = match deno_core::serde_v8::from_v8(scope, b) {
+          Ok(v) => v,
+          Err(err) => {
+            // Throw TypeError
+            let msg = format!("Error parsing args: {}", deno_core::anyhow::Error::from(err));
+            let message = v8::String::new(scope, msg.as_ref()).unwrap();
+            let exception = v8::Exception::type_error(scope, message);
+            scope.throw_exception(exception);
+            return;
+          }
+        };
       },
     },
     _ => unreachable!(),
@@ -50,7 +70,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
       let ret = ();
     },
     _ => quote! {
-      let ret = deno_core::serde_v8::to_v8(scope, result).unwrap();
+      let ret = deno_core::serialize_op_result(scope, &op_state2.borrow(), result).unwrap();
       rv.set(ret);
     },
   };
@@ -85,7 +105,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           use deno_core::JsRuntime;
           use deno_core::futures::FutureExt;
           use deno_core::OpCall;
-          use deno_core::serialize_op_result;
+          use deno_core::to_op_result;
           use deno_core::PromiseId;
           use deno_core::bindings::throw_type_error;
           use deno_core::v8;
@@ -113,9 +133,10 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           state.op_state.borrow().tracker.track_async(op_id);
           state.have_unpolled_ops = true;
           let op_state = state.op_state.clone();
+          let op_state2 = op_state.clone();
           state.pending_ops.push(OpCall::eager(async move {
             let result = #name::<#type_params>(op_state.clone(), a, b).await;
-            (promise_id, op_id, serialize_op_result(result, op_state))
+            (promise_id, op_id, to_op_result(&op_state.borrow(), result))
           }));
         }
       }
@@ -160,10 +181,10 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
           let state_rc = deno_core::JsRuntime::state(scope);
           let state = state_rc.borrow();
-          let mut op_state = state.op_state.borrow_mut();
+          let op_state2 = state.op_state.clone();
 
-          let result = #name::<#type_params>(&mut op_state, a, b).unwrap();
-          op_state.tracker.track_sync(op_id);
+          let result = #name::<#type_params>(&mut op_state2.borrow_mut(), a, b);
+          op_state2.borrow_mut().tracker.track_sync(op_id);
 
           #ret
         }

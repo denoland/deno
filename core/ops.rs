@@ -12,12 +12,10 @@ use futures::ready;
 use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
-use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -115,17 +113,35 @@ pub struct OpError {
   code: Option<&'static str>,
 }
 
-pub fn serialize_op_result<R: Serialize + 'static>(
+pub fn to_op_result<R: Serialize + 'static>(
+  state: &OpState,
   result: Result<R, Error>,
-  state: Rc<RefCell<OpState>>,
 ) -> OpResult {
   match result {
     Ok(v) => OpResult::Ok(v.into()),
     Err(err) => OpResult::Err(OpError {
-      class_name: (state.borrow().get_error_class_fn)(&err),
+      class_name: (state.get_error_class_fn)(&err),
       message: err.to_string(),
       code: crate::error_codes::get_error_code(&err),
     }),
+  }
+}
+
+pub fn serialize_op_result<'a, R: Serialize + 'static>(
+  scope: &mut v8::HandleScope<'a>,
+  state: &OpState,
+  result: Result<R, Error>,
+) -> Result<v8::Local<'a, v8::Value>, serde_v8::Error> {
+  match result {
+    Ok(v) => serde_v8::to_v8(scope, v),
+    Err(err) => serde_v8::to_v8(
+      scope,
+      OpError {
+        class_name: (state.get_error_class_fn)(&err),
+        message: err.to_string(),
+        code: crate::error_codes::get_error_code(&err),
+      },
+    ),
   }
 }
 
