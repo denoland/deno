@@ -60,6 +60,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.brotli-decompressor]
 opt-level = 3
+[profile.bench.package.deno_bench_util]
+opt-level = 3
 [profile.bench.package.deno_core]
 opt-level = 3
 [profile.bench.package.deno_runtime]
@@ -107,6 +109,8 @@ opt-level = 3
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.deno_bench_util]
 opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
