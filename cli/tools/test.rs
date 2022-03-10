@@ -5,6 +5,7 @@ use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
+use crate::display;
 use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
@@ -49,11 +50,11 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -269,7 +270,11 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
 
     if let Some(error_text) = result.error() {
       for line in error_text.lines() {
@@ -277,22 +282,6 @@ impl PrettyTestReporter {
       }
     }
   }
-}
-
-/// A function that converts a milisecond elapsed time to a string that
-/// represents a human readable version of that time.
-fn human_elapsed(elapsed: u128) -> String {
-  if elapsed < 1_000 {
-    return format!("({}ms)", elapsed);
-  }
-  if elapsed < 1_000 * 60 {
-    return format!("({}s)", elapsed / 1000);
-  }
-
-  let seconds = elapsed / 1_000;
-  let minutes = seconds / 60;
-  let seconds_remainder = seconds % 60;
-  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -355,7 +344,11 @@ impl TestReporter for PrettyTestReporter {
       print!(" ");
     }
 
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
@@ -432,7 +425,8 @@ impl TestReporter for PrettyTestReporter {
       get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
-      colors::gray(human_elapsed(elapsed.as_millis())),
+      colors::gray(
+        format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
 }
@@ -451,7 +445,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: Sender<TestEvent>,
+  channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
@@ -799,7 +793,7 @@ async fn test_specifiers(
     specifiers_with_mode
   };
 
-  let (sender, receiver) = channel::<TestEvent>();
+  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -813,14 +807,10 @@ async fn test_specifiers(
       let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let join_handle = std::thread::spawn(move || {
-          let future =
-            test_specifier(ps, permissions, specifier, mode, sender, options);
+        let future =
+          test_specifier(ps, permissions, specifier, mode, sender, options);
 
-          run_basic(future)
-        });
-
-        join_handle.join().unwrap()
+        run_basic(future)
       })
     });
 
@@ -832,12 +822,12 @@ async fn test_specifiers(
     create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
 
   let handler = {
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn(async move {
       let earlier = Instant::now();
       let mut summary = TestSummary::new();
       let mut used_only = false;
 
-      for event in receiver.iter() {
+      while let Some(event) = receiver.recv().await {
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
@@ -1306,20 +1296,4 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_human_elapsed() {
-    assert_eq!(human_elapsed(1), "(1ms)");
-    assert_eq!(human_elapsed(256), "(256ms)");
-    assert_eq!(human_elapsed(1000), "(1s)");
-    assert_eq!(human_elapsed(1001), "(1s)");
-    assert_eq!(human_elapsed(1020), "(1s)");
-    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
-    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
-  }
 }
