@@ -4822,6 +4822,7 @@ dependencies = [
 [[package]]
 name = "v8"
 version = "0.40.2"
+source = "git+https://github.com/denoland/rusty_v8?branch=feat/alt-func-constructors-to-mapfnto#17baf90f701e3d97662029834935f846c5703aed"
 dependencies = [
  "bitflags",
  "fslock",

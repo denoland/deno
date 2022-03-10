@@ -64,15 +64,65 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
     _ => unreachable!(),
   };
 
-  // TODO(@littledivy): Optimize Result<(), Err> to skip serde_v8.
   let ret = match &output {
     syn::ReturnType::Default => quote! {
       let ret = ();
     },
-    _ => quote! {
-      let ret = deno_core::serialize_op_result(scope, &op_state2.borrow(), result).unwrap();
-      rv.set(ret);
-    },
+    syn::ReturnType::Type(_, ty) => {
+      let default_ok = quote! {
+        let ret = deno_core::serde_v8::to_v8(scope, v).unwrap();
+        rv.set(ret);
+      };
+      
+      // Optimize Result<(), Err> to skip serde_v8.
+      let ok_block = match &**ty {
+        syn::Type::Path(ref path) => {
+          let maybe_result = path.path.segments.first().expect("Invalid return type.");
+          if maybe_result.ident.to_string() == "Result" {
+            assert!(!maybe_result.arguments.is_empty());
+            match &maybe_result.arguments {
+              syn::PathArguments::AngleBracketed(args) => {
+                let maybe_unit = args.args.first().unwrap();
+                match maybe_unit {
+                  syn::GenericArgument::Type(syn::Type::Tuple(ty)) => {
+                    if ty.elems.is_empty() {
+                      quote! {}
+                    } else {
+                      default_ok
+                    }
+                  }
+                  _ => default_ok,
+                }
+              },
+              syn::PathArguments::None | syn::PathArguments::Parenthesized(..) => unreachable!(),
+            }
+          } else {
+            default_ok
+          }
+        }
+        _ => default_ok,
+      };
+
+      quote! {
+        match result {
+          Ok(v) => {
+            #ok_block
+          },
+          Err(err) => {
+            let err = deno_core::serde_v8::to_v8(
+              scope,
+              deno_core::OpError {
+                class_name: (op_state.get_error_class_fn)(&err),
+                message: err.to_string(),
+                code: deno_core::error_codes::get_error_code(&err),
+              },
+            ).unwrap();
+
+            rv.set(err);
+          },
+        };
+      }
+    }
   };
 
   let is_async = func.sig.asyncness.is_some();
@@ -183,8 +233,10 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let state = state_rc.borrow();
           let op_state2 = state.op_state.clone();
 
-          let result = #name::<#type_params>(&mut op_state2.borrow_mut(), a, b);
-          op_state2.borrow_mut().tracker.track_sync(op_id);
+          let mut op_state = op_state2.borrow_mut();
+          let result = #name::<#type_params>(&mut op_state, a, b);
+          
+          op_state.tracker.track_sync(op_id);
 
           #ret
         }

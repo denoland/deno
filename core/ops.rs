@@ -108,9 +108,9 @@ impl OpResult {
 #[serde(rename_all = "camelCase")]
 pub struct OpError {
   #[serde(rename = "$err_class_name")]
-  class_name: &'static str,
-  message: String,
-  code: Option<&'static str>,
+  pub class_name: &'static str,
+  pub message: String,
+  pub code: Option<&'static str>,
 }
 
 pub fn to_op_result<R: Serialize + 'static>(
@@ -127,6 +127,7 @@ pub fn to_op_result<R: Serialize + 'static>(
   }
 }
 
+#[inline]
 pub fn serialize_op_result<'a, R: Serialize + 'static>(
   scope: &mut v8::HandleScope<'a>,
   state: &OpState,
