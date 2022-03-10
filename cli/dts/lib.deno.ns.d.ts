@@ -114,7 +114,9 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  export type PermissionOptions = "inherit" | "none" | {
+  export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
+  
+  export interface PermissionOptionsObject {
     /** Specifies if the `net` permission should be requested or revoked.
      * If set to `"inherit"`, the current `env` permission will be inherited.
      * If set to `true`, the global `net` permission will be requested.
