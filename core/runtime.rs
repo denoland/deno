@@ -281,7 +281,7 @@ impl JsRuntime {
     let js_error_create_fn = options
       .js_error_create_fn
       .unwrap_or_else(|| Rc::new(JsError::create));
-      
+
     let ops = Self::effective_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
 
