@@ -155,13 +155,13 @@ pub struct OpState {
 }
 
 impl OpState {
-  pub(crate) fn new() -> OpState {
+  pub(crate) fn new(ops_count: usize) -> OpState {
     OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
       tracker: OpsTracker {
-        ops: UnsafeCell::new(Vec::with_capacity(256)),
+        ops: UnsafeCell::new(vec![Default::default(); ops_count]),
       },
     }
   }

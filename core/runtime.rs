@@ -281,7 +281,9 @@ impl JsRuntime {
     let js_error_create_fn = options
       .js_error_create_fn
       .unwrap_or_else(|| Rc::new(JsError::create));
-    let mut op_state = OpState::new();
+      
+    let ops = Self::effective_ops(&mut options.extensions);
+    let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
@@ -293,7 +295,6 @@ impl JsRuntime {
     options
       .extensions
       .insert(0, crate::ops_builtin::init_builtins());
-    let ops = Self::effective_ops(&mut options.extensions);
     let refs = bindings::external_references(&ops, op_state.clone());
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
