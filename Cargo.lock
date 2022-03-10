@@ -967,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.34.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.13.0",
  "bytes",
