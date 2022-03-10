@@ -294,7 +294,7 @@ impl JsRuntime {
       .extensions
       .insert(0, crate::ops_builtin::init_builtins());
     let ops = Self::effective_ops(&mut options.extensions);
-    let refs = bindings::external_references(&ops);
+    let refs = bindings::external_references(&ops, op_state.clone());
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
