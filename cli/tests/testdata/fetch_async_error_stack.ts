@@ -1,1 +1,1 @@
-await fetch("file:///nonexistent");
+await fetch("https://nonexistent.deno.land/");
