@@ -29,7 +29,10 @@ use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
-pub fn external_references(ops: &[OpPair], op_state: Rc<RefCell<OpState>>) -> v8::ExternalReferences {
+pub fn external_references(
+  ops: &[OpPair],
+  op_state: Rc<RefCell<OpState>>,
+) -> v8::ExternalReferences {
   let mut refs = vec![
     v8::ExternalReference {
       function: ref_op.map_fn_to(),
@@ -102,7 +105,9 @@ pub fn external_references(ops: &[OpPair], op_state: Rc<RefCell<OpState>>) -> v8
     .iter()
     .map(|(_, opref)| v8::ExternalReference { function: *opref });
   refs.extend(op_refs);
-  refs.push(v8::ExternalReference { pointer: Rc::into_raw(op_state) as *mut c_void });
+  refs.push(v8::ExternalReference {
+    pointer: Rc::into_raw(op_state) as *mut c_void,
+  });
   v8::ExternalReferences::new(&refs)
 }
 
