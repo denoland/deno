@@ -11,9 +11,9 @@ https://github.com/denoland/deno_install
 - fix(ci): restore compatibility with older glibc (#13846)
 - fix(test): typecheck blocks annotated with long js/ts notations (#13785)
 - perf(core): micro-optimize OpsTracker (#13868)
+- perf(ext/web): optimize atob/btoa (#13841)
 - perf(serde_v8): avoid SerializablePkg allocs (#13860)
 - perf(serde_v8): optimize ByteString deserialization (#13853)
-- perf(ext/web): optimize atob/btoa (#13841)
 
 ### 1.19.2 / 2022.03.03
 
