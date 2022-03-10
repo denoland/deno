@@ -62,9 +62,13 @@ pub async fn execute_script(
   let maybe_script = tasks_config.get(&task_name);
 
   if let Some(script) = maybe_script {
-    // todo(THIS PR): append additional CLI args to "script" here
-    // in order to support someone doing `deno task my_task arg1 arg2 etc`
-    let additional_args = String::new();
+    let additional_args = flags
+      .argv
+      .iter()
+      // surround all the additional arguments in double quotes
+      .map(|a| format!("\"{}\"", a.replace("\"", "\\\"")))
+      .collect::<Vec<_>>()
+      .join(" ");
     let script = format!("{} {}", script, additional_args);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
