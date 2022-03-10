@@ -7,7 +7,7 @@
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.event;
-  const { NumberIsNaN, ArrayIsArray, Date, DatePrototypeGetMilliseconds, Set, SetPrototypeHas, SetPrototypeAdd, MathMin } = window.__bootstrap.primordials;
+  const { NumberIsNaN, ArrayIsArray, Date, SafeArrayIterator, DatePrototypeGetMilliseconds, MapPrototypeGet, MapPrototypeDelete, ArrayPrototypeSort, Set, SetPrototypeHas, SetPrototypeAdd, MathMin, MapPrototypeKeys } = window.__bootstrap.primordials;
 
   webidl.converters.IDBTransactionMode = webidl.createEnumConverter(
     "IDBTransactionMode",
@@ -80,12 +80,12 @@
     ],
   );
 
-  // Ref: https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key
   /**
    * @param input {any}
    * @param seen {Set<any>}
    * @returns {(Key | null)}
    */
+  // Ref: https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key
   function valueToKey(input, seen = new Set()) {
     if (SetPrototypeHas(seen, input)) {
       return null;
@@ -206,6 +206,15 @@
     }
   }
 
+  // Ref: https://w3c.github.io/IndexedDB/#valid-key-path
+  function isValidKeyPath(key) {
+    if (typeof key === "string" && key.length === 0) {
+      return true;
+    } else if () {
+      // TODO
+    }
+  }
+
   const _result = Symbol("[[result]]");
   const _error = Symbol("[[error]]");
   const _source = Symbol("[[source]]");
@@ -274,20 +283,6 @@
   defineEventHandler(IDBOpenDBRequest.prototype, "upgradeneeded");
 
   webidl.configurePrototype(IDBOpenDBRequest);
-
-  class Connection {
-    /** @type {Set<IDBDatabase>} */
-    databases = new Set();
-    /** @type {number} */
-    version;
-    /** @type {boolean} */
-    closePending = false;
-    /** @type */
-    objectStoreSet;
-  }
-
-  /** @type {Set<Connection>} */
-  const connections = new Set();
 
   // Ref: https://w3c.github.io/IndexedDB/#idbfactory
   class IDBFactory {
@@ -386,13 +381,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbfactory-databases
     databases() {
       webidl.assertBranded(this, IDBFactoryPrototype);
-
-      return Promise.resolve([...connections.values()].map((db) => {
-        return {
-          name: db.name,
-          version: db.version,
-        };
-      }));
+      return core.opAsync("op_indexeddb_list_databases");
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbfactory-cmp
@@ -425,10 +414,41 @@
   webidl.configurePrototype(IDBFactory);
   const IDBFactoryPrototype = IDBFactory.prototype;
 
+  // Ref: https://w3c.github.io/IndexedDB/#database-connection
+  class Connection {
+    /** @type {Set<IDBDatabase>} */
+    databases = new Set();
+    /** @type {number} */
+    version;
+    /** @type {boolean} */
+    closePending = false;
+    /** @type {Map<String, IDBObjectStore>} */
+    objectStoreSet;
+
+    /**
+     * @param forced {boolean}
+     */
+    // Ref: https://w3c.github.io/IndexedDB/#close-a-database-connection
+    close(forced) {
+      this.closePending = true;
+      if (forced) {
+        // TODO: 2
+      }
+      // TODO: 3.
+      if (forced) {
+        // TODO: 4.
+      }
+    }
+  }
+
+  /** @type {Set<Connection>} */
+  const connections = new Set();
+
   const _name = Symbol("[[name]]");
   const _version = Symbol("[[version]]");
   const _closePending = Symbol("[[closePending]]");
   const _objectStores = Symbol("[[objectStores]]");
+  const _upgradeTransaction = Symbol("[[upgradeTransaction]]");
   const _connection = Symbol("[[connection]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbdatabase
   // TODO: finalizationRegistry
@@ -437,6 +457,8 @@
     [_closePending] = false;
     /** @type {Set<ObjectStore>} */
     [_objectStores] = new Set();
+    /** @type {(IDBTransaction | null)} */
+    [_upgradeTransaction] = null;
     /** @type {Connection} */
     [_connection];
 
@@ -462,7 +484,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-objectstorenames
     get objectStoreNames() {
       webidl.assertBranded(this, IDBDatabasePrototype);
-      // TODO
+      return ArrayPrototypeSort([...new SafeArrayIterator(MapPrototypeKeys(this[_connection].objectStoreSet))]);
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
@@ -492,7 +514,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-close
     close() {
       webidl.assertBranded(this, IDBDatabasePrototype);
-      // TODO
+      this[_connection].close(false);
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
@@ -509,7 +531,30 @@
         context: "Argument 2",
       });
 
+      if (this[_upgradeTransaction] === null) {
+        throw new DOMException("", "InvalidStateError"); // TODO
+      }
+
+      if (this[_upgradeTransaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError"); // TODO
+      }
+
+      const keyPath = options.keyPath ?? null;
+
+      if (options.keyPath !== null && !isValidKeyPath(options.keyPath)) {
+        throw new DOMException("", "SyntaxError"); // TODO
+      }
+
+      if ((typeof options.keyPath === "string" && options.keyPath.length === 0) || ArrayIsArray(options.keyPath)) {
+        throw new DOMException("", "InvalidAccessError"); // TODO
+      }
+
       // TODO
+      const objectStore = webidl.createBranded(IDBObjectStore);
+      objectStore[_name] = name;
+      objectStore[_keyPath] = keyPath;
+      objectStore[_autoIncrement] = options.autoIncrement;
+      return objectStore;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-deleteobjectstore
@@ -522,7 +567,21 @@
         context: "Argument 1",
       });
 
-      // TODO
+      if (this[_upgradeTransaction] === null) {
+        throw new DOMException("", "InvalidStateError"); // TODO: error message
+      }
+
+      if (this[_upgradeTransaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError"); // TODO: error message
+      }
+
+      const store = MapPrototypeGet(this[_connection].objectStoreSet, name);
+      if (store === undefined) {
+        throw new DOMException("", "NotFoundError"); // TODO: error message
+      }
+      MapPrototypeDelete(this[_connection].objectStoreSet, name);
+
+      // TODO 6.
     }
   }
   defineEventHandler(IDBDatabase.prototype, "abort");
@@ -533,6 +592,8 @@
   webidl.configurePrototype(IDBDatabase);
   const IDBDatabasePrototype = IDBDatabase.prototype;
 
+  const _autoIncrement = Symbol("[[autoIncrement]]");
+  const _keyPath = Symbol("[[keyPath]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbobjectstore
   class IDBObjectStore {
     constructor() {
@@ -556,6 +617,7 @@
       // TODO
     }
 
+    [_keyPath];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-keypath
     get keyPath() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
@@ -568,16 +630,18 @@
       // TODO
     }
 
+    [_transaction];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-transaction
     get transaction() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO
+      return this[_transaction];
     }
 
+    [_autoIncrement];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-autoincrement
     get autoIncrement() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO
+      return this[_autoIncrement];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-put
@@ -930,34 +994,64 @@
   webidl.configurePrototype(IDBIndex);
   const IDBIndexPrototype = IDBIndex.prototype;
 
+  const _lowerBound = Symbol("[[lowerBound]]");
+  const _upperBound = Symbol("[[upperBound]]");
+  const _lowerOpen = Symbol("[[lowerOpen]]");
+  const _upperOpen = Symbol("[[upperOpen]]");
+
+  function createRange(lowerBound, upperBound, lowerOpen = false, upperOpen = false) {
+    const range = webidl.createBranded(IDBKeyRange);
+    range[_lowerBound] = lowerBound;
+    range[_upperBound] = upperBound;
+    range[_lowerOpen] = lowerOpen;
+    range[_upperOpen] = upperOpen;
+    return range;
+  }
+
+  /**
+   * @param range {IDBKeyRange}
+   * @param key {any}
+   * @returns {boolean}
+   */
+  // Ref: https://w3c.github.io/IndexedDB/#in
+  function keyInRange(range, key) {
+    const lower = range[_lowerBound] === null || compareTwoKeys(range[_lowerBound], key) === -1 || (compareTwoKeys(range[_lowerBound], key) === 0 && !range[_lowerOpen]);
+    const upper = range[_upperBound] === null || compareTwoKeys(range[_upperBound], key) === 1 || (compareTwoKeys(range[_upperBound], key) === 0 && !range[_upperOpen]);
+    return lower && upper;
+  }
+
   // Ref: https://w3c.github.io/IndexedDB/#idbkeyrange
   class IDBKeyRange {
     constructor() {
       webidl.illegalConstructor();
     }
 
+    [_lowerBound];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-lower
     get lower() {
       webidl.assertBranded(this, IDBKeyRangePrototype);
-      // TODO
+      return this[_lowerBound];
     }
 
+    [_upperBound];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upper
     get upper() {
       webidl.assertBranded(this, IDBKeyRangePrototype);
-      // TODO
+      return this[_upperBound];
     }
 
+    [_lowerOpen];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-loweropen
     get lowerOpen() {
       webidl.assertBranded(this, IDBKeyRangePrototype);
-      // TODO
+      return this[_lowerOpen];
     }
 
+    [_upperOpen];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upperopen
     get upperOpen() {
       webidl.assertBranded(this, IDBKeyRangePrototype);
-      // TODO
+      return this[_upperOpen];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-only
@@ -968,7 +1062,11 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO
+      const key = valueToKey(value);
+      if (key === null) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      return createRange(key, key);
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-lowerbound
@@ -983,7 +1081,11 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO
+      const lowerKey = valueToKey(lower);
+      if (lowerKey === null) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      return createRange(lowerKey, null, open, true);
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upperbound
@@ -998,7 +1100,11 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO
+      const upperKey = valueToKey(upper);
+      if (upperKey === null) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      return createRange(null, upperKey, true, open);
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-bound
@@ -1021,7 +1127,18 @@
         prefix,
         context: "Argument 4",
       });
-      // TODO
+      const lowerKey = valueToKey(lower);
+      if (lowerKey === null) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      const upperKey = valueToKey(upper);
+      if (upperKey === null) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      if (compareTwoKeys(lowerKey, upperKey) === 1) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      return createRange(lowerKey, upperKey, lowerOpen, upperOpen);
     }
 
     includes(key) {
@@ -1032,7 +1149,11 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO
+      const keyVal = valueToKey(key);
+      if (keyVal === null) {
+        throw new DOMException("", "DataError"); // TODO: error
+      }
+      return keyInRange(this, key);
     }
   }
   webidl.configurePrototype(IDBKeyRange);
@@ -1135,8 +1256,19 @@
   webidl.configurePrototype(IDBCursor);
   const IDBCursorPrototype = IDBCursor.prototype;
 
+  const _requestList = Symbol("[[requestList]]");
+  const _state = Symbol("[[state]]");
+  const _mode = Symbol("[[mode]]");
+  const _db = Symbol("[[db]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbtransaction
   class IDBTransaction extends EventTarget {
+    [_requestList] = [];
+    /** @type {TransactionState} */
+    [_state] = "active";
+    [_mode];
+    [_error];
+    [_db];
+
     constructor() {
       super();
       webidl.illegalConstructor();
@@ -1151,7 +1283,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-mode
     get mode() {
       webidl.assertBranded(this, IDBTransactionPrototype);
-      // TODO
+      return this[_mode];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-durability
@@ -1163,13 +1295,13 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-db
     get db() {
       webidl.assertBranded(this, IDBTransactionPrototype);
-      // TODO
+      return this[_db];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-error
     get error() {
       webidl.assertBranded(this, IDBTransactionPrototype);
-      // TODO
+      return this[_error];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-objectstore

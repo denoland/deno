@@ -48,9 +48,8 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
         "op_webstorage_iterate_keys",
         op_sync(webstorage::op_webstorage_iterate_keys),
       ),
-
       // IndexedDb
-      ("op_indexeddb_open", op_sync(indexeddb::op_indexeddb_open))
+      ("op_indexeddb_open", op_sync(indexeddb::op_indexeddb_open)),
     ])
     .state(move |state| {
       if let Some(origin_storage_dir) = &origin_storage_dir {
@@ -114,9 +113,7 @@ impl fmt::Display for DomExceptionVersionError {
 
 impl std::error::Error for DomExceptionVersionError {}
 
-pub fn get_version_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
+pub fn get_version_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionVersionError>()
     .map(|_| "DOMExceptionVersionError")
 }

@@ -7,3 +7,5 @@ interface Key {
   // deno-lint-ignore no-explicit-any
   value: any;
 }
+
+type TransactionState = "active" | "inactive" | "committing" | "finished";

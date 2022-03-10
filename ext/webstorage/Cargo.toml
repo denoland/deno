@@ -18,3 +18,4 @@ deno_core = { version = "0.120.0", path = "../../core" }
 deno_web = { version = "0.69.0", path = "../web" }
 rusqlite = { version = "0.25.3", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.129", features = ["derive"] }
+async-trait = "0.1.52"

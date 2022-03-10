@@ -1139,6 +1139,7 @@ dependencies = [
 name = "deno_webstorage"
 version = "0.33.0"
 dependencies = [
+ "async-trait",
  "deno_core",
  "deno_web",
  "rusqlite",

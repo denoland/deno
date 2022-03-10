@@ -1,4 +1,9 @@
-use crate::{DomExceptionNotSupportedError, DomExceptionVersionError, OriginStorageDir};
+mod idbtrait;
+mod sqlite_idb;
+
+use crate::{
+  DomExceptionNotSupportedError, DomExceptionVersionError, OriginStorageDir,
+};
 use deno_core::error::AnyError;
 use deno_core::{OpState, Resource, ResourceId};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -169,25 +174,80 @@ pub fn op_indexeddb_open(
 
   let idbmanager = state.borrow::<IndexedDbManager>();
   let conn = &idbmanager.0;
-  let mut stmt = conn.prepare_cached("SELECT version FROM data WHERE name = ?")?;
+  let mut stmt = conn.prepare_cached("SELECT * FROM database WHERE name = ?")?;
   let db = stmt
-    .query_row(params![name], |row| Ok(Database {
-      name: row.get(0)?,
-      version: row.get(1)?,
-    }))
+    .query_row(params![name], |row| {
+      Ok(Database {
+        name: row.get(0)?,
+        version: row.get(1)?,
+      })
+    })
     .optional()?;
-  let version = version.or_else(|| db.map(|db|db.version)).unwrap_or(1);
+  let version = version.or_else(|| db.map(|db| db.version)).unwrap_or(1);
 
   let db = if let Some(db) = db {
     db
   } else {
-    let mut stmt = conn.prepare_cached("INSERT INTO database (name) VALUES (?)")?;
+    let mut stmt =
+      conn.prepare_cached("INSERT INTO database (name) VALUES (?)")?;
     stmt.execute(params![name])?; // TODO: 6. DOMException
-    Database {
-      name,
-      version: 0,
-    }
+    Database { name, version: 0 }
   };
 
   Ok((version, db.version))
+}
+
+// Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
+pub fn op_indexeddb_list_databases(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<Vec<String>, AnyError> {
+  let idbmanager = &state.borrow::<IndexedDbManager>().0;
+  let mut stmt = idbmanager.prepare_cached("SELECT name FROM database")?;
+  let names = stmt.query(params![])?.map(|row| row.get(0).unwrap()).collect::<Vec<String>>()?;
+  Ok(names)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateObjectStoreArgs {
+  database_name: String,
+  name: String,
+  key_path: Option<String>,
+  auto_increment: bool,
+}
+
+// Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
+pub fn op_indexeddb_database_create_object_store(
+  state: &mut OpState,
+  args: CreateObjectStoreArgs,
+  _: (),
+) -> Result<(), AnyError> {
+  let conn = &state.borrow::<IndexedDbManager>().0;
+
+  // TODO: this might be doable on the JS side
+  let mut stmt = conn.prepare_cached(
+    "SELECT * FROM object_store_index WHERE name = ? AND database_name = ?",
+  )?;
+  if stmt.exists(params![args.name, args.database_name])? {
+    return Err();
+  }
+
+  // TODO: autoIncrement
+  let mut stmt = conn.prepare_cached(
+    "INSERT INTO object_store (name, keyPath) VALUES (?, ?) RETURNING id",
+  )?;
+  let store_id: u64 =
+    stmt.query_row(params![args.name, args.key_path], |row| row.get(0))?;
+
+  let mut stmt = conn.prepare_cached("INSERT INTO object_store_index (object_store_id, database_name, name, key_path) VALUES (?, ?, ?, ?)")?;
+  stmt.execute(params![
+    store_id,
+    args.database_name,
+    args.name,
+    args.key_path
+  ])?; // TODO: more args needed
+
+  Ok(())
 }
