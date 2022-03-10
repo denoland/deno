@@ -165,29 +165,3 @@ macro_rules! include_js_files {
     ]
   };
 }
-
-// #[macro_export]
-// macro_rules! ops {
-//   // A flattened group of async[] & sync[] subgroups
-//   ($($wrapper:ident[$($opfn:expr,)+],)+) => {
-//     vec![
-//       $(declare_ops!($wrapper[$($opfn,)+]),)+
-//     ].into_iter().flatten().collect()
-//   };
-
-//   // Async group
-//   (async[$($opfn:expr,)+]) => {
-//     vec![$((
-//       $crate::extensions::op_ident(stringify!($opfn)),
-//       $crate::op_async($opfn),
-//     ),)+]
-//   };
-//
-//   // Sync group
-//   (sync[$($opfn:expr,)+]) => {
-//     vec![$((
-//       $crate::extensions::op_ident(stringify!($opfn)),
-//       $crate::op_sync($opfn),
-//     ),)+]
-//   };
-// }
