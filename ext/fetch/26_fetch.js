@@ -408,9 +408,13 @@
    * @param {RequestInfo} input
    * @param {RequestInit} init
    */
-  function fetch(input, init = {}) {
+  async function fetch(input, init = {}) {
+    // There is an async dispatch later that causes a stack trace disconnect.
+    // We reconnect it by assigning the result of that dispatch to `opPromise`
+    // and awaiting it in this function.
+    let opPromise = undefined;
     // 1.
-    return new Promise((resolve, reject) => {
+    const result = new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // 2.
@@ -441,7 +445,7 @@
       }
 
       // 12.
-      PromisePrototypeCatch(
+      opPromise = PromisePrototypeCatch(
         PromisePrototypeThen(
           mainFetch(request, false, requestObject.signal),
           (response) => {
@@ -479,6 +483,10 @@
         },
       );
     });
+    if (opPromise) {
+      await opPromise;
+    }
+    return result;
   }
 
   function abortFetch(request, responseObject, error) {
