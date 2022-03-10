@@ -62,17 +62,14 @@ pub async fn execute_script(
   let maybe_script = tasks_config.get(&task_name);
 
   if let Some(script) = maybe_script {
-    let seq_list = deno_task_shell::parser::parse(script)
+    // todo(THIS PR): append additional CLI args to "script" here
+    // in order to support someone doing `deno task my_task arg1 arg2 etc`
+    let additional_args = String::new();
+    let script = format!("{} {}", script, additional_args);
+    let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
-    let additional_cli_args = Vec::new(); // todo
-    let exit_code = deno_task_shell::execute(
-      seq_list,
-      env_vars,
-      cwd.to_path_buf(),
-      additional_cli_args,
-    )
-    .await?;
+    let exit_code = deno_task_shell::execute(seq_list, env_vars, cwd).await;
     Ok(exit_code)
   } else {
     eprintln!("Task not found: {}", task_name);
