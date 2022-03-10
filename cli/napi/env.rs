@@ -41,7 +41,7 @@ pub unsafe extern "C" fn napi_fatal_error(
 #[napi_sym::napi_sym]
 fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let value: v8::Local<v8::Value> = std::mem::transmute(value);
+  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let error = value.to_rust_string_lossy(&mut env.scope());
   panic!(
     "Fatal exception triggered by napi_fatal_exception!\n{}",

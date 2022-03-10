@@ -66,7 +66,8 @@ pub fn create_function<'a>(
       let info_ptr = &mut info as *mut _ as *mut c_void;
 
       let value = unsafe { cb(env_ptr, info_ptr) };
-      let value = unsafe { std::mem::transmute(value) };
+      let value =
+        unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) };
       rv.set(value);
     },
   )
@@ -137,7 +138,8 @@ pub fn create_function_template<'a>(
       let info_ptr = &mut info as *mut _ as *mut c_void;
 
       let value = unsafe { cb(env_ptr, info_ptr) };
-      let value = unsafe { transmute(value) };
+      let value =
+        unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) };
       rv.set(value);
     },
   )

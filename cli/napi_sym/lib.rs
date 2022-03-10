@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use proc_macro::TokenStream;
 use quote::quote;
 use serde::Deserialize;
@@ -30,6 +32,7 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
     syn::ReturnType::Type(_, ty) => quote! { #ty },
   };
   TokenStream::from(quote! {
+      // SAFETY: it's an NAPI function.
       #[no_mangle]
       pub unsafe extern "C" fn #name(#inputs) -> napi_status {
         let mut inner = || -> #ret_ty {

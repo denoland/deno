@@ -2,6 +2,8 @@
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
+#![deny(clippy::undocumented_unsafe_blocks)]
+#![deny(clippy::missing_safety_doc)]
 
 pub use std::ffi::CStr;
 pub use std::mem::transmute;
@@ -355,10 +357,12 @@ impl Env {
   }
 
   pub fn shared(&self) -> &EnvShared {
+    // SAFETY: the lifetime of `EnvShared` always exceeds the lifetime of `Env`.
     unsafe { &*self.shared }
   }
 
   pub fn shared_mut(&mut self) -> &mut EnvShared {
+    // SAFETY: the lifetime of `EnvShared` always exceeds the lifetime of `Env`.
     unsafe { &mut *self.shared }
   }
 
@@ -369,9 +373,14 @@ impl Env {
   // TODO(@littledivy): Painful hack. ouch.
   pub fn scope(&self) -> v8::CallbackScope {
     assert!(!self.isolate_ptr.is_null(), "isolate_ptr is null");
+    // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
+    // already on the stack, but we don't have access to it.
     let context = unsafe {
       transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(self.context)
     };
+    // SAFETY: there must be a `HandleScope` on the stack, this is ensured because
+    // we are in a V8 callback or the module has already opened a `HandleScope`
+    // using `napi_open_handle_scope`.
     unsafe { v8::CallbackScope::new(context) }
   }
 }
@@ -400,6 +409,8 @@ pub fn napi_open_func<'s>(
   // die before the module itself. Using struct & their pointers
   // resulted in a use-after-free situation which turned out to be
   // unfixable, so here we are.
+  // SAFETY: EnvShared is non-zero size, the memory is initialized later when we
+  // write to the pointer.
   let env_shared_ptr = unsafe {
     std::alloc::alloc(std::alloc::Layout::new::<EnvShared>()) as *mut EnvShared
   };
@@ -407,6 +418,8 @@ pub fn napi_open_func<'s>(
   let cstr = CString::new(path.clone()).unwrap();
   env_shared.filename = cstr.as_ptr();
   std::mem::forget(cstr);
+  // SAFETY: we have ensured that the layout of the data the pointer points
+  // to is the same as `EnvShared`
   unsafe {
     env_shared_ptr.write(env_shared);
   }
@@ -422,6 +435,8 @@ pub fn napi_open_func<'s>(
     )
   };
 
+  // SAFETY: Env is non-zero size, the memory is initialized later when we write
+  // to the pointer.
   let env_ptr =
     unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
   let ctx = scope.get_current_context();
@@ -432,6 +447,8 @@ pub fn napi_open_func<'s>(
     tsfn_sender,
   );
   env.shared = env_shared_ptr;
+  // SAFETY: we have ensured that the layout of the data the pointer points
+  // to is the same as `Env`
   unsafe {
     (env_ptr as *mut Env).write(env);
   }
@@ -441,6 +458,7 @@ pub fn napi_open_func<'s>(
   #[cfg(not(unix))]
   let flags = 0x00000008;
 
+  // SAFETY: opening a DLL is always unsafe
   #[cfg(unix)]
   let library = match unsafe { Library::open(Some(&path), flags) } {
     Ok(lib) => lib,
@@ -452,6 +470,7 @@ pub fn napi_open_func<'s>(
     }
   };
 
+  // SAFETY: opening a DLL is always unsafe
   #[cfg(not(unix))]
   let library = match unsafe { Library::load_with_flags(&path, flags) } {
     Ok(lib) => lib,
@@ -467,28 +486,43 @@ pub fn napi_open_func<'s>(
     let slot = *cell.borrow();
     match slot {
       Some(nm) => {
+        // SAFETY: dereferencing a pointer is unsafe
         let nm = unsafe { &*nm };
         assert_eq!(nm.nm_version, 1);
+        // SAFETY: calling a function across FFI boundary is always unsafe
         let exports = unsafe {
-          (nm.nm_register_func)(env_ptr, std::mem::transmute(exports))
+          (nm.nm_register_func)(
+            env_ptr,
+            std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
+              exports.into(),
+            ),
+          )
         };
 
-        let exports: v8::Local<v8::Value> =
-          unsafe { std::mem::transmute(exports) };
+        // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+        // to a value, they have the same layout
+        let exports = unsafe {
+          std::mem::transmute::<napi_value, v8::Local<v8::Value>>(exports)
+        };
         rv.set(exports);
       }
       None => {
         // Initializer callback.
-        let init = unsafe {
-          library
+        // SAFETY: calling a function across FFI boundary is always unsafe
+        unsafe {
+          let init = library
             .get::<unsafe extern "C" fn(
               env: napi_env,
               exports: napi_value,
             ) -> napi_value>(b"napi_register_module_v1")
-            .expect("napi_register_module_v1 not found")
+            .expect("napi_register_module_v1 not found");
+          init(
+            env_ptr,
+            std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
+              exports.into(),
+            ),
+          )
         };
-
-        unsafe { init(env_ptr, std::mem::transmute(exports)) };
         rv.set(exports.into());
       }
     }
