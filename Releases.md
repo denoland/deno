@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.19.3 / 2022.03.10
+
+- fix(ci): restore compatibility with older glibc (#13846)
+- fix(test): typecheck blocks annotated with long js/ts notations (#13785)
+- perf(core): micro-optimize OpsTracker (#13868)
+- perf(ext/web): optimize atob/btoa (#13841)
+- perf(serde_v8): avoid SerializablePkg allocs (#13860)
+- perf(serde_v8): optimize ByteString deserialization (#13853)
+
 ### 1.19.2 / 2022.03.03
 
 - fix(cli): disable config discovery for remote script (#13745)
