@@ -8,6 +8,7 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
+use std::time;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
@@ -24,6 +25,7 @@ pub fn init(sender: UnboundedSender<BenchEvent>) -> Extension {
       ),
       ("op_get_bench_origin", op_sync(op_get_bench_origin)),
       ("op_dispatch_bench_event", op_sync(op_dispatch_bench_event)),
+      ("op_bench_now", op_sync(op_bench_now)),
     ])
     .state(move |state| {
       state.put(sender.clone());
@@ -88,4 +90,10 @@ fn op_dispatch_bench_event(
   sender.send(event).ok();
 
   Ok(())
+}
+
+fn op_bench_now(state: &mut OpState, _: (), _: ()) -> Result<u64, AnyError> {
+  let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
+  let ns_u64 = u64::try_from(ns)?;
+  Ok(ns_u64)
 }

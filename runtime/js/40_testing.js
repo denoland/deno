@@ -907,25 +907,24 @@
 
   function reportBenchIteration(fn) {
     return async function benchIteration(step) {
+      let now;
       if (!step.warmup) {
-        reportIterationStart();
+        now = benchNow();
       }
       await fn(step);
       if (!step.warmup) {
-        reportIterationFinish();
+        reportIterationTime(benchNow() - now);
       }
     };
   }
 
-  function reportIterationStart() {
-    core.opSync("op_dispatch_bench_event", {
-      iterationStart: 0,
-    });
+  function benchNow() {
+    return core.opSync("op_bench_now");
   }
 
-  function reportIterationFinish() {
+  function reportIterationTime(time) {
     core.opSync("op_dispatch_bench_event", {
-      iterationFinish: 0,
+      iterationTime: time,
     });
   }
 

@@ -90,8 +90,7 @@ pub enum BenchEvent {
   Plan(BenchPlan),
   Wait(BenchDescription),
   Output(BenchOutput),
-  IterationStart(u64),
-  IterationFinish(u64),
+  IterationTime(u64),
   Result(BenchDescription, BenchResult, u64),
 }
 
@@ -408,17 +407,8 @@ async fn bench_specifiers(
             reporter.report_output(&output);
           }
 
-          BenchEvent::IterationStart(_iteration) => {
-            summary.current_bench.current_start = Instant::now();
-          }
-
-          BenchEvent::IterationFinish(_iteration) => {
-            let duration_of_iter =
-              summary.current_bench.current_start.elapsed();
-            summary
-              .current_bench
-              .measures
-              .push(duration_of_iter.as_nanos())
+          BenchEvent::IterationTime(iter_time) => {
+            summary.current_bench.measures.push(iter_time.into())
           }
 
           BenchEvent::Result(description, result, elapsed) => {
