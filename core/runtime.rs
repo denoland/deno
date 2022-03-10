@@ -278,6 +278,17 @@ impl JsRuntime {
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
+    let js_error_create_fn = options
+      .js_error_create_fn
+      .unwrap_or_else(|| Rc::new(JsError::create));
+    let mut op_state = OpState::new();
+
+    if let Some(get_error_class_fn) = options.get_error_class_fn {
+      op_state.get_error_class_fn = get_error_class_fn;
+    }
+
+    let op_state = Rc::new(RefCell::new(op_state));
+
     // Add builtins extension
     options
       .extensions
@@ -294,7 +305,8 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &ops, false);
+        let context =
+          bindings::initialize_context(scope, &ops, false, op_state.clone());
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -320,8 +332,12 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &ops, snapshot_loaded);
+        let context = bindings::initialize_context(
+          scope,
+          &ops,
+          snapshot_loaded,
+          op_state.clone(),
+        );
 
         global_context = v8::Global::new(scope, context);
       }
@@ -334,17 +350,6 @@ impl JsRuntime {
     let loader = options
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
-
-    let js_error_create_fn = options
-      .js_error_create_fn
-      .unwrap_or_else(|| Rc::new(JsError::create));
-    let mut op_state = OpState::new();
-
-    if let Some(get_error_class_fn) = options.get_error_class_fn {
-      op_state.get_error_class_fn = get_error_class_fn;
-    }
-
-    let op_state = Rc::new(RefCell::new(op_state));
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
@@ -368,8 +373,6 @@ impl JsRuntime {
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
     })));
-
-    isolate.set_slot(op_state.clone());
 
     let module_map = ModuleMap::new(loader, op_state);
     isolate.set_slot(Rc::new(RefCell::new(module_map)));

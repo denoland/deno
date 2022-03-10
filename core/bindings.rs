@@ -9,6 +9,7 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
+use crate::OpState;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
@@ -18,6 +19,8 @@ use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
 use std::option::Option;
+use std::os::raw::c_void;
+use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -144,6 +147,7 @@ pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   ops: &[OpPair],
   snapshot_loaded: bool,
+  op_state: Rc<RefCell<OpState>>,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -167,7 +171,7 @@ pub fn initialize_context<'s>(
     let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
       .unwrap_or_else(|_| v8::Object::new(scope));
     for (name, opfn) in ops {
-      set_func_raw(scope, ops_val, name, *opfn);
+      set_func_raw(scope, ops_val, name, *opfn, op_state.clone());
     }
     return scope.escape(context);
   }
@@ -237,7 +241,7 @@ pub fn initialize_context<'s>(
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
   for (name, opfn) in ops {
-    set_func_raw(scope, ops_val, name, *opfn);
+    set_func_raw(scope, ops_val, name, *opfn, op_state.clone());
   }
   scope.escape(context)
 }
@@ -259,9 +263,15 @@ pub fn set_func_raw(
   obj: v8::Local<v8::Object>,
   name: &'static str,
   callback: v8::FunctionCallback,
+  external_data: Rc<RefCell<OpState>>,
 ) {
   let key = v8::String::new(scope, name).unwrap();
-  let val = v8::Function::new_raw(scope, callback).unwrap();
+  let external =
+    v8::External::new(scope, Rc::into_raw(external_data) as *mut c_void);
+  let val = v8::Function::builder_raw(callback)
+    .data(external.into())
+    .build(scope)
+    .unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }

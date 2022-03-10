@@ -229,8 +229,19 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           #b
           #func
 
-          let state_rc = scope.get_slot::<std::rc::Rc<std::cell::RefCell<deno_core::OpState>>>().unwrap().clone();
-          let mut op_state = state_rc.borrow_mut();
+          // SAFETY: Unchecked cast to external since deno_core guarantees args.data() is a v8 External.
+          let state_rc_raw = unsafe {
+            deno_core::v8::Local::<deno_core::v8::External>::cast(args.data().unwrap())
+          }.value();
+
+          // SAFETY: This is fine. Original Rc<T> is cloned and leaked.
+          let state_rc: std::rc::Rc<std::cell::RefCell<deno_core::OpState>> = unsafe {
+            std::rc::Rc::from_raw(state_rc_raw as _)
+          };
+          let state = state_rc.clone();
+          std::mem::forget(state_rc);
+
+          let mut op_state = state.borrow_mut();
           let result = #name::<#type_params>(&mut op_state, a, b);
 
           op_state.tracker.track_sync(op_id);
