@@ -484,7 +484,7 @@
       );
     });
     if (opPromise) {
-      await opPromise;
+      await opPromise.catch(() => {});
     }
     return result;
   }
