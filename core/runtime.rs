@@ -369,6 +369,8 @@ impl JsRuntime {
       waker: AtomicWaker::new(),
     })));
 
+    isolate.set_slot(op_state.clone());
+
     let module_map = ModuleMap::new(loader, op_state);
     isolate.set_slot(Rc::new(RefCell::new(module_map)));
 

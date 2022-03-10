@@ -30,8 +30,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           Err(err) => {
             // Throw TypeError
             let msg = format!("Error parsing args: {}", deno_core::anyhow::Error::from(err));
-            let message = v8::String::new(scope, msg.as_ref()).unwrap();
-            let exception = v8::Exception::type_error(scope, message);
+            let message = deno_core::v8::String::new(scope, msg.as_ref()).unwrap();
+            let exception = deno_core::v8::Exception::type_error(scope, message);
             scope.throw_exception(exception);
             return;
           }
@@ -53,8 +53,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           Err(err) => {
             // Throw TypeError
             let msg = format!("Error parsing args: {}", deno_core::anyhow::Error::from(err));
-            let message = v8::String::new(scope, msg.as_ref()).unwrap();
-            let exception = v8::Exception::type_error(scope, message);
+            let message = deno_core::v8::String::new(scope, msg.as_ref()).unwrap();
+            let exception = deno_core::v8::Exception::type_error(scope, message);
             scope.throw_exception(exception);
             return;
           }
@@ -73,11 +73,12 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let ret = deno_core::serde_v8::to_v8(scope, v).unwrap();
         rv.set(ret);
       };
-      
+
       // Optimize Result<(), Err> to skip serde_v8.
       let ok_block = match &**ty {
         syn::Type::Path(ref path) => {
-          let maybe_result = path.path.segments.first().expect("Invalid return type.");
+          let maybe_result =
+            path.path.segments.first().expect("Invalid return type.");
           if maybe_result.ident.to_string() == "Result" {
             assert!(!maybe_result.arguments.is_empty());
             match &maybe_result.arguments {
@@ -93,8 +94,9 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
                   }
                   _ => default_ok,
                 }
-              },
-              syn::PathArguments::None | syn::PathArguments::Parenthesized(..) => unreachable!(),
+              }
+              syn::PathArguments::None
+              | syn::PathArguments::Parenthesized(..) => unreachable!(),
             }
           } else {
             default_ok
@@ -218,24 +220,19 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           args: deno_core::v8::FunctionCallbackArguments,
           mut rv: deno_core::v8::ReturnValue,
         ) #where_clause {
-          use deno_core::JsRuntime;
-          use deno_core::bindings::throw_type_error;
-          use deno_core::OpsTracker;
-          use deno_core::v8;
-
-          let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
+          // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
+          let op_id = unsafe {
+            deno_core::v8::Local::<deno_core::v8::Integer>::cast(args.get(0)).value()
+          } as usize;
 
           #a
           #b
           #func
 
-          let state_rc = deno_core::JsRuntime::state(scope);
-          let state = state_rc.borrow();
-          let op_state2 = state.op_state.clone();
-
-          let mut op_state = op_state2.borrow_mut();
+          let state_rc = scope.get_slot::<std::rc::Rc<std::cell::RefCell<deno_core::OpState>>>().unwrap().clone();
+          let mut op_state = state_rc.borrow_mut();
           let result = #name::<#type_params>(&mut op_state, a, b);
-          
+
           op_state.tracker.track_sync(op_id);
 
           #ret
