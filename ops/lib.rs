@@ -234,12 +234,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
             deno_core::v8::Local::<deno_core::v8::External>::cast(args.data().unwrap())
           }.value();
 
-          // SAFETY: This is fine. Original Rc<T> is cloned and leaked.
-          let state_rc: std::rc::Rc<std::cell::RefCell<deno_core::OpState>> = unsafe {
-            std::rc::Rc::from_raw(state_rc_raw as _)
-          };
-          let state = state_rc.clone();
-          std::mem::forget(state_rc);
+          // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
+          let state = unsafe { &*(state_rc_raw as *const std::cell::RefCell<deno_core::OpState>) };
 
           let mut op_state = state.borrow_mut();
           let result = #name::<#type_params>(&mut op_state, a, b);
