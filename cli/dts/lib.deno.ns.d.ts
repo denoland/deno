@@ -115,7 +115,7 @@ declare namespace Deno {
   export const noColor: boolean;
 
   export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
-  
+
   export interface PermissionOptionsObject {
     /** Specifies if the `net` permission should be requested or revoked.
      * If set to `"inherit"`, the current `env` permission will be inherited.
@@ -247,7 +247,7 @@ declare namespace Deno {
      * Defaults to "inherit".
      */
     write?: "inherit" | boolean | Array<string | URL>;
-  };
+  }
 
   export interface TestContext {
     /** Run a sub step of the parent test or step. Returns a promise
