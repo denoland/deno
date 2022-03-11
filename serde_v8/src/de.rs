@@ -524,7 +524,7 @@ fn value_to_zero_copy_buf<'a, 's>(
       .map_err(|_| Error::ExpectedBuffer)
   } else {
     v8::Local::<v8::ArrayBuffer>::try_from(input)
-      .and_then(|buffer| magic::zero_copy_buf::ZeroCopyBuf::try_from(buffer))
+      .and_then(magic::zero_copy_buf::ZeroCopyBuf::try_from)
       .map_err(|_| Error::ExpectedBuffer)
   }
 }
@@ -543,7 +543,7 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
     &mut self,
     seed: K,
   ) -> Result<Option<K::Value>> {
-    while let Some(key) = self.keys.next() {
+    if let Some(key) = self.keys.next() {
       let v8_val = self.obj.get(self.scope, key.v8_value).unwrap();
       // TODO: Here we have the option to skip (continue)
       // if we want to drop the pair if the value is undefined.
