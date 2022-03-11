@@ -409,12 +409,14 @@
 
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
-  function assertExit(fn) {
+  function assertExit(fn, isTest) {
     return async function exitSanitizer(...params) {
       setExitHandler((exitCode) => {
         assert(
           false,
-          `Test case attempted to exit with exit code: ${exitCode}`,
+          `${
+            isTest ? "Test case" : "Bench"
+          } attempted to exit with exit code: ${exitCode}`,
         );
       });
 
@@ -528,6 +530,7 @@
   }
 
   const tests = [];
+  const benches = [];
 
   // Main test function provided by Deno.
   function test(
@@ -627,6 +630,107 @@
     ArrayPrototypePush(tests, testDef);
   }
 
+  // Main bench function provided by Deno.
+  function bench(
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
+  ) {
+    let benchDef;
+    const defaults = {
+      ignore: false,
+      only: false,
+      sanitizeOps: true,
+      sanitizeResources: true,
+      sanitizeExit: true,
+      permissions: null,
+    };
+
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
+        throw new TypeError("The bench name can't be empty");
+      }
+      if (typeof optionsOrFn === "function") {
+        benchDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing bench function");
+        }
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, bench function is already provided as the third argument.",
+          );
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError(
+            "Unexpected 'name' field in options, bench name is already provided as the first argument.",
+          );
+        }
+        benchDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The bench function must have a name");
+      }
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Unexpected second argument to Deno.bench()");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Unexpected third argument to Deno.bench()");
+      }
+      benchDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
+    } else {
+      let fn;
+      let name;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, bench function is already provided as the second argument.",
+          );
+        }
+        name = nameOrFnOrOptions.name ?? fn.name;
+      } else {
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a bench function.",
+          );
+        }
+        fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
+      }
+      if (!name) {
+        throw new TypeError("The bench name can't be empty");
+      }
+      benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
+    }
+
+    benchDef.fn = wrapBenchFnWithSanitizers(
+      reportBenchIteration(benchDef.fn),
+      benchDef,
+    );
+
+    if (benchDef.permissions) {
+      benchDef.fn = withPermissions(
+        benchDef.fn,
+        benchDef.permissions,
+      );
+    }
+
+    ArrayPrototypePush(benches, benchDef);
+  }
+
   function formatError(error) {
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
       const message = error
@@ -699,8 +803,46 @@
     }
   }
 
+  async function runBench(bench) {
+    if (bench.ignore) {
+      return "ignored";
+    }
+
+    const step = new BenchStep({
+      name: bench.name,
+      sanitizeExit: bench.sanitizeExit,
+      warmup: false,
+    });
+
+    try {
+      const warmupIterations = bench.warmupIterations;
+      step.warmup = true;
+
+      for (let i = 0; i < warmupIterations; i++) {
+        await bench.fn(step);
+      }
+
+      const iterations = bench.n;
+      step.warmup = false;
+
+      for (let i = 0; i < iterations; i++) {
+        await bench.fn(step);
+      }
+
+      return "ok";
+    } catch (error) {
+      return {
+        "failed": formatError(error),
+      };
+    }
+  }
+
   function getTestOrigin() {
     return core.opSync("op_get_test_origin");
+  }
+
+  function getBenchOrigin() {
+    return core.opSync("op_get_bench_origin");
   }
 
   function reportTestPlan(plan) {
@@ -736,6 +878,53 @@
   function reportTestStepResult(testDescription, result, elapsed) {
     core.opSync("op_dispatch_test_event", {
       stepResult: [testDescription, result, elapsed],
+    });
+  }
+
+  function reportBenchPlan(plan) {
+    core.opSync("op_dispatch_bench_event", {
+      plan,
+    });
+  }
+
+  function reportBenchConsoleOutput(console) {
+    core.opSync("op_dispatch_bench_event", {
+      output: { console },
+    });
+  }
+
+  function reportBenchWait(description) {
+    core.opSync("op_dispatch_bench_event", {
+      wait: description,
+    });
+  }
+
+  function reportBenchResult(description, result, elapsed) {
+    core.opSync("op_dispatch_bench_event", {
+      result: [description, result, elapsed],
+    });
+  }
+
+  function reportBenchIteration(fn) {
+    return async function benchIteration(step) {
+      let now;
+      if (!step.warmup) {
+        now = benchNow();
+      }
+      await fn(step);
+      if (!step.warmup) {
+        reportIterationTime(benchNow() - now);
+      }
+    };
+  }
+
+  function benchNow() {
+    return core.opSync("op_bench_now");
+  }
+
+  function reportIterationTime(time) {
+    core.opSync("op_dispatch_bench_event", {
+      iterationTime: time,
     });
   }
 
@@ -794,6 +983,53 @@
       const elapsed = DateNow() - earlier;
 
       reportTestResult(description, result, elapsed);
+    }
+
+    globalThis.console = originalConsole;
+  }
+
+  async function runBenchmarks({
+    filter = null,
+  } = {}) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+
+    const origin = getBenchOrigin();
+    const originalConsole = globalThis.console;
+
+    globalThis.console = new Console(reportBenchConsoleOutput);
+
+    const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
+    const filtered = ArrayPrototypeFilter(
+      only.length > 0 ? only : benches,
+      createTestFilter(filter),
+    );
+
+    reportBenchPlan({
+      origin,
+      total: filtered.length,
+      filteredOut: benches.length - filtered.length,
+      usedOnly: only.length > 0,
+    });
+
+    for (const bench of filtered) {
+      // TODO(bartlomieju): probably needs some validation?
+      const iterations = bench.n ?? 1000;
+      const warmupIterations = bench.warmup ?? 1000;
+      const description = {
+        origin,
+        name: bench.name,
+        iterations,
+      };
+      bench.n = iterations;
+      bench.warmupIterations = warmupIterations;
+      const earlier = DateNow();
+
+      reportBenchWait(description);
+
+      const result = await runBench(bench);
+      const elapsed = DateNow() - earlier;
+
+      reportBenchResult(description, result, elapsed);
     }
 
     globalThis.console = originalConsole;
@@ -989,6 +1225,27 @@
     }
   }
 
+  /**
+   * @typedef {{
+   *   name: string;
+   *   sanitizeExit: boolean,
+   *   warmup: boolean,
+   * }} BenchStepParams
+   */
+  class BenchStep {
+    /** @type {BenchStepParams} */
+    #params;
+
+    /** @param params {BenchStepParams} */
+    constructor(params) {
+      this.#params = params;
+    }
+
+    get name() {
+      return this.#params.name;
+    }
+  }
+
   /** @param parentStep {TestStep} */
   function createTestContext(parentStep) {
     return {
@@ -1121,9 +1378,24 @@
       testFn = assertResources(testFn);
     }
     if (opts.sanitizeExit) {
-      testFn = assertExit(testFn);
+      testFn = assertExit(testFn, true);
     }
     return testFn;
+  }
+
+  /**
+   * @template T {Function}
+   * @param fn {T}
+   * @param opts {{
+   *   sanitizeExit: boolean,
+   * }}
+   * @returns {T}
+   */
+  function wrapBenchFnWithSanitizers(fn, opts) {
+    if (opts.sanitizeExit) {
+      fn = assertExit(fn, false);
+    }
+    return fn;
   }
 
   /**
@@ -1139,9 +1411,11 @@
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    runBenchmarks,
   };
 
   window.__bootstrap.testing = {
     test,
+    bench,
   };
 })(this);

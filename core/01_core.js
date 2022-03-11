@@ -29,6 +29,9 @@
   const ops = window.Deno.core.ops;
   const opIds = Object.keys(ops).reduce((a, v, i) => ({ ...a, [v]: i }), {});
 
+  // Available on start due to bindings.
+  const { refOp_, unrefOp_ } = window.Deno.core;
+
   const errorMap = {};
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -96,6 +99,17 @@
     return promise;
   }
 
+  function hasPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      return MapPrototypeHas(promiseMap, promiseId);
+    }
+    // Otherwise check it in ring
+    const idx = promiseId % RING_SIZE;
+    return promiseRing[idx] != NO_PROMISE;
+  }
+
   function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
@@ -160,6 +174,20 @@
     return unwrapOpResult(ops[opName](opIds[opName], null, arg1, arg2));
   }
 
+  function refOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    refOp_(promiseId);
+  }
+
+  function unrefOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    unrefOp_(promiseId);
+  }
+
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
   }
@@ -220,7 +248,6 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
-    ops,
     close,
     tryClose,
     read,
@@ -239,6 +266,8 @@
     enableOpCallTracing,
     isOpCallTracingEnabled,
     opCallTraces,
+    refOp,
+    unrefOp,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

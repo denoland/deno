@@ -1,0 +1,17 @@
+Check [WILDCARD]no_prompt_by_default.ts
+running 1 bench from [WILDCARD]no_prompt_by_default.ts
+bench no prompt ... 1000 iterations FAILED ([WILDCARD]ms)
+
+failures:
+
+no prompt
+PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
+[WILDCARD]
+
+failures:
+
+	no prompt
+
+bench result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD]ms)
+
+error: Bench failed

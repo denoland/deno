@@ -40,6 +40,7 @@ mod windows_util;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
 use crate::flags::CheckFlag;
@@ -1248,6 +1249,19 @@ async fn coverage_command(
   Ok(0)
 }
 
+async fn bench_command(
+  flags: Flags,
+  bench_flags: BenchFlags,
+) -> Result<i32, AnyError> {
+  if flags.watch.is_some() {
+    tools::bench::run_benchmarks_with_watch(flags, bench_flags).await?;
+  } else {
+    tools::bench::run_benchmarks(flags, bench_flags).await?;
+  }
+
+  Ok(0)
+}
+
 async fn test_command(
   flags: Flags,
   test_flags: TestFlags,
@@ -1328,6 +1342,9 @@ fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
   match flags.subcommand.clone() {
+    DenoSubcommand::Bench(bench_flags) => {
+      bench_command(flags, bench_flags).boxed_local()
+    }
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
     }

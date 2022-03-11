@@ -2696,27 +2696,27 @@
     "RSASSA-PKCS1-v1_5": {
       public: ["verify"],
       private: ["sign"],
-      jwtUse: "sig",
+      jwkUse: "sig",
     },
     "RSA-PSS": {
       public: ["verify"],
       private: ["sign"],
-      jwtUse: "sig",
+      jwkUse: "sig",
     },
     "RSA-OAEP": {
       public: ["encrypt", "wrapKey"],
       private: ["decrypt", "unwrapKey"],
-      jwtUse: "enc",
+      jwkUse: "enc",
     },
     "ECDSA": {
       public: ["verify"],
       private: ["sign"],
-      jwtUse: "sig",
+      jwkUse: "sig",
     },
     "ECDH": {
       public: [],
       private: ["deriveKey", "deriveBits"],
-      jwtUse: "enc",
+      jwkUse: "enc",
     },
   };
 
@@ -2863,11 +2863,11 @@
         if (
           keyUsages.length > 0 && jwk.use !== undefined &&
           StringPrototypeToLowerCase(jwk.use) !==
-            SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+            SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwkUse
         ) {
           throw new DOMException(
             `'use' property of JsonWebKey must be '${
-              SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+              SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwkUse
             }'`,
             "DataError",
           );

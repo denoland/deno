@@ -192,8 +192,8 @@ pub fn initialize_context<'s>(
   let ops_val = v8::Object::new(scope);
   core_val.set(scope, ops_key.into(), ops_val.into());
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "refOp", ref_op);
-  set_func(scope, core_val, "unrefOp", unref_op);
+  set_func(scope, core_val, "refOp_", ref_op);
+  set_func(scope, core_val, "unrefOp_", unref_op);
   set_func(
     scope,
     core_val,

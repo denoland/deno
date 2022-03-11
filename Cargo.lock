@@ -121,6 +121,15 @@ checksum = "159bb86af3a200e19a068f4224eae4c8bb2d0fa054c7e5d1cacd5cef95e684cd"
 
 [[package]]
 name = "arrayvec"
+version = "0.4.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
+dependencies = [
+ "nodrop",
+]
+
+[[package]]
+name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
@@ -775,11 +784,12 @@ dependencies = [
  "nix",
  "node_resolver",
  "notify",
+ "num-format",
  "once_cell",
  "os_pipe",
  "percent-encoding",
  "pin-project",
- "pretty_assertions 0.7.2",
+ "pretty_assertions",
  "rand 0.8.4",
  "regex",
  "ring",
@@ -1079,13 +1089,13 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.1.6"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad23aacc3db4f37eb88fb9c874a85a4abe5eab14a98fc070ee8df9e204f243e6"
+checksum = "fafb65c387677c45078adb3bb70503128cadd0ee94772167be4f7da8549434dc"
 dependencies = [
  "anyhow",
  "futures",
- "pretty_assertions 1.1.0",
+ "os_pipe",
  "tokio",
 ]
 
@@ -2518,6 +2528,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nodrop"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
+
+[[package]]
 name = "notify"
 version = "5.0.0-pre.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2572,6 +2588,16 @@ dependencies = [
  "rand 0.8.4",
  "smallvec",
  "zeroize",
+]
+
+[[package]]
+name = "num-format"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bafe4179722c2894288ee77a9f044f02811c86af699344c498b0840c698a2465"
+dependencies = [
+ "arrayvec 0.4.12",
+ "itoa 0.4.8",
 ]
 
 [[package]]
@@ -2654,9 +2680,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "os_pipe"
-version = "0.9.2"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb233f06c2307e1f5ce2ecad9f8121cffbbee2c95428f44ea85222e460d0d213"
+checksum = "2c92f2b54f081d635c77e7120862d48db8e91f7f21cef23ab1b4fe9971c59f55"
 dependencies = [
  "libc",
  "winapi 0.3.9",

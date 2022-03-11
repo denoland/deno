@@ -50,6 +50,8 @@ macro_rules! itest_flaky(
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
 
+#[path = "bench_tests.rs"]
+mod bench;
 #[path = "bundle_tests.rs"]
 mod bundle;
 #[path = "cache_tests.rs"]
