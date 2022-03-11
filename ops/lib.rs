@@ -40,51 +40,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let core = core_import();
   let inputs = &func.sig.inputs;
   let output = &func.sig.output;
-  let a = match &inputs[1] {
-    syn::FnArg::Typed(pat) => match *pat.pat {
-      syn::Pat::Wild(_) => quote! {
-        let a = ();
-      },
-      _ => quote! {
-        let a = args.get(2);
-        let a = match #core::serde_v8::from_v8(scope, a) {
-          Ok(v) => v,
-          Err(err) => {
-            // Throw TypeError
-            let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
-            let message = #core::v8::String::new(scope, msg.as_ref()).unwrap();
-            let exception = #core::v8::Exception::type_error(scope, message);
-            scope.throw_exception(exception);
-            return;
-          }
-        };
-      },
-    },
-    _ => unreachable!(),
-  };
-
-  let b = match &inputs[2] {
-    syn::FnArg::Typed(pat) => match *pat.pat {
-      syn::Pat::Wild(_) => quote! {
-        let b = ();
-      },
-      _ => quote! {
-        let b = args.get(3);
-        let b = match #core::serde_v8::from_v8(scope, b) {
-          Ok(v) => v,
-          Err(err) => {
-            // Throw TypeError
-            let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
-            let message = #core::v8::String::new(scope, msg.as_ref()).unwrap();
-            let exception = #core::v8::Exception::type_error(scope, message);
-            scope.throw_exception(exception);
-            return;
-          }
-        };
-      },
-    },
-    _ => unreachable!(),
-  };
+  let a = codegen_arg(&core, &inputs[1], "a", 2);
+  let b = codegen_arg(&core, &inputs[2], "b", 3);
 
   let ret = match &output {
     syn::ReturnType::Default => quote! {
@@ -269,5 +226,37 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
       }
     })
+  }
+}
+
+fn codegen_arg(
+  core: &TokenStream2,
+  arg: &syn::FnArg,
+  name: &str,
+  idx: i32,
+) -> TokenStream2 {
+  let ident = quote::format_ident!("{name}");
+  let pat = match arg {
+    syn::FnArg::Typed(pat) => &pat.pat,
+    _ => unreachable!(),
+  };
+  // Fast path if arg should be skipped
+  if matches!(**pat, syn::Pat::Wild(_)) {
+    return quote! { let #ident = (); };
+  }
+  // Otherwise deserialize it via serde_v8
+  quote! {
+    let #ident = args.get(#idx);
+    let #ident = match #core::serde_v8::from_v8(scope, #ident) {
+      Ok(v) => v,
+      Err(err) => {
+        // Throw TypeError
+        let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
+        let message = #core::v8::String::new(scope, msg.as_ref()).unwrap();
+        let exception = #core::v8::Exception::type_error(scope, message);
+        scope.throw_exception(exception);
+        return;
+      }
+    };
   }
 }
