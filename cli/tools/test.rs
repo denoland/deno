@@ -673,12 +673,10 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  /*
-    The pattern matches code blocks as well as anything in HTML comment syntax,
-    but it stores the latter without any capturing groups. This way, a simple
-    check can be done to see if a block is inside a comment (and skip typechecking)
-    or not by checking for the presence of capturing groups in the matches.
-  */
+  // The pattern matches code blocks as well as anything in HTML comment syntax,
+  // but it stores the latter without any capturing groups. This way, a simple
+  // check can be done to see if a block is inside a comment (and skip typechecking)
+  // or not by checking for the presence of capturing groups in the matches.
   let blocks_regex =
     Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
