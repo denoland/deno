@@ -779,7 +779,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
- "pretty_assertions 0.7.2",
+ "pretty_assertions",
  "rand 0.8.4",
  "regex",
  "ring",
@@ -1068,14 +1068,13 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a528d67d2c9efba7316669eee5889e0dc150297799d3824d35f187596bec94b"
+checksum = "fafb65c387677c45078adb3bb70503128cadd0ee94772167be4f7da8549434dc"
 dependencies = [
  "anyhow",
  "futures",
  "os_pipe",
- "pretty_assertions 1.1.0",
  "tokio",
 ]
 
@@ -2903,18 +2902,6 @@ name = "pretty_assertions"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
-dependencies = [
- "ansi_term",
- "ctor",
- "diff",
- "output_vt100",
-]
-
-[[package]]
-name = "pretty_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76d5b548b725018ab5496482b45cb8bef21e9fed1858a6d674e3a8a0f0bb5d50"
 dependencies = [
  "ansi_term",
  "ctor",
