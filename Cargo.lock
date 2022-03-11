@@ -4846,8 +4846,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.40.2"
-source = "git+https://github.com/denoland/rusty_v8?branch=feat/alt-func-constructors-to-mapfnto#17baf90f701e3d97662029834935f846c5703aed"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9c3d267007e1f137d79b4da64267139a86034a4d85df4964334979c1c7a708a"
 dependencies = [
  "bitflags",
  "fslock",
