@@ -1,3 +1,4 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use proc_macro::TokenStream;
 use quote::quote;
 
@@ -154,24 +155,21 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           args: deno_core::v8::FunctionCallbackArguments,
           mut rv: deno_core::v8::ReturnValue,
         ) #where_clause {
-          use deno_core::JsRuntime;
           use deno_core::futures::FutureExt;
-          use deno_core::OpCall;
-          use deno_core::to_op_result;
-          use deno_core::PromiseId;
-          use deno_core::bindings::throw_type_error;
-          use deno_core::v8;
-          let op_id = unsafe { v8::Local::<v8::Integer>::cast(args.get(0)) }.value() as usize;
+          // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
+          let op_id = unsafe {
+            deno_core::v8::Local::<deno_core::v8::Integer>::cast(args.get(0))
+          }.value() as usize;
 
           let promise_id = args.get(1);
-          let promise_id = v8::Local::<v8::Integer>::try_from(promise_id)
-            .map(|l| l.value() as PromiseId)
+          let promise_id = deno_core::v8::Local::<deno_core::v8::Integer>::try_from(promise_id)
+            .map(|l| l.value() as deno_core::PromiseId)
             .map_err(deno_core::anyhow::Error::from);
           // Fail if promise id invalid (not an int)
-          let promise_id: PromiseId = match promise_id {
+          let promise_id: deno_core::PromiseId = match promise_id {
             Ok(promise_id) => promise_id,
             Err(err) => {
-              throw_type_error(scope, format!("invalid promise id: {}", err));
+              deno_core::bindings::throw_type_error(scope, format!("invalid promise id: {}", err));
               return;
             }
           };
@@ -180,16 +178,20 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           #b
           #func
 
-          let state_rc = JsRuntime::state(scope);
+          let state_rc = deno_core::JsRuntime::state(scope);
           let mut state = state_rc.borrow_mut();
-          state.op_state.borrow().tracker.track_async(op_id);
-          state.have_unpolled_ops = true;
+
+          {
+            let mut op_state = state.op_state.borrow_mut();
+            op_state.tracker.track_async(op_id);
+          }
+
           let op_state = state.op_state.clone();
-          let op_state2 = op_state.clone();
-          state.pending_ops.push(OpCall::eager(async move {
+          state.pending_ops.push(deno_core::OpCall::eager(async move {
             let result = #name::<#type_params>(op_state.clone(), a, b).await;
-            (promise_id, op_id, to_op_result(&op_state.borrow(), result))
+            (promise_id, op_id, deno_core::to_op_result(&op_state.borrow(), result))
           }));
+          state.have_unpolled_ops = true;
         }
       }
     })
