@@ -80,7 +80,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::Type::Path(ref path) => {
           let maybe_result =
             path.path.segments.first().expect("Invalid return type.");
-          if maybe_result.ident.to_string() == "Result" {
+          if maybe_result.ident == "Result" {
             assert!(!maybe_result.arguments.is_empty());
             match &maybe_result.arguments {
               syn::PathArguments::AngleBracketed(args) => {
