@@ -742,6 +742,7 @@ mod tests {
   use crate::diagnostics::DiagnosticCategory;
   use crate::emit::Stats;
   use deno_core::futures::future;
+  use deno_core::OpState;
   use deno_graph::ModuleKind;
   use std::fs;
 
@@ -779,7 +780,7 @@ mod tests {
     maybe_specifier: Option<ModuleSpecifier>,
     maybe_hash_data: Option<Vec<Vec<u8>>>,
     maybe_tsbuildinfo: Option<String>,
-  ) -> State {
+  ) -> OpState {
     let specifier = maybe_specifier
       .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
@@ -796,14 +797,17 @@ mod tests {
       None,
     )
     .await;
-    State::new(
+    let state = State::new(
       Arc::new(RwLock::new((&graph).into())),
       hash_data,
       None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
-    )
+    );
+    let mut op_state = OpState::new(1);
+    op_state.put(state);
+    op_state
   }
 
   async fn test_exec(
@@ -934,6 +938,7 @@ mod tests {
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
+    let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 1);
     assert!(state.maybe_tsbuildinfo.is_none());
     assert_eq!(
@@ -965,6 +970,7 @@ mod tests {
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
+    let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 1);
     assert!(state.maybe_tsbuildinfo.is_none());
     assert_eq!(
@@ -994,6 +1000,7 @@ mod tests {
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
+    let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 0);
     assert_eq!(
       state.maybe_tsbuildinfo,
@@ -1160,6 +1167,7 @@ mod tests {
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
+    let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_response,
       Some(RespondArgs {

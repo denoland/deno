@@ -3861,7 +3861,7 @@ mod tests {
 
   #[test]
   fn test_op_exists() {
-    let (_, state_snapshot, _) = setup(
+    let (mut rt, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -3872,9 +3872,12 @@ mod tests {
       &[],
     );
     let performance = Arc::new(Performance::default());
-    let mut state = State::new(state_snapshot, performance);
+    let state = State::new(state_snapshot, performance);
+    let op_state = rt.op_state();
+    let mut op_state = op_state.borrow_mut();
+    op_state.put(state);
     let actual = op_exists::call(
-      &mut state,
+      &mut op_state,
       SpecifierArgs {
         specifier: "/error/unknown:something/index.d.ts".to_string(),
       },

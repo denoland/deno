@@ -155,7 +155,7 @@ pub struct OpState {
 }
 
 impl OpState {
-  pub(crate) fn new(ops_count: usize) -> OpState {
+  pub fn new(ops_count: usize) -> OpState {
     OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
