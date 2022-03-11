@@ -759,6 +759,7 @@ dependencies = [
  "deno_lint",
  "deno_net",
  "deno_runtime",
+ "deno_task_shell",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -788,7 +789,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
- "pretty_assertions",
+ "pretty_assertions 0.7.2",
  "rand 0.8.4",
  "regex",
  "ring",
@@ -1073,6 +1074,18 @@ dependencies = [
  "uuid",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno_task_shell"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad23aacc3db4f37eb88fb9c874a85a4abe5eab14a98fc070ee8df9e204f243e6"
+dependencies = [
+ "anyhow",
+ "futures",
+ "pretty_assertions 1.1.0",
+ "tokio",
 ]
 
 [[package]]
@@ -2262,9 +2275,9 @@ checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
 
 [[package]]
 name = "lock_api"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712a4d093c9976e24e7dbca41db895dabcbac38eb5f4045393d17a95bdfb1109"
+checksum = "88943dd7ef4a2e5a4bfa2753aaab3013e34ce2533d1996fb18ef591e315e2b3b"
 dependencies = [
  "scopeguard",
 ]
@@ -2915,6 +2928,18 @@ name = "pretty_assertions"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
+dependencies = [
+ "ansi_term",
+ "ctor",
+ "diff",
+ "output_vt100",
+]
+
+[[package]]
+name = "pretty_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76d5b548b725018ab5496482b45cb8bef21e9fed1858a6d674e3a8a0f0bb5d50"
 dependencies = [
  "ansi_term",
  "ctor",

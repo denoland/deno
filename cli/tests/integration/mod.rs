@@ -82,6 +82,8 @@ mod lsp;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "task_tests.rs"]
+mod task;
 #[path = "test_tests.rs"]
 mod test;
 #[path = "upgrade_tests.rs"]
