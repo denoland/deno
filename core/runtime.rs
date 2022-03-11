@@ -196,7 +196,7 @@ impl Drop for JsRuntime {
 fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10144432]);
+  struct IcuData([u8; 10284336]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
   v8::icu::set_common_data_70(&ICU_DATA.0).unwrap();
 
