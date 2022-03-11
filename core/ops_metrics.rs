@@ -92,6 +92,7 @@ impl OpsTracker {
   }
 
   #[inline]
+  #[allow(dead_code)]
   pub fn track_async_completed(&self, id: OpId) {
     let metrics = self.metrics_mut(id);
     metrics.ops_completed += 1;

@@ -1,5 +1,4 @@
 use crate::PromiseId;
-use v8;
 use std::collections::btree_map::BTreeMap;
 
 type PromiseResolver = v8::Global<v8::PromiseResolver>;

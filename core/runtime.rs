@@ -774,7 +774,7 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    self.pump_v8_message_loop();
+    // self.pump_v8_message_loop();
 
     // Ops
     {
@@ -783,6 +783,8 @@ impl JsRuntime {
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
+
+    self.pump_v8_message_loop();
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
@@ -1539,22 +1541,17 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
 
     // Now handle actual ops.
-      let mut state = state_rc.borrow_mut();
-      state.have_unpolled_ops = false;
+    let mut state = state_rc.borrow_mut();
+    state.have_unpolled_ops = false;
 
-      let op_state = state.op_state.clone();
+    // let op_state = state.op_state.clone();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (promise_id, op_id, resp) = item;
-        let resolver = state
-        .promise_ring
-        .as_mut()
-        .unwrap()
-        .take(promise_id);
+    while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx) {
+      let (promise_id, _op_id, resp) = item;
+      let resolver = state.promise_ring.as_mut().unwrap().take(promise_id);
       match resolver {
         Some(resolver) => {
-          let resolver = resolver.get(scope);
+          let resolver = resolver.open(scope);
           match resp {
             OpResult::Ok(x) => {
               let value = x.to_v8(scope).unwrap();
@@ -1572,7 +1569,7 @@ impl JsRuntime {
         ),
       }
     }
-    
+
     Ok(())
   }
 
