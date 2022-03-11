@@ -101,6 +101,12 @@ itest!(cjs_esm_interop {
   output: "compat/import_cjs_from_esm.out",
 });
 
+itest!(cjs_esm_interop_dynamic {
+  args:
+    "run --compat --unstable -A --quiet --no-check compat/import_cjs_from_esm/main_dynamic.mjs",
+  output: "compat/import_cjs_from_esm.out",
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(

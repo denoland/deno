@@ -42,6 +42,7 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -252,13 +253,46 @@ impl ProcState {
   /// emits where necessary or report any module graph / type checking errors.
   pub(crate) async fn prepare_module_load(
     &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
+
+    // NOTE(@bartlomieju):
+    // Even though `roots` are fully resolved at this point, we are going
+    // to resolve them through `maybe_resolver` to get module kind for the graph
+    // or default to ESM.
+    //
+    // One might argue that this is a code smell, and I would agree. However
+    // due to flux in "Node compatibility" it's not clear where it should be
+    // decided what `ModuleKind` is decided for root specifier.
+    let roots = roots
+      .into_iter()
+      .map(|r| {
+        if let Some(resolver) = &maybe_resolver {
+          let response =
+            resolver.resolve(r.as_str(), &Url::parse("unused:").unwrap());
+          // TODO(bartlomieju): this should be implemented in `deno_graph`
+          match response {
+            ResolveResponse::CommonJs(_) => (r, ModuleKind::CommonJs),
+            ResolveResponse::Err(_) => unreachable!(),
+            _ => (r, ModuleKind::Esm),
+          }
+        } else {
+          (r, ModuleKind::Esm)
+        }
+      })
+      .collect();
+
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
     let roots = if self.flags.compat {
@@ -290,12 +324,6 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports()?;
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -329,6 +357,7 @@ impl ProcState {
       graph_data: self.graph_data.clone(),
       reload: reload_on_watch,
     };
+
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
