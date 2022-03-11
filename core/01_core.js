@@ -158,9 +158,9 @@
     BadResourcePrototype,
     Interrupted,
     InterruptedPrototype,
-    enableOpCallTracing,
-    isOpCallTracingEnabled,
-    opCallTraces,
+    // enableOpCallTracing,
+    // isOpCallTracingEnabled,
+    // opCallTraces,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
