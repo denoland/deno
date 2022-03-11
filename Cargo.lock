@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.19.2"
+version = "1.19.3"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -750,6 +750,7 @@ dependencies = [
  "deno_lint",
  "deno_net",
  "deno_runtime",
+ "deno_task_shell",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -778,7 +779,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
- "pretty_assertions",
+ "pretty_assertions 0.7.2",
  "rand 0.8.4",
  "regex",
  "ring",
@@ -825,7 +826,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -834,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -844,14 +845,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.121.0"
+version = "0.122.0"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -873,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.53.0"
+version = "0.54.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -919,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -936,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -969,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "base64 0.13.0",
  "brotli",
@@ -1007,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1030,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.47.0"
+version = "0.48.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1076,8 +1077,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_task_shell"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad23aacc3db4f37eb88fb9c874a85a4abe5eab14a98fc070ee8df9e204f243e6"
+dependencies = [
+ "anyhow",
+ "futures",
+ "pretty_assertions 1.1.0",
+ "tokio",
+]
+
+[[package]]
 name = "deno_tls"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1091,7 +1104,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1103,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.70.0"
+version = "0.71.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -1120,7 +1133,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1131,14 +1144,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.44.0"
+version = "0.45.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1152,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2262,9 +2275,9 @@ checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
 
 [[package]]
 name = "lock_api"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712a4d093c9976e24e7dbca41db895dabcbac38eb5f4045393d17a95bdfb1109"
+checksum = "88943dd7ef4a2e5a4bfa2753aaab3013e34ce2533d1996fb18ef591e315e2b3b"
 dependencies = [
  "scopeguard",
 ]
@@ -2899,6 +2912,18 @@ name = "pretty_assertions"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
+dependencies = [
+ "ansi_term",
+ "ctor",
+ "diff",
+ "output_vt100",
+]
+
+[[package]]
+name = "pretty_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76d5b548b725018ab5496482b45cb8bef21e9fed1858a6d674e3a8a0f0bb5d50"
 dependencies = [
  "ansi_term",
  "ctor",
@@ -3547,7 +3572,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "bencher",
  "serde",

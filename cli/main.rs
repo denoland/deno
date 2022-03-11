@@ -10,6 +10,7 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
+mod display;
 mod emit;
 mod errors;
 mod file_fetcher;
@@ -55,6 +56,7 @@ use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
+use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
@@ -328,6 +330,8 @@ fn print_cache_info(
       origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
 
+  let local_storage_dir = origin_dir.join("local_storage");
+
   if json {
     let mut output = json!({
       "denoDir": deno_dir,
@@ -338,34 +342,41 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] =
-        serde_json::to_value(origin_dir.join("local_storage"))?;
+      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
     }
 
     write_json_to_stdout(&output)
   } else {
-    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
-      "{} {:?}",
+      "{} {}",
+      colors::bold("DENO_DIR location:"),
+      deno_dir.display()
+    );
+    println!(
+      "{} {}",
       colors::bold("Remote modules cache:"),
-      modules_cache
+      modules_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Emitted modules cache:"),
-      typescript_cache
+      typescript_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Language server registries cache:"),
-      registry_cache,
+      registry_cache.display(),
     );
-    println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    println!(
+      "{} {}",
+      colors::bold("Origin storage:"),
+      origin_dir.display()
+    );
     if location.is_some() {
       println!(
-        "{} {:?}",
+        "{} {}",
         colors::bold("Local Storage:"),
-        origin_dir.join("local_storage"),
+        local_storage_dir.display(),
       );
     }
     Ok(())
@@ -576,7 +587,7 @@ async fn cache_command(
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
+      vec![specifier],
       false,
       lib.clone(),
       Permissions::allow_all(),
@@ -755,28 +766,6 @@ fn bundle_module_graph(
   )
 }
 
-/// A function that converts a float to a string the represents a human
-/// readable version of that number.
-fn human_size(size: f64) -> String {
-  let negative = if size.is_sign_positive() { "" } else { "-" };
-  let size = size.abs();
-  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if size < 1_f64 {
-    return format!("{}{}{}", negative, size, "B");
-  }
-  let delimiter = 1024_f64;
-  let exponent = std::cmp::min(
-    (size.ln() / delimiter.ln()).floor() as i32,
-    (units.len() - 1) as i32,
-  );
-  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
-    .parse::<f64>()
-    .unwrap()
-    * 1_f64;
-  let unit = units[exponent as usize];
-  format!("{}{}{}", negative, pretty_bytes, unit)
-}
-
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
@@ -843,7 +832,7 @@ async fn bundle_command(
           "{} {:?} ({})",
           colors::green("Emit"),
           out_file,
-          colors::gray(human_size(output_len as f64))
+          colors::gray(display::human_size(output_len as f64))
         );
         if let Some(bundle_map) = maybe_bundle_map {
           let map_bytes = bundle_map.as_bytes();
@@ -859,7 +848,7 @@ async fn bundle_command(
             "{} {:?} ({})",
             colors::green("Emit"),
             map_out_file,
-            colors::gray(human_size(map_len as f64))
+            colors::gray(display::human_size(map_len as f64))
           );
         }
       } else {
@@ -1240,6 +1229,13 @@ async fn run_command(
   Ok(worker.get_exit_code())
 }
 
+async fn task_command(
+  flags: Flags,
+  task_flags: TaskFlags,
+) -> Result<i32, AnyError> {
+  tools::task::execute_script(flags, task_flags).await
+}
+
 async fn coverage_command(
   flags: Flags,
   coverage_flags: CoverageFlags,
@@ -1371,6 +1367,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
+    }
+    DenoSubcommand::Task(task_flags) => {
+      task_command(flags, task_flags).boxed_local()
     }
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()
