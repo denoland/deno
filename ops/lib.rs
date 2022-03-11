@@ -156,7 +156,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           mut rv: deno_core::v8::ReturnValue,
         ) #where_clause {
           use deno_core::futures::FutureExt;
-          // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
+          // SAFETY: Called from Deno.core.opAsync. Which retrieves the index using opId table.
           let op_id = unsafe {
             deno_core::v8::Local::<deno_core::v8::Integer>::cast(args.get(0))
           }.value() as usize;
