@@ -184,21 +184,15 @@
   }
 
   function refOp(promiseId) {
-    // TODO(kt3k): Move this check to rust side.
     if (!hasPromise(promiseId)) {
-      throw new Error(
-        `Async op of the given promise id doesn't exist: id=${promiseId}`,
-      );
+      return;
     }
     refOp_(promiseId);
   }
 
   function unrefOp(promiseId) {
-    // TODO(kt3k): Move this check to rust side.
     if (!hasPromise(promiseId)) {
-      throw new Error(
-        `Async op of the given promise id doesn't exist: id=${promiseId}`,
-      );
+      return;
     }
     unrefOp_(promiseId);
   }
