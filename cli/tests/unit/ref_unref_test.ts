@@ -1,27 +1,10 @@
-import { assertThrows } from "./test_util.ts";
+import { assertNotEquals, execCode } from "./test_util.ts";
 
-Deno.test("ref/unref throws when called with invalid promise ids", () => {
-  assertThrows(
-    () => {
-      Deno.core.refOp(-1);
-    },
-    Error,
-    "Async op of the given promise id doesn't exist",
-  );
-  assertThrows(
-    () => {
-      Deno.core.unrefOp(-1);
-    },
-    Error,
-    "Async op of the given promise id doesn't exist",
-  );
-});
-
-Deno.test("ref/unref doesn't throw when called with valid promise ids", () => {
-  const cancelId = Deno.core.opSync("op_timer_handle");
-  const op = Deno.core.opAsync("op_sleep", 100, cancelId);
-  op.catch(() => {/* ignore error */});
-  Deno.core.unrefOp(op[Symbol.for("Deno.core.internalPromiseId")]);
-  Deno.core.refOp(op[Symbol.for("Deno.core.internalPromiseId")]);
-  Deno.core.tryClose(cancelId);
+Deno.test("[unrefOp] unref'ing invalid ops does not have effects", async () => {
+  const [statusCode, _] = await execCode(`
+    Deno.core.unrefOp(-1);
+    setTimeout(() => { throw new Error() }, 10)
+  `);
+  // Invalid unrefOp call doesn't affect exit condition of event loop
+  assertNotEquals(statusCode, 0);
 });
