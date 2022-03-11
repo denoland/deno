@@ -284,7 +284,8 @@ pub fn set_func_raw(
 
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
-  referrer: v8::Local<v8::ScriptOrModule>,
+  _host_defined_options: v8::Local<v8::Data>,
+  resource_name: v8::Local<v8::Value>,
   specifier: v8::Local<v8::String>,
   import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
@@ -295,17 +296,10 @@ pub extern "C" fn host_import_module_dynamically_callback(
     .to_string(scope)
     .unwrap()
     .to_rust_string_lossy(scope);
-  let referrer_name = referrer.get_resource_name();
-  let referrer_name_str = referrer_name
+  let referrer_name_str = resource_name
     .to_string(scope)
     .unwrap()
     .to_rust_string_lossy(scope);
-
-  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
-  // to use it. For now we check that it is not used. This check may need to be
-  // changed in the future.
-  let host_defined_options = referrer.get_host_defined_options();
-  assert_eq!(host_defined_options.length(), 0);
 
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
