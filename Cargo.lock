@@ -1068,12 +1068,13 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad23aacc3db4f37eb88fb9c874a85a4abe5eab14a98fc070ee8df9e204f243e6"
+checksum = "5a528d67d2c9efba7316669eee5889e0dc150297799d3824d35f187596bec94b"
 dependencies = [
  "anyhow",
  "futures",
+ "os_pipe",
  "pretty_assertions 1.1.0",
  "tokio",
 ]
@@ -2643,9 +2644,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "os_pipe"
-version = "0.9.2"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb233f06c2307e1f5ce2ecad9f8121cffbbee2c95428f44ea85222e460d0d213"
+checksum = "2c92f2b54f081d635c77e7120862d48db8e91f7f21cef23ab1b4fe9971c59f55"
 dependencies = [
  "libc",
  "winapi 0.3.9",
