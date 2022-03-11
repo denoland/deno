@@ -9,6 +9,7 @@
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     SymbolAsyncIterator,
+    Error,
     Uint8Array,
     TypedArrayPrototypeSubarray,
   } = window.__bootstrap.primordials;
@@ -188,6 +189,8 @@
     }
   }
 
+  class UnixConn extends Conn {}
+
   class Listener {
     #rid = 0;
     #addr = null;
@@ -209,8 +212,11 @@
       const res = await opAccept(this.rid, this.addr.transport);
       if (this.addr.transport == "tcp") {
         return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
+      } else if (this.addr.transport == "unix") {
+        return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
+      } else {
+        throw new Error("unreachable");
       }
-      return new Conn(res.rid, res.remoteAddr, res.localAddr);
     }
 
     async next() {
@@ -311,18 +317,16 @@
   }
 
   async function connect(options) {
-    let res;
-
     if (options.transport === "unix") {
-      res = await opConnect(options);
-    } else {
-      res = await opConnect({
-        transport: "tcp",
-        hostname: "127.0.0.1",
-        ...options,
-      });
+      const res = await opConnect(options);
+      return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
     }
 
+    const res = await opConnect({
+      transport: "tcp",
+      hostname: "127.0.0.1",
+      ...options,
+    });
     return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
@@ -330,6 +334,7 @@
     connect,
     Conn,
     TcpConn,
+    UnixConn,
     opConnect,
     listen,
     opListen,

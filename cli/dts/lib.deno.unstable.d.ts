@@ -1053,7 +1053,7 @@ declare namespace Deno {
   ): Promise<TcpConn>;
   export function connect(
     options: UnixConnectOptions,
-  ): Promise<Conn>;
+  ): Promise<UnixConn>;
 
   export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */
@@ -1203,20 +1203,7 @@ declare interface WorkerOptions {
   deno?: boolean | {
     namespace?: boolean;
     /** Set to `"none"` to disable all the permissions in the worker. */
-    permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean | string[];
-      hrtime?: "inherit" | boolean;
-      /** The format of the net access list must be `hostname[:port]`
-       * in order to be resolved.
-       *
-       * For example: `["https://deno.land", "localhost:8080"]`.
-       */
-      net?: "inherit" | boolean | string[];
-      ffi?: "inherit" | boolean | Array<string | URL>;
-      read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean | Array<string | URL>;
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
+    permissions?: Deno.PermissionOptions;
   };
 }
 

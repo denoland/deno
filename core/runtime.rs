@@ -5,6 +5,7 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -80,6 +81,7 @@ pub struct JsRuntime {
   has_snapshotted: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
+  event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
 }
 
 struct DynImportModEvaluate {
@@ -381,6 +383,7 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
+      event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
     };
 
@@ -480,6 +483,10 @@ impl JsRuntime {
       let ops = e.init_ops().unwrap_or_default();
       for (name, opfn) in ops {
         self.register_op(name, macroware(name, opfn));
+      }
+
+      if let Some(middleware) = e.init_event_loop_middleware() {
+        self.event_loop_middlewares.push(middleware);
       }
     }
     // Restore extensions
@@ -788,6 +795,18 @@ impl JsRuntime {
       self.check_promise_exceptions()?;
     }
 
+    // Event loop middlewares
+    let mut maybe_scheduling = false;
+    {
+      let state = state_rc.borrow();
+      let op_state = state.op_state.clone();
+      for f in &self.event_loop_middlewares {
+        if f(&mut op_state.borrow_mut(), cx) {
+          maybe_scheduling = true;
+        }
+      }
+    }
+
     // Top level module
     self.evaluate_pending_module();
 
@@ -815,6 +834,7 @@ impl JsRuntime {
       && !has_pending_module_evaluation
       && !has_pending_background_tasks
       && !has_tick_scheduled
+      && !maybe_scheduling
     {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
@@ -833,6 +853,7 @@ impl JsRuntime {
     if state.have_unpolled_ops
       || has_pending_background_tasks
       || has_tick_scheduled
+      || maybe_scheduling
     {
       state.waker.wake();
     }
@@ -843,6 +864,7 @@ impl JsRuntime {
         || has_pending_dyn_module_evaluation
         || has_pending_background_tasks
         || has_tick_scheduled
+        || maybe_scheduling
       {
         // pass, will be polled again
       } else {

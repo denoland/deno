@@ -159,12 +159,19 @@ impl IndexValid {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum AssetOrDocument {
+pub enum AssetOrDocument {
   Document(Document),
   Asset(AssetDocument),
 }
 
 impl AssetOrDocument {
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    match self {
+      AssetOrDocument::Asset(asset) => asset.specifier(),
+      AssetOrDocument::Document(doc) => doc.specifier(),
+    }
+  }
+
   pub fn document(&self) -> Option<&Document> {
     match self {
       AssetOrDocument::Asset(_) => None,
@@ -211,6 +218,10 @@ impl AssetOrDocument {
   pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().and_then(|d| d.maybe_lsp_version())
   }
+
+  pub fn is_open(&self) -> bool {
+    self.document().map(|d| d.is_open()).unwrap_or(false)
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -229,7 +240,7 @@ struct DocumentInner {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Document(Arc<DocumentInner>);
+pub struct Document(Arc<DocumentInner>);
 
 impl Document {
   fn new(

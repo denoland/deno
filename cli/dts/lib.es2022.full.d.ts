@@ -18,10 +18,8 @@ and limitations under the License.
 /// <reference no-default-lib="true"/>
 
 
-interface String {
-    /**
-     * Access string by relative indexing.
-     * @param index index to access.
-     */
-    at(index: number): string | undefined;
-}
+/// <reference lib="es2022" />
+/// <reference lib="dom" />
+/// <reference lib="webworker.importscripts" />
+/// <reference lib="scripthost" />
+/// <reference lib="dom.iterable" />
