@@ -7,6 +7,11 @@
 use std::pin::Pin;
 use std::rc::Rc;
 
+// This is a hack to make the `#[op]` macro work with
+// deno_core examples.
+// You can remove this:
+use deno_core::*;
+
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Error;

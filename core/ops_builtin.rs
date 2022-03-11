@@ -39,10 +39,6 @@ pub(crate) fn init_builtins() -> Extension {
     .build()
 }
 
-mod deno_core {
-  pub use crate::*;
-}
-
 #[op]
 pub fn void_op_sync(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
   Ok(())

@@ -1,6 +1,26 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use proc_macro::TokenStream;
+use proc_macro2::Span;
+use proc_macro2::TokenStream as TokenStream2;
+use proc_macro_crate::crate_name;
+use proc_macro_crate::FoundCrate;
 use quote::quote;
+use syn::Ident;
+
+fn core_import() -> TokenStream2 {
+  let found_crate =
+    crate_name("deno_core").expect("deno_core not present in `Cargo.toml`");
+
+  match found_crate {
+    FoundCrate::Itself => {
+      quote!(crate)
+    }
+    FoundCrate::Name(name) => {
+      let ident = Ident::new(&name, Span::call_site());
+      quote!(#ident)
+    }
+  }
+}
 
 #[proc_macro_attribute]
 pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -17,6 +37,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! { #func }
   };
 
+  let core = core_import();
   let inputs = &func.sig.inputs;
   let output = &func.sig.output;
   let a = match &inputs[1] {
@@ -26,13 +47,13 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
       },
       _ => quote! {
         let a = args.get(2);
-        let a = match deno_core::serde_v8::from_v8(scope, a) {
+        let a = match #core::serde_v8::from_v8(scope, a) {
           Ok(v) => v,
           Err(err) => {
             // Throw TypeError
-            let msg = format!("Error parsing args: {}", deno_core::anyhow::Error::from(err));
-            let message = deno_core::v8::String::new(scope, msg.as_ref()).unwrap();
-            let exception = deno_core::v8::Exception::type_error(scope, message);
+            let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
+            let message = #core::v8::String::new(scope, msg.as_ref()).unwrap();
+            let exception = #core::v8::Exception::type_error(scope, message);
             scope.throw_exception(exception);
             return;
           }
@@ -49,13 +70,13 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
       },
       _ => quote! {
         let b = args.get(3);
-        let b = match deno_core::serde_v8::from_v8(scope, b) {
+        let b = match #core::serde_v8::from_v8(scope, b) {
           Ok(v) => v,
           Err(err) => {
             // Throw TypeError
-            let msg = format!("Error parsing args: {}", deno_core::anyhow::Error::from(err));
-            let message = deno_core::v8::String::new(scope, msg.as_ref()).unwrap();
-            let exception = deno_core::v8::Exception::type_error(scope, message);
+            let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
+            let message = #core::v8::String::new(scope, msg.as_ref()).unwrap();
+            let exception = #core::v8::Exception::type_error(scope, message);
             scope.throw_exception(exception);
             return;
           }
@@ -71,7 +92,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
     },
     syn::ReturnType::Type(_, ty) => {
       let default_ok = quote! {
-        let ret = deno_core::serde_v8::to_v8(scope, v).unwrap();
+        let ret = #core::serde_v8::to_v8(scope, v).unwrap();
         rv.set(ret);
       };
 
@@ -112,12 +133,12 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
             #ok_block
           },
           Err(err) => {
-            let err = deno_core::serde_v8::to_v8(
+            let err = #core::serde_v8::to_v8(
               scope,
-              deno_core::OpError {
+              #core::OpError {
                 class_name: (op_state.get_error_class_fn)(&err),
                 message: err.to_string(),
-                code: deno_core::error_codes::get_error_code(&err),
+                code: #core::error_codes::get_error_code(&err),
               },
             ).unwrap();
 
@@ -139,37 +160,37 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           stringify!(#name)
         }
 
-        pub fn v8_cb #generics () -> deno_core::v8::FunctionCallback #where_clause {
-          use deno_core::v8::MapFnTo;
+        pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
+          use #core::v8::MapFnTo;
           Self::v8_func::<#type_params>.map_fn_to()
         }
 
-        pub fn decl #generics ()  -> (&'static str, deno_core::v8::FunctionCallback) #where_clause {
+        pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
           (Self::name(), Self::v8_cb::<#type_params>())
         }
 
         #original_func
 
         pub fn v8_func #generics (
-          scope: &mut deno_core::v8::HandleScope,
-          args: deno_core::v8::FunctionCallbackArguments,
-          mut rv: deno_core::v8::ReturnValue,
+          scope: &mut #core::v8::HandleScope,
+          args: #core::v8::FunctionCallbackArguments,
+          mut rv: #core::v8::ReturnValue,
         ) #where_clause {
-          use deno_core::futures::FutureExt;
+          use #core::futures::FutureExt;
           // SAFETY: Called from Deno.core.opAsync. Which retrieves the index using opId table.
           let op_id = unsafe {
-            deno_core::v8::Local::<deno_core::v8::Integer>::cast(args.get(0))
+            #core::v8::Local::<#core::v8::Integer>::cast(args.get(0))
           }.value() as usize;
 
           let promise_id = args.get(1);
-          let promise_id = deno_core::v8::Local::<deno_core::v8::Integer>::try_from(promise_id)
-            .map(|l| l.value() as deno_core::PromiseId)
-            .map_err(deno_core::anyhow::Error::from);
+          let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
+            .map(|l| l.value() as #core::PromiseId)
+            .map_err(#core::anyhow::Error::from);
           // Fail if promise id invalid (not an int)
-          let promise_id: deno_core::PromiseId = match promise_id {
+          let promise_id: #core::PromiseId = match promise_id {
             Ok(promise_id) => promise_id,
             Err(err) => {
-              deno_core::bindings::throw_type_error(scope, format!("invalid promise id: {}", err));
+              #core::bindings::throw_type_error(scope, format!("invalid promise id: {}", err));
               return;
             }
           };
@@ -178,7 +199,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           #b
           #func
 
-          let state_rc = deno_core::JsRuntime::state(scope);
+          let state_rc = #core::JsRuntime::state(scope);
           let mut state = state_rc.borrow_mut();
 
           {
@@ -187,9 +208,9 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           }
 
           let op_state = state.op_state.clone();
-          state.pending_ops.push(deno_core::OpCall::eager(async move {
+          state.pending_ops.push(#core::OpCall::eager(async move {
             let result = #name::<#type_params>(op_state.clone(), a, b).await;
-            (promise_id, op_id, deno_core::to_op_result(&op_state.borrow(), result))
+            (promise_id, op_id, #core::to_op_result(&op_state.borrow(), result))
           }));
           state.have_unpolled_ops = true;
         }
@@ -205,12 +226,12 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           stringify!(#name)
         }
 
-        pub fn v8_cb #generics () -> deno_core::v8::FunctionCallback #where_clause {
-          use deno_core::v8::MapFnTo;
+        pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
+          use #core::v8::MapFnTo;
           Self::v8_func::<#type_params>.map_fn_to()
         }
 
-        pub fn decl #generics ()  -> (&'static str, deno_core::v8::FunctionCallback) #where_clause {
+        pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
           (Self::name(), Self::v8_cb::<#type_params>())
         }
 
@@ -218,26 +239,26 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[inline]
         pub fn v8_func #generics (
-          scope: &mut deno_core::v8::HandleScope,
-          args: deno_core::v8::FunctionCallbackArguments,
-          mut rv: deno_core::v8::ReturnValue,
+          scope: &mut #core::v8::HandleScope,
+          args: #core::v8::FunctionCallbackArguments,
+          mut rv: #core::v8::ReturnValue,
         ) #where_clause {
           // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
           let op_id = unsafe {
-            deno_core::v8::Local::<deno_core::v8::Integer>::cast(args.get(0)).value()
+            #core::v8::Local::<#core::v8::Integer>::cast(args.get(0)).value()
           } as usize;
 
           #a
           #b
           #func
 
-          // SAFETY: Unchecked cast to external since deno_core guarantees args.data() is a v8 External.
+          // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
           let state_refcell_raw = unsafe {
-            deno_core::v8::Local::<deno_core::v8::External>::cast(args.data().unwrap_unchecked())
+            #core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked())
           }.value();
 
           // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-          let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<deno_core::OpState>) };
+          let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
 
           let mut op_state = state.borrow_mut();
           let result = #name::<#type_params>(&mut op_state, a, b);

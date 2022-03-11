@@ -10,6 +10,11 @@ use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use std::task::Poll;
 
+// This is a hack to make the `#[op]` macro work with
+// deno_core examples.
+// You can remove this:
+use deno_core::*;
+
 type Task = Box<dyn FnOnce()>;
 
 fn main() {

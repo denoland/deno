@@ -18,6 +18,11 @@ use std::rc::Rc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
+// This is a hack to make the `#[op]` macro work with
+// deno_core examples.
+// You can remove this:
+use deno_core::*;
+
 struct Logger;
 
 impl log::Log for Logger {

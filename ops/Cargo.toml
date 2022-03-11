@@ -14,3 +14,4 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
+proc-macro-crate = "1.1.3"
