@@ -12,7 +12,6 @@ function assertArrayEquals(a1, a2) {
 
   for (const index in a1) {
     if (a1[index] !== a2[index]) {
-      console.log(a1);
       throw Error(`assert: (index ${index}) ${a1[index]} !== ${a2[index]}`);
     }
   }
