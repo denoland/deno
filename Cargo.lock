@@ -779,7 +779,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
- "pretty_assertions 0.7.2",
+ "pretty_assertions",
  "rand 0.8.4",
  "regex",
  "ring",
@@ -1068,13 +1068,13 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.1.6"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad23aacc3db4f37eb88fb9c874a85a4abe5eab14a98fc070ee8df9e204f243e6"
+checksum = "fafb65c387677c45078adb3bb70503128cadd0ee94772167be4f7da8549434dc"
 dependencies = [
  "anyhow",
  "futures",
- "pretty_assertions 1.1.0",
+ "os_pipe",
  "tokio",
 ]
 
@@ -2643,9 +2643,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "os_pipe"
-version = "0.9.2"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb233f06c2307e1f5ce2ecad9f8121cffbbee2c95428f44ea85222e460d0d213"
+checksum = "2c92f2b54f081d635c77e7120862d48db8e91f7f21cef23ab1b4fe9971c59f55"
 dependencies = [
  "libc",
  "winapi 0.3.9",
@@ -2902,18 +2902,6 @@ name = "pretty_assertions"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
-dependencies = [
- "ansi_term",
- "ctor",
- "diff",
- "output_vt100",
-]
-
-[[package]]
-name = "pretty_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76d5b548b725018ab5496482b45cb8bef21e9fed1858a6d674e3a8a0f0bb5d50"
 dependencies = [
  "ansi_term",
  "ctor",
@@ -4836,9 +4824,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.40.2"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739aa8ce7593f9298bc5a0eb676ba6cb4e48fa0ed51c1aaa2560df7c46c0259b"
+checksum = "a9c3d267007e1f137d79b4da64267139a86034a4d85df4964334979c1c7a708a"
 dependencies = [
  "bitflags",
  "fslock",

@@ -1727,3 +1727,26 @@ Deno.test(async function ecPrivateKeyMaterialExportSpki() {
   const spki = await crypto.subtle.exportKey("spki", keys.publicKey);
   assert(spki instanceof ArrayBuffer);
 });
+
+// https://github.com/denoland/deno/issues/13911
+Deno.test(async function importJwkWithUse() {
+  const jwk = {
+    "kty": "EC",
+    "use": "sig",
+    "crv": "P-256",
+    "x": "FWZ9rSkLt6Dx9E3pxLybhdM6xgR5obGsj5_pqmnz5J4",
+    "y": "_n8G69C-A2Xl4xUW2lF0i8ZGZnk_KPYrhv4GbTGu5G4",
+  };
+
+  const algorithm = { name: "ECDSA", namedCurve: "P-256" };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algorithm,
+    true,
+    ["verify"],
+  );
+
+  assert(key instanceof CryptoKey);
+});

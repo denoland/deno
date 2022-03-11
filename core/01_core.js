@@ -18,7 +18,7 @@
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
-  const { opcallSync, opcallAsync } = window.Deno.core;
+  const { opcallSync, opcallAsync, refOp_, unrefOp_ } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
@@ -80,6 +80,20 @@
 
   function opSync(opName, arg1 = null, arg2 = null) {
     return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
+  }
+
+  function refOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    refOp_(promiseId);
+  }
+
+  function unrefOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    unrefOp_(promiseId);
   }
 
   function resources() {
@@ -158,9 +172,6 @@
     BadResourcePrototype,
     Interrupted,
     InterruptedPrototype,
-    // enableOpCallTracing,
-    // isOpCallTracingEnabled,
-    // opCallTraces,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
