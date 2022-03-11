@@ -42,9 +42,9 @@ fn get_tasks_config(
 fn print_available_tasks(tasks_config: BTreeMap<String, String>) {
   eprintln!("{}", colors::green("Available tasks:"));
 
-  for name in tasks_config.clone().into_keys() {
-    eprintln!("- {}", colors::cyan(&name));
-    eprintln!("    {}", tasks_config[&name])
+  for name in tasks_config.keys() {
+    eprintln!("- {}", colors::cyan(name));
+    eprintln!("    {}", tasks_config[name])
   }
 }
 
