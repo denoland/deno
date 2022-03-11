@@ -609,6 +609,10 @@ fn ref_op<'s>(
     }
   };
 
+  if !state.promise_ring.as_ref().unwrap().has(promise_id) {
+    return;
+  }
+
   state.unrefed_ops.remove(&promise_id);
 }
 
@@ -630,6 +634,10 @@ fn unref_op<'s>(
       return;
     }
   };
+
+  if !state.promise_ring.as_ref().unwrap().has(promise_id) {
+    return;
+  }
 
   state.unrefed_ops.insert(promise_id);
 }
