@@ -651,9 +651,9 @@ impl ConfigFile {
 
   pub fn to_tasks_config(
     &self,
-  ) -> Result<Option<HashMap<String, String>>, AnyError> {
+  ) -> Result<Option<BTreeMap<String, String>>, AnyError> {
     if let Some(config) = self.json.tasks.clone() {
-      let tasks_config: HashMap<String, String> =
+      let tasks_config: BTreeMap<String, String> =
         serde_json::from_value(config)
           .context("Failed to parse \"tasks\" configuration")?;
       Ok(Some(tasks_config))

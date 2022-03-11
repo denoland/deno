@@ -8,12 +8,13 @@ use crate::proc_state::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 fn get_tasks_config(
   maybe_config_file: Option<&ConfigFile>,
-) -> Result<HashMap<String, String>, AnyError> {
+) -> Result<BTreeMap<String, String>, AnyError> {
   if let Some(config_file) = maybe_config_file {
     let maybe_tasks_config = config_file.to_tasks_config()?;
     if let Some(tasks_config) = maybe_tasks_config {
@@ -38,13 +39,10 @@ fn get_tasks_config(
   }
 }
 
-fn print_available_tasks(tasks_config: HashMap<String, String>) {
+fn print_available_tasks(tasks_config: BTreeMap<String, String>) {
   eprintln!("{}", colors::green("Available tasks:"));
 
-  let mut task_names: Vec<String> = tasks_config.clone().into_keys().collect();
-  task_names.sort();
-
-  for name in task_names {
+  for name in tasks_config.clone().into_keys() {
     eprintln!("- {}", colors::cyan(&name));
     eprintln!("    {}", tasks_config[&name])
   }

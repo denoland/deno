@@ -12,6 +12,13 @@ itest!(task_no_args {
   exit_code: 1,
 });
 
+itest!(task_non_existent {
+  args: "task --config task/deno.json non_existent",
+  output: "task/task_non_existent.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
 itest!(task_boolean_logic {
   args: "task --config task/deno.json boolean_logic",
   output: "task/task_boolean_logic.out",
