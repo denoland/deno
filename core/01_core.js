@@ -29,7 +29,7 @@
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
-  const { opcallSync, opcallAsync } = window.Deno.core;
+  const { opcallSync, opcallAsync, refOp_, unrefOp_ } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
@@ -97,6 +97,17 @@
     promise.resolve = resolve;
     promise.reject = reject;
     return promise;
+  }
+
+  function hasPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      return MapPrototypeHas(promiseMap, promiseId);
+    }
+    // Otherwise check it in ring
+    const idx = promiseId % RING_SIZE;
+    return promiseRing[idx] != NO_PROMISE;
   }
 
   function ops() {
@@ -170,6 +181,20 @@
 
   function opSync(opName, arg1 = null, arg2 = null) {
     return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
+  }
+
+  function refOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    refOp_(promiseId);
+  }
+
+  function unrefOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    unrefOp_(promiseId);
   }
 
   function resources() {
@@ -252,6 +277,8 @@
     enableOpCallTracing,
     isOpCallTracingEnabled,
     opCallTraces,
+    refOp,
+    unrefOp,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
