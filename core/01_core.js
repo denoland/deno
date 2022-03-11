@@ -18,7 +18,7 @@
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
-  const { opcallSync, opcallAsync, refOp_, unrefOp_ } = window.Deno.core;
+  const { opcallSync, opcallAsync } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
@@ -70,30 +70,13 @@
   }
 
   function opAsync(opName, arg1 = null, arg2 = null) {
+    // return unwrapOpResult(opcallAsync(opsCache[opName], arg1, arg2));
     const promiseOrErr = opcallAsync(opsCache[opName], arg1, arg2);
-    // Handle sync error (e.g: error parsing args
     return unwrapOpResult(promiseOrErr).catch(unwrapOpResult);
-    // const promise = unwrapOpResult(promiseOrErr);
-    // TODO(@AaronO): remove by moving rejection rust-side
-    // return PromisePrototypeCatch(promise, unwrapOpResult);
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
     return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
-  }
-
-  function refOp(promiseId) {
-    if (!hasPromise(promiseId)) {
-      return;
-    }
-    refOp_(promiseId);
-  }
-
-  function unrefOp(promiseId) {
-    if (!hasPromise(promiseId)) {
-      return;
-    }
-    unrefOp_(promiseId);
   }
 
   function resources() {
