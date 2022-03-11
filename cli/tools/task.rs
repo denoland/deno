@@ -17,9 +17,21 @@ fn get_tasks_config(
   if let Some(config_file) = maybe_config_file {
     let maybe_tasks_config = config_file.to_tasks_config()?;
     if let Some(tasks_config) = maybe_tasks_config {
+      for key in tasks_config.keys() {
+        if key.is_empty() {
+          bail!("Configuration file task names cannot be empty");
+        } else if !key
+          .chars()
+          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        {
+          bail!("Configuration file task names must only contain alpha-numeric characters, underscores (_), or dashes (-). Task: {}", key);
+        } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
+          bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
+        }
+      }
       Ok(tasks_config)
     } else {
-      bail!("No configured tasks")
+      bail!("No tasks found in configuration file")
     }
   } else {
     bail!("No config file found")
@@ -66,7 +78,8 @@ pub async fn execute_script(
       .argv
       .iter()
       // surround all the additional arguments in double quotes
-      .map(|a| format!("\"{}\"", a.replace("\"", "\\\"")))
+      // and santize any command substition
+      .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
       .collect::<Vec<_>>()
       .join(" ");
     let script = format!("{} {}", script, additional_args);
@@ -79,5 +92,76 @@ pub async fn execute_script(
     eprintln!("Task not found: {}", task_name);
     print_available_tasks(tasks_config);
     Ok(1)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use deno_ast::ModuleSpecifier;
+  use pretty_assertions::assert_eq;
+
+  use super::*;
+
+  #[test]
+  fn tasks_no_tasks() {
+    run_task_error_test(r#"{}"#, "No tasks found in configuration file");
+  }
+
+  #[test]
+  fn task_name_invalid_chars() {
+    run_task_error_test(
+      r#"{
+        "tasks": {
+          "build": "deno test",
+          "some%test": "deno bundle mod.ts"
+        }
+      }"#,
+      concat!(
+        "Configuration file task names must only contain alpha-numeric ",
+        "characters, underscores (_), or dashes (-). Task: some%test",
+      ),
+    );
+  }
+
+  #[test]
+  fn task_name_non_alpha_starting_char() {
+    run_task_error_test(
+      r#"{
+        "tasks": {
+          "build": "deno test",
+          "1test": "deno bundle mod.ts"
+        }
+      }"#,
+      concat!(
+        "Configuration file task names must start with an ",
+        "alphabetic character. Task: 1test",
+      ),
+    );
+  }
+
+  #[test]
+  fn task_name_empty() {
+    run_task_error_test(
+      r#"{
+        "tasks": {
+          "build": "deno test",
+          "": "deno bundle mod.ts"
+        }
+      }"#,
+      "Configuration file task names cannot be empty",
+    );
+  }
+
+  fn run_task_error_test(config_text: &str, expected_error: &str) {
+    let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
+    let config_specifier = config_dir.join("tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    assert_eq!(
+      get_tasks_config(Some(&config_file))
+        .err()
+        .unwrap()
+        .to_string(),
+      expected_error,
+    );
   }
 }
