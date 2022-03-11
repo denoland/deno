@@ -20,13 +20,6 @@ Deno.test(async function sendAsyncStackTrace() {
   }
 });
 
-declare global {
-  namespace Deno {
-    // deno-lint-ignore no-explicit-any, no-var
-    var core: any;
-  }
-}
-
 Deno.test(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;

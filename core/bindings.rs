@@ -173,8 +173,8 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "opcallSync", opcall_sync);
   set_func(scope, core_val, "opcallAsync", opcall_async);
-  set_func(scope, core_val, "refOp", ref_op);
-  set_func(scope, core_val, "unrefOp", unref_op);
+  set_func(scope, core_val, "refOp_", ref_op);
+  set_func(scope, core_val, "unrefOp_", unref_op);
   set_func(
     scope,
     core_val,
