@@ -7,6 +7,7 @@ pub mod installer;
 pub mod lint;
 pub mod repl;
 pub mod standalone;
+pub mod task;
 pub mod test;
 pub mod upgrade;
 pub mod vendor;

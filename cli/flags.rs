@@ -140,6 +140,11 @@ pub struct RunFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct TaskFlags {
+  pub task: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
   pub doc: bool,
@@ -187,6 +192,7 @@ pub enum DenoSubcommand {
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
+  Task(TaskFlags),
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
@@ -500,6 +506,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     Some(("vendor", m)) => vendor_parse(&mut flags, m),
+    Some(("task", m)) => task_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
@@ -568,6 +575,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
+    .subcommand(task_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
@@ -1253,6 +1261,25 @@ Grant permission to read allow-listed files from disk:
 Deno allows specifying the filename '-' to read the file from stdin.
 
   curl https://deno.land/std/examples/welcome.ts | deno run -",
+    )
+}
+
+fn task_subcommand<'a>() -> App<'a> {
+  App::new("task")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(config_arg())
+    .arg(Arg::new("task").help("Task to be executed"))
+    .arg(
+      Arg::new("task_args")
+        .multiple_values(true)
+        .multiple_occurrences(true)
+        .help("Additional arguments passed to the task"),
+    )
+    .about("Run a task defined in the configuration file")
+    .long_about(
+      "Run a task defined in the configuration file
+
+  deno task build",
     )
 }
 
@@ -2195,6 +2222,26 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
+}
+
+fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
+
+  let mut task_name = "".to_string();
+  if let Some(task) = matches.value_of("task") {
+    task_name = task.to_string();
+
+    let task_args: Vec<String> = matches
+      .values_of("task_args")
+      .unwrap_or_default()
+      .map(String::from)
+      .collect();
+    for v in task_args {
+      flags.argv.push(v);
+    }
+  }
+
+  flags.subcommand = DenoSubcommand::Task(TaskFlags { task: task_name });
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5059,6 +5106,62 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         lock: Some(PathBuf::from("lock.json")),
         reload: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand() {
+    let r =
+      flags_from_vec(svec!["deno", "task", "build", "--", "hello", "world",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["hello", "world"],
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_empty() {
+    let r = flags_from_vec(svec!["deno", "task",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_config() {
+    let r = flags_from_vec(svec!["deno", "task", "--config", "deno.jsonc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
+        }),
+        config_path: Some("deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
