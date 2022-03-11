@@ -72,7 +72,7 @@
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseOrErr = opcallAsync(opsCache[opName], arg1, arg2);
     // Handle sync error (e.g: error parsing args
-    return unwrapOpResult(promiseOrErr);
+    return unwrapOpResult(promiseOrErr).catch(unwrapOpResult);
     // const promise = unwrapOpResult(promiseOrErr);
     // TODO(@AaronO): remove by moving rejection rust-side
     // return PromisePrototypeCatch(promise, unwrapOpResult);
