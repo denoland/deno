@@ -270,12 +270,8 @@ async fn check_specifiers(
   specifiers: Vec<ModuleSpecifier>,
   lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
-  let module_specifiers = specifiers
-    .into_iter()
-    .map(|s| (s, ModuleKind::Esm))
-    .collect();
   ps.prepare_module_load(
-    module_specifiers,
+    specifiers,
     false,
     lib,
     Permissions::allow_all(),
