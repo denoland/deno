@@ -97,7 +97,6 @@ pub enum BenchEvent {
 #[derive(Debug, Clone)]
 pub struct BenchMeasures {
   pub iterations: u64,
-  pub current_start: Instant,
   pub measures: Vec<u128>,
 }
 
@@ -126,7 +125,6 @@ impl BenchSummary {
       measures: Vec::new(),
       current_bench: BenchMeasures {
         iterations: 0,
-        current_start: Instant::now(),
         measures: vec![],
       },
       failures: Vec::new(),
@@ -392,7 +390,6 @@ async fn bench_specifiers(
             reporter.report_wait(&description);
             summary.current_bench = BenchMeasures {
               iterations: description.iterations,
-              current_start: Instant::now(),
               measures: Vec::with_capacity(
                 description.iterations.try_into().unwrap(),
               ),
