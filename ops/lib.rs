@@ -34,7 +34,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let original_func = {
     let mut func = func.clone();
     func.sig.ident = quote::format_ident!("call");
-    quote! { #func }
+    func
   };
 
   let core = core_import();
@@ -45,7 +45,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   };
 
   // Generate wrapper
-  TokenStream::from(quote! {
+  quote! {
     #[allow(non_camel_case_types)]
     pub struct #name;
 
@@ -74,7 +74,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #v8_body
       }
     }
-  })
+  }.into()
 }
 
 /// Generate the body of a v8 func for an async op
