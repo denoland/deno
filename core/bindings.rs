@@ -105,8 +105,14 @@ pub fn external_references(
     .iter()
     .map(|(_, opref)| v8::ExternalReference { function: *opref });
   refs.extend(op_refs);
+  // SAFETY: OpState is held by JsRuntime in an Rc, drop/decrement our copy
+  let raw_op_state = unsafe {
+    let raw = Rc::into_raw(op_state);
+    Rc::decrement_strong_count(raw);
+    raw as *mut c_void
+  };
   refs.push(v8::ExternalReference {
-    pointer: Rc::into_raw(op_state) as *mut c_void,
+    pointer: raw_op_state,
   });
   v8::ExternalReferences::new(&refs)
 }
@@ -176,8 +182,14 @@ pub fn initialize_context<'s>(
     let ops_val = core_val.get(scope, ops_key.into()).unwrap();
     let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
       .unwrap_or_else(|_| v8::Object::new(scope));
+    // SAFETY: OpState is held by JsRuntime in an Rc, drop/decrement our copy
+    let raw_op_state = unsafe {
+      let raw = Rc::into_raw(op_state);
+      Rc::decrement_strong_count(raw);
+      raw as *const c_void
+    };
     for (name, opfn) in ops {
-      set_func_raw(scope, ops_val, name, *opfn, op_state.clone());
+      set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
     }
     return scope.escape(context);
   }
@@ -245,9 +257,14 @@ pub fn initialize_context<'s>(
   );
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
-
+  // SAFETY: OpState is held by JsRuntime in an Rc, drop/decrement our copy
+  let raw_op_state = unsafe {
+    let raw = Rc::into_raw(op_state);
+    Rc::decrement_strong_count(raw);
+    raw as *const c_void
+  };
   for (name, opfn) in ops {
-    set_func_raw(scope, ops_val, name, *opfn, op_state.clone());
+    set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
   }
   scope.escape(context)
 }
@@ -269,11 +286,10 @@ pub fn set_func_raw(
   obj: v8::Local<v8::Object>,
   name: &'static str,
   callback: v8::FunctionCallback,
-  external_data: Rc<RefCell<OpState>>,
+  external_data: *const c_void,
 ) {
   let key = v8::String::new(scope, name).unwrap();
-  let external =
-    v8::External::new(scope, Rc::into_raw(external_data) as *mut c_void);
+  let external = v8::External::new(scope, external_data as *mut c_void);
   let val = v8::Function::builder_raw(callback)
     .data(external.into())
     .build(scope)
