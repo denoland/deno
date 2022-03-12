@@ -81,6 +81,12 @@ pub async fn execute_script(
       .collect::<Vec<_>>()
       .join(" ");
     let script = format!("{} {}", script, additional_args);
+    log::info!(
+      "{} {} {}",
+      colors::green("Task"),
+      colors::cyan(&task_name),
+      script
+    );
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
