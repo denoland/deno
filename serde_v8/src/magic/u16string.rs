@@ -6,6 +6,7 @@ pub const NAME: &str = "$__v8_magic_u16string";
 pub const FIELD_PTR: &str = "$__v8_magic_u16string_ptr";
 pub const FIELD_LEN: &str = "$__v8_magic_u16string_len";
 
+#[derive(Default, PartialEq, Eq)]
 pub struct U16String(pub Vec<u16>);
 
 impl U16String {
@@ -16,12 +17,6 @@ impl U16String {
   pub fn truncate(&mut self, new_length: usize) {
     self.0.truncate(new_length);
     self.0.shrink_to_fit()
-  }
-}
-
-impl Default for U16String {
-  fn default() -> Self {
-    U16String(Vec::new())
   }
 }
 
