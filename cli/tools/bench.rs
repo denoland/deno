@@ -738,7 +738,7 @@ struct BenchStats {
 impl BenchStats {
   pub fn new(mut measures: Vec<u128>, iterations: u64) -> Self {
     assert_eq!(measures.len(), iterations as usize);
-    measures.sort();
+    measures.sort_unstable();
     let average = measures.iter().sum::<u128>() / iterations as u128;
 
     let min = measures[0];
