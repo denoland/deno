@@ -202,15 +202,15 @@ impl BenchReporter for PrettyBenchReporter {
   ) {
     let status = match result {
       BenchResult::Ok => {
-        let ns_op = current_bench.measures.iter().sum::<u128>()
-          / current_bench.iterations as u128;
-        let min_op = current_bench.measures.iter().min().unwrap_or(&0);
-        let max_op = current_bench.measures.iter().max().unwrap_or(&0);
+        let stats = BenchStats::new(
+          current_bench.measures.clone(),
+          current_bench.iterations,
+        );
         format!(
           "{} ns/iter ({}..{} ns/iter) {}",
-          ns_op.to_formatted_string(&Locale::en),
-          min_op.to_formatted_string(&Locale::en),
-          max_op.to_formatted_string(&Locale::en),
+          stats.average.to_formatted_string(&Locale::en),
+          stats.min.to_formatted_string(&Locale::en),
+          stats.max.to_formatted_string(&Locale::en),
           colors::green("ok")
         )
       }
@@ -724,4 +724,52 @@ pub async fn run_benchmarks_with_watch(
   .await?;
 
   Ok(())
+}
+
+#[allow(dead_code)]
+struct BenchStats {
+  pub min: u128,
+  pub max: u128,
+  pub average: u128,
+  pub percentile_50: u128,
+  pub percentile_75: u128,
+  pub percentile_99: u128,
+  pub percentile_995: u128,
+  pub percentile_999: u128,
+}
+
+impl BenchStats {
+  pub fn new(mut measures: Vec<u128>, iterations: u64) -> Self {
+    assert_eq!(measures.len(), iterations as usize);
+    measures.sort();
+    let average = measures.iter().sum::<u128>() / iterations as u128;
+
+    let min = measures[0];
+    let max = measures[measures.len() - 1];
+
+    Self {
+      min,
+      max,
+      average,
+      percentile_50: calculate_percentile(&measures, 50.0),
+      percentile_75: calculate_percentile(&measures, 75.0),
+      percentile_99: calculate_percentile(&measures, 99.0),
+      percentile_995: calculate_percentile(&measures, 99.5),
+      percentile_999: calculate_percentile(&measures, 99.9),
+    }
+  }
+}
+
+fn calculate_percentile(measures: &[u128], percentile: f64) -> u128 {
+  assert!(percentile >= 0_f64);
+  assert!(percentile <= 100_f64);
+  let length = (measures.len() - 1) as f64;
+  let rank = (percentile / 100_f64) * length;
+  let floor_rank = rank.floor();
+  let diff = rank - floor_rank;
+  let idx = floor_rank as usize;
+  let low = measures[idx];
+  let high = measures[idx + 1];
+  // TODO(bartlomieju): this seems wrong :D
+  low + (((high - low) as f64) * diff) as u128
 }
