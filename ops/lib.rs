@@ -205,12 +205,13 @@ fn codegen_sync_ret(
   output: &syn::ReturnType,
 ) -> TokenStream2 {
   let ret_type = match output {
-    // Func with no return no-op
+    // Func with no return no-ops
     syn::ReturnType::Default => return quote! { let ret = (); },
-    // FUnc with a return value
+    // Func with a return Result<T, E>
     syn::ReturnType::Type(_, ty) => ty,
   };
 
+  // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
   let ok_block = match is_unit_result(&**ret_type) {
     true => quote! {},
     false => quote! {
