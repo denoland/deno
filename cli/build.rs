@@ -83,8 +83,12 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.web", "../ext/web/lib.deno_web.d.ts");
   op_crate_libs.insert("deno.fetch", "../ext/fetch/lib.deno_fetch.d.ts");
   op_crate_libs.insert("deno.webgpu", "./dts/lib.deno_webgpu.d.ts");
-  op_crate_libs.insert("deno.websocket", "../ext/websocket/lib.deno_websocket.d.ts");
-  op_crate_libs.insert("deno.webstorage", "../ext/webstorage/lib.deno_webstorage.d.ts");
+  op_crate_libs
+    .insert("deno.websocket", "../ext/websocket/lib.deno_websocket.d.ts");
+  op_crate_libs.insert(
+    "deno.webstorage",
+    "../ext/webstorage/lib.deno_webstorage.d.ts",
+  );
   op_crate_libs.insert("deno.crypto", "../ext/crypto/lib.deno_crypto.d.ts");
   op_crate_libs.insert(
     "deno.broadcast_channel",
@@ -93,7 +97,9 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.net", "../ext/net/lib.deno_net.d.ts");
   // ensure we invalidate the build properly.
   for (name, path) in op_crate_libs.iter() {
-    let path = std::fs::canonicalize(path).map_err(|e| format!("{}: {}", path, e)).unwrap();
+    let path = std::fs::canonicalize(path)
+      .map_err(|e| format!("{}: {}", path, e))
+      .unwrap();
     println!(
       "cargo:rustc-env={}_LIB_PATH={}",
       name.replace(".", "_").to_uppercase(),
@@ -309,7 +315,7 @@ fn main() {
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
   println!("cargo:rerun-if-env-changed=TS_VERSION");
-  
+
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
 
