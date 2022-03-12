@@ -43,68 +43,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let a = codegen_arg(&core, &inputs[1], "a", 2);
   let b = codegen_arg(&core, &inputs[2], "b", 3);
 
-  let ret = match &output {
-    syn::ReturnType::Default => quote! {
-      let ret = ();
-    },
-    syn::ReturnType::Type(_, ty) => {
-      let default_ok = quote! {
-        let ret = #core::serde_v8::to_v8(scope, v).unwrap();
-        rv.set(ret);
-      };
-
-      // Optimize Result<(), Err> to skip serde_v8.
-      let ok_block = match &**ty {
-        syn::Type::Path(ref path) => {
-          let maybe_result =
-            path.path.segments.first().expect("Invalid return type.");
-          if maybe_result.ident == "Result" {
-            assert!(!maybe_result.arguments.is_empty());
-            match &maybe_result.arguments {
-              syn::PathArguments::AngleBracketed(args) => {
-                let maybe_unit = args.args.first().unwrap();
-                match maybe_unit {
-                  syn::GenericArgument::Type(syn::Type::Tuple(ty)) => {
-                    if ty.elems.is_empty() {
-                      quote! {}
-                    } else {
-                      default_ok
-                    }
-                  }
-                  _ => default_ok,
-                }
-              }
-              syn::PathArguments::None
-              | syn::PathArguments::Parenthesized(..) => unreachable!(),
-            }
-          } else {
-            default_ok
-          }
-        }
-        _ => default_ok,
-      };
-
-      quote! {
-        match result {
-          Ok(v) => {
-            #ok_block
-          },
-          Err(err) => {
-            let err = #core::serde_v8::to_v8(
-              scope,
-              #core::OpError {
-                class_name: (op_state.get_error_class_fn)(&err),
-                message: err.to_string(),
-                code: #core::error_codes::get_error_code(&err),
-              },
-            ).unwrap();
-
-            rv.set(err);
-          },
-        };
-      }
-    }
-  };
+  let ret = codegen_sync_ret(&core, output);
 
   let is_async = func.sig.asyncness.is_some();
   if is_async {
@@ -258,5 +197,69 @@ fn codegen_arg(
         return;
       }
     };
+  }
+}
+
+fn codegen_sync_ret(
+  core: &TokenStream2,
+  output: &syn::ReturnType,
+) -> TokenStream2 {
+  let ret_type = match output {
+    // Func with no return no-op
+    syn::ReturnType::Default => return quote! { let ret = (); },
+    // FUnc with a return value
+    syn::ReturnType::Type(_, ty) => ty,
+  };
+
+  let ok_block = match is_unit_result(&**ret_type) {
+    true => quote! {},
+    false => quote! {
+      let ret = #core::serde_v8::to_v8(scope, v).unwrap();
+      rv.set(ret);
+    },
+  };
+
+  quote! {
+    match result {
+      Ok(v) => {
+        #ok_block
+      },
+      Err(err) => {
+        let err = #core::serde_v8::to_v8(
+          scope,
+          #core::OpError {
+            class_name: (op_state.get_error_class_fn)(&err),
+            message: err.to_string(),
+            code: #core::error_codes::get_error_code(&err),
+          },
+        ).unwrap();
+
+        rv.set(err);
+      },
+    };
+  }
+}
+
+/// Detects if a type is of the form Result<(), Err>
+fn is_unit_result(ty: &syn::Type) -> bool {
+  let path = match ty {
+    syn::Type::Path(ref path) => path,
+    _ => return false,
+  };
+
+  let maybe_result = path.path.segments.first().expect("Invalid return type.");
+  if maybe_result.ident != "Result" {
+    return false;
+  }
+  assert!(!maybe_result.arguments.is_empty());
+
+  let args = match &maybe_result.arguments {
+    syn::PathArguments::AngleBracketed(args) => args,
+    _ => unreachable!(),
+  };
+
+  match args.args.first().unwrap() {
+    syn::GenericArgument::Type(syn::Type::Tuple(ty)) => ty.elems.is_empty(),
+    _ => false,
   }
 }
