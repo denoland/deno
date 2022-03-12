@@ -137,7 +137,7 @@ fn require_in_repl() {
     Some(vec![
       "const foo = require('./compat/import_esm_from_cjs/index');",
     ]),
-    vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
+    Some(vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())]),
     false,
   );
   assert!(out.contains("function"));
@@ -166,7 +166,7 @@ fn native_modules_as_global_vars() {
     true,
     vec!["repl", "--compat", "--unstable", "--quiet"],
     Some(vec!["if(cluster && v8 && sys) { true } else { false }"]),
-    vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
+    Some(vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())]),
     false,
   );
   assert!(out.contains("true"));
