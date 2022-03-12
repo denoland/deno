@@ -65,6 +65,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           (Self::name(), Self::v8_cb::<#type_params>())
         }
 
+        #[inline]
         #original_func
 
         pub fn v8_func #generics (
@@ -93,7 +94,6 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
           #a
           #b
-          #func
 
           let state_rc = #core::JsRuntime::state(scope);
           let mut state = state_rc.borrow_mut();
@@ -105,7 +105,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
           let op_state = state.op_state.clone();
           state.pending_ops.push(#core::OpCall::eager(async move {
-            let result = #name::<#type_params>(op_state.clone(), a, b).await;
+            let result = Self::call::<#type_params>(op_state.clone(), a, b).await;
             (promise_id, op_id, #core::to_op_result(&op_state.borrow(), result))
           }));
           state.have_unpolled_ops = true;
@@ -131,6 +131,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           (Self::name(), Self::v8_cb::<#type_params>())
         }
 
+        #[inline]
         #original_func
 
         #[inline]
@@ -146,7 +147,6 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
           #a
           #b
-          #func
 
           // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
           let state_refcell_raw = unsafe {
@@ -157,7 +157,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
 
           let mut op_state = state.borrow_mut();
-          let result = #name::<#type_params>(&mut op_state, a, b);
+          let result = Self::call::<#type_params>(&mut op_state, a, b);
 
           op_state.tracker.track_sync(op_id);
 
