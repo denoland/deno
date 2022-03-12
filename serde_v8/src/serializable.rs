@@ -4,6 +4,7 @@ use std::mem::transmute_copy;
 
 use crate::Buffer;
 use crate::ByteString;
+use crate::U16String;
 
 /// Serializable exists to allow boxing values as "objects" to be serialized later,
 /// this is particularly useful for async op-responses. This trait is a more efficient
@@ -63,6 +64,7 @@ pub enum Primitive {
   String(String),
   Buffer(Buffer),
   ByteString(ByteString),
+  U16String(U16String),
 }
 
 impl serde::Serialize for Primitive {
@@ -86,6 +88,7 @@ impl serde::Serialize for Primitive {
       Self::String(x) => x.serialize(s),
       Self::Buffer(x) => x.serialize(s),
       Self::ByteString(x) => x.serialize(s),
+      Self::U16String(x) => x.serialize(s),
     }
   }
 }
@@ -130,6 +133,8 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
       Self::Primitive(Primitive::Buffer(tc(x)))
     } else if tid == TypeId::of::<ByteString>() {
       Self::Primitive(Primitive::ByteString(tc(x)))
+    } else if tid == TypeId::of::<U16String>() {
+      Self::Primitive(Primitive::U16String(tc(x)))
     } else {
       Self::Serializable(Box::new(x))
     }

@@ -17,6 +17,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::U16String;
 use deno_core::ZeroCopyBuf;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -299,7 +300,7 @@ fn op_encoding_decode(
   state: &mut OpState,
   data: ZeroCopyBuf,
   options: DecodeOptions,
-) -> Result<String, AnyError> {
+) -> Result<U16String, AnyError> {
   let DecodeOptions { rid, stream } = options;
 
   let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
@@ -307,23 +308,20 @@ fn op_encoding_decode(
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
 
-  let max_buffer_length = if fatal {
-    decoder
-      .max_utf8_buffer_length_without_replacement(data.len())
-      .ok_or_else(|| range_error("Value too large to decode."))?
-  } else {
-    decoder
-      .max_utf8_buffer_length(data.len())
-      .ok_or_else(|| range_error("Value too large to decode."))?
-  };
+  let max_buffer_length = decoder
+    .max_utf16_buffer_length(data.len())
+    .ok_or_else(|| range_error("Value too large to decode."))?;
 
-  let mut output = String::with_capacity(max_buffer_length);
+  let mut output = U16String::with_zeroes(max_buffer_length);
 
   if fatal {
-    let (result, _) =
-      decoder.decode_to_string_without_replacement(&data, &mut output, !stream);
+    let (result, _, written) =
+      decoder.decode_to_utf16_without_replacement(&data, &mut output, !stream);
     match result {
-      DecoderResult::InputEmpty => Ok(output),
+      DecoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output)
+      }
       DecoderResult::OutputFull => {
         Err(range_error("Provided buffer too small."))
       }
@@ -332,9 +330,13 @@ fn op_encoding_decode(
       }
     }
   } else {
-    let (result, _, _) = decoder.decode_to_string(&data, &mut output, !stream);
+    let (result, _, written, _) =
+      decoder.decode_to_utf16(&data, &mut output, !stream);
     match result {
-      CoderResult::InputEmpty => Ok(output),
+      CoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output)
+      }
       CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
     }
   }
