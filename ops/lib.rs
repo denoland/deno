@@ -38,133 +38,121 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   };
 
   let core = core_import();
-  let inputs = &func.sig.inputs;
-  let output = &func.sig.output;
-  let a = codegen_arg(&core, &inputs[1], "a", 2);
-  let b = codegen_arg(&core, &inputs[2], "b", 3);
 
-  let ret = codegen_sync_ret(&core, output);
+  let v8_body = match func.sig.asyncness.is_some() {
+    true => codegen_v8_async(&core, &func),
+    false => codegen_v8_sync(&core, &func),
+  };
 
-  let is_async = func.sig.asyncness.is_some();
-  if is_async {
-    TokenStream::from(quote! {
-      #[allow(non_camel_case_types)]
-      pub struct #name;
+  // Generate wrapper
+  TokenStream::from(quote! {
+    #[allow(non_camel_case_types)]
+    pub struct #name;
 
-      impl #name {
-        pub fn name() -> &'static str {
-          stringify!(#name)
-        }
-
-        pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
-          use #core::v8::MapFnTo;
-          Self::v8_func::<#type_params>.map_fn_to()
-        }
-
-        pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
-          (Self::name(), Self::v8_cb::<#type_params>())
-        }
-
-        #[inline]
-        #original_func
-
-        pub fn v8_func #generics (
-          scope: &mut #core::v8::HandleScope,
-          args: #core::v8::FunctionCallbackArguments,
-          mut rv: #core::v8::ReturnValue,
-        ) #where_clause {
-          use #core::futures::FutureExt;
-          // SAFETY: Called from Deno.core.opAsync. Which retrieves the index using opId table.
-          let op_id = unsafe {
-            #core::v8::Local::<#core::v8::Integer>::cast(args.get(0))
-          }.value() as usize;
-
-          let promise_id = args.get(1);
-          let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
-            .map(|l| l.value() as #core::PromiseId)
-            .map_err(#core::anyhow::Error::from);
-          // Fail if promise id invalid (not an int)
-          let promise_id: #core::PromiseId = match promise_id {
-            Ok(promise_id) => promise_id,
-            Err(err) => {
-              #core::bindings::throw_type_error(scope, format!("invalid promise id: {}", err));
-              return;
-            }
-          };
-
-          #a
-          #b
-
-          let state_rc = #core::JsRuntime::state(scope);
-          let mut state = state_rc.borrow_mut();
-
-          {
-            let mut op_state = state.op_state.borrow_mut();
-            op_state.tracker.track_async(op_id);
-          }
-
-          let op_state = state.op_state.clone();
-          state.pending_ops.push(#core::OpCall::eager(async move {
-            let result = Self::call::<#type_params>(op_state.clone(), a, b).await;
-            (promise_id, op_id, #core::to_op_result(&op_state.borrow(), result))
-          }));
-          state.have_unpolled_ops = true;
-        }
+    impl #name {
+      pub fn name() -> &'static str {
+        stringify!(#name)
       }
-    })
-  } else {
-    TokenStream::from(quote! {
-      #[allow(non_camel_case_types)]
-      pub struct #name;
 
-      impl #name {
-        pub fn name() -> &'static str {
-          stringify!(#name)
-        }
-
-        pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
-          use #core::v8::MapFnTo;
-          Self::v8_func::<#type_params>.map_fn_to()
-        }
-
-        pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
-          (Self::name(), Self::v8_cb::<#type_params>())
-        }
-
-        #[inline]
-        #original_func
-
-        #[inline]
-        pub fn v8_func #generics (
-          scope: &mut #core::v8::HandleScope,
-          args: #core::v8::FunctionCallbackArguments,
-          mut rv: #core::v8::ReturnValue,
-        ) #where_clause {
-          // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
-          let op_id = unsafe {
-            #core::v8::Local::<#core::v8::Integer>::cast(args.get(0)).value()
-          } as usize;
-
-          #a
-          #b
-
-          // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
-          let state_refcell_raw = unsafe {
-            #core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked())
-          }.value();
-
-          // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-          let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
-
-          let mut op_state = state.borrow_mut();
-          let result = Self::call::<#type_params>(&mut op_state, a, b);
-
-          op_state.tracker.track_sync(op_id);
-
-          #ret
-        }
+      pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
+        use #core::v8::MapFnTo;
+        Self::v8_func::<#type_params>.map_fn_to()
       }
-    })
+
+      pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
+        (Self::name(), Self::v8_cb::<#type_params>())
+      }
+
+      #[inline]
+      #original_func
+
+      pub fn v8_func #generics (
+        scope: &mut #core::v8::HandleScope,
+        args: #core::v8::FunctionCallbackArguments,
+        mut rv: #core::v8::ReturnValue,
+      ) #where_clause {
+        #v8_body
+      }
+    }
+  })
+}
+
+/// Generate the body of a v8 func for an async op
+fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
+  let a = codegen_arg(core, &f.sig.inputs[1], "a", 2);
+  let b = codegen_arg(core, &f.sig.inputs[2], "b", 3);
+  let type_params = &f.sig.generics.params;
+
+  quote! {
+    use #core::futures::FutureExt;
+    // SAFETY: Called from Deno.core.opAsync. Which retrieves the index using opId table.
+    let op_id = unsafe {
+      #core::v8::Local::<#core::v8::Integer>::cast(args.get(0))
+    }.value() as usize;
+
+    let promise_id = args.get(1);
+    let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
+      .map(|l| l.value() as #core::PromiseId)
+      .map_err(#core::anyhow::Error::from);
+    // Fail if promise id invalid (not an int)
+    let promise_id: #core::PromiseId = match promise_id {
+      Ok(promise_id) => promise_id,
+      Err(err) => {
+        #core::bindings::throw_type_error(scope, format!("invalid promise id: {}", err));
+        return;
+      }
+    };
+
+    #a
+    #b
+
+    let state_rc = #core::JsRuntime::state(scope);
+    let mut state = state_rc.borrow_mut();
+
+    {
+      let mut op_state = state.op_state.borrow_mut();
+      op_state.tracker.track_async(op_id);
+    }
+
+    let op_state = state.op_state.clone();
+    state.pending_ops.push(#core::OpCall::eager(async move {
+      let result = Self::call::<#type_params>(op_state.clone(), a, b).await;
+      (promise_id, op_id, #core::to_op_result(&op_state.borrow(), result))
+    }));
+    state.have_unpolled_ops = true;
+  }
+}
+
+/// Generate the body of a v8 func for a sync op
+fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
+  let a = codegen_arg(core, &f.sig.inputs[1], "a", 2);
+  let b = codegen_arg(core, &f.sig.inputs[2], "b", 3);
+  let ret = codegen_sync_ret(core, &f.sig.output);
+  let type_params = &f.sig.generics.params;
+
+  quote! {
+    // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
+    let op_id = unsafe {
+      #core::v8::Local::<#core::v8::Integer>::cast(args.get(0)).value()
+    } as usize;
+
+    #a
+    #b
+
+    // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
+    let state_refcell_raw = unsafe {
+      #core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked())
+    }.value();
+
+    // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
+    let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
+
+    let mut op_state = state.borrow_mut();
+    let result = Self::call::<#type_params>(&mut op_state, a, b);
+
+    op_state.tracker.track_sync(op_id);
+
+    #ret
   }
 }
 
