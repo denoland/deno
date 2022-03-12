@@ -166,17 +166,24 @@ pub fn initialize_context<'s>(
   let deno_key = v8::String::new(scope, "Deno").unwrap();
   let core_key = v8::String::new(scope, "core").unwrap();
   let ops_key = v8::String::new(scope, "ops").unwrap();
+  // Snapshot already registered `Deno.core.ops` but
+  // extensions may provide ops that aren't part of the snapshot.
+  //
+  // TODO(@littledivy): This is extra complexity for
+  // a really weird usecase. Remove this once all
+  // tsc ops are static at snapshot time.
   if snapshot_loaded {
+    // Grab Deno.core.ops object
     let deno_val = global.get(scope, deno_key.into()).unwrap();
     let deno_val = v8::Local::<v8::Object>::try_from(deno_val)
-      .unwrap_or_else(|_| v8::Object::new(scope));
-
+      .expect("`Deno` not in global scope.");
     let core_val = deno_val.get(scope, core_key.into()).unwrap();
     let core_val = v8::Local::<v8::Object>::try_from(core_val)
-      .unwrap_or_else(|_| v8::Object::new(scope));
+      .expect("`Deno.core` not in global scope");
     let ops_val = core_val.get(scope, ops_key.into()).unwrap();
     let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
-      .unwrap_or_else(|_| v8::Object::new(scope));
+      .expect("`Deno.core.ops` not in global scope");
+
     let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
     for (name, opfn) in ops {
       set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
@@ -184,15 +191,14 @@ pub fn initialize_context<'s>(
     return scope.escape(context);
   }
 
-  // global.Deno = { core: {} };
-  let deno_key = v8::String::new(scope, "Deno").unwrap();
-  let core_key = v8::String::new(scope, "core").unwrap();
+  // global.Deno = { core: { ops: {} } };
   let deno_val = v8::Object::new(scope);
   global.set(scope, deno_key.into(), deno_val.into());
   let core_val = v8::Object::new(scope);
   deno_val.set(scope, core_key.into(), core_val.into());
   let ops_val = v8::Object::new(scope);
   core_val.set(scope, ops_key.into(), ops_val.into());
+
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "refOp_", ref_op);
   set_func(scope, core_val, "unrefOp_", unref_op);
@@ -247,6 +253,8 @@ pub fn initialize_context<'s>(
   );
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
+
+  // Bind functions to Deno.core.ops.*
   let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
   for (name, opfn) in ops {
     set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
@@ -266,6 +274,8 @@ pub fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
+// Register a raw v8::FunctionCallback
+// with some external data.
 pub fn set_func_raw(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
