@@ -105,12 +105,7 @@ pub fn external_references(
     .iter()
     .map(|(_, opref)| v8::ExternalReference { function: *opref });
   refs.extend(op_refs);
-  // SAFETY: OpState is held by JsRuntime in an Rc, drop/decrement our copy
-  let raw_op_state = unsafe {
-    let raw = Rc::into_raw(op_state);
-    Rc::decrement_strong_count(raw);
-    raw as *mut c_void
-  };
+  let raw_op_state = Rc::as_ptr(&op_state) as *mut c_void;
   refs.push(v8::ExternalReference {
     pointer: raw_op_state,
   });
@@ -182,12 +177,7 @@ pub fn initialize_context<'s>(
     let ops_val = core_val.get(scope, ops_key.into()).unwrap();
     let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
       .unwrap_or_else(|_| v8::Object::new(scope));
-    // SAFETY: OpState is held by JsRuntime in an Rc, drop/decrement our copy
-    let raw_op_state = unsafe {
-      let raw = Rc::into_raw(op_state);
-      Rc::decrement_strong_count(raw);
-      raw as *const c_void
-    };
+    let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
     for (name, opfn) in ops {
       set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
     }
@@ -257,12 +247,7 @@ pub fn initialize_context<'s>(
   );
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
-  // SAFETY: OpState is held by JsRuntime in an Rc, drop/decrement our copy
-  let raw_op_state = unsafe {
-    let raw = Rc::into_raw(op_state);
-    Rc::decrement_strong_count(raw);
-    raw as *const c_void
-  };
+  let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
   for (name, opfn) in ops {
     set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
   }
