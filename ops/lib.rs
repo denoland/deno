@@ -109,10 +109,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let state_rc = #core::JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
 
-    {
-      let mut op_state = state.op_state.borrow_mut();
-      op_state.tracker.track_async(op_id);
-    }
+    state.op_state.borrow().tracker.track_async(op_id);
 
     let op_state = state.op_state.clone();
     state.pending_ops.push(#core::OpCall::eager(async move {
