@@ -102,7 +102,7 @@ fn create_compiler_snapshot(
       .unwrap();
     println!(
       "cargo:rustc-env={}_LIB_PATH={}",
-      name.replace(".", "_").to_uppercase(),
+      name.replace('.', "_").to_uppercase(),
       path.display()
     );
     println!("cargo:rerun-if-changed={}", path.display());
