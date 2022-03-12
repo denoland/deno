@@ -82,6 +82,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_net]
 opt-level = 3
+[profile.bench.package.deno_crypto]
+opt-level = 3
 [profile.bench.package.num-bigint-dig]
 opt-level = 3
 [profile.bench.package.v8]
@@ -133,6 +135,8 @@ opt-level = 3
 [profile.release.package.deno_net]
 opt-level = 3
 [profile.release.package.deno_web]
+opt-level = 3
+[profile.release.package.deno_crypto]
 opt-level = 3
 [profile.release.package.deno_broadcast_channel]
 opt-level = 3
