@@ -2006,29 +2006,30 @@ pub mod tests {
     v8_isolate_handle.terminate_execution();
   }
 
-  #[test]
-  fn test_pre_dispatch() {
-    run_in_task(|cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      runtime
-        .execute_script(
-          "bad_op_id.js",
-          r#"
-          let thrown;
-          try {
-            Deno.core.opcallSync(100, null, null);
-          } catch (e) {
-            thrown = e;
-          }
-          assert(String(thrown) === "TypeError: Unknown op id: 100");
-         "#,
-        )
-        .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
-        unreachable!();
-      }
-    });
-  }
+  // TODO(@AaronO): remove most likely, possibly adapt
+  // #[test]
+  // fn test_pre_dispatch() {
+  //   run_in_task(|cx| {
+  //     let (mut runtime, _dispatch_count) = setup(Mode::Async);
+  //     runtime
+  //       .execute_script(
+  //         "bad_op_id.js",
+  //         r#"
+  //         let thrown;
+  //         try {
+  //           Deno.core.opcallSync(100, null, null);
+  //         } catch (e) {
+  //           thrown = e;
+  //         }
+  //         assert(String(thrown) === "TypeError: Unknown op id: 100");
+  //        "#,
+  //       )
+  //       .unwrap();
+  //     if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
+  //       unreachable!();
+  //     }
+  //   });
+  // }
 
   #[test]
   fn syntax_error() {
