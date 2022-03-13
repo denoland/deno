@@ -130,6 +130,7 @@ pub struct TestPlan {
 #[serde(rename_all = "camelCase")]
 pub enum TestEvent {
   Plan(TestPlan),
+  PlanEnd(bool),
   Wait(TestDescription),
   Output(TestOutput),
   Result(TestDescription, TestResult, u64),
@@ -190,6 +191,7 @@ impl TestSummary {
 
 trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
+  fn report_plan_end(&mut self);
   fn report_wait(&mut self, description: &TestDescription);
   fn report_output(&mut self, output: &TestOutput);
   fn report_result(
@@ -290,6 +292,10 @@ impl TestReporter for PrettyTestReporter {
     println!("running {} {} from {}", plan.total, inflection, plan.origin);
   }
 
+  fn report_plan_end(&mut self) {
+    println!("");
+  }
+
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       self.force_report_wait(description);
@@ -386,7 +392,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
-      println!("\nfailures:\n");
+      println!("failures:\n");
       for (description, error) in &summary.failures {
         println!("{}", description.name);
         println!("{}", error);
@@ -415,7 +421,7 @@ impl TestReporter for PrettyTestReporter {
       }
     };
     println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
+      "test result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
       status,
       summary.passed,
       get_steps_text(summary.passed_steps),
@@ -847,6 +853,10 @@ async fn test_specifiers(
             }
 
             reporter.report_plan(&plan);
+          }
+
+          TestEvent::PlanEnd(_) => {
+            reporter.report_plan_end();
           }
 
           TestEvent::Wait(description) => {

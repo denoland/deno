@@ -851,6 +851,12 @@
     });
   }
 
+  function reportTestPlanEnd() {
+    core.opSync("op_dispatch_test_event", {
+      planEnd: true,
+    });
+  }
+
   function reportTestConsoleOutput(console) {
     core.opSync("op_dispatch_test_event", {
       output: { console },
@@ -984,6 +990,8 @@
 
       reportTestResult(description, result, elapsed);
     }
+
+    reportTestPlanEnd();
 
     globalThis.console = originalConsole;
   }
