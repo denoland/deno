@@ -33,7 +33,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -505,10 +504,6 @@ pub fn init<P: WebSocketPermissions + 'static>(
       Ok(())
     })
     .build()
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")
 }
 
 #[derive(Debug)]
