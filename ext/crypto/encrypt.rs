@@ -27,7 +27,6 @@ use ctr::flavors::Ctr64BE;
 use ctr::flavors::CtrFlavor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::OsRng;

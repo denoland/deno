@@ -157,7 +157,7 @@ macro_rules! include_js_files {
         Box::new(|| {
           let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
           let path = c.join($file);
-          println!("cargo:rerun-if-changed={}", path.display());
+//          println!("cargo:rerun-if-changed={}", path.display());
           let src = std::fs::read_to_string(path)?;
           Ok(src)
         }),
