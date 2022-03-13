@@ -23,9 +23,9 @@ fn get_tasks_config(
           bail!("Configuration file task names cannot be empty");
         } else if !key
           .chars()
-          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
         {
-          bail!("Configuration file task names must only contain alpha-numeric characters, underscores (_), or dashes (-). Task: {}", key);
+          bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
         } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
           bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
         }
@@ -81,6 +81,12 @@ pub async fn execute_script(
       .collect::<Vec<_>>()
       .join(" ");
     let script = format!("{} {}", script, additional_args);
+    log::info!(
+      "{} {} {}",
+      colors::green("Task"),
+      colors::cyan(&task_name),
+      script
+    );
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
@@ -116,7 +122,7 @@ mod test {
       }"#,
       concat!(
         "Configuration file task names must only contain alpha-numeric ",
-        "characters, underscores (_), or dashes (-). Task: some%test",
+        "characters, colons (:), underscores (_), or dashes (-). Task: some%test",
       ),
     );
   }
