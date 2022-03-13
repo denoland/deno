@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
-pub mod bindings;
+mod bindings;
 pub mod error;
-pub mod error_codes;
+mod error_codes;
 mod extensions;
 mod flags;
 mod gotham_state;
@@ -12,7 +12,7 @@ mod module_specifier;
 mod modules;
 mod normalize_path;
 mod ops;
-pub(crate) mod ops_builtin;
+mod ops_builtin;
 mod ops_metrics;
 mod resources;
 mod runtime;
@@ -68,8 +68,6 @@ pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::serialize_op_result;
-pub use crate::ops::to_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpCall;
@@ -101,6 +99,16 @@ pub use deno_ops::op;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
+}
+
+/// An internal module re-exporting funcs used by the #[op] (`deno_ops`) macro
+#[doc(hidden)]
+pub mod __ops {
+  pub use super::bindings::throw_type_error;
+  pub use super::error_codes::get_error_code;
+  pub use super::ops::serialize_op_result;
+  pub use super::ops::to_op_result;
+  pub use super::runtime::queue_async_op;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be

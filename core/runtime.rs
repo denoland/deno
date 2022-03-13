@@ -536,17 +536,6 @@ impl JsRuntime {
     state.op_state.clone()
   }
 
-  #[inline]
-  pub fn queue_async_op(
-    scope: &v8::Isolate,
-    op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
-  ) {
-    let state_rc = Self::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state.pending_ops.push(OpCall::eager(op));
-    state.have_unpolled_ops = true;
-  }
-
   /// Executes traditional JavaScript code (traditional = not ES modules).
   ///
   /// The execution takes place on the current global context, so it is possible
@@ -1638,6 +1627,17 @@ impl JsRuntime {
 
     Ok(())
   }
+}
+
+#[inline]
+pub fn queue_async_op(
+  scope: &v8::Isolate,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  state.pending_ops.push(OpCall::eager(op));
+  state.have_unpolled_ops = true;
 }
 
 #[cfg(test)]

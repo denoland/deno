@@ -109,7 +109,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let promise_id: #core::PromiseId = match promise_id {
       Ok(promise_id) => promise_id,
       Err(err) => {
-        #core::bindings::throw_type_error(scope, format!("invalid promise id: {}", err));
+        #core::__ops::throw_type_error(scope, format!("invalid promise id: {}", err));
         return;
       }
     };
@@ -128,9 +128,9 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let op_state = state.clone();
     // Leak the Rc to avoid dropping it.
     std::mem::forget(state);
-    #core::JsRuntime::queue_async_op(scope, async move {
+    #core::__ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(op_state.clone(), a, b).await;
-      (promise_id, op_id, #core::to_op_result(&op_state.borrow(), result))
+      (promise_id, op_id, #core::__ops::to_op_result(&op_state.borrow(), result))
     });
   }
 }
@@ -231,7 +231,7 @@ fn codegen_sync_ret(
           #core::OpError {
             class_name: (op_state.get_error_class_fn)(&err),
             message: err.to_string(),
-            code: #core::error_codes::get_error_code(&err),
+            code: #core::__ops::get_error_code(&err),
           },
         ).unwrap();
 
