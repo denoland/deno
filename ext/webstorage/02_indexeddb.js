@@ -532,11 +532,11 @@
       });
 
       if (this[_upgradeTransaction] === null) {
-        throw new DOMException("", "InvalidStateError"); // TODO
+        throw new DOMException("No upgrade transaction present", "InvalidStateError");
       }
 
       if (this[_upgradeTransaction][_state] !== "active") {
-        throw new DOMException("", "TransactionInactiveError"); // TODO
+        throw new DOMException("Upgrade transaction is not active", "TransactionInactiveError");
       }
 
       const keyPath = options.keyPath ?? null;
@@ -549,8 +549,10 @@
         throw new DOMException("", "InvalidAccessError"); // TODO
       }
 
-      // TODO
+      // TODO: call op_indexeddb_database_create_object_store
+
       const objectStore = webidl.createBranded(IDBObjectStore);
+      objectStore[_transaction] = this[_upgradeTransaction];
       objectStore[_name] = name;
       objectStore[_keyPath] = keyPath;
       objectStore[_autoIncrement] = options.autoIncrement;
@@ -600,6 +602,9 @@
       webidl.illegalConstructor();
     }
 
+    /** @type {IDBTransaction} */
+    [_transaction];
+
     [_name];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-name
     get name() {
@@ -614,6 +619,21 @@
         prefix: "Failed to set 'name' on 'IDBObjectStore'",
         context: "Argument 1",
       });
+
+      // TODO: 4.
+
+      if (this[_transaction][_mode] !== "versionchange") {
+        throw new DOMException("", "InvalidStateError"); // TODO: error
+      }
+
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError"); // TODO: error
+      }
+
+      if (this[_name] === name) {
+        return;
+      }
+
       // TODO
     }
 
@@ -1064,7 +1084,7 @@
       });
       const key = valueToKey(value);
       if (key === null) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Invalid key provided", "DataError");
       }
       return createRange(key, key);
     }
@@ -1083,7 +1103,7 @@
       });
       const lowerKey = valueToKey(lower);
       if (lowerKey === null) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Invalid key provided", "DataError");
       }
       return createRange(lowerKey, null, open, true);
     }
@@ -1102,7 +1122,7 @@
       });
       const upperKey = valueToKey(upper);
       if (upperKey === null) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Invalid key provided", "DataError");
       }
       return createRange(null, upperKey, true, open);
     }
@@ -1129,14 +1149,14 @@
       });
       const lowerKey = valueToKey(lower);
       if (lowerKey === null) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Invalid lower key provided", "DataError");
       }
       const upperKey = valueToKey(upper);
       if (upperKey === null) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Invalid upper key provided", "DataError");
       }
       if (compareTwoKeys(lowerKey, upperKey) === 1) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Lower key is greater than upper key", "DataError");
       }
       return createRange(lowerKey, upperKey, lowerOpen, upperOpen);
     }
@@ -1151,7 +1171,7 @@
       });
       const keyVal = valueToKey(key);
       if (keyVal === null) {
-        throw new DOMException("", "DataError"); // TODO: error
+        throw new DOMException("Invalid key provided", "DataError");
       }
       return keyInRange(this, key);
     }
@@ -1159,22 +1179,30 @@
   webidl.configurePrototype(IDBKeyRange);
   const IDBKeyRangePrototype = IDBKeyRange.prototype;
 
+  const _direction = Symbol("[[direction]]");
+  const _request = Symbol("[[request]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbcursor
   class IDBCursor {
     constructor() {
       webidl.illegalConstructor();
     }
 
+    /** @type {IDBTransaction} */
+    [_transaction];
+
+    [_source];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbcursor-source
     get source() {
       webidl.assertBranded(this, IDBCursorPrototype);
-      // TODO
+      return this[_source];
     }
 
+    /** @type {IDBCursorDirection} */
+    [_direction];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbcursor-direction
     get direction() {
       webidl.assertBranded(this, IDBCursorPrototype);
-      // TODO
+      return this[_direction];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbcursor-key
@@ -1189,10 +1217,11 @@
       // TODO
     }
 
+    [_request];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbcursor-request
     get request() {
       webidl.assertBranded(this, IDBCursorPrototype);
-      // TODO
+      return this[_request];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbcursor-advance
@@ -1205,6 +1234,12 @@
         context: "Argument 1",
         enforceRange: true,
       });
+      if (count === 0) {
+        throw new TypeError("Count cannot be 0");
+      }
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError"); // TODO: error
+      }
       // TODO
     }
 

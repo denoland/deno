@@ -234,7 +234,8 @@ pub fn op_indexeddb_database_create_object_store(
     return Err();
   }
 
-  // TODO: autoIncrement
+  // TODO: 8.
+
   let mut stmt = conn.prepare_cached(
     "INSERT INTO object_store (name, keyPath) VALUES (?, ?) RETURNING id",
   )?;
