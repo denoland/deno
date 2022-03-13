@@ -137,8 +137,8 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let a = codegen_arg(core, &f.sig.inputs[1], "a", 2);
-  let b = codegen_arg(core, &f.sig.inputs[2], "b", 3);
+  let a = codegen_arg(core, &f.sig.inputs[1], "a", 1);
+  let b = codegen_arg(core, &f.sig.inputs[2], "b", 2);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
 
