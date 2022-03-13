@@ -189,12 +189,8 @@ fn codegen_arg(
     let #ident = match #core::serde_v8::from_v8(scope, #ident) {
       Ok(v) => v,
       Err(err) => {
-        // Throw TypeError
         let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
-        let message = #core::v8::String::new(scope, msg.as_ref()).unwrap();
-        let exception = #core::v8::Exception::type_error(scope, message);
-        scope.throw_exception(exception);
-        return;
+        return #core::__ops::throw_type_error(scope, msg);
       }
     };
   }
