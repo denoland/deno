@@ -23,6 +23,7 @@ use crate::PromiseId;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
+use futures::future::Future;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -140,7 +141,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub struct JsRuntimeState {
+pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
@@ -157,10 +158,10 @@ pub struct JsRuntimeState {
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
-  pub pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
-  pub have_unpolled_ops: bool,
-  pub op_state: Rc<RefCell<OpState>>,
+  pub(crate) have_unpolled_ops: bool,
+  pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
@@ -433,8 +434,7 @@ impl JsRuntime {
     isolate
   }
 
-  #[inline]
-  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
@@ -534,6 +534,17 @@ impl JsRuntime {
     let state_rc = Self::state(self.v8_isolate());
     let state = state_rc.borrow();
     state.op_state.clone()
+  }
+
+  #[inline]
+  pub fn queue_async_op(
+    scope: &v8::Isolate,
+    op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+  ) {
+    let state_rc = Self::state(scope);
+    let mut state = state_rc.borrow_mut();
+    state.pending_ops.push(OpCall::eager(op));
+    state.have_unpolled_ops = true;
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules).
@@ -2005,31 +2016,6 @@ pub mod tests {
     // this should not SEGFAULT
     v8_isolate_handle.terminate_execution();
   }
-
-  // TODO(@AaronO): remove most likely, possibly adapt
-  // #[test]
-  // fn test_pre_dispatch() {
-  //   run_in_task(|cx| {
-  //     let (mut runtime, _dispatch_count) = setup(Mode::Async);
-  //     runtime
-  //       .execute_script(
-  //         "bad_op_id.js",
-  //         r#"
-  //         let thrown;
-  //         try {
-  //           Deno.core.opcallSync(100, null, null);
-  //         } catch (e) {
-  //           thrown = e;
-  //         }
-  //         assert(String(thrown) === "TypeError: Unknown op id: 100");
-  //        "#,
-  //       )
-  //       .unwrap();
-  //     if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
-  //       unreachable!();
-  //     }
-  //   });
-  // }
 
   #[test]
   fn syntax_error() {

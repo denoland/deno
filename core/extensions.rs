@@ -1,4 +1,4 @@
-// use crate::OpFn;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
 use std::task::Context;

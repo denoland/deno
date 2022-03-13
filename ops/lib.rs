@@ -117,17 +117,21 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     #a
     #b
 
-    let state_rc = #core::JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
+    // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
+    let state_refcell_raw = unsafe {
+      #core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked())
+    }.value();
 
-    state.op_state.borrow().tracker.track_async(op_id);
-
-    let op_state = state.op_state.clone();
-    state.pending_ops.push(#core::OpCall::eager(async move {
+    // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
+    let state = unsafe { std::rc::Rc::from_raw(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
+    state.borrow().tracker.track_async(op_id);
+    let op_state = state.clone();
+    // Leak the Rc to avoid dropping it.
+    std::mem::forget(state);
+    #core::JsRuntime::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(op_state.clone(), a, b).await;
       (promise_id, op_id, #core::to_op_result(&op_state.borrow(), result))
-    }));
-    state.have_unpolled_ops = true;
+    });
   }
 }
 

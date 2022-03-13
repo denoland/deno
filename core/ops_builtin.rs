@@ -1,8 +1,8 @@
 use crate::error::type_error;
 use crate::include_js_files;
+use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
 use crate::Extension;
-use crate::OpMetrics;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
