@@ -10,11 +10,6 @@ use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 
-// This is a hack to make the `#[op]` macro work with
-// deno_core examples.
-// You can remove this:
-use deno_core::*;
-
 fn main() {
   let mut runtime = JsRuntime::new(RuntimeOptions::default());
 
