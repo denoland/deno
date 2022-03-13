@@ -288,7 +288,7 @@ impl JsRuntime {
       .extensions
       .insert(0, crate::ops_builtin::init_builtins());
 
-    let ops = Self::effective_ops(&mut options.extensions);
+    let ops = Self::collect_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -462,8 +462,8 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Applies middleware to ops
-  fn effective_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
+  /// Collects ops from extensions & applies middleware
+  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = extensions
       .iter_mut()
