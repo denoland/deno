@@ -1,16 +1,13 @@
 use crate::error::type_error;
 use crate::include_js_files;
-use crate::op_async;
-use crate::op_sync;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
-use crate::void_op_async;
-use crate::void_op_sync;
 use crate::Extension;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
+use deno_ops::op;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
@@ -24,29 +21,40 @@ pub(crate) fn init_builtins() -> Extension {
       "02_error.js",
     ))
     .ops(vec![
-      ("op_close", op_sync(op_close)),
-      ("op_try_close", op_sync(op_try_close)),
-      ("op_print", op_sync(op_print)),
-      ("op_resources", op_sync(op_resources)),
-      ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
-      ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
-      (
-        "op_wasm_streaming_set_url",
-        op_sync(op_wasm_streaming_set_url),
-      ),
-      ("op_metrics", op_sync(op_metrics)),
-      ("op_void_sync", void_op_sync()),
-      ("op_void_async", void_op_async()),
-      // TODO(@AaronO): track IO metrics for builtin streams
-      ("op_read", op_async(op_read)),
-      ("op_write", op_async(op_write)),
-      ("op_shutdown", op_async(op_shutdown)),
+      op_close::decl(),
+      op_try_close::decl(),
+      op_print::decl(),
+      op_resources::decl(),
+      op_wasm_streaming_feed::decl(),
+      op_wasm_streaming_abort::decl(),
+      op_wasm_streaming_set_url::decl(),
+      op_void_sync::decl(),
+      op_void_async::decl(),
+      // // TODO(@AaronO): track IO metrics for builtin streams
+      op_read::decl(),
+      op_write::decl(),
+      op_shutdown::decl(),
+      op_metrics::decl(),
     ])
     .build()
 }
 
+#[op]
+pub fn void_op_sync(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+  Ok(())
+}
+
+pub async fn void_op_async(
+  _state: Rc<RefCell<OpState>>,
+  _: (),
+  _: (),
+) -> Result<(), Error> {
+  Ok(())
+}
+
 /// Return map of resources with id as key
 /// and string representation as value.
+#[op]
 pub fn op_resources(
   state: &mut OpState,
   _: (),
@@ -60,7 +68,22 @@ pub fn op_resources(
   Ok(serialized_resources)
 }
 
+#[op]
+pub fn op_void_sync(_state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+  Ok(())
+}
+
+#[op]
+pub async fn op_void_async(
+  _state: Rc<RefCell<OpState>>,
+  _: (),
+  _: (),
+) -> Result<(), Error> {
+  Ok(())
+}
+
 /// Remove a resource from the resource table.
+#[op]
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
@@ -75,6 +98,7 @@ pub fn op_close(
 
 /// Try to remove a resource from the resource table. If there is no resource
 /// with the specified `rid`, this is a no-op.
+#[op]
 pub fn op_try_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
@@ -87,7 +111,19 @@ pub fn op_try_close(
   Ok(())
 }
 
+#[op]
+pub fn op_metrics(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
+  Ok((aggregate, per_op))
+}
+
 /// Builtin utility to print to stdout/stderr
+#[op]
 pub fn op_print(
   _state: &mut OpState,
   msg: String,
@@ -119,6 +155,7 @@ impl Resource for WasmStreamingResource {
 }
 
 /// Feed bytes to WasmStreamingResource.
+#[op]
 pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
@@ -133,6 +170,7 @@ pub fn op_wasm_streaming_feed(
 }
 
 /// Abort a WasmStreamingResource.
+#[op]
 pub fn op_wasm_streaming_abort(
   state: &mut OpState,
   rid: ResourceId,
@@ -153,6 +191,7 @@ pub fn op_wasm_streaming_abort(
   Ok(())
 }
 
+#[op]
 pub fn op_wasm_streaming_set_url(
   state: &mut OpState,
   rid: ResourceId,
@@ -166,16 +205,7 @@ pub fn op_wasm_streaming_set_url(
   Ok(())
 }
 
-pub fn op_metrics(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
-  let aggregate = state.tracker.aggregate();
-  let per_op = state.tracker.per_op();
-  Ok((aggregate, per_op))
-}
-
+#[op]
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -185,6 +215,7 @@ async fn op_read(
   resource.read(buf).await.map(|n| n as u32)
 }
 
+#[op]
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -194,6 +225,7 @@ async fn op_write(
   resource.write(buf).await.map(|n| n as u32)
 }
 
+#[op]
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
