@@ -355,7 +355,7 @@
     return x;
   };
 
-  converters["unrestricted double"] = (V, opts) => {
+  converters["unrestricted double"] = (V, _opts) => {
     const x = toNumber(V);
 
     return x;
