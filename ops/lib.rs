@@ -66,13 +66,16 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         stringify!(#name)
       }
 
-      pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
+      pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
         use #core::v8::MapFnTo;
         Self::v8_func::<#type_params>.map_fn_to()
       }
 
-      pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
-        (Self::name(), Self::v8_cb::<#type_params>())
+      pub fn decl #generics () -> #core::OpDecl #where_clause {
+        #core::OpDecl {
+          name: Self::name(),
+          v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+        }
       }
 
       #[inline]

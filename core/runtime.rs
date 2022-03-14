@@ -5,8 +5,8 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
-use crate::extensions::OpPair;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -463,7 +463,7 @@ impl JsRuntime {
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
+  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = extensions
       .iter_mut()
@@ -471,15 +471,17 @@ impl JsRuntime {
       .collect();
 
     // macroware wraps an opfn in all the middleware
-    let macroware =
-      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+    let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops & apply middlware
     extensions
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
-      .map(|(name, opfn)| (name, macroware(name, opfn)))
+      .map(|d| OpDecl {
+        name: d.name,
+        ..macroware(d)
+      })
       .collect()
   }
 
