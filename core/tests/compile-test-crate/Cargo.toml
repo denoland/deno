@@ -12,7 +12,7 @@ build-time-includes = ["deno_core/build-time-includes"]
 snapshot = []
 
 [dependencies]
-deno_core = { version = "0.112.0", path = "../.." }
+deno_core = { version = "0.122.0", path = "../.." }
 
 [build-dependencies]
-deno_core = { version = "0.112.0", path = "../.." }
+deno_core = { version = "0.122.0", path = "../.." }
