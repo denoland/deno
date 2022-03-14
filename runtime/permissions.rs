@@ -2053,7 +2053,6 @@ mod tests {
   use super::*;
   use deno_core::resolve_url_or_path;
   use deno_core::serde_json::json;
-  use deno_crypto::rand::Rng;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
