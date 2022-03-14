@@ -108,41 +108,28 @@ impl OpResult {
 #[serde(rename_all = "camelCase")]
 pub struct OpError {
   #[serde(rename = "$err_class_name")]
-  pub class_name: &'static str,
-  pub message: String,
-  pub code: Option<&'static str>,
+  class_name: &'static str,
+  message: String,
+  code: Option<&'static str>,
+}
+
+impl OpError {
+  pub fn new(get_class: GetErrorClassFn, err: Error) -> Self {
+    Self {
+      class_name: (get_class)(&err),
+      message: err.to_string(),
+      code: crate::error_codes::get_error_code(&err),
+    }
+  }
 }
 
 pub fn to_op_result<R: Serialize + 'static>(
-  state: &OpState,
+  get_class: GetErrorClassFn,
   result: Result<R, Error>,
 ) -> OpResult {
   match result {
     Ok(v) => OpResult::Ok(v.into()),
-    Err(err) => OpResult::Err(OpError {
-      class_name: (state.get_error_class_fn)(&err),
-      message: err.to_string(),
-      code: crate::error_codes::get_error_code(&err),
-    }),
-  }
-}
-
-#[inline]
-pub fn serialize_op_result<'a, R: Serialize + 'static>(
-  scope: &mut v8::HandleScope<'a>,
-  state: &OpState,
-  result: Result<R, Error>,
-) -> Result<v8::Local<'a, v8::Value>, serde_v8::Error> {
-  match result {
-    Ok(v) => serde_v8::to_v8(scope, v),
-    Err(err) => serde_v8::to_v8(
-      scope,
-      OpError {
-        class_name: (state.get_error_class_fn)(&err),
-        message: err.to_string(),
-        code: crate::error_codes::get_error_code(&err),
-      },
-    ),
+    Err(err) => OpResult::Err(OpError::new(get_class, err)),
   }
 }
 

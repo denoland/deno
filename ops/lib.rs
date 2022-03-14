@@ -123,14 +123,22 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     }.value();
 
     // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-    let state = unsafe { std::rc::Rc::from_raw(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
-    state.borrow().tracker.track_async(op_id);
-    let op_state = state.clone();
-    // Leak the Rc to avoid dropping it.
-    std::mem::forget(state);
+    let state = unsafe {
+      let ptr = state_refcell_raw as *const std::cell::RefCell<#core::OpState>;
+      // Increment so it will later be decremented/dropped by the underlaying func it is moved to
+      std::rc::Rc::increment_strong_count(ptr);
+      std::rc::Rc::from_raw(ptr)
+    };
+    // Track async call & get copy of get_error_class_fn
+    let get_class = {
+      let state = state.borrow();
+      state.tracker.track_async(op_id);
+      state.get_error_class_fn
+    };
+
     #core::__ops::queue_async_op(scope, async move {
-      let result = Self::call::<#type_params>(op_state.clone(), a, b).await;
-      (promise_id, op_id, #core::__ops::to_op_result(&op_state.borrow(), result))
+      let result = Self::call::<#type_params>(state, a, b).await;
+      (promise_id, op_id, #core::__ops::to_op_result(get_class, result))
     });
   }
 }
@@ -159,8 +167,8 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
     let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
 
-    let mut op_state = state.borrow_mut();
-    let result = Self::call::<#type_params>(&mut op_state, a, b);
+    let op_state = &mut state.borrow_mut();
+    let result = Self::call::<#type_params>(op_state, a, b);
 
     op_state.tracker.track_sync(op_id);
 
@@ -222,16 +230,8 @@ fn codegen_sync_ret(
         #ok_block
       },
       Err(err) => {
-        let err = #core::serde_v8::to_v8(
-          scope,
-          #core::OpError {
-            class_name: (op_state.get_error_class_fn)(&err),
-            message: err.to_string(),
-            code: #core::__ops::get_error_code(&err),
-          },
-        ).unwrap();
-
-        rv.set(err);
+        let err = #core::OpError::new(op_state.get_error_class_fn, err);
+        rv.set(#core::serde_v8::to_v8(scope, err).unwrap());
       },
     };
   }
