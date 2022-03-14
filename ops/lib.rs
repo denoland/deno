@@ -5,6 +5,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
 use quote::quote;
+use quote::ToTokens;
 use syn::Ident;
 
 // Identifer to the `deno_core` crate.
@@ -91,7 +92,19 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Generate the body of a v8 func for an async op
 fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let (arg_decls, args_tail) = codegen_args(core, f, 1, 2);
+  let uses_opstate = f
+    .sig
+    .inputs
+    .first()
+    .map(is_rc_refcell_opstate)
+    .unwrap_or_default();
+  let args_head = if uses_opstate {
+    quote! { state, }
+  } else {
+    quote! {}
+  };
+  let rust_i0 = if uses_opstate { 1 } else { 0 };
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 2);
   let type_params = &f.sig.generics.params;
 
   quote! {
@@ -136,7 +149,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     };
 
     #core::_ops::queue_async_op(scope, async move {
-      let result = Self::call::<#type_params>(state, #args_tail).await;
+      let result = Self::call::<#type_params>(#args_head #args_tail).await;
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
@@ -144,7 +157,19 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let (arg_decls, args_tail) = codegen_args(core, f, 1, 1);
+  let uses_opstate = f
+    .sig
+    .inputs
+    .first()
+    .map(is_mut_ref_opstate)
+    .unwrap_or_default();
+  let args_head = if uses_opstate {
+    quote! { op_state, }
+  } else {
+    quote! {}
+  };
+  let rust_i0 = if uses_opstate { 1 } else { 0 };
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
 
@@ -165,7 +190,7 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
 
     let op_state = &mut state.borrow_mut();
-    let result = Self::call::<#type_params>(op_state, #args_tail);
+    let result = Self::call::<#type_params>(#args_head #args_tail);
 
     op_state.tracker.track_sync(op_id);
 
@@ -280,4 +305,16 @@ fn is_unit_result(ty: &syn::Type) -> bool {
     syn::GenericArgument::Type(syn::Type::Tuple(ty)) => ty.elems.is_empty(),
     _ => false,
   }
+}
+
+fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
+  tokens(arg).ends_with(": & mut OpState")
+}
+
+fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
+  tokens(arg).ends_with(": Rc < RefCell < OpState > >")
+}
+
+fn tokens(x: impl ToTokens) -> String {
+  x.to_token_stream().to_string()
 }
