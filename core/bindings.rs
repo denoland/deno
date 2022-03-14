@@ -980,7 +980,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
-    let error = v8::Exception::error(scope, message);
+    let error = v8::Exception::type_error(scope, message);
     scope.throw_exception(error);
   }
 
