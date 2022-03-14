@@ -2062,7 +2062,7 @@ pub mod tests {
   #[test]
   fn test_error_builder() {
     #[op]
-    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+    fn op_err(_: &mut OpState) -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -2468,8 +2468,6 @@ assertEquals(1, notify_return_value);
     #[op]
     async fn op_async_borrow(
       op_state: Rc<RefCell<OpState>>,
-      _: (),
-      _: (),
     ) -> Result<(), Error> {
       let n = {
         let op_state = op_state.borrow();
@@ -2511,8 +2509,6 @@ assertEquals(1, notify_return_value);
     #[op]
     async fn op_async_sleep(
       _op_state: Rc<RefCell<OpState>>,
-      _: (),
-      _: (),
     ) -> Result<(), Error> {
       // Future must be Poll::Pending on first call
       tokio::time::sleep(std::time::Duration::from_millis(1)).await;
@@ -2588,13 +2584,13 @@ assertEquals(1, notify_return_value);
     static NEXT_TICK: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_macrotask(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+    fn op_macrotask(_: &mut OpState) -> Result<(), AnyError> {
       MACROTASK.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
 
     #[op]
-    fn op_next_tick(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+    fn op_next_tick(_: &mut OpState) -> Result<(), AnyError> {
       NEXT_TICK.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
@@ -2725,21 +2721,13 @@ assertEquals(1, notify_return_value);
     static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_promise_reject(
-      _: &mut OpState,
-      _: (),
-      _: (),
-    ) -> Result<(), AnyError> {
+    fn op_promise_reject(_: &mut OpState) -> Result<(), AnyError> {
       PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
 
     #[op]
-    fn op_uncaught_exception(
-      _: &mut OpState,
-      _: (),
-      _: (),
-    ) -> Result<(), AnyError> {
+    fn op_uncaught_exception(_: &mut OpState) -> Result<(), AnyError> {
       UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }

@@ -20,7 +20,6 @@ pub fn init() -> Extension {
 fn op_http_start(
   state: &mut OpState,
   tcp_stream_rid: ResourceId,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   if let Ok(resource_rc) = state
     .resource_table

@@ -162,7 +162,6 @@ async fn accept_tcp(
 async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _: (),
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, ()).await,
@@ -306,7 +305,6 @@ pub struct ConnectArgs {
 pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -482,7 +480,6 @@ fn listen_udp(
 fn op_net_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -622,7 +619,6 @@ pub struct NameServer {
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _: (),
 ) -> Result<Vec<DnsReturnRecord>, AnyError>
 where
   NP: NetPermissions + 'static,

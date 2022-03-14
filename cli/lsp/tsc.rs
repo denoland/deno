@@ -2515,7 +2515,6 @@ struct SourceSnapshotArgs {
 fn op_dispose(
   state: &mut OpState,
   args: SourceSnapshotArgs,
-  _: (),
 ) -> Result<bool, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_dispose", Some(&args));
@@ -2535,7 +2534,6 @@ struct SpecifierArgs {
 fn op_exists(
   state: &mut OpState,
   args: SpecifierArgs,
-  _: (),
 ) -> Result<bool, AnyError> {
   let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
@@ -2569,7 +2567,6 @@ struct GetChangeRangeArgs {
 fn op_get_change_range(
   state: &mut OpState,
   args: GetChangeRangeArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_change_range", Some(&args));
@@ -2616,7 +2613,6 @@ fn op_get_change_range(
 fn op_get_length(
   state: &mut OpState,
   args: SourceSnapshotArgs,
-  _: (),
 ) -> Result<usize, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_length", Some(&args));
@@ -2650,7 +2646,6 @@ struct GetTextArgs {
 fn op_get_text(
   state: &mut OpState,
   args: GetTextArgs,
-  _: (),
 ) -> Result<String, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_text", Some(&args));
@@ -2670,11 +2665,7 @@ fn op_get_text(
 }
 
 #[op]
-fn op_is_cancelled(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<bool, AnyError> {
+fn op_is_cancelled(state: &mut OpState) -> Result<bool, AnyError> {
   let state = state.borrow_mut::<State>();
   Ok(state.token.is_cancelled())
 }
@@ -2683,7 +2674,6 @@ fn op_is_cancelled(
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
-  _: (),
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
@@ -2697,7 +2687,6 @@ fn op_load(
 fn op_resolve(
   state: &mut OpState,
   args: ResolveArgs,
-  _: (),
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
@@ -2731,11 +2720,7 @@ fn op_resolve(
 }
 
 #[op]
-fn op_respond(
-  state: &mut OpState,
-  args: Response,
-  _: (),
-) -> Result<bool, AnyError> {
+fn op_respond(state: &mut OpState, args: Response) -> Result<bool, AnyError> {
   let state = state.borrow_mut::<State>();
   state.response = Some(args);
   Ok(true)
@@ -2745,7 +2730,6 @@ fn op_respond(
 fn op_script_names(
   state: &mut OpState,
   _args: Value,
-  _: (),
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let state = state.borrow_mut::<State>();
   Ok(
@@ -2769,7 +2753,6 @@ struct ScriptVersionArgs {
 fn op_script_version(
   state: &mut OpState,
   args: ScriptVersionArgs,
-  _: (),
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we

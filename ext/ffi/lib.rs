@@ -465,7 +465,6 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -652,7 +651,6 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 fn op_ffi_call_ptr(
   _state: &mut deno_core::OpState,
   args: FfiCallPtrArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
   ffi_call(args.into(), &symbol)
@@ -662,7 +660,6 @@ fn op_ffi_call_ptr(
 async fn op_ffi_call_ptr_nonblocking(
   _state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
   tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
@@ -682,7 +679,6 @@ struct FfiGetArgs {
 fn op_ffi_get_static(
   state: &mut deno_core::OpState,
   args: FfiGetArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
@@ -740,7 +736,6 @@ fn op_ffi_get_static(
 fn op_ffi_call(
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
@@ -759,7 +754,6 @@ fn op_ffi_call(
 async fn op_ffi_call_nonblocking(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()
@@ -780,7 +774,6 @@ async fn op_ffi_call_nonblocking(
 fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
   buf: ZeroCopyBuf,
-  _: (),
 ) -> Result<U32x2, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -795,7 +788,6 @@ where
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
-  _: (),
 ) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -818,7 +810,6 @@ where
 fn op_ffi_cstr_read<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<String, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -834,7 +825,6 @@ where
 fn op_ffi_read_u8<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u8, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -849,7 +839,6 @@ where
 fn op_ffi_read_i8<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i8, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -864,7 +853,6 @@ where
 fn op_ffi_read_u16<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u16, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -879,7 +867,6 @@ where
 fn op_ffi_read_i16<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i16, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -894,7 +881,6 @@ where
 fn op_ffi_read_u32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -909,7 +895,6 @@ where
 fn op_ffi_read_i32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -924,7 +909,6 @@ where
 fn op_ffi_read_u64<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<U32x2, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -941,7 +925,6 @@ where
 fn op_ffi_read_f32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<f32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -956,7 +939,6 @@ where
 fn op_ffi_read_f64<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<f64, AnyError>
 where
   FP: FfiPermissions + 'static,
