@@ -176,8 +176,8 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 fn codegen_args(
   core: &TokenStream2,
   f: &syn::ItemFn,
-  rust_i0: usize,
-  v8_i0: usize,
+  rust_i0: usize, // Index of first generic arg in rust
+  v8_i0: usize,   // Index of first generic arg in v8/js
 ) -> (TokenStream2, TokenStream2) {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
   let ident_seq: TokenStream2 = inputs
