@@ -16,7 +16,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 #[async_trait]
@@ -120,9 +119,4 @@ pub fn init<BC: BroadcastChannel + 'static>(
       Ok(())
     })
     .build()
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("lib.deno_broadcast_channel.d.ts")
 }
