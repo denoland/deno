@@ -938,7 +938,7 @@ mod tests {
     };
 
     let connect_fut =
-      op_net_connect::call::<TestPermission>(conn_state, connect_args, ());
+      op_net_connect::call::<TestPermission>(conn_state, connect_args);
     let conn = connect_fut.await.unwrap();
 
     let rid = conn.rid;

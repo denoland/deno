@@ -864,7 +864,6 @@ mod tests {
     let actual = op_create_hash::call(
       &mut state,
       json!({ "data": "some sort of content" }),
-      (),
     )
     .expect("could not invoke op");
     assert_eq!(
@@ -917,7 +916,6 @@ mod tests {
         file_name: "cache:///some/file.js".to_string(),
         maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -949,7 +947,6 @@ mod tests {
           vec!["file:///some/file.ts?q=.json".to_string()],
         ),
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -979,7 +976,6 @@ mod tests {
         file_name: "deno:///.tsbuildinfo".to_string(),
         maybe_specifiers: None,
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -1002,7 +998,6 @@ mod tests {
     let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(
@@ -1034,7 +1029,6 @@ mod tests {
     let value = op_load::call(
       &mut state,
       json!({ "specifier": "asset:///lib.dom.d.ts" }),
-      (),
     )
     .expect("should have invoked op");
     let actual: LoadResponse =
@@ -1053,12 +1047,9 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      json!({ "specifier": "deno:///.tsbuildinfo"}),
-      (),
-    )
-    .expect("should have invoked op");
+    let actual =
+      op_load::call(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
+        .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
@@ -1075,7 +1066,6 @@ mod tests {
     let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(
@@ -1102,7 +1092,6 @@ mod tests {
         base: "https://deno.land/x/a.ts".to_string(),
         specifiers: vec!["./b.ts".to_string()],
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
@@ -1122,7 +1111,6 @@ mod tests {
         base: "https://deno.land/x/a.ts".to_string(),
         specifiers: vec!["./bad.ts".to_string()],
       },
-      (),
     )
     .expect("should have not errored");
     assert_eq!(
@@ -1146,7 +1134,6 @@ mod tests {
         ],
         "stats": [["a", 12]]
       }),
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
