@@ -23,12 +23,11 @@
   const abortReason = Symbol("[[abortReason]]");
   const abortAlgos = Symbol("[[abortAlgos]]");
   const signal = Symbol("[[signal]]");
+  const timerId = Symbol("[[timerId]]");
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class AbortSignal extends EventTarget {
-    #timerId = null;
-
     static abort(reason = undefined) {
       if (reason !== undefined) {
         reason = webidl.converters.any(reason);
@@ -46,16 +45,16 @@
       });
 
       const signal = new AbortSignal(illegalConstructorKey);
-      signal.#timerId = setTimeout(
+      signal[timerId] = setTimeout(
         () => {
-          signal.#timerId = null;
+          signal[timerId] = null;
           signal[signalAbort](
             new DOMException("Signal timed out.", "TimeoutError"),
           );
         },
         millis,
       );
-      unrefTimer(signal.#timerId);
+      unrefTimer(signal[timerId]);
       return signal;
     }
 
@@ -98,6 +97,7 @@
       super();
       this[abortReason] = undefined;
       this[abortAlgos] = null;
+      this[timerId] = null;
       this[webidl.brand] = webidl.brand;
     }
 
@@ -125,15 +125,15 @@
     // ops which would block the event loop.
     addEventListener(...args) {
       super.addEventListener(...args);
-      if (this.#timerId !== null && listenerCount(this, "abort") > 0) {
-        refTimer(this.#timerId);
+      if (this[timerId] !== null && listenerCount(this, "abort") > 0) {
+        refTimer(this[timerId]);
       }
     }
 
     removeEventListener(...args) {
       super.removeEventListener(...args);
-      if (this.#timerId !== null && listenerCount(this, "abort") === 0) {
-        unrefTimer(this.#timerId);
+      if (this[timerId] !== null && listenerCount(this, "abort") === 0) {
+        unrefTimer(this[timerId]);
       }
     }
   }
