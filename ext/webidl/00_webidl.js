@@ -714,7 +714,7 @@
           throw makeException(
             TypeError,
             `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-            { ...opts },
+            { context: opts.context, prefix: opts.prefix },
           );
         }
       }
