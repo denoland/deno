@@ -8,8 +8,8 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -38,59 +38,59 @@ use deno_core::error::not_supported;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_open_sync", op_sync(op_open_sync)),
-      ("op_open_async", op_async(op_open_async)),
-      ("op_seek_sync", op_sync(op_seek_sync)),
-      ("op_seek_async", op_async(op_seek_async)),
-      ("op_fdatasync_sync", op_sync(op_fdatasync_sync)),
-      ("op_fdatasync_async", op_async(op_fdatasync_async)),
-      ("op_fsync_sync", op_sync(op_fsync_sync)),
-      ("op_fsync_async", op_async(op_fsync_async)),
-      ("op_fstat_sync", op_sync(op_fstat_sync)),
-      ("op_fstat_async", op_async(op_fstat_async)),
-      ("op_flock_sync", op_sync(op_flock_sync)),
-      ("op_flock_async", op_async(op_flock_async)),
-      ("op_funlock_sync", op_sync(op_funlock_sync)),
-      ("op_funlock_async", op_async(op_funlock_async)),
-      ("op_umask", op_sync(op_umask)),
-      ("op_chdir", op_sync(op_chdir)),
-      ("op_mkdir_sync", op_sync(op_mkdir_sync)),
-      ("op_mkdir_async", op_async(op_mkdir_async)),
-      ("op_chmod_sync", op_sync(op_chmod_sync)),
-      ("op_chmod_async", op_async(op_chmod_async)),
-      ("op_chown_sync", op_sync(op_chown_sync)),
-      ("op_chown_async", op_async(op_chown_async)),
-      ("op_remove_sync", op_sync(op_remove_sync)),
-      ("op_remove_async", op_async(op_remove_async)),
-      ("op_copy_file_sync", op_sync(op_copy_file_sync)),
-      ("op_copy_file_async", op_async(op_copy_file_async)),
-      ("op_stat_sync", op_sync(op_stat_sync)),
-      ("op_stat_async", op_async(op_stat_async)),
-      ("op_realpath_sync", op_sync(op_realpath_sync)),
-      ("op_realpath_async", op_async(op_realpath_async)),
-      ("op_read_dir_sync", op_sync(op_read_dir_sync)),
-      ("op_read_dir_async", op_async(op_read_dir_async)),
-      ("op_rename_sync", op_sync(op_rename_sync)),
-      ("op_rename_async", op_async(op_rename_async)),
-      ("op_link_sync", op_sync(op_link_sync)),
-      ("op_link_async", op_async(op_link_async)),
-      ("op_symlink_sync", op_sync(op_symlink_sync)),
-      ("op_symlink_async", op_async(op_symlink_async)),
-      ("op_read_link_sync", op_sync(op_read_link_sync)),
-      ("op_read_link_async", op_async(op_read_link_async)),
-      ("op_ftruncate_sync", op_sync(op_ftruncate_sync)),
-      ("op_ftruncate_async", op_async(op_ftruncate_async)),
-      ("op_truncate_sync", op_sync(op_truncate_sync)),
-      ("op_truncate_async", op_async(op_truncate_async)),
-      ("op_make_temp_dir_sync", op_sync(op_make_temp_dir_sync)),
-      ("op_make_temp_dir_async", op_async(op_make_temp_dir_async)),
-      ("op_make_temp_file_sync", op_sync(op_make_temp_file_sync)),
-      ("op_make_temp_file_async", op_async(op_make_temp_file_async)),
-      ("op_cwd", op_sync(op_cwd)),
-      ("op_futime_sync", op_sync(op_futime_sync)),
-      ("op_futime_async", op_async(op_futime_async)),
-      ("op_utime_sync", op_sync(op_utime_sync)),
-      ("op_utime_async", op_async(op_utime_async)),
+      op_open_sync::decl(),
+      op_open_async::decl(),
+      op_seek_sync::decl(),
+      op_seek_async::decl(),
+      op_fdatasync_sync::decl(),
+      op_fdatasync_async::decl(),
+      op_fsync_sync::decl(),
+      op_fsync_async::decl(),
+      op_fstat_sync::decl(),
+      op_fstat_async::decl(),
+      op_flock_sync::decl(),
+      op_flock_async::decl(),
+      op_funlock_sync::decl(),
+      op_funlock_async::decl(),
+      op_umask::decl(),
+      op_chdir::decl(),
+      op_mkdir_sync::decl(),
+      op_mkdir_async::decl(),
+      op_chmod_sync::decl(),
+      op_chmod_async::decl(),
+      op_chown_sync::decl(),
+      op_chown_async::decl(),
+      op_remove_sync::decl(),
+      op_remove_async::decl(),
+      op_copy_file_sync::decl(),
+      op_copy_file_async::decl(),
+      op_stat_sync::decl(),
+      op_stat_async::decl(),
+      op_realpath_sync::decl(),
+      op_realpath_async::decl(),
+      op_read_dir_sync::decl(),
+      op_read_dir_async::decl(),
+      op_rename_sync::decl(),
+      op_rename_async::decl(),
+      op_link_sync::decl(),
+      op_link_async::decl(),
+      op_symlink_sync::decl(),
+      op_symlink_async::decl(),
+      op_read_link_sync::decl(),
+      op_read_link_async::decl(),
+      op_ftruncate_sync::decl(),
+      op_ftruncate_async::decl(),
+      op_truncate_sync::decl(),
+      op_truncate_async::decl(),
+      op_make_temp_dir_sync::decl(),
+      op_make_temp_dir_async::decl(),
+      op_make_temp_file_sync::decl(),
+      op_make_temp_file_async::decl(),
+      op_cwd::decl(),
+      op_futime_sync::decl(),
+      op_futime_async::decl(),
+      op_utime_sync::decl(),
+      op_utime_async::decl(),
     ])
     .build()
 }
@@ -157,6 +157,7 @@ fn open_helper(
   Ok((path, open_options))
 }
 
+#[op]
 fn op_open_sync(
   state: &mut OpState,
   args: OpenArgs,
@@ -172,6 +173,7 @@ fn op_open_sync(
   Ok(rid)
 }
 
+#[op]
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
@@ -214,6 +216,7 @@ fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
   Ok((rid, seek_from))
 }
 
+#[op]
 fn op_seek_sync(
   state: &mut OpState,
   args: SeekArgs,
@@ -229,6 +232,7 @@ fn op_seek_sync(
   Ok(pos)
 }
 
+#[op]
 async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
   args: SeekArgs,
@@ -253,6 +257,7 @@ async fn op_seek_async(
   Ok(pos)
 }
 
+#[op]
 fn op_fdatasync_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -265,6 +270,7 @@ fn op_fdatasync_sync(
   Ok(())
 }
 
+#[op]
 async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -287,6 +293,7 @@ async fn op_fdatasync_async(
   Ok(())
 }
 
+#[op]
 fn op_fsync_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -299,6 +306,7 @@ fn op_fsync_sync(
   Ok(())
 }
 
+#[op]
 async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -321,6 +329,7 @@ async fn op_fsync_async(
   Ok(())
 }
 
+#[op]
 fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -333,6 +342,7 @@ fn op_fstat_sync(
   Ok(get_stat(metadata))
 }
 
+#[op]
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -355,6 +365,7 @@ async fn op_fstat_async(
   Ok(get_stat(metadata))
 }
 
+#[op]
 fn op_flock_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -376,6 +387,7 @@ fn op_flock_sync(
   })
 }
 
+#[op]
 async fn op_flock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -416,6 +428,7 @@ async fn op_flock_async(
   .await?
 }
 
+#[op]
 fn op_funlock_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -433,6 +446,7 @@ fn op_funlock_sync(
   })
 }
 
+#[op]
 async fn op_funlock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -469,6 +483,7 @@ async fn op_funlock_async(
   .await?
 }
 
+#[op]
 fn op_umask(
   state: &mut OpState,
   mask: Option<u32>,
@@ -501,6 +516,7 @@ fn op_umask(
   }
 }
 
+#[op]
 fn op_chdir(
   state: &mut OpState,
   directory: String,
@@ -522,6 +538,7 @@ pub struct MkdirArgs {
   mode: Option<u32>,
 }
 
+#[op]
 fn op_mkdir_sync(
   state: &mut OpState,
   args: MkdirArgs,
@@ -544,6 +561,7 @@ fn op_mkdir_sync(
   Ok(())
 }
 
+#[op]
 async fn op_mkdir_async(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
@@ -582,6 +600,7 @@ pub struct ChmodArgs {
   mode: u32,
 }
 
+#[op]
 fn op_chmod_sync(
   state: &mut OpState,
   args: ChmodArgs,
@@ -611,6 +630,7 @@ fn op_chmod_sync(
   }
 }
 
+#[op]
 async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
   args: ChmodArgs,
@@ -656,6 +676,7 @@ pub struct ChownArgs {
   gid: Option<u32>,
 }
 
+#[op]
 fn op_chown_sync(
   state: &mut OpState,
   args: ChownArgs,
@@ -690,6 +711,7 @@ fn op_chown_sync(
   }
 }
 
+#[op]
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
   args: ChownArgs,
@@ -738,6 +760,7 @@ pub struct RemoveArgs {
   recursive: bool,
 }
 
+#[op]
 fn op_remove_sync(
   state: &mut OpState,
   args: RemoveArgs,
@@ -783,6 +806,7 @@ fn op_remove_sync(
   Ok(())
 }
 
+#[op]
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
   args: RemoveArgs,
@@ -841,6 +865,7 @@ pub struct CopyFileArgs {
   to: String,
 }
 
+#[op]
 fn op_copy_file_sync(
   state: &mut OpState,
   args: CopyFileArgs,
@@ -879,6 +904,7 @@ fn op_copy_file_sync(
   Ok(())
 }
 
+#[op]
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
   args: CopyFileArgs,
@@ -1007,6 +1033,7 @@ pub struct StatArgs {
   lstat: bool,
 }
 
+#[op]
 fn op_stat_sync(
   state: &mut OpState,
   args: StatArgs,
@@ -1027,6 +1054,7 @@ fn op_stat_sync(
   Ok(get_stat(metadata))
 }
 
+#[op]
 async fn op_stat_async(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
@@ -1056,6 +1084,7 @@ async fn op_stat_async(
   .unwrap()
 }
 
+#[op]
 fn op_realpath_sync(
   state: &mut OpState,
   path: String,
@@ -1077,6 +1106,7 @@ fn op_realpath_sync(
   Ok(realpath_str)
 }
 
+#[op]
 async fn op_realpath_async(
   state: Rc<RefCell<OpState>>,
   path: String,
@@ -1114,6 +1144,7 @@ pub struct DirEntry {
   is_symlink: bool,
 }
 
+#[op]
 fn op_read_dir_sync(
   state: &mut OpState,
   path: String,
@@ -1154,6 +1185,7 @@ fn op_read_dir_sync(
   Ok(entries)
 }
 
+#[op]
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
   path: String,
@@ -1206,6 +1238,7 @@ pub struct RenameArgs {
   newpath: String,
 }
 
+#[op]
 fn op_rename_sync(
   state: &mut OpState,
   args: RenameArgs,
@@ -1234,6 +1267,7 @@ fn op_rename_sync(
   Ok(())
 }
 
+#[op]
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
   args: RenameArgs,
@@ -1279,6 +1313,7 @@ pub struct LinkArgs {
   newpath: String,
 }
 
+#[op]
 fn op_link_sync(
   state: &mut OpState,
   args: LinkArgs,
@@ -1309,6 +1344,7 @@ fn op_link_sync(
   Ok(())
 }
 
+#[op]
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
   args: LinkArgs,
@@ -1362,6 +1398,7 @@ pub struct SymlinkOptions {
   _type: String,
 }
 
+#[op]
 fn op_symlink_sync(
   state: &mut OpState,
   args: SymlinkArgs,
@@ -1423,6 +1460,7 @@ fn op_symlink_sync(
   }
 }
 
+#[op]
 async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
   args: SymlinkArgs,
@@ -1487,6 +1525,7 @@ async fn op_symlink_async(
   .unwrap()
 }
 
+#[op]
 fn op_read_link_sync(
   state: &mut OpState,
   path: String,
@@ -1510,6 +1549,7 @@ fn op_read_link_sync(
   Ok(targetstr)
 }
 
+#[op]
 async fn op_read_link_async(
   state: Rc<RefCell<OpState>>,
   path: String,
@@ -1545,6 +1585,7 @@ pub struct FtruncateArgs {
   len: i32,
 }
 
+#[op]
 fn op_ftruncate_sync(
   state: &mut OpState,
   args: FtruncateArgs,
@@ -1559,6 +1600,7 @@ fn op_ftruncate_sync(
   Ok(())
 }
 
+#[op]
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   args: FtruncateArgs,
@@ -1591,6 +1633,7 @@ pub struct TruncateArgs {
   len: u64,
 }
 
+#[op]
 fn op_truncate_sync(
   state: &mut OpState,
   args: TruncateArgs,
@@ -1616,6 +1659,7 @@ fn op_truncate_sync(
   Ok(())
 }
 
+#[op]
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
   args: TruncateArgs,
@@ -1699,6 +1743,7 @@ pub struct MakeTempArgs {
   suffix: Option<String>,
 }
 
+#[op]
 fn op_make_temp_dir_sync(
   state: &mut OpState,
   args: MakeTempArgs,
@@ -1728,6 +1773,7 @@ fn op_make_temp_dir_sync(
   Ok(path_str)
 }
 
+#[op]
 async fn op_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
@@ -1762,6 +1808,7 @@ async fn op_make_temp_dir_async(
   .unwrap()
 }
 
+#[op]
 fn op_make_temp_file_sync(
   state: &mut OpState,
   args: MakeTempArgs,
@@ -1791,6 +1838,7 @@ fn op_make_temp_file_sync(
   Ok(path_str)
 }
 
+#[op]
 async fn op_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
@@ -1833,6 +1881,7 @@ pub struct FutimeArgs {
   mtime: (i64, u32),
 }
 
+#[op]
 fn op_futime_sync(
   state: &mut OpState,
   args: FutimeArgs,
@@ -1856,6 +1905,7 @@ fn op_futime_sync(
   Ok(())
 }
 
+#[op]
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   args: FutimeArgs,
@@ -1904,6 +1954,7 @@ pub struct UtimeArgs {
   mtime: (i64, u32),
 }
 
+#[op]
 fn op_utime_sync(
   state: &mut OpState,
   args: UtimeArgs,
@@ -1922,6 +1973,7 @@ fn op_utime_sync(
   Ok(())
 }
 
+#[op]
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
   args: UtimeArgs,
@@ -1949,6 +2001,7 @@ async fn op_utime_async(
   .unwrap()
 }
 
+#[op]
 fn op_cwd(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let path = current_dir()?;
   state

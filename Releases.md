@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.19.3 / 2022.03.10
+
+- fix(ci): restore compatibility with older glibc (#13846)
+- fix(test): typecheck blocks annotated with long js/ts notations (#13785)
+- perf(core): micro-optimize OpsTracker (#13868)
+- perf(ext/web): optimize atob/btoa (#13841)
+- perf(serde_v8): avoid SerializablePkg allocs (#13860)
+- perf(serde_v8): optimize ByteString deserialization (#13853)
+
+### 1.19.2 / 2022.03.03
+
+- fix(cli): disable config discovery for remote script (#13745)
+- fix(repl): fix null eval result (#13804)
+- fix(runtime): disable console color for non tty stdout (#13782)
+- fix(test): use --no-prompt by default (#13777)
+
+### 1.19.1 / 2022.02.24
+
+- feat(ext/ffi): Support read only global statics (#13662)
+- fix(compile): Support import maps (#13756)
+- fix(upgrade): move the file permission check to the beginning of the upgrade
+  process (#13726)
+- fix(vendor): do not add absolute specifiers to scopes (#13710)
+
 ### 1.19.0 / 2022.02.17
 
 - feat: Add Deno.FsFile, deprecate Deno.File (#13660)

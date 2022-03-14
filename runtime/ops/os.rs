@@ -3,7 +3,7 @@
 use super::utils::into_string;
 use crate::permissions::Permissions;
 use deno_core::error::{type_error, AnyError};
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -17,19 +17,19 @@ use std::sync::Arc;
 pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_env", op_sync(op_env)),
-      ("op_exec_path", op_sync(op_exec_path)),
-      ("op_exit", op_sync(op_exit)),
-      ("op_delete_env", op_sync(op_delete_env)),
-      ("op_get_env", op_sync(op_get_env)),
-      ("op_getuid", op_sync(op_getuid)),
-      ("op_hostname", op_sync(op_hostname)),
-      ("op_loadavg", op_sync(op_loadavg)),
-      ("op_network_interfaces", op_sync(op_network_interfaces)),
-      ("op_os_release", op_sync(op_os_release)),
-      ("op_set_env", op_sync(op_set_env)),
-      ("op_set_exit_code", op_sync(op_set_exit_code)),
-      ("op_system_memory_info", op_sync(op_system_memory_info)),
+      op_env::decl(),
+      op_exec_path::decl(),
+      op_exit::decl(),
+      op_delete_env::decl(),
+      op_get_env::decl(),
+      op_getuid::decl(),
+      op_hostname::decl(),
+      op_loadavg::decl(),
+      op_network_interfaces::decl(),
+      op_os_release::decl(),
+      op_set_env::decl(),
+      op_set_exit_code::decl(),
+      op_system_memory_info::decl(),
     ])
     .state(move |state| {
       let exit_code = maybe_exit_code.clone().unwrap_or_default();
@@ -39,6 +39,7 @@ pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
     .build()
 }
 
+#[op]
 fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
@@ -53,6 +54,7 @@ fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   into_string(path.into_os_string())
 }
 
+#[op]
 fn op_set_env(
   state: &mut OpState,
   key: String,
@@ -68,6 +70,7 @@ fn op_set_env(
   Ok(())
 }
 
+#[op]
 fn op_env(
   state: &mut OpState,
   _: (),
@@ -77,6 +80,7 @@ fn op_env(
   Ok(env::vars().collect())
 }
 
+#[op]
 fn op_get_env(
   state: &mut OpState,
   key: String,
@@ -93,6 +97,7 @@ fn op_get_env(
   Ok(r)
 }
 
+#[op]
 fn op_delete_env(
   state: &mut OpState,
   key: String,
@@ -106,6 +111,7 @@ fn op_delete_env(
   Ok(())
 }
 
+#[op]
 fn op_set_exit_code(
   state: &mut OpState,
   code: i32,
@@ -115,11 +121,13 @@ fn op_set_exit_code(
   Ok(())
 }
 
+#[op]
 fn op_exit(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
   std::process::exit(code)
 }
 
+#[op]
 fn op_loadavg(
   state: &mut OpState,
   _: (),
@@ -133,6 +141,7 @@ fn op_loadavg(
   }
 }
 
+#[op]
 fn op_hostname(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
   state.borrow_mut::<Permissions>().env.check_all()?;
@@ -140,6 +149,7 @@ fn op_hostname(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   Ok(hostname)
 }
 
+#[op]
 fn op_os_release(
   state: &mut OpState,
   _: (),
@@ -151,6 +161,7 @@ fn op_os_release(
   Ok(release)
 }
 
+#[op]
 fn op_network_interfaces(
   state: &mut OpState,
   _: (),
@@ -218,6 +229,7 @@ struct MemInfo {
   pub swap_free: u64,
 }
 
+#[op]
 fn op_system_memory_info(
   state: &mut OpState,
   _: (),
@@ -240,6 +252,7 @@ fn op_system_memory_info(
 }
 
 #[cfg(not(windows))]
+#[op]
 fn op_getuid(
   state: &mut OpState,
   _: (),
@@ -251,6 +264,7 @@ fn op_getuid(
 }
 
 #[cfg(windows)]
+#[op]
 fn op_getuid(
   state: &mut OpState,
   _: (),

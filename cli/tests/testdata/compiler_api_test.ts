@@ -46,6 +46,22 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Deno.emit() - data url",
+  async fn() {
+    const data =
+      "data:application/javascript;base64,Y29uc29sZS5sb2coImhlbGxvIHdvcmxkIik7";
+    const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(data);
+    assertEquals(diagnostics.length, 0);
+    assert(!ignoredOptions);
+    assertEquals(stats.length, 0);
+    const keys = Object.keys(files);
+    assertEquals(keys.length, 1);
+    assertEquals(keys[0], data);
+    assertStringIncludes(files[keys[0]], 'console.log("hello world");');
+  },
+});
+
+Deno.test({
   name: "Deno.emit() - compiler options effects emit",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(

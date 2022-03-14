@@ -2501,6 +2501,17 @@ itest!(colors_without_global_this {
   output_str: Some("true\n"),
 });
 
+itest!(config_auto_discovered_for_local_script {
+  args: "run --quiet run/with_config/frontend_work.ts",
+  output_str: Some("ok\n"),
+});
+
+itest!(config_not_auto_discovered_for_remote_script {
+  args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
+  output_str: Some("ok\n"),
+  http_server: true,
+});
+
 itest!(fs_while_deleted_dir {
   args: "run fs_while_deleted_dir.js",
   output: "fs_while_deleted_dir.js.out",

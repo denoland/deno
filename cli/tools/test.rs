@@ -5,6 +5,7 @@ use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
+use crate::display;
 use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
@@ -49,11 +50,11 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -158,6 +159,7 @@ struct TestSpecifierOptions {
   fail_fast: Option<NonZeroUsize>,
   filter: Option<String>,
   shuffle: Option<u64>,
+  trace_ops: bool,
 }
 
 impl TestSummary {
@@ -268,7 +270,11 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
 
     if let Some(error_text) = result.error() {
       for line in error_text.lines() {
@@ -276,22 +282,6 @@ impl PrettyTestReporter {
       }
     }
   }
-}
-
-/// A function that converts a milisecond elapsed time to a string that
-/// represents a human readable version of that time.
-fn human_elapsed(elapsed: u128) -> String {
-  if elapsed < 1_000 {
-    return format!("({}ms)", elapsed);
-  }
-  if elapsed < 1_000 * 60 {
-    return format!("({}s)", elapsed / 1000);
-  }
-
-  let seconds = elapsed / 1_000;
-  let minutes = seconds / 60;
-  let seconds_remainder = seconds % 60;
-  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -354,7 +344,11 @@ impl TestReporter for PrettyTestReporter {
       print!(" ");
     }
 
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
@@ -431,7 +425,8 @@ impl TestReporter for PrettyTestReporter {
       get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
-      colors::gray(human_elapsed(elapsed.as_millis())),
+      colors::gray(
+        format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
 }
@@ -450,7 +445,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: Sender<TestEvent>,
+  channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
@@ -477,9 +472,14 @@ async fn test_specifier(
 
   // Enable op call tracing in core to enable better debugging of op sanitizer
   // failures.
-  worker
-    .execute_script(&located_script_name!(), "Deno.core.enableOpCallTracing();")
-    .unwrap();
+  if options.trace_ops {
+    worker
+      .execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )
+      .unwrap();
+  }
 
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
@@ -543,6 +543,10 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
+      if block.get(1) == None {
+        return None;
+      }
+
       let maybe_attributes: Option<Vec<_>> = block
         .get(1)
         .map(|attributes| attributes.as_str().split(' ').collect());
@@ -554,10 +558,12 @@ fn extract_files_from_regex_blocks(
 
         match attributes.get(0) {
           Some(&"js") => MediaType::JavaScript,
+          Some(&"javascript") => MediaType::JavaScript,
           Some(&"mjs") => MediaType::Mjs,
           Some(&"cjs") => MediaType::Cjs,
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
+          Some(&"typescript") => MediaType::TypeScript,
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
@@ -661,7 +667,12 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
+  // The pattern matches code blocks as well as anything in HTML comment syntax,
+  // but it stores the latter without any capturing groups. This way, a simple
+  // check can be done to see if a block is inside a comment (and skip typechecking)
+  // or not by checking for the presence of capturing groups in the matches.
+  let blocks_regex =
+    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
@@ -731,7 +742,7 @@ async fn check_specifiers(
   if !inline_files.is_empty() {
     let specifiers = inline_files
       .iter()
-      .map(|file| (file.specifier.clone(), ModuleKind::Esm))
+      .map(|file| file.specifier.clone())
       .collect();
 
     for file in inline_files {
@@ -753,7 +764,7 @@ async fn check_specifiers(
     .iter()
     .filter_map(|(specifier, mode)| {
       if *mode != TestMode::Documentation {
-        Some((specifier.clone(), ModuleKind::Esm))
+        Some(specifier.clone())
       } else {
         None
       }
@@ -791,7 +802,7 @@ async fn test_specifiers(
     specifiers_with_mode
   };
 
-  let (sender, receiver) = channel::<TestEvent>();
+  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -805,14 +816,10 @@ async fn test_specifiers(
       let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let join_handle = std::thread::spawn(move || {
-          let future =
-            test_specifier(ps, permissions, specifier, mode, sender, options);
+        let future =
+          test_specifier(ps, permissions, specifier, mode, sender, options);
 
-          run_basic(future)
-        });
-
-        join_handle.join().unwrap()
+        run_basic(future)
       })
     });
 
@@ -824,12 +831,12 @@ async fn test_specifiers(
     create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
 
   let handler = {
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn(async move {
       let earlier = Instant::now();
       let mut summary = TestSummary::new();
       let mut used_only = false;
 
-      for event in receiver.iter() {
+      while let Some(event) = receiver.recv().await {
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
@@ -1043,6 +1050,7 @@ pub async fn run_tests(
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter,
       shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
     },
   )
   .await?;
@@ -1082,14 +1090,10 @@ pub async fn run_tests_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
@@ -1281,6 +1285,7 @@ pub async fn run_tests_with_watch(
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
           shuffle: test_flags.shuffle,
+          trace_ops: test_flags.trace_ops,
         },
       )
       .await?;
@@ -1300,20 +1305,4 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_human_elapsed() {
-    assert_eq!(human_elapsed(1), "(1ms)");
-    assert_eq!(human_elapsed(256), "(256ms)");
-    assert_eq!(human_elapsed(1000), "(1s)");
-    assert_eq!(human_elapsed(1001), "(1s)");
-    assert_eq!(human_elapsed(1020), "(1s)");
-    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
-    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
-  }
 }

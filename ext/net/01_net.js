@@ -9,6 +9,7 @@
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     SymbolAsyncIterator,
+    Error,
     Uint8Array,
     TypedArrayPrototypeSubarray,
   } = window.__bootstrap.primordials;
@@ -163,14 +164,6 @@
       return shutdown(this.rid);
     }
 
-    setNoDelay(nodelay = true) {
-      return core.opSync("op_set_nodelay", this.rid, nodelay);
-    }
-
-    setKeepAlive(keepalive = true) {
-      return core.opSync("op_set_keepalive", this.rid, keepalive);
-    }
-
     get readable() {
       if (this.#readable === undefined) {
         this.#readable = readableStreamForRid(this.rid);
@@ -185,6 +178,18 @@
       return this.#writable;
     }
   }
+
+  class TcpConn extends Conn {
+    setNoDelay(nodelay = true) {
+      return core.opSync("op_set_nodelay", this.rid, nodelay);
+    }
+
+    setKeepAlive(keepalive = true) {
+      return core.opSync("op_set_keepalive", this.rid, keepalive);
+    }
+  }
+
+  class UnixConn extends Conn {}
 
   class Listener {
     #rid = 0;
@@ -205,7 +210,13 @@
 
     async accept() {
       const res = await opAccept(this.rid, this.addr.transport);
-      return new Conn(res.rid, res.remoteAddr, res.localAddr);
+      if (this.addr.transport == "tcp") {
+        return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
+      } else if (this.addr.transport == "unix") {
+        return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
+      } else {
+        throw new Error("unreachable");
+      }
     }
 
     async next() {
@@ -306,24 +317,24 @@
   }
 
   async function connect(options) {
-    let res;
-
     if (options.transport === "unix") {
-      res = await opConnect(options);
-    } else {
-      res = await opConnect({
-        transport: "tcp",
-        hostname: "127.0.0.1",
-        ...options,
-      });
+      const res = await opConnect(options);
+      return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
     }
 
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    const res = await opConnect({
+      transport: "tcp",
+      hostname: "127.0.0.1",
+      ...options,
+    });
+    return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.net = {
     connect,
     Conn,
+    TcpConn,
+    UnixConn,
     opConnect,
     listen,
     opListen,

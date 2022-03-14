@@ -9,7 +9,7 @@ use deno_core::RuntimeOptions;
 fn main() {
   let my_ext = Extension::builder()
     .middleware(|name, opfn| match name {
-      "op_print" => deno_core::void_op_sync(),
+      "op_print" => deno_core::void_op_sync::v8_cb(),
       _ => opfn,
     })
     .build();

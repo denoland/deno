@@ -223,7 +223,7 @@ fn make_path(text: &str) -> PathBuf {
   // a cross platform path here
   assert!(text.starts_with('/'));
   if cfg!(windows) {
-    PathBuf::from(format!("C:{}", text.replace("/", "\\")))
+    PathBuf::from(format!("C:{}", text.replace('/', "\\")))
   } else {
     PathBuf::from(text)
   }

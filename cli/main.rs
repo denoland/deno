@@ -10,6 +10,7 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
+mod display;
 mod emit;
 mod errors;
 mod file_fetcher;
@@ -39,6 +40,7 @@ mod windows_util;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
 use crate::flags::CheckFlag;
@@ -55,6 +57,7 @@ use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
+use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
@@ -146,7 +149,9 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
         apply_source_maps: true,
-        cpu_count: num_cpus::get(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
         debug_flag: ps
           .flags
           .log_level
@@ -154,6 +159,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         enable_testing_features: ps.flags.enable_testing_features,
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
+        is_tty: colors::is_tty(),
         runtime_version: version::deno(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
@@ -247,11 +253,14 @@ pub fn create_main_worker(
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
       args: ps.flags.argv.clone(),
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.flags.enable_testing_features,
       location: ps.flags.location.clone(),
       no_color: !colors::use_color(),
+      is_tty: colors::is_tty(),
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
@@ -322,6 +331,8 @@ fn print_cache_info(
       origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
 
+  let local_storage_dir = origin_dir.join("local_storage");
+
   if json {
     let mut output = json!({
       "denoDir": deno_dir,
@@ -332,34 +343,41 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] =
-        serde_json::to_value(origin_dir.join("local_storage"))?;
+      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
     }
 
     write_json_to_stdout(&output)
   } else {
-    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
-      "{} {:?}",
+      "{} {}",
+      colors::bold("DENO_DIR location:"),
+      deno_dir.display()
+    );
+    println!(
+      "{} {}",
       colors::bold("Remote modules cache:"),
-      modules_cache
+      modules_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Emitted modules cache:"),
-      typescript_cache
+      typescript_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Language server registries cache:"),
-      registry_cache,
+      registry_cache.display(),
     );
-    println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    println!(
+      "{} {}",
+      colors::bold("Origin storage:"),
+      origin_dir.display()
+    );
     if location.is_some() {
       println!(
-        "{} {:?}",
+        "{} {}",
         colors::bold("Local Storage:"),
-        origin_dir.join("local_storage"),
+        local_storage_dir.display(),
       );
     }
     Ok(())
@@ -396,19 +414,21 @@ async fn compile_command(
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags =
-    tools::standalone::compile_to_runtime_flags(&flags, compile_flags.args)?;
+  let run_flags = tools::standalone::compile_to_runtime_flags(
+    &flags,
+    compile_flags.args.clone(),
+  )?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.and_then(|output| {
-    if fs_util::path_has_trailing_slash(&output) {
+  let output = compile_flags.output.as_ref().and_then(|output| {
+    if fs_util::path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {
-      Some(output)
+      Some(output.to_path_buf())
     }
   }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
@@ -422,6 +442,8 @@ async fn compile_command(
   .map_err(|_| {
     generic_error("There should only be one reference to ModuleGraph")
   })?;
+
+  graph.valid().unwrap();
 
   let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
@@ -441,7 +463,9 @@ async fn compile_command(
     eszip,
     module_specifier.clone(),
     run_flags,
-  )?;
+    ps,
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -471,14 +495,10 @@ async fn info_command(
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
@@ -568,7 +588,7 @@ async fn cache_command(
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
+      vec![specifier],
       false,
       lib.clone(),
       Permissions::allow_all(),
@@ -643,14 +663,10 @@ async fn create_graph_and_maybe_check(
   };
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .maybe_config_file
-    .as_ref()
-    .map(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    })
-    .flatten();
+  let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+    cf.to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+  });
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
@@ -751,28 +767,6 @@ fn bundle_module_graph(
   )
 }
 
-/// A function that converts a float to a string the represents a human
-/// readable version of that number.
-fn human_size(size: f64) -> String {
-  let negative = if size.is_sign_positive() { "" } else { "-" };
-  let size = size.abs();
-  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if size < 1_f64 {
-    return format!("{}{}{}", negative, size, "B");
-  }
-  let delimiter = 1024_f64;
-  let exponent = std::cmp::min(
-    (size.ln() / delimiter.ln()).floor() as i32,
-    (units.len() - 1) as i32,
-  );
-  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
-    .parse::<f64>()
-    .unwrap()
-    * 1_f64;
-  let unit = units[exponent as usize];
-  format!("{}{}{}", negative, pretty_bytes, unit)
-}
-
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
@@ -796,16 +790,18 @@ async fn bundle_command(
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
-      if let Some(import_map) = ps.flags.import_map_path.as_ref() {
-        paths_to_watch
-          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      if let Ok(Some(import_map_path)) =
+        config_file::resolve_import_map_specifier(
+          ps.flags.import_map_path.as_deref(),
+          ps.maybe_config_file.as_ref(),
+        )
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths_to_watch.push(import_map_path);
       }
 
       Ok((paths_to_watch, graph, ps))
@@ -837,7 +833,7 @@ async fn bundle_command(
           "{} {:?} ({})",
           colors::green("Emit"),
           out_file,
-          colors::gray(human_size(output_len as f64))
+          colors::gray(display::human_size(output_len as f64))
         );
         if let Some(bundle_map) = maybe_bundle_map {
           let map_bytes = bundle_map.as_bytes();
@@ -853,7 +849,7 @@ async fn bundle_command(
             "{} {:?} ({})",
             colors::green("Emit"),
             map_out_file,
-            colors::gray(human_size(map_len as f64))
+            colors::gray(display::human_size(map_len as f64))
           );
         }
       } else {
@@ -997,14 +993,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       };
       let maybe_import_map_resolver =
         ps.maybe_import_map.clone().map(ImportMapResolver::new);
-      let maybe_jsx_resolver = ps
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| {
-          cf.to_maybe_jsx_import_source_module()
-            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-        })
-        .flatten();
+      let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      });
       let maybe_resolver = if maybe_jsx_resolver.is_some() {
         maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
       } else {
@@ -1035,10 +1027,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .specifiers()
         .iter()
         .filter_map(|(_, r)| {
-          r.as_ref()
-            .ok()
-            .map(|(s, _, _)| s.to_file_path().ok())
-            .flatten()
+          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
         .collect();
 
@@ -1047,9 +1036,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         paths_to_watch.extend(watch_paths);
       }
 
-      if let Some(import_map) = ps.flags.import_map_path.as_ref() {
-        paths_to_watch
-          .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
+      if let Ok(Some(import_map_path)) =
+        config_file::resolve_import_map_specifier(
+          ps.flags.import_map_path.as_deref(),
+          ps.maybe_config_file.as_ref(),
+        )
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths_to_watch.push(import_map_path);
       }
 
       Ok((paths_to_watch, main_module, ps))
@@ -1236,6 +1230,13 @@ async fn run_command(
   Ok(worker.get_exit_code())
 }
 
+async fn task_command(
+  flags: Flags,
+  task_flags: TaskFlags,
+) -> Result<i32, AnyError> {
+  tools::task::execute_script(flags, task_flags).await
+}
+
 async fn coverage_command(
   flags: Flags,
   coverage_flags: CoverageFlags,
@@ -1245,6 +1246,19 @@ async fn coverage_command(
   }
 
   tools::coverage::cover_files(flags, coverage_flags).await?;
+  Ok(0)
+}
+
+async fn bench_command(
+  flags: Flags,
+  bench_flags: BenchFlags,
+) -> Result<i32, AnyError> {
+  if flags.watch.is_some() {
+    tools::bench::run_benchmarks_with_watch(flags, bench_flags).await?;
+  } else {
+    tools::bench::run_benchmarks(flags, bench_flags).await?;
+  }
+
   Ok(0)
 }
 
@@ -1328,6 +1342,9 @@ fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
   match flags.subcommand.clone() {
+    DenoSubcommand::Bench(bench_flags) => {
+      bench_command(flags, bench_flags).boxed_local()
+    }
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
     }
@@ -1367,6 +1384,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
+    }
+    DenoSubcommand::Task(task_flags) => {
+      task_command(flags, task_flags).boxed_local()
     }
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()

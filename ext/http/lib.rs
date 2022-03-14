@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -19,8 +20,8 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -34,6 +35,9 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_websocket::ws_create_server_stream;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use fly_accept_encoding::Encoding;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
@@ -47,6 +51,7 @@ use std::cmp::min;
 use std::error::Error;
 use std::future::Future;
 use std::io;
+use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
 use std::pin::Pin;
@@ -58,6 +63,8 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::task::spawn_local;
 
+mod compressible;
+
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -65,19 +72,13 @@ pub fn init() -> Extension {
       "01_http.js",
     ))
     .ops(vec![
-      ("op_http_accept", op_async(op_http_accept)),
-      ("op_http_read", op_async(op_http_read)),
-      ("op_http_write_headers", op_async(op_http_write_headers)),
-      ("op_http_write", op_async(op_http_write)),
-      ("op_http_shutdown", op_async(op_http_shutdown)),
-      (
-        "op_http_websocket_accept_header",
-        op_sync(op_http_websocket_accept_header),
-      ),
-      (
-        "op_http_upgrade_websocket",
-        op_async(op_http_upgrade_websocket),
-      ),
+      op_http_accept::decl(),
+      op_http_read::decl(),
+      op_http_write_headers::decl(),
+      op_http_write::decl(),
+      op_http_shutdown::decl(),
+      op_http_websocket_accept_header::decl(),
+      op_http_upgrade_websocket::decl(),
     ])
     .build()
 }
@@ -292,6 +293,7 @@ struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
   rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
+  accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
 }
 
@@ -305,6 +307,7 @@ impl HttpStreamResource {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
+      accept_encoding: RefCell::new(Encoding::Identity),
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -362,6 +365,7 @@ struct NextRequestResponse(
   String,
 );
 
+#[op]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -380,6 +384,14 @@ async fn op_http_accept(
     HttpRequestReader::Headers(request) => request,
     _ => unreachable!(),
   };
+
+  {
+    let mut accept_encoding = stream.accept_encoding.borrow_mut();
+    *accept_encoding = fly_accept_encoding::parse(request.headers())
+      .ok()
+      .flatten()
+      .unwrap_or(Encoding::Identity);
+  }
 
   let method = request.method().to_string();
   let headers = req_headers(request);
@@ -484,6 +496,7 @@ struct RespondArgs(
   Vec<(ByteString, ByteString)>,
 );
 
+#[op]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
@@ -497,9 +510,65 @@ async fn op_http_write_headers(
 
   let mut builder = Response::builder().status(status);
 
+  let mut body_compressible = false;
+  let mut headers_allow_compression = true;
+  let mut vary_header = None;
+  let mut etag_header = None;
+  let mut content_type_header = None;
+
   builder.headers_mut().unwrap().reserve(headers.len());
   for (key, value) in &headers {
+    match &*key.to_ascii_lowercase() {
+      b"cache-control" => {
+        if let Ok(value) = std::str::from_utf8(value) {
+          if let Some(cache_control) = CacheControl::from_value(value) {
+            // We skip compression if the cache-control header value is set to
+            // "no-transform"
+            if cache_control.no_transform {
+              headers_allow_compression = false;
+            }
+          }
+        } else {
+          headers_allow_compression = false;
+        }
+      }
+      b"content-range" => {
+        // we skip compression if the `content-range` header value is set, as it
+        // indicates the contents of the body were negotiated based directly
+        // with the user code and we can't compress the response
+        headers_allow_compression = false;
+      }
+      b"content-type" => {
+        if !value.is_empty() {
+          content_type_header = Some(value);
+        }
+      }
+      b"content-encoding" => {
+        // we don't compress if a content-encoding header was provided
+        headers_allow_compression = false;
+      }
+      // we store the values of ETag and Vary and skip adding them for now, as
+      // we may need to modify or change.
+      b"etag" => {
+        if !value.is_empty() {
+          etag_header = Some(value);
+          continue;
+        }
+      }
+      b"vary" => {
+        if !value.is_empty() {
+          vary_header = Some(value);
+          continue;
+        }
+      }
+      _ => {}
+    }
     builder = builder.header(key.as_ref(), value.as_ref());
+  }
+
+  if headers_allow_compression {
+    body_compressible =
+      compressible::is_content_compressible(content_type_header);
   }
 
   let body: Response<Body>;
@@ -507,12 +576,102 @@ async fn op_http_write_headers(
 
   match data {
     Some(data) => {
-      // If a buffer was passed, we use it to construct a response body.
-      body = builder.body(data.into_bytes().into())?;
+      // Set Vary: Accept-Encoding header for direct body response.
+      // Note: we set the header irrespective of whether or not we compress the
+      // data to make sure cache services do not serve uncompressed data to
+      // clients that support compression.
+      let vary_value = if let Some(value) = vary_header {
+        if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+          if !value_str.to_lowercase().contains("accept-encoding") {
+            format!("Accept-Encoding, {}", value_str)
+          } else {
+            value_str.to_string()
+          }
+        } else {
+          // the header value wasn't valid UTF8, so it would have been a
+          // problem anyways, so sending a default header.
+          "Accept-Encoding".to_string()
+        }
+      } else {
+        "Accept-Encoding".to_string()
+      };
+      builder = builder.header("vary", &vary_value);
+
+      let accepts_compression = matches!(
+        *stream.accept_encoding.borrow(),
+        Encoding::Brotli | Encoding::Gzip
+      );
+
+      let should_compress =
+        body_compressible && data.len() > 20 && accepts_compression;
+
+      if should_compress {
+        // Drop 'content-length' header. Hyper will update it using compressed body.
+        if let Some(headers) = builder.headers_mut() {
+          headers.remove("content-length");
+        }
+        // If user provided a ETag header for uncompressed data, we need to
+        // ensure it is a Weak Etag header ("W/").
+        if let Some(value) = etag_header {
+          if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+            if !value_str.starts_with("W/") {
+              builder = builder.header("etag", format!("W/{}", value_str));
+            } else {
+              builder = builder.header("etag", value.as_ref());
+            }
+          } else {
+            builder = builder.header("etag", value.as_ref());
+          }
+        }
+
+        match *stream.accept_encoding.borrow() {
+          Encoding::Brotli => {
+            builder = builder.header("content-encoding", "br");
+            // quality level 6 is based on google's nginx default value for
+            // on-the-fly compression
+            // https://github.com/google/ngx_brotli#brotli_comp_level
+            // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
+            // (~4MB)
+            let mut writer =
+              brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+            writer.write_all(&data.into_bytes())?;
+            body = builder.body(writer.into_inner().into())?;
+          }
+          _ => {
+            assert_eq!(*stream.accept_encoding.borrow(), Encoding::Gzip);
+            builder = builder.header("content-encoding", "gzip");
+            // Gzip, after level 1, doesn't produce significant size difference.
+            // Probably the reason why nginx's default gzip compression level is
+            // 1.
+            // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
+            let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
+            writer.write_all(&data.into_bytes())?;
+            body = builder.body(writer.finish()?.into())?;
+          }
+        }
+      } else {
+        if let Some(value) = etag_header {
+          builder = builder.header("etag", value.as_ref());
+        }
+        // If a buffer was passed, but isn't compressible, we use it to
+        // construct a response body.
+        body = builder.body(data.into_bytes().into())?;
+      }
       new_wr = HttpResponseWriter::Closed;
     }
     None => {
       // If no buffer was passed, the caller will stream the response body.
+
+      // TODO(@kitsonk) had compression for streamed bodies.
+
+      // Set the user provided ETag & Vary headers for a streaming response
+      if let Some(value) = etag_header {
+        builder = builder.header("etag", value.as_ref());
+      }
+      if let Some(value) = vary_header {
+        builder = builder.header("vary", value.as_ref());
+      }
+
       let (body_tx, body_rx) = Body::channel();
       body = builder.body(body_rx)?;
       new_wr = HttpResponseWriter::Body(body_tx);
@@ -534,6 +693,7 @@ async fn op_http_write_headers(
   }
 }
 
+#[op]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -574,6 +734,7 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
+#[op]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -588,6 +749,7 @@ async fn op_http_shutdown(
   Ok(())
 }
 
+#[op]
 async fn op_http_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -636,6 +798,7 @@ async fn op_http_read(
   fut.try_or_cancel(cancel_handle).await
 }
 
+#[op]
 fn op_http_websocket_accept_header(
   _: &mut OpState,
   key: String,
@@ -648,6 +811,7 @@ fn op_http_websocket_accept_header(
   Ok(base64::encode(digest))
 }
 
+#[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
