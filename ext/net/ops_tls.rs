@@ -54,6 +54,9 @@ use io::Error;
 use io::Read;
 use io::Write;
 use serde::Deserialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -1075,8 +1078,19 @@ where
   let bind_addr = resolve_addr_sync(hostname, port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let std_listener = std::net::TcpListener::bind(bind_addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if bind_addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  let socket_addr = socket2::SockAddr::from(bind_addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
   let tcp_listener = TcpListener::from_std(std_listener)?;
   let local_addr = tcp_listener.local_addr()?;
 

@@ -1,0 +1,6 @@
+Check [WILDCARD]/bench/ignore_permissions.ts
+running 1 bench from [WILDCARD]/bench/ignore_permissions.ts
+bench ignore ... 1000 iterations ignored ([WILDCARD])
+
+bench result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

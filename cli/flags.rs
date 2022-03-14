@@ -36,6 +36,13 @@ static LONG_VERSION: Lazy<String> = Lazy::new(|| {
 });
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct BenchFlags {
+  pub ignore: Vec<PathBuf>,
+  pub include: Option<Vec<String>>,
+  pub filter: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct BundleFlags {
   pub source_file: String,
   pub out_file: Option<PathBuf>,
@@ -140,6 +147,11 @@ pub struct RunFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct TaskFlags {
+  pub task: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
   pub doc: bool,
@@ -172,6 +184,7 @@ pub struct VendorFlags {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
+  Bench(BenchFlags),
   Bundle(BundleFlags),
   Cache(CacheFlags),
   Compile(CompileFlags),
@@ -187,6 +200,7 @@ pub enum DenoSubcommand {
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),
+  Task(TaskFlags),
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
@@ -481,24 +495,26 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   }
 
   match matches.subcommand() {
-    Some(("run", m)) => run_parse(&mut flags, m),
-    Some(("fmt", m)) => fmt_parse(&mut flags, m),
-    Some(("types", m)) => types_parse(&mut flags, m),
-    Some(("cache", m)) => cache_parse(&mut flags, m),
-    Some(("coverage", m)) => coverage_parse(&mut flags, m),
-    Some(("info", m)) => info_parse(&mut flags, m),
-    Some(("eval", m)) => eval_parse(&mut flags, m),
-    Some(("repl", m)) => repl_parse(&mut flags, m),
+    Some(("bench", m)) => bench_parse(&mut flags, m),
     Some(("bundle", m)) => bundle_parse(&mut flags, m),
-    Some(("install", m)) => install_parse(&mut flags, m),
-    Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
-    Some(("completions", m)) => completions_parse(&mut flags, m, app),
-    Some(("test", m)) => test_parse(&mut flags, m),
-    Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
-    Some(("doc", m)) => doc_parse(&mut flags, m),
-    Some(("lint", m)) => lint_parse(&mut flags, m),
+    Some(("cache", m)) => cache_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
+    Some(("completions", m)) => completions_parse(&mut flags, m, app),
+    Some(("coverage", m)) => coverage_parse(&mut flags, m),
+    Some(("doc", m)) => doc_parse(&mut flags, m),
+    Some(("eval", m)) => eval_parse(&mut flags, m),
+    Some(("fmt", m)) => fmt_parse(&mut flags, m),
+    Some(("info", m)) => info_parse(&mut flags, m),
+    Some(("install", m)) => install_parse(&mut flags, m),
+    Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
+    Some(("repl", m)) => repl_parse(&mut flags, m),
+    Some(("run", m)) => run_parse(&mut flags, m),
+    Some(("task", m)) => task_parse(&mut flags, m),
+    Some(("test", m)) => test_parse(&mut flags, m),
+    Some(("types", m)) => types_parse(&mut flags, m),
+    Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
+    Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
     Some(("vendor", m)) => vendor_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
@@ -553,6 +569,7 @@ If the flag is set, restrict these messages to errors.",
         )
         .global(true),
     )
+    .subcommand(bench_subcommand())
     .subcommand(bundle_subcommand())
     .subcommand(cache_subcommand())
     .subcommand(compile_subcommand())
@@ -568,12 +585,57 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
+    .subcommand(task_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
     .subcommand(vendor_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
+}
+
+fn bench_subcommand<'a>() -> App<'a> {
+  runtime_args(App::new("bench"), true, false)
+    .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::new("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore files"),
+    )
+    .arg(
+      Arg::new("filter")
+        .setting(ArgSettings::AllowHyphenValues)
+        .long("filter")
+        .takes_value(true)
+        .help("Run benchmarks with this string or pattern in the bench name"),
+    )
+    .arg(
+      Arg::new("files")
+        .help("List of file names to run")
+        .takes_value(true)
+        .multiple_values(true)
+        .multiple_occurrences(true),
+    )
+    .arg(watch_arg(false))
+    .arg(no_clear_screen_arg())
+    .arg(script_arg().last(true))
+    .about("Run benchmarks")
+    .long_about(
+      "Run benchmarks using Deno's built-in bench tool.
+
+Evaluate the given modules, run all benches declared with 'Deno.bench()' and
+report results to standard output:
+
+  deno bench src/fetch_bench.ts src/signal_bench.ts
+
+Directory arguments are expanded to all contained files matching the glob
+{*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
+
+  deno bench src/",
+    )
 }
 
 fn bundle_subcommand<'a>() -> App<'a> {
@@ -1256,6 +1318,25 @@ Deno allows specifying the filename '-' to read the file from stdin.
     )
 }
 
+fn task_subcommand<'a>() -> App<'a> {
+  App::new("task")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(config_arg())
+    .arg(Arg::new("task").help("Task to be executed"))
+    .arg(
+      Arg::new("task_args")
+        .multiple_values(true)
+        .multiple_occurrences(true)
+        .help("Additional arguments passed to the task"),
+    )
+    .about("Run a task defined in the configuration file")
+    .long_about(
+      "Run a task defined in the configuration file
+
+  deno task build",
+    )
+}
+
 fn test_subcommand<'a>() -> App<'a> {
   runtime_args(App::new("test"), true, true)
     .setting(AppSettings::TrailingVarArg)
@@ -1853,6 +1934,51 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
     .validator(crate::flags_allow_net::validator)
 }
 
+fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  runtime_args_parse(flags, matches, true, false);
+
+  // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
+  // interactive prompts, unless done by user code
+  flags.no_prompt = true;
+
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+
+  let filter = matches.value_of("filter").map(String::from);
+
+  if matches.is_present("script_arg") {
+    let script_arg: Vec<String> = matches
+      .values_of("script_arg")
+      .unwrap()
+      .map(String::from)
+      .collect();
+
+    for v in script_arg {
+      flags.argv.push(v);
+    }
+  }
+
+  let include = if matches.is_present("files") {
+    let files: Vec<String> = matches
+      .values_of("files")
+      .unwrap()
+      .map(String::from)
+      .collect();
+    Some(files)
+  } else {
+    None
+  };
+
+  watch_arg_parse(flags, matches, false);
+  flags.subcommand = DenoSubcommand::Bench(BenchFlags {
+    include,
+    ignore,
+    filter,
+  });
+}
+
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
 
@@ -2195,6 +2321,26 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
+}
+
+fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
+
+  let mut task_name = "".to_string();
+  if let Some(task) = matches.value_of("task") {
+    task_name = task.to_string();
+
+    let task_args: Vec<String> = matches
+      .values_of("task_args")
+      .unwrap_or_default()
+      .map(String::from)
+      .collect();
+    for v in task_args {
+      flags.argv.push(v);
+    }
+  }
+
+  flags.subcommand = DenoSubcommand::Task(TaskFlags { task: task_name });
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5059,6 +5205,97 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         lock: Some(PathBuf::from("lock.json")),
         reload: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand() {
+    let r =
+      flags_from_vec(svec!["deno", "task", "build", "--", "hello", "world",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["hello", "world"],
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_empty() {
+    let r = flags_from_vec(svec!["deno", "task",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_config() {
+    let r = flags_from_vec(svec!["deno", "task", "--config", "deno.jsonc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
+        }),
+        config_path: Some("deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bench_with_flags() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "bench",
+      "--unstable",
+      "--filter",
+      "- foo",
+      "--location",
+      "https:foo",
+      "--allow-net",
+      "dir1/",
+      "dir2/",
+      "--",
+      "arg1",
+      "arg2"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bench(BenchFlags {
+          filter: Some("- foo".to_string()),
+          include: Some(svec!["dir1/", "dir2/"]),
+          ignore: vec![],
+        }),
+        unstable: true,
+        location: Some(Url::parse("https://foo/").unwrap()),
+        allow_net: Some(vec![]),
+        no_prompt: true,
+        argv: svec!["arg1", "arg2"],
         ..Flags::default()
       }
     );

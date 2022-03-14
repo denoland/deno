@@ -16,6 +16,7 @@ use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::iter::once;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -170,7 +171,7 @@ impl OpState {
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       tracker: OpsTracker {
-        ops: RefCell::new(Vec::with_capacity(256)),
+        ops: UnsafeCell::new(Vec::with_capacity(256)),
       },
       gotham_state: Default::default(),
     }
