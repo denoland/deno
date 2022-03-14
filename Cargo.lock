@@ -507,6 +507,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "compile-test-crate"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

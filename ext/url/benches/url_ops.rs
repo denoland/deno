@@ -3,6 +3,7 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::{benchmark_group, Bencher};
 
 use deno_core::Extension;
+use deno_core::SourceLoader;
 
 fn setup() -> Vec<Extension> {
   vec![
@@ -11,9 +12,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder()
       .js(vec![(
         "setup",
-        Box::new(|| {
-          Ok(r#"const { URL } = globalThis.__bootstrap.url;"#.to_owned())
-        }),
+        SourceLoader::Static(r#"const { URL } = globalThis.__bootstrap.url;"#),
       )])
       .build(),
   ]

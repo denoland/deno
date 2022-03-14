@@ -1,4 +1,4 @@
-use deno_core::Extension;
+use deno_core::{Extension, SourceLoader};
 
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::{benchmark_group, Bencher};
@@ -26,12 +26,10 @@ fn setup() -> Vec<Extension> {
     deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder()
     .js(vec![
-      ("setup",
-        Box::new(|| Ok(r#"
+      ("setup", SourceLoader::Static(r#"
         const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
         Deno.core.setMacrotaskCallback(handleTimerMacrotask);
-        "#.to_owned())),
-      ),
+      "#)),
     ])
     .state(|state| {
       state.put(Permissions{});

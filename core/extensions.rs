@@ -1,10 +1,24 @@
+use std::borrow::Cow;
+
 use crate::OpFn;
 use crate::OpState;
 use anyhow::Error;
 use std::task::Context;
 
-pub type SourcePair = (&'static str, Box<SourceLoadFn>);
-pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
+pub enum SourceLoader {
+  Static(&'static str),
+  Function(Box<dyn Fn() -> Result<String, Error>>),
+}
+impl SourceLoader {
+  pub fn get(&self) -> Result<Cow<'static, str>, Error> {
+    match self {
+      Self::Static(ret) => Ok(Cow::Borrowed(ret)),
+      Self::Function(f) => f().map(Cow::Owned),
+    }
+  }
+}
+
+pub type SourcePair = (&'static str, SourceLoader);
 pub type OpPair = (&'static str, Box<OpFn>);
 pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
@@ -135,9 +149,9 @@ impl ExtensionBuilder {
     }
   }
 }
+
 /// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
-/// representing the filename and source code. This is only meant for extensions
-/// that will be snapshotted, as code will be loaded at runtime.
+/// representing the filename and source code.
 ///
 /// Example:
 /// ```ignore
@@ -147,19 +161,50 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// ```
+#[cfg(all(feature = "build-time-includes", not(test)))]
 #[macro_export]
 macro_rules! include_js_files {
   (prefix $prefix:literal, $($file:literal,)+) => {
     vec![
       $((
         concat!($prefix, "/", $file),
-        Box::new(|| {
+        $crate::SourceLoader::Function(Box::new(|| {
+          // CARGO_MAKEFLAGS is an envvar that gets passed to build scripts, so
+          // it can be used to detect whether we're running as part of one.
+          if let Err(std::env::VarError::NotPresent) = std::env::var("CARGO_MAKEFLAGS") {
+            panic!("The build-time-includes feature on deno_core should only be used when building snapshots in a build script.");
+          }
+
           let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
           let path = c.join($file);
           println!("cargo:rerun-if-changed={}", path.display());
           let src = std::fs::read_to_string(path)?;
           Ok(src)
-        }),
+        })),
+      ),)+
+    ]
+  };
+}
+
+/// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
+/// representing the filename and source code.
+///
+/// Example:
+/// ```ignore
+/// include_js_files!(
+///   prefix "deno:extensions/hello",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// ```
+#[cfg(any(not(feature = "build-time-includes"), test))]
+#[macro_export]
+macro_rules! include_js_files {
+  (prefix $prefix:literal, $($file:literal,)+) => {
+    vec![
+      $((
+        concat!($prefix, "/", $file),
+        $crate::SourceLoader::Static(include_str!($file))
       ),)+
     ]
   };

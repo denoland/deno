@@ -6,6 +6,7 @@ members = [
   "bench_util",
   "cli",
   "core",
+  "core/tests/compile-test-crate",
   "runtime",
   "serde_v8",
   "test_ffi",

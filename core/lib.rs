@@ -44,6 +44,11 @@ pub use crate::async_cell::AsyncRefCell;
 pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
+pub use crate::extensions::Extension;
+pub use crate::extensions::ExtensionBuilder;
+pub use crate::extensions::OpMiddlewareFn;
+pub use crate::extensions::OpPair;
+pub use crate::extensions::SourceLoader;
 pub use crate::flags::v8_set_flags;
 pub use crate::inspector::InspectorMsg;
 pub use crate::inspector::InspectorMsgKind;
@@ -95,11 +100,6 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
-// pub use crate::runtime_modules::include_js_files!;
-pub use crate::extensions::Extension;
-pub use crate::extensions::ExtensionBuilder;
-pub use crate::extensions::OpMiddlewareFn;
-pub use crate::extensions::OpPair;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

@@ -24,7 +24,7 @@ path = "examples/hello_runtime.rs"
 [build-dependencies]
 deno_broadcast_channel = { version = "0.34.0", path = "../ext/broadcast_channel" }
 deno_console = { version = "0.40.0", path = "../ext/console" }
-deno_core = { version = "0.122.0", path = "../core" }
+deno_core = { version = "0.122.0", path = "../core", features = ["build-time-includes"] }
 deno_crypto = { version = "0.54.0", path = "../ext/crypto" }
 deno_fetch = { version = "0.63.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.27.0", path = "../ext/ffi" }
@@ -47,7 +47,7 @@ winapi = "0.3.9"
 [dependencies]
 deno_broadcast_channel = { version = "0.34.0", path = "../ext/broadcast_channel" }
 deno_console = { version = "0.40.0", path = "../ext/console" }
-deno_core = { version = "0.122.0", path = "../core" }
+deno_core = { version = "0.122.0", path = "../core", features = ["build-time-includes"] }
 deno_crypto = { version = "0.54.0", path = "../ext/crypto" }
 deno_fetch = { version = "0.63.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.27.0", path = "../ext/ffi" }

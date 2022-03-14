@@ -1,0 +1,18 @@
+[package]
+name = "compile-test-crate"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "compile-test-crate"
+path = "main.rs"
+
+[features]
+build-time-includes = ["deno_core/build-time-includes"]
+snapshot = []
+
+[dependencies]
+deno_core = { version = "0.112.0", path = "../.." }
+
+[build-dependencies]
+deno_core = { version = "0.112.0", path = "../.." }
