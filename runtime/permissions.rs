@@ -2886,21 +2886,4 @@ mod tests {
     .unwrap();
     assert_eq!(worker_perms.write.denied_list, main_perms.write.denied_list);
   }
-
-  #[test]
-  fn fs_test_while_deleted_dir_with_relative_path() {
-    let mut perms = Permissions::allow_all();
-    let mut rng = deno_crypto::rand::thread_rng();
-    let unique = rng.gen::<u32>();
-    let tmp = std::env::temp_dir().join(format!("{:08x}", unique));
-    std::fs::create_dir(&tmp).unwrap();
-    std::env::set_current_dir(&tmp).unwrap();
-    let pathname = std::path::Path::new("./foo");
-    std::fs::create_dir(pathname).unwrap();
-    std::env::set_current_dir(pathname).unwrap();
-    std::fs::remove_dir(std::env::current_dir().unwrap()).unwrap();
-    assert!(perms.write.check(&pathname.join("x")).is_err());
-    assert!(perms.read.check(&pathname.join("x")).is_err());
-    assert!(perms.ffi.check(Some(&pathname.join("x"))).is_err());
-  }
 }

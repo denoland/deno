@@ -1,0 +1,5 @@
+error: Uncaught (in promise) NotFound: Failed to get current working directory
+await Deno.mkdir('X', { recursive: true });
+^
+    at async Object.mkdir (deno:runtime/js/30_fs.js:109:5)
+    at async file://[WILDCARD]deno/cli/tests/testdata/fs_while_deleted_dir.js:4:1

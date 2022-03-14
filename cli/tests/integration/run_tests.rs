@@ -2500,3 +2500,8 @@ itest!(colors_without_global_this {
   args: "run colors_without_globalThis.js",
   output_str: Some("true\n"),
 });
+
+itest!(fs_while_deleted_dir {
+  args: "run fs_while_deleted_dir.js",
+  output: "fs_while_deleted_dir.js.out",
+});
