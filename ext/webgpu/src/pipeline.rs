@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -57,6 +58,7 @@ pub struct CreateComputePipelineArgs {
   compute: GpuProgrammableStage,
 }
 
+#[op]
 pub fn op_webgpu_create_compute_pipeline(
   state: &mut OpState,
   args: CreateComputePipelineArgs,
@@ -126,6 +128,7 @@ pub struct PipelineLayout {
   err: Option<WebGpuError>,
 }
 
+#[op]
 pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   state: &mut OpState,
   args: ComputePipelineGetBindGroupLayoutArgs,
@@ -303,6 +306,7 @@ pub struct CreateRenderPipelineArgs {
   fragment: Option<GpuFragmentState>,
 }
 
+#[op]
 pub fn op_webgpu_create_render_pipeline(
   state: &mut OpState,
   args: CreateRenderPipelineArgs,
@@ -404,6 +408,7 @@ pub struct RenderPipelineGetBindGroupLayoutArgs {
   index: u32,
 }
 
+#[op]
 pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   state: &mut OpState,
   args: RenderPipelineGetBindGroupLayoutArgs,

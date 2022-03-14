@@ -6,10 +6,9 @@ import {
   Deferred,
   deferred,
   delay,
+  execCode,
   unreachable,
 } from "./test_util.ts";
-
-const decoder = new TextDecoder();
 
 Deno.test(async function functionParameterBindingSuccess() {
   const promise = deferred();
@@ -577,21 +576,6 @@ Deno.test(
     await p;
   },
 );
-
-async function execCode(code: string) {
-  const p = Deno.run({
-    cmd: [
-      Deno.execPath(),
-      "eval",
-      "--unstable",
-      code,
-    ],
-    stdout: "piped",
-  });
-  const [status, output] = await Promise.all([p.status(), p.output()]);
-  p.close();
-  return [status.code, decoder.decode(output)];
-}
 
 Deno.test({
   name: "unrefTimer",

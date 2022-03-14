@@ -1,12 +1,15 @@
-use crate::OpFn;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
+use std::task::Context;
 
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
 pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
-pub type OpPair = (&'static str, Box<OpFn>);
-pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
+pub type OpFnRef = v8::FunctionCallback;
+pub type OpPair = (&'static str, OpFnRef);
+pub type OpMiddlewareFn = dyn Fn(&'static str, OpFnRef) -> OpFnRef;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
+pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
 
 #[derive(Default)]
 pub struct Extension {
@@ -14,6 +17,7 @@ pub struct Extension {
   ops: Option<Vec<OpPair>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
+  event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
 }
 
@@ -56,6 +60,22 @@ impl Extension {
   pub fn init_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
     self.middleware_fn.take()
   }
+
+  pub fn init_event_loop_middleware(&mut self) -> Option<Box<OpEventLoopFn>> {
+    self.event_loop_middleware.take()
+  }
+
+  pub fn run_event_loop_middleware(
+    &self,
+    op_state: &mut OpState,
+    cx: &mut Context,
+  ) -> bool {
+    self
+      .event_loop_middleware
+      .as_ref()
+      .map(|f| f(op_state, cx))
+      .unwrap_or(false)
+  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
@@ -65,6 +85,7 @@ pub struct ExtensionBuilder {
   ops: Vec<OpPair>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
+  event_loop_middleware: Option<Box<OpEventLoopFn>>,
 }
 
 impl ExtensionBuilder {
@@ -88,9 +109,17 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+    F: Fn(&'static str, OpFnRef) -> OpFnRef + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
+    self
+  }
+
+  pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
+  where
+    F: Fn(&mut OpState, &mut Context) -> bool + 'static,
+  {
+    self.event_loop_middleware = Some(Box::new(middleware_fn));
     self
   }
 
@@ -102,6 +131,7 @@ impl ExtensionBuilder {
       ops,
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
+      event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
     }
   }

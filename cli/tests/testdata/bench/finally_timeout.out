@@ -1,0 +1,19 @@
+Check [WILDCARD]/bench/finally_timeout.ts
+running 2 benches from [WILDCARD]/bench/finally_timeout.ts
+bench error ... 1000 iterations FAILED ([WILDCARD])
+bench success ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+
+failures:
+
+error
+Error: fail
+    at [WILDCARD]/bench/finally_timeout.ts:4:11
+    at [WILDCARD]
+
+failures:
+
+	error
+
+bench result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Bench failed

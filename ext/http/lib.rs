@@ -20,8 +20,8 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -72,19 +72,13 @@ pub fn init() -> Extension {
       "01_http.js",
     ))
     .ops(vec![
-      ("op_http_accept", op_async(op_http_accept)),
-      ("op_http_read", op_async(op_http_read)),
-      ("op_http_write_headers", op_async(op_http_write_headers)),
-      ("op_http_write", op_async(op_http_write)),
-      ("op_http_shutdown", op_async(op_http_shutdown)),
-      (
-        "op_http_websocket_accept_header",
-        op_sync(op_http_websocket_accept_header),
-      ),
-      (
-        "op_http_upgrade_websocket",
-        op_async(op_http_upgrade_websocket),
-      ),
+      op_http_accept::decl(),
+      op_http_read::decl(),
+      op_http_write_headers::decl(),
+      op_http_write::decl(),
+      op_http_shutdown::decl(),
+      op_http_websocket_accept_header::decl(),
+      op_http_upgrade_websocket::decl(),
     ])
     .build()
 }
@@ -371,6 +365,7 @@ struct NextRequestResponse(
   String,
 );
 
+#[op]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -501,6 +496,7 @@ struct RespondArgs(
   Vec<(ByteString, ByteString)>,
 );
 
+#[op]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
@@ -610,6 +606,10 @@ async fn op_http_write_headers(
         body_compressible && data.len() > 20 && accepts_compression;
 
       if should_compress {
+        // Drop 'content-length' header. Hyper will update it using compressed body.
+        if let Some(headers) = builder.headers_mut() {
+          headers.remove("content-length");
+        }
         // If user provided a ETag header for uncompressed data, we need to
         // ensure it is a Weak Etag header ("W/").
         if let Some(value) = etag_header {
@@ -646,7 +646,7 @@ async fn op_http_write_headers(
             // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
             let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
             writer.write_all(&data.into_bytes())?;
-            body = builder.body(writer.finish().unwrap().into())?;
+            body = builder.body(writer.finish()?.into())?;
           }
         }
       } else {
@@ -693,6 +693,7 @@ async fn op_http_write_headers(
   }
 }
 
+#[op]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -733,6 +734,7 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
+#[op]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -747,6 +749,7 @@ async fn op_http_shutdown(
   Ok(())
 }
 
+#[op]
 async fn op_http_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -795,6 +798,7 @@ async fn op_http_read(
   fut.try_or_cancel(cancel_handle).await
 }
 
+#[op]
 fn op_http_websocket_accept_header(
   _: &mut OpState,
   key: String,
@@ -807,6 +811,7 @@ fn op_http_websocket_accept_header(
   Ok(base64::encode(digest))
 }
 
+#[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

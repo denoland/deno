@@ -4,6 +4,7 @@ use bencher::{benchmark_group, benchmark_main, Bencher};
 use serde::Deserialize;
 
 use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::ByteString;
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -135,6 +136,25 @@ fn de_tuple_v8_opt(b: &mut Bencher) {
   });
 }
 
+fn de_bstr_v8_12_b(b: &mut Bencher) {
+  dedo(r#""hello world\n""#, |scope, v| {
+    b.iter(move || {
+      let _: ByteString = serde_v8::from_v8(scope, v).unwrap();
+    });
+  });
+}
+
+fn de_bstr_v8_1024_b(b: &mut Bencher) {
+  dedo(
+    r#""hello world\n".repeat(1e2).slice(0, 1024)"#,
+    |scope, v| {
+      b.iter(move || {
+        let _: ByteString = serde_v8::from_v8(scope, v).unwrap();
+      });
+    },
+  );
+}
+
 benchmark_group!(
   benches,
   de_struct_v8,
@@ -152,6 +172,8 @@ benchmark_group!(
   de_tuple_v8,
   de_tuple_json,
   de_tuple_v8_opt,
+  de_bstr_v8_12_b,
+  de_bstr_v8_1024_b,
 );
 
 benchmark_main!(benches);
