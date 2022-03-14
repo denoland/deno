@@ -749,22 +749,12 @@ dependencies = [
  "data-url",
  "deno_ast",
  "deno_bench_util",
- "deno_broadcast_channel",
- "deno_console",
  "deno_core",
- "deno_crypto",
  "deno_doc",
- "deno_fetch",
  "deno_graph",
  "deno_lint",
- "deno_net",
  "deno_runtime",
  "deno_task_shell",
- "deno_url",
- "deno_web",
- "deno_webgpu",
- "deno_websocket",
- "deno_webstorage",
  "dissimilar",
  "dprint-plugin-json",
  "dprint-plugin-markdown",
@@ -866,6 +856,7 @@ version = "0.122.0"
 dependencies = [
  "anyhow",
  "deno_ast",
+ "deno_ops",
  "futures",
  "indexmap",
  "libc",
@@ -1027,6 +1018,16 @@ dependencies = [
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
+]
+
+[[package]]
+name = "deno_ops"
+version = "0.1.1"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2 1.0.36",
+ "quote 1.0.14",
+ "syn 1.0.85",
 ]
 
 [[package]]
@@ -2933,6 +2934,16 @@ dependencies = [
  "ctor",
  "diff",
  "output_vt100",
+]
+
+[[package]]
+name = "proc-macro-crate"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17d47ce914bf4de440332250b0edd23ce48c005f59fab39d3335866b114f11a"
+dependencies = [
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
