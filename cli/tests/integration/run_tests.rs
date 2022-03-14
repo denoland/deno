@@ -1574,6 +1574,11 @@ itest!(worker_drop_handle_race {
   exit_code: 1,
 });
 
+itest!(worker_drop_handle_race_terminate {
+  args: "run --unstable worker_drop_handle_race_terminate.js",
+  output: "worker_drop_handle_race_terminate.js.out",
+});
+
 itest!(worker_close_nested {
   args: "run --quiet --reload --allow-read worker_close_nested.js",
   output: "worker_close_nested.js.out",
@@ -2510,4 +2515,9 @@ itest!(config_not_auto_discovered_for_remote_script {
   args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
   output_str: Some("ok\n"),
   http_server: true,
+});
+
+itest!(worker_terminate_doesnt_block {
+  args: "run worker_terminate_doesnt_block.js",
+  output_str: Some(""),
 });
