@@ -286,11 +286,7 @@ fn create_compiler_snapshot(
             format!("An invalid specifier was requested: {}", args.specifier),
           ))
         }
-    } else {
-      Err(custom_error(
-        "InvalidSpecifier",
-        format!("An invalid specifier was requested: {}", args.specifier),
-      ))
+      }
     }
   }
   let js_runtime = JsRuntime::new(RuntimeOptions {
