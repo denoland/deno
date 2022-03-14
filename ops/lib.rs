@@ -301,10 +301,12 @@ fn is_unit_result(ty: &syn::Type) -> bool {
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
   tokens(arg).ends_with(": & mut OpState")
+    || tokens(arg).ends_with(": & mut deno_core :: OpState")
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
   tokens(arg).ends_with(": Rc < RefCell < OpState > >")
+    || tokens(arg).ends_with(": Rc < RefCell < deno_core :: OpState > >")
 }
 
 fn tokens(x: impl ToTokens) -> String {
