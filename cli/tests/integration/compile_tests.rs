@@ -335,7 +335,7 @@ fn compile_with_directory_exists_error() {
     .unwrap();
   assert!(!output.status.success());
   let expected_stderr =
-    format!("Could not compile: {:?} is a directory.\n", &exe);
+    format!("Could not compile: {:?} is a directory, you can use the `--output` flag to provide an alternative name.\n", &exe);
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert!(stderr.contains(&expected_stderr));
 }

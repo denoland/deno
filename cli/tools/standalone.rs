@@ -183,7 +183,7 @@ pub async fn write_standalone_binary(
   if output.exists() {
     // If the output is a directory, throw error
     if output.is_dir() {
-      bail!("Could not compile: {:?} is a directory.", &output);
+      bail!("Could not compile: {:?} is a directory, you can use the `--output` flag to provide an alternative name.", &output);
     }
 
     // Make sure we don't overwrite any file not created by Deno compiler.
