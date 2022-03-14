@@ -104,7 +104,6 @@ fn get_webstorage(
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
-  _: (),
 ) -> Result<u32, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
@@ -201,7 +200,6 @@ pub fn op_webstorage_remove(
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
-  _: (),
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
@@ -215,7 +213,6 @@ pub fn op_webstorage_clear(
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   persistent: bool,
-  _: (),
 ) -> Result<Vec<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 

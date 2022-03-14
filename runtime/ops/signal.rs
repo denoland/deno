@@ -178,7 +178,6 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
 fn op_signal_bind(
   state: &mut OpState,
   sig: String,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
@@ -200,7 +199,6 @@ fn op_signal_bind(
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<bool, AnyError> {
   let resource = state
     .borrow_mut()
@@ -220,7 +218,6 @@ async fn op_signal_poll(
 pub fn op_signal_unbind(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
   state.resource_table.close(rid)?;
   Ok(())
@@ -228,30 +225,18 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 #[op]
-pub fn op_signal_bind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+pub fn op_signal_bind(_state: &mut OpState) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
 #[op]
-fn op_signal_unbind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+fn op_signal_unbind(_state: &mut OpState) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
 #[op]
-async fn op_signal_poll(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+async fn op_signal_poll(_state: Rc<RefCell<OpState>>) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
