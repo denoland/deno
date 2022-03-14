@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use deno_core::error::type_error;
+use deno_core::op;
+
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
@@ -157,6 +159,7 @@ impl BlobPart for SlicedBlobPart {
   }
 }
 
+#[op]
 pub fn op_blob_create_part(
   state: &mut deno_core::OpState,
   data: ZeroCopyBuf,
@@ -175,6 +178,7 @@ pub struct SliceOptions {
   len: usize,
 }
 
+#[op]
 pub fn op_blob_slice_part(
   state: &mut deno_core::OpState,
   id: Uuid,
@@ -200,6 +204,7 @@ pub fn op_blob_slice_part(
   Ok(id)
 }
 
+#[op]
 pub async fn op_blob_read_part(
   state: Rc<RefCell<deno_core::OpState>>,
   id: Uuid,
@@ -215,6 +220,7 @@ pub async fn op_blob_read_part(
   Ok(ZeroCopyBuf::from(buf.to_vec()))
 }
 
+#[op]
 pub fn op_blob_remove_part(
   state: &mut deno_core::OpState,
   id: Uuid,
@@ -225,6 +231,7 @@ pub fn op_blob_remove_part(
   Ok(())
 }
 
+#[op]
 pub fn op_blob_create_object_url(
   state: &mut deno_core::OpState,
   media_type: String,
@@ -250,6 +257,7 @@ pub fn op_blob_create_object_url(
   Ok(url.to_string())
 }
 
+#[op]
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
   url: String,
@@ -273,6 +281,7 @@ pub struct ReturnBlobPart {
   pub size: usize,
 }
 
+#[op]
 pub fn op_blob_from_object_url(
   state: &mut deno_core::OpState,
   url: String,

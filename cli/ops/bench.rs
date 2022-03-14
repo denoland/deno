@@ -1,7 +1,7 @@
 use crate::tools::bench::BenchEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -15,17 +15,11 @@ use uuid::Uuid;
 pub fn init(sender: UnboundedSender<BenchEvent>) -> Extension {
   Extension::builder()
     .ops(vec![
-      (
-        "op_pledge_test_permissions",
-        op_sync(op_pledge_test_permissions),
-      ),
-      (
-        "op_restore_test_permissions",
-        op_sync(op_restore_test_permissions),
-      ),
-      ("op_get_bench_origin", op_sync(op_get_bench_origin)),
-      ("op_dispatch_bench_event", op_sync(op_dispatch_bench_event)),
-      ("op_bench_now", op_sync(op_bench_now)),
+      op_pledge_test_permissions::decl(),
+      op_restore_test_permissions::decl(),
+      op_get_bench_origin::decl(),
+      op_dispatch_bench_event::decl(),
+      op_bench_now::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
@@ -37,6 +31,7 @@ pub fn init(sender: UnboundedSender<BenchEvent>) -> Extension {
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, Permissions);
 
+#[op]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: ChildPermissionsArg,
@@ -55,6 +50,7 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
@@ -73,6 +69,7 @@ pub fn op_restore_test_permissions(
   }
 }
 
+#[op]
 fn op_get_bench_origin(
   state: &mut OpState,
   _: (),
@@ -81,6 +78,7 @@ fn op_get_bench_origin(
   Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
+#[op]
 fn op_dispatch_bench_event(
   state: &mut OpState,
   event: BenchEvent,
@@ -92,6 +90,7 @@ fn op_dispatch_bench_event(
   Ok(())
 }
 
+#[op]
 fn op_bench_now(state: &mut OpState, _: (), _: ()) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
   let ns_u64 = u64::try_from(ns)?;

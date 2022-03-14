@@ -8,8 +8,8 @@ use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -190,6 +190,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
+#[op]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   url: String,
@@ -229,6 +230,7 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+#[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
@@ -378,6 +380,7 @@ pub enum SendValue {
   Ping,
 }
 
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -406,6 +409,7 @@ pub struct CloseArgs {
   reason: Option<String>,
 }
 
+#[op]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
@@ -440,6 +444,7 @@ pub enum NextEventResponse {
   Closed,
 }
 
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -486,14 +491,11 @@ pub fn init<P: WebSocketPermissions + 'static>(
       "02_websocketstream.js",
     ))
     .ops(vec![
-      (
-        "op_ws_check_permission_and_cancel_handle",
-        op_sync(op_ws_check_permission_and_cancel_handle::<P>),
-      ),
-      ("op_ws_create", op_async(op_ws_create::<P>)),
-      ("op_ws_send", op_async(op_ws_send)),
-      ("op_ws_close", op_async(op_ws_close)),
-      ("op_ws_next_event", op_async(op_ws_next_event)),
+      op_ws_check_permission_and_cancel_handle::decl::<P>(),
+      op_ws_create::decl::<P>(),
+      op_ws_send::decl(),
+      op_ws_close::decl(),
+      op_ws_next_event::decl(),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));

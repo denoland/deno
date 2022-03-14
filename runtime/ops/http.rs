@@ -4,8 +4,7 @@ use std::rc::Rc;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -23,13 +22,11 @@ use tokio::net::TcpStream;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![
-      ("op_http_start", op_sync(op_http_start)),
-      ("op_http_upgrade", op_async(op_http_upgrade)),
-    ])
+    .ops(vec![op_http_start::decl(), op_http_upgrade::decl()])
     .build()
 }
 
+#[op]
 fn op_http_start(
   state: &mut OpState,
   tcp_stream_rid: ResourceId,
@@ -85,6 +82,7 @@ pub struct HttpUpgradeResult {
   read_buf: ZeroCopyBuf,
 }
 
+#[op]
 async fn op_http_upgrade(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
