@@ -898,7 +898,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
-    let error = v8::Exception::error(scope, message);
+    let error = v8::Exception::type_error(scope, message);
     scope.throw_exception(error);
   }
 
@@ -1101,15 +1101,25 @@ fn serialize(
     }
   }
 
-  match value_serializer.write_value(scope.get_current_context(), value) {
-    Some(true) => {
+  let must_throw = {
+    let scope = &mut v8::TryCatch::new(scope);
+    let ret = value_serializer.write_value(scope.get_current_context(), value);
+    if scope.has_caught() || scope.has_terminated() {
+      scope.rethrow();
+      false
+    } else if let Some(true) = ret {
       let vector = value_serializer.release();
       let zbuf: ZeroCopyBuf = vector.into();
       rv.set(to_v8(scope, zbuf).unwrap());
+      false
+    } else {
+      // We throw the TypeError outside of the v8::TryCatch scope.
+      true
     }
-    _ => {
-      throw_type_error(scope, "Failed to serialize response");
-    }
+  };
+
+  if must_throw {
+    throw_type_error(scope, "Failed to serialize response");
   }
 }
 
