@@ -228,7 +228,7 @@ fn create_compiler_snapshot(
     args: LoadArgs,
     _: (),
   ) -> Result<Value, AnyError> {
-    let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
+    let op_crate_libs = state.borrow::<HashMap<&str, &str>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset =
       Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
@@ -249,7 +249,7 @@ fn create_compiler_snapshot(
         // if it comes from an op crate, we were supplied with the path to the
         // file.
         let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-          op_crate_lib.clone()
+          PathBuf::from(op_crate_lib).canonicalize().unwrap()
         // otherwise we are will generate the path ourself
         } else {
           path_dts.join(format!("lib.{}.d.ts", lib))
@@ -261,32 +261,17 @@ fn create_compiler_snapshot(
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
         }))
-      // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
-      // parse out just the name so we can lookup the asset.
-      } else if let Some(caps) = re_asset.captures(&args.specifier) {
-        if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
-          // if it comes from an op crate, we were supplied with the path to the
-          // file.
-          let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-            PathBuf::from(op_crate_lib).canonicalize().unwrap()
-          // otherwise we are will generate the path ourself
-          } else {
-            path_dts.join(format!("lib.{}.d.ts", lib))
-          };
-          let data = std::fs::read_to_string(path)?;
-          Ok(json!({
-            "data": data,
-            "hash": "1",
-            // this corresponds to `ts.ScriptKind.TypeScript`
-            "scriptKind": 3
-          }))
-        } else {
-          Err(custom_error(
-            "InvalidSpecifier",
-            format!("An invalid specifier was requested: {}", args.specifier),
-          ))
-        }
+      } else {
+        Err(custom_error(
+          "InvalidSpecifier",
+          format!("An invalid specifier was requested: {}", args.specifier),
+        ))
       }
+    } else {
+      Err(custom_error(
+        "InvalidSpecifier",
+        format!("An invalid specifier was requested: {}", args.specifier),
+      ))
     }
   }
   let js_runtime = JsRuntime::new(RuntimeOptions {
