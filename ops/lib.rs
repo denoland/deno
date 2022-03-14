@@ -92,12 +92,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Generate the body of a v8 func for an async op
 fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let uses_opstate = f
-    .sig
-    .inputs
-    .first()
-    .map(is_rc_refcell_opstate)
-    .unwrap_or_default();
+  let arg0 = f.sig.inputs.first();
+  let uses_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
     quote! { state, }
   } else {
@@ -157,12 +153,8 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let uses_opstate = f
-    .sig
-    .inputs
-    .first()
-    .map(is_mut_ref_opstate)
-    .unwrap_or_default();
+  let arg0 = f.sig.inputs.first();
+  let uses_opstate = arg0.map(is_mut_ref_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
     quote! { op_state, }
   } else {
