@@ -103,7 +103,7 @@ pub fn v8_version() -> &'static str {
 
 /// An internal module re-exporting funcs used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
-pub mod __ops {
+pub mod _ops {
   pub use super::bindings::throw_type_error;
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;

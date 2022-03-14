@@ -50,9 +50,10 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let core = core_import();
 
-  let v8_body = match func.sig.asyncness.is_some() {
-    true => codegen_v8_async(&core, &func),
-    false => codegen_v8_sync(&core, &func),
+  let v8_body = if func.sig.asyncness.is_some() {
+    codegen_v8_async(&core, &func)
+  } else {
+    codegen_v8_sync(&core, &func)
   };
 
   // Generate wrapper
@@ -109,7 +110,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let promise_id: #core::PromiseId = match promise_id {
       Ok(promise_id) => promise_id,
       Err(err) => {
-        #core::__ops::throw_type_error(scope, format!("invalid promise id: {}", err));
+        #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
         return;
       }
     };
@@ -136,9 +137,9 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
       state.get_error_class_fn
     };
 
-    #core::__ops::queue_async_op(scope, async move {
+    #core::_ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(state, a, b).await;
-      (promise_id, op_id, #core::__ops::to_op_result(get_class, result))
+      (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
 }
@@ -198,7 +199,7 @@ fn codegen_arg(
       Ok(v) => v,
       Err(err) => {
         let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
-        return #core::__ops::throw_type_error(scope, msg);
+        return #core::_ops::throw_type_error(scope, msg);
       }
     };
   }
@@ -216,12 +217,13 @@ fn codegen_sync_ret(
   };
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
-  let ok_block = match is_unit_result(&**ret_type) {
-    true => quote! {},
-    false => quote! {
+  let ok_block = if is_unit_result(&**ret_type) {
+    quote! {}
+  } else {
+    quote! {
       let ret = #core::serde_v8::to_v8(scope, v).unwrap();
       rv.set(ret);
-    },
+    }
   };
 
   quote! {

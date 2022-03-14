@@ -20,9 +20,10 @@ use std::task::Context;
 use std::task::Poll;
 
 /// Wrapper around a Future, which causes that Future to be polled immediately.
-/// (Background: ops are stored in a `FuturesUnordered` structure which polls
+///
+/// Background: ops are stored in a `FuturesUnordered` structure which polls
 /// them, but without the `OpCall` wrapper this doesn't happen until the next
-/// turn of the event loop, which is too late for certain ops.)
+/// turn of the event loop, which is too late for certain ops.
 pub struct OpCall<T>(MaybeDone<Pin<Box<dyn Future<Output = T>>>>);
 
 impl<T> OpCall<T> {
