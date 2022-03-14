@@ -679,3 +679,77 @@ Deno.test({
     Deno.refTimer(NaN);
   },
 });
+
+Deno.test({
+  name: "AbortSignal.timeout() with no listeners",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      // This unref timer expires before the signal, and if it does expire, then
+      // it means the signal has kept the event loop alive.
+      const timer = setTimeout(() => console.log("Unexpected!"), 1500);
+      Deno.unrefTimer(timer);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listeners",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(1000);
+      signal.addEventListener("abort", () => console.log("Event fired!"));
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Event fired!\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with removed listeners",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      const callback = () => console.log("Unexpected: Event fired");
+      signal.addEventListener("abort", callback);
+
+      setTimeout(() => {
+        console.log("Removing the listener.");
+        signal.removeEventListener("abort", callback);
+      }, 500);
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Removing the listener.\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listener for a non-abort event",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      signal.addEventListener("someOtherEvent", () => {
+        console.log("Unexpected: someOtherEvent called");
+      });
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});

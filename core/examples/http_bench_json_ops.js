@@ -11,12 +11,12 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.opSync("listen");
+  return Deno.core.opSync("op_listen");
 }
 
 /** Accepts a connection, returns rid. */
 function accept(serverRid) {
-  return Deno.core.opAsync("accept", serverRid);
+  return Deno.core.opAsync("op_accept", serverRid);
 }
 
 async function serve(rid) {

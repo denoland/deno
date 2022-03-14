@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::extensions::OpPair;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -8,21 +9,18 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
-use crate::Op;
-use crate::OpId;
-use crate::OpPayload;
-use crate::OpResult;
-use crate::OpTable;
+use crate::OpState;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use log::debug;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
 use std::option::Option;
+use std::os::raw::c_void;
+use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -31,88 +29,88 @@ use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
-const UNDEFINED_OP_ID_MSG: &str =
-  "invalid op id: received `undefined` instead of an integer.
-This error is often caused by a typo in an op name, or not calling
-JsRuntime::sync_ops_cache() after JsRuntime initialization.";
-
-pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
-  Lazy::new(|| {
-    v8::ExternalReferences::new(&[
-      v8::ExternalReference {
-        function: opcall_async.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: opcall_sync.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: ref_op.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: unref_op.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_macrotask_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_nexttick_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_promise_reject_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_uncaught_exception_callback.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: run_microtasks.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: has_tick_scheduled.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_has_tick_scheduled.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: eval_context.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: queue_microtask.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: create_host_object.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: encode.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: decode.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: serialize.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: deserialize.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: get_promise_details.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: get_proxy_details.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: is_proxy.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: memory_usage.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: call_console.map_fn_to(),
-      },
-      v8::ExternalReference {
-        function: set_wasm_streaming_callback.map_fn_to(),
-      },
-    ])
+pub fn external_references(
+  ops: &[OpPair],
+  op_state: Rc<RefCell<OpState>>,
+) -> v8::ExternalReferences {
+  let mut refs = vec![
+    v8::ExternalReference {
+      function: ref_op.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: unref_op.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_macrotask_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_nexttick_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_promise_reject_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_uncaught_exception_callback.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: run_microtasks.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: has_tick_scheduled.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_has_tick_scheduled.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: eval_context.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: queue_microtask.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: create_host_object.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: encode.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: decode.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: serialize.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: deserialize.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: get_promise_details.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: get_proxy_details.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: is_proxy.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: memory_usage.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: call_console.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: set_wasm_streaming_callback.map_fn_to(),
+    },
+  ];
+  let op_refs = ops
+    .iter()
+    .map(|(_, opref)| v8::ExternalReference { function: *opref });
+  refs.extend(op_refs);
+  let raw_op_state = Rc::as_ptr(&op_state) as *mut c_void;
+  refs.push(v8::ExternalReference {
+    pointer: raw_op_state,
   });
+  v8::ExternalReferences::new(&refs)
+}
 
 pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
@@ -154,6 +152,9 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
+  ops: &[OpPair],
+  snapshot_loaded: bool,
+  op_state: Rc<RefCell<OpState>>,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -162,17 +163,43 @@ pub fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  // global.Deno = { core: {} };
   let deno_key = v8::String::new(scope, "Deno").unwrap();
+  let core_key = v8::String::new(scope, "core").unwrap();
+  let ops_key = v8::String::new(scope, "ops").unwrap();
+  // Snapshot already registered `Deno.core.ops` but
+  // extensions may provide ops that aren't part of the snapshot.
+  //
+  // TODO(@littledivy): This is extra complexity for
+  // a really weird usecase. Remove this once all
+  // tsc ops are static at snapshot time.
+  if snapshot_loaded {
+    // Grab Deno.core.ops object
+    let deno_val = global.get(scope, deno_key.into()).unwrap();
+    let deno_val = v8::Local::<v8::Object>::try_from(deno_val)
+      .expect("`Deno` not in global scope.");
+    let core_val = deno_val.get(scope, core_key.into()).unwrap();
+    let core_val = v8::Local::<v8::Object>::try_from(core_val)
+      .expect("`Deno.core` not in global scope");
+    let ops_val = core_val.get(scope, ops_key.into()).unwrap();
+    let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
+      .expect("`Deno.core.ops` not in global scope");
+
+    let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
+    for (name, opfn) in ops {
+      set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
+    }
+    return scope.escape(context);
+  }
+
+  // global.Deno = { core: { ops: {} } };
   let deno_val = v8::Object::new(scope);
   global.set(scope, deno_key.into(), deno_val.into());
-  let core_key = v8::String::new(scope, "core").unwrap();
   let core_val = v8::Object::new(scope);
   deno_val.set(scope, core_key.into(), core_val.into());
+  let ops_val = v8::Object::new(scope);
+  core_val.set(scope, ops_key.into(), ops_val.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "opcallSync", opcall_sync);
-  set_func(scope, core_val, "opcallAsync", opcall_async);
   set_func(scope, core_val, "refOp_", ref_op);
   set_func(scope, core_val, "unrefOp_", unref_op);
   set_func(
@@ -227,10 +254,14 @@ pub fn initialize_context<'s>(
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
+  // Bind functions to Deno.core.ops.*
+  let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
+  for (name, opfn) in ops {
+    set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
+  }
   scope.escape(context)
 }
 
-#[inline(always)]
 pub fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
@@ -238,8 +269,26 @@ pub fn set_func(
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
   let key = v8::String::new(scope, name).unwrap();
-  let tmpl = v8::FunctionTemplate::new(scope, callback);
-  let val = tmpl.get_function(scope).unwrap();
+  let val = v8::Function::new(scope, callback).unwrap();
+  val.set_name(key);
+  obj.set(scope, key.into(), val.into());
+}
+
+// Register a raw v8::FunctionCallback
+// with some external data.
+pub fn set_func_raw(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  name: &'static str,
+  callback: v8::FunctionCallback,
+  external_data: *const c_void,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let external = v8::External::new(scope, external_data as *mut c_void);
+  let val = v8::Function::builder_raw(callback)
+    .data(external.into())
+    .build(scope)
+    .unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }
@@ -456,137 +505,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       PromiseResolveAfterResolved => {
         // Should not warn. See #1272
       }
-    }
-  }
-}
-
-fn opcall_sync<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow_mut();
-
-  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-    .map(|l| l.value() as OpId)
-    .map_err(Error::from)
-  {
-    Ok(op_id) => op_id,
-    Err(err) => {
-      let msg = if args.get(0).is_undefined() {
-        UNDEFINED_OP_ID_MSG.to_string()
-      } else {
-        format!("invalid op id: {}", err)
-      };
-      throw_type_error(scope, msg);
-      return;
-    }
-  };
-
-  // opcall(0) returns obj of all ops, handle as special case
-  if op_id == 0 {
-    // TODO: Serialize as HashMap when serde_v8 supports maps ...
-    let ops = OpTable::op_entries(state.op_state.clone());
-    rv.set(to_v8(scope, ops).unwrap());
-    return;
-  }
-
-  // Deserializable args (may be structured args or ZeroCopyBuf)
-  let a = args.get(1);
-  let b = args.get(2);
-
-  let payload = OpPayload {
-    scope,
-    a,
-    b,
-    op_id,
-    promise_id: 0,
-  };
-  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
-  match op {
-    Op::Sync(result) => {
-      state.op_state.borrow().tracker.track_sync(op_id);
-      rv.set(result.to_v8(scope).unwrap());
-    }
-    Op::NotFound => {
-      throw_type_error(scope, format!("Unknown op id: {}", op_id));
-    }
-    // Async ops (ref or unref)
-    _ => {
-      throw_type_error(
-        scope,
-        format!("Can not call an async op [{}] with opSync()", op_id),
-      );
-    }
-  }
-}
-
-fn opcall_async<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-    .map(|l| l.value() as OpId)
-    .map_err(Error::from)
-  {
-    Ok(op_id) => op_id,
-    Err(err) => {
-      let msg = if args.get(0).is_undefined() {
-        UNDEFINED_OP_ID_MSG.to_string()
-      } else {
-        format!("invalid op id: {}", err)
-      };
-      throw_type_error(scope, msg);
-      return;
-    }
-  };
-
-  // PromiseId
-  let arg1 = args.get(1);
-  let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
-    .map(|l| l.value() as PromiseId)
-    .map_err(Error::from);
-  // Fail if promise id invalid (not an int)
-  let promise_id: PromiseId = match promise_id {
-    Ok(promise_id) => promise_id,
-    Err(err) => {
-      throw_type_error(scope, format!("invalid promise id: {}", err));
-      return;
-    }
-  };
-
-  // Deserializable args (may be structured args or ZeroCopyBuf)
-  let a = args.get(2);
-  let b = args.get(3);
-
-  let payload = OpPayload {
-    scope,
-    a,
-    b,
-    op_id,
-    promise_id,
-  };
-  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
-  match op {
-    Op::Sync(result) => match result {
-      OpResult::Ok(_) => throw_type_error(
-        scope,
-        format!("Can not call a sync op [{}] with opAsync()", op_id),
-      ),
-      OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
-    },
-    Op::Async(fut) => {
-      state.op_state.borrow().tracker.track_async(op_id);
-      state.pending_ops.push(fut);
-      state.have_unpolled_ops = true;
-    }
-    Op::NotFound => {
-      throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
 }
@@ -980,7 +898,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
-    let error = v8::Exception::error(scope, message);
+    let error = v8::Exception::type_error(scope, message);
     scope.throw_exception(error);
   }
 
@@ -1183,15 +1101,25 @@ fn serialize(
     }
   }
 
-  match value_serializer.write_value(scope.get_current_context(), value) {
-    Some(true) => {
+  let must_throw = {
+    let scope = &mut v8::TryCatch::new(scope);
+    let ret = value_serializer.write_value(scope.get_current_context(), value);
+    if scope.has_caught() || scope.has_terminated() {
+      scope.rethrow();
+      false
+    } else if let Some(true) = ret {
       let vector = value_serializer.release();
       let zbuf: ZeroCopyBuf = vector.into();
       rv.set(to_v8(scope, zbuf).unwrap());
+      false
+    } else {
+      // We throw the TypeError outside of the v8::TryCatch scope.
+      true
     }
-    _ => {
-      throw_type_error(scope, "Failed to serialize response");
-    }
+  };
+
+  if must_throw {
+    throw_type_error(scope, "Failed to serialize response");
   }
 }
 
@@ -1471,7 +1399,7 @@ fn is_proxy(
   rv.set(v8::Boolean::new(scope, args.get(0).is_proxy()).into())
 }
 
-fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
+pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);

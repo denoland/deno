@@ -1,6 +1,6 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use std::borrow::Cow;
 
-use crate::OpFn;
 use crate::OpState;
 use anyhow::Error;
 use std::task::Context;
@@ -19,8 +19,9 @@ impl SourceLoader {
 }
 
 pub type SourcePair = (&'static str, SourceLoader);
-pub type OpPair = (&'static str, Box<OpFn>);
-pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
+pub type OpFnRef = v8::FunctionCallback;
+pub type OpPair = (&'static str, OpFnRef);
+pub type OpMiddlewareFn = dyn Fn(&'static str, OpFnRef) -> OpFnRef;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
 
@@ -122,7 +123,7 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+    F: Fn(&'static str, OpFnRef) -> OpFnRef + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
     self

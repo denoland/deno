@@ -3,6 +3,7 @@
 use std::num::NonZeroU32;
 
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -19,6 +20,7 @@ pub struct QueueSubmitArgs {
   command_buffers: Vec<ResourceId>,
 }
 
+#[op]
 pub fn op_webgpu_queue_submit(
   state: &mut OpState,
   args: QueueSubmitArgs,
@@ -73,6 +75,7 @@ pub struct QueueWriteBufferArgs {
   size: Option<usize>,
 }
 
+#[op]
 pub fn op_webgpu_write_buffer(
   state: &mut OpState,
   args: QueueWriteBufferArgs,
@@ -111,6 +114,7 @@ pub struct QueueWriteTextureArgs {
   size: wgpu_types::Extent3d,
 }
 
+#[op]
 pub fn op_webgpu_write_texture(
   state: &mut OpState,
   args: QueueWriteTextureArgs,
