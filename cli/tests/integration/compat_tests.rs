@@ -50,18 +50,21 @@ itest!(import_esm_from_cjs {
   args:
     "run --compat --unstable -A --quiet compat/import_esm_from_cjs/index.js",
   output_str: Some("function\n"),
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(test_runner_cjs {
   args: "test --compat --unstable -A --quiet compat/test_runner/cjs.js",
   exit_code: 1,
   output: "compat/test_runner/cjs.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(test_runner_esm {
   args: "test --compat --unstable -A --quiet compat/test_runner/esm.mjs",
   exit_code: 1,
   output: "compat/test_runner/esm.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 // Top level assertion test mostly just make sure that the test runner finishes correctly on compat mode
@@ -70,35 +73,48 @@ itest!(top_level_assertion_cjs {
   args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_cjs.js",
 	exit_code: 0,
   output: "compat/test_runner/top_level_assertion_cjs.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(top_level_assertion_esm {
   args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_esm.mjs",
 	exit_code: 0,
   output: "compat/test_runner/top_level_assertion_esm.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(top_level_fail_cjs {
   args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_cjs.js",
 	exit_code: 1,
   output: "compat/test_runner/top_level_fail_cjs.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(top_level_fail_esm {
   args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_esm.mjs",
 	exit_code: 1,
   output: "compat/test_runner/top_level_fail_esm.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(compat_worker {
   args: "run --compat --unstable -A --quiet --no-check compat/worker/worker_test.mjs",
   output: "compat/worker/worker_test.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 itest!(cjs_esm_interop {
   args:
     "run --compat --unstable -A --quiet --no-check compat/import_cjs_from_esm/main.mjs",
   output: "compat/import_cjs_from_esm.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
+});
+
+itest!(cjs_esm_interop_dynamic {
+  args:
+    "run --compat --unstable -A --quiet --no-check compat/import_cjs_from_esm/main_dynamic.mjs",
+  output: "compat/import_cjs_from_esm.out",
+  envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
 #[test]
@@ -121,7 +137,7 @@ fn require_in_repl() {
     Some(vec![
       "const foo = require('./compat/import_esm_from_cjs/index');",
     ]),
-    None,
+    Some(vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())]),
     false,
   );
   assert!(out.contains("function"));
@@ -150,7 +166,7 @@ fn native_modules_as_global_vars() {
     true,
     vec!["repl", "--compat", "--unstable", "--quiet"],
     Some(vec!["if(cluster && v8 && sys) { true } else { false }"]),
-    None,
+    Some(vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())]),
     false,
   );
   assert!(out.contains("true"));

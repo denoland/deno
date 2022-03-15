@@ -2,7 +2,6 @@
 
 use deno_core::include_js_files;
 use deno_core::Extension;
-use std::path::PathBuf;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -12,8 +11,4 @@ pub fn init() -> Extension {
       "02_console.js",
     ))
     .build()
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_console.d.ts")
 }

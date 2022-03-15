@@ -1705,6 +1705,7 @@ pub fn run_powershell_script_file(
 #[derive(Debug, Default)]
 pub struct CheckOutputIntegrationTest {
   pub args: &'static str,
+  pub args_vec: Vec<&'static str>,
   pub output: &'static str,
   pub input: Option<&'static str>,
   pub output_str: Option<&'static str>,
@@ -1715,7 +1716,15 @@ pub struct CheckOutputIntegrationTest {
 
 impl CheckOutputIntegrationTest {
   pub fn run(&self) {
-    let args = self.args.split_whitespace();
+    let args = if self.args_vec.is_empty() {
+      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
+    } else {
+      assert!(
+        self.args.is_empty(),
+        "Do not provide args when providing args_vec."
+      );
+      std::borrow::Cow::Borrowed(&self.args_vec)
+    };
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1730,7 +1739,7 @@ impl CheckOutputIntegrationTest {
     let mut command = deno_cmd();
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
-    command.args(args);
+    command.args(args.iter());
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());

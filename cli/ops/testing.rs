@@ -1,29 +1,23 @@
 use crate::tools::test::TestEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: Sender<TestEvent>) -> Extension {
+pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
   Extension::builder()
     .ops(vec![
-      (
-        "op_pledge_test_permissions",
-        op_sync(op_pledge_test_permissions),
-      ),
-      (
-        "op_restore_test_permissions",
-        op_sync(op_restore_test_permissions),
-      ),
-      ("op_get_test_origin", op_sync(op_get_test_origin)),
-      ("op_dispatch_test_event", op_sync(op_dispatch_test_event)),
+      op_pledge_test_permissions::decl(),
+      op_restore_test_permissions::decl(),
+      op_get_test_origin::decl(),
+      op_dispatch_test_event::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
@@ -35,6 +29,7 @@ pub fn init(sender: Sender<TestEvent>) -> Extension {
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, Permissions);
 
+#[op]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: ChildPermissionsArg,
@@ -53,6 +48,7 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
@@ -71,6 +67,7 @@ pub fn op_restore_test_permissions(
   }
 }
 
+#[op]
 fn op_get_test_origin(
   state: &mut OpState,
   _: (),
@@ -79,12 +76,13 @@ fn op_get_test_origin(
   Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
+#[op]
 fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
   _: (),
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<Sender<TestEvent>>().clone();
+  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
   sender.send(event).ok();
 
   Ok(())

@@ -25,8 +25,8 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -54,6 +54,9 @@ use io::Error;
 use io::Read;
 use io::Write;
 use serde::Deserialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -641,11 +644,11 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    ("op_tls_start", op_async(op_tls_start::<P>)),
-    ("op_tls_connect", op_async(op_tls_connect::<P>)),
-    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
-    ("op_tls_accept", op_async(op_tls_accept)),
-    ("op_tls_handshake", op_async(op_tls_handshake)),
+    op_tls_start::decl::<P>(),
+    op_tls_connect::decl::<P>(),
+    op_tls_listen::decl::<P>(),
+    op_tls_accept::decl(),
+    op_tls_handshake::decl(),
   ]
 }
 
@@ -762,6 +765,7 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
@@ -854,6 +858,7 @@ where
   })
 }
 
+#[op]
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
@@ -1013,6 +1018,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
@@ -1075,8 +1081,19 @@ where
   let bind_addr = resolve_addr_sync(hostname, port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let std_listener = std::net::TcpListener::bind(bind_addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if bind_addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  let socket_addr = socket2::SockAddr::from(bind_addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
   let tcp_listener = TcpListener::from_std(std_listener)?;
   let local_addr = tcp_listener.local_addr()?;
 
@@ -1098,6 +1115,7 @@ where
   })
 }
 
+#[op]
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -1149,6 +1167,7 @@ pub async fn op_tls_accept(
   })
 }
 
+#[op]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
