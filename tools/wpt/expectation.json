@@ -2741,14 +2741,8 @@
         ],
         "response-error-from-stream.any.html": true,
         "response-error-from-stream.any.worker.html": true,
-        "response-error.any.html": [
-          "Throws RangeError when responseInit's status is 100",
-          "Throws RangeError when responseInit's status is 199"
-        ],
-        "response-error.any.worker.html": [
-          "Throws RangeError when responseInit's status is 100",
-          "Throws RangeError when responseInit's status is 199"
-        ],
+        "response-error.any.html": true,
+        "response-error.any.worker.html": true,
         "response-from-stream.any.html": true,
         "response-from-stream.any.worker.html": true,
         "response-cancel-stream.any.html": true,
