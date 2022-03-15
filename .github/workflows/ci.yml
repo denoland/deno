@@ -164,6 +164,7 @@ jobs:
       - name: Set up incremental LTO and sysroot build
         if: matrix.use_sysroot
         run: |
+          sudo apt-get update --allow-releaseinfo-change
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
           sudo apt-get remove --purge -y man-db
@@ -174,7 +175,6 @@ jobs:
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update --allow-releaseinfo-change
           sudo apt-get install --no-install-recommends debootstrap     \
                                                        clang-13 lld-13
 
