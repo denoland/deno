@@ -2910,10 +2910,6 @@ declare namespace Deno {
     options?: UpgradeWebSocketOptions,
   ): WebSocketUpgrade;
 
-  export function upgradeHttp(
-    request: Request,
-  ): Promise<[Deno.Conn, Uint8Array]>;
-
   /** Send a signal to process under given `pid`.
    *
    * If `pid` is negative, the signal will be sent to the process group

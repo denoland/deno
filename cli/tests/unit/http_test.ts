@@ -1742,37 +1742,40 @@ Deno.test({
 Deno.test("upgradeHttp", async () => {
   async function client() {
     let tcpConn = await Deno.connect({ port: 4501 });
-    tcpConn.write(
+    await tcpConn.write(
       new TextEncoder().encode(
-        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nBla bla bla\nbla bla\nbla\n",
+        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
       ),
     );
-    setTimeout(() => {
-      tcpConn.write(
+    setTimeout(async () => {
+      await tcpConn.write(
         new TextEncoder().encode(
-          "Bla bla bla\nbla bla\nbla\n",
+          "bla bla bla\nbla bla\nbla\n",
         ),
       );
     }, 500);
   }
 
+  const abortController = new AbortController();
+  const signal = abortController.signal;
+
   const server = serve((req) => {
     let p = Deno.upgradeHttp(req);
-  
+
     (async () => {
       let [conn, firstPacket] = await p;
       const buf = new Uint8Array(1024);
-      console.log(new TextDecoder().decode(firstPacket));
+      const firstPacketText = new TextDecoder().decode(firstPacket);
+      assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
       const n = await conn.read(buf);
       assert(n != null);
-      console.log(buf.slice(0, n));
+      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+      abortController.abort();
     })();
-  
-    // this would hang forever. don't do the following:
-    // await p;
-  
+
     return new Response("", { status: 101 });
-  }, { port: 4501 });
+  }, { port: 4501, signal });
 
   await Promise.all([server, client()]);
 });

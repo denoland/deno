@@ -1333,6 +1333,16 @@ declare namespace Deno {
    * Make the timer of the given id not blocking the event loop from finishing
    */
   export function unrefTimer(id: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetter.
+   *
+   * Allows to "hijack" a connection that the request is associated with.
+   * Can be used to implement protocols that build on top of HTTP (eg.
+   * WebSockets).
+   */
+  export function upgradeHttp(
+    request: Request,
+  ): Promise<[Deno.Conn, Uint8Array]>;
 }
 
 declare function fetch(
