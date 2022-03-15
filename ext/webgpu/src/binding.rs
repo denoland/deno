@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -178,10 +177,10 @@ pub struct CreateBindGroupLayoutArgs {
   entries: Vec<GpuBindGroupLayoutEntry>,
 }
 
-#[op]
 pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
   args: CreateBindGroupLayoutArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -221,10 +220,10 @@ pub struct CreatePipelineLayoutArgs {
   bind_group_layouts: Vec<u32>,
 }
 
-#[op]
 pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
   args: CreatePipelineLayoutArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -272,10 +271,10 @@ pub struct CreateBindGroupArgs {
   entries: Vec<GpuBindGroupEntry>,
 }
 
-#[op]
 pub fn op_webgpu_create_bind_group(
   state: &mut OpState,
   args: CreateBindGroupArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

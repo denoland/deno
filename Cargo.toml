@@ -6,7 +6,6 @@ members = [
   "bench_util",
   "cli",
   "core",
-  "ops",
   "runtime",
   "serde_v8",
   "test_ffi",

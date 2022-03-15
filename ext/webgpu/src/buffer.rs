@@ -3,8 +3,6 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
-use deno_core::op;
-
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -42,10 +40,10 @@ pub struct CreateBufferArgs {
   mapped_at_creation: bool,
 }
 
-#[op]
 pub fn op_webgpu_create_buffer(
   state: &mut OpState,
   args: CreateBufferArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -78,10 +76,10 @@ pub struct BufferGetMapAsyncArgs {
   size: u64,
 }
 
-#[op]
 pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
   args: BufferGetMapAsyncArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
@@ -169,7 +167,6 @@ pub struct BufferGetMappedRangeArgs {
   size: Option<u64>,
 }
 
-#[op]
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: BufferGetMappedRangeArgs,
@@ -207,7 +204,6 @@ pub struct BufferUnmapArgs {
   mapped_rid: ResourceId,
 }
 
-#[op]
 pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,
   args: BufferUnmapArgs,

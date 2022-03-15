@@ -5,7 +5,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -47,9 +47,9 @@ fn get_windows_handle(
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_set_raw::decl(),
-      op_isatty::decl(),
-      op_console_size::decl(),
+      ("op_set_raw", op_sync(op_set_raw)),
+      ("op_isatty", op_sync(op_isatty)),
+      ("op_console_size", op_sync(op_console_size)),
     ])
     .build()
 }
@@ -67,8 +67,11 @@ pub struct SetRawArgs {
   options: SetRawOptions,
 }
 
-#[op]
-fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
+fn op_set_raw(
+  state: &mut OpState,
+  args: SetRawArgs,
+  _: (),
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
   let rid = args.rid;
@@ -208,8 +211,11 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
   }
 }
 
-#[op]
-fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
+fn op_isatty(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<bool, AnyError> {
   let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
@@ -239,10 +245,10 @@ struct ConsoleSize {
   rows: u32,
 }
 
-#[op]
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
+  _: (),
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 
