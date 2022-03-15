@@ -1,6 +1,6 @@
 use anyhow::Error;
 
-pub fn get_error_code(err: &Error) -> Option<&'static str> {
+pub(crate) fn get_error_code(err: &Error) -> Option<&'static str> {
   err
     .downcast_ref::<std::io::Error>()
     .map(|e| match e.raw_os_error() {

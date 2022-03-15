@@ -3,8 +3,6 @@
 //! This module helps deno implement timers and performance APIs.
 
 use deno_core::error::AnyError;
-use deno_core::op;
-
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -27,7 +25,6 @@ pub type StartTime = Instant;
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-#[op]
 pub fn op_now<TP>(
   state: &mut OpState,
   _argument: (),
@@ -67,7 +64,6 @@ impl Resource for TimerHandle {
 
 /// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
 /// [`op_sleep`].
-#[op]
 pub fn op_timer_handle(
   state: &mut OpState,
   _: (),
@@ -81,7 +77,6 @@ pub fn op_timer_handle(
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
-#[op]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,
@@ -94,7 +89,6 @@ pub async fn op_sleep(
   Ok(())
 }
 
-#[op]
 pub fn op_sleep_sync<TP>(
   state: &mut OpState,
   millis: u64,

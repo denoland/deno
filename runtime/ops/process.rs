@@ -8,8 +8,8 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
-
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
@@ -29,7 +29,11 @@ use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
+    .ops(vec![
+      ("op_run", op_sync(op_run)),
+      ("op_run_status", op_async(op_run_status)),
+      ("op_kill", op_sync(op_kill)),
+    ])
     .build()
 }
 
@@ -98,7 +102,6 @@ struct RunInfo {
   stderr_rid: Option<ResourceId>,
 }
 
-#[op]
 fn op_run(
   state: &mut OpState,
   run_args: RunArgs,
@@ -223,7 +226,6 @@ struct ProcessStatus {
   exit_signal: i32,
 }
 
-#[op]
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -301,7 +303,6 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   }
 }
 
-#[op]
 fn op_kill(
   state: &mut OpState,
   pid: i32,

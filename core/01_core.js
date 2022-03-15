@@ -16,6 +16,7 @@
     ErrorCaptureStackTrace,
     Promise,
     ObjectEntries,
+    ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
     MapPrototypeDelete,
@@ -26,12 +27,11 @@
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
-  const ops = window.Deno.core.ops;
-  const opIds = Object.keys(ops).reduce((a, v, i) => ({ ...a, [v]: i }), {});
 
   // Available on start due to bindings.
-  const { refOp_, unrefOp_ } = window.Deno.core;
+  const { opcallSync, opcallAsync, refOp_, unrefOp_ } = window.Deno.core;
 
+  let opsCache = {};
   const errorMap = {};
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -110,6 +110,15 @@
     return promiseRing[idx] != NO_PROMISE;
   }
 
+  function ops() {
+    return opsCache;
+  }
+
+  function syncOpsCache() {
+    // op id 0 is a special value to retrieve the map of registered ops.
+    opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
+  }
+
   function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
@@ -151,7 +160,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](opIds[opName], promiseId, arg1, arg2);
+    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -170,8 +179,8 @@
     return p;
   }
 
-  function opSync(opName, arg1, arg2) {
-    return unwrapOpResult(ops[opName](opIds[opName], arg1, arg2));
+  function opSync(opName, arg1 = null, arg2 = null) {
+    return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
   }
 
   function refOp(promiseId) {
@@ -219,7 +228,7 @@
   function metrics() {
     const [aggregate, perOps] = opSync("op_metrics");
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      ObjectEntries(opIds),
+      ObjectEntries(opsCache),
       ([opName, opId]) => [opName, perOps[opId]],
     ));
     return aggregate;
@@ -248,6 +257,7 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
+    ops,
     close,
     tryClose,
     read,
@@ -259,6 +269,7 @@
     registerErrorBuilder,
     registerErrorClass,
     opresolve,
+    syncOpsCache,
     BadResource,
     BadResourcePrototype,
     Interrupted,

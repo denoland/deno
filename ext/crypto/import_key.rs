@@ -1,5 +1,4 @@
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
@@ -82,13 +81,11 @@ pub enum ImportKeyResult {
   #[serde(rename_all = "camelCase")]
   Ec { raw_data: RawKeyData },
   #[serde(rename_all = "camelCase")]
-  #[allow(dead_code)]
   Aes { raw_data: RawKeyData },
   #[serde(rename_all = "camelCase")]
   Hmac { raw_data: RawKeyData },
 }
 
-#[op]
 pub fn op_crypto_import_key(
   _state: &mut OpState,
   opts: ImportKeyOptions,

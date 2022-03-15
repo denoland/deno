@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -37,7 +36,6 @@ pub struct CreateCommandEncoderArgs {
   _measure_execution_time: Option<bool>, // not yet implemented
 }
 
-#[op]
 pub fn op_webgpu_create_command_encoder(
   state: &mut OpState,
   args: CreateCommandEncoderArgs,
@@ -98,7 +96,6 @@ pub struct CommandEncoderBeginRenderPassArgs {
   _occlusion_query_set: Option<u32>, // not yet implemented
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_begin_render_pass(
   state: &mut OpState,
   args: CommandEncoderBeginRenderPassArgs,
@@ -217,7 +214,6 @@ pub struct CommandEncoderBeginComputePassArgs {
   label: Option<String>,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_begin_compute_pass(
   state: &mut OpState,
   args: CommandEncoderBeginComputePassArgs,
@@ -256,7 +252,6 @@ pub struct CommandEncoderCopyBufferToBufferArgs {
   size: u64,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToBufferArgs,
@@ -315,7 +310,6 @@ pub struct CommandEncoderCopyBufferToTextureArgs {
   copy_size: wgpu_types::Extent3d,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToTextureArgs,
@@ -366,7 +360,6 @@ pub struct CommandEncoderCopyTextureToBufferArgs {
   copy_size: wgpu_types::Extent3d,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToBufferArgs,
@@ -421,7 +414,6 @@ pub struct CommandEncoderCopyTextureToTextureArgs {
   copy_size: wgpu_types::Extent3d,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToTextureArgs,
@@ -470,7 +462,6 @@ pub struct CommandEncoderClearBufferArgs {
   size: u64,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_clear_buffer(
   state: &mut OpState,
   args: CommandEncoderClearBufferArgs,
@@ -500,7 +491,6 @@ pub struct CommandEncoderPushDebugGroupArgs {
   group_label: String,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_push_debug_group(
   state: &mut OpState,
   args: CommandEncoderPushDebugGroupArgs,
@@ -522,7 +512,6 @@ pub struct CommandEncoderPopDebugGroupArgs {
   command_encoder_rid: ResourceId,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_pop_debug_group(
   state: &mut OpState,
   args: CommandEncoderPopDebugGroupArgs,
@@ -544,7 +533,6 @@ pub struct CommandEncoderInsertDebugMarkerArgs {
   marker_label: String,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_insert_debug_marker(
   state: &mut OpState,
   args: CommandEncoderInsertDebugMarkerArgs,
@@ -570,7 +558,6 @@ pub struct CommandEncoderWriteTimestampArgs {
   query_index: u32,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_write_timestamp(
   state: &mut OpState,
   args: CommandEncoderWriteTimestampArgs,
@@ -603,7 +590,6 @@ pub struct CommandEncoderResolveQuerySetArgs {
   destination_offset: u64,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_resolve_query_set(
   state: &mut OpState,
   args: CommandEncoderResolveQuerySetArgs,
@@ -638,7 +624,6 @@ pub struct CommandEncoderFinishArgs {
   label: Option<String>,
 }
 
-#[op]
 pub fn op_webgpu_command_encoder_finish(
   state: &mut OpState,
   args: CommandEncoderFinishArgs,

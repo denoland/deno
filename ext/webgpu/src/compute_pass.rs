@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
@@ -27,7 +26,6 @@ pub struct ComputePassSetPipelineArgs {
   pipeline: ResourceId,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_set_pipeline(
   state: &mut OpState,
   args: ComputePassSetPipelineArgs,
@@ -58,7 +56,6 @@ pub struct ComputePassDispatchArgs {
   z: u32,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_dispatch(
   state: &mut OpState,
   args: ComputePassDispatchArgs,
@@ -86,7 +83,6 @@ pub struct ComputePassDispatchIndirectArgs {
   indirect_offset: u64,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_dispatch_indirect(
   state: &mut OpState,
   args: ComputePassDispatchIndirectArgs,
@@ -116,7 +112,6 @@ pub struct ComputePassBeginPipelineStatisticsQueryArgs {
   query_index: u32,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: ComputePassBeginPipelineStatisticsQueryArgs,
@@ -144,7 +139,6 @@ pub struct ComputePassEndPipelineStatisticsQueryArgs {
   compute_pass_rid: ResourceId,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: ComputePassEndPipelineStatisticsQueryArgs,
@@ -169,7 +163,6 @@ pub struct ComputePassWriteTimestampArgs {
   query_index: u32,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_write_timestamp(
   state: &mut OpState,
   args: ComputePassWriteTimestampArgs,
@@ -198,7 +191,6 @@ pub struct ComputePassEndPassArgs {
   compute_pass_rid: ResourceId,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_end_pass(
   state: &mut OpState,
   args: ComputePassEndPassArgs,
@@ -233,7 +225,6 @@ pub struct ComputePassSetBindGroupArgs {
   dynamic_offsets_data_length: usize,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_set_bind_group(
   state: &mut OpState,
   args: ComputePassSetBindGroupArgs,
@@ -287,7 +278,6 @@ pub struct ComputePassPushDebugGroupArgs {
   group_label: String,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_push_debug_group(
   state: &mut OpState,
   args: ComputePassPushDebugGroupArgs,
@@ -317,7 +307,6 @@ pub struct ComputePassPopDebugGroupArgs {
   compute_pass_rid: ResourceId,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_pop_debug_group(
   state: &mut OpState,
   args: ComputePassPopDebugGroupArgs,
@@ -341,7 +330,6 @@ pub struct ComputePassInsertDebugMarkerArgs {
   marker_label: String,
 }
 
-#[op]
 pub fn op_webgpu_compute_pass_insert_debug_marker(
   state: &mut OpState,
   args: ComputePassInsertDebugMarkerArgs,

@@ -6,7 +6,7 @@ use crate::proc_state::ProcState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -19,9 +19,9 @@ use std::collections::HashMap;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_apply_source_map::decl(),
-      op_format_diagnostic::decl(),
-      op_format_file_name::decl(),
+      ("op_apply_source_map", op_sync(op_apply_source_map)),
+      ("op_format_diagnostic", op_sync(op_format_diagnostic)),
+      ("op_format_file_name", op_sync(op_format_file_name)),
     ])
     .build()
 }
@@ -42,7 +42,6 @@ struct AppliedSourceMap {
   column_number: u32,
 }
 
-#[op]
 fn op_apply_source_map(
   state: &mut OpState,
   args: ApplySourceMap,
@@ -67,7 +66,6 @@ fn op_apply_source_map(
   })
 }
 
-#[op]
 fn op_format_diagnostic(
   _state: &mut OpState,
   args: Value,
@@ -77,7 +75,6 @@ fn op_format_diagnostic(
   Ok(json!(diagnostic.to_string()))
 }
 
-#[op]
 fn op_format_file_name(
   _state: &mut OpState,
   file_name: String,
