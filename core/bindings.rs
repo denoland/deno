@@ -165,8 +165,8 @@ pub fn initialize_context<'s>(
       .expect("Deno.core.ops to exist");
 
     let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-    for (name, opfn) in ops {
-      set_func_raw(scope, ops_obj, name, *opfn, raw_op_state);
+    for op in ops {
+      set_func_raw(scope, ops_obj, op.name, op.v8_fn_ptr, raw_op_state);
     }
     return scope.escape(context);
   }
