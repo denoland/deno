@@ -618,13 +618,11 @@ impl JsRuntime {
         .take()
         .unwrap();
 
-      let mut scope = self.handle_scope();
-      let scope = &mut scope;
+      let scope = &mut self.handle_scope();
 
       let obj = ops_obj.open(scope);
       let names = obj.get_own_property_names(scope).unwrap();
-      let len = names.length();
-      for i in 0..len {
+      for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
         obj.delete(scope, key);
       }
