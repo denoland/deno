@@ -41,6 +41,7 @@ impl Resolver for NodeEsmResolver {
 
     if let Ok(url) = Url::parse(specifier) {
       if url.scheme() == "file" {
+        eprintln!("resolved as ESM {}", specifier);
         return ResolveResponse::Esm(url);
       }
     }
@@ -138,9 +139,7 @@ fn node_resolve(
   };
 
   let conditions = DEFAULT_CONDITIONS;
-  // eprintln!("parent_url {} {}", specifier, parent_url.as_str());
 
-  // let url = module_resolve(specifier, &parent_url, conditions)?;
   let result = node_resolver::resolve(
     specifier,
     &parent_url.to_file_path().unwrap(),

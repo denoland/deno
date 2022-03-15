@@ -293,6 +293,7 @@ impl ProcState {
       })
       .collect();
 
+    eprintln!("roots {:#?}", roots);
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
     let roots = if self.flags.compat {
@@ -375,6 +376,7 @@ impl ProcState {
       .iter()
       .any(|m| m.kind == ModuleKind::CommonJs);
 
+    eprintln!("needs cjs esm translation {}", needs_cjs_esm_translation);
     if needs_cjs_esm_translation {
       for module in graph.modules() {
         // TODO(bartlomieju): this is overly simplistic heuristic, once we are
