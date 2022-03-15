@@ -307,11 +307,7 @@ struct CreateHashArgs {
 }
 
 #[op]
-fn op_create_hash(
-  s: &mut OpState,
-  args: Value,
-  _: (),
-) -> Result<Value, AnyError> {
+fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = s.borrow_mut::<State>();
   let v: CreateHashArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_create_hash\".")?;
@@ -322,7 +318,7 @@ fn op_create_hash(
 }
 
 #[op]
-fn op_cwd(s: &mut OpState, _args: Value, _: ()) -> Result<String, AnyError> {
+fn op_cwd(s: &mut OpState, _args: Value) -> Result<String, AnyError> {
   let state = s.borrow_mut::<State>();
   if let Some(config_specifier) = &state.maybe_config_specifier {
     let cwd = config_specifier.join("./")?;
@@ -347,11 +343,7 @@ struct EmitArgs {
 }
 
 #[op]
-fn op_emit(
-  state: &mut OpState,
-  args: EmitArgs,
-  _: (),
-) -> Result<Value, AnyError> {
+fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -406,11 +398,7 @@ struct ExistsArgs {
 }
 
 #[op]
-fn op_exists(
-  state: &mut OpState,
-  args: ExistsArgs,
-  _: (),
-) -> Result<bool, AnyError> {
+fn op_exists(state: &mut OpState, args: ExistsArgs) -> Result<bool, AnyError> {
   let state = state.borrow_mut::<State>();
   let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
@@ -452,7 +440,7 @@ fn as_ts_script_kind(media_type: &MediaType) -> i32 {
 }
 
 #[op]
-fn op_load(state: &mut OpState, args: Value, _: ()) -> Result<Value, AnyError> {
+fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
@@ -521,7 +509,6 @@ pub struct ResolveArgs {
 fn op_resolve(
   state: &mut OpState,
   args: ResolveArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> = Vec::new();
@@ -629,11 +616,7 @@ struct RespondArgs {
 }
 
 #[op]
-fn op_respond(
-  state: &mut OpState,
-  args: Value,
-  _: (),
-) -> Result<Value, AnyError> {
+fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: RespondArgs = serde_json::from_value(args)
     .context("Error converting the result for \"op_respond\".")?;
@@ -881,7 +864,6 @@ mod tests {
     let actual = op_create_hash::call(
       &mut state,
       json!({ "data": "some sort of content" }),
-      (),
     )
     .expect("could not invoke op");
     assert_eq!(
@@ -934,7 +916,6 @@ mod tests {
         file_name: "cache:///some/file.js".to_string(),
         maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -966,7 +947,6 @@ mod tests {
           vec!["file:///some/file.ts?q=.json".to_string()],
         ),
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -996,7 +976,6 @@ mod tests {
         file_name: "deno:///.tsbuildinfo".to_string(),
         maybe_specifiers: None,
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -1019,7 +998,6 @@ mod tests {
     let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(
@@ -1051,7 +1029,6 @@ mod tests {
     let value = op_load::call(
       &mut state,
       json!({ "specifier": "asset:///lib.dom.d.ts" }),
-      (),
     )
     .expect("should have invoked op");
     let actual: LoadResponse =
@@ -1070,12 +1047,9 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load::call(
-      &mut state,
-      json!({ "specifier": "deno:///.tsbuildinfo"}),
-      (),
-    )
-    .expect("should have invoked op");
+    let actual =
+      op_load::call(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
+        .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
@@ -1092,7 +1066,6 @@ mod tests {
     let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(
@@ -1119,7 +1092,6 @@ mod tests {
         base: "https://deno.land/x/a.ts".to_string(),
         specifiers: vec!["./b.ts".to_string()],
       },
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
@@ -1139,7 +1111,6 @@ mod tests {
         base: "https://deno.land/x/a.ts".to_string(),
         specifiers: vec!["./bad.ts".to_string()],
       },
-      (),
     )
     .expect("should have not errored");
     assert_eq!(
@@ -1163,7 +1134,6 @@ mod tests {
         ],
         "stats": [["a", 12]]
       }),
-      (),
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));

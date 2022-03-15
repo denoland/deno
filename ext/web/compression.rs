@@ -93,7 +93,6 @@ pub fn op_compression_write(
 pub fn op_compression_finish(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let resource = state.resource_table.take::<CompressionResource>(rid)?;
   let resource = Rc::try_unwrap(resource).unwrap();
