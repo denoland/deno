@@ -39,19 +39,6 @@ pub(crate) fn init_builtins() -> Extension {
     .build()
 }
 
-#[op]
-pub fn void_op_sync(_: &mut OpState) -> Result<(), Error> {
-  Ok(())
-}
-
-pub async fn void_op_async(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), Error> {
-  Ok(())
-}
-
 /// Return map of resources with id as key
 /// and string representation as value.
 #[op]
