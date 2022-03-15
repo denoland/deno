@@ -184,6 +184,7 @@ pub fn op_url_parse_search_params(
 pub fn op_url_stringify_search_params(
   _state: &mut deno_core::OpState,
   args: Vec<(String, String)>,
+  _: (),
 ) -> Result<String, AnyError> {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)

@@ -161,6 +161,7 @@ fn open_helper(
 fn op_open_sync(
   state: &mut OpState,
   args: OpenArgs,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
   let std_file = open_options.open(&path).map_err(|err| {
@@ -176,6 +177,7 @@ fn op_open_sync(
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
@@ -215,7 +217,11 @@ fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
 }
 
 #[op]
-fn op_seek_sync(state: &mut OpState, args: SeekArgs) -> Result<u64, AnyError> {
+fn op_seek_sync(
+  state: &mut OpState,
+  args: SeekArgs,
+  _: (),
+) -> Result<u64, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
   let pos = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
@@ -230,6 +236,7 @@ fn op_seek_sync(state: &mut OpState, args: SeekArgs) -> Result<u64, AnyError> {
 async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
   args: SeekArgs,
+  _: (),
 ) -> Result<u64, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
 
@@ -254,6 +261,7 @@ async fn op_seek_async(
 fn op_fdatasync_sync(
   state: &mut OpState,
   rid: ResourceId,
+  _: (),
 ) -> Result<(), AnyError> {
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
@@ -266,6 +274,7 @@ fn op_fdatasync_sync(
 async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -285,7 +294,11 @@ async fn op_fdatasync_async(
 }
 
 #[op]
-fn op_fsync_sync(state: &mut OpState, rid: ResourceId) -> Result<(), AnyError> {
+fn op_fsync_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), AnyError> {
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
@@ -297,6 +310,7 @@ fn op_fsync_sync(state: &mut OpState, rid: ResourceId) -> Result<(), AnyError> {
 async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -319,6 +333,7 @@ async fn op_fsync_async(
 fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
+  _: (),
 ) -> Result<FsStat, AnyError> {
   let metadata = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
@@ -331,6 +346,7 @@ fn op_fstat_sync(
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<FsStat, AnyError> {
   let resource = state
     .borrow_mut()
@@ -416,6 +432,7 @@ async fn op_flock_async(
 fn op_funlock_sync(
   state: &mut OpState,
   rid: ResourceId,
+  _: (),
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
   super::check_unstable(state, "Deno.funlockSync");
@@ -433,6 +450,7 @@ fn op_funlock_sync(
 async fn op_funlock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
   super::check_unstable2(&state, "Deno.funlock");
@@ -466,7 +484,11 @@ async fn op_funlock_async(
 }
 
 #[op]
-fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
+fn op_umask(
+  state: &mut OpState,
+  mask: Option<u32>,
+  _: (),
+) -> Result<u32, AnyError> {
   super::check_unstable(state, "Deno.umask");
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
@@ -495,7 +517,11 @@ fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
 }
 
 #[op]
-fn op_chdir(state: &mut OpState, directory: String) -> Result<(), AnyError> {
+fn op_chdir(
+  state: &mut OpState,
+  directory: String,
+  _: (),
+) -> Result<(), AnyError> {
   let d = PathBuf::from(&directory);
   state.borrow_mut::<Permissions>().read.check(&d)?;
   set_current_dir(&d).map_err(|err| {
@@ -513,7 +539,11 @@ pub struct MkdirArgs {
 }
 
 #[op]
-fn op_mkdir_sync(state: &mut OpState, args: MkdirArgs) -> Result<(), AnyError> {
+fn op_mkdir_sync(
+  state: &mut OpState,
+  args: MkdirArgs,
+  _: (),
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
   state.borrow_mut::<Permissions>().write.check(&path)?;
@@ -535,6 +565,7 @@ fn op_mkdir_sync(state: &mut OpState, args: MkdirArgs) -> Result<(), AnyError> {
 async fn op_mkdir_async(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
@@ -570,7 +601,11 @@ pub struct ChmodArgs {
 }
 
 #[op]
-fn op_chmod_sync(state: &mut OpState, args: ChmodArgs) -> Result<(), AnyError> {
+fn op_chmod_sync(
+  state: &mut OpState,
+  args: ChmodArgs,
+  _: (),
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
   let err_mapper = |err: Error| {
@@ -599,6 +634,7 @@ fn op_chmod_sync(state: &mut OpState, args: ChmodArgs) -> Result<(), AnyError> {
 async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
   args: ChmodArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
@@ -641,7 +677,11 @@ pub struct ChownArgs {
 }
 
 #[op]
-fn op_chown_sync(state: &mut OpState, args: ChownArgs) -> Result<(), AnyError> {
+fn op_chown_sync(
+  state: &mut OpState,
+  args: ChownArgs,
+  _: (),
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   state.borrow_mut::<Permissions>().write.check(&path)?;
   debug!(
@@ -675,6 +715,7 @@ fn op_chown_sync(state: &mut OpState, args: ChownArgs) -> Result<(), AnyError> {
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
   args: ChownArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
 
@@ -723,6 +764,7 @@ pub struct RemoveArgs {
 fn op_remove_sync(
   state: &mut OpState,
   args: RemoveArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
@@ -768,6 +810,7 @@ fn op_remove_sync(
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
   args: RemoveArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
@@ -826,6 +869,7 @@ pub struct CopyFileArgs {
 fn op_copy_file_sync(
   state: &mut OpState,
   args: CopyFileArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -864,6 +908,7 @@ fn op_copy_file_sync(
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
   args: CopyFileArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -992,6 +1037,7 @@ pub struct StatArgs {
 fn op_stat_sync(
   state: &mut OpState,
   args: StatArgs,
+  _: (),
 ) -> Result<FsStat, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
@@ -1012,6 +1058,7 @@ fn op_stat_sync(
 async fn op_stat_async(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
+  _: (),
 ) -> Result<FsStat, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
@@ -1041,6 +1088,7 @@ async fn op_stat_async(
 fn op_realpath_sync(
   state: &mut OpState,
   path: String,
+  _: (),
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
 
@@ -1062,6 +1110,7 @@ fn op_realpath_sync(
 async fn op_realpath_async(
   state: Rc<RefCell<OpState>>,
   path: String,
+  _: (),
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
 
@@ -1099,6 +1148,7 @@ pub struct DirEntry {
 fn op_read_dir_sync(
   state: &mut OpState,
   path: String,
+  _: (),
 ) -> Result<Vec<DirEntry>, AnyError> {
   let path = PathBuf::from(&path);
 
@@ -1139,6 +1189,7 @@ fn op_read_dir_sync(
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
   path: String,
+  _: (),
 ) -> Result<Vec<DirEntry>, AnyError> {
   let path = PathBuf::from(&path);
   {
@@ -1191,6 +1242,7 @@ pub struct RenameArgs {
 fn op_rename_sync(
   state: &mut OpState,
   args: RenameArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1219,6 +1271,7 @@ fn op_rename_sync(
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
   args: RenameArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1261,7 +1314,11 @@ pub struct LinkArgs {
 }
 
 #[op]
-fn op_link_sync(state: &mut OpState, args: LinkArgs) -> Result<(), AnyError> {
+fn op_link_sync(
+  state: &mut OpState,
+  args: LinkArgs,
+  _: (),
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1291,6 +1348,7 @@ fn op_link_sync(state: &mut OpState, args: LinkArgs) -> Result<(), AnyError> {
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
   args: LinkArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1344,6 +1402,7 @@ pub struct SymlinkOptions {
 fn op_symlink_sync(
   state: &mut OpState,
   args: SymlinkArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1405,6 +1464,7 @@ fn op_symlink_sync(
 async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
   args: SymlinkArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1469,6 +1529,7 @@ async fn op_symlink_async(
 fn op_read_link_sync(
   state: &mut OpState,
   path: String,
+  _: (),
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
 
@@ -1492,6 +1553,7 @@ fn op_read_link_sync(
 async fn op_read_link_async(
   state: Rc<RefCell<OpState>>,
   path: String,
+  _: (),
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
   {
@@ -1527,6 +1589,7 @@ pub struct FtruncateArgs {
 fn op_ftruncate_sync(
   state: &mut OpState,
   args: FtruncateArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let len = args.len as u64;
@@ -1541,6 +1604,7 @@ fn op_ftruncate_sync(
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   args: FtruncateArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let len = args.len as u64;
@@ -1573,6 +1637,7 @@ pub struct TruncateArgs {
 fn op_truncate_sync(
   state: &mut OpState,
   args: TruncateArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let len = args.len;
@@ -1598,6 +1663,7 @@ fn op_truncate_sync(
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
   args: TruncateArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let len = args.len;
@@ -1681,6 +1747,7 @@ pub struct MakeTempArgs {
 fn op_make_temp_dir_sync(
   state: &mut OpState,
   args: MakeTempArgs,
+  _: (),
 ) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1710,6 +1777,7 @@ fn op_make_temp_dir_sync(
 async fn op_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
+  _: (),
 ) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1744,6 +1812,7 @@ async fn op_make_temp_dir_async(
 fn op_make_temp_file_sync(
   state: &mut OpState,
   args: MakeTempArgs,
+  _: (),
 ) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1773,6 +1842,7 @@ fn op_make_temp_file_sync(
 async fn op_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
+  _: (),
 ) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1815,6 +1885,7 @@ pub struct FutimeArgs {
 fn op_futime_sync(
   state: &mut OpState,
   args: FutimeArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.futimeSync");
   let rid = args.rid;
@@ -1838,6 +1909,7 @@ fn op_futime_sync(
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   args: FutimeArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   super::check_unstable2(&state, "Deno.futime");
   let rid = args.rid;
@@ -1883,7 +1955,11 @@ pub struct UtimeArgs {
 }
 
 #[op]
-fn op_utime_sync(state: &mut OpState, args: UtimeArgs) -> Result<(), AnyError> {
+fn op_utime_sync(
+  state: &mut OpState,
+  args: UtimeArgs,
+  _: (),
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.utime");
 
   let path = PathBuf::from(&args.path);
@@ -1901,6 +1977,7 @@ fn op_utime_sync(state: &mut OpState, args: UtimeArgs) -> Result<(), AnyError> {
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
   args: UtimeArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   super::check_unstable(&state.borrow(), "Deno.utime");
 
@@ -1925,7 +2002,7 @@ async fn op_utime_async(
 }
 
 #[op]
-fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
+fn op_cwd(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let path = current_dir()?;
   state
     .borrow_mut::<Permissions>()

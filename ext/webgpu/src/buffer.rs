@@ -46,6 +46,7 @@ pub struct CreateBufferArgs {
 pub fn op_webgpu_create_buffer(
   state: &mut OpState,
   args: CreateBufferArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -82,6 +83,7 @@ pub struct BufferGetMapAsyncArgs {
 pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
   args: BufferGetMapAsyncArgs,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 

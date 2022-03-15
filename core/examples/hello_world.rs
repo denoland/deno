@@ -17,6 +17,7 @@ use deno_core::*;
 fn op_sum(
   _state: &mut OpState,
   nums: Vec<f64>,
+  _: (),
 ) -> Result<f64, deno_core::error::AnyError> {
   // Sum inputs
   let sum = nums.iter().fold(0.0, |a, v| a + v);

@@ -68,7 +68,11 @@ pub struct SetRawArgs {
 }
 
 #[op]
-fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
+fn op_set_raw(
+  state: &mut OpState,
+  args: SetRawArgs,
+  _: (),
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
   let rid = args.rid;
@@ -209,7 +213,11 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
 }
 
 #[op]
-fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
+fn op_isatty(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<bool, AnyError> {
   let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
@@ -243,6 +251,7 @@ struct ConsoleSize {
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
+  _: (),
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 

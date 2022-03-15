@@ -769,6 +769,7 @@ pub struct StartTlsArgs {
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
+  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -861,6 +862,7 @@ where
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
+  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1020,6 +1022,7 @@ pub struct ListenTlsArgs {
 pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
+  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1116,6 +1119,7 @@ where
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   let resource = state
     .borrow()
@@ -1167,6 +1171,7 @@ pub async fn op_tls_accept(
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()

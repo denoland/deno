@@ -19,7 +19,11 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
 }
 
 #[op]
-fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
+fn op_main_module(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;
   if main_url.scheme() == "file" {

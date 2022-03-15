@@ -369,6 +369,7 @@ struct NextRequestResponse(
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
@@ -737,6 +738,7 @@ async fn op_http_write(
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
@@ -800,6 +802,7 @@ async fn op_http_read(
 fn op_http_websocket_accept_header(
   _: &mut OpState,
   key: String,
+  _: (),
 ) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
@@ -812,6 +815,7 @@ fn op_http_websocket_accept_header(
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let stream = state
     .borrow_mut()

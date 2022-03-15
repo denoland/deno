@@ -35,6 +35,7 @@ struct PermissionsHolder(Uuid, Permissions);
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: ChildPermissionsArg,
+  _: (),
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<Permissions>();
@@ -53,6 +54,7 @@ pub fn op_pledge_test_permissions(
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
+  _: (),
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -68,7 +70,11 @@ pub fn op_restore_test_permissions(
 }
 
 #[op]
-fn op_get_bench_origin(state: &mut OpState) -> Result<String, AnyError> {
+fn op_get_bench_origin(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<String, AnyError> {
   Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
@@ -76,6 +82,7 @@ fn op_get_bench_origin(state: &mut OpState) -> Result<String, AnyError> {
 fn op_dispatch_bench_event(
   state: &mut OpState,
   event: BenchEvent,
+  _: (),
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(event).ok();
@@ -84,7 +91,7 @@ fn op_dispatch_bench_event(
 }
 
 #[op]
-fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
+fn op_bench_now(state: &mut OpState, _: (), _: ()) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
   let ns_u64 = u64::try_from(ns)?;
   Ok(ns_u64)

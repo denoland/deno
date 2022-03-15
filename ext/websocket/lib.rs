@@ -234,6 +234,7 @@ pub struct CreateResponse {
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
+  _: (),
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -412,6 +413,7 @@ pub struct CloseArgs {
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
+  _: (),
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
@@ -446,6 +448,7 @@ pub enum NextEventResponse {
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()

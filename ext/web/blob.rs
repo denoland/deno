@@ -163,6 +163,7 @@ impl BlobPart for SlicedBlobPart {
 pub fn op_blob_create_part(
   state: &mut deno_core::OpState,
   data: ZeroCopyBuf,
+  _: (),
 ) -> Result<Uuid, AnyError> {
   let blob_store = state.borrow::<BlobStore>();
   let part = InMemoryBlobPart(data.to_vec());
@@ -207,6 +208,7 @@ pub fn op_blob_slice_part(
 pub async fn op_blob_read_part(
   state: Rc<RefCell<deno_core::OpState>>,
   id: Uuid,
+  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let part = {
     let state = state.borrow();
@@ -222,6 +224,7 @@ pub async fn op_blob_read_part(
 pub fn op_blob_remove_part(
   state: &mut deno_core::OpState,
   id: Uuid,
+  _: (),
 ) -> Result<(), AnyError> {
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_part(&id);
@@ -258,6 +261,7 @@ pub fn op_blob_create_object_url(
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
   url: String,
+  _: (),
 ) -> Result<(), AnyError> {
   let url = Url::parse(&url)?;
   let blob_store = state.borrow::<BlobStore>();
@@ -281,6 +285,7 @@ pub struct ReturnBlobPart {
 pub fn op_blob_from_object_url(
   state: &mut deno_core::OpState,
   url: String,
+  _: (),
 ) -> Result<Option<ReturnBlob>, AnyError> {
   let url = Url::parse(&url)?;
   if url.scheme() != "blob" {

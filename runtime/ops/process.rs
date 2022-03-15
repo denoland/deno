@@ -99,7 +99,11 @@ struct RunInfo {
 }
 
 #[op]
-fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
+fn op_run(
+  state: &mut OpState,
+  run_args: RunArgs,
+  _: (),
+) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state.borrow_mut::<Permissions>().run.check(&args[0])?;
   let env = run_args.env;
@@ -223,6 +227,7 @@ struct ProcessStatus {
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<ProcessStatus, AnyError> {
   let resource = state
     .borrow_mut()

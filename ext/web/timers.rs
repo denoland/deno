@@ -28,7 +28,11 @@ pub type StartTime = Instant;
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 #[op]
-pub fn op_now<TP>(state: &mut OpState, _argument: ()) -> Result<f64, AnyError>
+pub fn op_now<TP>(
+  state: &mut OpState,
+  _argument: (),
+  _: (),
+) -> Result<f64, AnyError>
 where
   TP: TimersPermission + 'static,
 {
@@ -64,7 +68,11 @@ impl Resource for TimerHandle {
 /// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
 /// [`op_sleep`].
 #[op]
-pub fn op_timer_handle(state: &mut OpState) -> Result<ResourceId, AnyError> {
+pub fn op_timer_handle(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<ResourceId, AnyError> {
   let rid = state
     .resource_table
     .add(TimerHandle(CancelHandle::new_rc()));
@@ -90,6 +98,7 @@ pub async fn op_sleep(
 pub fn op_sleep_sync<TP>(
   state: &mut OpState,
   millis: u64,
+  _: (),
 ) -> Result<(), AnyError>
 where
   TP: TimersPermission + 'static,

@@ -109,6 +109,8 @@ impl Resource for MessagePortResource {
 #[op]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
+  _: (),
+  _: (),
 ) -> Result<(ResourceId, ResourceId), AnyError> {
   let (port1, port2) = create_entangled_message_port();
 
@@ -209,6 +211,7 @@ pub fn op_message_port_post_message(
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = {
     let state = state.borrow();

@@ -369,6 +369,7 @@ pub struct FetchResponse {
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
+  _: (),
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -527,6 +528,7 @@ pub struct CreateHttpClientOptions {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
+  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,

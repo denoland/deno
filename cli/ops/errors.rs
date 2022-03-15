@@ -46,6 +46,7 @@ struct AppliedSourceMap {
 fn op_apply_source_map(
   state: &mut OpState,
   args: ApplySourceMap,
+  _: (),
 ) -> Result<AppliedSourceMap, AnyError> {
   let mut mappings_map: CachedMaps = HashMap::new();
   let ps = state.borrow::<ProcState>().clone();
@@ -70,6 +71,7 @@ fn op_apply_source_map(
 fn op_format_diagnostic(
   _state: &mut OpState,
   args: Value,
+  _: (),
 ) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
@@ -79,6 +81,7 @@ fn op_format_diagnostic(
 fn op_format_file_name(
   _state: &mut OpState,
   file_name: String,
+  _: (),
 ) -> Result<String, AnyError> {
   Ok(format_file_name(&file_name))
 }

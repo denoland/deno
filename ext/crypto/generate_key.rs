@@ -46,6 +46,7 @@ pub enum GenerateKeyOptions {
 pub async fn op_crypto_generate_key(
   _state: Rc<RefCell<OpState>>,
   opts: GenerateKeyOptions,
+  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let fun = || match opts {
     GenerateKeyOptions::Rsa {

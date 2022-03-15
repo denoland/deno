@@ -148,6 +148,7 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
+  _: (),
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -264,6 +265,7 @@ fn op_create_worker(
 fn op_host_terminate_worker(
   state: &mut OpState,
   id: WorkerId,
+  _: (),
 ) -> Result<(), AnyError> {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.terminate();
@@ -318,6 +320,7 @@ fn close_channel(
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
+  _: (),
 ) -> Result<WorkerControlEvent, AnyError> {
   let worker_handle = {
     let state = state.borrow();
@@ -349,6 +352,7 @@ async fn op_host_recv_ctrl(
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
+  _: (),
 ) -> Result<Option<JsMessageData>, AnyError> {
   let worker_handle = {
     let s = state.borrow();

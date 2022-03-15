@@ -22,18 +22,22 @@ fn setup() -> Vec<Extension> {
 }
 
 #[op]
-fn op_nop(_: &mut OpState) -> Result<(), AnyError> {
+fn op_nop(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   Ok(())
 }
 
 #[op]
-fn op_pi_json(_: &mut OpState) -> Result<i64, AnyError> {
+fn op_pi_json(_: &mut OpState, _: (), _: ()) -> Result<i64, AnyError> {
   Ok(314159)
 }
 
 // this is a function since async closures aren't stable
 #[op]
-async fn op_pi_async(_: Rc<RefCell<OpState>>) -> Result<i64, AnyError> {
+async fn op_pi_async(
+  _: Rc<RefCell<OpState>>,
+  _: (),
+  _: (),
+) -> Result<i64, AnyError> {
   Ok(314159)
 }
 
