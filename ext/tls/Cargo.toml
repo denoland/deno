@@ -18,7 +18,7 @@ deno_core = { version = "0.122.0", path = "../../core" }
 once_cell = "=1.9.0"
 rustls = { version = "0.20", features = ["dangerous_configuration"] }
 rustls-native-certs = "0.6.1"
-rustls-pemfile = "0.2.1"
+rustls-pemfile = "0.3"
 serde = { version = "1.0.129", features = ["derive"] }
 webpki = "0.22"
 webpki-roots = "0.22"
