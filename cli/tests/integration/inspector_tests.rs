@@ -690,6 +690,7 @@ async fn inspector_connect_non_ws() {
 }
 
 #[tokio::test]
+#[ignore] // https://github.com/denoland/deno/issues/13491
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let mut child = util::deno_cmd()

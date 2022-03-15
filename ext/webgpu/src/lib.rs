@@ -5,7 +5,7 @@ use deno_core::include_js_files;
 use deno_core::op;
 
 use deno_core::Extension;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -562,7 +562,7 @@ pub fn op_webgpu_create_query_set(
   ) => state, WebGpuQuerySet)
 }
 
-fn declare_webgpu_ops() -> Vec<OpPair> {
+fn declare_webgpu_ops() -> Vec<OpDecl> {
   vec![
     // Request device/adapter
     op_webgpu_request_adapter::decl(),

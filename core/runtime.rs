@@ -5,8 +5,8 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
-use crate::extensions::OpPair;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -297,13 +297,12 @@ impl JsRuntime {
 
     let op_state = Rc::new(RefCell::new(op_state));
 
-    let refs = bindings::external_references(&ops, op_state.clone());
-    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
+      let mut creator =
+        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -319,7 +318,7 @@ impl JsRuntime {
         .create_params
         .take()
         .unwrap_or_else(v8::Isolate::create_params)
-        .external_references(&**refs);
+        .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -463,7 +462,7 @@ impl JsRuntime {
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
+  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = extensions
       .iter_mut()
@@ -471,15 +470,17 @@ impl JsRuntime {
       .collect();
 
     // macroware wraps an opfn in all the middleware
-    let macroware =
-      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+    let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops & apply middlware
     extensions
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
-      .map(|(name, opfn)| (name, macroware(name, opfn)))
+      .map(|d| OpDecl {
+        name: d.name,
+        ..macroware(d)
+      })
       .collect()
   }
 
@@ -516,6 +517,18 @@ impl JsRuntime {
     let v8_value = script.run(scope).unwrap();
     let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
     v8::Global::new(scope, cb)
+  }
+
+  fn grab_obj<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    code: &str,
+  ) -> v8::Local<'s, v8::Object> {
+    let scope = &mut v8::EscapableHandleScope::new(scope);
+    let code = v8::String::new(scope, code).unwrap();
+    let script = v8::Script::compile(scope, code, None).unwrap();
+    let v8_value = script.run(scope).unwrap();
+    let obj = v8::Local::<v8::Object>::try_from(v8_value).unwrap();
+    scope.escape(obj)
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
@@ -594,6 +607,19 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
+
+    // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
+    // TODO(@AaronO): make ops stable across snapshots
+    {
+      let scope = &mut self.handle_scope();
+      let obj = Self::grab_obj(scope, "Deno.core.ops");
+      let names = obj.get_own_property_names(scope).unwrap();
+      for i in 0..names.length() {
+        let key = names.get_index(scope, i).unwrap();
+        obj.delete(scope, key);
+      }
+    }
+
     let state = Self::state(self.v8_isolate());
 
     // Note: create_blob() method must not be called from within a HandleScope.

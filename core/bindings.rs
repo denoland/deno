@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::extensions::OpPair;
+use crate::extensions::OpDecl;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -14,6 +14,7 @@ use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use log::debug;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -29,88 +30,77 @@ use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
-pub fn external_references(
-  ops: &[OpPair],
-  op_state: Rc<RefCell<OpState>>,
-) -> v8::ExternalReferences {
-  let mut refs = vec![
-    v8::ExternalReference {
-      function: ref_op.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: unref_op.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: set_macrotask_callback.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: set_nexttick_callback.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: set_promise_reject_callback.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: set_uncaught_exception_callback.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: run_microtasks.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: has_tick_scheduled.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: set_has_tick_scheduled.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: eval_context.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: queue_microtask.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: create_host_object.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: encode.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: decode.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: serialize.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: deserialize.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: get_promise_details.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: get_proxy_details.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: is_proxy.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: memory_usage.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: call_console.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: set_wasm_streaming_callback.map_fn_to(),
-    },
-  ];
-  let op_refs = ops
-    .iter()
-    .map(|(_, opref)| v8::ExternalReference { function: *opref });
-  refs.extend(op_refs);
-  let raw_op_state = Rc::as_ptr(&op_state) as *mut c_void;
-  refs.push(v8::ExternalReference {
-    pointer: raw_op_state,
+pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
+  Lazy::new(|| {
+    v8::ExternalReferences::new(&[
+      v8::ExternalReference {
+        function: ref_op.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: unref_op.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_macrotask_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_nexttick_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_promise_reject_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_uncaught_exception_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: run_microtasks.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: has_tick_scheduled.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_has_tick_scheduled.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: eval_context.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: queue_microtask.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: create_host_object.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: encode.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: decode.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: serialize.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: deserialize.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: get_promise_details.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: get_proxy_details.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: is_proxy.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: memory_usage.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: call_console.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_wasm_streaming_callback.map_fn_to(),
+      },
+    ])
   });
-  v8::ExternalReferences::new(&refs)
-}
 
 pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
@@ -152,7 +142,7 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
-  ops: &[OpPair],
+  ops: &[OpDecl],
   snapshot_loaded: bool,
   op_state: Rc<RefCell<OpState>>,
 ) -> v8::Local<'s, v8::Context> {
@@ -185,8 +175,8 @@ pub fn initialize_context<'s>(
       .expect("`Deno.core.ops` not in global scope");
 
     let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-    for (name, opfn) in ops {
-      set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
+    for op in ops {
+      set_func_raw(scope, ops_val, op.name, op.v8_fn_ptr, raw_op_state);
     }
     return scope.escape(context);
   }
@@ -256,8 +246,8 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-  for (name, opfn) in ops {
-    set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
+  for op in ops {
+    set_func_raw(scope, ops_val, op.name, op.v8_fn_ptr, raw_op_state);
   }
   scope.escape(context)
 }
