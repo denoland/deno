@@ -5,6 +5,7 @@ import {
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { serve } from "../../../test_util/std/http/server.ts";
 import {
   assert,
   assertEquals,
@@ -1736,6 +1737,44 @@ Deno.test({
 
     await Promise.all([server(), client()]);
   },
+});
+
+Deno.test("upgradeHttp", async () => {
+  async function client() {
+    let tcpConn = await Deno.connect({ port: 4501 });
+    tcpConn.write(
+      new TextEncoder().encode(
+        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nBla bla bla\nbla bla\nbla\n",
+      ),
+    );
+    setTimeout(() => {
+      tcpConn.write(
+        new TextEncoder().encode(
+          "Bla bla bla\nbla bla\nbla\n",
+        ),
+      );
+    }, 500);
+  }
+
+  const server = serve((req) => {
+    let p = Deno.upgradeHttp(req);
+  
+    (async () => {
+      let [conn, firstPacket] = await p;
+      const buf = new Uint8Array(1024);
+      console.log(new TextDecoder().decode(firstPacket));
+      const n = await conn.read(buf);
+      assert(n != null);
+      console.log(buf.slice(0, n));
+    })();
+  
+    // this would hang forever. don't do the following:
+    // await p;
+  
+    return new Response("", { status: 101 });
+  }, { port: 4501 });
+
+  await Promise.all([server, client()]);
 });
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {

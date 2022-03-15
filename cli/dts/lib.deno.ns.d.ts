@@ -2911,7 +2911,7 @@ declare namespace Deno {
   ): WebSocketUpgrade;
 
   export function upgradeHttp(
-    response: Response,
+    request: Request,
   ): Promise<[Deno.Conn, Uint8Array]>;
 
   /** Send a signal to process under given `pid`.
