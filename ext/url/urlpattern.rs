@@ -9,7 +9,6 @@ use urlpattern::quirks::UrlPattern;
 
 #[op]
 pub fn op_urlpattern_parse(
-  _state: &mut deno_core::OpState,
   input: StringOrInit,
   base_url: Option<String>,
 ) -> Result<UrlPattern, AnyError> {
@@ -27,7 +26,6 @@ pub fn op_urlpattern_parse(
 
 #[op]
 pub fn op_urlpattern_process_match_input(
-  _state: &mut deno_core::OpState,
   input: StringOrInit,
   base_url: Option<String>,
 ) -> Result<Option<(MatchInput, quirks::Inputs)>, AnyError> {

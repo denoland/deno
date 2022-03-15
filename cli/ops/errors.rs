@@ -67,18 +67,12 @@ fn op_apply_source_map(
 }
 
 #[op]
-fn op_format_diagnostic(
-  _state: &mut OpState,
-  args: Value,
-) -> Result<Value, AnyError> {
+fn op_format_diagnostic(args: Value) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
 }
 
 #[op]
-fn op_format_file_name(
-  _state: &mut OpState,
-  file_name: String,
-) -> Result<String, AnyError> {
+fn op_format_file_name(file_name: String) -> Result<String, AnyError> {
   Ok(format_file_name(&file_name))
 }
