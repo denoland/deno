@@ -148,7 +148,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_ops_obj: Option<v8::Global<v8::Object>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -365,7 +364,6 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_uncaught_exception_cb: None,
-      js_ops_obj: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
@@ -519,27 +517,26 @@ impl JsRuntime {
     v8::Global::new(scope, cb)
   }
 
-  fn grab_obj(
-    scope: &mut v8::HandleScope,
+  fn grab_obj<'s>(
+    scope: &mut v8::HandleScope<'s>,
     code: &str,
-  ) -> v8::Global<v8::Object> {
+  ) -> v8::Local<'s, v8::Object> {
+    let scope = &mut v8::EscapableHandleScope::new(scope);
     let code = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
     let obj = v8::Local::<v8::Object>::try_from(v8_value).unwrap();
-    v8::Global::new(scope, obj)
+    scope.escape(obj)
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let mut scope = self.handle_scope();
     let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
-    let ops_obj = Self::grab_obj(&mut scope, "Deno.core.ops");
     // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
-    state.js_ops_obj.replace(ops_obj);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -612,15 +609,8 @@ impl JsRuntime {
     // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
     // TODO(@AaronO): make ops stable across snapshots
     {
-      let ops_obj = Self::state(self.v8_isolate())
-        .borrow_mut()
-        .js_ops_obj
-        .take()
-        .unwrap();
-
       let scope = &mut self.handle_scope();
-
-      let obj = ops_obj.open(scope);
+      let obj = Self::grab_obj(scope, "Deno.core.ops");
       let names = obj.get_own_property_names(scope).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
