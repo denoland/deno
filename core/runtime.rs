@@ -506,7 +506,7 @@ impl JsRuntime {
   }
 
   /// Grab a Global handle to a v8 value returned by the expression
-  fn grab_js<'s, T>(
+  pub(crate) fn grab_js<'s, T>(
     scope: &mut v8::HandleScope<'s>,
     code: &str,
   ) -> v8::Local<'s, T>

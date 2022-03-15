@@ -164,19 +164,11 @@ pub fn initialize_context<'s>(
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
     // Grab Deno.core.ops object
-    let deno_val = global.get(scope, deno_key.into()).unwrap();
-    let deno_val = v8::Local::<v8::Object>::try_from(deno_val)
-      .expect("`Deno` not in global scope.");
-    let core_val = deno_val.get(scope, core_key.into()).unwrap();
-    let core_val = v8::Local::<v8::Object>::try_from(core_val)
-      .expect("`Deno.core` not in global scope");
-    let ops_val = core_val.get(scope, ops_key.into()).unwrap();
-    let ops_val = v8::Local::<v8::Object>::try_from(ops_val)
-      .expect("`Deno.core.ops` not in global scope");
+    let ops_obj = JsRuntime::grab_js::<v8::Object>(scope, "Deno.core.ops");
 
     let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
     for (name, opfn) in ops {
-      set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
+      set_func_raw(scope, ops_obj, name, *opfn, raw_op_state);
     }
     return scope.escape(context);
   }
