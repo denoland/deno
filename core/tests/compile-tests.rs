@@ -126,9 +126,11 @@ fn runtime_with_feature() -> Result<(), Error> {
     bail!("Expected stdout to be empty.");
   }
 
-  let expected_stderr = r#"
-thread 'main' panicked at 'The build-time-snapshot feature on deno_core should only be used when building snapshots in a build script.', core/ops_builtin.rs:20:9
-"#;
+  let expected_stderr = concat!(
+    "thread 'main' panicked at 'The build-time-includes feature on deno_core ",
+    "should only be used when building snapshots in a build script.', ",
+    "core/ops_builtin.rs:"
+  );
 
   if !String::from_utf8_lossy(&output.stderr).contains(expected_stderr) {
     println!("-----------------------------");
