@@ -2,8 +2,7 @@
 
 use crate::itest;
 
-// https://github.com/denoland/deno/issues/13956
-itest_flaky!(workers {
+itest!(workers {
   args: "test --reload --location http://127.0.0.1:4545/ -A --unstable workers/test.ts",
   output: "workers/test.ts.out",
   http_server: true,
@@ -46,8 +45,7 @@ itest!(_084_worker_custom_inspect {
   output: "084_worker_custom_inspect.ts.out",
 });
 
-// https://github.com/denoland/deno/issues/13958
-itest_flaky!(error_worker_permissions_local {
+itest!(error_worker_permissions_local {
   args: "run --reload error_worker_permissions_local.ts",
   output: "error_worker_permissions_local.ts.out",
   exit_code: 1,

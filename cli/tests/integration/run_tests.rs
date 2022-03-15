@@ -1563,8 +1563,7 @@ itest!(worker_event_handler_test {
   output: "worker_event_handler_test.js.out",
 });
 
-// https://github.com/denoland/deno/issues/13959
-itest_flaky!(worker_close_race {
+itest!(worker_close_race {
   args: "run --quiet --reload --allow-read worker_close_race.js",
   output: "worker_close_race.js.out",
 });
