@@ -148,6 +148,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_ops_obj: Option<v8::Global<v8::Object>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -297,13 +298,12 @@ impl JsRuntime {
 
     let op_state = Rc::new(RefCell::new(op_state));
 
-    let refs = bindings::external_references(&ops, op_state.clone());
-    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
+      let mut creator =
+        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -319,7 +319,7 @@ impl JsRuntime {
         .create_params
         .take()
         .unwrap_or_else(v8::Isolate::create_params)
-        .external_references(&**refs);
+        .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -365,6 +365,7 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_uncaught_exception_cb: None,
+      js_ops_obj: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
@@ -518,14 +519,27 @@ impl JsRuntime {
     v8::Global::new(scope, cb)
   }
 
+  fn grab_obj(
+    scope: &mut v8::HandleScope,
+    code: &str,
+  ) -> v8::Global<v8::Object> {
+    let code = v8::String::new(scope, code).unwrap();
+    let script = v8::Script::compile(scope, code, None).unwrap();
+    let v8_value = script.run(scope).unwrap();
+    let obj = v8::Local::<v8::Object>::try_from(v8_value).unwrap();
+    v8::Global::new(scope, obj)
+  }
+
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let mut scope = self.handle_scope();
     let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
+    let ops_obj = Self::grab_obj(&mut scope, "Deno.core.ops");
     // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
+    state.js_ops_obj.replace(ops_obj);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -594,6 +608,28 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
+
+    // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
+    // TODO(@AaronO): make ops stable across snapshots
+    {
+      let ops_obj = Self::state(self.v8_isolate())
+        .borrow_mut()
+        .js_ops_obj
+        .take()
+        .unwrap();
+
+      let mut scope = self.handle_scope();
+      let scope = &mut scope;
+
+      let obj = ops_obj.open(scope);
+      let names = obj.get_own_property_names(scope).unwrap();
+      let len = names.length();
+      for i in 0..len {
+        let key = names.get_index(scope, i).unwrap();
+        obj.delete(scope, key);
+      }
+    }
+
     let state = Self::state(self.v8_isolate());
 
     // Note: create_blob() method must not be called from within a HandleScope.
