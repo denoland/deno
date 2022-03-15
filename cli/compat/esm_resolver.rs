@@ -41,7 +41,6 @@ impl Resolver for NodeEsmResolver {
 
     if let Ok(url) = Url::parse(specifier) {
       if url.scheme() == "file" {
-        eprintln!("resolved as ESM {}", specifier);
         return ResolveResponse::Esm(url);
       }
     }
