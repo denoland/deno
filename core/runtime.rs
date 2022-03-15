@@ -505,34 +505,25 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grab a Global handle to a function returned by the given expression
-  fn grab_fn(
-    scope: &mut v8::HandleScope,
-    code: &str,
-  ) -> v8::Global<v8::Function> {
-    let code = v8::String::new(scope, code).unwrap();
-    let script = v8::Script::compile(scope, code, None).unwrap();
-    let v8_value = script.run(scope).unwrap();
-    let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
-    v8::Global::new(scope, cb)
-  }
-
-  fn grab_obj<'s>(
+  /// Grab a Global handle to a v8 value returned by the expression
+  fn grab_js<'s, T>(
     scope: &mut v8::HandleScope<'s>,
     code: &str,
-  ) -> v8::Local<'s, v8::Object> {
-    let scope = &mut v8::EscapableHandleScope::new(scope);
+  ) -> v8::Global<T>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
+  {
     let code = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
-    let obj = v8::Local::<v8::Object>::try_from(v8_value).unwrap();
-    scope.escape(obj)
+    let v = v8::Local::<'s, T>::try_from(v8_value).unwrap();
+    v8::Global::new(scope, v)
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let mut scope = self.handle_scope();
-    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
+    let recv_cb = Self::grab_js(&mut scope, "Deno.core.opresolve");
     // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
@@ -610,7 +601,8 @@ impl JsRuntime {
     // TODO(@AaronO): make ops stable across snapshots
     {
       let scope = &mut self.handle_scope();
-      let obj = Self::grab_obj(scope, "Deno.core.ops");
+      let obj = Self::grab_js::<v8::Object>(scope, "Deno.core.ops");
+      let obj = obj.open(scope);
       let names = obj.get_own_property_names(scope).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
