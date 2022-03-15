@@ -39,26 +39,11 @@ pub(crate) fn init_builtins() -> Extension {
     .build()
 }
 
-#[op]
-pub fn void_op_sync(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
-  Ok(())
-}
-
-pub async fn void_op_async(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), Error> {
-  Ok(())
-}
-
 /// Return map of resources with id as key
 /// and string representation as value.
 #[op]
 pub fn op_resources(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<Vec<(ResourceId, String)>, Error> {
   let serialized_resources = state
     .resource_table
@@ -69,16 +54,12 @@ pub fn op_resources(
 }
 
 #[op]
-pub fn op_void_sync(_state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+pub fn op_void_sync(_state: &mut OpState) -> Result<(), Error> {
   Ok(())
 }
 
 #[op]
-pub async fn op_void_async(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), Error> {
+pub async fn op_void_async(_state: Rc<RefCell<OpState>>) -> Result<(), Error> {
   Ok(())
 }
 
@@ -87,7 +68,6 @@ pub async fn op_void_async(
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
-  _: (),
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8
@@ -102,7 +82,6 @@ pub fn op_close(
 pub fn op_try_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
-  _: (),
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8.
@@ -114,8 +93,6 @@ pub fn op_try_close(
 #[op]
 pub fn op_metrics(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
   let aggregate = state.tracker.aggregate();
   let per_op = state.tracker.per_op();
@@ -229,7 +206,6 @@ async fn op_write(
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   resource.shutdown().await

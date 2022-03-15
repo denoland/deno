@@ -66,13 +66,16 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         stringify!(#name)
       }
 
-      pub fn v8_cb #generics () -> #core::v8::FunctionCallback #where_clause {
+      pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
         use #core::v8::MapFnTo;
         Self::v8_func::<#type_params>.map_fn_to()
       }
 
-      pub fn decl #generics ()  -> (&'static str, #core::v8::FunctionCallback) #where_clause {
-        (Self::name(), Self::v8_cb::<#type_params>())
+      pub fn decl #generics () -> #core::OpDecl #where_clause {
+        #core::OpDecl {
+          name: Self::name(),
+          v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+        }
       }
 
       #[inline]
@@ -91,8 +94,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Generate the body of a v8 func for an async op
 fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let a = codegen_arg(core, &f.sig.inputs[1], "a", 2);
-  let b = codegen_arg(core, &f.sig.inputs[2], "b", 3);
+  let (arg_decls, args_tail) = codegen_args(core, f, 1, 2);
   let type_params = &f.sig.generics.params;
 
   quote! {
@@ -115,8 +117,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
       }
     };
 
-    #a
-    #b
+    #arg_decls
 
     // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
     let state_refcell_raw = unsafe {
@@ -138,7 +139,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     };
 
     #core::_ops::queue_async_op(scope, async move {
-      let result = Self::call::<#type_params>(state, a, b).await;
+      let result = Self::call::<#type_params>(state, #args_tail).await;
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
@@ -146,8 +147,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let a = codegen_arg(core, &f.sig.inputs[1], "a", 1);
-  let b = codegen_arg(core, &f.sig.inputs[2], "b", 2);
+  let (arg_decls, args_tail) = codegen_args(core, f, 1, 1);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
 
@@ -157,8 +157,7 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
       #core::v8::Local::<#core::v8::Integer>::cast(args.get(0)).value()
     } as usize;
 
-    #a
-    #b
+    #arg_decls
 
     // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
     let state_refcell_raw = unsafe {
@@ -169,7 +168,7 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
 
     let op_state = &mut state.borrow_mut();
-    let result = Self::call::<#type_params>(op_state, a, b);
+    let result = Self::call::<#type_params>(op_state, #args_tail);
 
     op_state.tracker.track_sync(op_id);
 
@@ -177,11 +176,34 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
   }
 }
 
+fn codegen_args(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  rust_i0: usize, // Index of first generic arg in rust
+  v8_i0: usize,   // Index of first generic arg in v8/js
+) -> (TokenStream2, TokenStream2) {
+  let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
+  let ident_seq: TokenStream2 = inputs
+    .clone()
+    .map(|(i, _)| format!("arg_{i}"))
+    .collect::<Vec<_>>()
+    .join(", ")
+    .parse()
+    .unwrap();
+  let decls: TokenStream2 = inputs
+    .clone()
+    .map(|(i, arg)| {
+      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
+    })
+    .collect();
+  (decls, ident_seq)
+}
+
 fn codegen_arg(
   core: &TokenStream2,
   arg: &syn::FnArg,
   name: &str,
-  idx: i32,
+  idx: usize,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
   let pat = match arg {
@@ -194,7 +216,7 @@ fn codegen_arg(
   }
   // Otherwise deserialize it via serde_v8
   quote! {
-    let #ident = args.get(#idx);
+    let #ident = args.get(#idx as i32);
     let #ident = match #core::serde_v8::from_v8(scope, #ident) {
       Ok(v) => v,
       Err(err) => {

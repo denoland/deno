@@ -37,7 +37,6 @@ pub struct CreateSamplerArgs {
 pub fn op_webgpu_create_sampler(
   state: &mut OpState,
   args: CreateSamplerArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

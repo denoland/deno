@@ -27,7 +27,8 @@ itest!(fs_promises {
   envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
-itest!(node_prefix_fs_promises {
+// https://github.com/denoland/deno/issues/12494
+itest_flaky!(node_prefix_fs_promises {
   args: "run --compat --no-check --unstable -A compat/node_fs_promises.mjs",
   output: "compat/fs_promises.out",
   envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],

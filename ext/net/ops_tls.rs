@@ -33,7 +33,7 @@ use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -642,7 +642,7 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
     op_tls_start::decl::<P>(),
     op_tls_connect::decl::<P>(),
@@ -769,7 +769,6 @@ pub struct StartTlsArgs {
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -862,7 +861,6 @@ where
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1022,7 +1020,6 @@ pub struct ListenTlsArgs {
 pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1119,7 +1116,6 @@ where
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<OpConn, AnyError> {
   let resource = state
     .borrow()
@@ -1171,7 +1167,6 @@ pub async fn op_tls_accept(
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()
