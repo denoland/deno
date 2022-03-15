@@ -2509,6 +2509,8 @@ dependencies = [
 [[package]]
 name = "node_resolver"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1012fcb4f5cc14c272731f4baf6ba8a2d40c650908f4d2531f7ed17f214e5ae"
 dependencies = [
  "anyhow",
  "path-clean",
