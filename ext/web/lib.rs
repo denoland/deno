@@ -121,20 +121,14 @@ pub fn init<P: TimersPermission + 'static>(
 }
 
 #[op]
-fn op_base64_decode(
-  _: &mut OpState,
-  input: String,
-) -> Result<ZeroCopyBuf, AnyError> {
+fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
   let mut input = input.into_bytes();
   input.retain(|c| !c.is_ascii_whitespace());
   Ok(b64_decode(&input)?.into())
 }
 
 #[op]
-fn op_base64_atob(
-  _: &mut OpState,
-  s: ByteString,
-) -> Result<ByteString, AnyError> {
+fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
   let mut s = s.0;
   s.retain(|c| !c.is_ascii_whitespace());
 
@@ -184,15 +178,12 @@ fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
 }
 
 #[op]
-fn op_base64_encode(
-  _: &mut OpState,
-  s: ZeroCopyBuf,
-) -> Result<String, AnyError> {
+fn op_base64_encode(s: ZeroCopyBuf) -> Result<String, AnyError> {
   Ok(b64_encode(&s))
 }
 
 #[op]
-fn op_base64_btoa(_: &mut OpState, s: ByteString) -> Result<String, AnyError> {
+fn op_base64_btoa(s: ByteString) -> Result<String, AnyError> {
   Ok(b64_encode(&s))
 }
 
@@ -211,10 +202,7 @@ struct DecoderOptions {
 }
 
 #[op]
-fn op_encoding_normalize_label(
-  _state: &mut OpState,
-  label: String,
-) -> Result<String, AnyError> {
+fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
       range_error(format!(
@@ -331,7 +319,6 @@ struct EncodeIntoResult {
 
 #[op]
 fn op_encoding_encode_into(
-  _state: &mut OpState,
   input: String,
   mut buffer: ZeroCopyBuf,
 ) -> Result<EncodeIntoResult, AnyError> {

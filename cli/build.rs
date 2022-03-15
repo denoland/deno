@@ -202,12 +202,12 @@ fn create_compiler_snapshot(
   }
 
   #[op]
-  fn op_cwd(_state: &mut OpState, _args: Value) -> Result<Value, AnyError> {
+  fn op_cwd(_args: Value) -> Result<Value, AnyError> {
     Ok(json!("cache:///"))
   }
 
   #[op]
-  fn op_exists(_state: &mut OpState, _args: Value) -> Result<Value, AnyError> {
+  fn op_exists(_args: Value) -> Result<Value, AnyError> {
     Ok(json!(false))
   }
 
