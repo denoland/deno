@@ -174,7 +174,7 @@ jobs:
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo apt-get update
+          sudo apt-get update --allow-releaseinfo-change
           sudo apt-get install --no-install-recommends debootstrap     \
                                                        clang-13 lld-13
 
