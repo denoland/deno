@@ -9,8 +9,8 @@ use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -53,7 +53,6 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::convert::TryFrom;
-use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
@@ -89,22 +88,19 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       "01_webidl.js",
     ))
     .ops(vec![
-      (
-        "op_crypto_get_random_values",
-        op_sync(op_crypto_get_random_values),
-      ),
-      ("op_crypto_generate_key", op_async(op_crypto_generate_key)),
-      ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
-      ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
-      ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
-      ("op_crypto_import_key", op_sync(op_crypto_import_key)),
-      ("op_crypto_export_key", op_sync(op_crypto_export_key)),
-      ("op_crypto_encrypt", op_async(op_crypto_encrypt)),
-      ("op_crypto_decrypt", op_async(op_crypto_decrypt)),
-      ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
-      ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
-      ("op_crypto_wrap_key", op_sync(op_crypto_wrap_key)),
-      ("op_crypto_unwrap_key", op_sync(op_crypto_unwrap_key)),
+      op_crypto_get_random_values::decl(),
+      op_crypto_generate_key::decl(),
+      op_crypto_sign_key::decl(),
+      op_crypto_verify_key::decl(),
+      op_crypto_derive_bits::decl(),
+      op_crypto_import_key::decl(),
+      op_crypto_export_key::decl(),
+      op_crypto_encrypt::decl(),
+      op_crypto_decrypt::decl(),
+      op_crypto_subtle_digest::decl(),
+      op_crypto_random_uuid::decl(),
+      op_crypto_wrap_key::decl(),
+      op_crypto_unwrap_key::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -115,10 +111,10 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
     .build()
 }
 
+#[op]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   mut zero_copy: ZeroCopyBuf,
-  _: (),
 ) -> Result<(), AnyError> {
   if zero_copy.len() > 65536 {
     return Err(
@@ -171,6 +167,7 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+#[op]
 pub async fn op_crypto_sign_key(
   _state: Rc<RefCell<OpState>>,
   args: SignArg,
@@ -325,6 +322,7 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+#[op]
 pub async fn op_crypto_verify_key(
   _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
@@ -485,6 +483,7 @@ pub struct DeriveKeyArg {
   info: Option<ZeroCopyBuf>,
 }
 
+#[op]
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
@@ -790,11 +789,8 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   }
 }
 
-pub fn op_crypto_random_uuid(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
     let mut bytes = [0u8; 16];
@@ -809,6 +805,7 @@ pub fn op_crypto_random_uuid(
   Ok(uuid.to_string())
 }
 
+#[op]
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
@@ -832,6 +829,7 @@ pub struct WrapUnwrapKeyArg {
   algorithm: Algorithm,
 }
 
+#[op]
 pub fn op_crypto_wrap_key(
   _state: &mut OpState,
   args: WrapUnwrapKeyArg,
@@ -861,6 +859,7 @@ pub fn op_crypto_wrap_key(
   }
 }
 
+#[op]
 pub fn op_crypto_unwrap_key(
   _state: &mut OpState,
   args: WrapUnwrapKeyArg,
@@ -889,8 +888,4 @@ pub fn op_crypto_unwrap_key(
     }
     _ => Err(type_error("Unsupported algorithm")),
   }
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }

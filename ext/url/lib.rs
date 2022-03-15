@@ -7,14 +7,13 @@ use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
 use std::panic::catch_unwind;
-use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
@@ -27,21 +26,12 @@ pub fn init() -> Extension {
       "01_urlpattern.js",
     ))
     .ops(vec![
-      ("op_url_parse", op_sync(op_url_parse)),
-      ("op_url_reparse", op_sync(op_url_reparse)),
-      (
-        "op_url_parse_search_params",
-        op_sync(op_url_parse_search_params),
-      ),
-      (
-        "op_url_stringify_search_params",
-        op_sync(op_url_stringify_search_params),
-      ),
-      ("op_urlpattern_parse", op_sync(op_urlpattern_parse)),
-      (
-        "op_urlpattern_process_match_input",
-        op_sync(op_urlpattern_process_match_input),
-      ),
+      op_url_parse::decl(),
+      op_url_reparse::decl(),
+      op_url_parse_search_params::decl(),
+      op_url_stringify_search_params::decl(),
+      op_urlpattern_parse::decl(),
+      op_urlpattern_process_match_input::decl(),
     ])
     .build()
 }
@@ -66,6 +56,7 @@ type UrlParts = String;
 
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
+#[op]
 pub fn op_url_parse(
   _state: &mut deno_core::OpState,
   href: String,
@@ -99,6 +90,7 @@ pub enum UrlSetter {
   Username = 9,
 }
 
+#[op]
 pub fn op_url_reparse(
   _state: &mut deno_core::OpState,
   href: String,
@@ -168,6 +160,7 @@ fn url_result(
   )
 }
 
+#[op]
 pub fn op_url_parse_search_params(
   _state: &mut deno_core::OpState,
   args: Option<String>,
@@ -187,17 +180,13 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
+#[op]
 pub fn op_url_stringify_search_params(
   _state: &mut deno_core::OpState,
   args: Vec<(String, String)>,
-  _: (),
 ) -> Result<String, AnyError> {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
   Ok(search)
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_url.d.ts")
 }
