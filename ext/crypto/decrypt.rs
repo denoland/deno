@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::shared::*;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
@@ -25,7 +22,6 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::PaddingScheme;
@@ -79,7 +75,6 @@ pub enum DecryptAlgorithm {
 
 #[op]
 pub async fn op_crypto_decrypt(
-  _state: Rc<RefCell<OpState>>,
   opts: DecryptOptions,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {

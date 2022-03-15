@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::extensions::OpPair;
+use crate::extensions::OpDecl;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -142,7 +142,7 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
-  ops: &[OpPair],
+  ops: &[OpDecl],
   snapshot_loaded: bool,
   op_state: Rc<RefCell<OpState>>,
 ) -> v8::Local<'s, v8::Context> {
@@ -232,8 +232,8 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_val = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
   let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-  for (name, opfn) in ops {
-    set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
+  for op in ops {
+    set_func_raw(scope, ops_val, op.name, op.v8_fn_ptr, raw_op_state);
   }
   scope.escape(context)
 }

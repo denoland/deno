@@ -15,7 +15,7 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -50,7 +50,7 @@ use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
     op_net_accept::decl(),
     op_net_connect::decl::<P>(),

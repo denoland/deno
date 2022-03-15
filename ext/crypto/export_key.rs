@@ -1,7 +1,6 @@
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
@@ -87,7 +86,6 @@ pub enum ExportKeyResult {
 
 #[op]
 pub fn op_crypto_export_key(
-  _state: &mut OpState,
   opts: ExportKeyOptions,
   key_data: RawKeyData,
 ) -> Result<ExportKeyResult, AnyError> {

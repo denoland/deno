@@ -5,8 +5,8 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
-use crate::extensions::OpPair;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -462,7 +462,7 @@ impl JsRuntime {
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
+  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = extensions
       .iter_mut()
@@ -470,15 +470,17 @@ impl JsRuntime {
       .collect();
 
     // macroware wraps an opfn in all the middleware
-    let macroware =
-      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+    let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops & apply middlware
     extensions
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
-      .map(|(name, opfn)| (name, macroware(name, opfn)))
+      .map(|d| OpDecl {
+        name: d.name,
+        ..macroware(d)
+      })
       .collect()
   }
 
@@ -2114,7 +2116,7 @@ pub mod tests {
   #[test]
   fn test_error_builder() {
     #[op]
-    fn op_err(_: &mut OpState) -> Result<(), Error> {
+    fn op_err() -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -2559,9 +2561,7 @@ assertEquals(1, notify_return_value);
   #[tokio::test]
   async fn test_set_macrotask_callback_set_next_tick_callback() {
     #[op]
-    async fn op_async_sleep(
-      _op_state: Rc<RefCell<OpState>>,
-    ) -> Result<(), Error> {
+    async fn op_async_sleep() -> Result<(), Error> {
       // Future must be Poll::Pending on first call
       tokio::time::sleep(std::time::Duration::from_millis(1)).await;
       Ok(())
@@ -2636,13 +2636,13 @@ assertEquals(1, notify_return_value);
     static NEXT_TICK: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_macrotask(_: &mut OpState) -> Result<(), AnyError> {
+    fn op_macrotask() -> Result<(), AnyError> {
       MACROTASK.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
 
     #[op]
-    fn op_next_tick(_: &mut OpState) -> Result<(), AnyError> {
+    fn op_next_tick() -> Result<(), AnyError> {
       NEXT_TICK.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
@@ -2773,13 +2773,13 @@ assertEquals(1, notify_return_value);
     static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_promise_reject(_: &mut OpState) -> Result<(), AnyError> {
+    fn op_promise_reject() -> Result<(), AnyError> {
       PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
 
     #[op]
-    fn op_uncaught_exception(_: &mut OpState) -> Result<(), AnyError> {
+    fn op_uncaught_exception() -> Result<(), AnyError> {
       UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
