@@ -327,7 +327,7 @@
     return y;
   };
 
-  converters["unrestricted float"] = (V, opts) => {
+  converters["unrestricted float"] = (V, _opts) => {
     const x = toNumber(V);
 
     if (isNaN(x)) {
