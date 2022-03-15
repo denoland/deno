@@ -153,9 +153,6 @@ pub fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  let deno_key = v8::String::new(scope, "Deno").unwrap();
-  let core_key = v8::String::new(scope, "core").unwrap();
-  let ops_key = v8::String::new(scope, "ops").unwrap();
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
   //
@@ -164,7 +161,8 @@ pub fn initialize_context<'s>(
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
     // Grab Deno.core.ops object
-    let ops_obj = JsRuntime::grab_js::<v8::Object>(scope, "Deno.core.ops");
+    let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
+      .expect("Deno.core.ops to exist");
 
     let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
     for (name, opfn) in ops {
@@ -173,13 +171,8 @@ pub fn initialize_context<'s>(
     return scope.escape(context);
   }
 
-  // global.Deno = { core: { ops: {} } };
-  let deno_val = v8::Object::new(scope);
-  global.set(scope, deno_key.into(), deno_val.into());
-  let core_val = v8::Object::new(scope);
-  deno_val.set(scope, core_key.into(), core_val.into());
-  let ops_val = v8::Object::new(scope);
-  core_val.set(scope, ops_key.into(), ops_val.into());
+  // global.Deno = { core: { } };
+  let core_val = JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
 
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "refOp_", ref_op);
@@ -237,6 +230,7 @@ pub fn initialize_context<'s>(
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
   // Bind functions to Deno.core.ops.*
+  let ops_val = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
   let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
   for (name, opfn) in ops {
     set_func_raw(scope, ops_val, name, *opfn, raw_op_state);
