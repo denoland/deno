@@ -1753,6 +1753,7 @@ Deno.test("upgradeHttp", async () => {
           "bla bla bla\nbla bla\nbla\n",
         ),
       );
+      tcpConn.close();
     }, 500);
   }
 
@@ -1772,9 +1773,10 @@ Deno.test("upgradeHttp", async () => {
       const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
       assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
       abortController.abort();
+      conn.close();
     })();
 
-    return new Response("", { status: 101 });
+    return new Response(null, { status: 101 });
   }, { port: 4501, signal });
 
   await Promise.all([server, client()]);
