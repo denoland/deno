@@ -37,6 +37,7 @@
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
+    Error,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototype,
     Set,
