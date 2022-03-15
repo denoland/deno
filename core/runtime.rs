@@ -509,23 +509,23 @@ impl JsRuntime {
   fn grab_js<'s, T>(
     scope: &mut v8::HandleScope<'s>,
     code: &str,
-  ) -> v8::Global<T>
+  ) -> v8::Local<'s, T>
   where
     v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
   {
     let code = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
-    let v = v8::Local::<'s, T>::try_from(v8_value).unwrap();
-    v8::Global::new(scope, v)
+    v8_value.try_into().unwrap()
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
-    let mut scope = self.handle_scope();
-    let recv_cb = Self::grab_js(&mut scope, "Deno.core.opresolve");
+    let scope = &mut self.handle_scope();
+    let recv_cb = Self::grab_js::<v8::Function>(scope, "Deno.core.opresolve");
+    let recv_cb = v8::Global::new(scope, recv_cb);
     // Put global handles in state
-    let state_rc = JsRuntime::state(&scope);
+    let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
   }
@@ -602,7 +602,6 @@ impl JsRuntime {
     {
       let scope = &mut self.handle_scope();
       let obj = Self::grab_js::<v8::Object>(scope, "Deno.core.ops");
-      let obj = obj.open(scope);
       let names = obj.get_own_property_names(scope).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
