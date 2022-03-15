@@ -104,7 +104,6 @@ async fn op_http_upgrade(
     }
   };
 
-  eprintln!("awaiting upgrade from hyper");
   let transport = hyper::upgrade::on(request).await?;
   let transport = match transport.downcast::<TcpStream>() {
     Ok(Parts {
