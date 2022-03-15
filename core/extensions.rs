@@ -151,8 +151,8 @@ impl ExtensionBuilder {
   }
 }
 
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
-/// representing the filename and source code.
+/// Helps embed JS files in an extension. Returns a Vec<SourcePair> representing the filename and
+/// source code.
 ///
 /// Example:
 /// ```ignore
@@ -187,8 +187,8 @@ macro_rules! include_js_files {
   };
 }
 
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
-/// representing the filename and source code.
+/// Helps embed JS files in an extension. Returns a Vec<SourcePair> representing the filename and
+/// source code.
 ///
 /// Example:
 /// ```ignore
