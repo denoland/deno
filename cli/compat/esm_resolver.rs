@@ -330,27 +330,28 @@ mod tests {
     assert_eq!(actual.to_result().unwrap(), expected);
   }
 
-  #[test]
-  fn conditional_exports() {
-    // check that `exports` mapping works correctly
-    let cwd = testdir("conditions");
-    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
-    let actual = node_resolve("imports_exports", main.as_str(), &cwd).unwrap();
-    let expected = Url::from_file_path(
-      cwd.join("node_modules/imports_exports/import_export.js"),
-    )
-    .unwrap();
-    assert!(matches!(actual, ResolveResponse::CommonJs(_)));
-    assert_eq!(actual.to_result().unwrap(), expected);
+  // TODO(bartlomieju): this test should be moved to `node_resolver` crate
+  // #[test]
+  // fn conditional_exports() {
+  //   // check that `exports` mapping works correctly
+  //   let cwd = testdir("conditions");
+  //   let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+  //   let actual = node_resolve("imports_exports", main.as_str(), &cwd).unwrap();
+  //   let expected = Url::from_file_path(
+  //     cwd.join("node_modules/imports_exports/import_export.js"),
+  //   )
+  //   .unwrap();
+  //   assert!(matches!(actual, ResolveResponse::CommonJs(_)));
+  //   assert_eq!(actual.to_result().unwrap(), expected);
 
-    // check that `imports` mapping works correctly
-    let cwd = testdir("conditions/node_modules/imports_exports");
-    let main = Url::from_file_path(cwd.join("import_export.js")).unwrap();
-    let actual = node_resolve("#dep", main.as_str(), &cwd).unwrap();
-    let expected = Url::from_file_path(cwd.join("import_polyfill.js")).unwrap();
-    assert!(matches!(actual, ResolveResponse::CommonJs(_)));
-    assert_eq!(actual.to_result().unwrap(), expected);
-  }
+  //   // check that `imports` mapping works correctly
+  //   let cwd = testdir("conditions/node_modules/imports_exports");
+  //   let main = Url::from_file_path(cwd.join("import_export.js")).unwrap();
+  //   let actual = node_resolve("#dep", main.as_str(), &cwd).unwrap();
+  //   let expected = Url::from_file_path(cwd.join("import_polyfill.js")).unwrap();
+  //   assert!(matches!(actual, ResolveResponse::CommonJs(_)));
+  //   assert_eq!(actual.to_result().unwrap(), expected);
+  // }
 
   #[test]
   fn test_check_if_should_use_esm_loader() {
