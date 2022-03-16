@@ -170,11 +170,13 @@
   const _type = Symbol("Type");
   const _size = Symbol("Size");
   const _parts = Symbol("Parts");
+  const _rawParts = Symbol("RawParts");
 
   class Blob {
     [_type] = "";
     [_size] = 0;
     [_parts];
+    [_rawParts];
 
     /**
      * @param {BlobPart[]} blobParts
@@ -338,21 +340,22 @@
     /**
      * @returns {Promise<string>}
      */
+    // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      const buffer = await this.arrayBuffer();
+      const buffer = this.arrayBuffer();
       return core.decode(new Uint8Array(buffer));
     }
 
     /**
      * @returns {Promise<ArrayBuffer>}
      */
+    // deno-lint-ignore require-await
     async arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
-      const stream = this.stream();
       const bytes = new Uint8Array(this.size);
       let offset = 0;
-      for await (const chunk of stream) {
+      for (const chunk of this[_parts]) {
         TypedArrayPrototypeSet(bytes, chunk, offset);
         offset += chunk.byteLength;
       }
