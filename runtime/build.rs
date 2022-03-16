@@ -163,7 +163,7 @@ mod not_docs {
         None, false, // No --unstable.
         None,
       ),
-      deno_napi::init(),
+      deno_napi::init(std::mem::MaybeUninit::uninit()),
       deno_http::init(),
     ];
 

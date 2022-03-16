@@ -13,6 +13,7 @@ use deno_core::Extension;
 use std::cell::RefCell;
 pub use std::ffi::CStr;
 use std::ffi::CString;
+use std::mem::MaybeUninit;
 pub use std::mem::transmute;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
@@ -385,7 +386,7 @@ impl Env {
   }
 }
 
-pub fn init() -> Extension {
+pub fn init(isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>) -> Extension {
   Extension::builder()
     .ops(vec![op_napi_open::decl()])
     .event_loop_middleware(|op_state_rc, cx| {
@@ -439,7 +440,7 @@ pub fn init() -> Extension {
 
       maybe_scheduling
     })
-    .state(|state| {
+    .state(move |state| {
       let (async_work_sender, async_work_receiver) =
         mpsc::unbounded::<PendingNapiAsyncWork>();
       let (threadsafe_function_sender, threadsafe_function_receiver) =
@@ -452,7 +453,10 @@ pub fn init() -> Extension {
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
       });
-
+        
+      // SAFETY: `.state` can only be called from a JsRuntime which means isolate pointer is
+      // initialized.
+      state.put(unsafe { isolate_ptr.assume_init() });
       Ok(())
     })
     .build()
@@ -496,9 +500,16 @@ impl op_napi_open {
       &*(state_refcell_raw as *const std::cell::RefCell<deno_core::OpState>)
     };
 
-    let external =
-      v8::Local::<v8::External>::try_from(args.data().unwrap()).unwrap();
-    let value = external.value() as *mut v8::OwnedIsolate;
+    let (async_work_sender, tsfn_sender, isolate_ptr) = {
+      let op_state = &mut state.borrow_mut();
+      let napi_state = op_state.borrow::<NapiState>();
+      let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
+      (
+        napi_state.async_work_sender.clone(),
+        napi_state.threadsafe_function_sender.clone(),
+        *isolate_ptr,
+      )
+    };
 
     let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
     let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
@@ -531,15 +542,6 @@ impl op_napi_open {
       env_shared_ptr.write(env_shared);
     }
 
-    let (async_work_sender, tsfn_sender) = {
-      let op_state = &mut state.borrow_mut();
-      let napi_state = op_state.borrow::<NapiState>();
-      (
-        napi_state.async_work_sender.clone(),
-        napi_state.threadsafe_function_sender.clone(),
-      )
-    };
-
     // SAFETY: Env is non-zero size, the memory is initialized later when we write
     // to the pointer.
     let env_ptr = unsafe {
@@ -547,7 +549,7 @@ impl op_napi_open {
     };
     let ctx = scope.get_current_context();
     let mut env = Env::new(
-      value,
+      isolate_ptr,
       v8::Global::new(scope, ctx),
       async_work_sender,
       tsfn_sender,

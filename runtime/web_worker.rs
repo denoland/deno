@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use std::mem::MaybeUninit;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
@@ -363,6 +364,8 @@ impl WebWorker {
       })
       .build();
 
+    // Allocate isolate pointer.
+    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> = MaybeUninit::uninit();
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
@@ -392,7 +395,7 @@ impl WebWorker {
       // ffi
       deno_ffi::init::<Permissions>(unstable),
       // napi
-      deno_napi::init(),
+      deno_napi::init(isolate_ptr),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -449,6 +452,13 @@ impl WebWorker {
       extensions,
       ..Default::default()
     });
+
+    // Initialize isolate ptr memory.
+    {
+      let isolate = js_runtime.v8_isolate();
+      // SAFETY: `isolate_ptr` is valid for writes and properly aligned.
+      isolate_ptr.write(isolate);
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

@@ -1563,13 +1563,13 @@ fn napi_get_reference_value(
   // TODO
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
 
-  let raw = transmute::<napi_ref, NonNull<v8::Value>>(reference);
-  let global = v8::Global::from_raw(unsafe { &mut **env.isolate_ptr }, raw);
-  let scope = &mut env.scope();
-  let value = global.open(scope).to_object(scope).unwrap();
-  *result = transmute::<v8::Local<v8::Value>, napi_value>(value.into());
+  let value = transmute::<napi_ref, v8::Local<v8::Value>>(reference);
+  // let global = v8::Global::from_raw(unsafe { &mut **env.isolate_ptr }, raw);
+  // let scope = &mut env.scope();
+  // let value = global.open(scope).to_object(scope).unwrap();
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
   // Leak.
-  std::mem::forget(global);
+  // std::mem::forget(global);
   Ok(())
 }
 

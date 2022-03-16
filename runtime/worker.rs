@@ -30,6 +30,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::mem::MaybeUninit;
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -93,6 +94,9 @@ impl MainWorker {
         Ok(())
       })
       .build();
+    
+    // Allocate isolate pointer.
+    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> = MaybeUninit::uninit();
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -140,7 +144,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init(),
+      deno_napi::init(isolate_ptr),
       ops::os::init(None),
       ops::permissions::init(),
       ops::process::init(),
@@ -163,6 +167,13 @@ impl MainWorker {
       extensions,
       ..Default::default()
     });
+
+    // Initialize isolate ptr memory.
+    {
+      let isolate = js_runtime.v8_isolate();
+      // SAFETY: `isolate_ptr` is valid for writes and properly aligned.
+      isolate_ptr.write(isolate);
+    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

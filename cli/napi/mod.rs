@@ -21,7 +21,6 @@ pub mod js_native_api;
 pub mod threadsafe_functions;
 pub mod util;
 
-use deno_core::v8;
 use std::os::raw::c_int;
 use std::os::raw::c_void;
 
