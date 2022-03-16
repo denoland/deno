@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { Crate, getCratesPublishOrder, path, Repo } from "./deps.ts";
+import { path, Repo } from "./deps.ts";
 
 export class DenoWorkspace {
   #repo: Repo;
