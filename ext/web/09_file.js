@@ -341,8 +341,21 @@
     // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      const buffer = this.arrayBuffer();
-      return core.decode(new Uint8Array(buffer));
+      const buffer = this.#u8Array(this.size);
+      return core.decode(buffer);
+    }
+
+    #u8Array(size) {
+      const bytes = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of this[_parts]) {
+        const byteLength = chunk.byteLength;
+        if (byteLength > 0) {
+          TypedArrayPrototypeSet(bytes, chunk, offset);
+          offset += byteLength;
+        }
+      }
+      return bytes;
     }
 
     /**
@@ -351,13 +364,8 @@
     // deno-lint-ignore require-await
     async arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
-      const bytes = new Uint8Array(this.size);
-      let offset = 0;
-      for (const chunk of this[_parts]) {
-        TypedArrayPrototypeSet(bytes, chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return bytes.buffer;
+      const buf = this.#u8Array(this.size);
+      return buf.buffer;
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
