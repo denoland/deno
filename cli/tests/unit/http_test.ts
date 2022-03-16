@@ -5,6 +5,7 @@ import {
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { serve } from "../../../test_util/std/http/server.ts";
 import {
   assert,
   assertEquals,
@@ -1736,6 +1737,49 @@ Deno.test({
 
     await Promise.all([server(), client()]);
   },
+});
+
+Deno.test("upgradeHttp", async () => {
+  async function client() {
+    const tcpConn = await Deno.connect({ port: 4501 });
+    await tcpConn.write(
+      new TextEncoder().encode(
+        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
+      ),
+    );
+    setTimeout(async () => {
+      await tcpConn.write(
+        new TextEncoder().encode(
+          "bla bla bla\nbla bla\nbla\n",
+        ),
+      );
+      tcpConn.close();
+    }, 500);
+  }
+
+  const abortController = new AbortController();
+  const signal = abortController.signal;
+
+  const server = serve((req) => {
+    const p = Deno.upgradeHttp(req);
+
+    (async () => {
+      const [conn, firstPacket] = await p;
+      const buf = new Uint8Array(1024);
+      const firstPacketText = new TextDecoder().decode(firstPacket);
+      assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
+      const n = await conn.read(buf);
+      assert(n != null);
+      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+      abortController.abort();
+      conn.close();
+    })();
+
+    return new Response(null, { status: 101 });
+  }, { port: 4501, signal });
+
+  await Promise.all([server, client()]);
 });
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
