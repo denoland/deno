@@ -1,34 +1,36 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use serde::de::{self, Visitor};
+use serde::de;
+use serde::de::Visitor;
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
-use crate::keys::{v8_struct_key, KeyCache};
-use crate::payload::ValueType;
-
+use crate::error::Error;
+use crate::error::Result;
+use crate::keys::get_key_cache;
+use crate::keys::v8_struct_key;
+use crate::keys::KeyCache;
 use crate::magic;
+use crate::payload::ValueType;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
   scope: &'b mut v8::HandleScope<'s>,
-  _key_cache: Option<&'b mut KeyCache>,
+  key_cache: &'b mut KeyCache,
 }
 
 impl<'a, 'b, 's> Deserializer<'a, 'b, 's> {
   pub fn new(
     scope: &'b mut v8::HandleScope<'s>,
     input: v8::Local<'a, v8::Value>,
-    key_cache: Option<&'b mut KeyCache>,
+    key_cache: &'b mut KeyCache,
   ) -> Self {
     Deserializer {
       input,
       scope,
-      _key_cache: key_cache,
+      key_cache,
     }
   }
 }
 
-// from_v8 deserializes a v8::Value into a Deserializable / rust struct
 pub fn from_v8<'de, 'a, 'b, 's, T>(
   scope: &'b mut v8::HandleScope<'s>,
   input: v8::Local<'a, v8::Value>,
@@ -36,21 +38,20 @@ pub fn from_v8<'de, 'a, 'b, 's, T>(
 where
   T: Deserialize<'de>,
 {
-  let mut deserializer = Deserializer::new(scope, input, None);
-  let t = T::deserialize(&mut deserializer)?;
-  Ok(t)
+  let key_cache = get_key_cache(scope);
+  let key_cache = &mut *key_cache.borrow_mut();
+  from_v8_cached(scope, input, key_cache)
 }
 
-// like from_v8 except accepts a KeyCache to optimize struct key decoding
 pub fn from_v8_cached<'de, 'a, 'b, 's, T>(
   scope: &'b mut v8::HandleScope<'s>,
   input: v8::Local<'a, v8::Value>,
-  key_cache: &mut KeyCache,
+  key_cache: &'b mut KeyCache,
 ) -> Result<T>
 where
   T: Deserialize<'de>,
 {
-  let mut deserializer = Deserializer::new(scope, input, Some(key_cache));
+  let mut deserializer = Deserializer::new(scope, input, key_cache);
   let t = T::deserialize(&mut deserializer)?;
   Ok(t)
 }
@@ -267,6 +268,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       len,
       obj,
       scope: self.scope,
+      key_cache: self.key_cache,
     };
     visitor.visit_seq(seq)
   }
@@ -283,6 +285,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       len: len as u32,
       obj,
       scope: self.scope,
+      key_cache: self.key_cache,
     };
     visitor.visit_seq(seq)
   }
@@ -309,7 +312,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       .map_err(|_| Error::ExpectedObject)?;
     let prop_names = obj.get_own_property_names(self.scope);
     let mut keys: Vec<magic::Value> = match prop_names {
-      Some(names) => from_v8(self.scope, names.into()).unwrap(),
+      Some(names) => {
+        from_v8_cached(self.scope, names.into(), self.key_cache).unwrap()
+      }
       None => vec![],
     };
     let keys: Vec<v8::Local<v8::Value>> = keys
@@ -325,6 +330,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       keys,
       pos: 0,
       scope: self.scope,
+      key_cache: self.key_cache,
     };
     visitor.visit_map(map)
   }
@@ -399,7 +405,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       obj,
       pos: 0,
       scope: self.scope,
-      _cache: None,
+      key_cache: self.key_cache,
     };
 
     visitor.visit_seq(struct_access)
@@ -424,6 +430,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         scope: self.scope,
         tag: self.input,
         payload,
+        key_cache: self.key_cache,
       })
     }
     // Struct or tuple variant
@@ -445,6 +452,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         scope: self.scope,
         tag,
         payload,
+        key_cache: self.key_cache,
       })
     } else {
       // TODO: improve error
@@ -476,6 +484,7 @@ struct MapAccess<'a, 'b, 's> {
   scope: &'b mut v8::HandleScope<'s>,
   keys: Vec<v8::Local<'a, v8::Value>>,
   pos: usize,
+  key_cache: &'b mut KeyCache,
 }
 
 impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
@@ -487,7 +496,8 @@ impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
   ) -> Result<Option<K::Value>> {
     Ok(match self.keys.get(self.pos) {
       Some(key) => {
-        let mut deserializer = Deserializer::new(self.scope, *key, None);
+        let mut deserializer =
+          Deserializer::new(self.scope, *key, self.key_cache);
         Some(seed.deserialize(&mut deserializer)?)
       }
       None => None,
@@ -504,7 +514,8 @@ impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
     let key = self.keys[self.pos];
     self.pos += 1;
     let v8_val = self.obj.get(self.scope, key).unwrap();
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    let mut deserializer =
+      Deserializer::new(self.scope, v8_val, self.key_cache);
     seed.deserialize(&mut deserializer)
   }
 
@@ -521,10 +532,12 @@ impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
     }
     let v8_key = self.keys[self.pos];
     self.pos += 1;
-    let mut kdeserializer = Deserializer::new(self.scope, v8_key, None);
+    let mut kdeserializer =
+      Deserializer::new(self.scope, v8_key, self.key_cache);
     Ok(Some((kseed.deserialize(&mut kdeserializer)?, {
       let v8_val = self.obj.get(self.scope, v8_key).unwrap();
-      let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+      let mut deserializer =
+        Deserializer::new(self.scope, v8_val, self.key_cache);
       vseed.deserialize(&mut deserializer)?
     })))
   }
@@ -535,7 +548,7 @@ struct StructAccess<'a, 'b, 's> {
   scope: &'b mut v8::HandleScope<'s>,
   fields: &'static [&'static str],
   pos: usize,
-  _cache: Option<&'b mut KeyCache>,
+  key_cache: &'b mut KeyCache,
 }
 
 impl<'de> de::SeqAccess<'de> for StructAccess<'_, '_, '_> {
@@ -553,9 +566,9 @@ impl<'de> de::SeqAccess<'de> for StructAccess<'_, '_, '_> {
     self.pos += 1;
 
     let field = self.fields[pos];
-    let key = v8_struct_key(self.scope, field).into();
+    let key = v8_struct_key(self.scope, field, self.key_cache).into();
     let val = self.obj.get(self.scope, key).unwrap();
-    let mut deserializer = Deserializer::new(self.scope, val, None);
+    let mut deserializer = Deserializer::new(self.scope, val, self.key_cache);
     match seed.deserialize(&mut deserializer) {
       Ok(val) => Ok(Some(val)),
       // Fallback to Ok(None) for #[serde(Default)] at cost of error quality ...
@@ -571,6 +584,7 @@ struct SeqAccess<'a, 'b, 's> {
   scope: &'b mut v8::HandleScope<'s>,
   len: u32,
   pos: u32,
+  key_cache: &'b mut KeyCache,
 }
 
 impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
@@ -585,7 +599,7 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
 
     if pos < self.len {
       let val = self.obj.get_index(self.scope, pos).unwrap();
-      let mut deserializer = Deserializer::new(self.scope, val, None);
+      let mut deserializer = Deserializer::new(self.scope, val, self.key_cache);
       Ok(Some(seed.deserialize(&mut deserializer)?))
     } else {
       Ok(None)
@@ -601,7 +615,7 @@ struct EnumAccess<'a, 'b, 's> {
   tag: v8::Local<'a, v8::Value>,
   payload: v8::Local<'a, v8::Value>,
   scope: &'b mut v8::HandleScope<'s>,
-  // p1: std::marker::PhantomData<&'x ()>,
+  key_cache: &'b mut KeyCache,
 }
 
 impl<'de, 'a, 'b, 's, 'x> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
@@ -613,12 +627,13 @@ impl<'de, 'a, 'b, 's, 'x> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
     seed: V,
   ) -> Result<(V::Value, Self::Variant)> {
     let seed = {
-      let mut dtag = Deserializer::new(self.scope, self.tag, None);
+      let mut dtag = Deserializer::new(self.scope, self.tag, self.key_cache);
       seed.deserialize(&mut dtag)
     };
     let dpayload = VariantDeserializer::<'a, 'b, 's> {
       scope: self.scope,
       value: self.payload,
+      key_cache: self.key_cache,
     };
 
     Ok((seed?, dpayload))
@@ -628,6 +643,7 @@ impl<'de, 'a, 'b, 's, 'x> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
 struct VariantDeserializer<'a, 'b, 's> {
   value: v8::Local<'a, v8::Value>,
   scope: &'b mut v8::HandleScope<'s>,
+  key_cache: &'b mut KeyCache,
 }
 
 impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
@@ -636,7 +652,7 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
   type Error = Error;
 
   fn unit_variant(self) -> Result<()> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::new(self.scope, self.value, self.key_cache);
     de::Deserialize::deserialize(&mut d)
   }
 
@@ -644,7 +660,7 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
     self,
     seed: T,
   ) -> Result<T::Value> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::new(self.scope, self.value, self.key_cache);
     seed.deserialize(&mut d)
   }
 
@@ -653,7 +669,7 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
     len: usize,
     visitor: V,
   ) -> Result<V::Value> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::new(self.scope, self.value, self.key_cache);
     de::Deserializer::deserialize_tuple(&mut d, len, visitor)
   }
 
@@ -662,7 +678,7 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
     fields: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::new(self.scope, self.value, self.key_cache);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
   }
 }

@@ -637,6 +637,7 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    serde_v8::clear_key_cache(self.v8_isolate());
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator

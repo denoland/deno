@@ -3599,6 +3599,7 @@ name = "serde_v8"
 version = "0.33.0"
 dependencies = [
  "bencher",
+ "fxhash",
  "serde",
  "serde_bytes",
  "serde_json",
