@@ -56,6 +56,13 @@ function benchUrlParse() {
   });
 }
 
+function benchLargeBlobText() {
+  const input = "long-string".repeat(999_999);
+  benchSync("blob_text_large", 3, () => {
+    new Blob([input]).text();
+  });
+}
+
 function benchDateNow() {
   benchSync("date_now", 5e5, () => {
     Date.now();
@@ -123,6 +130,7 @@ async function main() {
   // A common "language feature", that should be fast
   // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
+  benchLargeBlobText();
   benchB64RtLong();
   benchB64RtShort();
   // IO ops
