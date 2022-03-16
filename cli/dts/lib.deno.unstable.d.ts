@@ -1339,6 +1339,10 @@ declare namespace Deno {
    * Allows to "hijack" a connection that the request is associated with.
    * Can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
+   *
+   * The returned promise returns underlying connection and first packet
+   * received. The promise shouldn't be awaited before responding to the
+   * `request`, otherwise event loop might deadlock.
    */
   export function upgradeHttp(
     request: Request,
