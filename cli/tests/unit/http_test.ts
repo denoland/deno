@@ -1792,7 +1792,7 @@ Deno.test(
       ];
       const tlsConn = await Deno.connectTls({
         hostname: "localhost",
-        port: 4501,
+        port: 4502,
         caCerts,
       });
       await tlsConn.write(
@@ -1832,7 +1832,7 @@ Deno.test(
       })();
 
       return new Response(null, { status: 101 });
-    }, { port: 4501, signal, keyFile, certFile });
+    }, { port: 4502, signal, keyFile, certFile });
 
     await Promise.all([server, client()]);
   },
