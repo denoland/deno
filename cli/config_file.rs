@@ -530,6 +530,7 @@ pub struct ConfigFileJson {
   pub import_map: Option<String>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
+  pub tasks: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -643,6 +644,19 @@ impl ConfigFile {
       let lint_config: SerializedLintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
       Ok(Some(lint_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_tasks_config(
+    &self,
+  ) -> Result<Option<BTreeMap<String, String>>, AnyError> {
+    if let Some(config) = self.json.tasks.clone() {
+      let tasks_config: BTreeMap<String, String> =
+        serde_json::from_value(config)
+          .context("Failed to parse \"tasks\" configuration")?;
+      Ok(Some(tasks_config))
     } else {
       Ok(None)
     }
@@ -784,6 +798,10 @@ mod tests {
           "singleQuote": true,
           "proseWrap": "preserve"
         }
+      },
+      "tasks": {
+        "build": "deno run --allow-read --allow-write build.ts",
+        "server": "deno run --allow-net --allow-read server.ts"
       }
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
@@ -841,6 +859,16 @@ mod tests {
     assert_eq!(fmt_config.options.line_width, Some(80));
     assert_eq!(fmt_config.options.indent_width, Some(4));
     assert_eq!(fmt_config.options.single_quote, Some(true));
+
+    let tasks_config = config_file.to_tasks_config().unwrap().unwrap();
+    assert_eq!(
+      tasks_config["build"],
+      "deno run --allow-read --allow-write build.ts",
+    );
+    assert_eq!(
+      tasks_config["server"],
+      "deno run --allow-net --allow-read server.ts"
+    );
   }
 
   #[test]

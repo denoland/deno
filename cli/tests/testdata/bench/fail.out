@@ -1,0 +1,81 @@
+Check [WILDCARD]/bench/fail.ts
+running 10 benches from [WILDCARD]/bench/fail.ts
+bench bench0 ... 1000 iterations FAILED ([WILDCARD])
+bench bench1 ... 1000 iterations FAILED ([WILDCARD])
+bench bench2 ... 1000 iterations FAILED ([WILDCARD])
+bench bench3 ... 1000 iterations FAILED ([WILDCARD])
+bench bench4 ... 1000 iterations FAILED ([WILDCARD])
+bench bench5 ... 1000 iterations FAILED ([WILDCARD])
+bench bench6 ... 1000 iterations FAILED ([WILDCARD])
+bench bench7 ... 1000 iterations FAILED ([WILDCARD])
+bench bench8 ... 1000 iterations FAILED ([WILDCARD])
+bench bench9 ... 1000 iterations FAILED ([WILDCARD])
+
+failures:
+
+bench0
+Error
+    at [WILDCARD]/bench/fail.ts:2:9
+    at [WILDCARD]
+
+bench1
+Error
+    at [WILDCARD]/bench/fail.ts:5:9
+    at [WILDCARD]
+
+bench2
+Error
+    at [WILDCARD]/bench/fail.ts:8:9
+    at [WILDCARD]
+
+bench3
+Error
+    at [WILDCARD]/bench/fail.ts:11:9
+    at [WILDCARD]
+
+bench4
+Error
+    at [WILDCARD]/bench/fail.ts:14:9
+    at [WILDCARD]
+
+bench5
+Error
+    at [WILDCARD]/bench/fail.ts:17:9
+    at [WILDCARD]
+
+bench6
+Error
+    at [WILDCARD]/bench/fail.ts:20:9
+    at [WILDCARD]
+
+bench7
+Error
+    at [WILDCARD]/bench/fail.ts:23:9
+    at [WILDCARD]
+
+bench8
+Error
+    at [WILDCARD]/bench/fail.ts:26:9
+    at [WILDCARD]
+
+bench9
+Error
+    at [WILDCARD]/bench/fail.ts:29:9
+    at [WILDCARD]
+
+failures:
+
+	bench0
+	bench1
+	bench2
+	bench3
+	bench4
+	bench5
+	bench6
+	bench7
+	bench8
+	bench9
+
+bench result: FAILED. 0 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Bench failed

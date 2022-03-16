@@ -1,0 +1,51 @@
+[WILDCARD]
+running 7 benches from [WILDCARD]
+bench read ... 1000 iterations FAILED [WILDCARD]
+bench write ... 1000 iterations FAILED [WILDCARD]
+bench net ... 1000 iterations FAILED [WILDCARD]
+bench env ... 1000 iterations FAILED [WILDCARD]
+bench run ... 1000 iterations FAILED [WILDCARD]
+bench ffi ... 1000 iterations FAILED [WILDCARD]
+bench hrtime ... 1000 iterations FAILED [WILDCARD]
+
+failures:
+
+read
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+write
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+net
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+env
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+run
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+ffi
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+hrtime
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+failures:
+
+	read
+	write
+	net
+	env
+	run
+	ffi
+	hrtime
+
+bench result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

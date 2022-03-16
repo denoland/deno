@@ -244,7 +244,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 5-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 9-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -260,7 +260,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            9-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -276,7 +276,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            9-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -467,6 +467,7 @@ jobs:
                                              --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&
@@ -481,6 +482,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Upload wpt results to wpt.fyi
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&

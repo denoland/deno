@@ -59,20 +59,10 @@ impl OpsTracker {
     unsafe { &mut *self.ops.get() }
   }
 
-  #[inline]
-  fn ensure_capacity(ops: &mut Vec<OpMetrics>, op_id: OpId) {
-    if op_id >= ops.len() {
-      ops.resize(1 + op_id, OpMetrics::default())
-    }
-  }
-
   #[allow(clippy::mut_from_ref)]
   #[inline]
   fn metrics_mut(&self, id: OpId) -> &mut OpMetrics {
-    let ops = self.ops_mut();
-    // TODO(@AaronO): Pre-alloc capacity at runtime init once we forbid post-boot op registrations
-    Self::ensure_capacity(ops, id);
-    unsafe { ops.get_unchecked_mut(id) }
+    unsafe { self.ops_mut().get_unchecked_mut(id) }
   }
 
   #[inline]

@@ -7,6 +7,7 @@ members = [
   "cli",
   "cli/napi_sym",
   "core",
+  "ops",
   "runtime",
   "serde_v8",
   "test_ffi",
@@ -62,13 +63,29 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.brotli-decompressor]
 opt-level = 3
+[profile.bench.package.deno_bench_util]
+opt-level = 3
 [profile.bench.package.deno_core]
 opt-level = 3
 [profile.bench.package.deno_runtime]
 opt-level = 3
 [profile.bench.package.deno_http]
 opt-level = 3
+[profile.bench.package.deno_web]
+opt-level = 3
+[profile.bench.package.deno_broadcast_channel]
+opt-level = 3
+[profile.bench.package.deno_fetch]
+opt-level = 3
+[profile.bench.package.deno_ffi]
+opt-level = 3
+[profile.bench.package.deno_tls]
+opt-level = 3
+[profile.bench.package.deno_websocket]
+opt-level = 3
 [profile.bench.package.deno_net]
+opt-level = 3
+[profile.bench.package.deno_crypto]
 opt-level = 3
 [profile.bench.package.num-bigint-dig]
 opt-level = 3
@@ -110,6 +127,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.brotli-decompressor]
 opt-level = 3
+[profile.release.package.deno_bench_util]
+opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
 [profile.release.package.deno_runtime]
@@ -117,6 +136,20 @@ opt-level = 3
 [profile.release.package.deno_http]
 opt-level = 3
 [profile.release.package.deno_net]
+opt-level = 3
+[profile.release.package.deno_web]
+opt-level = 3
+[profile.release.package.deno_crypto]
+opt-level = 3
+[profile.release.package.deno_broadcast_channel]
+opt-level = 3
+[profile.release.package.deno_fetch]
+opt-level = 3
+[profile.release.package.deno_ffi]
+opt-level = 3
+[profile.release.package.deno_tls]
+opt-level = 3
+[profile.release.package.deno_websocket]
 opt-level = 3
 [profile.release.package.num-bigint-dig]
 opt-level = 3

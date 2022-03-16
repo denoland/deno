@@ -41,6 +41,7 @@ mod windows_util;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
 use crate::flags::CheckFlag;
@@ -57,6 +58,7 @@ use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
+use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
@@ -330,6 +332,8 @@ fn print_cache_info(
       origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
 
+  let local_storage_dir = origin_dir.join("local_storage");
+
   if json {
     let mut output = json!({
       "denoDir": deno_dir,
@@ -340,34 +344,41 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] =
-        serde_json::to_value(origin_dir.join("local_storage"))?;
+      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
     }
 
     write_json_to_stdout(&output)
   } else {
-    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
-      "{} {:?}",
+      "{} {}",
+      colors::bold("DENO_DIR location:"),
+      deno_dir.display()
+    );
+    println!(
+      "{} {}",
       colors::bold("Remote modules cache:"),
-      modules_cache
+      modules_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Emitted modules cache:"),
-      typescript_cache
+      typescript_cache.display()
     );
     println!(
-      "{} {:?}",
+      "{} {}",
       colors::bold("Language server registries cache:"),
-      registry_cache,
+      registry_cache.display(),
     );
-    println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    println!(
+      "{} {}",
+      colors::bold("Origin storage:"),
+      origin_dir.display()
+    );
     if location.is_some() {
       println!(
-        "{} {:?}",
+        "{} {}",
         colors::bold("Local Storage:"),
-        origin_dir.join("local_storage"),
+        local_storage_dir.display(),
       );
     }
     Ok(())
@@ -578,7 +589,7 @@ async fn cache_command(
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
+      vec![specifier],
       false,
       lib.clone(),
       Permissions::allow_all(),
@@ -1220,6 +1231,13 @@ async fn run_command(
   Ok(worker.get_exit_code())
 }
 
+async fn task_command(
+  flags: Flags,
+  task_flags: TaskFlags,
+) -> Result<i32, AnyError> {
+  tools::task::execute_script(flags, task_flags).await
+}
+
 async fn coverage_command(
   flags: Flags,
   coverage_flags: CoverageFlags,
@@ -1229,6 +1247,19 @@ async fn coverage_command(
   }
 
   tools::coverage::cover_files(flags, coverage_flags).await?;
+  Ok(0)
+}
+
+async fn bench_command(
+  flags: Flags,
+  bench_flags: BenchFlags,
+) -> Result<i32, AnyError> {
+  if flags.watch.is_some() {
+    tools::bench::run_benchmarks_with_watch(flags, bench_flags).await?;
+  } else {
+    tools::bench::run_benchmarks(flags, bench_flags).await?;
+  }
+
   Ok(0)
 }
 
@@ -1312,6 +1343,9 @@ fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
   match flags.subcommand.clone() {
+    DenoSubcommand::Bench(bench_flags) => {
+      bench_command(flags, bench_flags).boxed_local()
+    }
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
     }
@@ -1351,6 +1385,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
+    }
+    DenoSubcommand::Task(task_flags) => {
+      task_command(flags, task_flags).boxed_local()
     }
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()

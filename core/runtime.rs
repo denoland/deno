@@ -5,7 +5,7 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
-
+use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
@@ -17,13 +17,13 @@ use crate::modules::NoopModuleLoader;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
-use crate::OpPayload;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
+use futures::future::Future;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 
@@ -146,7 +146,6 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
@@ -199,9 +198,9 @@ impl Drop for JsRuntime {
 fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10144432]);
+  struct IcuData([u8; 10284336]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data_69(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_70(&ICU_DATA.0).unwrap();
 
   let v8_platform = v8_platform
     .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
@@ -282,6 +281,24 @@ impl JsRuntime {
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
+    let js_error_create_fn = options
+      .js_error_create_fn
+      .unwrap_or_else(|| Rc::new(JsError::create));
+
+    // Add builtins extension
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::init_builtins());
+
+    let ops = Self::collect_ops(&mut options.extensions);
+    let mut op_state = OpState::new(ops.len());
+
+    if let Some(get_error_class_fn) = options.get_error_class_fn {
+      op_state.get_error_class_fn = get_error_class_fn;
+    }
+
+    let op_state = Rc::new(RefCell::new(op_state));
+
     let global_context;
 
     let align = std::mem::align_of::<usize>();
@@ -294,13 +311,12 @@ impl JsRuntime {
     let isolate_ptr: *mut v8::OwnedIsolate =
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
-    let refs = bindings::external_references(isolate_ptr as *mut _);
-    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
 
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
+      let mut creator =
+        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -308,8 +324,13 @@ impl JsRuntime {
         // Get isolate from the pointer.
         isolate = unsafe { isolate_ptr.read() };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(Some(isolate_ptr as *mut _), scope);
+        let context = bindings::initialize_context(
+          None,
+          scope,
+          &ops,
+          false,
+          op_state.clone(),
+        );
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -319,7 +340,7 @@ impl JsRuntime {
         .create_params
         .take()
         .unwrap_or_else(v8::Isolate::create_params)
-        .external_references(&**refs);
+        .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -338,13 +359,14 @@ impl JsRuntime {
 
         isolate = unsafe { isolate_ptr.read() };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = if snapshot_loaded {
-          v8::Context::new(scope)
-        } else {
-          // If no snapshot is provided, we initialize the context with empty
-          // main source code and source maps.
-          bindings::initialize_context(Some(isolate_ptr as *mut _), scope)
-        };
+        let context = bindings::initialize_context(
+          Some(isolate_ptr),
+          scope,
+          &ops,
+          snapshot_loaded,
+          op_state.clone(),
+        );
+
         global_context = v8::Global::new(scope, context);
       }
 
@@ -358,16 +380,6 @@ impl JsRuntime {
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
-    let js_error_create_fn = options
-      .js_error_create_fn
-      .unwrap_or_else(|| Rc::new(JsError::create));
-    let mut op_state = OpState::new();
-
-    if let Some(get_error_class_fn) = options.get_error_class_fn {
-      op_state.get_error_class_fn = get_error_class_fn;
-    }
-
-    let op_state = Rc::new(RefCell::new(op_state));
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
@@ -375,7 +387,6 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
-      js_sync_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
@@ -395,11 +406,6 @@ impl JsRuntime {
     let module_map = ModuleMap::new(loader, op_state);
     isolate.set_slot(Rc::new(RefCell::new(module_map)));
 
-    // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
-
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       inspector: Some(inspector),
@@ -417,10 +423,8 @@ impl JsRuntime {
     }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
-    // Init callbacks (opresolve & syncOpsCache)
+    // Init callbacks (opresolve)
     js_runtime.init_cbs();
-    // Sync ops cache
-    js_runtime.sync_ops_cache();
 
     js_runtime
   }
@@ -484,72 +488,112 @@ impl JsRuntime {
     Ok(())
   }
 
+  /// Collects ops from extensions & applies middleware
+  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
+    // Middleware
+    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+      .iter_mut()
+      .filter_map(|e| e.init_middleware())
+      .collect();
+
+    // macroware wraps an opfn in all the middleware
+    let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
+
+    // Flatten ops & apply middlware
+    extensions
+      .iter_mut()
+      .filter_map(|e| e.init_ops())
+      .flatten()
+      .map(|d| OpDecl {
+        name: d.name,
+        ..macroware(d)
+      })
+      .collect()
+  }
+
   /// Initializes ops of provided Extensions
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
-    // Middleware
-    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
-      .iter_mut()
-      .filter_map(|e| e.init_middleware())
-      .collect();
-    // macroware wraps an opfn in all the middleware
-    let macroware =
-      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
-
-    // Register ops
+    // Setup state
     for e in extensions.iter_mut() {
+      // ops are already registered during in bindings::initialize_context();
       e.init_state(&mut op_state.borrow_mut())?;
-      // Register each op after middlewaring it
-      let ops = e.init_ops().unwrap_or_default();
-      for (name, opfn) in ops {
-        self.register_op(name, macroware(name, opfn));
-      }
 
+      // Setup event-loop middleware
       if let Some(middleware) = e.init_event_loop_middleware() {
         self.event_loop_middlewares.push(middleware);
       }
     }
+
     // Restore extensions
     self.extensions = extensions;
 
     Ok(())
   }
 
-  /// Grab a Global handle to a function returned by the given expression
-  fn grab_fn(
-    scope: &mut v8::HandleScope,
-    code: &str,
-  ) -> v8::Global<v8::Function> {
-    let code = v8::String::new(scope, code).unwrap();
-    let script = v8::Script::compile(scope, code, None).unwrap();
-    let v8_value = script.run(scope).unwrap();
-    let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
-    v8::Global::new(scope, cb)
+  /// Grab a Global handle to a v8 value returned by the expression
+  pub(crate) fn grab<'s, T>(
+    scope: &mut v8::HandleScope<'s>,
+    root: v8::Local<'s, v8::Value>,
+    path: &str,
+  ) -> Option<v8::Local<'s, T>>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
+  {
+    path
+      .split('.')
+      .fold(Some(root), |p, k| {
+        let p = v8::Local::<v8::Object>::try_from(p?).ok()?;
+        let k = v8::String::new(scope, k)?;
+        p.get(scope, k.into())
+      })?
+      .try_into()
+      .ok()
+  }
+
+  pub(crate) fn grab_global<'s, T>(
+    scope: &mut v8::HandleScope<'s>,
+    path: &str,
+  ) -> Option<v8::Local<'s, T>>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
+  {
+    let context = scope.get_current_context();
+    let global = context.global(scope);
+    Self::grab(scope, global.into(), path)
+  }
+
+  pub(crate) fn ensure_objs<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    root: v8::Local<'s, v8::Object>,
+    path: &str,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    path.split('.').fold(Some(root), |p, k| {
+      let k = v8::String::new(scope, k)?.into();
+      match p?.get(scope, k) {
+        Some(v) if !v.is_null_or_undefined() => v.try_into().ok(),
+        _ => {
+          let o = v8::Object::new(scope);
+          p?.set(scope, k, o.into());
+          Some(o)
+        }
+      }
+    })
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
-    let mut scope = self.handle_scope();
-    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
-    let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
+    let scope = &mut self.handle_scope();
+    let recv_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
+    let recv_cb = v8::Global::new(scope, recv_cb);
     // Put global handles in state
-    let state_rc = JsRuntime::state(&scope);
+    let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
-    state.js_sync_cb.replace(sync_cb);
-  }
-
-  /// Ensures core.js has the latest op-name to op-id mappings
-  pub fn sync_ops_cache(&mut self) {
-    let scope = &mut self.handle_scope();
-    let state_rc = JsRuntime::state(scope);
-    let js_sync_cb_handle = state_rc.borrow().js_sync_cb.clone().unwrap();
-    let js_sync_cb = js_sync_cb_handle.open(scope);
-    let this = v8::undefined(scope).into();
-    js_sync_cb.call(scope, this, &[]);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -618,6 +662,19 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
+
+    // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
+    // TODO(@AaronO): make ops stable across snapshots
+    {
+      let scope = &mut self.handle_scope();
+      let o = Self::grab_global::<v8::Object>(scope, "Deno.core.ops").unwrap();
+      let names = o.get_own_property_names(scope).unwrap();
+      for i in 0..names.length() {
+        let key = names.get_index(scope, i).unwrap();
+        o.delete(scope, key);
+      }
+    }
+
     let state = Self::state(self.v8_isolate());
 
     // Note: create_blob() method must not be called from within a HandleScope.
@@ -635,7 +692,6 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
-    std::mem::take(&mut state.borrow_mut().js_sync_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -644,27 +700,6 @@ impl JsRuntime {
     self.has_snapshotted = true;
 
     snapshot
-  }
-
-  /// Registers an op that can be called from JavaScript.
-  ///
-  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
-  /// which can be called using the provided `name`.
-  ///
-  /// This function provides byte-level bindings. To pass data via JSON, the
-  /// following functions can be passed as an argument for `op_fn`:
-  /// * [op_sync()](fn.op_sync.html)
-  /// * [op_async()](fn.op_async.html)
-  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
-  {
-    Self::state(self.v8_isolate())
-      .borrow_mut()
-      .op_state
-      .borrow_mut()
-      .op_table
-      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
@@ -1576,13 +1611,11 @@ impl JsRuntime {
       let mut state = state_rc.borrow_mut();
       state.have_unpolled_ops = false;
 
-      let op_state = state.op_state.clone();
-
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (promise_id, op_id, resp) = item;
-        op_state.borrow().tracker.track_async_completed(op_id);
         state.unrefed_ops.remove(&promise_id);
+        state.op_state.borrow().tracker.track_async_completed(op_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());
       }
@@ -1678,22 +1711,37 @@ impl JsRuntime {
   }
 }
 
+#[inline]
+pub fn queue_async_op(
+  scope: &v8::Isolate,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  state.pending_ops.push(OpCall::eager(op));
+  state.have_unpolled_ops = true;
+}
+
 #[cfg(test)]
 pub mod tests {
   use super::*;
   use crate::error::custom_error;
+  use crate::error::AnyError;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::modules::ModuleType;
-  use crate::op_async;
-  use crate::op_sync;
   use crate::ZeroCopyBuf;
+  use deno_ops::op;
   use futures::future::lazy;
   use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
+  // deno_ops macros generate code assuming deno_core in scope.
+  mod deno_core {
+    pub use crate::*;
+  }
 
   pub fn run_in_task<F>(f: F)
   where
@@ -1713,26 +1761,26 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn op_test(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
-    let rc_op_state2 = rc_op_state.clone();
-    let op_state_ = rc_op_state2.borrow();
+  #[op]
+  async fn op_test(
+    rc_op_state: Rc<RefCell<OpState>>,
+    control: u8,
+    buf: Option<ZeroCopyBuf>,
+  ) -> Result<u8, AnyError> {
+    let op_state_ = rc_op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
-    let (control, buf): (u8, Option<ZeroCopyBuf>) =
-      payload.deserialize().unwrap();
     match test_state.mode {
       Mode::Async => {
         assert_eq!(control, 42);
-        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
-        Op::Async(OpCall::ready(resp))
+        Ok(43)
       }
       Mode::AsyncZeroCopy(has_buffer) => {
         assert_eq!(buf.is_some(), has_buffer);
         if let Some(buf) = buf {
           assert_eq!(buf.len(), 1);
         }
-        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
-        Op::Async(OpCall::ready(resp))
+        Ok(43)
       }
     }
   }
@@ -1741,7 +1789,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count2 = dispatch_count.clone();
     let ext = Extension::builder()
-      .ops(vec![("op_test", Box::new(op_test))])
+      .ops(vec![op_test::decl()])
       .state(move |state| {
         state.put(TestState {
           mode,
@@ -2052,30 +2100,6 @@ pub mod tests {
   }
 
   #[test]
-  fn test_pre_dispatch() {
-    run_in_task(|cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      runtime
-        .execute_script(
-          "bad_op_id.js",
-          r#"
-          let thrown;
-          try {
-            Deno.core.opcallSync(100, null, null);
-          } catch (e) {
-            thrown = e;
-          }
-          assert(String(thrown) === "TypeError: Unknown op id: 100");
-         "#,
-        )
-        .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
-        unreachable!();
-      }
-    });
-  }
-
-  #[test]
   fn syntax_error() {
     let mut runtime = JsRuntime::new(Default::default());
     let src = "hocuspocus(";
@@ -2119,7 +2143,8 @@ pub mod tests {
 
   #[test]
   fn test_error_builder() {
-    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+    #[op]
+    fn op_err() -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -2128,9 +2153,7 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let ext = Extension::builder()
-        .ops(vec![("op_err", op_sync(op_err))])
-        .build();
+      let ext = Extension::builder().ops(vec![op_err::decl()]).build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
@@ -2201,7 +2224,7 @@ pub mod tests {
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();
 
-    let callback_invoke_count = Rc::new(AtomicUsize::default());
+    let callback_invoke_count = Rc::new(AtomicUsize::new(0));
     let inner_invoke_count = Rc::clone(&callback_invoke_count);
 
     runtime.add_near_heap_limit_callback(
@@ -2245,7 +2268,7 @@ pub mod tests {
     });
     let cb_handle = runtime.v8_isolate().thread_safe_handle();
 
-    let callback_invoke_count_first = Rc::new(AtomicUsize::default());
+    let callback_invoke_count_first = Rc::new(AtomicUsize::new(0));
     let inner_invoke_count_first = Rc::clone(&callback_invoke_count_first);
     runtime.add_near_heap_limit_callback(
       move |current_limit, _initial_limit| {
@@ -2254,7 +2277,7 @@ pub mod tests {
       },
     );
 
-    let callback_invoke_count_second = Rc::new(AtomicUsize::default());
+    let callback_invoke_count_second = Rc::new(AtomicUsize::new(0));
     let inner_invoke_count_second = Rc::clone(&callback_invoke_count_second);
     runtime.add_near_heap_limit_callback(
       move |current_limit, _initial_limit| {
@@ -2524,10 +2547,9 @@ assertEquals(1, notify_return_value);
   async fn test_async_opstate_borrow() {
     struct InnerState(u64);
 
+    #[op]
     async fn op_async_borrow(
       op_state: Rc<RefCell<OpState>>,
-      _: (),
-      _: (),
     ) -> Result<(), Error> {
       let n = {
         let op_state = op_state.borrow();
@@ -2543,7 +2565,7 @@ assertEquals(1, notify_return_value);
     }
 
     let extension = Extension::builder()
-      .ops(vec![("op_async_borrow", op_async(op_async_borrow))])
+      .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
         Ok(())
@@ -2566,18 +2588,15 @@ assertEquals(1, notify_return_value);
 
   #[tokio::test]
   async fn test_set_macrotask_callback_set_next_tick_callback() {
-    async fn op_async_sleep(
-      _op_state: Rc<RefCell<OpState>>,
-      _: (),
-      _: (),
-    ) -> Result<(), Error> {
+    #[op]
+    async fn op_async_sleep() -> Result<(), Error> {
       // Future must be Poll::Pending on first call
       tokio::time::sleep(std::time::Duration::from_millis(1)).await;
       Ok(())
     }
 
     let extension = Extension::builder()
-      .ops(vec![("op_async_sleep", op_async(op_async_sleep))])
+      .ops(vec![op_async_sleep::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2641,25 +2660,23 @@ assertEquals(1, notify_return_value);
   fn test_has_tick_scheduled() {
     use futures::task::ArcWake;
 
-    let macrotask = Arc::new(AtomicUsize::default());
-    let macrotask_ = Arc::clone(&macrotask);
+    static MACROTASK: AtomicUsize = AtomicUsize::new(0);
+    static NEXT_TICK: AtomicUsize = AtomicUsize::new(0);
 
-    let next_tick = Arc::new(AtomicUsize::default());
-    let next_tick_ = Arc::clone(&next_tick);
-
-    let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
-      macrotask_.fetch_add(1, Ordering::Relaxed);
+    #[op]
+    fn op_macrotask() -> Result<(), AnyError> {
+      MACROTASK.fetch_add(1, Ordering::Relaxed);
       Ok(())
-    };
+    }
 
-    let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
-      next_tick_.fetch_add(1, Ordering::Relaxed);
+    #[op]
+    fn op_next_tick() -> Result<(), AnyError> {
+      NEXT_TICK.fetch_add(1, Ordering::Relaxed);
       Ok(())
-    };
+    }
 
     let extension = Extension::builder()
-      .ops(vec![("op_macrotask", op_sync(op_macrotask))])
-      .ops(vec![("op_next_tick", op_sync(op_next_tick))])
+      .ops(vec![op_macrotask::decl(), op_next_tick::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2694,8 +2711,8 @@ assertEquals(1, notify_return_value);
     let cx = &mut Context::from_waker(&waker);
 
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert_eq!(1, macrotask.load(Ordering::Relaxed));
-    assert_eq!(1, next_tick.load(Ordering::Relaxed));
+    assert_eq!(1, MACROTASK.load(Ordering::Relaxed));
+    assert_eq!(1, NEXT_TICK.load(Ordering::Relaxed));
     assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
     assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
@@ -2780,28 +2797,26 @@ assertEquals(1, notify_return_value);
 
   #[tokio::test]
   async fn test_set_promise_reject_callback() {
-    let promise_reject = Arc::new(AtomicUsize::default());
-    let promise_reject_ = Arc::clone(&promise_reject);
+    static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
+    static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
-    let uncaught_exception = Arc::new(AtomicUsize::default());
-    let uncaught_exception_ = Arc::clone(&uncaught_exception);
-
-    let op_promise_reject = move |_: &mut OpState, _: (), _: ()| {
-      promise_reject_.fetch_add(1, Ordering::Relaxed);
+    #[op]
+    fn op_promise_reject() -> Result<(), AnyError> {
+      PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
       Ok(())
-    };
+    }
 
-    let op_uncaught_exception = move |_: &mut OpState, _: (), _: ()| {
-      uncaught_exception_.fetch_add(1, Ordering::Relaxed);
+    #[op]
+    fn op_uncaught_exception() -> Result<(), AnyError> {
+      UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
       Ok(())
-    };
+    }
 
     let extension = Extension::builder()
-      .ops(vec![("op_promise_reject", op_sync(op_promise_reject))])
-      .ops(vec![(
-        "op_uncaught_exception",
-        op_sync(op_uncaught_exception),
-      )])
+      .ops(vec![
+        op_promise_reject::decl(),
+        op_uncaught_exception::decl(),
+      ])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2836,8 +2851,8 @@ assertEquals(1, notify_return_value);
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
 
-    assert_eq!(1, promise_reject.load(Ordering::Relaxed));
-    assert_eq!(1, uncaught_exception.load(Ordering::Relaxed));
+    assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
+    assert_eq!(1, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
 
     runtime
       .execute_script(
@@ -2864,7 +2879,7 @@ assertEquals(1, notify_return_value);
     // printed to stderr.
     runtime.run_event_loop(false).await.unwrap();
 
-    assert_eq!(2, promise_reject.load(Ordering::Relaxed));
-    assert_eq!(2, uncaught_exception.load(Ordering::Relaxed));
+    assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
+    assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
   }
 }
