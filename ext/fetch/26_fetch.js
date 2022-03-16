@@ -556,7 +556,7 @@
         core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        core.opSync("op_wasm_streaming_abort", rid, err);
+        core.abortWasmStreaming(rid, err);
       }
     })();
   }
