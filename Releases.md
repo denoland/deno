@@ -35,7 +35,8 @@ https://github.com/denoland/deno_install
 - fix(ext/crypto): handle JWK import with "use" (#13912)
 - fix(ext/crypto): use EcKeyImportParams dictionary (#13894)
 - fix(ext/http): drop content-length header on compression (#13866)
-- fix(info): print deno info paths with unescaped backslashes on windows (#13847)
+- fix(info): print deno info paths with unescaped backslashes on windows
+  (#13847)
 - fix(test): skip typechecking for blocks inside HTML comments (#13889)
 - fix: shell completion hints (#13876)
 - fix: upgrade reqwest to 0.11.10 (#13951)
