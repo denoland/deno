@@ -16,6 +16,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::U16String;
 use deno_core::ZeroCopyBuf;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -120,20 +121,14 @@ pub fn init<P: TimersPermission + 'static>(
 }
 
 #[op]
-fn op_base64_decode(
-  _: &mut OpState,
-  input: String,
-) -> Result<ZeroCopyBuf, AnyError> {
+fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
   let mut input = input.into_bytes();
   input.retain(|c| !c.is_ascii_whitespace());
   Ok(b64_decode(&input)?.into())
 }
 
 #[op]
-fn op_base64_atob(
-  _: &mut OpState,
-  s: ByteString,
-) -> Result<ByteString, AnyError> {
+fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
   let mut s = s.0;
   s.retain(|c| !c.is_ascii_whitespace());
 
@@ -183,15 +178,12 @@ fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
 }
 
 #[op]
-fn op_base64_encode(
-  _: &mut OpState,
-  s: ZeroCopyBuf,
-) -> Result<String, AnyError> {
+fn op_base64_encode(s: ZeroCopyBuf) -> Result<String, AnyError> {
   Ok(b64_encode(&s))
 }
 
 #[op]
-fn op_base64_btoa(_: &mut OpState, s: ByteString) -> Result<String, AnyError> {
+fn op_base64_btoa(s: ByteString) -> Result<String, AnyError> {
   Ok(b64_encode(&s))
 }
 
@@ -210,10 +202,7 @@ struct DecoderOptions {
 }
 
 #[op]
-fn op_encoding_normalize_label(
-  _state: &mut OpState,
-  label: String,
-) -> Result<String, AnyError> {
+fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
       range_error(format!(
@@ -268,7 +257,7 @@ fn op_encoding_decode(
   state: &mut OpState,
   data: ZeroCopyBuf,
   options: DecodeOptions,
-) -> Result<String, AnyError> {
+) -> Result<U16String, AnyError> {
   let DecodeOptions { rid, stream } = options;
 
   let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
@@ -276,23 +265,20 @@ fn op_encoding_decode(
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
 
-  let max_buffer_length = if fatal {
-    decoder
-      .max_utf8_buffer_length_without_replacement(data.len())
-      .ok_or_else(|| range_error("Value too large to decode."))?
-  } else {
-    decoder
-      .max_utf8_buffer_length(data.len())
-      .ok_or_else(|| range_error("Value too large to decode."))?
-  };
+  let max_buffer_length = decoder
+    .max_utf16_buffer_length(data.len())
+    .ok_or_else(|| range_error("Value too large to decode."))?;
 
-  let mut output = String::with_capacity(max_buffer_length);
+  let mut output = U16String::with_zeroes(max_buffer_length);
 
   if fatal {
-    let (result, _) =
-      decoder.decode_to_string_without_replacement(&data, &mut output, !stream);
+    let (result, _, written) =
+      decoder.decode_to_utf16_without_replacement(&data, &mut output, !stream);
     match result {
-      DecoderResult::InputEmpty => Ok(output),
+      DecoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output)
+      }
       DecoderResult::OutputFull => {
         Err(range_error("Provided buffer too small."))
       }
@@ -301,9 +287,13 @@ fn op_encoding_decode(
       }
     }
   } else {
-    let (result, _, _) = decoder.decode_to_string(&data, &mut output, !stream);
+    let (result, _, written, _) =
+      decoder.decode_to_utf16(&data, &mut output, !stream);
     match result {
-      CoderResult::InputEmpty => Ok(output),
+      CoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output)
+      }
       CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
     }
   }
@@ -329,7 +319,6 @@ struct EncodeIntoResult {
 
 #[op]
 fn op_encoding_encode_into(
-  _state: &mut OpState,
   input: String,
   mut buffer: ZeroCopyBuf,
 ) -> Result<EncodeIntoResult, AnyError> {

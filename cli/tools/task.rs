@@ -52,6 +52,10 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
+  log::warn!(
+    "{} deno task is unstable and may drastically change in the future",
+    crate::colors::yellow("Warning"),
+  );
   let flags = Arc::new(flags);
   let ps = ProcState::build(flags.clone()).await?;
   let tasks_config = get_tasks_config(ps.maybe_config_file.as_ref())?;
@@ -81,13 +85,14 @@ pub async fn execute_script(
       .collect::<Vec<_>>()
       .join(" ");
     let script = format!("{} {}", script, additional_args);
+    let script = script.trim();
     log::info!(
       "{} {} {}",
       colors::green("Task"),
       colors::cyan(&task_name),
-      script
+      script,
     );
-    let seq_list = deno_task_shell::parser::parse(&script)
+    let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
     let exit_code = deno_task_shell::execute(seq_list, env_vars, cwd).await;

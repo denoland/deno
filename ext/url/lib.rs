@@ -58,7 +58,6 @@ type UrlParts = String;
 /// optional part to "set" after parsing. Return `UrlParts`.
 #[op]
 pub fn op_url_parse(
-  _state: &mut deno_core::OpState,
   href: String,
   base_href: Option<String>,
 ) -> Result<UrlParts, AnyError> {
@@ -92,7 +91,6 @@ pub enum UrlSetter {
 
 #[op]
 pub fn op_url_reparse(
-  _state: &mut deno_core::OpState,
   href: String,
   setter_opts: (UrlSetter, String),
 ) -> Result<UrlParts, AnyError> {
@@ -162,7 +160,6 @@ fn url_result(
 
 #[op]
 pub fn op_url_parse_search_params(
-  _state: &mut deno_core::OpState,
   args: Option<String>,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Vec<(String, String)>, AnyError> {
@@ -182,7 +179,6 @@ pub fn op_url_parse_search_params(
 
 #[op]
 pub fn op_url_stringify_search_params(
-  _state: &mut deno_core::OpState,
   args: Vec<(String, String)>,
 ) -> Result<String, AnyError> {
   let search = form_urlencoded::Serializer::new(String::new())

@@ -54,7 +54,7 @@ pub fn op_resources(
 }
 
 #[op]
-pub fn op_void_sync(_state: &mut OpState) -> Result<(), Error> {
+pub fn op_void_sync() -> Result<(), Error> {
   Ok(())
 }
 
@@ -101,11 +101,7 @@ pub fn op_metrics(
 
 /// Builtin utility to print to stdout/stderr
 #[op]
-pub fn op_print(
-  _state: &mut OpState,
-  msg: String,
-  is_err: bool,
-) -> Result<(), Error> {
+pub fn op_print(msg: String, is_err: bool) -> Result<(), Error> {
   if is_err {
     stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();

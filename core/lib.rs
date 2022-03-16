@@ -27,6 +27,7 @@ pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use serde_v8::ByteString;
 pub use serde_v8::StringOrBuffer;
+pub use serde_v8::U16String;
 pub use url;
 pub use v8;
 
