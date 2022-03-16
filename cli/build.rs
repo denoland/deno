@@ -326,6 +326,12 @@ fn main() {
     return;
   }
 
+  // Host snapshots won't work when cross compiling.
+  let target = env::var("TARGET").unwrap();
+  let host = env::var("HOST").unwrap();
+  if target != host {
+    panic!("Cross compiling with snapshot is not supported.");
+  }
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
@@ -339,7 +345,7 @@ fn main() {
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
-  println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
+  println!("cargo:rustc-env=TARGET={}", target);
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
