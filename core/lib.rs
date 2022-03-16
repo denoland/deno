@@ -10,8 +10,6 @@ mod gotham_state;
 mod inspector;
 mod module_specifier;
 mod modules;
-#[cfg(feature = "napi")]
-pub mod napi;
 mod normalize_path;
 mod ops;
 mod ops_builtin;

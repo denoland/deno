@@ -324,13 +324,8 @@ impl JsRuntime {
         // Get isolate from the pointer.
         isolate = unsafe { isolate_ptr.read() };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          None,
-          scope,
-          &ops,
-          false,
-          op_state.clone(),
-        );
+        let context =
+          bindings::initialize_context(scope, &ops, false, op_state.clone());
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -360,7 +355,6 @@ impl JsRuntime {
         isolate = unsafe { isolate_ptr.read() };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(
-          Some(isolate_ptr),
           scope,
           &ops,
           snapshot_loaded,

@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::napi::*;
+use deno_runtime::deno_napi::*;
 use std::cell::Cell;
 
 unsafe fn get_backing_store_slice(

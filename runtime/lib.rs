@@ -7,6 +7,7 @@ pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_ffi;
 pub use deno_http;
+pub use deno_napi;
 pub use deno_net;
 pub use deno_tls;
 pub use deno_url;

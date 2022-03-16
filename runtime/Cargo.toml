@@ -30,6 +30,7 @@ deno_fetch = { version = "0.63.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.27.0", path = "../ext/ffi" }
 deno_http = { version = "0.34.0", path = "../ext/http" }
 deno_net = { version = "0.32.0", path = "../ext/net" }
+deno_napi = { version = "0.0.1", path = "../ext/napi" }
 deno_tls = { version = "0.27.0", path = "../ext/tls" }
 deno_url = { version = "0.40.0", path = "../ext/url" }
 deno_web = { version = "0.71.0", path = "../ext/web" }

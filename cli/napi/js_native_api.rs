@@ -2,7 +2,7 @@
 
 #![allow(non_upper_case_globals)]
 
-use deno_core::napi::*;
+use deno_runtime::deno_napi::*;
 use v8::BackingStore;
 use v8::UniqueRef;
 

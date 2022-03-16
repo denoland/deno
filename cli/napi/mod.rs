@@ -34,9 +34,12 @@ use deno_core::futures::channel::mpsc;
 pub struct uv_async {
   pub data: Option<*mut c_void>,
   callback: uv_async_cb,
-  sender: Option<mpsc::UnboundedSender<deno_core::napi::PendingNapiAsyncWork>>,
-  ref_sender:
-    Option<mpsc::UnboundedSender<deno_core::napi::ThreadSafeFunctionStatus>>,
+  sender: Option<
+    mpsc::UnboundedSender<deno_runtime::deno_napi::PendingNapiAsyncWork>,
+  >,
+  ref_sender: Option<
+    mpsc::UnboundedSender<deno_runtime::deno_napi::ThreadSafeFunctionStatus>,
+  >,
 }
 
 #[no_mangle]
@@ -53,16 +56,16 @@ pub extern "C" fn uv_async_init(
   unsafe {
     (*async_).callback = cb;
   }
-  deno_core::napi::ASYNC_WORK_SENDER.with(|sender| unsafe {
+  deno_runtime::deno_napi::ASYNC_WORK_SENDER.with(|sender| unsafe {
     (*async_).sender = Some(sender.borrow().clone().unwrap());
   });
 
-  deno_core::napi::THREAD_SAFE_FN_SENDER.with(|sender| {
+  deno_runtime::deno_napi::THREAD_SAFE_FN_SENDER.with(|sender| {
     sender
       .borrow()
       .clone()
       .unwrap()
-      .unbounded_send(deno_core::napi::ThreadSafeFunctionStatus::Alive)
+      .unbounded_send(deno_runtime::deno_napi::ThreadSafeFunctionStatus::Alive)
       .unwrap();
     unsafe {
       (*async_).ref_sender = Some(sender.borrow().clone().unwrap());

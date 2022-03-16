@@ -861,7 +861,6 @@ dependencies = [
  "futures",
  "indexmap",
  "libc",
- "libloading",
  "log",
  "once_cell",
  "parking_lot",
@@ -1013,6 +1012,7 @@ name = "deno_napi"
 version = "0.0.1"
 dependencies = [
  "deno_core",
+ "libloading",
 ]
 
 [[package]]

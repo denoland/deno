@@ -163,6 +163,7 @@ mod not_docs {
         None, false, // No --unstable.
         None,
       ),
+      deno_napi::init(),
       deno_http::init(),
     ];
 

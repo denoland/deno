@@ -7,8 +7,6 @@ use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
-#[cfg(feature = "napi")]
-use crate::napi::napi_open_func;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::OpState;
@@ -101,10 +99,6 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to(),
       },
-      #[cfg(feature = "napi")]
-      v8::ExternalReference {
-        function: napi_open_func.map_fn_to(),
-      },
     ])
   });
 
@@ -147,7 +141,6 @@ pub fn module_origin<'a>(
 }
 
 pub fn initialize_context<'s>(
-  isolate_ptr: Option<*mut v8::OwnedIsolate>,
   scope: &mut v8::HandleScope<'s, ()>,
   ops: &[OpDecl],
   snapshot_loaded: bool,
@@ -234,17 +227,6 @@ pub fn initialize_context<'s>(
     set_wasm_streaming_callback,
   );
 
-  if let Some(isolate_ptr) = isolate_ptr {
-    #[cfg(feature = "napi")]
-    set_func_with_external(
-      scope,
-      core_val,
-      "napiOpen",
-      napi_open_func,
-      isolate_ptr,
-    );
-  }
-
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -255,24 +237,6 @@ pub fn initialize_context<'s>(
     set_func_raw(scope, ops_val, op.name, op.v8_fn_ptr, raw_op_state);
   }
   scope.escape(context)
-}
-
-#[inline(always)]
-pub fn set_func_with_external<T>(
-  scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
-  name: &'static str,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-  data: *mut T,
-) {
-  let key = v8::String::new(scope, name).unwrap();
-  let external = v8::External::new(scope, data as *mut _);
-  let tmpl = v8::FunctionTemplate::builder(callback)
-    .data(external.into())
-    .build(scope);
-  let val = tmpl.get_function(scope).unwrap();
-  val.set_name(key);
-  obj.set(scope, key.into(), val.into());
 }
 
 #[inline(always)]
