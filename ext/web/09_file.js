@@ -338,17 +338,17 @@
     /**
      * @returns {Promise<string>}
      */
-    // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      const buffer = this.#u8Array(this.size);
+      const buffer = await this.#u8Array(this.size);
       return core.decode(buffer);
     }
 
-    #u8Array(size) {
+    async #u8Array(size) {
       const bytes = new Uint8Array(size);
+      const partIterator = toIterator(this[_parts]);
       let offset = 0;
-      for (const chunk of this[_parts]) {
+      for await (const chunk of partIterator) {
         const byteLength = chunk.byteLength;
         if (byteLength > 0) {
           TypedArrayPrototypeSet(bytes, chunk, offset);
@@ -361,10 +361,9 @@
     /**
      * @returns {Promise<ArrayBuffer>}
      */
-    // deno-lint-ignore require-await
     async arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
-      const buf = this.#u8Array(this.size);
+      const buf = await this.#u8Array(this.size);
       return buf.buffer;
     }
 
