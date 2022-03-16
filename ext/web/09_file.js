@@ -394,7 +394,10 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // BlobPart is passed to processBlobParts after conversion, which calls core.encode()
+    // on the string.
+    // core.encode() is equivalent to USVString normalization.
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
     webidl.converters["BlobPart"],
