@@ -148,7 +148,7 @@ interface AddEventListenerOptions extends EventListenerOptions {
    * listener will never call preventDefault(). If a passive listener does call
    * preventDefault(), the user agent will do nothing other than generate a
    * console warning. See Improving scrolling performance with passive
-   * listeners to learn more.  */
+   * listeners to learn more. */
   passive?: boolean;
 }
 
