@@ -170,13 +170,11 @@
   const _type = Symbol("Type");
   const _size = Symbol("Size");
   const _parts = Symbol("Parts");
-  const _rawParts = Symbol("RawParts");
 
   class Blob {
     [_type] = "";
     [_size] = 0;
     [_parts];
-    [_rawParts];
 
     /**
      * @param {BlobPart[]} blobParts
