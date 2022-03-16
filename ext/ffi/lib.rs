@@ -144,8 +144,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_get_static::decl(),
       op_ffi_call::decl(),
       op_ffi_call_nonblocking::decl(),
-      op_ffi_call_ptr::decl(),
-      op_ffi_call_ptr_nonblocking::decl(),
+      op_ffi_call_ptr::decl::<P>(),
+      op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
@@ -648,15 +648,34 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 }
 
 #[op]
-fn op_ffi_call_ptr(args: FfiCallPtrArgs) -> Result<Value, AnyError> {
+fn op_ffi_call_ptr<FP>(
+  state: &mut deno_core::OpState,
+  args: FfiCallPtrArgs,
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   let symbol = args.get_symbol();
   ffi_call(args.into(), &symbol)
 }
 
 #[op]
-async fn op_ffi_call_ptr_nonblocking(
+async fn op_ffi_call_ptr_nonblocking<FP>(
+  state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check(None)?;
+  }
+
   let symbol = args.get_symbol();
   tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
     .await
