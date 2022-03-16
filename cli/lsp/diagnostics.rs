@@ -985,6 +985,7 @@ let c: number = "a";
           specifier.clone(),
           SpecifierSettings {
             enable: false,
+            enable_paths: Vec::new(),
             code_lens: Default::default(),
           },
         ),

@@ -1,12 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::client::Client;
+use super::logging::lsp_log;
+use crate::fs_util;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use lsp::WorkspaceFolder;
 use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -128,6 +130,10 @@ impl Default for ImportCompletionSettings {
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
   pub enable: bool,
+  /// A list of paths, using the workspace folder as a base that should be Deno
+  /// enabled.
+  #[serde(default)]
+  pub enable_paths: Vec<String>,
   /// Code lens specific settings for the resource.
   #[serde(default)]
   pub code_lens: CodeLensSpecifierSettings,
@@ -140,6 +146,10 @@ pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   #[serde(default)]
   pub enable: bool,
+
+  /// A list of paths, using the root_uri as a base that should be Deno enabled.
+  #[serde(default)]
+  pub enable_paths: Vec<String>,
 
   /// An option that points to a path string of the path to utilise as the
   /// cache/DENO_DIR for the language server.
@@ -198,14 +208,27 @@ impl WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
+  pub enabled_paths: HashMap<String, Vec<String>>,
   pub settings: Settings,
-  pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
 
 impl ConfigSnapshot {
+  /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(settings) = self.settings.specifiers.get(specifier) {
-      settings.1.enable
+    if !self.enabled_paths.is_empty() {
+      let specifier_str = specifier.to_string();
+      for (workspace, enabled_paths) in self.enabled_paths.iter() {
+        if specifier_str.starts_with(workspace) {
+          return enabled_paths
+            .iter()
+            .any(|path| specifier_str.starts_with(path));
+        }
+      }
+    }
+    if let Some((_, SpecifierSettings { enable, .. })) =
+      self.settings.specifiers.get(specifier)
+    {
+      *enable
     } else {
       self.settings.workspace.enable
     }
@@ -228,14 +251,19 @@ pub struct Settings {
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
+  enabled_paths: HashMap<String, Vec<String>>,
+  pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
-  pub workspace_folders: Option<Vec<WorkspaceFolder>>,
+  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
 }
 
 impl Config {
   pub fn new() -> Self {
     Self {
       client_capabilities: ClientCapabilities::default(),
+      enabled_paths: Default::default(),
+      /// Root provided by the initialization parameters.
+      root_uri: None,
       settings: Default::default(),
       workspace_folders: None,
     }
@@ -259,8 +287,8 @@ impl Config {
   pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
     Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
+      enabled_paths: self.enabled_paths.clone(),
       settings: self.settings.clone(),
-      workspace_folders: self.workspace_folders.clone(),
     })
   }
 
@@ -269,6 +297,16 @@ impl Config {
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if !self.enabled_paths.is_empty() {
+      let specifier_str = specifier.to_string();
+      for (workspace, enabled_paths) in self.enabled_paths.iter() {
+        if specifier_str.starts_with(workspace) {
+          return enabled_paths
+            .iter()
+            .any(|path| specifier_str.starts_with(path));
+        }
+      }
+    }
     self
       .settings
       .specifiers
@@ -321,6 +359,55 @@ impl Config {
     }
   }
 
+  /// Given the configured workspaces or root URI and the their settings,
+  /// update and resolve any paths that should be enabled
+  pub async fn update_enabled_paths(&mut self, client: Client) {
+    if let Some(workspace_folders) = self.workspace_folders.clone() {
+      for (workspace, folder) in workspace_folders {
+        if let Ok(settings) = client.specifier_configuration(&folder.uri).await
+        {
+          self.update_enabled_paths_entry(&workspace, settings.enable_paths);
+        }
+      }
+    } else if let Some(root_uri) = self.root_uri.clone() {
+      self.update_enabled_paths_entry(
+        &root_uri,
+        self.settings.workspace.enable_paths.clone(),
+      );
+    }
+  }
+
+  /// Update a specific entry in the enabled paths for a given workspace.
+  fn update_enabled_paths_entry(
+    &mut self,
+    workspace: &ModuleSpecifier,
+    enabled_paths: Vec<String>,
+  ) {
+    let workspace = fs_util::ensure_directory_specifier(workspace.clone());
+    let key = workspace.to_string();
+    if !enabled_paths.is_empty() {
+      if let Ok(workspace_path) = fs_util::specifier_to_file_path(&workspace) {
+        let mut paths = Vec::new();
+        for path in &enabled_paths {
+          let fs_path = workspace_path.join(path);
+          match ModuleSpecifier::from_file_path(fs_path) {
+            Ok(path_uri) => {
+              paths.push(path_uri.to_string());
+            }
+            Err(_) => {
+              lsp_log!("Unable to resolve a file path for `deno.enablePath` from \"{}\" for workspace \"{}\".", path, workspace);
+            }
+          }
+        }
+        if !paths.is_empty() {
+          self.enabled_paths.insert(key, paths);
+        }
+      }
+    } else {
+      self.enabled_paths.remove(&key);
+    }
+  }
+
   pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
     self
       .settings
@@ -330,7 +417,7 @@ impl Config {
         specifier: s.clone(),
         client_uri: u.clone(),
       })
-      .collect::<Vec<_>>()
+      .collect()
   }
 
   pub fn set_specifier_settings(
@@ -399,6 +486,7 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        enable_paths: Vec::new(),
         cache: None,
         certificate_stores: None,
         config: None,
