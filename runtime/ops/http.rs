@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -12,14 +12,14 @@ use deno_net::ops_tls::TlsStreamResource;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![("op_http_start", op_sync(op_http_start))])
+    .ops(vec![op_http_start::decl()])
     .build()
 }
 
+#[op]
 fn op_http_start(
   state: &mut OpState,
   tcp_stream_rid: ResourceId,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   if let Ok(resource_rc) = state
     .resource_table

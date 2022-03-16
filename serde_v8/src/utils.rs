@@ -20,7 +20,7 @@ pub fn v8_shutdown() {
   unsafe {
     v8::V8::dispose();
   }
-  v8::V8::shutdown_platform();
+  v8::V8::dispose_platform();
 }
 
 pub fn v8_do(f: impl FnOnce()) {
