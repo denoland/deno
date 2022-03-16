@@ -3153,6 +3153,7 @@
         "queue-microtask.any.html": true,
         "queue-microtask.any.worker.html": true
       },
+      "scripting": true,
       "structured-clone": {
         "structured-clone.any.html": [
           "Blob basic",
