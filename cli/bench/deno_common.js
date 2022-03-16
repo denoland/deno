@@ -58,7 +58,7 @@ function benchUrlParse() {
 
 function benchLargeBlobText() {
   const input = "long-string".repeat(999_999);
-  benchSync("blob_text_large", 3, () => {
+  benchSync("blob_text_large", 1e2, () => {
     new Blob([input]).text();
   });
 }
