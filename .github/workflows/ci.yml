@@ -467,6 +467,7 @@ jobs:
                                              --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&
@@ -481,6 +482,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Upload wpt results to wpt.fyi
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&
