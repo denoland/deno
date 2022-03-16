@@ -973,10 +973,10 @@ impl Inner {
       .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
     if let Some(current_folders) = &self.config.workspace_folders {
       for (specifier, folder) in current_folders {
-        if !params.event.removed.is_empty() {
-          if params.event.removed.iter().any(|f| f.uri == folder.uri) {
-            continue;
-          }
+        if !params.event.removed.is_empty()
+          && params.event.removed.iter().any(|f| f.uri == folder.uri)
+        {
+          continue;
         }
         workspace_folders.push((specifier.clone(), folder.clone()));
       }
