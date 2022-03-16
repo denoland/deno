@@ -204,7 +204,7 @@ fn create_compiler_snapshot(
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
   fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
-    let op_crate_libs = state.borrow::<HashMap<&str, &str>>();
+    let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset =
       Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
@@ -237,6 +237,12 @@ fn create_compiler_snapshot(
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
         }))
+      } else {
+        Err(custom_error(
+          "InvalidSpecifier",
+          format!("An invalid specifier was requested: {}", args.specifier),
+        ))
+      }
     } else {
       Err(custom_error(
         "InvalidSpecifier",
