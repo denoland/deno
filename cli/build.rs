@@ -192,7 +192,6 @@ fn create_compiler_snapshot(
   fn op_build_info(
     state: &mut OpState,
     _args: Value,
-    _: (),
   ) -> Result<Value, AnyError> {
     let build_specifier = "asset:///bootstrap.ts";
     let build_libs = state.borrow::<Vec<&str>>();
@@ -203,31 +202,19 @@ fn create_compiler_snapshot(
   }
 
   #[op]
-  fn op_cwd(
-    _state: &mut OpState,
-    _args: Value,
-    _: (),
-  ) -> Result<Value, AnyError> {
+  fn op_cwd(_args: Value) -> Result<Value, AnyError> {
     Ok(json!("cache:///"))
   }
 
   #[op]
-  fn op_exists(
-    _state: &mut OpState,
-    _args: Value,
-    _: (),
-  ) -> Result<Value, AnyError> {
+  fn op_exists(_args: Value) -> Result<Value, AnyError> {
     Ok(json!(false))
   }
 
   #[op]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
-  fn op_load(
-    state: &mut OpState,
-    args: LoadArgs,
-    _: (),
-  ) -> Result<Value, AnyError> {
+  fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
     let op_crate_libs = state.borrow::<HashMap<&str, &str>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset =

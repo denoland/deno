@@ -5,7 +5,7 @@ use deno_core::include_js_files;
 use deno_core::op;
 
 use deno_core::Extension;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -245,7 +245,6 @@ pub struct GpuAdapterDevice {
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
-  _: (),
 ) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
@@ -444,7 +443,6 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
-  _: (),
 ) -> Result<GpuAdapterDevice, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
@@ -545,7 +543,6 @@ impl From<GpuQueryType> for wgpu_types::QueryType {
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   args: CreateQuerySetArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let device_resource =
     state.resource_table.get::<WebGpuDevice>(args.device_rid)?;
@@ -565,7 +562,7 @@ pub fn op_webgpu_create_query_set(
   ) => state, WebGpuQuerySet)
 }
 
-fn declare_webgpu_ops() -> Vec<OpPair> {
+fn declare_webgpu_ops() -> Vec<OpDecl> {
   vec![
     // Request device/adapter
     op_webgpu_request_adapter::decl(),

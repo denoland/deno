@@ -17,9 +17,7 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use shared::operation_error;
 
-use std::cell::RefCell;
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
@@ -115,7 +113,6 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   mut zero_copy: ZeroCopyBuf,
-  _: (),
 ) -> Result<(), AnyError> {
   if zero_copy.len() > 65536 {
     return Err(
@@ -170,7 +167,6 @@ pub struct SignArg {
 
 #[op]
 pub async fn op_crypto_sign_key(
-  _state: Rc<RefCell<OpState>>,
   args: SignArg,
   zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -325,7 +321,6 @@ pub struct VerifyArg {
 
 #[op]
 pub async fn op_crypto_verify_key(
-  _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
   zero_copy: ZeroCopyBuf,
 ) -> Result<bool, AnyError> {
@@ -486,7 +481,6 @@ pub struct DeriveKeyArg {
 
 #[op]
 pub async fn op_crypto_derive_bits(
-  _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -791,11 +785,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
 }
 
 #[op]
-pub fn op_crypto_random_uuid(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
     let mut bytes = [0u8; 16];
@@ -812,7 +802,6 @@ pub fn op_crypto_random_uuid(
 
 #[op]
 pub async fn op_crypto_subtle_digest(
-  _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -836,7 +825,6 @@ pub struct WrapUnwrapKeyArg {
 
 #[op]
 pub fn op_crypto_wrap_key(
-  _state: &mut OpState,
   args: WrapUnwrapKeyArg,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -866,7 +854,6 @@ pub fn op_crypto_wrap_key(
 
 #[op]
 pub fn op_crypto_unwrap_key(
-  _state: &mut OpState,
   args: WrapUnwrapKeyArg,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {

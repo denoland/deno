@@ -144,7 +144,6 @@ fn to_maybe_jsx_import_source_module(
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: EmitArgs,
-  _: (),
 ) -> Result<EmitResult, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let root_specifier = args.root_specifier;

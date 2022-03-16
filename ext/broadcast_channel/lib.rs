@@ -45,8 +45,6 @@ struct Unstable(bool); // --unstable
 #[op]
 pub fn op_broadcast_subscribe<BC>(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   BC: BroadcastChannel + 'static,
@@ -97,7 +95,6 @@ where
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<Option<Message>, AnyError>
 where
   BC: BroadcastChannel + 'static,
