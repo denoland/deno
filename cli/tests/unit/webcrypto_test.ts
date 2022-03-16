@@ -26,7 +26,6 @@ Deno.test(async function testImportArrayBufferKey() {
   await subtle.sign({ name: "HMAC" }, cryptoKey, new Uint8Array(8));
 });
 
-// TODO(@littledivy): Remove this when we enable WPT for sign_verify
 Deno.test(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -99,7 +98,6 @@ const hashPlainTextVector = [
   },
 ];
 
-// TODO(@littledivy): Remove this when we enable WPT for encrypt_decrypt
 Deno.test(async function testEncryptDecrypt() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -717,7 +715,6 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
   }
 });
 
-// TODO(@littledivy): Enable WPT when we have importKey support
 Deno.test(async function testECDH() {
   const namedCurve = "P-256";
   const keyPair = await crypto.subtle.generateKey(
@@ -1438,32 +1435,78 @@ Deno.test(async function testAesGcmEncrypt() {
     ["encrypt", "decrypt"],
   );
 
-  // deno-fmt-ignore
-  const iv = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11]);
-  const data = new Uint8Array([1, 2, 3]);
+  const nonces = [{
+    iv: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+    ciphertext: new Uint8Array([
+      50,
+      223,
+      112,
+      178,
+      166,
+      156,
+      255,
+      110,
+      125,
+      138,
+      95,
+      141,
+      82,
+      47,
+      14,
+      164,
+      134,
+      247,
+      22,
+    ]),
+  }, {
+    iv: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+    ciphertext: new Uint8Array([
+      210,
+      101,
+      81,
+      216,
+      151,
+      9,
+      192,
+      197,
+      62,
+      254,
+      28,
+      132,
+      89,
+      106,
+      40,
+      29,
+      175,
+      232,
+      201,
+    ]),
+  }];
+  for (const { iv, ciphertext: fixture } of nonces) {
+    const data = new Uint8Array([1, 2, 3]);
 
-  const cipherText = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
-    key,
-    data,
-  );
+    const cipherText = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      data,
+    );
 
-  assert(cipherText instanceof ArrayBuffer);
-  assertEquals(cipherText.byteLength, 19);
-  assertEquals(
-    new Uint8Array(cipherText),
-    // deno-fmt-ignore
-    new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
-  );
+    assert(cipherText instanceof ArrayBuffer);
+    assertEquals(cipherText.byteLength, 19);
+    assertEquals(
+      new Uint8Array(cipherText),
+      fixture,
+    );
 
-  const plainText = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
-    key,
-    cipherText,
-  );
-  assert(plainText instanceof ArrayBuffer);
-  assertEquals(plainText.byteLength, 3);
-  assertEquals(new Uint8Array(plainText), data);
+    const plainText = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      cipherText,
+    );
+    assert(plainText instanceof ArrayBuffer);
+    assertEquals(plainText.byteLength, 3);
+    assertEquals(new Uint8Array(plainText), data);
+  }
 });
 
 async function roundTripSecretJwk(
@@ -1655,14 +1698,14 @@ Deno.test(async function testAesGcmTagLength() {
   // encrypt won't fail, it will simply truncate the tag
   // as expected.
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+    { name: "AES-GCM", iv, tagLength: 96 },
     key,
     new Uint8Array(32),
   );
 
   await assertRejects(async () => {
     await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+      { name: "AES-GCM", iv, tagLength: 96 },
       key,
       encrypted,
     );
@@ -1683,4 +1726,27 @@ Deno.test(async function ecPrivateKeyMaterialExportSpki() {
   // `exportKey` should be able to perform necessary conversion to export spki.
   const spki = await crypto.subtle.exportKey("spki", keys.publicKey);
   assert(spki instanceof ArrayBuffer);
+});
+
+// https://github.com/denoland/deno/issues/13911
+Deno.test(async function importJwkWithUse() {
+  const jwk = {
+    "kty": "EC",
+    "use": "sig",
+    "crv": "P-256",
+    "x": "FWZ9rSkLt6Dx9E3pxLybhdM6xgR5obGsj5_pqmnz5J4",
+    "y": "_n8G69C-A2Xl4xUW2lF0i8ZGZnk_KPYrhv4GbTGu5G4",
+  };
+
+  const algorithm = { name: "ECDSA", namedCurve: "P-256" };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algorithm,
+    true,
+    ["verify"],
+  );
+
+  assert(key instanceof CryptoKey);
 });

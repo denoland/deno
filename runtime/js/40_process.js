@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { File } = window.__bootstrap.files;
+  const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
   const { assert, pathFromURL } = window.__bootstrap.util;
   const {
@@ -46,15 +46,15 @@
       this.pid = res.pid;
 
       if (res.stdinRid && res.stdinRid > 0) {
-        this.stdin = new File(res.stdinRid);
+        this.stdin = new FsFile(res.stdinRid);
       }
 
       if (res.stdoutRid && res.stdoutRid > 0) {
-        this.stdout = new File(res.stdoutRid);
+        this.stdout = new FsFile(res.stdoutRid);
       }
 
       if (res.stderrRid && res.stderrRid > 0) {
-        this.stderr = new File(res.stderrRid);
+        this.stderr = new FsFile(res.stderrRid);
       }
     }
 

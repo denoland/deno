@@ -14,7 +14,6 @@ use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use std::cell::RefCell;
 use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub trait NetPermissions {
@@ -61,10 +60,6 @@ pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   state.borrow::<UnstableChecker>().check_unstable(api_name)
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.d.ts")
-}
-
 #[derive(Clone)]
 pub struct DefaultTlsOptions {
   pub root_cert_store: Option<RootCertStore>,
@@ -81,9 +76,6 @@ pub fn init<P: NetPermissions + 'static>(
   unstable: bool,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  let mut ops_to_register = vec![];
-  ops_to_register.extend(ops::init::<P>());
-  ops_to_register.extend(ops_tls::init::<P>());
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/net",
@@ -91,7 +83,7 @@ pub fn init<P: NetPermissions + 'static>(
       "02_tls.js",
       "04_net_unstable.js",
     ))
-    .ops(ops_to_register)
+    .ops([&ops::init::<P>()[..], &ops_tls::init::<P>()[..]].concat())
     .state(move |state| {
       state.put(DefaultTlsOptions {
         root_cert_store: root_cert_store.clone(),

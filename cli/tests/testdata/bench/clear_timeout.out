@@ -1,0 +1,8 @@
+Check [WILDCARD]/bench/clear_timeout.ts
+running 3 benches from [WILDCARD]/bench/clear_timeout.ts
+bench bench1 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench2 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench3 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+
+bench result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

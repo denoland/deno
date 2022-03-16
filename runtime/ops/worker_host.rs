@@ -13,8 +13,8 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::serde::Deserialize;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
@@ -122,14 +122,11 @@ pub fn init(
       Ok(())
     })
     .ops(vec![
-      ("op_create_worker", op_sync(op_create_worker)),
-      (
-        "op_host_terminate_worker",
-        op_sync(op_host_terminate_worker),
-      ),
-      ("op_host_post_message", op_sync(op_host_post_message)),
-      ("op_host_recv_ctrl", op_async(op_host_recv_ctrl)),
-      ("op_host_recv_message", op_async(op_host_recv_message)),
+      op_create_worker::decl(),
+      op_host_terminate_worker::decl(),
+      op_host_post_message::decl(),
+      op_host_recv_ctrl::decl(),
+      op_host_recv_message::decl(),
     ])
     .build()
 }
@@ -147,10 +144,10 @@ pub struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
+#[op]
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
-  _: (),
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -263,10 +260,10 @@ fn op_create_worker(
   Ok(worker_id)
 }
 
+#[op]
 fn op_host_terminate_worker(
   state: &mut OpState,
   id: WorkerId,
-  _: (),
 ) -> Result<(), AnyError> {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.terminate();
@@ -317,10 +314,10 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
+#[op]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
-  _: (),
 ) -> Result<WorkerControlEvent, AnyError> {
   let worker_handle = {
     let state = state.borrow();
@@ -348,10 +345,10 @@ async fn op_host_recv_ctrl(
   Ok(WorkerControlEvent::Close)
 }
 
+#[op]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
-  _: (),
 ) -> Result<Option<JsMessageData>, AnyError> {
   let worker_handle = {
     let s = state.borrow();
@@ -373,6 +370,7 @@ async fn op_host_recv_message(
 }
 
 /// Post message to guest worker as host
+#[op]
 fn op_host_post_message(
   state: &mut OpState,
   id: WorkerId,

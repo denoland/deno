@@ -6,13 +6,13 @@ use crate::flags::Flags;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
+use crate::ImportMapResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -20,6 +20,7 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::create_default_root_cert_store;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -29,18 +30,17 @@ use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use import_map::parse_from_json;
 use log::Level;
 use std::env::current_exe;
-use std::fs::File;
 use std::io::BufReader;
 use std::io::Cursor;
-use std::io::Read;
-use std::io::Seek;
 use std::io::SeekFrom;
 use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
@@ -54,6 +54,8 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub maybe_import_map: Option<(Url, String)>,
+  pub entrypoint: ModuleSpecifier,
 }
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
@@ -67,37 +69,51 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 /// These are dereferenced, and the bundle is executed under the configuration
 /// specified by the metadata. If no magic trailer is present, this function
 /// exits with `Ok(None)`.
-pub fn extract_standalone(
+pub async fn extract_standalone(
   args: Vec<String>,
-) -> Result<Option<(Metadata, String)>, AnyError> {
+) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
   let current_exe_path = current_exe()?;
 
-  let mut current_exe = File::open(current_exe_path)?;
-  let trailer_pos = current_exe.seek(SeekFrom::End(-24))?;
+  let file = tokio::fs::File::open(current_exe_path).await?;
+
+  let mut bufreader = tokio::io::BufReader::new(file);
+
+  let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
   let mut trailer = [0; 24];
-  current_exe.read_exact(&mut trailer)?;
+  bufreader.read_exact(&mut trailer).await?;
   let (magic_trailer, rest) = trailer.split_at(8);
   if magic_trailer != MAGIC_TRAILER {
     return Ok(None);
   }
 
-  let (bundle_pos, rest) = rest.split_at(8);
+  let (eszip_archive_pos, rest) = rest.split_at(8);
   let metadata_pos = rest;
-  let bundle_pos = u64_from_bytes(bundle_pos)?;
+  let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
   let metadata_pos = u64_from_bytes(metadata_pos)?;
-  let bundle_len = metadata_pos - bundle_pos;
   let metadata_len = trailer_pos - metadata_pos;
-  current_exe.seek(SeekFrom::Start(bundle_pos))?;
 
-  let bundle = read_string_slice(&mut current_exe, bundle_pos, bundle_len)
-    .context("Failed to read source bundle from the current executable")?;
-  let metadata =
-    read_string_slice(&mut current_exe, metadata_pos, metadata_len)
-      .context("Failed to read metadata from the current executable")?;
+  bufreader.seek(SeekFrom::Start(eszip_archive_pos)).await?;
+
+  let (eszip, loader) = eszip::EszipV2::parse(bufreader)
+    .await
+    .context("Failed to parse eszip header")?;
+
+  let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
+
+  bufreader.seek(SeekFrom::Start(metadata_pos)).await?;
+
+  let mut metadata = String::new();
+
+  bufreader
+    .take(metadata_len)
+    .read_to_string(&mut metadata)
+    .await
+    .context("Failed to read metadata from the current executable")?;
 
   let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
   metadata.argv.append(&mut args[1..].to_vec());
-  Ok(Some((metadata, bundle)))
+
+  Ok(Some((metadata, eszip)))
 }
 
 fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
@@ -107,39 +123,26 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-fn read_string_slice(
-  file: &mut File,
-  pos: u64,
-  len: u64,
-) -> Result<String, AnyError> {
-  let mut string = String::new();
-  file.seek(SeekFrom::Start(pos))?;
-  file.take(len).read_to_string(&mut string)?;
-  // TODO: check amount of bytes read
-  Ok(string)
+struct EmbeddedModuleLoader {
+  eszip: eszip::EszipV2,
+  maybe_import_map_resolver: Option<ImportMapResolver>,
 }
-
-const SPECIFIER: &str = "file://$deno$/bundle.js";
-
-struct EmbeddedModuleLoader(String);
 
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
     specifier: &str,
-    _referrer: &str,
+    referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(module_specifier) = resolve_url(specifier) {
-      if get_source_from_data_url(&module_specifier).is_ok()
-        || specifier == SPECIFIER
-      {
-        return Ok(module_specifier);
-      }
-    }
-    Err(type_error(
-      "Self-contained binaries don't support module loading",
-    ))
+    let referrer = deno_core::resolve_url_or_path(referrer).unwrap();
+    self.maybe_import_map_resolver.as_ref().map_or_else(
+      || {
+        deno_core::resolve_import(specifier, referrer.as_str())
+          .map_err(|err| err.into())
+      },
+      |r| r.resolve(specifier, &referrer).to_result(),
+    )
   }
 
   fn load(
@@ -149,22 +152,36 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
+
     let is_data_uri = get_source_from_data_url(&module_specifier).ok();
-    let code = if let Some((ref source, _)) = is_data_uri {
-      source.to_string()
-    } else {
-      self.0.to_string()
-    };
+
+    let module = self
+      .eszip
+      .get_module(module_specifier.as_str())
+      .ok_or_else(|| type_error("Module not found"));
+
     async move {
-      if is_data_uri.is_none() && module_specifier.to_string() != SPECIFIER {
-        return Err(type_error(
-          "Self-contained binaries don't support module loading",
-        ));
+      if let Some((ref source, _)) = is_data_uri {
+        return Ok(deno_core::ModuleSource {
+          code: source.to_owned(),
+          module_type: deno_core::ModuleType::JavaScript,
+          module_url_specified: module_specifier.to_string(),
+          module_url_found: module_specifier.to_string(),
+        });
       }
+
+      let module = module?;
+      let code = module.source().await;
+      let code = std::str::from_utf8(&code)
+        .map_err(|_| type_error("Module source is not utf-8"))?
+        .to_owned();
 
       Ok(deno_core::ModuleSource {
         code,
-        module_type: deno_core::ModuleType::JavaScript,
+        module_type: match module.kind {
+          eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
+          eszip::ModuleKind::Json => deno_core::ModuleType::Json,
+        },
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       })
@@ -195,16 +212,25 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
 }
 
 pub async fn run(
-  source_code: String,
+  eszip: eszip::EszipV2,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
-  let main_module = resolve_url(SPECIFIER)?;
+  let main_module = &metadata.entrypoint;
   let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
-  let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
+  let module_loader = Rc::new(EmbeddedModuleLoader {
+    eszip,
+    maybe_import_map_resolver: metadata.maybe_import_map.map(
+      |(base, source)| {
+        ImportMapResolver::new(Arc::new(
+          parse_from_json(&base, &source).unwrap().import_map,
+        ))
+      },
+    ),
+  });
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
   });
@@ -243,11 +269,14 @@ pub async fn run(
     bootstrap: BootstrapOptions {
       apply_source_maps: false,
       args: metadata.argv,
-      cpu_count: num_cpus::get(),
+      cpu_count: std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: false,
       location: metadata.location,
       no_color: !colors::use_color(),
+      is_tty: colors::is_tty(),
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
@@ -276,7 +305,7 @@ pub async fn run(
     permissions,
     options,
   );
-  worker.execute_main_module(&main_module).await?;
+  worker.execute_main_module(main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(true).await?;
   worker.dispatch_unload_event(&located_script_name!())?;

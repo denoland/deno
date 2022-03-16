@@ -5,6 +5,6 @@ function test() {
   setTimeout(() => {}, 10001);
 }
 
-Deno.test("test 1", test);
+Deno.test("test 1", () => test());
 
-Deno.test("test 2", test);
+Deno.test("test 2", () => test());

@@ -3,7 +3,7 @@
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -69,10 +69,7 @@ static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![
-      ("op_read_sync", op_sync(op_read_sync)),
-      ("op_write_sync", op_sync(op_write_sync)),
-    ])
+    .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
     .build()
 }
 
@@ -354,6 +351,7 @@ impl Resource for StdFileResource {
   }
 }
 
+#[op]
 fn op_read_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -368,6 +366,7 @@ fn op_read_sync(
   })
 }
 
+#[op]
 fn op_write_sync(
   state: &mut OpState,
   rid: ResourceId,

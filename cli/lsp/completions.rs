@@ -3,7 +3,6 @@
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents::Documents;
-use super::language_server;
 use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
@@ -11,7 +10,6 @@ use super::tsc;
 use crate::fs_util::is_supported_ext;
 use crate::fs_util::specifier_to_file_path;
 
-use deno_ast::swc::common::BytePos;
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
 use deno_core::normalize_path;
@@ -105,7 +103,7 @@ fn to_narrow_lsp_range(
   });
   let text_bytes = text_info.text_str().as_bytes();
   let has_trailing_quote =
-    matches!(text_bytes[end_byte_index.0 as usize - 1], (b'"' | b'\''));
+    matches!(text_bytes[end_byte_index.0 as usize - 1], b'"' | b'\'');
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,

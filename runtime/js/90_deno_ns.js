@@ -7,6 +7,7 @@
   __bootstrap.denoNs = {
     metrics: core.metrics,
     test: __bootstrap.testing.test,
+    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -76,6 +77,7 @@
     write: __bootstrap.io.write,
     writeSync: __bootstrap.io.writeSync,
     File: __bootstrap.files.File,
+    FsFile: __bootstrap.files.FsFile,
     open: __bootstrap.files.open,
     openSync: __bootstrap.files.openSync,
     create: __bootstrap.files.create,

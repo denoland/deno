@@ -100,7 +100,7 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(
+      deno_web::init::<Permissions>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
@@ -122,7 +122,6 @@ impl MainWorker {
       deno_crypto::init(options.seed),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_webgpu::init(unstable),
-      deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
       // Runtime ops
@@ -361,6 +360,7 @@ mod tests {
         enable_testing_features: false,
         location: None,
         no_color: true,
+        is_tty: false,
         runtime_version: "x".to_string(),
         ts_version: "x".to_string(),
         unstable: false,
