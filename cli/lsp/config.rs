@@ -439,33 +439,9 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
 
-  #[derive(Debug, Default)]
-  struct MockLanguageServer;
-
-  #[lspower::async_trait]
-  impl lspower::LanguageServer for MockLanguageServer {
-    async fn initialize(
-      &self,
-      _params: lspower::lsp::InitializeParams,
-    ) -> lspower::jsonrpc::Result<lsp::InitializeResult> {
-      Ok(lspower::lsp::InitializeResult {
-        capabilities: lspower::lsp::ServerCapabilities::default(),
-        server_info: None,
-      })
-    }
-
-    async fn shutdown(&self) -> lspower::jsonrpc::Result<()> {
-      Ok(())
-    }
-  }
-
-  fn setup() -> Config {
-    Config::new()
-  }
-
   #[test]
   fn test_config_specifier_enabled() {
-    let mut config = setup();
+    let mut config = Config::new();
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config
@@ -477,8 +453,42 @@ mod tests {
   }
 
   #[test]
+  fn test_config_snapshot_specifier_enabled() {
+    let mut config = Config::new();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier));
+    config
+      .set_workspace_settings(json!({
+        "enable": true
+      }))
+      .expect("could not update");
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot.specifier_enabled(&specifier));
+  }
+
+  #[test]
+  fn test_config_specifier_enabled_path() {
+    let mut config = Config::new();
+    let specifier_a = resolve_url("file:///project/worker/a.ts").unwrap();
+    let specifier_b = resolve_url("file:///project/other/b.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier_a));
+    assert!(!config.specifier_enabled(&specifier_b));
+    let mut enabled_paths = HashMap::new();
+    enabled_paths.insert(
+      "file:///project/".to_string(),
+      vec!["file:///project/worker/".to_string()],
+    );
+    config.enabled_paths = enabled_paths;
+    assert!(config.specifier_enabled(&specifier_a));
+    assert!(!config.specifier_enabled(&specifier_b));
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot.specifier_enabled(&specifier_a));
+    assert!(!config_snapshot.specifier_enabled(&specifier_b));
+  }
+
+  #[test]
   fn test_set_workspace_settings_defaults() {
-    let mut config = setup();
+    let mut config = Config::new();
     config
       .set_workspace_settings(json!({}))
       .expect("could not update");

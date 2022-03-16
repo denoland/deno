@@ -57,24 +57,22 @@ where
     .write_notification("textDocument/didOpen", params)
     .unwrap();
 
-  handle_configuration_request(client);
+  handle_configuration_request(
+    client,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "test": true
+      }
+    }]),
+  );
   read_diagnostics(client).0
 }
 
-fn handle_configuration_request(client: &mut LspClient) {
+fn handle_configuration_request(client: &mut LspClient, result: Value) {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(
-      id,
-      json!([{
-        "enable": true,
-        "codeLens": {
-          "test": true
-        }
-      }]),
-    )
-    .unwrap();
+  client.write_response(id, result).unwrap();
 }
 
 fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
@@ -586,7 +584,15 @@ fn lsp_import_assertions() {
       }),
     )
     .unwrap();
-  handle_configuration_request(&mut client);
+  handle_configuration_request(
+    &mut client,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "test": true
+      }
+    }]),
+  );
 
   let diagnostics = CollectedDiagnostics(did_open(
     &mut client,
@@ -981,11 +987,7 @@ fn lsp_hover_disabled() {
     )
     .unwrap();
 
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": false }]))
-    .unwrap();
+  handle_configuration_request(&mut client, json!([{ "enable": false }]));
 
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -1003,6 +1005,180 @@ fn lsp_hover_disabled() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_workspace_enable_paths() {
+  let mut client = init("initialize_params_workspace_enable_paths.json");
+  handle_configuration_request(
+    &mut client,
+    json!([{
+      "enable": false,
+      "enablePaths": [
+        "./worker"
+      ],
+    }]),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///project/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///project/other/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///project/worker/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///project/worker/lib/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///project/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///project/other/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///project/worker/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 20,
+        }
+      }
+    }))
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///project/worker/lib/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 20,
+        }
+      }
+    }))
+  );
+
   shutdown(&mut client);
 }
 
