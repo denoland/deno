@@ -122,7 +122,16 @@ where
   R: de::DeserializeOwned,
 {
   let maybe_params = match maybe_params {
-    Some(params) => Some(serde_json::from_value(params)?),
+    Some(params) => {
+      Some(serde_json::from_value(params.clone()).map_err(|err| {
+        anyhow::anyhow!(
+          "Could not deserialize message '{}': {}\n\n{:?}",
+          method,
+          err,
+          params
+        )
+      })?)
+    }
     None => None,
   };
   Ok((method, maybe_params))

@@ -50,6 +50,8 @@ macro_rules! itest_flaky(
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
 
+#[path = "bench_tests.rs"]
+mod bench;
 #[path = "bundle_tests.rs"]
 mod bundle;
 #[path = "cache_tests.rs"]
@@ -80,10 +82,14 @@ mod lsp;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "task_tests.rs"]
+mod task;
 #[path = "test_tests.rs"]
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
+#[path = "vendor_tests.rs"]
+mod vendor;
 #[path = "watcher_tests.rs"]
 mod watcher;
 #[path = "worker_tests.rs"]
@@ -758,7 +764,7 @@ fn websocket_server_idletimeout() {
   assert_eq!(msg, "READY");
 
   let req = http::request::Builder::new()
-    .uri("ws://localhost:4502")
+    .uri("ws://localhost:4509")
     .body(())
     .unwrap();
   let (_ws, _request) =
@@ -1140,6 +1146,7 @@ fn js_unit_tests() {
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
+    .arg("--no-prompt")
     .arg("-A")
     .arg(util::tests_path().join("unit"))
     .spawn()

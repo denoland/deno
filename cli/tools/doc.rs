@@ -18,7 +18,9 @@ use deno_graph::create_graph;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
+use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
@@ -47,17 +49,18 @@ impl Resolver for DocResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> ResolveResponse {
     if let Some(import_map) = &self.import_map {
-      return import_map
-        .resolve(specifier, referrer)
-        .map_err(AnyError::from);
+      return match import_map.resolve(specifier, referrer) {
+        Ok(specifier) => ResolveResponse::Specifier(specifier),
+        Err(err) => ResolveResponse::Err(err.into()),
+      };
     }
 
-    let module_specifier =
-      deno_core::resolve_import(specifier, referrer.as_str())?;
-
-    Ok(module_specifier)
+    match deno_core::resolve_import(specifier, referrer.as_str()) {
+      Ok(specifier) => ResolveResponse::Specifier(specifier),
+      Err(err) => ResolveResponse::Err(err.into()),
+    }
   }
 }
 
@@ -78,7 +81,7 @@ impl Loader for DocLoader {
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map(|file| {
-          Some(LoadResponse {
+          Some(LoadResponse::Module {
             specifier,
             content: file.source.clone(),
             maybe_headers: file.maybe_headers,
@@ -93,7 +96,7 @@ pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(Arc::new(flags)).await?;
   let source_file = doc_flags
     .source_file
     .unwrap_or_else(|| "--builtin".to_string());
@@ -104,7 +107,7 @@ pub async fn print_docs(
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
     let graph = create_graph(
-      vec![source_file_specifier.clone()],
+      vec![(source_file_specifier.clone(), ModuleKind::Esm)],
       false,
       None,
       &mut loader,
@@ -119,7 +122,7 @@ pub async fn print_docs(
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
-      Arc::new(get_types(flags.unstable)),
+      Arc::new(get_types(ps.flags.unstable)),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -144,7 +147,7 @@ pub async fn print_docs(
       import_map: ps.maybe_import_map.clone(),
     };
     let graph = create_graph(
-      vec![root_specifier.clone()],
+      vec![(root_specifier.clone(), ModuleKind::Esm)],
       false,
       None,
       &mut loader,

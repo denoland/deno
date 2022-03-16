@@ -70,13 +70,11 @@ impl EditorHelper {
 
     self
       .get_object_expr_properties(object_expr)
-      .unwrap_or_else(Vec::new)
+      .unwrap_or_default()
   }
 
   fn get_expression_type(&self, expr: &str) -> Option<String> {
-    self
-      .evaluate_expression(expr)
-      .map(|res| res.result.kind.to_string())
+    self.evaluate_expression(expr).map(|res| res.result.kind)
   }
 
   fn get_object_expr_properties(

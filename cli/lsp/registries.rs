@@ -18,9 +18,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_cache::HttpCache;
 
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -640,7 +638,6 @@ impl ModuleRegistry {
             value,
             ..
           }) => Some(value),
-          _ => None,
         };
       }
     }
@@ -867,7 +864,7 @@ impl ModuleRegistry {
                               (items, None, false)
                             }
                           };
-                          if (incomplete) {
+                          if incomplete {
                             is_incomplete = true;
                           }
                           for (idx, item) in items.into_iter().enumerate() {

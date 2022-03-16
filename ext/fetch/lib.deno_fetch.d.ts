@@ -341,26 +341,26 @@ declare class Request implements Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream<Uint8Array> | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
-   * response yet.
+   * request yet.
    */
   readonly bodyUsed: boolean;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
+  /** Takes a `Request` stream and reads it to completion. It returns a promise
    * that resolves with an `ArrayBuffer`.
    */
   arrayBuffer(): Promise<ArrayBuffer>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
+  /** Takes a `Request` stream and reads it to completion. It returns a promise
    * that resolves with a `Blob`.
    */
   blob(): Promise<Blob>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
+  /** Takes a `Request` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
   formData(): Promise<FormData>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
+  /** Takes a `Request` stream and reads it to completion. It returns a promise
    * that resolves with the result of parsing the body text as JSON.
    */
   json(): Promise<any>;
-  /** Takes a `Response` stream and reads it to completion. It returns a promise
+  /** Takes a `Request` stream and reads it to completion. It returns a promise
    * that resolves with a `USVString` (text).
    */
   text(): Promise<string>;
@@ -424,13 +424,15 @@ declare class Response implements Body {
   text(): Promise<string>;
 }
 
-/** Fetch a resource from the network. It returns a Promise that resolves to the
- * Response to that request, whether it is successful or not.
+/** Fetch a resource from the network. It returns a `Promise` that resolves to the
+ * `Response` to that `Request`, whether it is successful or not.
  *
- *     const response = await fetch("http://my.json.host/data.json");
- *     console.log(response.status);  // e.g. 200
- *     console.log(response.statusText); // e.g. "OK"
- *     const jsonData = await response.json();
+ * ```ts
+ * const response = await fetch("http://my.json.host/data.json");
+ * console.log(response.status);  // e.g. 200
+ * console.log(response.statusText); // e.g. "OK"
+ * const jsonData = await response.json();
+ * ```
  */
 declare function fetch(
   input: Request | URL | string,

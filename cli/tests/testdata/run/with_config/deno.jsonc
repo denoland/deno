@@ -1,0 +1,6 @@
+{
+  // type settings for frontend dev
+  "compilerOptions": {
+    "lib": ["esnext", "dom"]
+  }
+}

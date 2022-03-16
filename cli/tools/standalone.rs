@@ -5,10 +5,17 @@ use crate::flags::CheckFlag;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::RunFlags;
+use crate::standalone::Metadata;
+use crate::standalone::MAGIC_TRAILER;
+use crate::ProcState;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
+use deno_graph::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest::Client;
+use deno_runtime::permissions::Permissions;
 use std::env;
 use std::fs::read;
 use std::fs::File;
@@ -18,9 +25,6 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-
-use crate::standalone::Metadata;
-use crate::standalone::MAGIC_TRAILER;
 
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
@@ -84,22 +88,45 @@ async fn download_base_binary(
 
 /// This functions creates a standalone deno binary by appending a bundle
 /// and magic trailer to the currently executing binary.
-pub fn create_standalone_binary(
+pub async fn create_standalone_binary(
   mut original_bin: Vec<u8>,
-  source_code: String,
+  eszip: eszip::EszipV2,
+  entrypoint: ModuleSpecifier,
   flags: Flags,
+  ps: ProcState,
 ) -> Result<Vec<u8>, AnyError> {
-  let mut source_code = source_code.as_bytes().to_vec();
+  let mut eszip_archive = eszip.into_bytes();
+
   let ca_data = match &flags.ca_file {
     Some(ca_file) => Some(read(ca_file)?),
     None => None,
+  };
+  let maybe_import_map: Option<(Url, String)> = match flags
+    .import_map_path
+    .as_ref()
+  {
+    None => None,
+    Some(import_map_url) => {
+      let import_map_specifier = deno_core::resolve_url_or_path(import_map_url)
+        .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
+      let file = ps
+        .file_fetcher
+        .fetch(&import_map_specifier, &mut Permissions::allow_all())
+        .await
+        .context(format!(
+          "Unable to load '{}' import map",
+          import_map_specifier
+        ))?;
+
+      Some((import_map_specifier, file.source.to_string()))
+    }
   };
   let metadata = Metadata {
     argv: flags.argv.clone(),
     unstable: flags.unstable,
     seed: flags.seed,
     location: flags.location.clone(),
-    permissions: flags.clone().into(),
+    permissions: flags.permissions_options(),
     v8_flags: flags.v8_flags.clone(),
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors
@@ -107,19 +134,22 @@ pub fn create_standalone_binary(
     log_level: flags.log_level,
     ca_stores: flags.ca_stores,
     ca_data,
+    entrypoint,
+    maybe_import_map,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
 
-  let bundle_pos = original_bin.len();
-  let metadata_pos = bundle_pos + source_code.len();
+  let eszip_pos = original_bin.len();
+  let metadata_pos = eszip_pos + eszip_archive.len();
   let mut trailer = MAGIC_TRAILER.to_vec();
-  trailer.write_all(&bundle_pos.to_be_bytes())?;
+  trailer.write_all(&eszip_pos.to_be_bytes())?;
   trailer.write_all(&metadata_pos.to_be_bytes())?;
 
-  let mut final_bin =
-    Vec::with_capacity(original_bin.len() + source_code.len() + trailer.len());
+  let mut final_bin = Vec::with_capacity(
+    original_bin.len() + eszip_archive.len() + trailer.len(),
+  );
   final_bin.append(&mut original_bin);
-  final_bin.append(&mut source_code);
+  final_bin.append(&mut eszip_archive);
   final_bin.append(&mut metadata);
   final_bin.append(&mut trailer);
 
@@ -200,7 +230,7 @@ pub async fn write_standalone_binary(
 ///   applicable at runtime so are set to their defaults like `false`.
 /// - Other flags are inherited.
 pub fn compile_to_runtime_flags(
-  flags: Flags,
+  flags: &Flags,
   baked_args: Vec<String>,
 ) -> Result<Flags, AnyError> {
   // IMPORTANT: Don't abbreviate any of this to `..flags` or
@@ -212,41 +242,43 @@ pub fn compile_to_runtime_flags(
       script: "placeholder".to_string(),
     }),
     allow_all: flags.allow_all,
-    allow_env: flags.allow_env,
+    allow_env: flags.allow_env.clone(),
     allow_hrtime: flags.allow_hrtime,
-    allow_net: flags.allow_net,
-    allow_ffi: flags.allow_ffi,
-    allow_read: flags.allow_read,
-    allow_run: flags.allow_run,
-    allow_write: flags.allow_write,
-    ca_stores: flags.ca_stores,
-    ca_file: flags.ca_file,
+    allow_net: flags.allow_net.clone(),
+    allow_ffi: flags.allow_ffi.clone(),
+    allow_read: flags.allow_read.clone(),
+    allow_run: flags.allow_run.clone(),
+    allow_write: flags.allow_write.clone(),
+    ca_stores: flags.ca_stores.clone(),
+    ca_file: flags.ca_file.clone(),
     cache_blocklist: vec![],
     cache_path: None,
     cached_only: false,
     config_path: None,
-    coverage_dir: flags.coverage_dir,
+    coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,
     ignore: vec![],
-    import_map_path: None,
+    import_map_path: flags.import_map_path.clone(),
     inspect_brk: None,
     inspect: None,
-    location: flags.location,
+    location: flags.location.clone(),
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
     check: CheckFlag::All,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
-      .unsafely_ignore_certificate_errors,
+      .unsafely_ignore_certificate_errors
+      .clone(),
     no_remote: false,
-    prompt: flags.prompt,
+    no_prompt: flags.no_prompt,
     reload: false,
     repl: false,
     seed: flags.seed,
     unstable: flags.unstable,
-    v8_flags: flags.v8_flags,
+    v8_flags: flags.v8_flags.clone(),
     version: false,
     watch: None,
+    no_clear_screen: false,
   })
 }

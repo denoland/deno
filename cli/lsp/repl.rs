@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::future::Future;
 
 use deno_ast::swc::common::BytePos;
 use deno_ast::swc::common::Span;
@@ -33,8 +32,6 @@ use lspower::lsp::TextDocumentPositionParams;
 use lspower::lsp::VersionedTextDocumentIdentifier;
 use lspower::lsp::WorkDoneProgressParams;
 use lspower::LanguageServer;
-
-use crate::logger;
 
 use super::client::Client;
 use super::config::CompletionSettings;

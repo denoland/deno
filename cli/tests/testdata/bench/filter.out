@@ -1,0 +1,12 @@
+Check [WILDCARD]/bench/filter/a_bench.ts
+Check [WILDCARD]/bench/filter/b_bench.ts
+Check [WILDCARD]/bench/filter/c_bench.ts
+running 1 bench from [WILDCARD]/bench/filter/a_bench.ts
+bench foo ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+running 1 bench from [WILDCARD]/bench/filter/b_bench.ts
+bench foo ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+running 1 bench from [WILDCARD]/bench/filter/c_bench.ts
+bench foo ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+
+bench result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out ([WILDCARD])
+

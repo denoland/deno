@@ -6,10 +6,9 @@ import {
   Deferred,
   deferred,
   delay,
+  execCode,
   unreachable,
 } from "./test_util.ts";
-
-const decoder = new TextDecoder();
 
 Deno.test(async function functionParameterBindingSuccess() {
   const promise = deferred();
@@ -397,10 +396,12 @@ Deno.test(async function timerMaxCpuBug() {
   clearTimeout(setTimeout(() => {}, 1000));
   // We can check this by counting how many ops have triggered in the interim.
   // Certainly less than 10 ops should have been dispatched in next 100 ms.
-  const { opsDispatched } = Deno.metrics();
+  const { ops: pre } = Deno.metrics();
   await delay(100);
-  const opsDispatched_ = Deno.metrics().opsDispatched;
-  assert(opsDispatched_ - opsDispatched < 10);
+  const { ops: post } = Deno.metrics();
+  const before = pre.op_sleep.opsDispatched;
+  const after = post.op_sleep.opsDispatched;
+  assert(after - before < 10);
 });
 
 Deno.test(async function timerOrdering() {
@@ -576,21 +577,6 @@ Deno.test(
   },
 );
 
-async function execCode(code: string) {
-  const p = Deno.run({
-    cmd: [
-      Deno.execPath(),
-      "eval",
-      "--unstable",
-      code,
-    ],
-    stdout: "piped",
-  });
-  const [status, output] = await Promise.all([p.status(), p.output()]);
-  p.close();
-  return [status.code, decoder.decode(output)];
-}
-
 Deno.test({
   name: "unrefTimer",
   permissions: { run: true },
@@ -691,5 +677,79 @@ Deno.test({
   fn: () => {
     Deno.unrefTimer(NaN);
     Deno.refTimer(NaN);
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with no listeners",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      // This unref timer expires before the signal, and if it does expire, then
+      // it means the signal has kept the event loop alive.
+      const timer = setTimeout(() => console.log("Unexpected!"), 1500);
+      Deno.unrefTimer(timer);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listeners",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(1000);
+      signal.addEventListener("abort", () => console.log("Event fired!"));
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Event fired!\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with removed listeners",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      const callback = () => console.log("Unexpected: Event fired");
+      signal.addEventListener("abort", callback);
+
+      setTimeout(() => {
+        console.log("Removing the listener.");
+        signal.removeEventListener("abort", callback);
+      }, 500);
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Removing the listener.\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listener for a non-abort event",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      signal.addEventListener("someOtherEvent", () => {
+        console.log("Unexpected: someOtherEvent called");
+      });
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
   },
 });

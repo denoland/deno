@@ -36,6 +36,19 @@ fn incremental_change_wait(bench: &mut Bencher) {
       }),
     )
     .unwrap();
+
+  let (id, method, _): (u64, String, Option<Value>) =
+    client.read_request().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!({
+        "enable": true
+      }),
+    )
+    .unwrap();
+
   let (method, _maybe_diag): (String, Option<Value>) =
     client.read_notification().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");

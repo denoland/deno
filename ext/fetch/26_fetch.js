@@ -15,7 +15,9 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
-  const { errorReadableStream } = window.__bootstrap.streams;
+  const { BlobPrototype } = window.__bootstrap.file;
+  const { errorReadableStream, ReadableStreamPrototype } =
+    window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
     toInnerRequest,
@@ -32,15 +34,18 @@
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
+    ObjectPrototypeIsPrototypeOf,
     Promise,
     PromisePrototypeThen,
     PromisePrototypeCatch,
+    SafeArrayIterator,
     String,
     StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
     WeakMap,
     WeakMapPrototypeDelete,
     WeakMapPrototypeGet,
@@ -164,7 +169,7 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...req.urlList],
+        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
       };
     }
 
@@ -172,8 +177,16 @@
     let reqBody = null;
 
     if (req.body !== null) {
-      if (req.body.streamOrStatic instanceof ReadableStream) {
-        if (req.body.length === null || req.body.source instanceof Blob) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStreamPrototype,
+          req.body.streamOrStatic,
+        )
+      ) {
+        if (
+          req.body.length === null ||
+          ObjectPrototypeIsPrototypeOf(BlobPrototype, req.body.source)
+        ) {
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
@@ -196,14 +209,19 @@
       }
     }
 
-    const { requestRid, requestBodyRid, cancelHandleRid } = opFetch({
-      method: req.method,
-      url: req.currentUrl(),
-      headers: req.headerList,
-      clientRid: req.clientRid,
-      hasBody: reqBody !== null,
-      bodyLength: req.body?.length,
-    }, reqBody instanceof Uint8Array ? reqBody : null);
+    const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
+      {
+        method: req.method,
+        url: req.currentUrl(),
+        headers: req.headerList,
+        clientRid: req.clientRid,
+        hasBody: reqBody !== null,
+        bodyLength: req.body?.length,
+      },
+      ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody)
+        ? reqBody
+        : null,
+    );
 
     function onAbort() {
       if (cancelHandleRid !== null) {
@@ -216,7 +234,10 @@
     terminator[abortSignal.add](onAbort);
 
     if (requestBodyRid !== null) {
-      if (reqBody === null || !(reqBody instanceof ReadableStream)) {
+      if (
+        reqBody === null ||
+        !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, reqBody)
+      ) {
         throw new TypeError("Unreachable");
       }
       const reader = reqBody.getReader();
@@ -231,7 +252,7 @@
             },
           );
           if (done) break;
-          if (!(value instanceof Uint8Array)) {
+          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
             await reader.cancel("value not a Uint8Array");
             break;
           }
@@ -311,7 +332,7 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...req.urlList];
+      response.urlList = [...new SafeArrayIterator(req.urlList)];
     }
 
     return response;

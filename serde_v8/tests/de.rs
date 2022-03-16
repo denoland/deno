@@ -3,6 +3,7 @@ use serde::Deserialize;
 
 use serde_v8::utils::{js_exec, v8_do};
 use serde_v8::Buffer;
+use serde_v8::ByteString;
 use serde_v8::Error;
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -311,3 +312,7 @@ detest!(
     b: "".into()
   }
 );
+
+detest!(de_bstr, ByteString, "'hello'", ByteString("hello".into()));
+defail!(defail_bstr, ByteString, "'👋bye'", |e| e
+  == Err(Error::ExpectedLatin1));

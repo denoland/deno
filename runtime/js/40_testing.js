@@ -5,23 +5,26 @@
   const core = window.Deno.core;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
-  const { metrics } = core;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
-    AggregateError,
+    AggregateErrorPrototype,
     ArrayPrototypeFilter,
+    ArrayPrototypeJoin,
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSome,
     DateNow,
     Error,
-    Function,
-    Number,
+    FunctionPrototype,
+    Map,
+    MapPrototypeHas,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     Promise,
     RegExp,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Set,
     StringPrototypeEndsWith,
     StringPrototypeIncludes,
@@ -55,6 +58,79 @@
     return opSanitizerDelayResolveQueue.length === 0;
   }
 
+  // An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
+  // An async operation to $0 was started in this test, but never completed. Async operations should not complete in a test if they were not started in that test.
+  // deno-fmt-ignore
+  const OP_DETAILS = {
+    "op_blob_read_part": ["read from a Blob or File", "awaiting the result of a Blob or File read"],
+    "op_broadcast_recv": ["receive a message from a BroadcastChannel", "closing the BroadcastChannel"],
+    "op_broadcast_send": ["send a message to a BroadcastChannel", "closing the BroadcastChannel"],
+    "op_chmod_async": ["change the permissions of a file", "awaiting the result of a `Deno.chmod` call"],
+    "op_chown_async": ["change the owner of a file", "awaiting the result of a `Deno.chown` call"],
+    "op_copy_file_async": ["copy a file", "awaiting the result of a `Deno.copyFile` call"],
+    "op_crypto_decrypt": ["decrypt data", "awaiting the result of a `crypto.subtle.decrypt` call"],
+    "op_crypto_derive_bits": ["derive bits from a key", "awaiting the result of a `crypto.subtle.deriveBits` call"],
+    "op_crypto_encrypt": ["encrypt data", "awaiting the result of a `crypto.subtle.encrypt` call"],
+    "op_crypto_generate_key": ["generate a key", "awaiting the result of a `crypto.subtle.generateKey` call"],
+    "op_crypto_sign_key": ["sign data", "awaiting the result of a `crypto.subtle.sign` call"],
+    "op_crypto_subtle_digest": ["digest data", "awaiting the result of a `crypto.subtle.digest` call"],
+    "op_crypto_verify_key": ["verify data", "awaiting the result of a `crypto.subtle.verify` call"],
+    "op_dgram_recv": ["receive a datagram message", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
+    "op_dgram_send": ["send a datagram message", "awaiting the result of `Deno.DatagramConn#send` call"],
+    "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
+    "op_emit": ["transpile code", "awaiting the result of a `Deno.emit` call"],
+    "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
+    "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
+    "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
+    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"], 
+    "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
+    "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
+    "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
+    "op_fsync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fsync` call"],
+    "op_ftruncate_async": ["truncate a file", "awaiting the result of a `Deno.ftruncate` call"],
+    "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
+    "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
+    "op_http_accept": ["accept a HTTP request", "closing a `Deno.HttpConn`"],
+    "op_http_read": ["read the body of a HTTP request", "consuming the entire request body"],
+    "op_http_shutdown": ["shutdown a HTTP connection", "awaiting `Deno.HttpEvent#respondWith`"],
+    "op_http_upgrade_websocket": ["upgrade a HTTP connection to a WebSocket", "awaiting `Deno.HttpEvent#respondWith`"],
+    "op_http_write_headers": ["write HTTP response headers", "awaiting `Deno.HttpEvent#respondWith`"],
+    "op_http_write": ["write HTTP response body", "awaiting `Deno.HttpEvent#respondWith`"],
+    "op_link_async": ["create a hard link", "awaiting the result of a `Deno.link` call"],
+    "op_make_temp_dir_async": ["create a temporary directory", "awaiting the result of a `Deno.makeTempDir` call"],
+    "op_make_temp_file_async": ["create a temporary file", "awaiting the result of a `Deno.makeTempFile` call"],
+    "op_message_port_recv_message": ["receive a message from a MessagePort", "awaiting the result of not closing a `MessagePort`"],
+    "op_mkdir_async": ["create a directory", "awaiting the result of a `Deno.mkdir` call"],
+    "op_net_accept": ["accept a TCP connection", "closing a `Deno.Listener`"],
+    "op_net_connect": ["connect to a TCP or UDP server", "awaiting a `Deno.connect` call"],
+    "op_open_async": ["open a file", "awaiting the result of a `Deno.open` call"],
+    "op_read_dir_async": ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
+    "op_read_link_async": ["read a symlink", "awaiting the result of a `Deno.readLink` call"],
+    "op_realpath_async": ["resolve a path", "awaiting the result of a `Deno.realpath` call"],
+    "op_remove_async": ["remove a file or directory", "awaiting the result of a `Deno.remove` call"],
+    "op_rename_async": ["rename a file or directory", "awaiting the result of a `Deno.rename` call"],
+    "op_run_status": ["get the status of a subprocess", "awaiting the result of a `Deno.Process#status` call"],
+    "op_seek_async": ["seek in a file", "awaiting the result of a `Deno.File#seek` call"],
+    "op_signal_poll": ["get the next signal", "un-registering a OS signal handler"],
+    "op_sleep": ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
+    "op_stat_async": ["get file metadata", "awaiting the result of a `Deno.stat` call"],
+    "op_symlink_async": ["create a symlink", "awaiting the result of a `Deno.symlink` call"],
+    "op_tls_accept": ["accept a TLS connection", "closing a `Deno.TlsListener`"],
+    "op_tls_connect": ["connect to a TLS server", "awaiting a `Deno.connectTls` call"],
+    "op_tls_handshake": ["perform a TLS handshake", "awaiting a `Deno.TlsConn#handshake` call"],
+    "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
+    "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
+    "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
+    "op_webgpu_buffer_get_map_async": ["map a WebGPU buffer", "awaiting the result of a `GPUBuffer#mapAsync` call"],
+    "op_webgpu_request_adapter": ["request a WebGPU adapter", "awaiting the result of a `navigator.gpu.requestAdapter` call"],
+    "op_webgpu_request_device": ["request a WebGPU device", "awaiting the result of a `GPUAdapter#requestDevice` call"],
+    "op_worker_recv_message":  ["receive a message from a web worker", "terminating a `Worker`"],
+    "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
+    "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
+    "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+    "op_ws_send": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  };
+
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
   // completed ops after the test is the same as number of dispatched
@@ -63,7 +139,8 @@
   function assertOps(fn) {
     /** @param step {TestStep} */
     return async function asyncOpSanitizer(step) {
-      const pre = metrics();
+      const pre = core.metrics();
+      const preTraces = new Map(core.opCallTraces);
       try {
         await fn(step);
       } finally {
@@ -73,56 +150,74 @@
         await opSanitizerDelay();
       }
 
-      if (step.shouldSkipSanitizers) {
-        return;
-      }
+      if (step.shouldSkipSanitizers) return;
 
-      const post = metrics();
+      const post = core.metrics();
+      const postTraces = new Map(core.opCallTraces);
 
       // We're checking diff because one might spawn HTTP server in the background
       // that will be a pending async op before test starts.
       const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
       const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
 
+      if (dispatchedDiff === completedDiff) return;
+
       const details = [];
       for (const key in post.ops) {
-        const dispatchedDiff = Number(
-          post.ops[key]?.opsDispatchedAsync -
-            (pre.ops[key]?.opsDispatchedAsync ?? 0),
-        );
-        const completedDiff = Number(
-          post.ops[key]?.opsCompletedAsync -
-            (pre.ops[key]?.opsCompletedAsync ?? 0),
-        );
+        const preOp = pre.ops[key] ??
+          { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
+        const postOp = post.ops[key];
+        const dispatchedDiff = postOp.opsDispatchedAsync -
+          preOp.opsDispatchedAsync;
+        const completedDiff = postOp.opsCompletedAsync -
+          preOp.opsCompletedAsync;
 
-        if (dispatchedDiff !== completedDiff) {
-          details.push(`
-  ${key}:
-    Before:
-      - dispatched: ${pre.ops[key]?.opsDispatchedAsync ?? 0}
-      - completed: ${pre.ops[key]?.opsCompletedAsync ?? 0}
-    After:
-      - dispatched: ${post.ops[key].opsDispatchedAsync}
-      - completed: ${post.ops[key].opsCompletedAsync}`);
+        if (dispatchedDiff > completedDiff) {
+          const [name, hint] = OP_DETAILS[key];
+          const count = dispatchedDiff - completedDiff;
+          let message = `${count} async operation${
+            count === 1 ? "" : "s"
+          } to ${name} ${
+            count === 1 ? "was" : "were"
+          } started in this test, but never completed. This is often caused by not ${hint}.`;
+          const traces = [];
+          for (const [id, { opName, stack }] of postTraces) {
+            if (opName !== key) continue;
+            if (MapPrototypeHas(preTraces, id)) continue;
+            ArrayPrototypePush(traces, stack);
+          }
+          if (traces.length === 1) {
+            message += " The operation was started here:\n";
+            message += traces[0];
+          } else if (traces.length > 1) {
+            message += " The operations were started here:\n";
+            message += ArrayPrototypeJoin(traces, "\n\n");
+          }
+          ArrayPrototypePush(details, message);
+        } else if (dispatchedDiff < completedDiff) {
+          const [name] = OP_DETAILS[key];
+          const count = completedDiff - dispatchedDiff;
+          ArrayPrototypePush(
+            details,
+            `${count} async operation${count === 1 ? "" : "s"} to ${name} ${
+              count === 1 ? "was" : "were"
+            } started before this test, but ${
+              count === 1 ? "was" : "were"
+            } completed during the test. Async operations should not complete in a test if they were not started in that test.`,
+          );
         }
       }
 
-      const message = `Test case is leaking async ops.
-Before:
-  - dispatched: ${pre.opsDispatchedAsync}
-  - completed: ${pre.opsCompletedAsync}
-After:
-  - dispatched: ${post.opsDispatchedAsync}
-  - completed: ${post.opsCompletedAsync}
-${details.length > 0 ? "Ops:" + details.join("") : ""}
+      let msg = `Test case is leaking async ops.
 
-Make sure to await all promises returned from Deno APIs before
-finishing test case.`;
+- ${ArrayPrototypeJoin(details, "\n - ")}`;
 
-      assert(
-        dispatchedDiff === completedDiff,
-        message,
-      );
+      if (!core.isOpCallTracingEnabled()) {
+        msg +=
+          `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
+      }
+
+      throw msg;
     };
   }
 
@@ -277,7 +372,10 @@ finishing test case.`;
 
       const post = core.resources();
 
-      const allResources = new Set([...ObjectKeys(pre), ...ObjectKeys(post)]);
+      const allResources = new Set([
+        ...new SafeArrayIterator(ObjectKeys(pre)),
+        ...new SafeArrayIterator(ObjectKeys(post)),
+      ]);
 
       const details = [];
       for (const resource of allResources) {
@@ -311,17 +409,19 @@ finishing test case.`;
 
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
-  function assertExit(fn) {
+  function assertExit(fn, isTest) {
     return async function exitSanitizer(...params) {
       setExitHandler((exitCode) => {
         assert(
           false,
-          `Test case attempted to exit with exit code: ${exitCode}`,
+          `${
+            isTest ? "Test case" : "Bench"
+          } attempted to exit with exit code: ${exitCode}`,
         );
       });
 
       try {
-        await fn(...params);
+        await fn(...new SafeArrayIterator(params));
       } catch (err) {
         throw err;
       } finally {
@@ -422,7 +522,7 @@ finishing test case.`;
       const token = pledgePermissions(permissions);
 
       try {
-        await fn(...params);
+        await fn(...new SafeArrayIterator(params));
       } finally {
         restorePermissions(token);
       }
@@ -430,6 +530,7 @@ finishing test case.`;
   }
 
   const tests = [];
+  const benches = [];
 
   // Main test function provided by Deno.
   function test(
@@ -529,8 +630,109 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
+  // Main bench function provided by Deno.
+  function bench(
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
+  ) {
+    let benchDef;
+    const defaults = {
+      ignore: false,
+      only: false,
+      sanitizeOps: true,
+      sanitizeResources: true,
+      sanitizeExit: true,
+      permissions: null,
+    };
+
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
+        throw new TypeError("The bench name can't be empty");
+      }
+      if (typeof optionsOrFn === "function") {
+        benchDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing bench function");
+        }
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, bench function is already provided as the third argument.",
+          );
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError(
+            "Unexpected 'name' field in options, bench name is already provided as the first argument.",
+          );
+        }
+        benchDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The bench function must have a name");
+      }
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Unexpected second argument to Deno.bench()");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Unexpected third argument to Deno.bench()");
+      }
+      benchDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
+    } else {
+      let fn;
+      let name;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, bench function is already provided as the second argument.",
+          );
+        }
+        name = nameOrFnOrOptions.name ?? fn.name;
+      } else {
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a bench function.",
+          );
+        }
+        fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
+      }
+      if (!name) {
+        throw new TypeError("The bench name can't be empty");
+      }
+      benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
+    }
+
+    benchDef.fn = wrapBenchFnWithSanitizers(
+      reportBenchIteration(benchDef.fn),
+      benchDef,
+    );
+
+    if (benchDef.permissions) {
+      benchDef.fn = withPermissions(
+        benchDef.fn,
+        benchDef.permissions,
+      );
+    }
+
+    ArrayPrototypePush(benches, benchDef);
+  }
+
   function formatError(error) {
-    if (error instanceof AggregateError) {
+    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
       const message = error
         .errors
         .map((error) =>
@@ -601,8 +803,46 @@ finishing test case.`;
     }
   }
 
+  async function runBench(bench) {
+    if (bench.ignore) {
+      return "ignored";
+    }
+
+    const step = new BenchStep({
+      name: bench.name,
+      sanitizeExit: bench.sanitizeExit,
+      warmup: false,
+    });
+
+    try {
+      const warmupIterations = bench.warmupIterations;
+      step.warmup = true;
+
+      for (let i = 0; i < warmupIterations; i++) {
+        await bench.fn(step);
+      }
+
+      const iterations = bench.n;
+      step.warmup = false;
+
+      for (let i = 0; i < iterations; i++) {
+        await bench.fn(step);
+      }
+
+      return "ok";
+    } catch (error) {
+      return {
+        "failed": formatError(error),
+      };
+    }
+  }
+
   function getTestOrigin() {
     return core.opSync("op_get_test_origin");
+  }
+
+  function getBenchOrigin() {
+    return core.opSync("op_get_bench_origin");
   }
 
   function reportTestPlan(plan) {
@@ -638,6 +878,53 @@ finishing test case.`;
   function reportTestStepResult(testDescription, result, elapsed) {
     core.opSync("op_dispatch_test_event", {
       stepResult: [testDescription, result, elapsed],
+    });
+  }
+
+  function reportBenchPlan(plan) {
+    core.opSync("op_dispatch_bench_event", {
+      plan,
+    });
+  }
+
+  function reportBenchConsoleOutput(console) {
+    core.opSync("op_dispatch_bench_event", {
+      output: { console },
+    });
+  }
+
+  function reportBenchWait(description) {
+    core.opSync("op_dispatch_bench_event", {
+      wait: description,
+    });
+  }
+
+  function reportBenchResult(description, result, elapsed) {
+    core.opSync("op_dispatch_bench_event", {
+      result: [description, result, elapsed],
+    });
+  }
+
+  function reportBenchIteration(fn) {
+    return async function benchIteration(step) {
+      let now;
+      if (!step.warmup) {
+        now = benchNow();
+      }
+      await fn(step);
+      if (!step.warmup) {
+        reportIterationTime(benchNow() - now);
+      }
+    };
+  }
+
+  function benchNow() {
+    return core.opSync("op_bench_now");
+  }
+
+  function reportIterationTime(time) {
+    core.opSync("op_dispatch_bench_event", {
+      iterationTime: time,
     });
   }
 
@@ -696,6 +983,53 @@ finishing test case.`;
       const elapsed = DateNow() - earlier;
 
       reportTestResult(description, result, elapsed);
+    }
+
+    globalThis.console = originalConsole;
+  }
+
+  async function runBenchmarks({
+    filter = null,
+  } = {}) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+
+    const origin = getBenchOrigin();
+    const originalConsole = globalThis.console;
+
+    globalThis.console = new Console(reportBenchConsoleOutput);
+
+    const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
+    const filtered = ArrayPrototypeFilter(
+      only.length > 0 ? only : benches,
+      createTestFilter(filter),
+    );
+
+    reportBenchPlan({
+      origin,
+      total: filtered.length,
+      filteredOut: benches.length - filtered.length,
+      usedOnly: only.length > 0,
+    });
+
+    for (const bench of filtered) {
+      // TODO(bartlomieju): probably needs some validation?
+      const iterations = bench.n ?? 1000;
+      const warmupIterations = bench.warmup ?? 1000;
+      const description = {
+        origin,
+        name: bench.name,
+        iterations,
+      };
+      bench.n = iterations;
+      bench.warmupIterations = warmupIterations;
+      const earlier = DateNow();
+
+      reportBenchWait(description);
+
+      const result = await runBench(bench);
+      const elapsed = DateNow() - earlier;
+
+      reportBenchResult(description, result, elapsed);
     }
 
     globalThis.console = originalConsole;
@@ -891,6 +1225,27 @@ finishing test case.`;
     }
   }
 
+  /**
+   * @typedef {{
+   *   name: string;
+   *   sanitizeExit: boolean,
+   *   warmup: boolean,
+   * }} BenchStepParams
+   */
+  class BenchStep {
+    /** @type {BenchStepParams} */
+    #params;
+
+    /** @param params {BenchStepParams} */
+    constructor(params) {
+      this.#params = params;
+    }
+
+    get name() {
+      return this.#params.name;
+    }
+  }
+
   /** @param parentStep {TestStep} */
   function createTestContext(parentStep) {
     return {
@@ -984,7 +1339,7 @@ finishing test case.`;
         /** @returns {TestStepDefinition} */
         function getDefinition() {
           if (typeof nameOrTestDefinition === "string") {
-            if (!(fn instanceof Function)) {
+            if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, fn))) {
               throw new TypeError("Expected function for second argument.");
             }
             return {
@@ -1023,9 +1378,24 @@ finishing test case.`;
       testFn = assertResources(testFn);
     }
     if (opts.sanitizeExit) {
-      testFn = assertExit(testFn);
+      testFn = assertExit(testFn, true);
     }
     return testFn;
+  }
+
+  /**
+   * @template T {Function}
+   * @param fn {T}
+   * @param opts {{
+   *   sanitizeExit: boolean,
+   * }}
+   * @returns {T}
+   */
+  function wrapBenchFnWithSanitizers(fn, opts) {
+    if (opts.sanitizeExit) {
+      fn = assertExit(fn, false);
+    }
+    return fn;
   }
 
   /**
@@ -1041,9 +1411,11 @@ finishing test case.`;
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    runBenchmarks,
   };
 
   window.__bootstrap.testing = {
     test,
+    bench,
   };
 })(this);

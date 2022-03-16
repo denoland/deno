@@ -8,16 +8,23 @@ use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_graph::MediaType;
-use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
+use deno_graph::ModuleKind;
 use deno_graph::Range;
-use deno_graph::ResolutionError;
+use deno_graph::Resolved;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+pub(crate) fn contains_specifier(
+  v: &[(ModuleSpecifier, ModuleKind)],
+  specifier: &ModuleSpecifier,
+) -> bool {
+  v.iter().any(|(s, _)| s == specifier)
+}
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
@@ -29,11 +36,10 @@ pub(crate) enum ModuleEntry {
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
     checked_libs: HashSet<TypeLib>,
-    maybe_types: Option<Result<(ModuleSpecifier, Range), ResolutionError>>,
+    maybe_types: Option<Resolved>,
   },
   Configuration {
-    dependencies:
-      BTreeMap<String, Result<(ModuleSpecifier, Range), ResolutionError>>,
+    dependencies: BTreeMap<String, Resolved>,
   },
   Error(ModuleGraphError),
   Redirect(ModuleSpecifier),
@@ -47,6 +53,7 @@ pub(crate) struct GraphData {
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
   configurations: HashSet<ModuleSpecifier>,
+  cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
 impl GraphData {
@@ -62,64 +69,62 @@ impl GraphData {
         continue;
       }
       match result {
-        Ok((_, media_type)) => {
+        Ok((_, _, media_type)) => {
           let module = graph.get(&specifier).unwrap();
-          let (code, dependencies, maybe_types) = match module {
-            Module::Es(es_module) => (
-              es_module.source.clone(),
-              es_module.dependencies.clone(),
-              es_module
-                .maybe_types_dependency
-                .as_ref()
-                .and_then(|(_, r)| r.clone()),
-            ),
-            Module::Synthetic(synthetic_module) => match &synthetic_module
-              .maybe_source
-            {
-              // Synthetic modules with a source are actually JSON modules.
-              Some(source) => (source.clone(), Default::default(), None),
-              // Synthetic modules without a source are config roots.
-              None => {
-                let mut dependencies = BTreeMap::new();
-                for (specifier, resolved) in &synthetic_module.dependencies {
-                  if let Some(dep_result) = resolved {
-                    dependencies.insert(specifier.clone(), dep_result.clone());
-                    if let Ok((specifier, referrer_range)) = dep_result {
-                      let entry = self.referrer_map.entry(specifier.clone());
-                      entry.or_insert_with(|| referrer_range.clone());
-                    }
-                  }
+          if module.kind == ModuleKind::Synthetic {
+            let mut dependencies = BTreeMap::new();
+            for (specifier, dependency) in &module.dependencies {
+              if !matches!(dependency.maybe_type, Resolved::None) {
+                dependencies
+                  .insert(specifier.clone(), dependency.maybe_type.clone());
+                if let Resolved::Ok {
+                  specifier, range, ..
+                } = &dependency.maybe_type
+                {
+                  let entry = self.referrer_map.entry(specifier.clone());
+                  entry.or_insert_with(|| range.clone());
                 }
-                self.modules.insert(
-                  synthetic_module.specifier.clone(),
-                  ModuleEntry::Configuration { dependencies },
-                );
-                self
-                  .configurations
-                  .insert(synthetic_module.specifier.clone());
-                continue;
               }
-            },
+            }
+            self.modules.insert(
+              module.specifier.clone(),
+              ModuleEntry::Configuration { dependencies },
+            );
+            self.configurations.insert(module.specifier.clone());
+          }
+          let code = match &module.maybe_source {
+            Some(source) => source.clone(),
+            None => continue,
           };
-          if let Some(Ok((specifier, referrer_range))) = &maybe_types {
+          let maybe_types = module
+            .maybe_types_dependency
+            .as_ref()
+            .map(|(_, r)| r.clone());
+          if let Some(Resolved::Ok {
+            specifier, range, ..
+          }) = &maybe_types
+          {
             let specifier = graph.redirects.get(specifier).unwrap_or(specifier);
             let entry = self.referrer_map.entry(specifier.clone());
-            entry.or_insert_with(|| referrer_range.clone());
+            entry.or_insert_with(|| range.clone());
           }
-          for dep in dependencies.values() {
+          for dep in module.dependencies.values() {
             #[allow(clippy::manual_flatten)]
             for resolved in [&dep.maybe_code, &dep.maybe_type] {
-              if let Some(Ok((specifier, referrer_range))) = resolved {
+              if let Resolved::Ok {
+                specifier, range, ..
+              } = resolved
+              {
                 let specifier =
                   graph.redirects.get(specifier).unwrap_or(specifier);
                 let entry = self.referrer_map.entry(specifier.clone());
-                entry.or_insert_with(|| referrer_range.clone());
+                entry.or_insert_with(|| range.clone());
               }
             }
           }
           let module_entry = ModuleEntry::Module {
             code,
-            dependencies,
+            dependencies: module.dependencies.clone(),
             media_type,
             checked_libs: Default::default(),
             maybe_types,
@@ -142,7 +147,7 @@ impl GraphData {
   /// Return `None` if any modules are not known.
   pub(crate) fn walk<'a>(
     &'a self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     follow_dynamic: bool,
     follow_type_only: bool,
     check_js: bool,
@@ -150,7 +155,7 @@ impl GraphData {
     let mut result = HashMap::<&'a ModuleSpecifier, &'a ModuleEntry>::new();
     let mut seen = HashSet::<&ModuleSpecifier>::new();
     let mut visiting = VecDeque::<&ModuleSpecifier>::new();
-    for root in roots {
+    for (root, _) in roots {
       seen.insert(root);
       visiting.push_back(root);
     }
@@ -181,10 +186,10 @@ impl GraphData {
             ))
             && follow_type_only;
           if check_types {
-            if let Some(Ok((types, _))) = maybe_types {
-              if !seen.contains(types) {
-                seen.insert(types);
-                visiting.push_front(types);
+            if let Some(Resolved::Ok { specifier, .. }) = maybe_types {
+              if !seen.contains(specifier) {
+                seen.insert(specifier);
+                visiting.push_front(specifier);
               }
             }
           }
@@ -196,10 +201,10 @@ impl GraphData {
               }
               #[allow(clippy::manual_flatten)]
               for resolved in resolutions {
-                if let Some(Ok((dep_specifier, _))) = resolved {
-                  if !seen.contains(dep_specifier) {
-                    seen.insert(dep_specifier);
-                    visiting.push_front(dep_specifier);
+                if let Resolved::Ok { specifier, .. } = resolved {
+                  if !seen.contains(specifier) {
+                    seen.insert(specifier);
+                    visiting.push_front(specifier);
                   }
                 }
               }
@@ -207,10 +212,12 @@ impl GraphData {
           }
         }
         ModuleEntry::Configuration { dependencies } => {
-          for (dep_specifier, _) in dependencies.values().flatten() {
-            if !seen.contains(dep_specifier) {
-              seen.insert(dep_specifier);
-              visiting.push_front(dep_specifier);
+          for resolved in dependencies.values() {
+            if let Resolved::Ok { specifier, .. } = resolved {
+              if !seen.contains(specifier) {
+                seen.insert(specifier);
+                visiting.push_front(specifier);
+              }
             }
           }
         }
@@ -230,7 +237,7 @@ impl GraphData {
   /// `roots`. Returns `None` if any roots are not known.
   pub(crate) fn graph_segment(
     &self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
   ) -> Option<Self> {
     let mut modules = HashMap::new();
     let mut referrer_map = HashMap::new();
@@ -248,6 +255,7 @@ impl GraphData {
       modules,
       referrer_map,
       configurations: self.configurations.clone(),
+      cjs_esm_translations: Default::default(),
     })
   }
 
@@ -257,7 +265,7 @@ impl GraphData {
   /// not known.
   pub(crate) fn check(
     &self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     follow_type_only: bool,
     check_js: bool,
   ) -> Option<Result<(), AnyError>> {
@@ -283,7 +291,7 @@ impl GraphData {
             ))
             && follow_type_only;
           if check_types {
-            if let Some(Err(error)) = maybe_types {
+            if let Some(Resolved::Err(error)) = maybe_types {
               let range = error.range();
               if !range.specifier.as_str().contains("$deno") {
                 return Some(Err(custom_error(
@@ -302,7 +310,7 @@ impl GraphData {
               }
               #[allow(clippy::manual_flatten)]
               for resolved in resolutions {
-                if let Some(Err(error)) = resolved {
+                if let Resolved::Err(error) = resolved {
                   let range = error.range();
                   if !range.specifier.as_str().contains("$deno") {
                     return Some(Err(custom_error(
@@ -318,7 +326,7 @@ impl GraphData {
         }
         ModuleEntry::Configuration { dependencies } => {
           for resolved_result in dependencies.values() {
-            if let Err(error) = resolved_result {
+            if let Resolved::Err(error) = resolved_result {
               let range = error.range();
               if !range.specifier.as_str().contains("$deno") {
                 return Some(Err(custom_error(
@@ -331,7 +339,7 @@ impl GraphData {
           }
         }
         ModuleEntry::Error(error) => {
-          if !roots.contains(specifier) {
+          if !contains_specifier(roots, specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
               if !range.specifier.as_str().contains("$deno") {
                 let message = error.to_string();
@@ -354,7 +362,7 @@ impl GraphData {
   /// Assumes that all of those modules are known.
   pub(crate) fn set_type_checked(
     &mut self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     lib: &TypeLib,
   ) {
     let specifiers: Vec<ModuleSpecifier> =
@@ -374,10 +382,10 @@ impl GraphData {
   /// Check if `roots` are all marked as type checked under `lib`.
   pub(crate) fn is_type_checked(
     &self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     lib: &TypeLib,
   ) -> bool {
-    roots.iter().all(|r| {
+    roots.iter().all(|(r, _)| {
       let found = self.follow_redirect(r);
       match self.modules.get(&found) {
         Some(ModuleEntry::Module { checked_libs, .. }) => {
@@ -405,6 +413,27 @@ impl GraphData {
     specifier: &ModuleSpecifier,
   ) -> Option<&'a ModuleEntry> {
     self.modules.get(specifier)
+  }
+
+  // TODO(bartlomieju): after saving translated source
+  // it's never removed, potentially leading to excessive
+  // memory consumption
+  pub(crate) fn add_cjs_esm_translation(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: String,
+  ) {
+    let prev = self
+      .cjs_esm_translations
+      .insert(specifier.to_owned(), source);
+    assert!(prev.is_none());
+  }
+
+  pub(crate) fn get_cjs_esm_translation<'a>(
+    &'a self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&'a String> {
+    self.cjs_esm_translations.get(specifier)
   }
 }
 

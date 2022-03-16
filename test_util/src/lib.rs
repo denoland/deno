@@ -15,6 +15,7 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use os_pipe::pipe;
+use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
@@ -676,6 +677,18 @@ async fn main_server(
       *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
+    (_, "/x_deno_warning.js") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+      res
+        .headers_mut()
+        .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
+      res.headers_mut().insert(
+        "location",
+        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+      );
+      Ok(res)
+    }
     (_, "/non_ascii_redirect") => {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
@@ -836,6 +849,15 @@ async fn main_server(
       ));
       res.headers_mut().insert(
         "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
+    (_, "/v1/extensionless") => {
+      let mut res =
+        Response::new(Body::from(r#"export * from "/subdir/mod1.ts";"#));
+      res.headers_mut().insert(
+        "content-type",
         HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
@@ -1313,16 +1335,6 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/x_deno_warning.js") {
-    response.headers_mut().insert(
-      "Content-Type",
-      HeaderValue::from_static("application/javascript"),
-    );
-    response
-      .headers_mut()
-      .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
-    return response;
-  }
   if p.ends_with("/053_import_compression/brotli") {
     response
       .headers_mut()
@@ -1694,6 +1706,7 @@ pub fn run_powershell_script_file(
 #[derive(Debug, Default)]
 pub struct CheckOutputIntegrationTest {
   pub args: &'static str,
+  pub args_vec: Vec<&'static str>,
   pub output: &'static str,
   pub input: Option<&'static str>,
   pub output_str: Option<&'static str>,
@@ -1704,7 +1717,15 @@ pub struct CheckOutputIntegrationTest {
 
 impl CheckOutputIntegrationTest {
   pub fn run(&self) {
-    let args = self.args.split_whitespace();
+    let args = if self.args_vec.is_empty() {
+      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
+    } else {
+      assert!(
+        self.args.is_empty(),
+        "Do not provide args when providing args_vec."
+      );
+      std::borrow::Cow::Borrowed(&self.args_vec)
+    };
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1719,7 +1740,7 @@ impl CheckOutputIntegrationTest {
     let mut command = deno_cmd();
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
-    command.args(args);
+    command.args(args.iter());
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
@@ -1781,7 +1802,9 @@ impl CheckOutputIntegrationTest {
       std::fs::read_to_string(output_path).expect("cannot read output")
     };
 
-    if !wildcard_match(&expected, &actual) {
+    if !expected.contains("[WILDCARD]") {
+      assert_eq!(actual, expected)
+    } else if !wildcard_match(&expected, &actual) {
       println!("OUTPUT\n{}\nOUTPUT", actual);
       println!("EXPECTED\n{}\nEXPECTED", expected);
       panic!("pattern match failed");
@@ -2070,6 +2093,7 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn parse_wrk_output_1() {

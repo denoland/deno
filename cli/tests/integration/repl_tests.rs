@@ -34,6 +34,17 @@ fn pty_multiline() {
 }
 
 #[test]
+fn pty_null() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("null");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("null"));
+  });
+}
+
+#[test]
 fn pty_unpaired_braces() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(")");
@@ -119,6 +130,23 @@ fn pty_complete_primitives() {
     assert!(output.contains("> 5n.valueOf"));
     assert!(output.contains("> false.valueOf"));
     assert!(output.contains("> num.toString"));
+  });
+}
+
+#[test]
+fn pty_complete_expression() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_text("Deno.\t\t");
+    console.write_text("y");
+    console.write_line("");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert!(output.contains("Display all"));
+    assert!(output.contains("core"));
+    assert!(output.contains("args"));
+    assert!(output.contains("exit"));
+    assert!(output.contains("symlink"));
+    assert!(output.contains("permissions"));
   });
 }
 

@@ -225,7 +225,7 @@ Deno.test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{
+  const nestedObjExpected = `<ref *1> {
   num: 1,
   bool: true,
   str: "a",
@@ -245,9 +245,9 @@ Deno.test(function consoleTestStringifyCircular() {
     method: [Function: method],
     un: undefined,
     nu: null,
-    nested: [Circular],
+    nested: [Circular *1],
     emptyObj: {},
-    arr: [ 1, "s", false, null, [Circular] ],
+    arr: [ 1, "s", false, null, [Circular *1] ],
     baseClass: Base { a: 1 }
   }
 }`;
@@ -350,10 +350,21 @@ Deno.test(function consoleTestStringifyCircular() {
         return Deno.inspect(this);
       },
     }),
-    "[Circular]",
+    "[Circular *1]",
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
+});
+
+Deno.test(function consoleTestStringifyMultipleCircular() {
+  const y = { a: { b: {} }, foo: { bar: {} } };
+  y.a.b = y.a;
+  y.foo.bar = y.foo;
+  console.log(y);
+  assertEquals(
+    stringify(y),
+    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+  );
 });
 
 Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
@@ -392,14 +403,14 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] {
+  f: <ref *1> [Function: f] {
     x: [Function],
     y: 3,
     z: [Function],
     b: [Function: bar],
     a: Map {},
-    s: [Circular],
-    t: [Function: t] { x: [Circular] }
+    s: [Circular *1],
+    t: [Function: t] { x: [Circular *1] }
   }
 }`,
   );
@@ -989,6 +1000,7 @@ Deno.test(function consoleTestWithStyleSpecifier() {
 });
 
 Deno.test(function consoleParseCssColor() {
+  assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
@@ -1008,6 +1020,14 @@ Deno.test(function consoleParseCssColor() {
 });
 
 Deno.test(function consoleParseCss() {
+  assertEquals(
+    parseCss("background-color: inherit"),
+    { ...DEFAULT_CSS, backgroundColor: "inherit" },
+  );
+  assertEquals(
+    parseCss("color: inherit"),
+    { ...DEFAULT_CSS, color: "inherit" },
+  );
   assertEquals(
     parseCss("background-color: red"),
     { ...DEFAULT_CSS, backgroundColor: "red" },
@@ -1063,8 +1083,20 @@ Deno.test(function consoleParseCss() {
 
 Deno.test(function consoleCssToAnsi() {
   assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "foo" }),
+    "_[49m",
+  );
+  assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "black" }),
     "_[40m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "inherit" }),
+    "_[39m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: "blue" }),
@@ -1561,6 +1593,13 @@ Deno.test(function consoleLogShouldNotThrowError() {
   });
 });
 
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
+  mockConsole((console, out) => {
+    console.log("%cfoo", "color: foo; background-color: bar;");
+    assertEquals(stripColor(out.toString()), "foo\n");
+  });
+});
+
 // console.log(Invalid Date) test
 Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
@@ -1856,6 +1895,7 @@ Deno.test(function inspectErrorCircular() {
     cause: new Error("This is a cause error"),
   });
   error1.cause = error1;
+  assert(error2.cause);
   error2.cause.cause = error2;
 
   assertStringIncludes(
@@ -1864,11 +1904,15 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
-    "Error: This is an error",
+    "<ref *1> Error: This is an error",
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
     "Caused by Error: This is a cause error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by [Circular *1]",
   );
 });
 

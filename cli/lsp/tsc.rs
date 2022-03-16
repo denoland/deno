@@ -2,6 +2,7 @@
 
 use super::code_lens;
 use super::config;
+use super::documents::AssetOrDocument;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -26,7 +27,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
@@ -39,7 +40,7 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_core::OpFn;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
@@ -61,6 +62,7 @@ use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
@@ -71,6 +73,8 @@ static CODEBLOCK_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
 static EMAIL_MATCH_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
+static HTTP_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
 static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
 });
@@ -87,6 +91,7 @@ type Request = (
   RequestMethod,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<Value, AnyError>>,
+  CancellationToken,
 );
 
 #[derive(Clone, Debug)]
@@ -101,14 +106,14 @@ impl TsServer {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
         let mut started = false;
-        while let Some((req, state_snapshot, tx)) = rx.recv().await {
+        while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
             // TODO(@kitsonk) need to reflect the debug state of the lsp here
             start(&mut ts_runtime, false, &state_snapshot)
               .expect("could not start tsc");
             started = true;
           }
-          let value = request(&mut ts_runtime, state_snapshot, req);
+          let value = request(&mut ts_runtime, state_snapshot, req, token);
           if tx.send(value).is_err() {
             warn!("Unable to send result to client.");
           }
@@ -127,8 +132,22 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    self
+      .request_with_cancellation(snapshot, req, Default::default())
+      .await
+  }
+
+  pub(crate) async fn request_with_cancellation<R>(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    req: RequestMethod,
+    token: CancellationToken,
+  ) -> Result<R, AnyError>
+  where
+    R: de::DeserializeOwned,
+  {
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
-    if self.0.send((req, snapshot, tx)).is_err() {
+    if self.0.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
@@ -137,6 +156,7 @@ impl TsServer {
 
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
+  specifier: ModuleSpecifier,
   text: Arc<String>,
   length: usize,
   line_index: Arc<LineIndex>,
@@ -149,14 +169,19 @@ struct AssetDocumentInner {
 pub struct AssetDocument(Arc<AssetDocumentInner>);
 
 impl AssetDocument {
-  pub fn new(text: impl AsRef<str>) -> Self {
+  pub fn new(specifier: ModuleSpecifier, text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
     Self(Arc::new(AssetDocumentInner {
+      specifier,
       text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.0.specifier
   }
 
   pub fn with_navigation_tree(
@@ -198,7 +223,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
     .map(|(k, v)| {
       let url_str = format!("asset:///{}", k);
       let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(v);
+      let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, Some(asset))
     })
     .collect();
@@ -248,10 +273,6 @@ impl Assets {
     // it's ok to not make a complete copy for snapshotting purposes
     // because assets are static
     AssetsSnapshot(self.assets.clone())
-  }
-
-  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.assets.lock().contains_key(k)
   }
 
   pub fn get_cached(
@@ -318,31 +339,27 @@ async fn get_asset(
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument::new(text));
+    let maybe_asset = Some(AssetDocument::new(specifier.clone(), text));
     Ok(maybe_asset)
   } else {
     let res = ts_server
       .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
       .await?;
     let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset = maybe_text.map(AssetDocument::new);
+    let maybe_asset =
+      maybe_text.map(|text| AssetDocument::new(specifier.clone(), text));
     Ok(maybe_asset)
   }
 }
 
-fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
-  parts
-    .iter()
-    .map(|p| p.text.to_string())
-    .collect::<Vec<String>>()
-    .join("")
-}
-
-fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
+fn get_tag_body_text(
+  tag: &JsDocTagInfo,
+  language_server: &language_server::Inner,
+) -> Option<String> {
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = display_parts_to_string(display_parts);
+    let text = display_parts_to_string(display_parts, language_server);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -364,13 +381,16 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
   })
 }
 
-fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
+fn get_tag_documentation(
+  tag: &JsDocTagInfo,
+  language_server: &language_server::Inner,
+) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text = display_parts_to_string(display_parts);
+        let text = display_parts_to_string(display_parts, language_server);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -390,7 +410,7 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
     _ => (),
   }
   let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag);
+  let maybe_text = get_tag_body_text(tag, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
       format!("{}  \n{}", label, text)
@@ -411,9 +431,9 @@ fn make_codeblock(text: &str) -> String {
 }
 
 /// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
-fn replace_links(text: &str) -> String {
+fn replace_links<S: AsRef<str>>(text: S) -> String {
   JSDOC_LINKS_RE
-    .replace_all(text, |c: &Captures| match &c[1] {
+    .replace_all(text.as_ref(), |c: &Captures| match &c[1] {
       "linkcode" => format!(
         "[`{}`]({})",
         if c.get(3).is_none() {
@@ -640,6 +660,10 @@ impl TextSpan {
 pub struct SymbolDisplayPart {
   text: String,
   kind: String,
+  // This is only on `JSDocLinkDisplayPart` which extends `SymbolDisplayPart`
+  // but is only used as an upcast of a `SymbolDisplayPart` and not explicitly
+  // returned by any API, so it is safe to add it as an optional value.
+  target: Option<DocumentSpan>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -649,26 +673,119 @@ pub struct JsDocTagInfo {
   text: Option<Vec<SymbolDisplayPart>>,
 }
 
+// Note: the tsc protocol contains fields that are part of the protocol but
+// not currently used.  They are commented out in the structures so it is clear
+// that they exist.
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickInfo {
-  kind: ScriptElementKind,
-  kind_modifiers: String,
+  // kind: ScriptElementKind,
+  // kind_modifiers: String,
   text_span: TextSpan,
   display_parts: Option<Vec<SymbolDisplayPart>>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
 }
 
+#[derive(Default)]
+struct Link {
+  name: Option<String>,
+  target: Option<DocumentSpan>,
+  text: Option<String>,
+  linkcode: bool,
+}
+
+/// Takes `SymbolDisplayPart` items and converts them into a string, handling
+/// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
+/// to the their source location.
+fn display_parts_to_string(
+  parts: &[SymbolDisplayPart],
+  language_server: &language_server::Inner,
+) -> String {
+  let mut out = Vec::<String>::new();
+
+  let mut current_link: Option<Link> = None;
+  for part in parts {
+    match part.kind.as_str() {
+      "link" => {
+        if let Some(link) = current_link.as_mut() {
+          if let Some(target) = &link.target {
+            if let Some(specifier) = target.to_target(language_server) {
+              let link_text = link.text.clone().unwrap_or_else(|| {
+                link
+                  .name
+                  .clone()
+                  .map(|ref n| n.replace('`', "\\`"))
+                  .unwrap_or_else(|| "".to_string())
+              });
+              let link_str = if link.linkcode {
+                format!("[`{}`]({})", link_text, specifier)
+              } else {
+                format!("[{}]({})", link_text, specifier)
+              };
+              out.push(link_str);
+            }
+          } else {
+            let maybe_text = link.text.clone().or_else(|| link.name.clone());
+            if let Some(text) = maybe_text {
+              if HTTP_RE.is_match(&text) {
+                let parts: Vec<&str> = text.split(' ').collect();
+                if parts.len() == 1 {
+                  out.push(parts[0].to_string());
+                } else {
+                  let link_text = parts[1..].join(" ").replace('`', "\\`");
+                  let link_str = if link.linkcode {
+                    format!("[`{}`]({})", link_text, parts[0])
+                  } else {
+                    format!("[{}]({})", link_text, parts[0])
+                  };
+                  out.push(link_str);
+                }
+              } else {
+                out.push(text.replace('`', "\\`"));
+              }
+            }
+          }
+          current_link = None;
+        } else {
+          current_link = Some(Link {
+            linkcode: part.text.as_str() == "{@linkcode ",
+            ..Default::default()
+          });
+        }
+      }
+      "linkName" => {
+        if let Some(link) = current_link.as_mut() {
+          link.name = Some(part.text.clone());
+          link.target = part.target.clone();
+        }
+      }
+      "linkText" => {
+        if let Some(link) = current_link.as_mut() {
+          link.name = Some(part.text.clone());
+        }
+      }
+      _ => out.push(part.text.clone()),
+    }
+  }
+
+  replace_links(out.join(""))
+}
+
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: Arc<LineIndex>) -> lsp::Hover {
-    let mut contents = Vec::<lsp::MarkedString>::new();
+  pub(crate) fn to_hover(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::Hover {
+    let mut parts = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| display_parts_to_string(&p))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
-      contents.push(lsp::MarkedString::from_language_code(
+      parts.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
@@ -676,37 +793,37 @@ impl QuickInfo {
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| display_parts_to_string(&p))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
-      contents.push(lsp::MarkedString::from_markdown(documentation));
+      parts.push(lsp::MarkedString::from_markdown(documentation));
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
-        .map(get_tag_documentation)
+        .map(|tag_info| get_tag_documentation(tag_info, language_server))
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        contents.push(lsp::MarkedString::from_markdown(format!(
+        parts.push(lsp::MarkedString::from_markdown(format!(
           "\n\n{}",
           tags_preview
         )));
       }
     }
     lsp::Hover {
-      contents: lsp::HoverContents::Array(contents),
+      contents: lsp::HoverContents::Array(parts),
       range: Some(self.text_span.to_range(line_index)),
     }
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
   pub file_name: String,
   original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
+  // original_file_name: Option<String>,
   context_span: Option<TextSpan>,
   original_context_span: Option<TextSpan>,
 }
@@ -756,6 +873,36 @@ impl DocumentSpan {
     };
     Some(link)
   }
+
+  /// Convert the `DocumentSpan` into a specifier that can be sent to the client
+  /// to link to the target document span. Used for converting JSDoc symbol
+  /// links to markdown links.
+  fn to_target(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> Option<ModuleSpecifier> {
+    let specifier = normalize_specifier(&self.file_name).ok()?;
+    log::info!(
+      "to_target file_name: {} specifier: {}",
+      self.file_name,
+      specifier
+    );
+    let asset_or_doc =
+      language_server.get_maybe_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = self.text_span.to_range(line_index);
+    let mut target = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .ok()?;
+    target.set_fragment(Some(&format!(
+      "L{},{}",
+      range.start.line + 1,
+      range.start.character + 1
+    )));
+
+    Some(target)
+  }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -776,12 +923,12 @@ pub struct NavigateToItem {
   name: String,
   kind: ScriptElementKind,
   kind_modifiers: String,
-  match_kind: MatchKind,
-  is_case_sensitive: bool,
+  // match_kind: MatchKind,
+  // is_case_sensitive: bool,
   file_name: String,
   text_span: TextSpan,
   container_name: Option<String>,
-  container_kind: ScriptElementKind,
+  // container_kind: ScriptElementKind,
 }
 
 impl NavigateToItem {
@@ -984,8 +1131,8 @@ pub struct ImplementationLocation {
   #[serde(flatten)]
   pub document_span: DocumentSpan,
   // ImplementationLocation props
-  kind: ScriptElementKind,
-  display_parts: Vec<SymbolDisplayPart>,
+  // kind: ScriptElementKind,
+  // display_parts: Vec<SymbolDisplayPart>,
 }
 
 impl ImplementationLocation {
@@ -1024,8 +1171,8 @@ pub struct RenameLocation {
   #[serde(flatten)]
   document_span: DocumentSpan,
   // RenameLocation props
-  prefix_text: Option<String>,
-  suffix_text: Option<String>,
+  // prefix_text: Option<String>,
+  // suffix_text: Option<String>,
 }
 
 pub struct RenameLocations {
@@ -1097,21 +1244,20 @@ pub enum HighlightSpanKind {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HighlightSpan {
-  file_name: Option<String>,
-  is_in_string: Option<bool>,
+  // file_name: Option<String>,
+  // is_in_string: Option<bool>,
   text_span: TextSpan,
-  context_span: Option<TextSpan>,
+  // context_span: Option<TextSpan>,
   kind: HighlightSpanKind,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfo {
-  kind: ScriptElementKind,
-  name: String,
-  container_kind: Option<ScriptElementKind>,
-  container_name: Option<String>,
-
+  // kind: ScriptElementKind,
+  // name: String,
+  // container_kind: Option<ScriptElementKind>,
+  // container_name: Option<String>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
 }
@@ -1120,7 +1266,7 @@ pub struct DefinitionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfoAndBoundSpan {
   pub definitions: Option<Vec<DefinitionInfo>>,
-  text_span: TextSpan,
+  // text_span: TextSpan,
 }
 
 impl DefinitionInfoAndBoundSpan {
@@ -1150,7 +1296,7 @@ impl DefinitionInfoAndBoundSpan {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentHighlights {
-  file_name: String,
+  // file_name: String,
   highlight_spans: Vec<HighlightSpan>,
 }
 
@@ -1264,9 +1410,7 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: maybe_asset_or_document
-          .map(|d| d.document_lsp_version())
-          .flatten(),
+        version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
     }));
@@ -1284,6 +1428,7 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
+    asset_or_doc: &AssetOrDocument,
     line_index: Arc<LineIndex>,
   ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
@@ -1316,7 +1461,9 @@ impl Classifications {
         );
       } else {
         log::error!(
-          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          "unexpected positions\nspecifier: {}\nopen: {}\nstart_pos: {:?}\nend_pos: {:?}",
+          asset_or_doc.specifier(),
+          asset_or_doc.is_open(),
           start_pos,
           end_pos
         );
@@ -1399,9 +1546,9 @@ impl RefactorActionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ApplicableRefactorInfo {
   name: String,
-  description: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  inlineable: Option<bool>,
+  // description: String,
+  // #[serde(skip_serializing_if = "Option::is_none")]
+  // inlineable: Option<bool>,
   actions: Vec<RefactorActionInfo>,
 }
 
@@ -1481,10 +1628,10 @@ impl RefactorEditInfo {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
-  description: String,
-  changes: Vec<FileTextChanges>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  commands: Option<Vec<Value>>,
+  // description: String,
+// changes: Vec<FileTextChanges>,
+// #[serde(skip_serializing_if = "Option::is_none")]
+// commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1518,9 +1665,9 @@ pub struct CombinedCodeActions {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
-  is_write_access: bool,
+  // is_write_access: bool,
   pub is_definition: bool,
-  is_in_string: Option<bool>,
+  // is_in_string: Option<bool>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
 }
@@ -1723,34 +1870,38 @@ impl CallHierarchyOutgoingCall {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
-  name: String,
-  kind: ScriptElementKind,
-  kind_modifiers: String,
+  // name: String,
+  // kind: ScriptElementKind,
+  // kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
-  code_actions: Option<Vec<CodeAction>>,
-  source: Option<Vec<SymbolDisplayPart>>,
+  // code_actions: Option<Vec<CodeAction>>,
+  // source: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
-  pub fn as_completion_item(
+  pub(crate) fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
+    language_server: &language_server::Inner,
   ) -> lsp::CompletionItem {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(&self.display_parts)))
+      Some(replace_links(&display_parts_to_string(
+        &self.display_parts,
+        language_server,
+      )))
     } else {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
-      let mut value = display_parts_to_string(parts);
+      let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
         let tag_documentation = tags
           .iter()
-          .map(get_tag_documentation)
+          .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
           .join("");
         value = format!("{}\n\n{}", value, tag_documentation);
@@ -1922,7 +2073,7 @@ impl CompletionEntry {
           return Some(insert_text.clone());
         }
       } else {
-        return Some(self.name.replace("#", ""));
+        return Some(self.name.replace('#', ""));
       }
     }
 
@@ -2059,9 +2210,9 @@ pub enum OutliningSpanKind {
 #[serde(rename_all = "camelCase")]
 pub struct OutliningSpan {
   text_span: TextSpan,
-  hint_span: TextSpan,
-  banner_text: String,
-  auto_collapse: bool,
+  // hint_span: TextSpan,
+  // banner_text: String,
+  // auto_collapse: bool,
   kind: OutliningSpanKind,
 }
 
@@ -2132,19 +2283,22 @@ impl OutliningSpan {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItems {
   items: Vec<SignatureHelpItem>,
-  applicable_span: TextSpan,
+  // applicable_span: TextSpan,
   selected_item_index: u32,
   argument_index: u32,
-  argument_count: u32,
+  // argument_count: u32,
 }
 
 impl SignatureHelpItems {
-  pub fn into_signature_help(self) -> lsp::SignatureHelp {
+  pub(crate) fn into_signature_help(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::SignatureHelp {
     lsp::SignatureHelp {
       signatures: self
         .items
         .into_iter()
-        .map(|item| item.into_signature_information())
+        .map(|item| item.into_signature_information(language_server))
         .collect(),
       active_parameter: Some(self.argument_index),
       active_signature: Some(self.selected_item_index),
@@ -2155,26 +2309,34 @@ impl SignatureHelpItems {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItem {
-  is_variadic: bool,
+  // is_variadic: bool,
   prefix_display_parts: Vec<SymbolDisplayPart>,
   suffix_display_parts: Vec<SymbolDisplayPart>,
-  separator_display_parts: Vec<SymbolDisplayPart>,
+  // separator_display_parts: Vec<SymbolDisplayPart>,
   parameters: Vec<SignatureHelpParameter>,
   documentation: Vec<SymbolDisplayPart>,
-  tags: Vec<JsDocTagInfo>,
+  // tags: Vec<JsDocTagInfo>,
 }
 
 impl SignatureHelpItem {
-  pub fn into_signature_information(self) -> lsp::SignatureInformation {
-    let prefix_text = display_parts_to_string(&self.prefix_display_parts);
+  pub(crate) fn into_signature_information(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::SignatureInformation {
+    let prefix_text =
+      display_parts_to_string(&self.prefix_display_parts, language_server);
     let params_text = self
       .parameters
       .iter()
-      .map(|param| display_parts_to_string(&param.display_parts))
+      .map(|param| {
+        display_parts_to_string(&param.display_parts, language_server)
+      })
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text = display_parts_to_string(&self.suffix_display_parts);
-    let documentation = display_parts_to_string(&self.documentation);
+    let suffix_text =
+      display_parts_to_string(&self.suffix_display_parts, language_server);
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -2187,7 +2349,7 @@ impl SignatureHelpItem {
         self
           .parameters
           .into_iter()
-          .map(|param| param.into_parameter_information())
+          .map(|param| param.into_parameter_information(language_server))
           .collect(),
       ),
       active_parameter: None,
@@ -2198,18 +2360,23 @@ impl SignatureHelpItem {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpParameter {
-  name: String,
+  // name: String,
   documentation: Vec<SymbolDisplayPart>,
   display_parts: Vec<SymbolDisplayPart>,
-  is_optional: bool,
+  // is_optional: bool,
 }
 
 impl SignatureHelpParameter {
-  pub fn into_parameter_information(self) -> lsp::ParameterInformation {
-    let documentation = display_parts_to_string(&self.documentation);
+  pub(crate) fn into_parameter_information(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::ParameterInformation {
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
+        language_server,
       )),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {
@@ -2245,7 +2412,7 @@ impl SelectionRange {
 
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
-  id: usize,
+  // id: usize,
   data: Value,
 }
 
@@ -2256,6 +2423,7 @@ struct State<'a> {
   state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
+  token: CancellationToken,
 }
 
 impl<'a> State<'a> {
@@ -2270,6 +2438,7 @@ impl<'a> State<'a> {
       state_snapshot,
       snapshots: HashMap::default(),
       specifiers: HashMap::default(),
+      token: Default::default(),
     }
   }
 
@@ -2333,19 +2502,6 @@ fn normalize_specifier<S: AsRef<str>>(
     .map_err(|err| err.into())
 }
 
-// buffer-less json_sync ops
-fn op_lsp<F, V, R>(op_fn: F) -> Box<OpFn>
-where
-  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
-  V: de::DeserializeOwned,
-  R: Serialize + 'static,
-{
-  op_sync(move |s, args, _: ()| {
-    let state = s.borrow_mut::<State>();
-    op_fn(state, args)
-  })
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
@@ -2355,10 +2511,12 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
+#[op]
 fn op_dispose(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_dispose", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
@@ -2372,13 +2530,24 @@ struct SpecifierArgs {
   specifier: String,
 }
 
-fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
+#[op]
+fn op_exists(
+  state: &mut OpState,
+  args: SpecifierArgs,
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
   // forrest for the trees as well as it compounds any lsp performance
   // challenges, opening a single document in the editor causes some 3k worth
   // of op_exists requests... :omg:
-  let specifier = state.normalize_specifier(args.specifier)?;
+  let specifier = match state.normalize_specifier(&args.specifier) {
+    Ok(url) => url,
+    // sometimes tsc tries to query invalid specifiers, especially when
+    // something else isn't quite right, so instead of bubbling up the error
+    // back to tsc, we simply swallow it and say the file doesn't exist
+    Err(_) => return Ok(false),
+  };
   let result = state.state_snapshot.documents.exists(&specifier);
   Ok(result)
 }
@@ -2394,10 +2563,12 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source has changed.
+#[op]
 fn op_get_change_range(
-  state: &mut State,
+  state: &mut OpState,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_change_range", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
@@ -2438,10 +2609,12 @@ fn op_get_change_range(
   r
 }
 
+#[op]
 fn op_get_length(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) =
@@ -2469,10 +2642,12 @@ struct GetTextArgs {
   end: usize,
 }
 
+#[op]
 fn op_get_text(
-  state: &mut State,
+  state: &mut OpState,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
@@ -2489,10 +2664,18 @@ fn op_get_text(
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
+#[op]
+fn op_is_cancelled(state: &mut OpState) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
+  Ok(state.token.is_cancelled())
+}
+
+#[op]
 fn op_load(
-  state: &mut State,
+  state: &mut OpState,
   args: SpecifierArgs,
 ) -> Result<Option<String>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let document = state.state_snapshot.documents.get(&specifier);
@@ -2500,10 +2683,12 @@ fn op_load(
   Ok(document.map(|d| d.content().to_string()))
 }
 
+#[op]
 fn op_resolve(
-  state: &mut State,
+  state: &mut OpState,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
@@ -2534,15 +2719,19 @@ fn op_resolve(
   result
 }
 
-fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+#[op]
+fn op_respond(state: &mut OpState, args: Response) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   state.response = Some(args);
   Ok(true)
 }
 
+#[op]
 fn op_script_names(
-  state: &mut State,
+  state: &mut OpState,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  let state = state.borrow_mut::<State>();
   Ok(
     state
       .state_snapshot
@@ -2560,10 +2749,12 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
+#[op]
 fn op_script_version(
-  state: &mut State,
+  state: &mut OpState,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
+  let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
@@ -2597,16 +2788,17 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_dispose", op_lsp(op_dispose)),
-      ("op_exists", op_lsp(op_exists)),
-      ("op_get_change_range", op_lsp(op_get_change_range)),
-      ("op_get_length", op_lsp(op_get_length)),
-      ("op_get_text", op_lsp(op_get_text)),
-      ("op_load", op_lsp(op_load)),
-      ("op_resolve", op_lsp(op_resolve)),
-      ("op_respond", op_lsp(op_respond)),
-      ("op_script_names", op_lsp(op_script_names)),
-      ("op_script_version", op_lsp(op_script_version)),
+      op_dispose::decl(),
+      op_exists::decl(),
+      op_get_change_range::decl(),
+      op_get_length::decl(),
+      op_get_text::decl(),
+      op_is_cancelled::decl(),
+      op_load::decl(),
+      op_resolve::decl(),
+      op_respond::decl(),
+      op_script_names::decl(),
+      op_script_version::decl(),
     ])
     .state(move |state| {
       state.put(State::new(
@@ -3069,12 +3261,14 @@ pub(crate) fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
+  token: CancellationToken,
 ) -> Result<Value, AnyError> {
   let (performance, request_params) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
     state.state_snapshot = state_snapshot;
+    state.token = token;
     state.last_id += 1;
     let id = state.last_id;
     (state.performance.clone(), method.to_value(state, id))
@@ -3148,7 +3342,8 @@ mod tests {
       request(
         &mut runtime,
         state_snapshot.clone(),
-        RequestMethod::Configure(ts_config)
+        RequestMethod::Configure(ts_config),
+        Default::default(),
       )
       .expect("failed request"),
       json!(true)
@@ -3205,6 +3400,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::Configure(ts_config),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3232,6 +3428,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3282,6 +3479,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3316,6 +3514,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3346,6 +3545,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3400,6 +3600,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3437,6 +3638,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3499,6 +3701,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3544,6 +3747,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetAsset(specifier),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response: Option<String> =
@@ -3588,6 +3792,7 @@ mod tests {
       &mut runtime,
       state_snapshot.clone(),
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3625,6 +3830,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3634,6 +3840,34 @@ mod tests {
         "file:///a.ts": []
       })
     );
+  }
+
+  #[test]
+  fn test_op_exists() {
+    let (mut rt, state_snapshot, _) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[],
+    );
+    let performance = Arc::new(Performance::default());
+    let state = State::new(state_snapshot, performance);
+    let op_state = rt.op_state();
+    let mut op_state = op_state.borrow_mut();
+    op_state.put(state);
+    let actual = op_exists::call(
+      &mut op_state,
+      SpecifierArgs {
+        specifier: "/error/unknown:something/index.d.ts".to_string(),
+      },
+    );
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert!(!actual);
   }
 
   #[test]
@@ -3696,6 +3930,7 @@ mod tests {
       &mut runtime,
       state_snapshot.clone(),
       RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let result = request(
@@ -3712,6 +3947,7 @@ mod tests {
           trigger_character: Some(".".to_string()),
         },
       )),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response: CompletionInfo =
@@ -3727,6 +3963,7 @@ mod tests {
         source: None,
         data: None,
       }),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();

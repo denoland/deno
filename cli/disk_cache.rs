@@ -91,7 +91,7 @@ impl DiskCache {
               | Prefix::VerbatimUNC(server, share) => {
                 out.push("UNC");
                 let host = Host::parse(server.to_str().unwrap()).unwrap();
-                let host = host.to_string().replace(":", "_");
+                let host = host.to_string().replace(':', "_");
                 out.push(host);
                 out.push(share);
               }

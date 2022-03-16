@@ -16,6 +16,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperty,
     ObjectDefineProperties,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     PromiseResolve,
     Symbol,
@@ -142,7 +143,9 @@ delete Object.prototype.__proto__;
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) => t instanceof MessagePort),
+        ports: transferables.filter((t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
+        ),
       });
 
       try {
@@ -311,7 +314,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, NavigatorPrototype);
         return webgpu.gpu;
       },
     },
@@ -319,11 +322,12 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
       },
     },
   });
+  const NavigatorPrototype = Navigator.prototype;
 
   class WorkerNavigator {
     constructor() {
@@ -342,7 +346,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator);
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
         return webgpu.gpu;
       },
     },
@@ -350,11 +354,12 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator);
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
         return numCpus;
       },
     },
   });
+  const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
@@ -569,13 +574,14 @@ delete Object.prototype.__proto__;
       args,
       location: locationHref,
       noColor,
+      isTty,
       pid,
       ppid,
       unstableFlag,
       cpuCount,
     } = runtimeOptions;
 
-    colors.setNoColor(noColor);
+    colors.setNoColor(noColor || !isTty);
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
@@ -661,17 +667,18 @@ delete Object.prototype.__proto__;
       unstableFlag,
       pid,
       noColor,
+      isTty,
       args,
       location: locationHref,
       cpuCount,
     } = runtimeOptions;
 
-    colors.setNoColor(noColor);
+    colors.setNoColor(noColor || !isTty);
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();
 
-    pollForMessages();
+    globalThis.pollForMessages = pollForMessages;
 
     const internalSymbol = Symbol("Deno.internal");
 

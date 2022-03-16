@@ -4,6 +4,7 @@
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-awaitPromise
@@ -146,8 +147,8 @@ pub struct GetPropertiesArgs {
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesResponse {
   pub result: Vec<PropertyDescriptor>,
-  pub internal_properties: Vec<InternalPropertyDescriptor>,
-  pub private_properties: Vec<PrivatePropertyDescriptor>,
+  pub internal_properties: Option<Vec<InternalPropertyDescriptor>>,
+  pub private_properties: Option<Vec<PrivatePropertyDescriptor>>,
   pub exception_details: Option<ExceptionDetails>,
 }
 
@@ -240,56 +241,12 @@ pub struct SetAsyncCallStackDepthArgs {
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum RemoteObjectType {
-  Object,
-  Function,
-  Undefined,
-  String,
-  Number,
-  Boolean,
-  Symbol,
-  Bigint,
-}
-
-impl std::fmt::Display for RemoteObjectType {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str(&format!("{:?}", self).to_lowercase())
-  }
-}
-
-/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum RemoteObjectSubType {
-  Array,
-  Null,
-  Node,
-  Regexp,
-  Date,
-  Map,
-  Set,
-  Weakmap,
-  Weakset,
-  Iterator,
-  Generator,
-  Error,
-  Proxy,
-  Promise,
-  Typedarray,
-  Arraybuffer,
-  Dataview,
-  Webassemblymemory,
-  Wasmvalue,
-}
-
-/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RemoteObject {
   #[serde(rename = "type")]
-  pub kind: RemoteObjectType,
-  pub subtype: Option<RemoteObjectSubType>,
+  pub kind: String,
+  pub subtype: Option<String>,
   pub class_name: Option<String>,
+  #[serde(default, deserialize_with = "deserialize_some")]
   pub value: Option<Value>,
   pub unserializable_value: Option<UnserializableValue>,
   pub description: Option<String>,
@@ -298,13 +255,23 @@ pub struct RemoteObject {
   pub custom_preview: Option<CustomPreview>,
 }
 
+// Any value that is present is considered Some value, including null.
+// ref: https://github.com/serde-rs/serde/issues/984#issuecomment-314143738
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+  T: Deserialize<'de>,
+  D: Deserializer<'de>,
+{
+  Deserialize::deserialize(deserializer).map(Some)
+}
+
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ObjectPreview
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectPreview {
   #[serde(rename = "type")]
-  pub kind: RemoteObjectType,
-  pub subtype: Option<RemoteObjectSubType>,
+  pub kind: String,
+  pub subtype: Option<String>,
   pub description: Option<String>,
   pub overflow: bool,
   pub properties: Vec<PropertyPreview>,
@@ -317,25 +284,10 @@ pub struct ObjectPreview {
 pub struct PropertyPreview {
   pub name: String,
   #[serde(rename = "type")]
-  pub kind: PropertyPreviewType,
+  pub kind: String,
   pub value: Option<String>,
   pub value_preview: Option<ObjectPreview>,
-  pub subtype: Option<RemoteObjectSubType>,
-}
-
-/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PropertyPreview
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PropertyPreviewType {
-  Object,
-  Function,
-  Undefined,
-  String,
-  Number,
-  Boolean,
-  Symbol,
-  Accessor,
-  Bigint,
+  pub subtype: Option<String>,
 }
 
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-EntryPreview

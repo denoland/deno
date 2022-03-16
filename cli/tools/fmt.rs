@@ -14,7 +14,7 @@ use crate::config_file::ProseWrap;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::FmtFlags;
+use crate::flags::{Flags, FmtFlags};
 use crate::fs_util::specifier_to_file_path;
 use crate::fs_util::{collect_files, get_extension};
 use crate::text_encoding;
@@ -39,8 +39,8 @@ use std::sync::{Arc, Mutex};
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
+  flags: &Flags,
   fmt_flags: FmtFlags,
-  watch: bool,
   maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<(), AnyError> {
   let FmtFlags {
@@ -136,8 +136,16 @@ pub async fn format(
     Ok(())
   };
 
-  if watch {
-    file_watcher::watch_func(resolver, operation, "Fmt").await?;
+  if flags.watch.is_some() {
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      file_watcher::PrintConfig {
+        job_name: "Fmt".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
+    )
+    .await?;
   } else {
     let files =
       collect_files(&include_files, &exclude_files, is_supported_ext_fmt)
@@ -226,7 +234,7 @@ pub fn format_file(
   file_text: &str,
   fmt_options: FmtOptionsConfig,
 ) -> Result<String, AnyError> {
-  let ext = get_extension(file_path).unwrap_or_else(String::new);
+  let ext = get_extension(file_path).unwrap_or_default();
   if matches!(
     ext.as_str(),
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
@@ -581,8 +589,7 @@ where
   let mut errors = join_results.into_iter().filter_map(|join_result| {
     join_result
       .ok()
-      .map(|handle_result| handle_result.err())
-      .flatten()
+      .and_then(|handle_result| handle_result.err())
   });
 
   if let Some(e) = errors.next() {

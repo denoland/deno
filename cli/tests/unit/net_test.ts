@@ -156,7 +156,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netTcpConcurrentAccept() {
-    const listener = Deno.listen({ port: 4502 });
+    const listener = Deno.listen({ port: 4510 });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
       if (e.message === "Listener has been closed") {
@@ -217,6 +217,78 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   );
 
   const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  assert(conn.remoteAddr.transport === "tcp");
+  assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
+  assertEquals(conn.remoteAddr.port, 3500);
+  assert(conn.localAddr != null);
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEquals(3, readResult);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+  assert(conn.rid > 0);
+
+  assert(readResult !== null);
+
+  const readResult2 = await conn.read(buf);
+  assertEquals(readResult2, null);
+
+  listener.close();
+  conn.close();
+});
+
+Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
+  const listener = Deno.listen({ port: 3500 });
+  listener.accept().then(
+    async (conn) => {
+      assert(conn.remoteAddr != null);
+      assert(conn.localAddr.transport === "tcp");
+      assertEquals(conn.localAddr.hostname, "127.0.0.1");
+      assertEquals(conn.localAddr.port, 3500);
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    },
+  );
+
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  conn.setNoDelay(true);
+  assert(conn.remoteAddr.transport === "tcp");
+  assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
+  assertEquals(conn.remoteAddr.port, 3500);
+  assert(conn.localAddr != null);
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEquals(3, readResult);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+  assert(conn.rid > 0);
+
+  assert(readResult !== null);
+
+  const readResult2 = await conn.read(buf);
+  assertEquals(readResult2, null);
+
+  listener.close();
+  conn.close();
+});
+
+Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
+  const listener = Deno.listen({ port: 3500 });
+  listener.accept().then(
+    async (conn) => {
+      assert(conn.remoteAddr != null);
+      assert(conn.localAddr.transport === "tcp");
+      assertEquals(conn.localAddr.hostname, "127.0.0.1");
+      assertEquals(conn.localAddr.port, 3500);
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    },
+  );
+
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  conn.setKeepAlive(true);
   assert(conn.remoteAddr.transport === "tcp");
   assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
   assertEquals(conn.remoteAddr.port, 3500);
@@ -677,5 +749,61 @@ Deno.test(
     });
     assert("not panic");
     listener.close();
+  },
+);
+
+Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
+  (async () => {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
+    const conn = await listener.accept();
+    await conn.readable.pipeTo(conn.writable);
+    listener.close();
+  })();
+
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const reader = conn.readable.getReader();
+  const writer = conn.writable.getWriter();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const data = encoder.encode("Hello World");
+
+  await writer.write(data);
+  const { value, done } = await reader.read();
+  assert(!done);
+  assertEquals(decoder.decode(value), "Hello World");
+  await reader.cancel();
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readableStreamTextEncoderPipe() {
+    const filename = "cli/tests/testdata/hello.txt";
+    const file = await Deno.open(filename);
+    const readable = file.readable.pipeThrough(new TextDecoderStream());
+    const chunks = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+    }
+    assertEquals(chunks.length, 1);
+    assertEquals(chunks[0].length, 12);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writableStream() {
+    const path = await Deno.makeTempFile();
+    const file = await Deno.open(path, { write: true });
+    assert(file.writable instanceof WritableStream);
+    const readable = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("hello "));
+        controller.enqueue(new TextEncoder().encode("world!"));
+        controller.close();
+      },
+    });
+    await readable.pipeTo(file.writable);
+    const res = await Deno.readTextFile(path);
+    assertEquals(res, "hello world!");
   },
 );
