@@ -12,7 +12,7 @@ const originalCliVersion = cliCrate.version;
 await cliCrate.promptAndIncrement();
 
 // increment the dependency crate versions
-for (const crate of workspace.getDependencyCrates()) {
+for (const crate of workspace.getCliDependencyCrates()) {
   await crate.increment("minor");
 }
 
