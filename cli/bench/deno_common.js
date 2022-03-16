@@ -39,7 +39,7 @@ function benchStats(name, n, t1, t2) {
 
 function benchB64RtLong() {
   const input = "long-string".repeat(99999);
-  benchSync("b64_rt_long", 1e2, () => {
+  benchSync("b64_rt_long", 100, () => {
     atob(btoa(input));
   });
 }
@@ -58,7 +58,7 @@ function benchUrlParse() {
 
 function benchLargeBlobText() {
   const input = "long-string".repeat(999_999);
-  benchSync("blob_text_large", 1e2, () => {
+  benchSync("blob_text_large", 100, () => {
     new Blob([input]).text();
   });
 }
