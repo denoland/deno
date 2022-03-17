@@ -234,7 +234,7 @@ pub async fn op_blob_read_whole(
     offset += buf.len();
     result[..offset].copy_from_slice(buf);
   }
-  
+
   Ok(unsafe { String::from_utf8_unchecked(result) })
 }
 

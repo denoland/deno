@@ -56,10 +56,16 @@ function benchUrlParse() {
   });
 }
 
-function benchLargeBlobText() {
+async function benchLargeBlobText() {
   const input = "long-string".repeat(999_999);
-  benchSync("blob_text_large", 100, () => {
-    new Blob([input]).text();
+  benchSync("blob_text_large_new", 100, () => new Blob([input]));
+  const b = new Blob([input]);
+  await benchAsync("blob_text_large_text", 100, async () => {
+    await b.text();
+  });
+
+  await benchAsync("blob_text_large_buf", 100, async () => {
+    await b.arrayBuffer();
   });
 }
 
@@ -130,7 +136,7 @@ async function main() {
   // A common "language feature", that should be fast
   // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
-  benchLargeBlobText();
+  await benchLargeBlobText();
   benchB64RtLong();
   benchB64RtShort();
   // IO ops

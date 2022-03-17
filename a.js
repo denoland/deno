@@ -18,5 +18,3 @@ console.timeEnd("blob.text()");
 console.time("blob.arrayBuffer()");
 const arrayBuffer = await blob.arrayBuffer();
 console.timeEnd("blob.arrayBuffer()");
-
-

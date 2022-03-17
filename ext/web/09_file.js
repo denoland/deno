@@ -175,7 +175,7 @@
     [_type] = "";
     [_size] = 0;
     [_parts];
-    
+
     /**
      * @param {BlobPart[]} blobParts
      * @param {BlobPropertyBag} options
@@ -345,7 +345,11 @@
     }
 
     #u8Array(size) {
-      return core.opAsync("op_blob_read_whole", this[_parts].map(i => i._id), size);
+      return core.opAsync(
+        "op_blob_read_whole",
+        this[_parts].map((i) => i._id),
+        size,
+      );
     }
 
     /**
