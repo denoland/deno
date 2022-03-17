@@ -2583,12 +2583,21 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    self
-      .0
-      .lock()
-      .await
-      .did_change_workspace_folders(params)
-      .await
+    let client = {
+      let mut inner = self.0.lock().await;
+      inner.did_change_workspace_folders(params).await;
+      inner.client.clone()
+    };
+    let language_server = self.clone();
+    tokio::spawn(async move {
+      language_server
+        .0
+        .lock()
+        .await
+        .config
+        .update_enabled_paths(client)
+        .await;
+    });
   }
 
   async fn document_symbol(
