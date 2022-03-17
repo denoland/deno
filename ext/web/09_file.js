@@ -175,7 +175,7 @@
     [_type] = "";
     [_size] = 0;
     [_parts];
-
+    
     /**
      * @param {BlobPart[]} blobParts
      * @param {BlobPropertyBag} options
@@ -341,21 +341,11 @@
     async text() {
       webidl.assertBranded(this, BlobPrototype);
       const buffer = await this.#u8Array(this.size);
-      return core.decode(buffer);
+      return buffer;
     }
 
-    async #u8Array(size) {
-      const bytes = new Uint8Array(size);
-      const partIterator = toIterator(this[_parts]);
-      let offset = 0;
-      for await (const chunk of partIterator) {
-        const byteLength = chunk.byteLength;
-        if (byteLength > 0) {
-          TypedArrayPrototypeSet(bytes, chunk, offset);
-          offset += byteLength;
-        }
-      }
-      return bytes;
+    #u8Array(size) {
+      return core.opAsync("op_blob_read_whole", this[_parts].map(i => i._id), size);
     }
 
     /**

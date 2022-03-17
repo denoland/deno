@@ -219,6 +219,26 @@ pub async fn op_blob_read_part(
 }
 
 #[op]
+pub async fn op_blob_read_whole(
+  state: Rc<RefCell<deno_core::OpState>>,
+  ids: Vec<Uuid>,
+  size: usize,
+) -> Result<String, AnyError> {
+  let state = state.borrow();
+  let blob_store = state.borrow::<BlobStore>();
+  let mut result = vec![0u8; size];
+  let mut offset = 0;
+  for id in ids {
+    let part = blob_store.get_part(&id).expect("Blob part not found");
+    let buf = part.read().await?;
+    offset += buf.len();
+    result[..offset].copy_from_slice(buf);
+  }
+  
+  Ok(unsafe { String::from_utf8_unchecked(result) })
+}
+
+#[op]
 pub fn op_blob_remove_part(
   state: &mut deno_core::OpState,
   id: Uuid,

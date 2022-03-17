@@ -37,6 +37,7 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
+use crate::blob::op_blob_read_whole;
 pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
@@ -94,6 +95,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_encoding_encode_into::decl(),
       op_blob_create_part::decl(),
       op_blob_slice_part::decl(),
+      op_blob_read_whole::decl(),
       op_blob_read_part::decl(),
       op_blob_remove_part::decl(),
       op_blob_create_object_url::decl(),
