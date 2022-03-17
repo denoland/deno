@@ -1284,7 +1284,7 @@
 
         const definition = getDefinition();
         const subStep = new TestStep({
-          name: definition.getFullName(),
+          name: parentStep.getFullName(),
           parent: parentStep,
           update: parentStep.update,
           rootTestDescription: parentStep.rootTestDescription,
