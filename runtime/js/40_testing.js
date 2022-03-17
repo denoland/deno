@@ -1265,7 +1265,7 @@
 
         const definition = getDefinition();
         const subStep = new TestStep({
-          name: definition.name,
+          name: definition.getFullName(),
           parent: parentStep,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
