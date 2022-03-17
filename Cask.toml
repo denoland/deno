@@ -1,0 +1,19 @@
+[package]
+name = "github.com/denoland/deno"
+bin = "deno"
+authors = ["Deno authors <deploy@deno.com>"]
+keywords = []
+repository = "https://github.com/denoland/deno"
+description = """
+ A modern runtime for JavaScript and TypeScript. 
+"""
+
+[darwin]
+x86_64 = { url = "https://github.com/denoland/deno/releases/download/v{version}/deno-x86_64-apple-darwin.zip" }
+aarch64 = { url = "https://github.com/denoland/deno/releases/download/v{version}/deno-aarch64-apple-darwin.zip" }
+
+[windows]
+x86_64 = { url = "https://github.com/denoland/deno/releases/download/v{version}/deno-x86_64-pc-windows-msvc.zip" }
+
+[linux]
+x86_64 = { url = "https://github.com/denoland/deno/releases/download/v{version}/deno-x86_64-unknown-linux-gnu.zip" }
