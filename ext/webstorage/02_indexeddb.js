@@ -7,7 +7,23 @@
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler, _canceledFlag } = window.__bootstrap.event;
-  const { NumberIsNaN, ArrayIsArray, Date, SafeArrayIterator, ObjectPrototypeHasOwnProperty, DatePrototypeGetMilliseconds, MapPrototypeGet, MapPrototypeDelete, ArrayPrototypeSort, Set, SetPrototypeHas, SetPrototypeAdd, MathMin, MapPrototypeKeys } = window.__bootstrap.primordials;
+  const { assert } = window.__bootstrap.infra;
+  const {
+    NumberIsNaN,
+    ArrayIsArray,
+    Date,
+    SafeArrayIterator,
+    ObjectPrototypeHasOwnProperty,
+    DatePrototypeGetMilliseconds,
+    MapPrototypeGet,
+    MapPrototypeDelete,
+    ArrayPrototypeSort,
+    Set,
+    SetPrototypeHas,
+    SetPrototypeAdd,
+    MathMin,
+    MapPrototypeKeys,
+  } = window.__bootstrap.primordials;
 
   webidl.converters.IDBTransactionMode = webidl.createEnumConverter(
     "IDBTransactionMode",
@@ -113,12 +129,12 @@
       return {
         type: "string",
         value: input,
-      }
-    } else if () { // TODO: is a buffer source type
+      };
+    } else if (false) { // TODO: is a buffer source type
       return {
         type: "binary",
         value: input.slice(),
-      }
+      };
     } else if (ArrayIsArray(input)) {
       SetPrototypeAdd(seen, input);
       const keys = [];
@@ -145,14 +161,17 @@
       const keys = [];
       for (const entry of input) {
         const key = valueToKey(entry, seen);
-        if (key !== null && keys.find((item) => compareTwoKeys(item, key)) === undefined) {
+        if (
+          key !== null &&
+          keys.find((item) => compareTwoKeys(item, key)) === undefined
+        ) {
           keys.push(key);
         }
       }
       return {
         type: "array",
         value: keys,
-      }
+      };
     } else {
       return valueToKey(input);
     }
@@ -247,7 +266,7 @@
   function isValidKeyPath(key) {
     if (typeof key === "string" && key.length === 0) {
       return true;
-    } else if () {
+    } else if (false) {
       // TODO
     }
   }
@@ -310,21 +329,24 @@
       request[_done] = true;
       request[_result] = undefined;
       request[_error] = new DOMException("", "AbortError"); // TODO: error
-      request.dispatchEvent(new Event("error", {
-        bubbles: true,
-        cancelable: true,
-      }));
+      request.dispatchEvent(
+        new Event("error", {
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
     }
     if (transaction[_mode] === "versionchange") {
       // TODO: 6.1.
     }
-    transaction.dispatchEvent(new Event("abort", {
-      bubbles: true,
-    }));
+    transaction.dispatchEvent(
+      new Event("abort", {
+        bubbles: true,
+      }),
+    );
     if (transaction[_mode] === "versionchange") {
       // TODO: 6.3.
     }
-
   }
 
   function abortUpgradeTransaction(transaction) {
@@ -416,7 +438,10 @@
         }
       }
       request[_processed] = true;
-      source[_transaction][_requestList].slice(source[_transaction][_requestList].findIndex((r) => r === request), 1);
+      source[_transaction][_requestList].slice(
+        source[_transaction][_requestList].findIndex((r) => r === request),
+        1,
+      );
       request[_done] = true;
       if (errored) {
         request[_result] = undefined;
@@ -572,38 +597,45 @@
       const request = webidl.createBranded(IDBOpenDBRequest);
 
       try {
-        const [newVersion, dbVersion] = core.opSync("op_indexeddb_open", name, version);
+        const [newVersion, dbVersion] = core.opSync(
+          "op_indexeddb_open",
+          name,
+          version,
+        );
         const connection = webidl.createBranded(IDBDatabase);
         connection[_name] = name;
         // TODO: connection[_version] = newVersion;
         if (dbVersion < newVersion) {
           for (const conn of connections.values()) {
             if (!conn[_closePending]) {
-              conn.dispatchEvent(new IDBVersionChangeEvent("versionchange", {
-                bubbles: false,
-                cancelable: false,
-                oldVersion: dbVersion,
-                newVersion,
-              }));
+              conn.dispatchEvent(
+                new IDBVersionChangeEvent("versionchange", {
+                  bubbles: false,
+                  cancelable: false,
+                  oldVersion: dbVersion,
+                  newVersion,
+                }),
+              );
             }
           }
           // TODO: why should connections close?
           for (const conn of connections.values()) {
             if (!conn[_closePending]) {
-              request.dispatchEvent(new IDBVersionChangeEvent("blocked", {
-                bubbles: false,
-                cancelable: false,
-                oldVersion: dbVersion,
-                newVersion,
-              }));
+              request.dispatchEvent(
+                new IDBVersionChangeEvent("blocked", {
+                  bubbles: false,
+                  cancelable: false,
+                  oldVersion: dbVersion,
+                  newVersion,
+                }),
+              );
               break;
             }
           }
           // Ref: https://w3c.github.io/IndexedDB/#upgrade-transaction-steps
           // TODO: Wait until all connections in openConnections are closed.
-          const transaction; // TODO
+          const transaction = ""; // TODO
           // TODO
-
         }
         request[_result] = connection;
         request[_done] = true;
@@ -612,10 +644,12 @@
         request[_result] = undefined;
         request[_error] = e;
         request[_done] = true;
-        request.dispatchEvent(new Event("error", {
-          bubbles: true,
-          cancelable: true,
-        }));
+        request.dispatchEvent(
+          new Event("error", {
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
       }
 
       return request;
@@ -659,11 +693,17 @@
 
       const a = valueToKey(first);
       if (a === null) {
-        throw new DOMException("Data provided does not meet requirements", "DataError");
+        throw new DOMException(
+          "Data provided does not meet requirements",
+          "DataError",
+        );
       }
       const b = valueToKey(second);
       if (b === null) {
-        throw new DOMException("Data provided does not meet requirements", "DataError");
+        throw new DOMException(
+          "Data provided does not meet requirements",
+          "DataError",
+        );
       }
 
       return compareTwoKeys(a, b);
@@ -742,7 +782,11 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-objectstorenames
     get objectStoreNames() {
       webidl.assertBranded(this, IDBDatabasePrototype);
-      return ArrayPrototypeSort([...new SafeArrayIterator(MapPrototypeKeys(this[_connection].objectStoreSet))]);
+      return ArrayPrototypeSort([
+        ...new SafeArrayIterator(
+          MapPrototypeKeys(this[_connection].objectStoreSet),
+        ),
+      ]);
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
@@ -790,11 +834,17 @@
       });
 
       if (this[_upgradeTransaction] === null) {
-        throw new DOMException("No upgrade transaction present", "InvalidStateError");
+        throw new DOMException(
+          "No upgrade transaction present",
+          "InvalidStateError",
+        );
       }
 
       if (this[_upgradeTransaction][_state] !== "active") {
-        throw new DOMException("Upgrade transaction is not active", "TransactionInactiveError");
+        throw new DOMException(
+          "Upgrade transaction is not active",
+          "TransactionInactiveError",
+        );
       }
 
       const keyPath = options.keyPath ?? null;
@@ -803,7 +853,10 @@
         throw new DOMException("", "SyntaxError"); // TODO
       }
 
-      if ((typeof options.keyPath === "string" && options.keyPath.length === 0) || ArrayIsArray(options.keyPath)) {
+      if (
+        (typeof options.keyPath === "string" && options.keyPath.length === 0) ||
+        ArrayIsArray(options.keyPath)
+      ) {
         throw new DOMException("", "InvalidAccessError"); // TODO
       }
 
@@ -886,8 +939,8 @@
             if (value >= this.current) {
               this.current = value + 1;
             }
-          }
-        }
+          },
+        };
       }
     }
   }
@@ -923,7 +976,10 @@
       throw new DOMException("", "DataError"); // TODO: error
     }
 
-    if (handle[_store].keyPath === null && handle[_store].keyGenerator === null && key === undefined) {
+    if (
+      handle[_store].keyPath === null && handle[_store].keyGenerator === null &&
+      key === undefined
+    ) {
       throw new DOMException("", "DataError"); // TODO: error
     }
 
@@ -937,7 +993,10 @@
     const cloned = clone(handle[_transaction], value);
 
     if (handle[_store].keyPath !== null) {
-      const kpk = extractKeyFromValueUsingKeyPath(cloned, handle[_store].keyPath);
+      const kpk = extractKeyFromValueUsingKeyPath(
+        cloned,
+        handle[_store].keyPath,
+      );
       if (kpk === null) {
         throw new DOMException("", "DataError"); // TODO: error
       }
@@ -954,7 +1013,11 @@
       }
     }
 
-    return asynchronouslyExecuteRequest(handle, () => storeRecordIntoObjectStore(handle[_store], cloned, key, noOverwrite));
+    return asynchronouslyExecuteRequest(
+      handle,
+      () =>
+        storeRecordIntoObjectStore(handle[_store], cloned, key, noOverwrite),
+    );
   }
 
   const _autoIncrement = Symbol("[[autoIncrement]]");
@@ -1391,7 +1454,12 @@
   const _lowerOpen = Symbol("[[lowerOpen]]");
   const _upperOpen = Symbol("[[upperOpen]]");
 
-  function createRange(lowerBound, upperBound, lowerOpen = false, upperOpen = false) {
+  function createRange(
+    lowerBound,
+    upperBound,
+    lowerOpen = false,
+    upperOpen = false,
+  ) {
     const range = webidl.createBranded(IDBKeyRange);
     range[_lowerBound] = lowerBound;
     range[_upperBound] = upperBound;
@@ -1407,8 +1475,12 @@
    */
   // Ref: https://w3c.github.io/IndexedDB/#in
   function keyInRange(range, key) {
-    const lower = range[_lowerBound] === null || compareTwoKeys(range[_lowerBound], key) === -1 || (compareTwoKeys(range[_lowerBound], key) === 0 && !range[_lowerOpen]);
-    const upper = range[_upperBound] === null || compareTwoKeys(range[_upperBound], key) === 1 || (compareTwoKeys(range[_upperBound], key) === 0 && !range[_upperOpen]);
+    const lower = range[_lowerBound] === null ||
+      compareTwoKeys(range[_lowerBound], key) === -1 ||
+      (compareTwoKeys(range[_lowerBound], key) === 0 && !range[_lowerOpen]);
+    const upper = range[_upperBound] === null ||
+      compareTwoKeys(range[_upperBound], key) === 1 ||
+      (compareTwoKeys(range[_upperBound], key) === 0 && !range[_upperOpen]);
     return lower && upper;
   }
 
@@ -1528,7 +1600,10 @@
         throw new DOMException("Invalid upper key provided", "DataError");
       }
       if (compareTwoKeys(lowerKey, upperKey) === 1) {
-        throw new DOMException("Lower key is greater than upper key", "DataError");
+        throw new DOMException(
+          "Lower key is greater than upper key",
+          "DataError",
+        );
       }
       return createRange(lowerKey, upperKey, lowerOpen, upperOpen);
     }

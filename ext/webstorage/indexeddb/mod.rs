@@ -1,16 +1,19 @@
-mod idbtrait;
-mod sqlite_idb;
+//mod idbtrait;
+//mod sqlite_idb;
 
-use crate::{
-  DomExceptionNotSupportedError, DomExceptionVersionError, OriginStorageDir,
-};
+use super::DomExceptionNotSupportedError;
+use super::OriginStorageDir;
 use deno_core::error::AnyError;
-use deno_core::{OpState, Resource, ResourceId};
-use rusqlite::{params, Connection, OptionalExtension};
+use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
+use rusqlite::params;
+use rusqlite::Connection;
+use rusqlite::OptionalExtension;
+use serde::Deserialize;
 use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::rc::Rc;
+use fallible_iterator::FallibleIterator;
+use crate::DomExceptionConstraintError;
 
 fn create_file_table(conn: &Connection) -> Result<(), AnyError> {
   let statements = r#"
@@ -126,6 +129,7 @@ fn create_table(conn: &Connection) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[derive(Clone)]
 struct Database {
   name: String,
   version: u64,
@@ -146,6 +150,7 @@ impl Resource for IndexedDbResource {
 }
 
 // Ref: https://w3c.github.io/IndexedDB/#open-a-database
+#[op]
 pub fn op_indexeddb_open(
   state: &mut OpState,
   name: String,
@@ -174,7 +179,8 @@ pub fn op_indexeddb_open(
 
   let idbmanager = state.borrow::<IndexedDbManager>();
   let conn = &idbmanager.0;
-  let mut stmt = conn.prepare_cached("SELECT * FROM database WHERE name = ?")?;
+  let mut stmt =
+    conn.prepare_cached("SELECT * FROM database WHERE name = ?")?;
   let db = stmt
     .query_row(params![name], |row| {
       Ok(Database {
@@ -183,7 +189,7 @@ pub fn op_indexeddb_open(
       })
     })
     .optional()?;
-  let version = version.or_else(|| db.map(|db| db.version)).unwrap_or(1);
+  let version = version.or_else(|| db.clone().map(|db| db.version)).unwrap_or(1);
 
   let db = if let Some(db) = db {
     db
@@ -198,6 +204,7 @@ pub fn op_indexeddb_open(
 }
 
 // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
+#[op]
 pub fn op_indexeddb_list_databases(
   state: &mut OpState,
   _: (),
@@ -205,7 +212,10 @@ pub fn op_indexeddb_list_databases(
 ) -> Result<Vec<String>, AnyError> {
   let idbmanager = &state.borrow::<IndexedDbManager>().0;
   let mut stmt = idbmanager.prepare_cached("SELECT name FROM database")?;
-  let names = stmt.query(params![])?.map(|row| row.get(0).unwrap()).collect::<Vec<String>>()?;
+  let names = stmt
+    .query(params![])?
+    .map(|row| row.get::<usize, String>(0))
+    .collect::<Vec<String>>()?;
   Ok(names)
 }
 
@@ -219,6 +229,7 @@ pub struct CreateObjectStoreArgs {
 }
 
 // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
+#[op]
 pub fn op_indexeddb_database_create_object_store(
   state: &mut OpState,
   args: CreateObjectStoreArgs,
@@ -231,7 +242,7 @@ pub fn op_indexeddb_database_create_object_store(
     "SELECT * FROM object_store_index WHERE name = ? AND database_name = ?",
   )?;
   if stmt.exists(params![args.name, args.database_name])? {
-    return Err();
+    return Err(DomExceptionConstraintError::new("").into()); // TODO
   }
 
   // TODO: 8.
@@ -262,6 +273,7 @@ pub struct ObjectStoreRenameArgs {
 }
 
 // Ref: https://w3c.github.io/IndexedDB/#ref-for-dom-idbobjectstore-name%E2%91%A2
+#[op]
 pub fn op_indexeddb_object_store_rename(
   state: &mut OpState,
   args: ObjectStoreRenameArgs,
@@ -272,12 +284,13 @@ pub fn op_indexeddb_object_store_rename(
   let mut stmt = conn.prepare_cached(
     "UPDATE object_store_index SET name = ? WHERE name = ? AND database_name = ? RETURNING id",
   )?;
-  let store_id: u64 =
-    stmt.query_row(params![args.new_name, args.prev_name, args.database_name], |row| row.get(0))?;
-
-  let mut stmt = conn.prepare_cached(
-    "UPDATE object_store SET name = ? WHERE id = ?",
+  let store_id: u64 = stmt.query_row(
+    params![args.new_name, args.prev_name, args.database_name],
+    |row| row.get(0),
   )?;
+
+  let mut stmt =
+    conn.prepare_cached("UPDATE object_store SET name = ? WHERE id = ?")?;
   stmt.execute(params![args.new_name, store_id])?;
 
   Ok(())

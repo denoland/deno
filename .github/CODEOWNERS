@@ -6,14 +6,14 @@
 
 .devcontainer/  @kitsonk
 
-bench_util/     @AaronO
+bench_util/     @AaronO @littledivy
 cli/            @bartlomieju
 cli/ast/        @dsherret @kitsonk
 cli/dts/        @kitsonk
 cli/lsp/        @dsherret @kitsonk
 cli/schemas/    @kitsonk
 cli/tsc/        @kitsonk
-core/           @bartlomieju
+core/           @AaronO @bartlomieju
 docs/           @ry
 ext/            @bartlomieju @crowlKats @lucacasonato @littledivy
 ext/tls/        @piscisaureus
@@ -23,6 +23,7 @@ ext/web/        @crowlKats @lucacasonato
 ext/webidl/     @lucacasonato
 ext/webgpu/     @crowlKats @lucacasonato
 ext/ffi/        @littledivy @piscisaureus
+ops/            @littledivy @AaronO
 runtime/        @bartlomieju
 serde_v8/       @AaronO
 test_ffi/       @bartlomieju @littledivy

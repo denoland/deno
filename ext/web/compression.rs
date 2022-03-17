@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -32,6 +33,7 @@ impl Resource for CompressionResource {
   }
 }
 
+#[op]
 pub fn op_compression_new(
   state: &mut OpState,
   format: String,
@@ -53,6 +55,7 @@ pub fn op_compression_new(
   Ok(state.resource_table.add(resource))
 }
 
+#[op]
 pub fn op_compression_write(
   state: &mut OpState,
   rid: ResourceId,
@@ -86,10 +89,10 @@ pub fn op_compression_write(
   Ok(out.into())
 }
 
+#[op]
 pub fn op_compression_finish(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let resource = state.resource_table.take::<CompressionResource>(rid)?;
   let resource = Rc::try_unwrap(resource).unwrap();

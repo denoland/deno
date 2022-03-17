@@ -550,7 +550,7 @@ pub(crate) fn get_configured_rules(
   );
 
   if configured_rules.is_empty() {
-    anyhow!("No rules have been configured");
+    return Err(anyhow!("No rules have been configured"));
   }
 
   Ok(configured_rules)

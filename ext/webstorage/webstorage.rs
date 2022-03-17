@@ -1,10 +1,12 @@
 use super::DomExceptionNotSupportedError;
 use super::OriginStorageDir;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
+use serde::Deserialize;
 
 struct LocalStorage(Connection);
 struct SessionStorage(Connection);
@@ -65,6 +67,7 @@ fn get_webstorage(
   Ok(conn)
 }
 
+#[op]
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
@@ -78,6 +81,7 @@ pub fn op_webstorage_length(
   Ok(length)
 }
 
+#[op]
 pub fn op_webstorage_key(
   state: &mut OpState,
   index: u32,
@@ -102,6 +106,7 @@ pub struct SetArgs {
   key_value: String,
 }
 
+#[op]
 pub fn op_webstorage_set(
   state: &mut OpState,
   args: SetArgs,
@@ -129,6 +134,7 @@ pub fn op_webstorage_set(
   Ok(())
 }
 
+#[op]
 pub fn op_webstorage_get(
   state: &mut OpState,
   key_name: String,
@@ -144,6 +150,7 @@ pub fn op_webstorage_get(
   Ok(val)
 }
 
+#[op]
 pub fn op_webstorage_remove(
   state: &mut OpState,
   key_name: String,
@@ -157,6 +164,7 @@ pub fn op_webstorage_remove(
   Ok(())
 }
 
+#[op]
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
@@ -170,6 +178,7 @@ pub fn op_webstorage_clear(
   Ok(())
 }
 
+#[op]
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   persistent: bool,

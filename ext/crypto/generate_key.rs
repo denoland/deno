@@ -1,9 +1,6 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::shared::*;
 use deno_core::error::AnyError;
-use deno_core::OpState;
+use deno_core::op;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
@@ -41,10 +38,9 @@ pub enum GenerateKeyOptions {
   },
 }
 
+#[op]
 pub async fn op_crypto_generate_key(
-  _state: Rc<RefCell<OpState>>,
   opts: GenerateKeyOptions,
-  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let fun = || match opts {
     GenerateKeyOptions::Rsa {

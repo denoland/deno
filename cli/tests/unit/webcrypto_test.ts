@@ -26,7 +26,6 @@ Deno.test(async function testImportArrayBufferKey() {
   await subtle.sign({ name: "HMAC" }, cryptoKey, new Uint8Array(8));
 });
 
-// TODO(@littledivy): Remove this when we enable WPT for sign_verify
 Deno.test(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -99,7 +98,6 @@ const hashPlainTextVector = [
   },
 ];
 
-// TODO(@littledivy): Remove this when we enable WPT for encrypt_decrypt
 Deno.test(async function testEncryptDecrypt() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -717,7 +715,6 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
   }
 });
 
-// TODO(@littledivy): Enable WPT when we have importKey support
 Deno.test(async function testECDH() {
   const namedCurve = "P-256";
   const keyPair = await crypto.subtle.generateKey(
@@ -1729,4 +1726,27 @@ Deno.test(async function ecPrivateKeyMaterialExportSpki() {
   // `exportKey` should be able to perform necessary conversion to export spki.
   const spki = await crypto.subtle.exportKey("spki", keys.publicKey);
   assert(spki instanceof ArrayBuffer);
+});
+
+// https://github.com/denoland/deno/issues/13911
+Deno.test(async function importJwkWithUse() {
+  const jwk = {
+    "kty": "EC",
+    "use": "sig",
+    "crv": "P-256",
+    "x": "FWZ9rSkLt6Dx9E3pxLybhdM6xgR5obGsj5_pqmnz5J4",
+    "y": "_n8G69C-A2Xl4xUW2lF0i8ZGZnk_KPYrhv4GbTGu5G4",
+  };
+
+  const algorithm = { name: "ECDSA", namedCurve: "P-256" };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algorithm,
+    true,
+    ["verify"],
+  );
+
+  assert(key instanceof CryptoKey);
 });
