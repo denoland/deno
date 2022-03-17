@@ -65,7 +65,7 @@ jsonc-parser = { version = "=0.19.0", features = ["serde"] }
 libc = "=0.2.106"
 log = { version = "=0.4.14", features = ["serde"] }
 lspower = "=1.4.0"
-miette = "4.2.1"
+miette = { version = "4.2.1", features = ["fancy"] }
 node_resolver = "0.1.0"
 notify = "=5.0.0-pre.12"
 num-format = "=0.4.0"

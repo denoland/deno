@@ -2,12 +2,12 @@
 
 use deno_runtime::colors;
 
+use deno_ast::swc::common::BytePos;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_graph::ModuleGraphError;
-use deno_ast::swc::common::BytePos;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -346,7 +346,7 @@ impl fmt::Display for Diagnostic {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Diagnostics(Vec<Diagnostic>);
+pub struct Diagnostics(pub Vec<Diagnostic>);
 
 impl Diagnostics {
   #[cfg(test)]
@@ -425,8 +425,39 @@ impl fmt::Display for Diagnostics {
 impl Error for Diagnostics {}
 
 #[derive(Debug)]
-struct MietteDiagnostic<'a> {
+pub struct MietteDiagnostic<'a> {
   tsc_diagnostic: &'a Diagnostic,
+  source_code: Option<MietteSourceCode<'a>>,
+}
+
+impl<'a> MietteDiagnostic<'a> {
+  pub fn new(tsc_diagnostic: &'a Diagnostic) -> Self {
+    let source_code = if let (Some(source_line), Some(start), Some(end)) = (
+      &tsc_diagnostic.source_line,
+      &tsc_diagnostic.start,
+      &tsc_diagnostic.end,
+    ) {
+      let filename = if let Some(filename) = tsc_diagnostic.file_name.as_ref() {
+        filename
+      } else {
+        ""
+      };
+      let source_code = MietteSourceCode {
+        source: source_line,
+        start,
+        end,
+        filename: filename.to_string(),
+      };
+      Some(source_code)
+    } else {
+      None
+    };
+
+    Self {
+      source_code,
+      tsc_diagnostic,
+    }
+  }
 }
 
 impl std::error::Error for MietteDiagnostic<'_> {}
@@ -460,25 +491,30 @@ impl miette::Diagnostic for MietteDiagnostic<'_> {
   }
 
   fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-    Some(self.tsc_diagnostic.source_line)
+    if let Some(sc) = self.source_code.as_ref() {
+      Some(sc as &dyn miette::SourceCode)
+    } else {
+      None
+    }
   }
 
   fn labels(
     &self,
   ) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-    // let len = self.lint_diagnostic.range.end.byte_pos
-    //   - self.lint_diagnostic.range.start.byte_pos;
-    // let start =
-    //   miette::SourceOffset::from(self.lint_diagnostic.range.start.byte_pos);
-    // let len = miette::SourceOffset::from(len);
-    // let span = miette::SourceSpan::new(start, len);
-    // let text = self
-    //   .lint_diagnostic
-    //   .hint
-    //   .as_ref()
-    //   .map(|help| help.to_string());
-    // let labels = vec![miette::LabeledSpan::new_with_span(text, span)];
-    // Some(Box::new(labels.into_iter()))
+    if let (Some(_source_line), Some(start), Some(end)) = (
+      &self.tsc_diagnostic.source_line,
+      &self.tsc_diagnostic.start,
+      &self.tsc_diagnostic.end,
+    ) {
+      // TODO: currently assumes that error are single line
+      let len = end.character - start.character;
+      let start = miette::SourceOffset::from(start.character as usize);
+      let len = miette::SourceOffset::from(len as usize);
+      let span = miette::SourceSpan::new(start, len);
+      let labels = vec![miette::LabeledSpan::new_with_span(None, span)];
+      return Some(Box::new(labels.into_iter()));
+    }
+
     None
   }
 }
@@ -488,52 +524,33 @@ struct MietteSourceCode<'a> {
   source: &'a str,
   start: &'a Position,
   end: &'a Position,
-  filename: &'a str,
+  filename: String,
 }
 
-// impl miette::SourceCode for MietteSourceCode<'_> {
-//   fn read_span<'a>(
-//     &'a self,
-//     span: &miette::SourceSpan,
-//     context_lines_before: usize,
-//     context_lines_after: usize,
-//   ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
-//     let lo = span.offset();
-//     let hi = lo + span.len();
+impl miette::SourceCode for MietteSourceCode<'_> {
+  fn read_span<'a>(
+    &'a self,
+    _span: &miette::SourceSpan,
+    _context_lines_before: usize,
+    _context_lines_after: usize,
+  ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+    // TODO: currently assumes errors are single line
+    let name = Some(self.filename.to_string());
+    let line_count = 1;
+    let start = miette::SourceOffset::from(0);
+    let len = miette::SourceOffset::from(self.source.len());
+    let span = miette::SourceSpan::new(start, len);
 
-//     let start_line_column = self
-//       .source
-//       .line_and_column_index(BytePos(lo.try_into().unwrap()));
-//     let src_start = self
-//       .source
-//       .line_start(start_line_column.line_index - context_lines_before)
-//       .0 as usize;
-//     let src_start = std::cmp::max(0, src_start);
-//     let end_line_column = self
-//       .source
-//       .line_and_column_index(BytePos(hi.try_into().unwrap()));
-//     let line_count = self.source.lines_count();
-//     let src_end = self
-//       .source
-//       .line_end(end_line_column.line_index + context_lines_after)
-//       .0 as usize;
-//     let src_end = std::cmp::min(src_end, line_count);
-//     let src = &self.source.text_str()[src_start..src_end];
-//     let name = Some(self.filename.to_string());
-//     let start = miette::SourceOffset::from(src_start);
-//     let len = miette::SourceOffset::from(src_end - src_start);
-//     let span = miette::SourceSpan::new(start, len);
-
-//     Ok(Box::new(SpanContentsImpl {
-//       data: self.source,
-//       span,
-//       line: start_line_column.line_index,
-//       column: start_line_column.column_index,
-//       line_count,
-//       name,
-//     }))
-//   }
-// }
+    Ok(Box::new(SpanContentsImpl {
+      data: self.source,
+      span,
+      line: self.start.line as usize,
+      column: self.start.character as usize,
+      line_count,
+      name,
+    }))
+  }
+}
 
 struct SpanContentsImpl<'a> {
   data: &'a str,
