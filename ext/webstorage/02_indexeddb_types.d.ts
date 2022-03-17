@@ -9,3 +9,9 @@ interface Key {
 }
 
 type TransactionState = "active" | "inactive" | "committing" | "finished";
+
+interface KeyGenerator {
+  current: number;
+  generateKey(): number;
+  possiblyUpdate(key: Key): void;
+}

@@ -1328,6 +1328,7 @@
     setEventTargetData,
   };
   window.__bootstrap.event = {
+    _canceledFlag,
     setIsTrusted,
     setTarget,
     defineEventHandler,

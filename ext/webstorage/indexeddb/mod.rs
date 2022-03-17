@@ -252,3 +252,33 @@ pub fn op_indexeddb_database_create_object_store(
 
   Ok(())
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectStoreRenameArgs {
+  database_name: String,
+  prev_name: String,
+  new_name: String,
+}
+
+// Ref: https://w3c.github.io/IndexedDB/#ref-for-dom-idbobjectstore-name%E2%91%A2
+pub fn op_indexeddb_object_store_rename(
+  state: &mut OpState,
+  args: ObjectStoreRenameArgs,
+  _: (),
+) -> Result<(), AnyError> {
+  let conn = &state.borrow::<IndexedDbManager>().0;
+
+  let mut stmt = conn.prepare_cached(
+    "UPDATE object_store_index SET name = ? WHERE name = ? AND database_name = ? RETURNING id",
+  )?;
+  let store_id: u64 =
+    stmt.query_row(params![args.new_name, args.prev_name, args.database_name], |row| row.get(0))?;
+
+  let mut stmt = conn.prepare_cached(
+    "UPDATE object_store SET name = ? WHERE id = ?",
+  )?;
+  stmt.execute(params![args.new_name, store_id])?;
+
+  Ok(())
+}
