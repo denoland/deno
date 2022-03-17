@@ -5,7 +5,7 @@ authors = ["Deno authors <deploy@deno.com>"]
 keywords = []
 repository = "https://github.com/denoland/deno"
 description = """
- A modern runtime for JavaScript and TypeScript. 
+A modern runtime for JavaScript and TypeScript.
 """
 
 [darwin]
