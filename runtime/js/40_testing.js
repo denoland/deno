@@ -1250,6 +1250,7 @@
   function createTestContext(parentStep) {
     return {
       [SymbolToStringTag]: "TestContext",
+      name: parentStep.name,
       /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}

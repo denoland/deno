@@ -250,6 +250,8 @@ declare namespace Deno {
   }
 
   export interface TestContext {
+    name: string;
+
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
      * The returned promise never rejects unless the arguments are invalid.
