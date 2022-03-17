@@ -23,6 +23,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
+use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
@@ -30,7 +31,6 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
-use std::mem::MaybeUninit;
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -94,9 +94,10 @@ impl MainWorker {
         Ok(())
       })
       .build();
-    
+
     // Allocate isolate pointer.
-    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> = MaybeUninit::uninit();
+    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> =
+      MaybeUninit::uninit();
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![

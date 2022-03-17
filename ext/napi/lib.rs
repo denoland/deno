@@ -13,8 +13,8 @@ use deno_core::Extension;
 use std::cell::RefCell;
 pub use std::ffi::CStr;
 use std::ffi::CString;
-use std::mem::MaybeUninit;
 pub use std::mem::transmute;
+use std::mem::MaybeUninit;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
 pub use std::ptr;
@@ -453,7 +453,7 @@ pub fn init(isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>) -> Extension {
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
       });
-        
+
       // SAFETY: `.state` can only be called from a JsRuntime which means isolate pointer is
       // initialized.
       state.put(unsafe { isolate_ptr.assume_init() });

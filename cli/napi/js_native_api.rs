@@ -995,11 +995,12 @@ fn napi_add_finalizer(
 
 #[napi_sym::napi_sym]
 fn napi_adjust_external_memory(
-  env: &mut Env,
+  env: *mut Env,
   change_in_bytes: i64,
   adjusted_value: &mut i64,
 ) -> Result {
-  let isolate = unsafe { &mut *env.isolate_ptr };
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  let isolate = unsafe { &mut **env.isolate_ptr };
   *adjusted_value =
     isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
   Ok(())
@@ -1919,12 +1920,12 @@ fn napi_reject_deferred(
 
   let deferred_ptr =
     NonNull::new_unchecked(deferred as *mut v8::PromiseResolver);
-  let resolver_global = v8::Global::<v8::PromiseResolver>::from_raw(
-    &mut *env.isolate_ptr,
-    deferred_ptr,
-  );
+  // TODO(@littledivy): Use Global::from_raw instead casting to local.
+  // SAFETY: Isolate is still alive unless the module is doing something weird,
+  // global data is the size of a pointer.
+  // Global pointer is obtained from napi_create_promise
   let resolver =
-    v8::Local::<v8::PromiseResolver>::new(&mut env.scope(), resolver_global);
+    transmute::<NonNull<v8::PromiseResolver>, v8::Local<v8::PromiseResolver>>(deferred_ptr);
   resolver
     .reject(
       &mut env.scope(),
@@ -1954,12 +1955,12 @@ fn napi_resolve_deferred(
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let deferred_ptr =
     NonNull::new_unchecked(deferred as *mut v8::PromiseResolver);
-  let resolver_global = v8::Global::<v8::PromiseResolver>::from_raw(
-    &mut *env.isolate_ptr,
-    deferred_ptr,
-  );
+  // TODO(@littledivy): Use Global::from_raw instead casting to local.
+  // SAFETY: Isolate is still alive unless the module is doing something weird,
+  // global data is the size of a pointer.
+  // Global pointer is obtained from napi_create_promise
   let resolver =
-    v8::Local::<v8::PromiseResolver>::new(&mut env.scope(), resolver_global);
+    transmute::<NonNull<v8::PromiseResolver>, v8::Local<v8::PromiseResolver>>(deferred_ptr);
   resolver
     .resolve(
       &mut env.scope(),

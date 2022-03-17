@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use std::mem::MaybeUninit;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
@@ -37,6 +36,7 @@ use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
@@ -365,7 +365,8 @@ impl WebWorker {
       .build();
 
     // Allocate isolate pointer.
-    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> = MaybeUninit::uninit();
+    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> =
+      MaybeUninit::uninit();
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
