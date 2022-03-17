@@ -2518,11 +2518,12 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e35ed1604f6f4e33b51926d6be3bc09423f35eec776165c460c313dc2970ea5a"
+checksum = "f1012fcb4f5cc14c272731f4baf6ba8a2d40c650908f4d2531f7ed17f214e5ae"
 dependencies = [
  "anyhow",
+ "path-clean",
  "serde",
  "serde_json",
 ]
@@ -2759,6 +2760,12 @@ dependencies = [
  "smallvec",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "path-clean"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecba01bf2678719532c5e3059e0b5f0811273d94b397088b82e3bd0a78c78fdd"
 
 [[package]]
 name = "pem-rfc7468"
