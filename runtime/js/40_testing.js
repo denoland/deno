@@ -803,6 +803,42 @@
     }
   }
 
+  function runSyncBench(step) {
+    const warmupIterations = bench.warmupIterations;
+    step.warmup = true;
+
+    for (let i = 0; i < warmupIterations; i++) {
+      bench.fn(step);
+    }
+
+    const iterations = bench.n;
+    step.warmup = false;
+
+    for (let i = 0; i < iterations; i++) {
+      bench.fn(step);
+    }
+
+    return "ok";
+  }
+
+  async function runAsyncBench(step) {
+    const warmupIterations = bench.warmupIterations;
+    step.warmup = true;
+
+    for (let i = 0; i < warmupIterations; i++) {
+      await bench.fn(step);
+    }
+
+    const iterations = bench.n;
+    step.warmup = false;
+
+    for (let i = 0; i < iterations; i++) {
+      await bench.fn(step);
+    }
+
+    return "ok";
+  }
+
   async function runBench(bench) {
     if (bench.ignore) {
       return "ignored";
@@ -815,21 +851,17 @@
     });
 
     try {
-      const warmupIterations = bench.warmupIterations;
-      step.warmup = true;
-
-      for (let i = 0; i < warmupIterations; i++) {
-        await bench.fn(step);
+      const result = bench.fn(step);
+      // Check the return type of the bench so we can use specialized
+      // function to run it. One might be tempted to just always await
+      // `bench.fn`, but that adds a lot of overhead to synchronous
+      // benches.
+      if (result instanceof Promise) {
+        await result;
+        return await runAsyncBench(step);
+      } else {
+        return runSyncBench(step);
       }
-
-      const iterations = bench.n;
-      step.warmup = false;
-
-      for (let i = 0; i < iterations; i++) {
-        await bench.fn(step);
-      }
-
-      return "ok";
     } catch (error) {
       return {
         "failed": formatError(error),
