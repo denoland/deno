@@ -7,6 +7,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_graph::ModuleGraphError;
+use deno_ast::swc::common::BytePos;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -422,6 +423,152 @@ impl fmt::Display for Diagnostics {
 }
 
 impl Error for Diagnostics {}
+
+#[derive(Debug)]
+struct MietteDiagnostic<'a> {
+  tsc_diagnostic: &'a Diagnostic,
+}
+
+impl std::error::Error for MietteDiagnostic<'_> {}
+
+impl fmt::Display for MietteDiagnostic<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    self.tsc_diagnostic.fmt_message(f, 0)
+  }
+}
+
+impl miette::Diagnostic for MietteDiagnostic<'_> {
+  fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+    if self.tsc_diagnostic.code >= 900001 {
+      None
+    } else {
+      Some(Box::new(format!("TS{} ", self.tsc_diagnostic.code)))
+    }
+  }
+
+  fn severity(&self) -> Option<miette::Severity> {
+    let s = match self.tsc_diagnostic.category {
+      DiagnosticCategory::Error => miette::Severity::Error,
+      DiagnosticCategory::Warning => miette::Severity::Warning,
+      _ => miette::Severity::Advice,
+    };
+    Some(s)
+  }
+
+  fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+    None
+  }
+
+  fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+    Some(self.tsc_diagnostic.source_line)
+  }
+
+  fn labels(
+    &self,
+  ) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+    // let len = self.lint_diagnostic.range.end.byte_pos
+    //   - self.lint_diagnostic.range.start.byte_pos;
+    // let start =
+    //   miette::SourceOffset::from(self.lint_diagnostic.range.start.byte_pos);
+    // let len = miette::SourceOffset::from(len);
+    // let span = miette::SourceSpan::new(start, len);
+    // let text = self
+    //   .lint_diagnostic
+    //   .hint
+    //   .as_ref()
+    //   .map(|help| help.to_string());
+    // let labels = vec![miette::LabeledSpan::new_with_span(text, span)];
+    // Some(Box::new(labels.into_iter()))
+    None
+  }
+}
+
+#[derive(Debug)]
+struct MietteSourceCode<'a> {
+  source: &'a str,
+  start: &'a Position,
+  end: &'a Position,
+  filename: &'a str,
+}
+
+// impl miette::SourceCode for MietteSourceCode<'_> {
+//   fn read_span<'a>(
+//     &'a self,
+//     span: &miette::SourceSpan,
+//     context_lines_before: usize,
+//     context_lines_after: usize,
+//   ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+//     let lo = span.offset();
+//     let hi = lo + span.len();
+
+//     let start_line_column = self
+//       .source
+//       .line_and_column_index(BytePos(lo.try_into().unwrap()));
+//     let src_start = self
+//       .source
+//       .line_start(start_line_column.line_index - context_lines_before)
+//       .0 as usize;
+//     let src_start = std::cmp::max(0, src_start);
+//     let end_line_column = self
+//       .source
+//       .line_and_column_index(BytePos(hi.try_into().unwrap()));
+//     let line_count = self.source.lines_count();
+//     let src_end = self
+//       .source
+//       .line_end(end_line_column.line_index + context_lines_after)
+//       .0 as usize;
+//     let src_end = std::cmp::min(src_end, line_count);
+//     let src = &self.source.text_str()[src_start..src_end];
+//     let name = Some(self.filename.to_string());
+//     let start = miette::SourceOffset::from(src_start);
+//     let len = miette::SourceOffset::from(src_end - src_start);
+//     let span = miette::SourceSpan::new(start, len);
+
+//     Ok(Box::new(SpanContentsImpl {
+//       data: self.source,
+//       span,
+//       line: start_line_column.line_index,
+//       column: start_line_column.column_index,
+//       line_count,
+//       name,
+//     }))
+//   }
+// }
+
+struct SpanContentsImpl<'a> {
+  data: &'a str,
+  span: miette::SourceSpan,
+  line: usize,
+  column: usize,
+  line_count: usize,
+  name: Option<String>,
+}
+
+impl<'a> miette::SpanContents<'a> for SpanContentsImpl<'a> {
+  fn data(&self) -> &'a [u8] {
+    self.data.as_bytes()
+  }
+
+  fn span(&self) -> &miette::SourceSpan {
+    &self.span
+  }
+
+  fn line(&self) -> usize {
+    self.line
+  }
+
+  fn column(&self) -> usize {
+    self.column
+  }
+
+  fn line_count(&self) -> usize {
+    self.line_count
+  }
+
+  fn name(&self) -> Option<&str> {
+    self.name.as_deref()
+  }
+}
 
 #[cfg(test)]
 mod tests {
