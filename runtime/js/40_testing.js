@@ -774,7 +774,7 @@
 
     const step = new TestStep({
       name: test.name,
-      update,
+      update: update ?? test.update,
       parent: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
@@ -1077,7 +1077,7 @@
     /** @param params {TestStepParams} */
     constructor(params) {
       this.#params = params;
-    }
+   }
 
     get name() {
       return this.#params.name;
@@ -1263,7 +1263,11 @@
       /**
        * Full name of the test step.
        */
-      name: parentStep.getFullName(),
+      name: parentStep.name,
+      /**
+       * Parent test context.
+       */
+      parent: parentStep.parent ? createTestContext(parentStep.parent) : undefined,
       /**
        * Indicates whether the test is being run in a snapshot update mode.
        */
@@ -1286,7 +1290,7 @@
 
         const definition = getDefinition();
         const subStep = new TestStep({
-          name: parentStep.getFullName(),
+          name: definition.name,
           parent: parentStep,
           update: parentStep.update,
           rootTestDescription: parentStep.rootTestDescription,

@@ -263,6 +263,10 @@ declare namespace Deno {
      * File Uri of the current test code.
      */
     origin: string;
+    /**
+     * Parent test context.
+     */
+    parent?: TestContext;
 
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
