@@ -50,6 +50,12 @@ choco install deno
 scoop install deno
 ```
 
+[Cask](https://github.com/axetroy/cask.rs) (Windows/Mac/Linux):
+
+```sh
+cask install github.com/denoland/deno
+```
+
 Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```sh
