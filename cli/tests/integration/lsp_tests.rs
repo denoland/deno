@@ -95,6 +95,17 @@ fn shutdown(client: &mut LspClient) {
   client.write_notification("exit", json!(null)).unwrap();
 }
 
+pub fn ensure_directory_specifier(
+  mut specifier: ModuleSpecifier,
+) -> ModuleSpecifier {
+  let path = specifier.path();
+  if !path.ends_with('/') {
+    let new_path = format!("{}/", path);
+    specifier.set_path(&new_path);
+  }
+  specifier
+}
+
 struct TestSession {
   client: LspClient,
   open_file_count: usize,
@@ -1010,7 +1021,32 @@ fn lsp_hover_disabled() {
 
 #[test]
 fn lsp_workspace_enable_paths() {
-  let mut client = init("initialize_params_workspace_enable_paths.json");
+  let mut params: lsp::InitializeParams = serde_json::from_value(load_fixture(
+    "initialize_params_workspace_enable_paths.json",
+  ))
+  .unwrap();
+  // we aren't actually writing anything to the tempdir in this test, but we
+  // just need a legitimate file path on the host system so that logic that
+  // tries to convert to and from the fs paths works on all env
+  let temp_dir = TempDir::new().unwrap();
+
+  let root_specifier =
+    ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
+
+  params.root_uri = Some(root_specifier.clone());
+  params.workspace_folders = Some(vec![lsp::WorkspaceFolder {
+    uri: root_specifier.clone(),
+    name: "project".to_string(),
+  }]);
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
   handle_configuration_request(
     &mut client,
     json!([{
@@ -1025,7 +1061,7 @@ fn lsp_workspace_enable_paths() {
     &mut client,
     json!({
       "textDocument": {
-        "uri": "file:///project/file.ts",
+        "uri": root_specifier.join("./file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -1037,7 +1073,7 @@ fn lsp_workspace_enable_paths() {
     &mut client,
     json!({
       "textDocument": {
-        "uri": "file:///project/other/file.ts",
+        "uri": root_specifier.join("./other/file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -1049,7 +1085,7 @@ fn lsp_workspace_enable_paths() {
     &mut client,
     json!({
       "textDocument": {
-        "uri": "file:///project/worker/file.ts",
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -1061,7 +1097,7 @@ fn lsp_workspace_enable_paths() {
     &mut client,
     json!({
       "textDocument": {
-        "uri": "file:///project/worker/lib/file.ts",
+        "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -1074,7 +1110,7 @@ fn lsp_workspace_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "file:///project/file.ts"
+          "uri": root_specifier.join("./file.ts").unwrap(),
         },
         "position": {
           "line": 0,
@@ -1091,7 +1127,7 @@ fn lsp_workspace_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "file:///project/other/file.ts"
+          "uri": root_specifier.join("./other/file.ts").unwrap(),
         },
         "position": {
           "line": 0,
@@ -1108,7 +1144,7 @@ fn lsp_workspace_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "file:///project/worker/file.ts"
+          "uri": root_specifier.join("./worker/file.ts").unwrap(),
         },
         "position": {
           "line": 0,
@@ -1146,7 +1182,7 @@ fn lsp_workspace_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "file:///project/worker/lib/file.ts"
+          "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
         },
         "position": {
           "line": 0,
