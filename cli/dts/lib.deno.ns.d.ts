@@ -250,6 +250,9 @@ declare namespace Deno {
   }
 
   export interface TestContext {
+    /**
+     * The full name of the current test.
+     */
     name: string;
     /**
      * Indicates whether the test is being run in a snapshot update mode.
@@ -281,6 +284,9 @@ declare namespace Deno {
 
   export interface TestStepDefinition {
     fn: (t: TestContext) => void | Promise<void>;
+    /**
+     * The full name of the current test.
+     */
     name: string;
     ignore?: boolean;
     /** Check that the number of async completed ops after the test step is the same
@@ -298,6 +304,9 @@ declare namespace Deno {
 
   export interface TestDefinition {
     fn: (t: TestContext) => void | Promise<void>;
+    /**
+     * The full name of the current test.
+     */
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
