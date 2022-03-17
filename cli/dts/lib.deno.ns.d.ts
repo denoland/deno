@@ -251,6 +251,15 @@ declare namespace Deno {
 
   export interface TestContext {
     name: string;
+    /**
+     * Indicates whether the test is being run in a snapshot update mode.
+     * Defauls to `false`.
+     */
+    update: boolean;
+    /**
+     * File Uri of the current test code.
+     */
+    origin: string;
 
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
@@ -304,6 +313,9 @@ declare namespace Deno {
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+    /** Enable snapshot update mode
+     * Defaults to false */
+    update?: boolean;
 
     /** Specifies the permissions that should be used to run the test.
      * Set this to "inherit" to keep the calling thread's permissions.

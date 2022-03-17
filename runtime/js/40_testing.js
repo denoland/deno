@@ -541,6 +541,7 @@
     let testDef;
     const defaults = {
       ignore: false,
+      update: false,
       only: false,
       sanitizeOps: true,
       sanitizeResources: true,
@@ -766,13 +767,14 @@
     };
   }
 
-  async function runTest(test, description) {
+  async function runTest(test, description, update) {
     if (test.ignore) {
       return "ignored";
     }
 
     const step = new TestStep({
       name: test.name,
+      update,
       parent: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
@@ -931,6 +933,7 @@
   async function runTests({
     filter = null,
     shuffle = null,
+    update = null,
   } = {}) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
@@ -979,7 +982,7 @@
 
       reportTestWait(description);
 
-      const result = await runTest(test, description);
+      const result = await runTest(test, description, update);
       const elapsed = DateNow() - earlier;
 
       reportTestResult(description, result, elapsed);
@@ -1046,7 +1049,8 @@
    * }} TestStepDefinition
    *
    * @typedef {{
-   *   name: string;
+   *   name: string,
+   *   update: boolean,
    *   parent: TestStep | undefined,
    *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
@@ -1075,6 +1079,10 @@
 
     get name() {
       return this.#params.name;
+    }
+
+    get update() {
+      return this.#params.update;
     }
 
     get parent() {
@@ -1250,7 +1258,18 @@
   function createTestContext(parentStep) {
     return {
       [SymbolToStringTag]: "TestContext",
-      name: parentStep.name,
+      /**
+       * Full name of the test step.
+       */
+      name: parentStep.getFullName(),
+      /**
+       * Indicates whether the test is being run in a snapshot update mode.
+       */
+      update: parentStep.update,
+      /**
+       * File Uri of the test code.
+       */
+      origin: parentStep.rootTestDescription.origin,
       /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}
@@ -1267,6 +1286,7 @@
         const subStep = new TestStep({
           name: definition.getFullName(),
           parent: parentStep,
+          update: parentStep.update,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,
