@@ -716,18 +716,6 @@
       benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    benchDef.fn = wrapBenchFnWithSanitizers(
-      reportBenchIteration(benchDef.fn),
-      benchDef,
-    );
-
-    if (benchDef.permissions) {
-      benchDef.fn = withPermissions(
-        benchDef.fn,
-        benchDef.permissions,
-      );
-    }
-
     ArrayPrototypePush(benches, benchDef);
   }
 
@@ -851,15 +839,54 @@
     });
 
     try {
-      const result = bench.fn(step);
       // Check the return type of the bench so we can use specialized
       // function to run it. One might be tempted to just always await
       // `bench.fn`, but that adds a lot of overhead to synchronous
       // benches.
+      //
+      // First we'll wrap the bench function with sanitizers and permissions
+      // handler and probe if it async or sync bench.
+      //
+      // Only then, we'll wrap the bench case again with iteration reporter
+      // and override `bench.fn`.
+      let benchFn = wrapBenchFnWithSanitizers(
+        bench.fn,
+        bench,
+      );
+
+      if (bench.permissions) {
+        benchFn = withPermissions(
+          benchFn,
+          bench.permissions,
+        );
+      }
+
+      const result = benchFn(step);
+
       if (typeof result.then !== "undefined") {
         await result;
+        bench.fn = wrapBenchFnWithSanitizers(
+          reportBenchIterationAsync(bench.fn),
+          bench,
+        );
+        if (bench.permissions) {
+          bench.fn = withPermissions(
+            bench.fn,
+            bench.permissions,
+          );
+        }
         return await runAsyncBench(bench, step);
       } else {
+        bench.fn = wrapBenchFnWithSanitizers(
+          reportBenchIterationSync(bench.fn),
+          bench,
+        );
+        if (bench.permissions) {
+          bench.fn = withPermissions(
+            bench.fn,
+            bench.permissions,
+          );
+        }
         return runSyncBench(bench, step);
       }
     } catch (error) {
@@ -937,13 +964,26 @@
     });
   }
 
-  function reportBenchIteration(fn) {
+  function reportBenchIterationAsync(fn) {
     return async function benchIteration(step) {
       let now;
       if (!step.warmup) {
         now = benchNow();
       }
       await fn(step);
+      if (!step.warmup) {
+        reportIterationTime(benchNow() - now);
+      }
+    };
+  }
+
+  function reportBenchIterationSync(fn) {
+    return function benchIteration(step) {
+      let now;
+      if (!step.warmup) {
+        now = benchNow();
+      }
+      fn(step);
       if (!step.warmup) {
         reportIterationTime(benchNow() - now);
       }

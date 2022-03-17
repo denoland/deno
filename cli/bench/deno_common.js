@@ -119,24 +119,29 @@ function benchOpVoidAsync() {
   );
 }
 
+function benchNop() {
+  return benchSync("nop", 1e6, () => {});
+}
+
 async function main() {
-  // v8 builtin that's close to the upper bound non-NOPs
-  benchDateNow();
-  // Void ops measure op-overhead
-  benchOpVoidSync();
-  await benchOpVoidAsync();
-  // A very lightweight op, that should be highly optimizable
-  benchPerfNow();
-  // A common "language feature", that should be fast
-  // also a decent representation of a non-trivial JSON-op
-  benchUrlParse();
-  benchLargeBlobText();
-  benchB64RtLong();
-  benchB64RtShort();
-  // IO ops
-  benchReadZero();
-  benchWriteNull();
-  await benchRead128k();
-  benchRequestNew();
+  // // v8 builtin that's close to the upper bound non-NOPs
+  // benchDateNow();
+  // // Void ops measure op-overhead
+  // benchOpVoidSync();
+  // await benchOpVoidAsync();
+  // // A very lightweight op, that should be highly optimizable
+  // benchPerfNow();
+  // // A common "language feature", that should be fast
+  // // also a decent representation of a non-trivial JSON-op
+  // benchUrlParse();
+  // benchLargeBlobText();
+  // benchB64RtLong();
+  // benchB64RtShort();
+  // // IO ops
+  // benchReadZero();
+  // benchWriteNull();
+  // await benchRead128k();
+  // benchRequestNew();
+  benchNop();
 }
 await main();
