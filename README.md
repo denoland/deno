@@ -37,6 +37,11 @@ iwr https://deno.land/install.ps1 -useb | iex
 ```sh
 brew install deno
 ```
+[Macports](https://ports.macports.org/port/deno/summary) (Mac):
+
+```sh
+sudo port install deno
+```
 
 [Chocolatey](https://chocolatey.org/packages/deno) (Windows):
 
