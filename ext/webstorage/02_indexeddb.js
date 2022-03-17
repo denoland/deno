@@ -1043,8 +1043,41 @@
 
   // Ref: https://w3c.github.io/IndexedDB/#delete-records-from-an-object-store
   function deleteRecordsFromObjectStore(store, range) {
-    // TODO
+    // TODO: ops
     return undefined;
+  }
+
+  // Ref: https://w3c.github.io/IndexedDB/#clear-an-object-store
+  function clearObjectStore(store) {
+    // TODO: ops
+    return undefined;
+  }
+
+  // Ref: https://w3c.github.io/IndexedDB/#retrieve-a-value-from-an-object-store
+  function retrieveValueFromObjectStore(store, range) {
+    // TODO: ops
+    if (res === undefined) {
+      return undefined;
+    } else {
+      return core.deserialize(res);
+    }
+  }
+
+  // Ref: https://w3c.github.io/IndexedDB/#retrieve-multiple-values-from-an-object-store
+  function retrieveMultipleValuesFromObjectStore(store, range, count) {
+    // TODO: ops
+    core.opAsync("foo");
+    return res.map((val) => core.deserialize(val));
+  }
+
+  // Ref: https://w3c.github.io/IndexedDB/#retrieve-a-key-from-an-object-store
+  function retrieveKeyFromObjectStore(store, range) {
+    // TODO: ops
+    if (res === undefined) {
+      return undefined;
+    } else {
+      return keyToValue(res);
+    }
   }
 
   const _keyPath = Symbol("[[keyPath]]");
@@ -1181,7 +1214,14 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-clear
     clear() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO
+      // TODO: 3.
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError");
+      }
+      if (this[_transaction][_mode] === "readonly") {
+        throw new DOMException("", "ReadOnlyError");
+      }
+      return asynchronouslyExecuteRequest(this, () => clearObjectStore(this[_store]));
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-get
@@ -1193,7 +1233,12 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO
+      // TODO: 3.
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError");
+      }
+      const range = valueToKeyRange(query, true);
+      return asynchronouslyExecuteRequest(this, () => retrieveValueFromObjectStore(this[_store], range));
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-getkey
@@ -1205,7 +1250,12 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO
+      // TODO: 3.
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError");
+      }
+      const range = valueToKeyRange(query, true);
+      return asynchronouslyExecuteRequest(this, () => retrieveKeyFromObjectStore(this[_store], range));
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-getall
@@ -1223,7 +1273,12 @@
           enforceRange: true,
         });
       }
-      // TODO
+      // TODO: 3.
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError");
+      }
+      const range = valueToKeyRange(query, true);
+      return asynchronouslyExecuteRequest(this, () => retrieveMultipleValuesFromObjectStore(this[_store], range, count));
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-getallkeys
