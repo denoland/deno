@@ -803,7 +803,7 @@
     }
   }
 
-  function runSyncBench(step) {
+  function runSyncBench(bench, step) {
     const warmupIterations = bench.warmupIterations;
     step.warmup = true;
 
@@ -821,7 +821,7 @@
     return "ok";
   }
 
-  async function runAsyncBench(step) {
+  async function runAsyncBench(bench, step) {
     const warmupIterations = bench.warmupIterations;
     step.warmup = true;
 
@@ -856,11 +856,11 @@
       // function to run it. One might be tempted to just always await
       // `bench.fn`, but that adds a lot of overhead to synchronous
       // benches.
-      if (result instanceof Promise) {
+      if (typeof result.then !== "undefined") {
         await result;
-        return await runAsyncBench(step);
+        return await runAsyncBench(bench, step);
       } else {
-        return runSyncBench(step);
+        return runSyncBench(bench, step);
       }
     } catch (error) {
       return {
