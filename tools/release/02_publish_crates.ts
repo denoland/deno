@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo --allow-net=crates.io
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
-import { getCratesPublishOrder } from "./deps.ts";
+import { Crate, getCratesPublishOrder } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
 const cliCrate = workspace.getCliCrate();
@@ -12,12 +12,20 @@ const dependencyCrates = getCratesPublishOrder(
 
 try {
   for (const [i, crate] of dependencyCrates.entries()) {
-    await crate.publish();
-    console.log(`Published ${i + 1} of ${dependencyCrates.length} crates.`);
+    await publishCrate(crate);
+    console.log(`Finished ${i + 1} of ${dependencyCrates.length} crates.`);
   }
 
-  await cliCrate.publish();
+  await publishCrate(cliCrate);
 } finally {
   // system beep to notify error or completion
   console.log("\x07");
+}
+
+async function publishCrate(crate: Crate) {
+  if (Deno.args.some((a) => a === "dry")) {
+    await crate.publishDryRun();
+  } else {
+    await crate.publish();
+  }
 }

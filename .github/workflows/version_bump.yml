@@ -1,0 +1,65 @@
+name: version_bump
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: version bump
+    runs-on: ubuntu-20.04-xl
+    timeout-minutes: 90
+
+    inputs:
+      releaseKind:
+        description: 'Kind of version bump'
+        default: 'patch'
+        type: choice
+        options:
+        - minor
+        - patch
+        required: true
+      real:
+        description: 'Real release'
+        type: boolean
+        required: false
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.19.3
+
+      - name: Run version bump
+        run: ./tools/release/01_bump_crate_versions.ts --$INPUT_RELEASEKIND
+
+      - name: Dry publish
+        run: ./tools/release/02_publish_crates.ts --dry
+
+      - name: Cargo test
+        run: cargo test --locked
+
+      - name: Commit and push changes
+        if: ${{ github.event.inputs.real == 'true' }}
+        run: ./tools/release/commit_versions.ts
+
+      - name: Create draft pull request
+        if: ${{ github.event.inputs.real == 'true' }}
+        uses: peter-evans/create-pull-request@v3
+        with:
+          draft: true

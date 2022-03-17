@@ -8,8 +8,17 @@ const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
 
+// update the std version used in the code
+await updateStdVersion();
+
 // increment the cli version
-await cliCrate.promptAndIncrement();
+if (Deno.args.some((a) => a === "--patch")) {
+  await cliCrate.increment("patch");
+} else if (Deno.args.some((a) => a === "--minor")) {
+  await cliCrate.increment("minor");
+} else {
+  await cliCrate.promptAndIncrement();
+}
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {
@@ -99,5 +108,28 @@ async function getGitLog() {
     return new GitLogOutput(
       currentHistory.lines.filter((l) => !lastMinorMessages.has(l.message)),
     );
+  }
+}
+
+async function updateStdVersion() {
+  const newStdVersion = await getLatestStdVersion();
+  const compatFilePath = path.join(cliCrate.folderPath, "compat/mod.rs");
+  const text = Deno.readTextFileSync(compatFilePath);
+  Deno.writeTextFileSync(
+    compatFilePath,
+    text.replace(/std@[0-9]+\.[0-9]+\.[0-9]+/, newStdVersion),
+  );
+}
+
+async function getLatestStdVersion() {
+  const url =
+    "https://raw.githubusercontent.com/denoland/deno_std/main/version.ts";
+  const result = await fetch(url);
+  const text = await result.text();
+  const version = /"([0-9]+\.[0-9]+\.[0-9]+)"/.exec(text);
+  if (version == null) {
+    throw new Error(`Could not find version in text: ${text}`);
+  } else {
+    return version[1];
   }
 }
