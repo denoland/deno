@@ -177,6 +177,25 @@
     }
   }
 
+  // Ref: https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key-range
+  function valueToKeyRange(value, nullDisallowed) {
+    if (value instanceof IDBKeyRange) {
+      return value;
+    }
+    if (value === undefined || value === null) {
+      if (nullDisallowed) {
+        throw new DOMException("", "DataError"); // TODO: error
+      } else {
+        return createRange(null, null);
+      }
+    }
+    const key = valueToKey(value);
+    if (key === null) {
+      throw new DOMException("", "DataError"); // TODO: error
+    }
+    return createRange(key, key);
+  }
+
   // Ref: https://w3c.github.io/IndexedDB/#compare-two-keys
   function compareTwoKeys(a, b) {
     const { type: ta, value: va } = a;
@@ -862,11 +881,13 @@
 
       // TODO: call op_indexeddb_database_create_object_store
 
+      const store = new Store(options.autoIncrement);
+      store.name = name;
+      store.keyPath = keypath;
       const objectStore = webidl.createBranded(IDBObjectStore);
+      objectStore[_name] = name; // TODO: objectstore name is inconsistent throughout the spec
+      objectStore[_store] = store;
       objectStore[_transaction] = this[_upgradeTransaction];
-      objectStore[_name] = name;
-      objectStore[_keyPath] = keyPath;
-      objectStore[_autoIncrement] = options.autoIncrement;
       return objectStore;
     }
 
@@ -1020,7 +1041,12 @@
     );
   }
 
-  const _autoIncrement = Symbol("[[autoIncrement]]");
+  // Ref: https://w3c.github.io/IndexedDB/#delete-records-from-an-object-store
+  function deleteRecordsFromObjectStore(store, range) {
+    // TODO
+    return undefined;
+  }
+
   const _keyPath = Symbol("[[keyPath]]");
   const _store = Symbol("[[store]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbobjectstore
@@ -1059,7 +1085,7 @@
         throw new DOMException("", "TransactionInactiveError"); // TODO: error
       }
 
-      if (this[_name] === name) {
+      if (this[_store][_name] === name) {
         return;
       }
 
@@ -1092,11 +1118,10 @@
       return this[_transaction];
     }
 
-    [_autoIncrement];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-autoincrement
     get autoIncrement() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      return this[_autoIncrement];
+      return this[_store].keyGenerator !== null;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-put
@@ -1142,12 +1167,21 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO
+      // TODO: 3.
+      if (this[_transaction][_state] !== "active") {
+        throw new DOMException("", "TransactionInactiveError");
+      }
+      if (this[_transaction][_mode] === "readonly") {
+        throw new DOMException("", "ReadOnlyError");
+      }
+      const range = valueToKeyRange(query, true);
+      return asynchronouslyExecuteRequest(this, () => deleteRecordsFromObjectStore(this[_store], range));
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-clear
     clear() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
+      // TODO
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-get
