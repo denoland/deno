@@ -9,6 +9,7 @@
     Error,
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
+    Symbol,
     SymbolAsyncIterator,
     SymbolFor,
     TypedArrayPrototypeSubarray,
