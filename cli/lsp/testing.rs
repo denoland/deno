@@ -219,8 +219,7 @@ impl TestDefinitions {
   ) -> Option<&TestDefinition> {
     self
       .get_by_name(test_name)
-      .map(|td| td.find_step(name, level))
-      .flatten()
+      .and_then(|td| td.find_step(name, level))
   }
 }
 
@@ -906,7 +905,7 @@ impl LspTestReporter {
               text_document: lsp::TextDocumentIdentifier { uri: specifier },
               kind: lsp_custom::TestModuleNotificationKind::Insert,
               label,
-              tests: vec![prev.into()],
+              tests: vec![prev],
             },
           ))
           .unwrap_or_else(|err| {
@@ -1009,18 +1008,16 @@ impl test::TestReporter for LspTestReporter {
   }
 
   fn report_output(&mut self, output: &test::TestOutput) {
-    let test = self
-      .current_origin
-      .as_ref()
-      .map(|origin| {
-        self.stack.get(origin).map(|v| v.last().map(|td| td.into()))
-      })
-      .flatten()
-      .flatten();
+    let test = self.current_origin.as_ref().and_then(|origin| {
+      self
+        .stack
+        .get(origin)
+        .and_then(|v| v.last().map(|td| td.into()))
+    });
     match output {
       test::TestOutput::Console(value) => {
         self.progress(TestRunProgressMessage::Output {
-          value: value.replace("\n", "\r\n"),
+          value: value.replace('\n', "\r\n"),
           test,
           // TODO(@kitsonk) test output should include a location
           location: None,
