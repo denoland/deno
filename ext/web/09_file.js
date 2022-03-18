@@ -31,7 +31,6 @@
     StringPrototypeSlice,
     Symbol,
     SymbolFor,
-    TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
@@ -341,7 +340,7 @@
     /**
      * @returns {Promise<string>}
      */
-    // deno-lint-ignore no-await
+    // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
       return core.opAsync(
