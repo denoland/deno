@@ -200,7 +200,7 @@
       );
 
       this[_parts] = parts;
-      this[partIds] = ArrayPrototypeMap(parts, (p) => p._id);
+      this[_partIds] = ArrayPrototypeMap(parts, (p) => p._id);
       this[_size] = size;
       this[_type] = normalizeType(options.type);
     }
