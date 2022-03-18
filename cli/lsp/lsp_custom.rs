@@ -45,7 +45,7 @@ pub struct EnqueuedTestModule {
   pub ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestData {
   /// The unique ID of the test
@@ -61,9 +61,22 @@ pub struct TestData {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum TestModuleNotificationKind {
+  /// The test module notification represents an insertion of tests, not
+  /// replacement of the test children.
+  Insert,
+  /// The test module notification represents a replacement of any tests within
+  /// the test module.
+  Replace,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestModuleNotificationParams {
   /// The text document that the notification relates to.
   pub text_document: lsp::TextDocumentIdentifier,
+  /// Indicates what kind of notification this represents.
+  pub kind: TestModuleNotificationKind,
   /// The human readable text to display for the test module.
   pub label: String,
   /// The tests identified in the module.
@@ -129,7 +142,7 @@ pub struct TestRunProgressParams {
   pub message: TestRunProgressMessage,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TestIdentifier {
   /// The module identifier which contains the test.

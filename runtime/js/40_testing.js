@@ -9,9 +9,7 @@
   const { assert } = window.__bootstrap.infra;
   const {
     AggregateErrorPrototype,
-    ArrayIsArray,
     ArrayPrototypeFilter,
-    ArrayPrototypeIncludes,
     ArrayPrototypeJoin,
     ArrayPrototypePush,
     ArrayPrototypeShift,
@@ -752,7 +750,10 @@
     return inspectArgs([error]);
   }
 
-  /** @param {string | string[]} filter */
+  /**
+   * @param {string | { include?: string[], exclude?: string[] }} filter
+   * @returns {(def: { name: string }) => boolean}
+   */
   function createTestFilter(filter) {
     if (!filter) {
       return () => true;
@@ -764,14 +765,20 @@
         ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
         : undefined;
 
-    const filterIsArray = ArrayIsArray(filter);
+    const filterIsObject = filter != null && typeof filter === "object";
 
     return (def) => {
       if (regex) {
         return RegExpPrototypeTest(regex, def.name);
       }
-      if (filterIsArray) {
-        return ArrayPrototypeIncludes(filter, def.name);
+      if (filterIsObject) {
+        if (filter.include && !filter.include.includes(def.name)) {
+          return false;
+        } else if (filter.exclude && filter.exclude.includes(def.name)) {
+          return false;
+        } else {
+          return true;
+        }
       }
       return StringPrototypeIncludes(def.name, filter);
     };

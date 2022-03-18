@@ -141,9 +141,6 @@ pub struct SpecifierSettings {
   /// Code lens specific settings for the resource.
   #[serde(default)]
   pub code_lens: CodeLensSpecifierSettings,
-  /// Testing specific settings for the resource.
-  #[serde(default)]
-  pub testing: TestingSpecifierSettings,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -162,25 +159,8 @@ pub struct TestingSettings {
 impl Default for TestingSettings {
   fn default() -> Self {
     Self {
-      args: vec!["--allow-all".to_string()],
+      args: vec!["--allow-all".to_string(), "--no-check".to_string()],
       enable: true,
-    }
-  }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct TestingSpecifierSettings {
-  /// A vector of arguments which should be used when running the tests for
-  /// a specific resource.
-  #[serde(default)]
-  pub args: Vec<String>,
-}
-
-impl Default for TestingSpecifierSettings {
-  fn default() -> Self {
-    Self {
-      args: vec!["--allow-all".to_string()],
     }
   }
 }
@@ -584,7 +564,7 @@ mod tests {
           }
         },
         testing: TestingSettings {
-          args: vec!["--allow-all".to_string()],
+          args: vec!["--allow-all".to_string(), "--no-check".to_string()],
           enable: true
         },
         tls_certificate: None,
