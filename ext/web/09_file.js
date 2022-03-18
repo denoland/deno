@@ -311,6 +311,7 @@
 
       const blob = new Blob([], { type: relativeContentType });
       blob[_parts] = blobParts;
+      blob[_partIds] = ArrayPrototypeMap(blobParts, (part) => part._id);
       blob[_size] = span;
       return blob;
     }
@@ -603,6 +604,7 @@
     blob[_type] = blobData.media_type;
     blob[_size] = totalSize;
     blob[_parts] = parts;
+    blob[_partIds] = ArrayPrototypeMap(parts, (part) => part._id);
     return blob;
   }
 
