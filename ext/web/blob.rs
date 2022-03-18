@@ -243,26 +243,19 @@ async fn blob_read_all(
   ids: Vec<Uuid>,
   size: usize,
 ) -> Result<Vec<u8>, AnyError> {
-  let state = state.borrow();
-  let blob_store = state.borrow::<BlobStore>();
   let mut result = vec![0u8; size];
-
   let mut offset = 0;
   for id in ids {
-    let part = blob_store.get_part(&id).expect("Blob part not found");
+    let part = {
+      let state = state.borrow();
+      let blob_store = state.borrow::<BlobStore>();
+      blob_store.get_part(&id).expect("Blob part not found")
+    };
     let buf = part.read().await?;
     let length = buf.len();
-    offset += length;
 
-    // SAFETY: source slice `buf` matches the length of the destination slice.
-    // slices cannot overlap because mutable references are exclusive.
-    unsafe {
-      std::ptr::copy_nonoverlapping(
-        buf.as_ptr(),
-        result[..offset].as_mut_ptr(),
-        size,
-      );
-    }
+    result[offset..offset + length].copy_from_slice(buf);
+    offset += length;
   }
 
   Ok(result)
