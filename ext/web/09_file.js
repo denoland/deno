@@ -170,12 +170,10 @@
   const _type = Symbol("Type");
   const _size = Symbol("Size");
   const _parts = Symbol("Parts");
-  const _partIds = Symbol("PartIds");
   class Blob {
     [_type] = "";
     [_size] = 0;
     [_parts];
-    [_partIds];
 
     /**
      * @param {BlobPart[]} blobParts
@@ -200,7 +198,6 @@
       );
 
       this[_parts] = parts;
-      this[_partIds] = ArrayPrototypeMap(parts, (p) => p._id);
       this[_size] = size;
       this[_type] = normalizeType(options.type);
     }
@@ -311,7 +308,6 @@
 
       const blob = new Blob([], { type: relativeContentType });
       blob[_parts] = blobParts;
-      blob[_partIds] = ArrayPrototypeMap(blobParts, (part) => part._id);
       blob[_size] = span;
       return blob;
     }
@@ -346,7 +342,7 @@
       webidl.assertBranded(this, BlobPrototype);
       return core.opAsync(
         "op_blob_read_all_text",
-        this[_partIds],
+        ArrayPrototypeMap(blobParts, (part) => part._id),
         this.size,
       );
     }
@@ -358,7 +354,7 @@
       webidl.assertBranded(this, BlobPrototype);
       const buf = await core.opAsync(
         "op_blob_read_all",
-        this[_partIds],
+        ArrayPrototypeMap(blobParts, (part) => part._id),
         this.size,
       );
 
@@ -604,7 +600,6 @@
     blob[_type] = blobData.media_type;
     blob[_size] = totalSize;
     blob[_parts] = parts;
-    blob[_partIds] = ArrayPrototypeMap(parts, (part) => part._id);
     return blob;
   }
 
