@@ -1077,7 +1077,7 @@
     /** @param params {TestStepParams} */
     constructor(params) {
       this.#params = params;
-   }
+    }
 
     get name() {
       return this.#params.name;
@@ -1267,7 +1267,9 @@
       /**
        * Parent test context.
        */
-      parent: parentStep.parent ? createTestContext(parentStep.parent) : undefined,
+      parent: parentStep.parent
+        ? createTestContext(parentStep.parent)
+        : undefined,
       /**
        * Indicates whether the test is being run in a snapshot update mode.
        */
