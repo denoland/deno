@@ -354,7 +354,7 @@
     /**
      * @returns {Promise<ArrayBuffer>}
      */
-    arrayBuffer() {
+    async arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
       const buf = await core.opAsync(
         "op_blob_read_all",
