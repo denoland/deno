@@ -620,6 +620,7 @@ fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: RespondArgs = serde_json::from_value(args)
     .context("Error converting the result for \"op_respond\".")?;
+  eprintln!("diagnostics {:#?}", v.diagnostics);
 
   let reporter = miette::GraphicalReportHandler::new();
 

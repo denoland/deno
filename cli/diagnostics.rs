@@ -1,13 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_runtime::colors;
-
-use deno_ast::swc::common::BytePos;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_graph::ModuleGraphError;
+use deno_runtime::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -428,6 +426,7 @@ impl Error for Diagnostics {}
 pub struct MietteDiagnostic<'a> {
   tsc_diagnostic: &'a Diagnostic,
   source_code: Option<MietteSourceCode<'a>>,
+  children: Vec<MietteDiagnostic<'a>>,
 }
 
 impl<'a> MietteDiagnostic<'a> {
@@ -453,9 +452,19 @@ impl<'a> MietteDiagnostic<'a> {
       None
     };
 
+    let children = if let Some(related) = &tsc_diagnostic.related_information {
+      related
+        .iter()
+        .map(|d| MietteDiagnostic::new(d))
+        .collect::<Vec<MietteDiagnostic>>()
+    } else {
+      vec![]
+    };
+
     Self {
       source_code,
       tsc_diagnostic,
+      children,
     }
   }
 }
@@ -517,12 +526,25 @@ impl miette::Diagnostic for MietteDiagnostic<'_> {
 
     None
   }
+
+  fn related<'a>(
+    &'a self,
+  ) -> Option<Box<dyn Iterator<Item = &'a dyn miette::Diagnostic> + 'a>> {
+    if self.children.is_empty() {
+      None
+    } else {
+      Some(Box::new(
+        self.children.iter().map(|d| d as &dyn miette::Diagnostic),
+      ))
+    }
+  }
 }
 
 #[derive(Debug)]
 struct MietteSourceCode<'a> {
   source: &'a str,
   start: &'a Position,
+  #[allow(dead_code)]
   end: &'a Position,
   filename: String,
 }
