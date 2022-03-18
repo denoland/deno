@@ -127,7 +127,7 @@ impl TlsStream {
     Self::new(tcp, Connection::Server(tls))
   }
 
-  fn into_split(self) -> (ReadHalf, WriteHalf) {
+  pub fn into_split(self) -> (ReadHalf, WriteHalf) {
     let shared = Shared::new(self);
     let rd = ReadHalf {
       shared: shared.clone(),

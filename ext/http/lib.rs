@@ -289,9 +289,9 @@ impl HttpAcceptor {
 }
 
 /// A resource representing a single HTTP request/response stream.
-struct HttpStreamResource {
+pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
-  rd: AsyncRefCell<HttpRequestReader>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
@@ -324,7 +324,7 @@ impl Resource for HttpStreamResource {
 }
 
 /// The read half of an HTTP stream.
-enum HttpRequestReader {
+pub enum HttpRequestReader {
   Headers(Request<Body>),
   Body(Peekable<Body>),
   Closed,

@@ -20,7 +20,7 @@ pub(crate) use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.129.0/";
+static STD_URL_STR: &str = "https://deno.land/std@0.130.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -190,7 +190,7 @@ pub async fn translate_cjs_to_esm(
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
     // Firstly, resolve relate reexport specifier
-    let resolved_reexport = node_resolver::node_resolve(
+    let resolved_reexport = node_resolver::resolve(
       reexport,
       &specifier.to_file_path().unwrap(),
       // FIXME(bartlomieju): check if these conditions are okay, probably
