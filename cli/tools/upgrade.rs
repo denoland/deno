@@ -10,6 +10,7 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
 use semver_parser::version::parse as semver_parse;
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -33,7 +34,8 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
-  if let Some(ca_file) = upgrade_flags.ca_file {
+  let ca_file = upgrade_flags.ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
     client_builder = client_builder.add_root_certificate(cert);
