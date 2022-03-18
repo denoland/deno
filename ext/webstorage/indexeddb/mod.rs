@@ -3,17 +3,17 @@
 
 use super::DomExceptionNotSupportedError;
 use super::OriginStorageDir;
+use crate::DomExceptionConstraintError;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
+use fallible_iterator::FallibleIterator;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use std::borrow::Cow;
-use fallible_iterator::FallibleIterator;
-use crate::DomExceptionConstraintError;
 
 fn create_file_table(conn: &Connection) -> Result<(), AnyError> {
   let statements = r#"
@@ -189,7 +189,9 @@ pub fn op_indexeddb_open(
       })
     })
     .optional()?;
-  let version = version.or_else(|| db.clone().map(|db| db.version)).unwrap_or(1);
+  let version = version
+    .or_else(|| db.clone().map(|db| db.version))
+    .unwrap_or(1);
 
   let db = if let Some(db) = db {
     db
