@@ -183,7 +183,14 @@ pub async fn write_standalone_binary(
   if output.exists() {
     // If the output is a directory, throw error
     if output.is_dir() {
-      bail!("Could not compile: {:?} is a directory.", &output);
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because a directory exists with ",
+          "the same name. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name."
+        ),
+        output.display()
+      );
     }
 
     // Make sure we don't overwrite any file not created by Deno compiler.
@@ -199,7 +206,14 @@ pub async fn write_standalone_binary(
       has_trailer = magic_trailer == MAGIC_TRAILER;
     }
     if !has_trailer {
-      bail!("Could not compile: cannot overwrite {:?}.", &output);
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because the file already exists ",
+          "and cannot be overwritten. Please delete the existing file or ",
+          "use the `--output <file-path` flag to provide an alternative name."
+        ),
+        output.display()
+      );
     }
 
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
@@ -208,7 +222,14 @@ pub async fn write_standalone_binary(
   } else {
     let output_base = &output.parent().unwrap();
     if output_base.exists() && output_base.is_file() {
-      bail!("Could not compile: {:?} is a file.", &output_base);
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because its parent directory ",
+          "is an existing file. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name.",
+        ),
+        output_base.display(),
+      );
     }
     tokio::fs::create_dir_all(output_base).await?;
   }
