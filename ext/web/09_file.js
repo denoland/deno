@@ -342,7 +342,6 @@
     // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      console.log(this[_parts]);
       return core.opAsync(
         "op_blob_read_all_text",
         this.#flatPartIds,
