@@ -342,7 +342,7 @@
       webidl.assertBranded(this, BlobPrototype);
       return core.opAsync(
         "op_blob_read_all_text",
-        ArrayPrototypeMap(blobParts, (part) => part._id),
+        ArrayPrototypeMap(this[_parts], (part) => part._id),
         this.size,
       );
     }
@@ -354,7 +354,7 @@
       webidl.assertBranded(this, BlobPrototype);
       const buf = await core.opAsync(
         "op_blob_read_all",
-        ArrayPrototypeMap(blobParts, (part) => part._id),
+        ArrayPrototypeMap(this[_parts], (part) => part._id),
         this.size,
       );
 
