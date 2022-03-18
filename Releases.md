@@ -6,7 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 1.20.0 / 2022.03.16
+### 1.20.1 / 2022.03.16
 
 - BREAKING: don't inherit permissions by default (#13668)
 - feat(cli): support data url (#13667)
@@ -44,6 +44,8 @@ https://github.com/denoland/deno_install
 - perf(web): optimize Blob.text and Blob.arrayBuffer (#13981)
 - perf(web): use DOMString for BlobParts (#13979)
 - perf: opt-level-3 all of ext (#13940)
+
+Note 1.20.0 was dead on arrival, see https://github.com/denoland/deno/pull/13993
 
 ### 1.19.3 / 2022.03.10
 

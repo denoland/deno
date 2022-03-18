@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.20.0"
+version = "1.20.1"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -773,12 +773,22 @@ dependencies = [
  "data-url",
  "deno_ast",
  "deno_bench_util",
+ "deno_broadcast_channel",
+ "deno_console",
  "deno_core",
+ "deno_crypto",
  "deno_doc",
+ "deno_fetch",
  "deno_graph",
  "deno_lint",
+ "deno_net",
  "deno_runtime",
  "deno_task_shell",
+ "deno_url",
+ "deno_web",
+ "deno_webgpu",
+ "deno_websocket",
+ "deno_webstorage",
  "dissimilar",
  "dprint-plugin-json",
  "dprint-plugin-markdown",
@@ -851,7 +861,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -860,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -870,14 +880,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.123.0"
+version = "0.124.0"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -899,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.55.0"
+version = "0.56.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -945,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.64.0"
+version = "0.65.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -962,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -995,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "base64 0.13.0",
  "brotli",
@@ -1033,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1047,7 +1057,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2 1.0.36",
@@ -1057,7 +1067,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1116,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1130,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1142,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.72.0"
+version = "0.73.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -1159,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1170,14 +1180,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1191,7 +1201,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2576,11 +2586,12 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e35ed1604f6f4e33b51926d6be3bc09423f35eec776165c460c313dc2970ea5a"
+checksum = "f1012fcb4f5cc14c272731f4baf6ba8a2d40c650908f4d2531f7ed17f214e5ae"
 dependencies = [
  "anyhow",
+ "path-clean",
  "serde",
  "serde_json",
 ]
@@ -2832,6 +2843,12 @@ dependencies = [
  "smallvec",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "path-clean"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecba01bf2678719532c5e3059e0b5f0811273d94b397088b82e3bd0a78c78fdd"
 
 [[package]]
 name = "pem-rfc7468"
@@ -3685,7 +3702,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "bencher",
  "serde",

@@ -622,8 +622,8 @@ fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     .context("Error converting the result for \"op_respond\".")?;
 
   let reporter = miette::GraphicalReportHandler::new();
-
   let mut s = String::new();
+
   for diagnostic in &v.diagnostics.0 {
     let miette_diag = crate::diagnostics::MietteDiagnostic::new(diagnostic);
     reporter.render_report(&mut s, &miette_diag).unwrap();
