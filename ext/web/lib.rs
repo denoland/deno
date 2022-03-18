@@ -33,8 +33,9 @@ use std::usize;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_from_object_url;
+use crate::blob::op_blob_read_all;
+use crate::blob::op_blob_read_all_text;
 use crate::blob::op_blob_read_part;
-use crate::blob::op_blob_read_whole;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
@@ -95,7 +96,8 @@ pub fn init<P: TimersPermission + 'static>(
       op_encoding_encode_into::decl(),
       op_blob_create_part::decl(),
       op_blob_slice_part::decl(),
-      op_blob_read_whole::decl(),
+      op_blob_read_all::decl(),
+      op_blob_read_all_text::decl(),
       op_blob_read_part::decl(),
       op_blob_remove_part::decl(),
       op_blob_create_object_url::decl(),

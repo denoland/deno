@@ -18,6 +18,7 @@
     ArrayBufferPrototype,
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
+    ArrayPrototypeMap,
     ArrayPrototypePush,
     Date,
     DatePrototypeGetTime,
@@ -175,6 +176,7 @@
     [_type] = "";
     [_size] = 0;
     [_parts];
+    #partIds;
 
     /**
      * @param {BlobPart[]} blobParts
@@ -199,6 +201,7 @@
       );
 
       this[_parts] = parts;
+      this.#partIds = ArrayPrototypeMap(parts, (p) => p._id);
       this[_size] = size;
       this[_type] = normalizeType(options.type);
     }
@@ -338,26 +341,27 @@
     /**
      * @returns {Promise<string>}
      */
+    // deno-lint-ignore no-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      const buffer = await this.#u8Array(this.size);
-      return buffer;
-    }
-
-    #u8Array(size) {
       return core.opAsync(
-        "op_blob_read_whole",
-        this[_parts].map((i) => i._id),
-        size,
+        "op_blob_read_all_text",
+        this.#partIds,
+        this.size,
       );
     }
 
     /**
      * @returns {Promise<ArrayBuffer>}
      */
-    async arrayBuffer() {
+    arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
-      const buf = await this.#u8Array(this.size);
+      const buf = await core.opAsync(
+        "op_blob_read_all",
+        this.#partIds,
+        this.size,
+      );
+
       return buf.buffer;
     }
 

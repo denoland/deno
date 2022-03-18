@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::op;
-
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_core::ByteString;
 use deno_core::ZeroCopyBuf;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -11,8 +12,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
-
-use deno_core::error::AnyError;
 use uuid::Uuid;
 
 use crate::Location;
@@ -219,23 +218,53 @@ pub async fn op_blob_read_part(
 }
 
 #[op]
-pub async fn op_blob_read_whole(
+pub async fn op_blob_read_all_text(
   state: Rc<RefCell<deno_core::OpState>>,
   ids: Vec<Uuid>,
   size: usize,
-) -> Result<String, AnyError> {
+) -> Result<ByteString, AnyError> {
+  let result = blob_read_all(state, ids, size).await?;
+  Ok(ByteString(result))
+}
+
+#[op]
+pub async fn op_blob_read_all(
+  state: Rc<RefCell<deno_core::OpState>>,
+  ids: Vec<Uuid>,
+  size: usize,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let result = blob_read_all(state, ids, size).await?;
+  Ok(ZeroCopyBuf::from(result))
+}
+
+#[inline(always)]
+async fn blob_read_all(
+  state: Rc<RefCell<deno_core::OpState>>,
+  ids: Vec<Uuid>,
+  size: usize,
+) -> Result<Vec<u8>, AnyError> {
   let state = state.borrow();
   let blob_store = state.borrow::<BlobStore>();
-  let mut result = vec![0u8; size];
+  let mut result = Vec::with_capacity(size);
   let mut offset = 0;
   for id in ids {
     let part = blob_store.get_part(&id).expect("Blob part not found");
     let buf = part.read().await?;
-    offset += buf.len();
-    result[..offset].copy_from_slice(buf);
+    let length = buf.len();
+    offset += length;
+
+    // SAFETY: source slice `buf` matches the length of the destination slice.
+    // slices cannot overlap because mutable references are exclusive.
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        buf.as_ptr(),
+        result[..offset].as_mut_ptr(),
+        size,
+      );
+    }
   }
 
-  Ok(unsafe { String::from_utf8_unchecked(result) })
+  Ok(result)
 }
 
 #[op]
