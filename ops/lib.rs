@@ -237,7 +237,7 @@ fn codegen_arg(
     let #ident = match #core::serde_v8::from_v8(scope, #ident) {
       Ok(v) => v,
       Err(err) => {
-        let msg = format!("Error parsing args: {}", #core::anyhow::Error::from(err));
+        let msg = format!("Error parsing args at position {}: {}", #idx, #core::anyhow::Error::from(err));
         return #core::_ops::throw_type_error(scope, msg);
       }
     };

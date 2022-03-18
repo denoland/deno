@@ -593,7 +593,7 @@ Deno.test("Worker with invalid permission arg", function () {
         deno: { permissions: { env: "foo" } },
       }),
     TypeError,
-    'Error parsing args: (deno.permissions.env) invalid value: string "foo", expected "inherit" or boolean or string[]',
+    'Error parsing args at position 1: (deno.permissions.env) invalid value: string "foo", expected "inherit" or boolean or string[]',
   );
 });
 
