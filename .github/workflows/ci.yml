@@ -87,12 +87,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install clippy and rustfmt
-        if: matrix.job == 'lint'
-        run: |
-          rustup component add clippy
-          rustup component add rustfmt
-
       - name: Install Deno
         if: matrix.job == 'lint'
         run: |
