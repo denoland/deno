@@ -245,7 +245,8 @@ async fn blob_read_all(
 ) -> Result<Vec<u8>, AnyError> {
   let state = state.borrow();
   let blob_store = state.borrow::<BlobStore>();
-  let mut result = Vec::with_capacity(size);
+  let mut result = vec![0u8; size];
+
   let mut offset = 0;
   for id in ids {
     let part = blob_store.get_part(&id).expect("Blob part not found");
