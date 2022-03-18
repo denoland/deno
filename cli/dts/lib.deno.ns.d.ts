@@ -251,7 +251,7 @@ declare namespace Deno {
 
   export interface TestContext {
     /**
-     * The full name of the current test.
+     * The current test name.
      */
     name: string;
     /**
@@ -284,7 +284,7 @@ declare namespace Deno {
   export interface TestStepDefinition {
     fn: (t: TestContext) => void | Promise<void>;
     /**
-     * The full name of the current test.
+     * The current test name.
      */
     name: string;
     ignore?: boolean;
@@ -304,7 +304,7 @@ declare namespace Deno {
   export interface TestDefinition {
     fn: (t: TestContext) => void | Promise<void>;
     /**
-     * The full name of the current test.
+     * The current test name.
      */
     name: string;
     ignore?: boolean;

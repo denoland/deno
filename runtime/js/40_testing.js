@@ -1253,7 +1253,7 @@
     return {
       [SymbolToStringTag]: "TestContext",
       /**
-       * Full name of the test step.
+       * The current test name.
        */
       name: parentStep.name,
       /**
