@@ -175,7 +175,7 @@
     [_type] = "";
     [_size] = 0;
     [_parts];
-    [partIds];
+    [_partIds];
 
     /**
      * @param {BlobPart[]} blobParts
