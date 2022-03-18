@@ -224,7 +224,7 @@ pub async fn write_standalone_binary(
     if output_base.exists() && output_base.is_file() {
       bail!(
         concat!(
-          "Could not compile to file '{}', because its parent directory ",
+          "Could not compile to file '{}' because its parent directory ",
           "is an existing file. You can use the `--output <file-path>` flag to ",
           "provide an alternative name.",
         ),

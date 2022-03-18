@@ -308,7 +308,7 @@ fn compile_with_file_exists_error() {
   assert!(!output.status.success());
   let expected_stderr = format!(
     concat!(
-      "Could not compile to file '{}', because its parent directory ",
+      "Could not compile to file '{}' because its parent directory ",
       "is an existing file. You can use the `--output <file-path>` flag to ",
       "provide an alternative name.\n",
     ),
