@@ -429,8 +429,9 @@ impl JsRuntime {
     let realm = {
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
       // reference self.ops while the scope is alive. Here we turn it into an
-      // unbound lifetime, which is sound because the HandleScope only has
-      // access to the isolate, and nothing else we're accessing from self does.
+      // unbound lifetime, which is sound because 1. it only lives until the end
+      // of this block, and 2. the HandleScope only has access to the isolate,
+      // and nothing else we're accessing from self does.
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
