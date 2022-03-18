@@ -486,10 +486,10 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /**
-   * After the test of the module is done, registered function will be called.
-   */
   namespace test {
+    /**
+     * After the test of the module, registered function will be called.
+     */
     export function teardown(fn: () => void | Promise<void>): void;
   }
 
