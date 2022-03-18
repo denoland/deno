@@ -18,7 +18,6 @@
     ArrayBufferPrototype,
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     Date,
     DatePrototypeGetTime,
