@@ -174,6 +174,7 @@
     [_type] = "";
     [_size] = 0;
     [_parts];
+    #flatPartIds;
 
     /**
      * @param {BlobPart[]} blobParts
@@ -200,6 +201,7 @@
       this[_parts] = parts;
       this[_size] = size;
       this[_type] = normalizeType(options.type);
+      this.#flatPartIds = getParts(this);
     }
 
     /** @returns {number} */
@@ -340,9 +342,10 @@
     // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
+      console.log(this[_parts]);
       return core.opAsync(
         "op_blob_read_all_text",
-        ArrayPrototypeMap(this[_parts], (part) => part._id),
+        this.#flatPartIds,
         this.size,
       );
     }
@@ -354,7 +357,7 @@
       webidl.assertBranded(this, BlobPrototype);
       const buf = await core.opAsync(
         "op_blob_read_all",
-        ArrayPrototypeMap(this[_parts], (part) => part._id),
+        this.#flatPartIds,
         this.size,
       );
 
