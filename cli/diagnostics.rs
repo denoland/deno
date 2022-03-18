@@ -455,7 +455,7 @@ impl<'a> MietteDiagnostic<'a> {
     let children = if let Some(related) = &tsc_diagnostic.related_information {
       related
         .iter()
-        .map(|d| MietteDiagnostic::new(d))
+        .map(MietteDiagnostic::new)
         .collect::<Vec<MietteDiagnostic>>()
     } else {
       vec![]
