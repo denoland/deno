@@ -170,12 +170,12 @@
   const _type = Symbol("Type");
   const _size = Symbol("Size");
   const _parts = Symbol("Parts");
-
+  const _partIds = Symbol("PartIds");
   class Blob {
     [_type] = "";
     [_size] = 0;
     [_parts];
-    #partIds;
+    [partIds];
 
     /**
      * @param {BlobPart[]} blobParts
@@ -200,7 +200,7 @@
       );
 
       this[_parts] = parts;
-      this.#partIds = ArrayPrototypeMap(parts, (p) => p._id);
+      this[partIds] = ArrayPrototypeMap(parts, (p) => p._id);
       this[_size] = size;
       this[_type] = normalizeType(options.type);
     }
@@ -345,7 +345,7 @@
       webidl.assertBranded(this, BlobPrototype);
       return core.opAsync(
         "op_blob_read_all_text",
-        this.#partIds,
+        this[_partIds],
         this.size,
       );
     }
@@ -357,7 +357,7 @@
       webidl.assertBranded(this, BlobPrototype);
       const buf = await core.opAsync(
         "op_blob_read_all",
-        this.#partIds,
+        this[_partIds],
         this.size,
       );
 
