@@ -264,7 +264,7 @@ fn codegen_sync_ret(
         Ok(ret) => rv.set(ret),
         Err(err) => #core::_ops::throw_type_error(
           scope,
-          format!("Error serializing return-: {}", #core::anyhow::Error::from(err)),
+          format!("Error serializing return: {}", #core::anyhow::Error::from(err)),
         ),
       };
     }
