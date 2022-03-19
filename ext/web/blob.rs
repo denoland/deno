@@ -4,7 +4,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_core::ByteString;
 use deno_core::ZeroCopyBuf;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -222,9 +221,9 @@ pub async fn op_blob_read_all_text(
   state: Rc<RefCell<deno_core::OpState>>,
   ids: Vec<Uuid>,
   size: usize,
-) -> Result<ByteString, AnyError> {
+) -> Result<String, AnyError> {
   let result = blob_read_all(state, ids, size).await?;
-  Ok(ByteString(result))
+  Ok(String::from_utf8_lossy(&result).to_string())
 }
 
 #[op]
