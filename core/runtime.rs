@@ -2868,7 +2868,10 @@ assertEquals(1, notify_return_value);
       ..Default::default()
     });
     assert!(runtime
-      .execute_script("test_serde_v8_error.js", "Deno.core.opSync('op_err')",)
+      .execute_script(
+        "test_op_return_serde_v8_error.js",
+        "Deno.core.opSync('op_err')"
+      )
       .is_err());
   }
 }
