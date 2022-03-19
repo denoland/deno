@@ -59,7 +59,9 @@
     [
       {
         key: "keyPath",
-        converter: webidl.converters["sequence<DOMString> or DOMString"], // TODO: nullable
+        converter: webidl.createNullableConverter(
+          webidl.converters["sequence<DOMString> or DOMString"],
+        ),
         defaultValue: null,
       },
       {
@@ -291,7 +293,6 @@
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#check-that-a-key-could-be-injected-into-a-value
-  // TODO: check
   function checkKeyCanBeInjectedIntoValue(value, keyPath) {
     const identifiers = keyPath.split(".");
     assert(identifiers.length !== 0);
@@ -333,6 +334,7 @@
     // TODO: 6.
   }
 
+  // Ref: https://w3c.github.io/IndexedDB/#abort-a-transaction
   function abortTransaction(transaction, error) {
     // TODO: 1.
     if (transaction[_mode] === "versionchange") {
@@ -368,6 +370,7 @@
     }
   }
 
+  // Ref: https://w3c.github.io/IndexedDB/#abort-an-upgrade-transaction
   function abortUpgradeTransaction(transaction) {
     // TODO
   }
@@ -387,13 +390,11 @@
     if (ArrayIsArray(keyPath)) {
       const result = [];
       for (let i = 0; i < keyPath.length; i++) {
-        const key = evaluateKeyPathOnValue(keyPath[i], value); // TODO: seems spec could be wrong and arguments should be swapped
-        // TODO: 2.
+        const key = evaluateKeyPathOnValue(value, keyPath[i]); // spec is wrong, arguments are reversed.
         if (key === _failure) {
           return _failure;
         }
         result[i] = key;
-        // TODO: 6.
       }
       return result;
     }
@@ -427,7 +428,6 @@
         }
       }
     }
-    // TODO: 5..
     return value;
   }
 
@@ -514,8 +514,25 @@
     return request;
   }
 
+  // Ref: https://w3c.github.io/IndexedDB/#commit-a-transaction
   function commitTransaction(transaction) {
-    // TODO
+    transaction[_state] = "committing";
+    (async () => {
+      // TODO: 2.1.
+      if (transaction[_state] !== "committing") {
+        return;
+      }
+      // TODO: 2.3., 2.4.
+
+      if (transaction[_mode] === "versionchange") {
+        // TODO: 2.5.1.
+      }
+      transaction[_state] = "finished";
+      transaction.dispatchEvent(new Event("complete"));
+      if (transaction[_mode] === "versionchange") {
+        transaction[_request][_transaction] = null;
+      }
+    })();
   }
 
   const _result = Symbol("[[result]]");
@@ -535,19 +552,24 @@
     [_done] = false;
 
     [_result];
+    // Ref: https://w3c.github.io/IndexedDB/#dom-idbrequest-result
     get result() {
       webidl.assertBranded(this, IDBRequestPrototype);
       if (!this[_done]) {
-        throw new DOMException("", "InvalidStateError"); // TODO
+        throw new DOMException("", "InvalidStateError");
       }
-      return this[_result]; // TODO: or undefined if the request resulted in an error
+      if (this[_error]) {
+        return undefined;
+      } else {
+        return this[_result];
+      }
     }
 
     [_error] = null;
     get error() {
       webidl.assertBranded(this, IDBRequestPrototype);
       if (!this[_done]) {
-        throw new DOMException("", "InvalidStateError"); // TODO
+        throw new DOMException("", "InvalidStateError");
       }
       return this[_error];
     }
@@ -587,6 +609,16 @@
 
   webidl.configurePrototype(IDBOpenDBRequest);
 
+  // Ref: https://w3c.github.io/IndexedDB/#open-a-database
+  function openDatabase(name, version) {
+    // TODO
+  }
+
+  // Ref: https://w3c.github.io/IndexedDB/#delete-a-database
+  function deleteDatabase(name, request) {
+    // TODO
+  }
+
   // Ref: https://w3c.github.io/IndexedDB/#idbfactory
   class IDBFactory {
     constructor() {
@@ -611,66 +643,29 @@
       }
 
       if (version === 0) {
-        throw new TypeError(); // TODO
+        throw new TypeError();
       }
 
       const request = webidl.createBranded(IDBOpenDBRequest);
 
-      try {
-        const [newVersion, dbVersion] = core.opSync(
-          "op_indexeddb_open",
-          name,
-          version,
-        );
-        const connection = webidl.createBranded(IDBDatabase);
-        connection[_name] = name;
-        // TODO: connection[_version] = newVersion;
-        if (dbVersion < newVersion) {
-          for (const conn of connections.values()) {
-            if (!conn[_closePending]) {
-              conn.dispatchEvent(
-                new IDBVersionChangeEvent("versionchange", {
-                  bubbles: false,
-                  cancelable: false,
-                  oldVersion: dbVersion,
-                  newVersion,
-                }),
-              );
-            }
-          }
-          // TODO: why should connections close?
-          for (const conn of connections.values()) {
-            if (!conn[_closePending]) {
-              request.dispatchEvent(
-                new IDBVersionChangeEvent("blocked", {
-                  bubbles: false,
-                  cancelable: false,
-                  oldVersion: dbVersion,
-                  newVersion,
-                }),
-              );
-              break;
-            }
-          }
-          // Ref: https://w3c.github.io/IndexedDB/#upgrade-transaction-steps
-          // TODO: Wait until all connections in openConnections are closed.
-          const transaction = ""; // TODO
-          // TODO
+      (async () => {
+        try {
+          const res = openDatabase(name, version);
+          request[_result] = res;
+          request[_done] = true;
+          request.dispatchEvent(new Event("success"));
+        } catch (e) {
+          request[_result] = undefined;
+          request[_error] = e;
+          request[_done] = true;
+          request.dispatchEvent(
+            new Event("error", {
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
         }
-        request[_result] = connection;
-        request[_done] = true;
-        request.dispatchEvent(new Event("success"));
-      } catch (e) {
-        request[_result] = undefined;
-        request[_error] = e;
-        request[_done] = true;
-        request.dispatchEvent(
-          new Event("error", {
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      }
+      })();
 
       return request;
     }
@@ -687,7 +682,34 @@
 
       const request = webidl.createBranded(IDBOpenDBRequest);
 
-      // TODO
+      (async () => {
+        try {
+          const res = deleteDatabase(name, request);
+          request[_processed] = true;
+          request[_result] = undefined;
+          request[_done] = true;
+          request.dispatchEvent(
+            new IDBVersionChangeEvent("success", {
+              bubbles: false,
+              cancelable: false,
+              oldVersion: res,
+              newVersion: null,
+            }),
+          );
+        } catch (e) {
+          request[_processed] = true;
+          request[_error] = e;
+          request[_done] = true;
+          request.dispatchEvent(
+            new Event("error", {
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        }
+      })();
+
+      return request;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbfactory-databases
@@ -830,7 +852,25 @@
         context: "Argument 3",
       });
 
-      // TODO
+      if (this[_closePending]) {
+        throw new DOMException("", "InvalidStateError");
+      }
+      const scope = new Set(
+        ArrayIsArray(storeNames) ? storeNames : [storeNames],
+      );
+      // TODO: 4.
+      if (scope.size === 0) {
+        throw new DOMException("", "InvalidAccessError");
+      }
+      if (mode !== "readonly" && mode !== "readwrite") {
+        throw new TypeError("");
+      }
+      const transaction = webidl.createBranded(IDBTransaction);
+      // TODO: connection
+      transaction[_mode] = mode;
+      transaction[_durabilityHint] = options.durability;
+      // TODO: scope
+      return transaction;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-close
@@ -870,14 +910,14 @@
       const keyPath = options.keyPath ?? null;
 
       if (options.keyPath !== null && !isValidKeyPath(options.keyPath)) {
-        throw new DOMException("", "SyntaxError"); // TODO
+        throw new DOMException("", "SyntaxError");
       }
 
       if (
         (typeof options.keyPath === "string" && options.keyPath.length === 0) ||
         ArrayIsArray(options.keyPath)
       ) {
-        throw new DOMException("", "InvalidAccessError"); // TODO
+        throw new DOMException("", "InvalidAccessError");
       }
 
       // TODO: call op_indexeddb_database_create_object_store
@@ -950,7 +990,7 @@
           // Ref: https://w3c.github.io/IndexedDB/#generate-a-key
           generateKey() {
             if (this.current > 9007199254740992) {
-              throw new DOMException("", "ConstraintError"); // TODO
+              throw new DOMException("", "ConstraintError");
             }
             return this.current++;
           },
@@ -970,6 +1010,7 @@
     }
   }
 
+  // Ref: https://w3c.github.io/IndexedDB/#store-a-record-into-an-object-store
   function storeRecordIntoObjectStore(store, value, key, noOverwrite) {
     if (store.keyGenerator !== null) {
       if (key === undefined) {
@@ -1094,8 +1135,40 @@
     // TODO: ops
   }
 
-  function iterateCursor(cursor, primaryKey, count = 1) {
-    // TODO
+  // Ref: https://w3c.github.io/IndexedDB/#iterate-a-cursor
+  function iterateCursor(cursor, key, primaryKey, count = 1) {
+    if (primaryKey !== undefined) {
+      assert(
+        cursor[_source] instanceof IDBIndex &&
+          (cursor[_direction] === "next" || cursor[_direction] === "prev"),
+      );
+    }
+    // TODO: 4.
+    let position = cursor[_position];
+    let objectStorePosition = cursor[_objectStorePosition];
+    for (; count > 0; count--) {
+      // TODO: 9.1.
+      if (res === undefined) {
+        if (cursor[_source] instanceof IDBIndex) {
+          cursor[_objectStorePosition] = undefined;
+        }
+        if (!cursor[_keyOnly]) {
+          cursor[_value] = undefined;
+        }
+        return null;
+      }
+      // TODO: 9.3., 9.4.
+    }
+    cursor[_position] = position;
+    if (cursor[_source] instanceof IDBIndex) {
+      cursor[_objectStorePosition] = objectStorePosition;
+    }
+    // TODO: 12.
+    if (!cursor[_keyOnly]) {
+      // TODO: 13.1., 13.2.
+    }
+    cursor[_gotValue] = true;
+    return cursor;
   }
 
   const _keyPath = Symbol("[[keyPath]]");
@@ -1153,7 +1226,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-keypath
     get keyPath() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO
+      return this[_keyPath]; // TODO: convert?
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-indexnames
@@ -1472,7 +1545,12 @@
       }
       // TODO: 11.
       // TODO: 12.
+      const index = new Index();
+      index.name = name;
+      index.multiEntry = options.multiEntry;
+      index.unique = options.unique;
       const indexHandle = webidl.createBranded(IDBIndex);
+      indexHandle[_index] = index;
       indexHandle[_storeHandle] = this;
       return indexHandle;
     }

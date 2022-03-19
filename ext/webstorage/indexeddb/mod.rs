@@ -1,6 +1,3 @@
-//mod idbtrait;
-//mod sqlite_idb;
-
 use super::DomExceptionNotSupportedError;
 use super::OriginStorageDir;
 use crate::DomExceptionConstraintError;
