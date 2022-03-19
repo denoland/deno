@@ -5,7 +5,8 @@
   const core = window.Deno.core;
   const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
-  const { assert, pathFromURL } = window.__bootstrap.util;
+  const { pathFromURL } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
     TypeError,

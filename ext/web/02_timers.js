@@ -6,7 +6,6 @@
   const {
     ArrayPrototypePush,
     ArrayPrototypeShift,
-    Error,
     FunctionPrototypeCall,
     Map,
     MapPrototypeDelete,
@@ -22,25 +21,7 @@
     TypeError,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
-
-  // Shamelessly cribbed from extensions/fetch/11_streams.js
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  /**
-   * @param {unknown} cond
-   * @param {string=} msg
-   * @returns {asserts cond}
-   */
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
-    }
-  }
+  const { assert } = window.__bootstrap.infra;
 
   function opNow() {
     return core.opSync("op_now");

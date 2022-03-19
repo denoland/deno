@@ -6,7 +6,7 @@
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
-  const { assert } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     AggregateErrorPrototype,
     ArrayPrototypeFilter,
@@ -82,7 +82,7 @@
     "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
     "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
-    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"], 
+    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"],
     "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
     "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
     "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
