@@ -14,11 +14,14 @@ use deno_http::http_create_conn_resource;
 use deno_http::HttpRequestReader;
 use deno_http::HttpStreamResource;
 use deno_net::io::TcpStreamResource;
+use deno_net::io::UnixStreamResource;
 use deno_net::ops_tls::TlsStream;
 use deno_net::ops_tls::TlsStreamResource;
 use hyper::upgrade::Parts;
 use serde::Serialize;
 use tokio::net::TcpStream;
+#[cfg(unix)]
+use tokio::net::UnixStream;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -116,6 +119,24 @@ async fn op_http_upgrade(
           .borrow_mut()
           .resource_table
           .add(TcpStreamResource::new(tcp_stream.into_split())),
+        read_buf: read_buf.to_vec().into(),
+      });
+    }
+    Err(transport) => transport,
+  };
+  #[cfg(unix)]
+  let transport = match transport.downcast::<UnixStream>() {
+    Ok(Parts {
+      io: unix_stream,
+      read_buf,
+      ..
+    }) => {
+      return Ok(HttpUpgradeResult {
+        conn_type: "unix",
+        conn_rid: state
+          .borrow_mut()
+          .resource_table
+          .add(UnixStreamResource::new(unix_stream.into_split())),
         read_buf: read_buf.to_vec().into(),
       });
     }
