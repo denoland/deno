@@ -291,7 +291,7 @@
     trailingComma: false,
     compact: true,
     iterableLimit: 100,
-    showProxy: true,
+    showProxy: false,
     colors: false,
     getters: false,
     showHidden: false,
@@ -661,6 +661,11 @@
         if (ctxHas(value)) {
           return handleCircular(value, cyan);
         }
+
+        if (proxyDetails) {
+          return `Proxy ( ${inspectObject(proxyDetails[0], level, inspectOptions)} )`;
+        }
+
         return inspectObject(value, level, inspectOptions);
       default:
         // Not implemented is red
