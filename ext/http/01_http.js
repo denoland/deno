@@ -30,7 +30,7 @@
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
-  const { TcpConn } = window.__bootstrap.net;
+  const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
   const { Deferred } = window.__bootstrap.streams;
   const {
@@ -311,6 +311,8 @@
             conn = new TcpConn(res.connRid, remoteAddr, localAddr);
           } else if (res.connType === "tls") {
             conn = new TlsConn(res.connRid, remoteAddr, localAddr);
+          } else if (res.connType === "unix") {
+            conn = new UnixConn(res.connRid, remoteAddr, localAddr);
           } else {
             throw new Error("unreachable");
           }

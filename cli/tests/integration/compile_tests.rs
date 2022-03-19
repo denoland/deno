@@ -306,8 +306,14 @@ fn compile_with_file_exists_error() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  let expected_stderr =
-    format!("Could not compile: {:?} is a file.\n", &file_path);
+  let expected_stderr = format!(
+    concat!(
+      "Could not compile to file '{}' because its parent directory ",
+      "is an existing file. You can use the `--output <file-path>` flag to ",
+      "provide an alternative name.\n",
+    ),
+    file_path.display(),
+  );
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert!(stderr.contains(&expected_stderr));
 }
@@ -334,8 +340,14 @@ fn compile_with_directory_exists_error() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  let expected_stderr =
-    format!("Could not compile: {:?} is a directory.\n", &exe);
+  let expected_stderr = format!(
+    concat!(
+      "Could not compile to file '{}' because a directory exists with ",
+      "the same name. You can use the `--output <file-path>` flag to ",
+      "provide an alternative name."
+    ),
+    exe.display()
+  );
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert!(stderr.contains(&expected_stderr));
 }
@@ -363,8 +375,14 @@ fn compile_with_conflict_file_exists_error() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  let expected_stderr =
-    format!("Could not compile: cannot overwrite {:?}.\n", &exe);
+  let expected_stderr = format!(
+    concat!(
+      "Could not compile to file '{}' because the file already exists ",
+      "and cannot be overwritten. Please delete the existing file or ",
+      "use the `--output <file-path` flag to provide an alternative name."
+    ),
+    exe.display()
+  );
   let stderr = String::from_utf8(output.stderr).unwrap();
   dbg!(&stderr);
   assert!(stderr.contains(&expected_stderr));
