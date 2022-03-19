@@ -1307,7 +1307,7 @@ declare namespace Deno {
     ref(): void;
     /** **UNSTABLE**: new API, yet to be vetted.
      *
-     * Make the listener not blocking the event loop from finishing.
+     * Make the listener not block the event loop from finishing.
      */
     unref(): void;
   }
