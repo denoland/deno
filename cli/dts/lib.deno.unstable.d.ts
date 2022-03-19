@@ -1299,7 +1299,7 @@ declare namespace Deno {
   export interface Listener extends AsyncIterable<Conn> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
-     * Make the listener blocking the event loop from finishing.
+     * Make the listener block the event loop from finishing.
      *
      * Note: the listener blocks the event loop from finishing by default.
      * This method is only meaningful after `.unref()` is called.
