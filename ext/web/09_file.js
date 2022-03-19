@@ -341,14 +341,14 @@
     /**
      * @returns {Promise<string>}
      */
-    // deno-lint-ignore require-await
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      return core.opAsync(
-        "op_blob_read_all_text",
+      const buf = await core.opAsync(
+        "op_blob_read_all",
         this[_partIds],
         this.size,
       );
+      return core.encode(buf);
     }
 
     /**

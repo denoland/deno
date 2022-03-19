@@ -217,16 +217,6 @@ pub async fn op_blob_read_part(
 }
 
 #[op]
-pub async fn op_blob_read_all_text(
-  state: Rc<RefCell<deno_core::OpState>>,
-  ids: Vec<Uuid>,
-  size: usize,
-) -> Result<String, AnyError> {
-  let result = blob_read_all(state, ids, size).await?;
-  Ok(String::from_utf8_lossy(&result).to_string())
-}
-
-#[op]
 pub async fn op_blob_read_all(
   state: Rc<RefCell<deno_core::OpState>>,
   ids: Vec<Uuid>,
