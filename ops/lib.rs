@@ -60,8 +60,13 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
   // Generate wrapper
   quote! {
     #[allow(non_camel_case_types)]
+    #[doc="Auto-generated with deno_ops."]
+    #[doc=""]
+    #[doc="Use `op_name::decl()` to get op declarations"]
+    #[doc="for registering with a `deno_core::Extension`."]
     pub struct #name;
 
+    #[doc(hidden)]
     impl #name {
       pub fn name() -> &'static str {
         stringify!(#name)
