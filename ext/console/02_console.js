@@ -662,11 +662,7 @@
           return handleCircular(value, cyan);
         }
 
-        if (proxyDetails) {
-          return inspectObject(proxyDetails[0], level, inspectOptions);
-        }
-
-        return inspectObject(value, level, inspectOptions);
+        return inspectObject(value, level, inspectOptions, proxyDetails);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -1205,6 +1201,7 @@
     value,
     level,
     inspectOptions,
+    proxyDetails,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
       return String(value[customInspect](inspect));
@@ -1245,9 +1242,17 @@
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       return inspectDate(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
-      return inspectSet(value, level, inspectOptions);
+      return inspectSet(
+        proxyDetails ? proxyDetails[0] : value,
+        level,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
-      return inspectMap(value, level, inspectOptions);
+      return inspectMap(
+        proxyDetails ? proxyDetails[0] : value,
+        level,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
