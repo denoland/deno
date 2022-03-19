@@ -1614,7 +1614,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedSet() {
   mockConsole((console, out) => {
     const proxiedSet = new Proxy(new Set(), {});
     console.log(proxiedSet);
-    assertEquals(stripColor(out.toString()), "Set {}");
+    assertEquals(stripColor(out.toString()), "Set {}\n");
   });
 });
 
@@ -1623,7 +1623,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
   mockConsole((console, out) => {
     const proxiedMap = new Proxy(new Map(), {});
     console.log(proxiedMap);
-    assertEquals(stripColor(out.toString()), "Map {}");
+    assertEquals(stripColor(out.toString()), "Map {}\n");
   });
 });
 
