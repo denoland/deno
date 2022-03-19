@@ -291,7 +291,7 @@
     trailingComma: false,
     compact: true,
     iterableLimit: 100,
-    showProxy: false,
+    showProxy: true,
     colors: false,
     getters: false,
     showHidden: false,
