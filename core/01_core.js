@@ -27,7 +27,10 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-  const opIds = Object.keys(ops).reduce((a, v, i) => ({ ...a, [v]: i }), {});
+  const opIds = Object.keys(ops).reduce((a, v, i) => {
+    a[v] = i;
+    return a;
+  }, {});
 
   // Available on start due to bindings.
   const { refOp_, unrefOp_ } = window.Deno.core;

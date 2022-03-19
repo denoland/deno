@@ -279,9 +279,7 @@
     }
 
     send(p, addr) {
-      const remote = { hostname: "127.0.0.1", ...addr };
-
-      const args = { ...remote, rid: this.rid };
+      const args = { hostname: "127.0.0.1", ...addr, rid: this.rid };
       return opSend(args, p);
     }
 
