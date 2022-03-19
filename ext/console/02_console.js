@@ -663,7 +663,9 @@
         }
 
         if (proxyDetails) {
-          return `Proxy ( ${inspectObject(proxyDetails[0], level, inspectOptions)} )`;
+          return `Proxy ( ${
+            inspectObject(proxyDetails[0], level, inspectOptions)
+          } )`;
         }
 
         return inspectObject(value, level, inspectOptions);
