@@ -260,8 +260,13 @@ fn codegen_sync_ret(
     quote! {}
   } else {
     quote! {
-      let ret = #core::serde_v8::to_v8(scope, v).unwrap();
-      rv.set(ret);
+      match #core::serde_v8::to_v8(scope, v) {
+        Ok(ret) => rv.set(ret),
+        Err(err) => #core::_ops::throw_type_error(
+          scope,
+          format!("Error serializing return-: {}", #core::anyhow::Error::from(err)),
+        ),
+      };
     }
   };
 
