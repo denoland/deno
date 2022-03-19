@@ -348,7 +348,7 @@
         this[_partIds],
         this.size,
       );
-      return core.encode(buf);
+      return core.decode(buf);
     }
 
     /**
