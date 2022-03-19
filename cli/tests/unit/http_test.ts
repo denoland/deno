@@ -1832,7 +1832,7 @@ Deno.test(
       })();
 
       return new Response(null, { status: 101 });
-    }, { port: 4502, signal, keyFile, certFile });
+    }, { hostname: "localhost", port: 4502, signal, keyFile, certFile });
 
     await Promise.all([server, client()]);
   },
