@@ -1,0 +1,2 @@
+Worker 1
+Current Web worker don't have deno namespace but child wants it.

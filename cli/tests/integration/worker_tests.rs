@@ -14,6 +14,12 @@ itest!(worker_error {
   exit_code: 1,
 });
 
+itest!(worker_error_issue_13934 {
+  args: "run -A --unstable workers/issue_13934_main.js",
+  output: "workers/issue_13934_main.js.out",
+  exit_code: 70,
+});
+
 itest!(worker_nested_error {
   args: "run -A workers/worker_nested_error.ts",
   output: "workers/worker_nested_error.ts.out",
