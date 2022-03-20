@@ -17,8 +17,10 @@ for (const name of permissions) {
       [name]: false,
     },
     async fn() {
-      const status = await Deno.permissions.query({ name });
-      assertEquals(status.state, "prompt");
+      for await (const n of permissions) {
+        const status = await Deno.permissions.query({ name: n });
+        assertEquals(status.state, "prompt");
+      }
     },
   });
 
@@ -28,8 +30,14 @@ for (const name of permissions) {
       [name]: true,
     },
     async fn() {
-      const status = await Deno.permissions.query({ name });
-      assertEquals(status.state, "granted");
+      for await (const n of permissions) {
+        const status = await Deno.permissions.query({ name: n });
+        if (n === name) {
+          assertEquals(status.state, "granted");
+        } else {
+          assertEquals(status.state, "prompt");
+        }
+      }
     },
   });
 }
