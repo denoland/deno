@@ -59,7 +59,7 @@ pub fn op_void_sync() -> Result<(), Error> {
 }
 
 #[op]
-pub async fn op_void_async(_state: Rc<RefCell<OpState>>) -> Result<(), Error> {
+pub async fn op_void_async() -> Result<(), Error> {
   Ok(())
 }
 
