@@ -12,6 +12,7 @@
   const {
     ArrayPrototypeIncludes,
     Map,
+    MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
     RegExpPrototypeTest,
@@ -207,5 +208,51 @@
     return serialization;
   }
 
-  window.__bootstrap.mimesniff = { parseMimeType, essence, serializeMimeType };
+  /**
+   * Part of the Fetch spec's "extract a MIME type" algorithm
+   * (https://fetch.spec.whatwg.org/#concept-header-extract-mime-type).
+   * @param {string[] | null} headerValues The result of getting, decoding and
+   * splitting the "Content-Type" header.
+   * @returns {MimeType | null}
+   */
+  function extractMimeType(headerValues) {
+    if (headerValues === null) return null;
+
+    let charset = null;
+    let essence_ = null;
+    let mimeType = null;
+    for (const value of headerValues) {
+      const temporaryMimeType = parseMimeType(value);
+      if (
+        temporaryMimeType === null ||
+        essence(temporaryMimeType) == "*/*"
+      ) {
+        continue;
+      }
+      mimeType = temporaryMimeType;
+      if (essence(mimeType) !== essence_) {
+        charset = null;
+        const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
+        if (newCharset !== undefined) {
+          charset = newCharset;
+        }
+        essence_ = essence(mimeType);
+      } else {
+        if (
+          !MapPrototypeHas(mimeType.parameters, "charset") &&
+          charset !== null
+        ) {
+          MapPrototypeSet(mimeType.parameters, "charset", charset);
+        }
+      }
+    }
+    return mimeType;
+  }
+
+  window.__bootstrap.mimesniff = {
+    parseMimeType,
+    essence,
+    serializeMimeType,
+    extractMimeType,
+  };
 })(this);
