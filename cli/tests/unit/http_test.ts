@@ -1180,7 +1180,7 @@ const decoder = new TextDecoder();
 
 Deno.test({
   name: "http server compresses body",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1231,7 +1231,7 @@ Deno.test({
 
 Deno.test({
   name: "http server doesn't compress small body",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1282,7 +1282,7 @@ Deno.test({
 
 Deno.test({
   name: "http server respects accept-encoding weights",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1336,7 +1336,7 @@ Deno.test({
 
 Deno.test({
   name: "http server augments vary header",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1387,7 +1387,7 @@ Deno.test({
 
 Deno.test({
   name: "http server weakens etag header",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1444,7 +1444,7 @@ Deno.test({
 
 Deno.test({
   name: "http server passes through weak etag header",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1501,7 +1501,7 @@ Deno.test({
 
 Deno.test({
   name: "http server doesn't compress body when no-transform is set",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1555,7 +1555,7 @@ Deno.test({
 
 Deno.test({
   name: "http server doesn't compress body when content-range is set",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1609,7 +1609,7 @@ Deno.test({
 
 Deno.test({
   name: "http server doesn't compress streamed bodies",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
@@ -1675,7 +1675,7 @@ Deno.test({
 
 Deno.test({
   name: "http server updates content-length header if compression is applied",
-  permissions: { net: true },
+  permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
