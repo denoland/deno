@@ -970,7 +970,7 @@ Deno.test(function fetchResponseConstructorNullBody() {
 });
 
 Deno.test(function fetchResponseConstructorInvalidStatus() {
-  const invalidStatus = [101, 600, 199, null, "", NaN];
+  const invalidStatus = [100, 600, 199, null, "", NaN];
 
   for (const status of invalidStatus) {
     try {
@@ -980,7 +980,11 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       fail(`Invalid status: ${status}`);
     } catch (e) {
       assert(e instanceof RangeError);
-      assert(e.message.endsWith("is outside the range [200, 599]."));
+      assert(
+        e.message.endsWith(
+          "is not equal to 101 and outside the range [200, 599].",
+        ),
+      );
     }
   }
 });

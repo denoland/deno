@@ -265,9 +265,9 @@
         context: "Argument 2",
       });
 
-      if (init.status < 200 || init.status > 599) {
+      if ((init.status < 200 || init.status > 599) && init.status != 101) {
         throw new RangeError(
-          `The status provided (${init.status}) is outside the range [200, 599].`,
+          `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
         );
       }
 

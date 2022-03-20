@@ -1,14 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use core::ptr::NonNull;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
-use deno_core::op_sync_cb;
+use deno_core::op;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -30,13 +29,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
+use std::mem::MaybeUninit;
 use std::os::raw::c_char;
 use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
-use core::ptr::NonNull;
-use std::mem::MaybeUninit;
 
 pub struct Unstable(pub bool);
 
@@ -140,39 +138,37 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn init<P: FfiPermissions + 'static>(unstable: bool, isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>) -> Extension {
+pub fn init<P: FfiPermissions + 'static>(
+  unstable: bool,
+  isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/ffi",
       "00_ffi.js",
     ))
     .ops(vec![
-      ("op_ffi_load", op_sync(op_ffi_load::<P>)),
-      ("op_ffi_get_static", op_sync(op_ffi_get_static)),
-      ("op_ffi_call", op_sync(op_ffi_call)),
-      ("op_ffi_call_cb", op_sync_cb(op_ffi_call_cb)),
-      ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
-      ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
-      (
-        "op_ffi_call_ptr_nonblocking",
-        op_async(op_ffi_call_ptr_nonblocking),
-      ),
-      ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
-      ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
-      ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read::<P>)),
-      ("op_ffi_read_u8", op_sync(op_ffi_read_u8::<P>)),
-      ("op_ffi_read_i8", op_sync(op_ffi_read_i8::<P>)),
-      ("op_ffi_read_u16", op_sync(op_ffi_read_u16::<P>)),
-      ("op_ffi_read_i16", op_sync(op_ffi_read_i16::<P>)),
-      ("op_ffi_read_u32", op_sync(op_ffi_read_u32::<P>)),
-      ("op_ffi_read_i32", op_sync(op_ffi_read_i32::<P>)),
-      ("op_ffi_read_u64", op_sync(op_ffi_read_u64::<P>)),
-      ("op_ffi_read_f32", op_sync(op_ffi_read_f32::<P>)),
-      ("op_ffi_read_f64", op_sync(op_ffi_read_f64::<P>)),
+      op_ffi_call_cb::decl(),
+      op_ffi_load::decl::<P>(),
+      op_ffi_get_static::decl(),
+      op_ffi_call::decl(),
+      op_ffi_call_nonblocking::decl(),
+      op_ffi_call_ptr::decl(),
+      op_ffi_call_ptr_nonblocking::decl(),
+      op_ffi_ptr_of::decl::<P>(),
+      op_ffi_buf_copy_into::decl::<P>(),
+      op_ffi_cstr_read::decl::<P>(),
+      op_ffi_read_u8::decl::<P>(),
+      op_ffi_read_i8::decl::<P>(),
+      op_ffi_read_u16::decl::<P>(),
+      op_ffi_read_i16::decl::<P>(),
+      op_ffi_read_u32::decl::<P>(),
+      op_ffi_read_i32::decl::<P>(),
+      op_ffi_read_u64::decl::<P>(),
+      op_ffi_read_f32::decl::<P>(),
+      op_ffi_read_f64::decl::<P>(),
     ])
-    .event_loop_middleware(|state, cx| {
-      false
-    })
+    .event_loop_middleware(|state, cx| false)
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
       state.put(Unstable(unstable));
@@ -498,10 +494,10 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
   }
 }
 
+#[op]
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -595,7 +591,7 @@ fn ffi_call(
   symbol: &Symbol,
   // For callbacks
   functions: Vec<v8::Local<v8::Function>>,
-  mut callback_context: Option<(&mut v8::HandleScope, *mut v8::OwnedIsolate)>,
+  mut callback_context: Option<*mut v8::OwnedIsolate>,
 ) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -656,13 +652,11 @@ fn ffi_call(
   if !offsets.is_empty() {
     for (cb, offset) in functions.into_iter().zip(offsets) {
       // Grab the persistent for callback & current scope.
-      let (scope, isolate_ptr) = callback_context.as_mut().unwrap();
-      let global = v8::Global::new(scope, cb);
-      let ctx = scope.get_current_context();
-      let ctx_global = v8::Global::new(scope, ctx);
+      let isolate_ptr = callback_context.as_mut().unwrap();
+      let global = v8::Global::new(unsafe { &mut **isolate_ptr }, cb);
 
       // NOTE: `into_raw` leaks.
-      let cb_info = CallbackInfo::new(*isolate_ptr, global.clone().into_raw(), ctx_global.clone().into_raw());
+      let cb_info = CallbackInfo::new(*isolate_ptr, global.into_raw());
       let signature = &symbol.parameter_types[offset];
       let (mut info, cif) = match signature {
         NativeType::Function {
@@ -745,20 +739,14 @@ fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
 pub struct CallbackInfo {
   isolate_ptr: *mut v8::OwnedIsolate,
   cb: NonNull<v8::Function>,
-  ctx: NonNull<v8::Context>,
 }
 
 impl CallbackInfo {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     cb: NonNull<v8::Function>,
-    ctx: NonNull<v8::Context>,
   ) -> Self {
-    Self {
-      isolate_ptr,
-      cb,
-      ctx,
-    }
+    Self { isolate_ptr, cb }
   }
 }
 
@@ -770,13 +758,14 @@ unsafe extern "C" fn deno_ffi_callback(
 ) {
   let isolate: &mut v8::OwnedIsolate = unsafe { &mut *info.isolate_ptr };
   let global = v8::Global::from_raw(isolate, info.cb);
-  let context = v8::Global::from_raw(isolate, info.ctx);
 
-  let scope = &mut v8::HandleScope::with_context(isolate, context);
+  let scope = &mut v8::HandleScope::new(isolate);
+  let ctx = v8::Context::new(scope);
+  let scope = &mut v8::HandleScope::with_context(unsafe { &mut *info.isolate_ptr }, ctx);
 
   let func = global.open(scope).to_object(scope).unwrap();
   let func = v8::Local::<v8::Function>::try_from(func).unwrap();
-  
+
   let result = result as *mut c_void;
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
   let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
@@ -868,44 +857,50 @@ unsafe extern "C" fn deno_ffi_callback(
 
 /// A variant of `op_ffi_call` that has the ability to
 /// pass the given callback to the symbol.
+#[op]
 fn op_ffi_call_cb(
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
-  scope: &mut v8::HandleScope,
-  cb: Vec<v8::Local<v8::Function>>,
+  cb: Vec<serde_v8::Value>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
     .get::<DynamicLibraryResource>(args.rid)?;
 
   let isolate_ptr = state.borrow::<*mut v8::OwnedIsolate>();
-  
+
   let symbol = resource
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
+    
 
-  ffi_call(args, symbol, cb, Some((scope, *isolate_ptr)))
+  let fns = cb.iter()
+    .map(|value| {
+      let v8_value = value.v8_value;
+      v8::Local::<v8::Function>::try_from(v8_value)
+      .unwrap()
+    })
+    .collect();
+  ffi_call(args, symbol, fns, Some(*isolate_ptr))
 }
 
-fn op_ffi_call_ptr(
-  state: &mut deno_core::OpState,
-  args: FfiCallPtrArgs,
-  _: (),
-) -> Result<Value, AnyError> {
+#[op]
+fn op_ffi_call_ptr(args: FfiCallPtrArgs) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
   ffi_call(args.into(), &symbol, vec![], None)
 }
 
+#[op]
 async fn op_ffi_call_ptr_nonblocking(
-  _state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol, vec![], None))
-    .await
-    .unwrap()
+  tokio::task::spawn_blocking(move || {
+    ffi_call(args.into(), &symbol, vec![], None)
+  })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -916,10 +911,10 @@ struct FfiGetArgs {
   r#type: NativeType,
 }
 
+#[op]
 fn op_ffi_get_static(
   state: &mut deno_core::OpState,
   args: FfiGetArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
@@ -970,14 +965,14 @@ fn op_ffi_get_static(
     NativeType::Pointer => {
       json!(U32x2::from(data_ptr as *const u8 as u64))
     }
-    NativeType::Function { .. } => unreachable!()
+    NativeType::Function { .. } => unreachable!(),
   })
 }
 
+#[op]
 fn op_ffi_call(
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
@@ -987,15 +982,15 @@ fn op_ffi_call(
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
-  
+
   ffi_call(args, symbol, vec![], None)
 }
 
 /// A non-blocking FFI call.
+#[op]
 async fn op_ffi_call_nonblocking(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()
@@ -1012,10 +1007,10 @@ async fn op_ffi_call_nonblocking(
     .unwrap()
 }
 
+#[op]
 fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
   buf: ZeroCopyBuf,
-  _: (),
 ) -> Result<U32x2, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1026,10 +1021,10 @@ where
   Ok(U32x2::from(buf.as_ptr() as u64))
 }
 
+#[op]
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
-  _: (),
 ) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1048,10 +1043,10 @@ where
   }
 }
 
+#[op]
 fn op_ffi_cstr_read<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<String, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1063,10 +1058,10 @@ where
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
+#[op]
 fn op_ffi_read_u8<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u8, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1077,10 +1072,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u8) })
 }
 
+#[op]
 fn op_ffi_read_i8<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i8, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1091,10 +1086,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i8) })
 }
 
+#[op]
 fn op_ffi_read_u16<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u16, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1105,10 +1100,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u16) })
 }
 
+#[op]
 fn op_ffi_read_i16<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i16, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1119,10 +1114,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i16) })
 }
 
+#[op]
 fn op_ffi_read_u32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1133,10 +1128,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u32) })
 }
 
+#[op]
 fn op_ffi_read_i32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1147,10 +1142,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i32) })
 }
 
+#[op]
 fn op_ffi_read_u64<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<U32x2, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1163,10 +1158,10 @@ where
   }))
 }
 
+#[op]
 fn op_ffi_read_f32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<f32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1177,10 +1172,10 @@ where
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f32) })
 }
 
+#[op]
 fn op_ffi_read_f64<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<f64, AnyError>
 where
   FP: FfiPermissions + 'static,

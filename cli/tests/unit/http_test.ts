@@ -5,6 +5,7 @@ import {
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { serve, serveTls } from "../../../test_util/std/http/server.ts";
 import {
   assert,
   assertEquals,
@@ -1736,6 +1737,163 @@ Deno.test({
 
     await Promise.all([server(), client()]);
   },
+});
+
+Deno.test("upgradeHttp tcp", async () => {
+  async function client() {
+    const tcpConn = await Deno.connect({ port: 4501 });
+    await tcpConn.write(
+      new TextEncoder().encode(
+        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
+      ),
+    );
+    setTimeout(async () => {
+      await tcpConn.write(
+        new TextEncoder().encode(
+          "bla bla bla\nbla bla\nbla\n",
+        ),
+      );
+      tcpConn.close();
+    }, 500);
+  }
+
+  const abortController = new AbortController();
+  const signal = abortController.signal;
+
+  const server = serve((req) => {
+    const p = Deno.upgradeHttp(req);
+
+    (async () => {
+      const [conn, firstPacket] = await p;
+      const buf = new Uint8Array(1024);
+      const firstPacketText = new TextDecoder().decode(firstPacket);
+      assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
+      const n = await conn.read(buf);
+      assert(n != null);
+      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+      abortController.abort();
+      conn.close();
+    })();
+
+    return new Response(null, { status: 101 });
+  }, { port: 4501, signal });
+
+  await Promise.all([server, client()]);
+});
+
+Deno.test(
+  "upgradeHttp tls",
+  { permissions: { net: true, read: true } },
+  async () => {
+    async function client() {
+      const caCerts = [
+        await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem"),
+      ];
+      const tlsConn = await Deno.connectTls({
+        hostname: "localhost",
+        port: 4502,
+        caCerts,
+      });
+      await tlsConn.write(
+        new TextEncoder().encode(
+          "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
+        ),
+      );
+      setTimeout(async () => {
+        await tlsConn.write(
+          new TextEncoder().encode(
+            "bla bla bla\nbla bla\nbla\n",
+          ),
+        );
+        tlsConn.close();
+      }, 500);
+    }
+
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+    const certFile = "cli/tests/testdata/tls/localhost.crt";
+    const keyFile = "cli/tests/testdata/tls/localhost.key";
+
+    const server = serveTls((req) => {
+      const p = Deno.upgradeHttp(req);
+
+      (async () => {
+        const [conn, firstPacket] = await p;
+        const buf = new Uint8Array(1024);
+        const firstPacketText = new TextDecoder().decode(firstPacket);
+        assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
+        const n = await conn.read(buf);
+        assert(n != null);
+        const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+        assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+        abortController.abort();
+        conn.close();
+      })();
+
+      return new Response(null, { status: 101 });
+    }, { hostname: "localhost", port: 4502, signal, keyFile, certFile });
+
+    await Promise.all([server, client()]);
+  },
+);
+
+Deno.test("upgradeHttp unix", {
+  permissions: { read: true, write: true },
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const filePath = Deno.makeTempFileSync();
+  const promise = deferred();
+
+  async function client() {
+    const unixConn = await Deno.connect({ path: filePath, transport: "unix" });
+    await unixConn.write(
+      new TextEncoder().encode(
+        "CONNECT server.example.com:80 HTTP/1.1\r\n\r\nbla bla bla\nbla bla\nbla\n",
+      ),
+    );
+    setTimeout(async () => {
+      await unixConn.write(
+        new TextEncoder().encode(
+          "bla bla bla\nbla bla\nbla\n",
+        ),
+      );
+      unixConn.close();
+      promise.resolve();
+    }, 500);
+    await promise;
+  }
+
+  const server = (async () => {
+    const listener = Deno.listen({ path: filePath, transport: "unix" });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      const maybeReq = await httpConn.nextRequest();
+      assert(maybeReq);
+      const { request, respondWith } = maybeReq;
+      const p = Deno.upgradeHttp(request);
+
+      const promise = (async () => {
+        const [conn, firstPacket] = await p;
+        const buf = new Uint8Array(1024);
+        const firstPacketText = new TextDecoder().decode(firstPacket);
+        assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
+        const n = await conn.read(buf);
+        assert(n != null);
+        const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+        assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+        conn.close();
+      })();
+
+      const resp = new Response(null, { status: 101 });
+      await respondWith(resp);
+      await promise;
+      httpConn.close();
+      break;
+    }
+  })();
+
+  await Promise.all([server, client()]);
 });
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
