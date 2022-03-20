@@ -397,7 +397,7 @@ impl WebWorker {
 
     // Runtime ops that are always initialized for WebWorkers
     let runtime_exts = vec![
-      ops::web_worker::init(),
+      ops::web_worker::init(options.use_deno_namespace),
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),

@@ -27,6 +27,7 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
 use std::thread::JoinHandle;
+use crate::ops::web_worker::UseDenoNamespace;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
@@ -156,9 +157,23 @@ fn op_create_worker(
     None
   };
   let args_name = args.name;
+
+  let parent_use_deno_namespace = if state.has::<UseDenoNamespace>() {
+    state.take::<UseDenoNamespace>().0
+  } else {
+    // Main worker always have Deno namespace.
+    true
+  };
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno.namespace");
+  }
+  if !parent_use_deno_namespace && use_deno_namespace {
+    // current web worker don't have deno namespace but child wants it.
+    eprintln!("Current Web worker don't have deno namespace but child wants it.");
+    // TODO(CGQAQ): change this to proper exit code
+    std::process::exit(70);
+
   }
   let worker_type = args.worker_type;
   if let WebWorkerType::Classic = worker_type {
