@@ -30,9 +30,6 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
-    MapPrototypeHas,
-    MapPrototypeGet,
-    MapPrototypeSet,
     ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
