@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
 
-pub struct UseDenoNamespace (pub bool);
+pub struct UseDenoNamespace(pub bool);
 
 pub fn init(use_deno_namespace: bool) -> Extension {
   Extension::builder()
@@ -29,8 +29,8 @@ pub fn init(use_deno_namespace: bool) -> Extension {
       op_worker_sync_fetch::decl(),
     ])
     .state(move |state| {
-        state.put(UseDenoNamespace(use_deno_namespace));
-        Ok(())
+      state.put(UseDenoNamespace(use_deno_namespace));
+      Ok(())
     })
     .build()
 }
