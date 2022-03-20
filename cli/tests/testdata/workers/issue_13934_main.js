@@ -1,5 +1,5 @@
 // main.js
 new Worker(
-  new URL("./worker1.js", import.meta.url).href,
+  new URL("./issue_13934_worker_1.js", import.meta.url).href,
   { type: "module" },
 );
