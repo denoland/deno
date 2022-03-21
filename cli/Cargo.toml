@@ -49,7 +49,7 @@ deno_ast = { version = "0.13.0", features = ["bundler", "cjs", "codegen", "dep_g
 deno_core = { version = "0.124.0", path = "../core" }
 deno_doc = "0.33.0"
 deno_graph = "0.25.0"
-deno_lint = { version = "0.27.0", features = ["docs"] }
+deno_lint = { version = "0.28.0", features = ["docs"] }
 deno_runtime = { version = "0.50.0", path = "../runtime" }
 deno_task_shell = "0.1.9"
 
@@ -67,7 +67,7 @@ dprint-plugin-markdown = "=0.12.2"
 dprint-plugin-typescript = "=0.65.1"
 encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
-eszip = "=0.17.0"
+eszip = "=0.18.0"
 fancy-regex = "=0.7.1"
 http = "=0.2.4"
 import_map = "=0.9.0"
