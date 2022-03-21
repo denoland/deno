@@ -1782,7 +1782,7 @@ fn lsp_hover_dependency() {
   );
 }
 
-// This tests for a regression covered by denoland/deno#12753 where the lsp_types was
+// This tests for a regression covered by denoland/deno#12753 where the lsp was
 // unable to resolve dependencies when there was an invalid syntax in the module
 #[test]
 fn lsp_hover_deps_preserved_when_invalid_parse() {

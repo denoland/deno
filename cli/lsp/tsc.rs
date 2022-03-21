@@ -108,7 +108,7 @@ impl TsServer {
         let mut started = false;
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp_types here
+            // TODO(@kitsonk) need to reflect the debug state of the lsp here
             start(&mut ts_runtime, false, &state_snapshot)
               .expect("could not start tsc");
             started = true;
@@ -163,7 +163,7 @@ struct AssetDocumentInner {
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
 
-/// An lsp_types representation of an asset in memory, that has either been retrieved
+/// An lsp representation of an asset in memory, that has either been retrieved
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
 pub struct AssetDocument(Arc<AssetDocumentInner>);
@@ -2124,7 +2124,7 @@ impl CompletionEntry {
     let use_code_snippet = settings.complete_function_calls
       && (kind == Some(lsp_types::CompletionItemKind::FUNCTION)
         || kind == Some(lsp_types::CompletionItemKind::METHOD));
-    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp_types-types/issues/204
+    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp-types/issues/204
     let _commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
     let range = self.replacement_span.clone();
@@ -2547,7 +2547,7 @@ fn op_exists(
   let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
-  // forrest for the trees as well as it compounds any lsp_types performance
+  // forrest for the trees as well as it compounds any lsp performance
   // challenges, opening a single document in the editor causes some 3k worth
   // of op_exists requests... :omg:
   let specifier = match state.normalize_specifier(&args.specifier) {

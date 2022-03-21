@@ -87,7 +87,7 @@ pub(crate) struct Inner {
   /// A representation of metadata associated with specifiers in the DENO_DIR
   /// which is used by the language server
   cache_metadata: cache::CacheMetadata,
-  /// The lsp_types client that this lsp_types server is connected to.
+  /// The LSP client that this LSP server is connected to.
   pub(crate) client: Client,
   /// Configuration information.
   pub(crate) config: Config,
@@ -115,13 +115,13 @@ pub(crate) struct Inner {
   pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
-  /// A collection of measurements which instrument that performance of the lsp_types.
+  /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
   pub(crate) ts_server: Arc<TsServer>,
-  /// A map of specifiers and URLs used to translate over the lsp_types.
+  /// A map of specifiers and URLs used to translate over the LSP.
   pub(crate) url_map: urls::LspUrlMap,
 }
 
@@ -2126,10 +2126,6 @@ impl Inner {
     }
   }
 
-  // NOTE(CGQAQ): tower-lsp don't have [request_else](https://docs.rs/lspower/1.5.0/src/lspower/lib.rs.html#758)
-  //              use this instead. we don't have method instead uses params.command as old `method` param.
-  //              and instead of old params which is Option<Value>, we now use params.arguments which is
-  //              Vec<Value>, just use the first element as old params is enough.
   async fn execute_command(
     &mut self,
     params: ExecuteCommandParams,
@@ -2740,7 +2736,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.0.lock().await.rename(params).await
   }
 
-  // TODO(CGQAQ): tower_lsp don't have this method, should I just remove this one?
   async fn execute_command(
     &self,
     params: ExecuteCommandParams,
@@ -2784,7 +2779,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 }
 
-// These are implementations of custom commands supported by the lsp_types
+// These are implementations of custom commands supported by the LSP
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.

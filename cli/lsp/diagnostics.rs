@@ -717,7 +717,7 @@ impl DenoDiagnostic {
     }
   }
 
-  /// Given a reference to the code from an lsp_types diagnostic, determine if the
+  /// Given a reference to the code from an LSP diagnostic, determine if the
   /// diagnostic is fixable or not
   pub(crate) fn is_fixable(code: &Option<lsp_types::NumberOrString>) -> bool {
     if let Some(lsp_types::NumberOrString::String(code)) = code {
