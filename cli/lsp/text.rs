@@ -12,7 +12,7 @@ use std::ops::RangeBounds;
 use text_size::TextRange;
 use text_size::TextSize;
 use tower_lsp::jsonrpc;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::TextEdit;
 
 fn partition_point<T, P>(slice: &[T], mut predicate: P) -> usize
