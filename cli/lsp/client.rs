@@ -8,7 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
 use crate::lsp::repl::get_repl_workspace_settings;

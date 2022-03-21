@@ -25,7 +25,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
