@@ -2126,13 +2126,20 @@ impl Inner {
     }
   }
 
-  async fn request_else(
+  // NOTE(CGQAQ): tower-lsp don't have [request_else](https://docs.rs/lspower/1.5.0/src/lspower/lib.rs.html#758)
+  //              use this instead. we don't have method instead uses params.command as old `method` param.
+  //              and instead of old params which is Option<Value>, we now use params.arguments which is
+  //              Vec<Value>, just use the first element as old params is enough.
+  async fn execute_command(
     &mut self,
-    method: &str,
-    params: Option<Value>,
+    params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
-    match method {
-      lsp_custom::CACHE_REQUEST => match params.map(serde_json::from_value) {
+    match params.command.as_str() {
+      lsp_custom::CACHE_REQUEST => match params
+        .arguments
+        .get(0)
+        .map(|params| serde_json::from_value(params.clone()))
+      {
         Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
@@ -2142,7 +2149,11 @@ impl Inner {
         self.reload_import_registries().await
       }
       lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
-        match params.map(serde_json::from_value) {
+        match params
+          .arguments
+          .get(0)
+          .map(|params| serde_json::from_value(params.clone()))
+        {
           Some(Ok(params)) => Ok(Some(
             serde_json::to_value(self.virtual_text_document(params).await?)
               .map_err(|err| {
@@ -2158,7 +2169,10 @@ impl Inner {
         }
       }
       _ => {
-        error!("Got a {} request, but no handler is defined", method);
+        error!(
+          "Got a {} request, but no handler is defined",
+          params.command
+        );
         Err(LspError::method_not_found())
       }
     }
@@ -2726,13 +2740,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.0.lock().await.rename(params).await
   }
 
-  // async fn request_else(
-  //   &self,
-  //   method: &str,
-  //   params: Option<Value>,
-  // ) -> LspResult<Option<Value>> {
-  //   self.0.lock().await.request_else(method, params).await
-  // }
+  // TODO(CGQAQ): tower_lsp don't have this method, should I just remove this one?
+  async fn execute_command(
+    &self,
+    params: ExecuteCommandParams,
+  ) -> LspResult<Option<Value>> {
+    self.0.lock().await.execute_command(params).await
+  }
 
   async fn selection_range(
     &self,
