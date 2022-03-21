@@ -36,7 +36,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
