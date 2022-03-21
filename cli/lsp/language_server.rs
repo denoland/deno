@@ -117,8 +117,6 @@ pub(crate) struct Inner {
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
-  /// Root provided by the initialization parameters.
-  root_uri: Option<Url>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
@@ -173,7 +171,6 @@ impl Inner {
       maybe_import_map_uri: None,
       module_registries,
       module_registries_location,
-      root_uri: None,
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -306,10 +303,10 @@ impl Inner {
     let maybe_config = workspace_settings.config;
     if let Some(config_str) = &maybe_config {
       if !config_str.is_empty() {
-        lsp_log!("Setting TypeScript configuration from: \"{}\"", config_str);
+        lsp_log!("Setting Deno configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
-        } else if let Some(root_uri) = &self.root_uri {
+        } else if let Some(root_uri) = &self.config.root_uri {
           root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
@@ -331,7 +328,7 @@ impl Inner {
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
-    if let Some(root_uri) = &self.root_uri {
+    if let Some(root_uri) = &self.config.root_uri {
       let root_path = fs_util::specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
       let maybe_config =
@@ -392,7 +389,7 @@ impl Inner {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
-      root_uri: self.root_uri.clone(),
+      root_uri: self.config.root_uri.clone(),
     })
   }
 
@@ -405,7 +402,7 @@ impl Inner {
       lsp_log!("Setting cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
-      } else if let Some(root_uri) = &self.root_uri {
+      } else if let Some(root_uri) = &self.config.root_uri {
         let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
@@ -434,6 +431,7 @@ impl Inner {
       let module_registries_location = dir.root.join(REGISTRIES_PATH);
       let workspace_settings = self.config.get_workspace_settings();
       let maybe_root_path = self
+        .config
         .root_uri
         .as_ref()
         .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
@@ -477,7 +475,7 @@ impl Inner {
         Some(Url::parse(&import_map_str).map_err(|_| {
           anyhow!("Bad data url for import map: {}", import_map_str)
         })?)
-      } else if let Some(root_uri) = &self.root_uri {
+      } else if let Some(root_uri) = &self.config.root_uri {
         let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let import_map_path = root_path.join(&import_map_str);
         Some(Url::from_file_path(import_map_path).map_err(|_| {
@@ -554,6 +552,7 @@ impl Inner {
     let mark = self.performance.mark("update_registries", None::<()>);
     let workspace_settings = self.config.get_workspace_settings();
     let maybe_root_path = self
+      .config
       .root_uri
       .as_ref()
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
@@ -687,7 +686,7 @@ impl Inner {
 
     {
       // sometimes this root uri may not have a trailing slash, so force it to
-      self.root_uri = params
+      self.config.root_uri = params
         .root_uri
         .map(|s| self.url_map.normalize_url(&s))
         .map(fs_util::ensure_directory_specifier);
@@ -698,6 +697,12 @@ impl Inner {
           LspError::internal_error()
         })?;
       }
+      self.config.workspace_folders = params.workspace_folders.map(|folders| {
+        folders
+          .into_iter()
+          .map(|folder| (self.url_map.normalize_url(&folder.uri), folder))
+          .collect()
+      });
       self.config.update_capabilities(&params.capabilities);
     }
 
@@ -774,6 +779,7 @@ impl Inner {
         warn!("Client errored on capabilities.\n{}", err);
       }
     }
+    self.config.update_enabled_paths(self.client.clone()).await;
 
     lsp_log!("Server ready.");
   }
@@ -949,6 +955,34 @@ impl Inner {
       self.diagnostics_server.invalidate_all();
       self.send_diagnostics_update();
     }
+    self.performance.measure(mark);
+  }
+
+  async fn did_change_workspace_folders(
+    &mut self,
+    params: DidChangeWorkspaceFoldersParams,
+  ) {
+    let mark = self
+      .performance
+      .mark("did_change_workspace_folders", Some(&params));
+    let mut workspace_folders = params
+      .event
+      .added
+      .into_iter()
+      .map(|folder| (self.url_map.normalize_url(&folder.uri), folder))
+      .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
+    if let Some(current_folders) = &self.config.workspace_folders {
+      for (specifier, folder) in current_folders {
+        if !params.event.removed.is_empty()
+          && params.event.removed.iter().any(|f| f.uri == folder.uri)
+        {
+          continue;
+        }
+        workspace_folders.push((specifier.clone(), folder.clone()));
+      }
+    }
+
+    self.config.workspace_folders = Some(workspace_folders);
     self.performance.measure(mark);
   }
 
@@ -1896,6 +1930,7 @@ impl Inner {
       })?;
 
     let maybe_root_path_owned = self
+      .config
       .root_uri
       .as_ref()
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
@@ -1944,6 +1979,7 @@ impl Inner {
       })?;
 
     let maybe_root_path_owned = self
+      .config
       .root_uri
       .as_ref()
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
@@ -1999,6 +2035,7 @@ impl Inner {
 
     let response = if let Some(one_or_many) = maybe_one_or_many {
       let maybe_root_path_owned = self
+        .config
         .root_uri
         .as_ref()
         .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
@@ -2390,7 +2427,7 @@ impl lspower::LanguageServer for LanguageServer {
       if document.is_diagnosable() {
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
-        // don't send diagnotics yet if we don't have the specifier settings
+        // don't send diagnostics yet if we don't have the specifier settings
         if has_specifier_settings {
           inner.send_diagnostics_update();
         }
@@ -2467,7 +2504,8 @@ impl lspower::LanguageServer for LanguageServer {
       )
     };
 
-    // start retreiving all the specifiers' settings outside the lock on its own time
+    // start retrieving all the specifiers' settings outside the lock on its own
+    // time
     if let Some(specifiers) = specifiers {
       let language_server = self.clone();
       let client = client.clone();
@@ -2494,6 +2532,15 @@ impl lspower::LanguageServer for LanguageServer {
               }
             }
           }
+        }
+        let mut ls = language_server.0.lock().await;
+        if ls.config.update_enabled_paths(client).await {
+          ls.diagnostics_server.invalidate_all();
+          // this will be called in the inner did_change_configuration, but the
+          // problem then becomes, if there was a change, the snapshot used
+          // will be an out of date one, so we will call it again here if the
+          // workspace folders have been touched
+          ls.send_diagnostics_update();
         }
       });
     }
@@ -2531,6 +2578,25 @@ impl lspower::LanguageServer for LanguageServer {
     params: DidChangeWatchedFilesParams,
   ) {
     self.0.lock().await.did_change_watched_files(params).await
+  }
+
+  async fn did_change_workspace_folders(
+    &self,
+    params: DidChangeWorkspaceFoldersParams,
+  ) {
+    let client = {
+      let mut inner = self.0.lock().await;
+      inner.did_change_workspace_folders(params).await;
+      inner.client.clone()
+    };
+    let language_server = self.clone();
+    tokio::spawn(async move {
+      let mut ls = language_server.0.lock().await;
+      if ls.config.update_enabled_paths(client).await {
+        ls.diagnostics_server.invalidate_all();
+        ls.send_diagnostics_update();
+      }
+    });
   }
 
   async fn document_symbol(
