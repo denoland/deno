@@ -31,7 +31,7 @@ where
 }
 
 fn load_fixture_str(path: &str) -> String {
-  let fixtures_path = testdata_path().join("lsp_types");
+  let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   fs::read_to_string(path).unwrap()
 }
