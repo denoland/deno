@@ -932,20 +932,20 @@ fn lsp_hover_asset() {
       }
     }),
   );
-  let (_, maybe_error) = write_custom_command(
-    &mut client,
-    "textDocument/definition",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": {
-        "line": 0,
-        "character": 14
-      }
-    }),
-  )
-  .unwrap();
+  let (_, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "textDocument/definition",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 14
+        }
+      }),
+    )
+    .unwrap();
   assert!(maybe_error.is_none());
   let (_, maybe_error) = write_custom_command(
     &mut client,
@@ -4381,20 +4381,20 @@ fn lsp_performance() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "textDocument/hover",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": {
-        "line": 0,
-        "character": 19
-      }
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) =
