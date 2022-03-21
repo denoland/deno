@@ -23,7 +23,7 @@ use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
