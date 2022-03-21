@@ -12,7 +12,7 @@ use deno_core::ModuleSpecifier;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
