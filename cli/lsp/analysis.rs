@@ -16,9 +16,9 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
-use lspower::lsp::Position;
-use lspower::lsp::Range;
+use tower_lsp::lsp_types;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -82,16 +82,16 @@ pub struct Reference {
 }
 
 impl Reference {
-  pub fn to_diagnostic(&self) -> lsp::Diagnostic {
+  pub fn to_diagnostic(&self) -> lsp_types::Diagnostic {
     match &self.category {
       Category::Lint {
         message,
         code,
         hint,
-      } => lsp::Diagnostic {
+      } => lsp_types::Diagnostic {
         range: self.range,
-        severity: Some(lsp::DiagnosticSeverity::WARNING),
-        code: Some(lsp::NumberOrString::String(code.to_string())),
+        severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+        code: Some(lsp_types::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
         message: {
@@ -146,10 +146,10 @@ pub fn get_lint_references(
   )
 }
 
-fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
+fn code_as_string(code: &Option<lsp_types::NumberOrString>) -> String {
   match code {
-    Some(lsp::NumberOrString::String(str)) => str.clone(),
-    Some(lsp::NumberOrString::Number(num)) => num.to_string(),
+    Some(lsp_types::NumberOrString::String(str)) => str.clone(),
+    Some(lsp_types::NumberOrString::Number(num)) => num.to_string(),
     _ => "".to_string(),
   }
 }
@@ -277,8 +277,8 @@ fn fix_ts_import_action(
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
 fn is_equivalent_code(
-  a: &Option<lsp::NumberOrString>,
-  b: &Option<lsp::NumberOrString>,
+  a: &Option<lsp_types::NumberOrString>,
+  b: &Option<lsp_types::NumberOrString>,
 ) -> bool {
   let a_code = code_as_string(a);
   let b_code = code_as_string(b);
@@ -322,20 +322,20 @@ fn is_preferred(
 }
 
 /// Convert changes returned from a TypeScript quick fix action into edits
-/// for an LSP CodeAction.
+/// for an lsp_types CodeAction.
 pub(crate) async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
-) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
+) -> Result<Option<lsp_types::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
     let text_document_edit =
       change.to_text_document_edit(language_server).await?;
     text_document_edits.push(text_document_edit);
   }
-  Ok(Some(lsp::WorkspaceEdit {
+  Ok(Some(lsp_types::WorkspaceEdit {
     changes: None,
-    document_changes: Some(lsp::DocumentChanges::Edits(text_document_edits)),
+    document_changes: Some(lsp_types::DocumentChanges::Edits(text_document_edits)),
     change_annotations: None,
   }))
 }
@@ -349,9 +349,9 @@ pub struct CodeActionData {
 
 #[derive(Debug, Clone)]
 enum CodeActionKind {
-  Deno(lsp::CodeAction),
-  DenoLint(lsp::CodeAction),
-  Tsc(lsp::CodeAction, tsc::CodeFixAction),
+  Deno(lsp_types::CodeAction),
+  DenoLint(lsp_types::CodeAction),
+  Tsc(lsp_types::CodeAction, tsc::CodeFixAction),
 }
 
 #[derive(Debug, Hash, PartialEq, Eq)]
@@ -369,7 +369,7 @@ impl CodeActionCollection {
   pub(crate) fn add_deno_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
-    diagnostic: &lsp::Diagnostic,
+    diagnostic: &lsp_types::Diagnostic,
   ) -> Result<(), AnyError> {
     let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
     self.actions.push(CodeActionKind::Deno(code_action));
@@ -379,7 +379,7 @@ impl CodeActionCollection {
   pub(crate) fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
-    diagnostic: &lsp::Diagnostic,
+    diagnostic: &lsp_types::Diagnostic,
     maybe_text_info: Option<SourceTextInfo>,
     maybe_parsed_source: Option<deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
@@ -387,7 +387,7 @@ impl CodeActionCollection {
       .code
       .as_ref()
       .map(|v| match v {
-        lsp::NumberOrString::String(v) => v.to_owned(),
+        lsp_types::NumberOrString::String(v) => v.to_owned(),
         _ => "".to_string(),
       })
       .unwrap();
@@ -400,32 +400,32 @@ impl CodeActionCollection {
     let mut changes = HashMap::new();
     changes.insert(
       specifier.clone(),
-      vec![lsp::TextEdit {
+      vec![lsp_types::TextEdit {
         new_text: prepend_whitespace(
           format!("// deno-lint-ignore {}\n", code),
           line_content,
         ),
-        range: lsp::Range {
-          start: lsp::Position {
+        range: lsp_types::Range {
+          start: lsp_types::Position {
             line: diagnostic.range.start.line,
             character: 0,
           },
-          end: lsp::Position {
+          end: lsp_types::Position {
             line: diagnostic.range.start.line,
             character: 0,
           },
         },
       }],
     );
-    let ignore_error_action = lsp::CodeAction {
+    let ignore_error_action = lsp_types::CodeAction {
       title: format!("Disable {} for this line", code),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      kind: Some(lsp_types::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,
       is_preferred: None,
       disabled: None,
       data: None,
-      edit: Some(lsp::WorkspaceEdit {
+      edit: Some(lsp_types::WorkspaceEdit {
         changes: Some(changes),
         change_annotations: None,
         document_changes: None,
@@ -452,12 +452,12 @@ impl CodeActionCollection {
     });
 
     let mut new_text = format!("// deno-lint-ignore-file {}\n", code);
-    let mut range = lsp::Range {
-      start: lsp::Position {
+    let mut range = lsp_types::Range {
+      start: lsp_types::Position {
         line: 0,
         character: 0,
       },
-      end: lsp::Position {
+      end: lsp_types::Position {
         line: 0,
         character: 0,
       },
@@ -471,7 +471,7 @@ impl CodeActionCollection {
         .unwrap()
         .source()
         .line_and_column_index(ignore_comment.span.hi());
-      let position = lsp::Position {
+      let position = lsp_types::Position {
         line: line.line_index as u32,
         character: line.column_index as u32,
       };
@@ -481,16 +481,16 @@ impl CodeActionCollection {
     }
 
     let mut changes = HashMap::new();
-    changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
-    let ignore_file_action = lsp::CodeAction {
+    changes.insert(specifier.clone(), vec![lsp_types::TextEdit { new_text, range }]);
+    let ignore_file_action = lsp_types::CodeAction {
       title: format!("Disable {} for the entire file", code),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      kind: Some(lsp_types::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,
       is_preferred: None,
       disabled: None,
       data: None,
-      edit: Some(lsp::WorkspaceEdit {
+      edit: Some(lsp_types::WorkspaceEdit {
         changes: Some(changes),
         change_annotations: None,
         document_changes: None,
@@ -503,29 +503,29 @@ impl CodeActionCollection {
     let mut changes = HashMap::new();
     changes.insert(
       specifier.clone(),
-      vec![lsp::TextEdit {
+      vec![lsp_types::TextEdit {
         new_text: "// deno-lint-ignore-file\n".to_string(),
-        range: lsp::Range {
-          start: lsp::Position {
+        range: lsp_types::Range {
+          start: lsp_types::Position {
             line: 0,
             character: 0,
           },
-          end: lsp::Position {
+          end: lsp_types::Position {
             line: 0,
             character: 0,
           },
         },
       }],
     );
-    let ignore_file_action = lsp::CodeAction {
+    let ignore_file_action = lsp_types::CodeAction {
       title: "Ignore lint errors for the entire file".to_string(),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      kind: Some(lsp_types::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,
       is_preferred: None,
       disabled: None,
       data: None,
-      edit: Some(lsp::WorkspaceEdit {
+      edit: Some(lsp_types::WorkspaceEdit {
         changes: Some(changes),
         change_annotations: None,
         document_changes: None,
@@ -543,7 +543,7 @@ impl CodeActionCollection {
     &mut self,
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
-    diagnostic: &lsp::Diagnostic,
+    diagnostic: &lsp_types::Diagnostic,
     language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
@@ -553,7 +553,7 @@ impl CodeActionCollection {
       // `.applyCodeActionCommand()` returns a promise, and with the current way
       // we wrap tsc, we can't handle the asynchronous response, so it is
       // actually easier to return errors if we ever encounter one of these,
-      // which we really wouldn't expect from the Deno lsp.
+      // which we really wouldn't expect from the Deno lsp_types.
       return Err(custom_error(
         "UnsupportedFix",
         "The action returned from TypeScript is unsupported.",
@@ -562,9 +562,9 @@ impl CodeActionCollection {
     let action =
       fix_ts_import_action(specifier, action, &language_server.documents)?;
     let edit = ts_changes_to_edit(&action.changes, language_server).await?;
-    let code_action = lsp::CodeAction {
+    let code_action = lsp_types::CodeAction {
       title: action.description.clone(),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      kind: Some(lsp_types::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       edit,
       command: None,
@@ -605,7 +605,7 @@ impl CodeActionCollection {
     &mut self,
     action: &tsc::CodeFixAction,
     specifier: &ModuleSpecifier,
-    diagnostic: &lsp::Diagnostic,
+    diagnostic: &lsp_types::Diagnostic,
   ) {
     let data = Some(json!({
       "specifier": specifier,
@@ -617,9 +617,9 @@ impl CodeActionCollection {
       format!("{} (Fix all in file)", action.description)
     };
 
-    let code_action = lsp::CodeAction {
+    let code_action = lsp_types::CodeAction {
       title,
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      kind: Some(lsp_types::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       edit: None,
       command: None,
@@ -646,14 +646,14 @@ impl CodeActionCollection {
   }
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
-  pub fn get_response(self) -> lsp::CodeActionResponse {
+  pub fn get_response(self) -> lsp_types::CodeActionResponse {
     self
       .actions
       .into_iter()
       .map(|i| match i {
-        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
-        CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
-        CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Tsc(c, _) => lsp_types::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Deno(c) => lsp_types::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::DenoLint(c) => lsp_types::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
@@ -662,8 +662,8 @@ impl CodeActionCollection {
   pub fn is_fix_all_action(
     &self,
     action: &tsc::CodeFixAction,
-    diagnostic: &lsp::Diagnostic,
-    file_diagnostics: &[lsp::Diagnostic],
+    diagnostic: &lsp_types::Diagnostic,
+    file_diagnostics: &[lsp_types::Diagnostic],
   ) -> bool {
     // If the action does not have a fix id (indicating it can be "bundled up")
     // or if the collection already contains a "bundled" action return false
@@ -747,10 +747,10 @@ mod tests {
           },
           range,
         },
-        lsp::Diagnostic {
+        lsp_types::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::WARNING),
-          code: Some(lsp::NumberOrString::String("code1".to_string())),
+          severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+          code: Some(lsp_types::NumberOrString::String("code1".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message1".to_string(),
           ..Default::default()
@@ -765,10 +765,10 @@ mod tests {
           },
           range,
         },
-        lsp::Diagnostic {
+        lsp_types::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::WARNING),
-          code: Some(lsp::NumberOrString::String("code2".to_string())),
+          severity: Some(lsp_types::DiagnosticSeverity::WARNING),
+          code: Some(lsp_types::NumberOrString::String("code2".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message2\nhint2".to_string(),
           ..Default::default()
@@ -799,12 +799,12 @@ mod tests {
     let actual = as_lsp_range(&fixture);
     assert_eq!(
       actual,
-      lsp::Range {
-        start: lsp::Position {
+      lsp_types::Range {
+        start: lsp_types::Position {
           line: 0,
           character: 2,
         },
-        end: lsp::Position {
+        end: lsp_types::Position {
           line: 1,
           character: 0,
         },

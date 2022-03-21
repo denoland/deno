@@ -2,7 +2,7 @@
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
-use lspower::lsp;
+use tower_lsp::lsp_types;
 
 pub const CACHE_REQUEST: &str = "deno/cache";
 pub const PERFORMANCE_REQUEST: &str = "deno/performance";
@@ -15,10 +15,10 @@ pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
 pub struct CacheParams {
   /// The document currently open in the editor.  If there are no `uris`
   /// supplied, the referrer will be cached.
-  pub referrer: lsp::TextDocumentIdentifier,
+  pub referrer: lsp_types::TextDocumentIdentifier,
   /// Any documents that have been specifically asked to be cached via the
   /// command.
-  pub uris: Vec<lsp::TextDocumentIdentifier>,
+  pub uris: Vec<lsp_types::TextDocumentIdentifier>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -29,7 +29,7 @@ pub struct RegistryStateNotificationParams {
 
 pub enum RegistryStateNotification {}
 
-impl lsp::notification::Notification for RegistryStateNotification {
+impl lsp_types::notification::Notification for RegistryStateNotification {
   type Params = RegistryStateNotificationParams;
 
   const METHOD: &'static str = "deno/registryState";
@@ -38,5 +38,5 @@ impl lsp::notification::Notification for RegistryStateNotification {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VirtualTextDocumentParams {
-  pub text_document: lsp::TextDocumentIdentifier,
+  pub text_document: lsp_types::TextDocumentIdentifier,
 }

@@ -45,9 +45,9 @@ use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use log::warn;
-use lspower::jsonrpc::Error as LspError;
-use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -108,7 +108,7 @@ impl TsServer {
         let mut started = false;
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
-            // TODO(@kitsonk) need to reflect the debug state of the lsp here
+            // TODO(@kitsonk) need to reflect the debug state of the lsp_types here
             start(&mut ts_runtime, false, &state_snapshot)
               .expect("could not start tsc");
             started = true;
@@ -163,7 +163,7 @@ struct AssetDocumentInner {
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
 
-/// An lsp representation of an asset in memory, that has either been retrieved
+/// An lsp_types representation of an asset in memory, that has either been retrieved
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
 pub struct AssetDocument(Arc<AssetDocumentInner>);
@@ -552,11 +552,11 @@ impl Default for ScriptElementKind {
 }
 
 /// This mirrors the method `convertKind` in `completions.ts` in vscode
-impl From<ScriptElementKind> for lsp::CompletionItemKind {
+impl From<ScriptElementKind> for lsp_types::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
       ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
-        lsp::CompletionItemKind::KEYWORD
+        lsp_types::CompletionItemKind::KEYWORD
       }
       ScriptElementKind::ConstElement
       | ScriptElementKind::LetElement
@@ -564,46 +564,46 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
       | ScriptElementKind::LocalVariableElement
       | ScriptElementKind::Alias
       | ScriptElementKind::ParameterElement => {
-        lsp::CompletionItemKind::VARIABLE
+        lsp_types::CompletionItemKind::VARIABLE
       }
       ScriptElementKind::MemberVariableElement
       | ScriptElementKind::MemberGetAccessorElement
       | ScriptElementKind::MemberSetAccessorElement => {
-        lsp::CompletionItemKind::FIELD
+        lsp_types::CompletionItemKind::FIELD
       }
       ScriptElementKind::FunctionElement
       | ScriptElementKind::LocalFunctionElement => {
-        lsp::CompletionItemKind::FUNCTION
+        lsp_types::CompletionItemKind::FUNCTION
       }
       ScriptElementKind::MemberFunctionElement
       | ScriptElementKind::ConstructSignatureElement
       | ScriptElementKind::CallSignatureElement
       | ScriptElementKind::IndexSignatureElement => {
-        lsp::CompletionItemKind::METHOD
+        lsp_types::CompletionItemKind::METHOD
       }
-      ScriptElementKind::EnumElement => lsp::CompletionItemKind::ENUM,
+      ScriptElementKind::EnumElement => lsp_types::CompletionItemKind::ENUM,
       ScriptElementKind::EnumMemberElement => {
-        lsp::CompletionItemKind::ENUM_MEMBER
+        lsp_types::CompletionItemKind::ENUM_MEMBER
       }
       ScriptElementKind::ModuleElement
       | ScriptElementKind::ExternalModuleName => {
-        lsp::CompletionItemKind::MODULE
+        lsp_types::CompletionItemKind::MODULE
       }
       ScriptElementKind::ClassElement | ScriptElementKind::TypeElement => {
-        lsp::CompletionItemKind::CLASS
+        lsp_types::CompletionItemKind::CLASS
       }
-      ScriptElementKind::InterfaceElement => lsp::CompletionItemKind::INTERFACE,
-      ScriptElementKind::Warning => lsp::CompletionItemKind::TEXT,
-      ScriptElementKind::ScriptElement => lsp::CompletionItemKind::FILE,
-      ScriptElementKind::Directory => lsp::CompletionItemKind::FOLDER,
-      ScriptElementKind::String => lsp::CompletionItemKind::CONSTANT,
-      _ => lsp::CompletionItemKind::PROPERTY,
+      ScriptElementKind::InterfaceElement => lsp_types::CompletionItemKind::INTERFACE,
+      ScriptElementKind::Warning => lsp_types::CompletionItemKind::TEXT,
+      ScriptElementKind::ScriptElement => lsp_types::CompletionItemKind::FILE,
+      ScriptElementKind::Directory => lsp_types::CompletionItemKind::FOLDER,
+      ScriptElementKind::String => lsp_types::CompletionItemKind::CONSTANT,
+      _ => lsp_types::CompletionItemKind::PROPERTY,
     }
   }
 }
 
 /// This mirrors `fromProtocolScriptElementKind` in vscode
-impl From<ScriptElementKind> for lsp::SymbolKind {
+impl From<ScriptElementKind> for lsp_types::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
       ScriptElementKind::ModuleElement => Self::MODULE,
@@ -647,8 +647,8 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
-  pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
-    lsp::Range {
+  pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp_types::Range {
+    lsp_types::Range {
       start: line_index.position_tsc(self.start.into()),
       end: line_index.position_tsc(TextSize::from(self.start + self.length)),
     }
@@ -778,14 +778,14 @@ impl QuickInfo {
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
-  ) -> lsp::Hover {
-    let mut parts = Vec::<lsp::MarkedString>::new();
+  ) -> lsp_types::Hover {
+    let mut parts = Vec::<lsp_types::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, language_server))
     {
-      parts.push(lsp::MarkedString::from_language_code(
+      parts.push(lsp_types::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
@@ -795,7 +795,7 @@ impl QuickInfo {
       .clone()
       .map(|p| display_parts_to_string(&p, language_server))
     {
-      parts.push(lsp::MarkedString::from_markdown(documentation));
+      parts.push(lsp_types::MarkedString::from_markdown(documentation));
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
@@ -804,14 +804,14 @@ impl QuickInfo {
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        parts.push(lsp::MarkedString::from_markdown(format!(
+        parts.push(lsp_types::MarkedString::from_markdown(format!(
           "\n\n{}",
           tags_preview
         )));
       }
     }
-    lsp::Hover {
-      contents: lsp::HoverContents::Array(parts),
+    lsp_types::Hover {
+      contents: lsp_types::HoverContents::Array(parts),
       range: Some(self.text_span.to_range(line_index)),
     }
   }
@@ -833,7 +833,7 @@ impl DocumentSpan {
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::LocationLink> {
+  ) -> Option<lsp_types::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
     let target_asset_or_doc = language_server
       .get_asset_or_document(&target_specifier)
@@ -865,7 +865,7 @@ impl DocumentSpan {
           .as_ref()
           .map(|original_text_span| original_text_span.to_range(line_index))
       };
-    let link = lsp::LocationLink {
+    let link = lsp_types::LocationLink {
       origin_selection_range,
       target_uri,
       target_range,
@@ -930,7 +930,7 @@ impl NavigateToItem {
   pub(crate) async fn to_symbol_information(
     &self,
     language_server: &mut language_server::Inner,
-  ) -> Option<lsp::SymbolInformation> {
+  ) -> Option<lsp_types::SymbolInformation> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
     let asset_or_doc = language_server
       .get_asset_or_document(&specifier)
@@ -942,19 +942,19 @@ impl NavigateToItem {
       .normalize_specifier(&specifier)
       .ok()?;
     let range = self.text_span.to_range(line_index);
-    let location = lsp::Location { uri, range };
+    let location = lsp_types::Location { uri, range };
 
-    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    let mut tags: Option<Vec<lsp_types::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
     if kind_modifiers.contains("deprecated") {
-      tags = Some(vec![lsp::SymbolTag::DEPRECATED]);
+      tags = Some(vec![lsp_types::SymbolTag::DEPRECATED]);
     }
 
     // The field `deprecated` is deprecated but SymbolInformation does not have
     // a default, therefore we have to supply the deprecated deprecated
     // field. It is like a bad version of Inception.
     #[allow(deprecated)]
-    Some(lsp::SymbolInformation {
+    Some(lsp_types::SymbolInformation {
       name: self.name.clone(),
       kind: self.kind.clone().into(),
       tags,
@@ -982,16 +982,16 @@ impl NavigationTree {
     line_index: Arc<LineIndex>,
     specifier: &ModuleSpecifier,
     source: &code_lens::CodeLensSource,
-  ) -> lsp::CodeLens {
+  ) -> lsp_types::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
     } else if !self.spans.is_empty() {
       let span = &self.spans[0];
       span.to_range(line_index)
     } else {
-      lsp::Range::default()
+      lsp_types::Range::default()
     };
-    lsp::CodeLens {
+    lsp_types::CodeLens {
       range,
       command: None,
       data: Some(json!({
@@ -1004,7 +1004,7 @@ impl NavigationTree {
   pub fn collect_document_symbols(
     &self,
     line_index: Arc<LineIndex>,
-    document_symbols: &mut Vec<lsp::DocumentSymbol>,
+    document_symbols: &mut Vec<lsp_types::DocumentSymbol>,
   ) -> bool {
     let mut should_include = self.should_include_entry();
     if !should_include
@@ -1019,7 +1019,7 @@ impl NavigationTree {
       .map_or(&[] as &[NavigationTree], |v| v.as_slice());
     for span in self.spans.iter() {
       let range = TextRange::at(span.start.into(), span.length.into());
-      let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
+      let mut symbol_children = Vec::<lsp_types::DocumentSymbol>::new();
       for child in children.iter() {
         let should_traverse_child = child
           .spans
@@ -1055,10 +1055,10 @@ impl NavigationTree {
           _ => self.text.clone(),
         };
 
-        let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+        let mut tags: Option<Vec<lsp_types::SymbolTag>> = None;
         let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
         if kind_modifiers.contains("deprecated") {
-          tags = Some(vec![lsp::SymbolTag::DEPRECATED]);
+          tags = Some(vec![lsp_types::SymbolTag::DEPRECATED]);
         }
 
         let children = if !symbol_children.is_empty() {
@@ -1071,7 +1071,7 @@ impl NavigationTree {
         // a default, therefore we have to supply the deprecated deprecated
         // field. It is like a bad version of Inception.
         #[allow(deprecated)]
-        document_symbols.push(lsp::DocumentSymbol {
+        document_symbols.push(lsp_types::DocumentSymbol {
           name,
           kind: self.kind.clone().into(),
           range: span.to_range(line_index.clone()),
@@ -1135,14 +1135,14 @@ impl ImplementationLocation {
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
-  ) -> lsp::Location {
+  ) -> lsp_types::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
     let uri = language_server
       .url_map
       .normalize_specifier(&specifier)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
-    lsp::Location {
+    lsp_types::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
@@ -1152,7 +1152,7 @@ impl ImplementationLocation {
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::LocationLink> {
+  ) -> Option<lsp_types::LocationLink> {
     self
       .document_span
       .to_link(line_index, language_server)
@@ -1179,8 +1179,8 @@ impl RenameLocations {
     self,
     new_name: &str,
     language_server: &language_server::Inner,
-  ) -> Result<lsp::WorkspaceEdit, AnyError> {
-    let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
+  ) -> Result<lsp_types::WorkspaceEdit, AnyError> {
+    let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
@@ -1192,20 +1192,20 @@ impl RenameLocations {
       if text_document_edit_map.get(&uri).is_none() {
         text_document_edit_map.insert(
           uri.clone(),
-          lsp::TextDocumentEdit {
-            text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+          lsp_types::TextDocumentEdit {
+            text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
               version: asset_or_doc.document_lsp_version(),
             },
             edits:
-              Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
+              Vec::<lsp_types::OneOf<lsp_types::TextEdit, lsp_types::AnnotatedTextEdit>>::new(),
           },
         );
       }
 
       // push TextEdit for ensured `TextDocumentEdit.edits`.
       let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
-      document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
+      document_edit.edits.push(lsp_types::OneOf::Left(lsp_types::TextEdit {
         range: location
           .document_span
           .text_span
@@ -1214,10 +1214,10 @@ impl RenameLocations {
       }));
     }
 
-    Ok(lsp::WorkspaceEdit {
+    Ok(lsp_types::WorkspaceEdit {
       change_annotations: None,
       changes: None,
-      document_changes: Some(lsp::DocumentChanges::Edits(
+      document_changes: Some(lsp_types::DocumentChanges::Edits(
         text_document_edit_map.values().cloned().collect(),
       )),
     })
@@ -1269,9 +1269,9 @@ impl DefinitionInfoAndBoundSpan {
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::GotoDefinitionResponse> {
+  ) -> Option<lsp_types::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
-      let mut location_links = Vec::<lsp::LocationLink>::new();
+      let mut location_links = Vec::<lsp_types::LocationLink>::new();
       for di in definitions {
         if let Some(link) = di
           .document_span
@@ -1281,7 +1281,7 @@ impl DefinitionInfoAndBoundSpan {
           location_links.push(link);
         }
       }
-      Some(lsp::GotoDefinitionResponse::Link(location_links))
+      Some(lsp_types::GotoDefinitionResponse::Link(location_links))
     } else {
       None
     }
@@ -1299,17 +1299,17 @@ impl DocumentHighlights {
   pub fn to_highlight(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> Vec<lsp::DocumentHighlight> {
+  ) -> Vec<lsp_types::DocumentHighlight> {
     self
       .highlight_spans
       .iter()
-      .map(|hs| lsp::DocumentHighlight {
+      .map(|hs| lsp_types::DocumentHighlight {
         range: hs.text_span.to_range(line_index.clone()),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
-            Some(lsp::DocumentHighlightKind::WRITE)
+            Some(lsp_types::DocumentHighlightKind::WRITE)
           }
-          _ => Some(lsp::DocumentHighlightKind::READ),
+          _ => Some(lsp_types::DocumentHighlightKind::READ),
         },
       })
       .collect()
@@ -1327,8 +1327,8 @@ impl TextChange {
   pub fn as_text_edit(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
-    lsp::OneOf::Left(lsp::TextEdit {
+  ) -> lsp_types::OneOf<lsp_types::TextEdit, lsp_types::AnnotatedTextEdit> {
+    lsp_types::OneOf::Left(lsp_types::TextEdit {
       range: self.span.to_range(line_index),
       new_text: self.new_text.clone(),
     })
@@ -1348,7 +1348,7 @@ impl FileTextChanges {
   pub(crate) async fn to_text_document_edit(
     &self,
     language_server: &language_server::Inner,
-  ) -> Result<lsp::TextDocumentEdit, AnyError> {
+  ) -> Result<lsp_types::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).await?;
@@ -1357,8 +1357,8 @@ impl FileTextChanges {
       .iter()
       .map(|tc| tc.as_text_edit(asset_or_doc.line_index()))
       .collect();
-    Ok(lsp::TextDocumentEdit {
-      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+    Ok(lsp_types::TextDocumentEdit {
+      text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
         version: asset_or_doc.document_lsp_version(),
       },
@@ -1369,8 +1369,8 @@ impl FileTextChanges {
   pub(crate) async fn to_text_document_change_ops(
     &self,
     language_server: &language_server::Inner,
-  ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
-    let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
+  ) -> Result<Vec<lsp_types::DocumentChangeOperation>, AnyError> {
+    let mut ops = Vec::<lsp_types::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
     let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
       let asset_or_doc =
@@ -1385,10 +1385,10 @@ impl FileTextChanges {
       .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
     if self.is_new_file.unwrap_or(false) {
-      ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
-        lsp::CreateFile {
+      ops.push(lsp_types::DocumentChangeOperation::Op(lsp_types::ResourceOp::Create(
+        lsp_types::CreateFile {
           uri: specifier.clone(),
-          options: Some(lsp::CreateFileOptions {
+          options: Some(lsp_types::CreateFileOptions {
             ignore_if_exists: Some(true),
             overwrite: None,
           }),
@@ -1402,8 +1402,8 @@ impl FileTextChanges {
       .iter()
       .map(|tc| tc.as_text_edit(line_index.clone()))
       .collect();
-    ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
-      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+    ops.push(lsp_types::DocumentChangeOperation::Edit(lsp_types::TextDocumentEdit {
+      text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
         version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
@@ -1425,7 +1425,7 @@ impl Classifications {
     &self,
     asset_or_doc: &AssetOrDocument,
     line_index: Arc<LineIndex>,
-  ) -> LspResult<lsp::SemanticTokens> {
+  ) -> LspResult<lsp_types::SemanticTokens> {
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -1490,7 +1490,7 @@ pub struct RefactorActionInfo {
 }
 
 impl RefactorActionInfo {
-  pub fn get_action_kind(&self) -> lsp::CodeActionKind {
+  pub fn get_action_kind(&self) -> lsp_types::CodeActionKind {
     if let Some(kind) = &self.kind {
       kind.clone().into()
     } else {
@@ -1498,7 +1498,7 @@ impl RefactorActionInfo {
         .iter()
         .find(|action| action.matches(&self.name));
       maybe_match
-        .map_or(lsp::CodeActionKind::REFACTOR, |action| action.kind.clone())
+        .map_or(lsp_types::CodeActionKind::REFACTOR, |action| action.kind.clone())
     }
   }
 
@@ -1551,9 +1551,9 @@ impl ApplicableRefactorInfo {
   pub fn to_code_actions(
     &self,
     specifier: &ModuleSpecifier,
-    range: &lsp::Range,
-  ) -> Vec<lsp::CodeAction> {
-    let mut code_actions = Vec::<lsp::CodeAction>::new();
+    range: &lsp_types::Range,
+  ) -> Vec<lsp_types::CodeAction> {
+    let mut code_actions = Vec::<lsp_types::CodeAction>::new();
     // All typescript refactoring actions are inlineable
     for action in self.actions.iter() {
       code_actions
@@ -1566,16 +1566,16 @@ impl ApplicableRefactorInfo {
     &self,
     action: &RefactorActionInfo,
     specifier: &ModuleSpecifier,
-    range: &lsp::Range,
+    range: &lsp_types::Range,
     refactor_name: &str,
-  ) -> lsp::CodeAction {
+  ) -> lsp_types::CodeAction {
     let disabled = action.not_applicable_reason.as_ref().map(|reason| {
-      lsp::CodeActionDisabled {
+      lsp_types::CodeActionDisabled {
         reason: reason.clone(),
       }
     });
 
-    lsp::CodeAction {
+    lsp_types::CodeAction {
       title: action.description.to_string(),
       kind: Some(action.get_action_kind()),
       is_preferred: Some(action.is_preferred(&self.actions)),
@@ -1606,15 +1606,15 @@ impl RefactorEditInfo {
   pub(crate) async fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
-  ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-    let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
+  ) -> Result<Option<lsp_types::WorkspaceEdit>, AnyError> {
+    let mut all_ops = Vec::<lsp_types::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
       let ops = edit.to_text_document_change_ops(language_server).await?;
       all_ops.extend(ops);
     }
 
-    Ok(Some(lsp::WorkspaceEdit {
-      document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
+    Ok(Some(lsp_types::WorkspaceEdit {
+      document_changes: Some(lsp_types::DocumentChanges::Operations(all_ops)),
       ..Default::default()
     }))
   }
@@ -1672,13 +1672,13 @@ impl ReferenceEntry {
     &self,
     line_index: Arc<LineIndex>,
     url_map: &LspUrlMap,
-  ) -> lsp::Location {
+  ) -> lsp_types::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = url_map
       .normalize_specifier(&specifier)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    lsp::Location {
+    lsp_types::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
@@ -1704,7 +1704,7 @@ impl CallHierarchyItem {
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
-  ) -> Option<lsp::CallHierarchyItem> {
+  ) -> Option<lsp_types::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
     let target_asset_or_doc = language_server
       .get_asset_or_document(&target_specifier)
@@ -1723,7 +1723,7 @@ impl CallHierarchyItem {
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
-  ) -> lsp::CallHierarchyItem {
+  ) -> lsp_types::CallHierarchyItem {
     let target_specifier = normalize_specifier(&self.file)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = language_server
@@ -1766,15 +1766,15 @@ impl CallHierarchyItem {
       self.container_name.as_ref().cloned().unwrap_or_default()
     };
 
-    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    let mut tags: Option<Vec<lsp_types::SymbolTag>> = None;
     if let Some(modifiers) = self.kind_modifiers.as_ref() {
       let kind_modifiers = parse_kind_modifier(modifiers);
       if kind_modifiers.contains("deprecated") {
-        tags = Some(vec![lsp::SymbolTag::DEPRECATED]);
+        tags = Some(vec![lsp_types::SymbolTag::DEPRECATED]);
       }
     }
 
-    lsp::CallHierarchyItem {
+    lsp_types::CallHierarchyItem {
       name,
       tags,
       uri,
@@ -1805,14 +1805,14 @@ impl CallHierarchyIncomingCall {
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
-  ) -> Option<lsp::CallHierarchyIncomingCall> {
+  ) -> Option<lsp_types::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
     let target_asset_or_doc = language_server
       .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
-    Some(lsp::CallHierarchyIncomingCall {
+    Some(lsp_types::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
         target_asset_or_doc.line_index(),
         language_server,
@@ -1840,14 +1840,14 @@ impl CallHierarchyOutgoingCall {
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
-  ) -> Option<lsp::CallHierarchyOutgoingCall> {
+  ) -> Option<lsp_types::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
     let target_asset_or_doc = language_server
       .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
-    Some(lsp::CallHierarchyOutgoingCall {
+    Some(lsp_types::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
         target_asset_or_doc.line_index(),
         language_server,
@@ -1878,9 +1878,9 @@ pub struct CompletionEntryDetails {
 impl CompletionEntryDetails {
   pub(crate) fn as_completion_item(
     &self,
-    original_item: &lsp::CompletionItem,
+    original_item: &lsp_types::CompletionItem,
     language_server: &language_server::Inner,
-  ) -> lsp::CompletionItem {
+  ) -> lsp_types::CompletionItem {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
@@ -1901,8 +1901,8 @@ impl CompletionEntryDetails {
           .join("");
         value = format!("{}\n\n{}", value, tag_documentation);
       }
-      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
-        kind: lsp::MarkupKind::Markdown,
+      Some(lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
+        kind: lsp_types::MarkupKind::Markdown,
         value,
       }))
     } else {
@@ -1911,7 +1911,7 @@ impl CompletionEntryDetails {
     // TODO(@kitsonk) add `self.code_actions`
     // TODO(@kitsonk) add `use_code_snippet`
 
-    lsp::CompletionItem {
+    lsp_types::CompletionItem {
       data: None,
       detail,
       documentation,
@@ -1938,7 +1938,7 @@ impl CompletionInfo {
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
     position: u32,
-  ) -> lsp::CompletionResponse {
+  ) -> lsp_types::CompletionResponse {
     let items = self
       .entries
       .iter()
@@ -1964,7 +1964,7 @@ impl CompletionInfo {
           .unwrap()
       })
       .unwrap_or(false);
-    lsp::CompletionResponse::List(lsp::CompletionList {
+    lsp_types::CompletionResponse::List(lsp_types::CompletionList {
       is_incomplete,
       items,
     })
@@ -2095,9 +2095,9 @@ impl CompletionEntry {
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
     position: u32,
-  ) -> lsp::CompletionItem {
+  ) -> lsp_types::CompletionItem {
     let mut label = self.name.clone();
-    let mut kind: Option<lsp::CompletionItemKind> =
+    let mut kind: Option<lsp_types::CompletionItemKind> =
       Some(self.kind.clone().into());
 
     let sort_text = if self.source.is_some() {
@@ -2108,9 +2108,9 @@ impl CompletionEntry {
 
     let preselect = self.is_recommended;
     let use_code_snippet = settings.complete_function_calls
-      && (kind == Some(lsp::CompletionItemKind::FUNCTION)
-        || kind == Some(lsp::CompletionItemKind::METHOD));
-    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp-types/issues/204
+      && (kind == Some(lsp_types::CompletionItemKind::FUNCTION)
+        || kind == Some(lsp_types::CompletionItemKind::METHOD));
+    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp_types-types/issues/204
     let _commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
     let range = self.replacement_span.clone();
@@ -2130,10 +2130,10 @@ impl CompletionEntry {
         label += "?";
       }
       if kind_modifiers.contains("deprecated") {
-        tags = Some(vec![lsp::CompletionItemTag::DEPRECATED]);
+        tags = Some(vec![lsp_types::CompletionItemTag::DEPRECATED]);
       }
       if kind_modifiers.contains("color") {
-        kind = Some(lsp::CompletionItemKind::COLOR);
+        kind = Some(lsp_types::CompletionItemKind::COLOR);
       }
       if self.kind == ScriptElementKind::ScriptElement {
         for ext_modifier in FILE_EXTENSION_KIND_MODIFIERS {
@@ -2152,7 +2152,7 @@ impl CompletionEntry {
     let text_edit =
       if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
         let range = text_span.to_range(line_index);
-        let insert_replace_edit = lsp::InsertReplaceEdit {
+        let insert_replace_edit = lsp_types::InsertReplaceEdit {
           new_text: new_text.clone(),
           insert: range,
           replace: range,
@@ -2171,7 +2171,7 @@ impl CompletionEntry {
       use_code_snippet,
     };
 
-    lsp::CompletionItem {
+    lsp_types::CompletionItem {
       label,
       kind,
       sort_text,
@@ -2219,9 +2219,9 @@ impl OutliningSpan {
     line_index: Arc<LineIndex>,
     content: &[u8],
     line_folding_only: bool,
-  ) -> lsp::FoldingRange {
+  ) -> lsp_types::FoldingRange {
     let range = self.text_span.to_range(line_index.clone());
-    lsp::FoldingRange {
+    lsp_types::FoldingRange {
       start_line: range.start.line,
       start_character: if line_folding_only {
         None
@@ -2245,7 +2245,7 @@ impl OutliningSpan {
 
   fn adjust_folding_end_line(
     &self,
-    range: &lsp::Range,
+    range: &lsp_types::Range,
     line_index: Arc<LineIndex>,
     content: &[u8],
     line_folding_only: bool,
@@ -2264,11 +2264,11 @@ impl OutliningSpan {
   fn get_folding_range_kind(
     &self,
     span_kind: &OutliningSpanKind,
-  ) -> Option<lsp::FoldingRangeKind> {
+  ) -> Option<lsp_types::FoldingRangeKind> {
     match span_kind {
-      OutliningSpanKind::Comment => Some(lsp::FoldingRangeKind::Comment),
-      OutliningSpanKind::Region => Some(lsp::FoldingRangeKind::Region),
-      OutliningSpanKind::Imports => Some(lsp::FoldingRangeKind::Imports),
+      OutliningSpanKind::Comment => Some(lsp_types::FoldingRangeKind::Comment),
+      OutliningSpanKind::Region => Some(lsp_types::FoldingRangeKind::Region),
+      OutliningSpanKind::Imports => Some(lsp_types::FoldingRangeKind::Imports),
       _ => None,
     }
   }
@@ -2288,8 +2288,8 @@ impl SignatureHelpItems {
   pub(crate) fn into_signature_help(
     self,
     language_server: &language_server::Inner,
-  ) -> lsp::SignatureHelp {
-    lsp::SignatureHelp {
+  ) -> lsp_types::SignatureHelp {
+    lsp_types::SignatureHelp {
       signatures: self
         .items
         .into_iter()
@@ -2317,7 +2317,7 @@ impl SignatureHelpItem {
   pub(crate) fn into_signature_information(
     self,
     language_server: &language_server::Inner,
-  ) -> lsp::SignatureInformation {
+  ) -> lsp_types::SignatureInformation {
     let prefix_text =
       display_parts_to_string(&self.prefix_display_parts, language_server);
     let params_text = self
@@ -2332,11 +2332,11 @@ impl SignatureHelpItem {
       display_parts_to_string(&self.suffix_display_parts, language_server);
     let documentation =
       display_parts_to_string(&self.documentation, language_server);
-    lsp::SignatureInformation {
+    lsp_types::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
-      documentation: Some(lsp::Documentation::MarkupContent(
-        lsp::MarkupContent {
-          kind: lsp::MarkupKind::Markdown,
+      documentation: Some(lsp_types::Documentation::MarkupContent(
+        lsp_types::MarkupContent {
+          kind: lsp_types::MarkupKind::Markdown,
           value: documentation,
         },
       )),
@@ -2365,17 +2365,17 @@ impl SignatureHelpParameter {
   pub(crate) fn into_parameter_information(
     self,
     language_server: &language_server::Inner,
-  ) -> lsp::ParameterInformation {
+  ) -> lsp_types::ParameterInformation {
     let documentation =
       display_parts_to_string(&self.documentation, language_server);
-    lsp::ParameterInformation {
-      label: lsp::ParameterLabel::Simple(display_parts_to_string(
+    lsp_types::ParameterInformation {
+      label: lsp_types::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
         language_server,
       )),
-      documentation: Some(lsp::Documentation::MarkupContent(
-        lsp::MarkupContent {
-          kind: lsp::MarkupKind::Markdown,
+      documentation: Some(lsp_types::Documentation::MarkupContent(
+        lsp_types::MarkupContent {
+          kind: lsp_types::MarkupKind::Markdown,
           value: documentation,
         },
       )),
@@ -2395,8 +2395,8 @@ impl SelectionRange {
   pub fn to_selection_range(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> lsp::SelectionRange {
-    lsp::SelectionRange {
+  ) -> lsp_types::SelectionRange {
+    lsp_types::SelectionRange {
       range: self.text_span.to_range(line_index.clone()),
       parent: self.parent.as_ref().map(|parent_selection| {
         Box::new(parent_selection.to_selection_range(line_index))
@@ -2533,7 +2533,7 @@ fn op_exists(
   let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
-  // forrest for the trees as well as it compounds any lsp performance
+  // forrest for the trees as well as it compounds any lsp_types performance
   // challenges, opening a single document in the editor causes some 3k worth
   // of op_exists requests... :omg:
   let specifier = match state.normalize_specifier(&args.specifier) {
@@ -2922,12 +2922,12 @@ pub enum SignatureHelpTriggerKind {
   Unknown,
 }
 
-impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
-  fn from(kind: lsp::SignatureHelpTriggerKind) -> Self {
+impl From<lsp_types::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
+  fn from(kind: lsp_types::SignatureHelpTriggerKind) -> Self {
     match kind {
-      lsp::SignatureHelpTriggerKind::INVOKED => Self::Invoked,
-      lsp::SignatureHelpTriggerKind::TRIGGER_CHARACTER => Self::CharacterTyped,
-      lsp::SignatureHelpTriggerKind::CONTENT_CHANGE => Self::Retrigger,
+      lsp_types::SignatureHelpTriggerKind::INVOKED => Self::Invoked,
+      lsp_types::SignatureHelpTriggerKind::TRIGGER_CHARACTER => Self::CharacterTyped,
+      lsp_types::SignatureHelpTriggerKind::CONTENT_CHANGE => Self::Retrigger,
       _ => Self::Unknown,
     }
   }
@@ -3905,7 +3905,7 @@ mod tests {
     "#;
     let line_index = LineIndex::new(fixture);
     let position = line_index
-      .offset_tsc(lsp::Position {
+      .offset_tsc(lsp_types::Position {
         line: 5,
         character: 16,
       })

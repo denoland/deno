@@ -74,7 +74,7 @@ import_map = "=0.9.0"
 jsonc-parser = { version = "=0.19.0", features = ["serde"] }
 libc = "=0.2.106"
 log = { version = "=0.4.14", features = ["serde"] }
-lspower = "=1.4.0"
+tower-lsp = "=0.15.1"
 node_resolver = "=0.1.1"
 notify = "=5.0.0-pre.12"
 num-format = "=0.4.0"

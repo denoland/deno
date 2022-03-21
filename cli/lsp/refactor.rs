@@ -6,11 +6,11 @@
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
+use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 
 pub struct RefactorCodeActionKind {
-  pub kind: lsp::CodeActionKind,
+  pub kind: lsp_types::CodeActionKind,
   matches_callback: Box<dyn Fn(&str) -> bool + Send + Sync>,
 }
 
@@ -22,7 +22,7 @@ impl RefactorCodeActionKind {
 
 pub static EXTRACT_FUNCTION: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "function"]
+    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "function"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("function_")),
@@ -30,7 +30,7 @@ pub static EXTRACT_FUNCTION: Lazy<RefactorCodeActionKind> =
 
 pub static EXTRACT_CONSTANT: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "constant"]
+    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "constant"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("constant_")),
@@ -38,7 +38,7 @@ pub static EXTRACT_CONSTANT: Lazy<RefactorCodeActionKind> =
 
 pub static EXTRACT_TYPE: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "type"]
+    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "type"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| {
@@ -48,7 +48,7 @@ pub static EXTRACT_TYPE: Lazy<RefactorCodeActionKind> =
 
 pub static EXTRACT_INTERFACE: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR_EXTRACT.as_str(), "interface"]
+    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "interface"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| {
@@ -58,7 +58,7 @@ pub static EXTRACT_INTERFACE: Lazy<RefactorCodeActionKind> =
 
 pub static MOVE_NEWFILE: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR.as_str(), "move", "newFile"]
+    kind: [lsp_types::CodeActionKind::REFACTOR.as_str(), "move", "newFile"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| {
@@ -68,7 +68,7 @@ pub static MOVE_NEWFILE: Lazy<RefactorCodeActionKind> =
 
 pub static REWRITE_IMPORT: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR_REWRITE.as_str(), "import"]
+    kind: [lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(), "import"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| {
@@ -79,7 +79,7 @@ pub static REWRITE_IMPORT: Lazy<RefactorCodeActionKind> =
 
 pub static REWRITE_EXPORT: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp::CodeActionKind::REFACTOR_REWRITE.as_str(), "export"]
+    kind: [lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(), "export"]
       .join(".")
       .into(),
     matches_callback: Box::new(|tag: &str| {
@@ -91,7 +91,7 @@ pub static REWRITE_EXPORT: Lazy<RefactorCodeActionKind> =
 pub static REWRITE_ARROW_BRACES: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
     kind: [
-      lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
+      lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(),
       "arrow",
       "braces",
     ]
@@ -105,7 +105,7 @@ pub static REWRITE_ARROW_BRACES: Lazy<RefactorCodeActionKind> =
 pub static REWRITE_PARAMETERS_TO_DESTRUCTURED: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
     kind: [
-      lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
+      lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(),
       "parameters",
       "toDestructured",
     ]
@@ -119,7 +119,7 @@ pub static REWRITE_PARAMETERS_TO_DESTRUCTURED: Lazy<RefactorCodeActionKind> =
 pub static REWRITE_PROPERTY_GENERATEACCESSORS: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
     kind: [
-      lsp::CodeActionKind::REFACTOR_REWRITE.as_str(),
+      lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(),
       "property",
       "generateAccessors",
     ]
@@ -151,18 +151,18 @@ pub static ALL_KNOWN_REFACTOR_ACTION_KINDS: Lazy<
 #[serde(rename_all = "camelCase")]
 pub struct RefactorCodeActionData {
   pub specifier: ModuleSpecifier,
-  pub range: lsp::Range,
+  pub range: lsp_types::Range,
   pub refactor_name: String,
   pub action_name: String,
 }
 
 pub fn prune_invalid_actions(
-  actions: &[lsp::CodeAction],
+  actions: &[lsp_types::CodeAction],
   number_of_invalid: usize,
-) -> Vec<lsp::CodeAction> {
-  let mut available_actions = Vec::<lsp::CodeAction>::new();
-  let mut invalid_common_actions = Vec::<lsp::CodeAction>::new();
-  let mut invalid_uncommon_actions = Vec::<lsp::CodeAction>::new();
+) -> Vec<lsp_types::CodeAction> {
+  let mut available_actions = Vec::<lsp_types::CodeAction>::new();
+  let mut invalid_common_actions = Vec::<lsp_types::CodeAction>::new();
+  let mut invalid_uncommon_actions = Vec::<lsp_types::CodeAction>::new();
   for action in actions {
     if action.disabled.is_none() {
       available_actions.push(action.clone());
@@ -183,7 +183,7 @@ pub fn prune_invalid_actions(
     invalid_uncommon_actions.push(action.clone());
   }
 
-  let mut prioritized_actions = Vec::<lsp::CodeAction>::new();
+  let mut prioritized_actions = Vec::<lsp_types::CodeAction>::new();
   prioritized_actions.extend(invalid_common_actions);
   prioritized_actions.extend(invalid_uncommon_actions);
   let top_n_invalid = prioritized_actions

@@ -27,7 +27,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
-use lspower::lsp;
+use tower_lsp::lsp_types;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
@@ -39,12 +39,12 @@ use tokio_util::sync::CancellationToken;
 pub(crate) type SnapshotForDiagnostics =
   (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
 pub type DiagnosticRecord =
-  (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
+  (ModuleSpecifier, Option<i32>, Vec<lsp_types::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
-  HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
+  HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp_types::Diagnostic>)>;
 type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
-type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
+type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp_types::Diagnostic>>;
 
 #[derive(Clone)]
 struct DiagnosticsPublisher {
@@ -101,7 +101,7 @@ impl TsDiagnosticsStore {
     &self,
     specifier: &ModuleSpecifier,
     document_version: Option<i32>,
-  ) -> Vec<lsp::Diagnostic> {
+  ) -> Vec<lsp_types::Diagnostic> {
     let ts_diagnostics = self.0.lock();
     if let Some((diagnostics_doc_version, diagnostics)) =
       ts_diagnostics.get(specifier)
@@ -164,7 +164,7 @@ impl DiagnosticsServer {
     &self,
     specifier: &ModuleSpecifier,
     document_version: Option<i32>,
-  ) -> Vec<lsp::Diagnostic> {
+  ) -> Vec<lsp_types::Diagnostic> {
     self.ts_diagnostics.get(specifier, document_version)
   }
 
@@ -335,24 +335,24 @@ impl DiagnosticsServer {
   }
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
+impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp_types::DiagnosticSeverity {
   fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
+      diagnostics::DiagnosticCategory::Error => lsp_types::DiagnosticSeverity::ERROR,
       diagnostics::DiagnosticCategory::Warning => {
-        lsp::DiagnosticSeverity::WARNING
+        lsp_types::DiagnosticSeverity::WARNING
       }
       diagnostics::DiagnosticCategory::Suggestion => {
-        lsp::DiagnosticSeverity::HINT
+        lsp_types::DiagnosticSeverity::HINT
       }
       diagnostics::DiagnosticCategory::Message => {
-        lsp::DiagnosticSeverity::INFORMATION
+        lsp_types::DiagnosticSeverity::INFORMATION
       }
     }
   }
 }
 
-impl<'a> From<&'a diagnostics::Position> for lsp::Position {
+impl<'a> From<&'a diagnostics::Position> for lsp_types::Position {
   fn from(pos: &'a diagnostics::Position) -> Self {
     Self {
       line: pos.line as u32,
@@ -374,8 +374,8 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 fn to_lsp_range(
   start: &diagnostics::Position,
   end: &diagnostics::Position,
-) -> lsp::Range {
-  lsp::Range {
+) -> lsp_types::Range {
+  lsp_types::Range {
     start: start.into(),
     end: end.into(),
   }
@@ -383,7 +383,7 @@ fn to_lsp_range(
 
 fn to_lsp_related_information(
   related_information: &Option<Vec<diagnostics::Diagnostic>>,
-) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
+) -> Option<Vec<lsp_types::DiagnosticRelatedInformation>> {
   related_information.as_ref().map(|related| {
     related
       .iter()
@@ -391,9 +391,9 @@ fn to_lsp_related_information(
         if let (Some(source), Some(start), Some(end)) =
           (&ri.source, &ri.start, &ri.end)
         {
-          let uri = lsp::Url::parse(source).unwrap();
-          Some(lsp::DiagnosticRelatedInformation {
-            location: lsp::Location {
+          let uri = lsp_types::Url::parse(source).unwrap();
+          Some(lsp_types::DiagnosticRelatedInformation {
+            location: lsp_types::Location {
               uri,
               range: to_lsp_range(start, end),
             },
@@ -409,15 +409,15 @@ fn to_lsp_related_information(
 
 fn ts_json_to_diagnostics(
   diagnostics: Vec<diagnostics::Diagnostic>,
-) -> Vec<lsp::Diagnostic> {
+) -> Vec<lsp_types::Diagnostic> {
   diagnostics
     .iter()
     .filter_map(|d| {
       if let (Some(start), Some(end)) = (&d.start, &d.end) {
-        Some(lsp::Diagnostic {
+        Some(lsp_types::Diagnostic {
           range: to_lsp_range(start, end),
           severity: Some((&d.category).into()),
-          code: Some(lsp::NumberOrString::Number(d.code as i32)),
+          code: Some(lsp_types::NumberOrString::Number(d.code as i32)),
           code_description: None,
           source: Some("deno-ts".to_string()),
           message: get_diagnostic_message(d),
@@ -427,9 +427,9 @@ fn ts_json_to_diagnostics(
           tags: match d.code {
             // These are codes that indicate the variable is unused.
             2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
-            | 7028 => Some(vec![lsp::DiagnosticTag::UNNECESSARY]),
+            | 7028 => Some(vec![lsp_types::DiagnosticTag::UNNECESSARY]),
             // These are codes that indicated the variable is deprecated.
-            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::DEPRECATED]),
+            2789 | 6385 | 6387 => Some(vec![lsp_types::DiagnosticTag::DEPRECATED]),
             _ => None,
           },
           data: None,
@@ -477,7 +477,7 @@ fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
   maybe_lint_config: &Option<LintConfig>,
   document: &Document,
-) -> Vec<lsp::Diagnostic> {
+) -> Vec<lsp_types::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
     return Vec::new();
   }
@@ -629,20 +629,20 @@ impl DenoDiagnostic {
   /// structure returns a code action which can resolve the diagnostic.
   pub(crate) fn get_code_action(
     specifier: &ModuleSpecifier,
-    diagnostic: &lsp::Diagnostic,
-  ) -> Result<lsp::CodeAction, AnyError> {
-    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
+    diagnostic: &lsp_types::Diagnostic,
+  ) -> Result<lsp_types::CodeAction, AnyError> {
+    if let Some(lsp_types::NumberOrString::String(code)) = &diagnostic.code {
       let code_action = match code.as_str() {
-        "no-assert-type" => lsp::CodeAction {
+        "no-assert-type" => lsp_types::CodeAction {
           title: "Insert import assertion.".to_string(),
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          kind: Some(lsp_types::CodeActionKind::QUICKFIX),
           diagnostics: Some(vec![diagnostic.clone()]),
-          edit: Some(lsp::WorkspaceEdit {
+          edit: Some(lsp_types::WorkspaceEdit {
             changes: Some(HashMap::from([(
               specifier.clone(),
-              vec![lsp::TextEdit {
+              vec![lsp_types::TextEdit {
                 new_text: " assert { type: \"json\" }".to_string(),
-                range: lsp::Range {
+                range: lsp_types::Range {
                   start: diagnostic.range.end,
                   end: diagnostic.range.end,
                 },
@@ -663,11 +663,11 @@ impl DenoDiagnostic {
           } else {
             "Cache the data URL and its dependencies.".to_string()
           };
-          lsp::CodeAction {
+          lsp_types::CodeAction {
             title,
-            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            kind: Some(lsp_types::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
-            command: Some(lsp::Command {
+            command: Some(lsp_types::Command {
               title: "".to_string(),
               command: "deno.cache".to_string(),
               arguments: Some(vec![json!([data.specifier])]),
@@ -681,14 +681,14 @@ impl DenoDiagnostic {
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataRedirect = serde_json::from_value(data)?;
-          lsp::CodeAction {
+          lsp_types::CodeAction {
             title: "Update specifier to its redirected specifier.".to_string(),
-            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            kind: Some(lsp_types::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
-            edit: Some(lsp::WorkspaceEdit {
+            edit: Some(lsp_types::WorkspaceEdit {
               changes: Some(HashMap::from([(
                 specifier.clone(),
-                vec![lsp::TextEdit {
+                vec![lsp_types::TextEdit {
                   new_text: format!("\"{}\"", data.redirect),
                   range: diagnostic.range,
                 }],
@@ -711,10 +711,10 @@ impl DenoDiagnostic {
     }
   }
 
-  /// Given a reference to the code from an LSP diagnostic, determine if the
+  /// Given a reference to the code from an lsp_types diagnostic, determine if the
   /// diagnostic is fixable or not
-  pub(crate) fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
-    if let Some(lsp::NumberOrString::String(code)) = code {
+  pub(crate) fn is_fixable(code: &Option<lsp_types::NumberOrString>) -> bool {
+    if let Some(lsp_types::NumberOrString::String(code)) = code {
       matches!(
         code.as_str(),
         "no-cache" | "no-cache-data" | "no-assert-type" | "redirect"
@@ -724,27 +724,27 @@ impl DenoDiagnostic {
     }
   }
 
-  /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
+  /// Convert to an lsp_types Diagnostic when the range the diagnostic applies to is
   /// provided.
   pub(crate) fn to_lsp_diagnostic(
     &self,
-    range: &lsp::Range,
-  ) -> lsp::Diagnostic {
+    range: &lsp_types::Range,
+  ) -> lsp_types::Diagnostic {
     let (severity, message, data) = match self {
-      Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
-      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
-      Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
-      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
-      Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
-      Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
-      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+      Self::DenoWarn(message) => (lsp_types::DiagnosticSeverity::WARNING, message.to_string(), None),
+      Self::InvalidAssertType(assert_type) => (lsp_types::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
+      Self::NoAssertType => (lsp_types::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
+      Self::NoCache(specifier) => (lsp_types::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheBlob => (lsp_types::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
+      Self::NoCacheData(specifier) => (lsp_types::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
+      Self::NoLocal(specifier) => (lsp_types::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
+      Self::Redirect { from, to} => (lsp_types::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
+      Self::ResolutionError(err) => (lsp_types::DiagnosticSeverity::ERROR, err.to_string(), None),
     };
-    lsp::Diagnostic {
+    lsp_types::Diagnostic {
       range: *range,
       severity: Some(severity),
-      code: Some(lsp::NumberOrString::String(self.code().to_string())),
+      code: Some(lsp_types::NumberOrString::String(self.code().to_string())),
       source: Some("deno".to_string()),
       message,
       data,
@@ -754,7 +754,7 @@ impl DenoDiagnostic {
 }
 
 fn diagnose_dependency(
-  diagnostics: &mut Vec<lsp::Diagnostic>,
+  diagnostics: &mut Vec<lsp_types::Diagnostic>,
   documents: &Documents,
   cache_metadata: &cache::CacheMetadata,
   resolved: &deno_graph::Resolved,
@@ -1021,7 +1021,7 @@ let c: number = "a";
 
   fn get_diagnostics_for_single(
     diagnostic_vec: DiagnosticVec,
-  ) -> Vec<lsp::Diagnostic> {
+  ) -> Vec<lsp_types::Diagnostic> {
     assert_eq!(diagnostic_vec.len(), 1);
     let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
     diagnostics

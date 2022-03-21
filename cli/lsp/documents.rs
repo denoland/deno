@@ -25,7 +25,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_graph::Resolved;
-use lspower::lsp;
+use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -202,7 +202,7 @@ impl AssetOrDocument {
 
   pub fn get_maybe_dependency(
     &self,
-    position: &lsp::Position,
+    position: &lsp_types::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
     self
       .document()
@@ -326,7 +326,7 @@ impl Document {
   fn with_change(
     &self,
     version: i32,
-    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+    changes: Vec<lsp_types::TextDocumentContentChangeEvent>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Result<Document, AnyError> {
     let mut content = self.0.text_info.text_str().to_string();
@@ -512,7 +512,7 @@ impl Document {
   /// in the source document of the specifier.
   pub fn get_maybe_dependency(
     &self,
-    position: &lsp::Position,
+    position: &lsp_types::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
     let module = self.maybe_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
@@ -544,13 +544,13 @@ pub(crate) fn to_hover_text(result: &Resolved) -> String {
   }
 }
 
-pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
-  lsp::Range {
-    start: lsp::Position {
+pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp_types::Range {
+  lsp_types::Range {
+    start: lsp_types::Position {
       line: range.start.line as u32,
       character: range.start.character as u32,
     },
-    end: lsp::Position {
+    end: lsp_types::Position {
       line: range.end.line as u32,
       character: range.end.character as u32,
     },
@@ -768,7 +768,7 @@ impl Documents {
     &mut self,
     specifier: &ModuleSpecifier,
     version: i32,
-    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+    changes: Vec<lsp_types::TextDocumentContentChangeEvent>,
   ) -> Result<Document, AnyError> {
     let doc = self
       .open_docs
@@ -1179,13 +1179,13 @@ console.log(b);
       .change(
         &specifier,
         2,
-        vec![lsp::TextDocumentContentChangeEvent {
-          range: Some(lsp::Range {
-            start: lsp::Position {
+        vec![lsp_types::TextDocumentContentChangeEvent {
+          range: Some(lsp_types::Range {
+            start: lsp_types::Position {
               line: 1,
               character: 13,
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 1,
               character: 13,
             },

@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use lspower::LspService;
-use lspower::Server;
+use tower_lsp::LspService;
+use tower_lsp::Server;
 
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
@@ -35,7 +35,7 @@ pub async fn start() -> Result<(), AnyError> {
   let stdout = tokio::io::stdout();
 
   let (service, messages) = LspService::new(|client| {
-    language_server::LanguageServer::new(client::Client::from_lspower(client))
+    language_server::LanguageServer::new(client::Client::from_tower(client))
   });
   Server::new(stdin, stdout)
     .interleave(messages)

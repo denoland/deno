@@ -11,10 +11,10 @@ use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
-use lspower::jsonrpc::Error as LspError;
-use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp::request::*;
-use lspower::lsp::*;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types::request::*;
+use tower_lsp::lsp_types::*;
 use serde_json::from_value;
 use std::env;
 use std::path::PathBuf;
@@ -87,7 +87,7 @@ pub(crate) struct Inner {
   /// A representation of metadata associated with specifiers in the DENO_DIR
   /// which is used by the language server
   cache_metadata: cache::CacheMetadata,
-  /// The LSP client that this LSP server is connected to.
+  /// The lsp_types client that this lsp_types server is connected to.
   pub(crate) client: Client,
   /// Configuration information.
   pub(crate) config: Config,
@@ -115,13 +115,13 @@ pub(crate) struct Inner {
   pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
-  /// A collection of measurements which instrument that performance of the LSP.
+  /// A collection of measurements which instrument that performance of the lsp_types.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
   pub(crate) ts_server: Arc<TsServer>,
-  /// A map of specifiers and URLs used to translate over the LSP.
+  /// A map of specifiers and URLs used to translate over the lsp_types.
   pub(crate) url_map: urls::LspUrlMap,
 }
 
@@ -644,7 +644,7 @@ impl Inner {
   }
 }
 
-// lspower::LanguageServer methods. This file's LanguageServer delegates to us.
+// tower_lsp::LanguageServer methods. This file's LanguageServer delegates to us.
 impl Inner {
   async fn initialize(
     &mut self,
@@ -2389,8 +2389,8 @@ impl Inner {
   }
 }
 
-#[lspower::async_trait]
-impl lspower::LanguageServer for LanguageServer {
+#[tower_lsp::async_trait]
+impl tower_lsp::LanguageServer for LanguageServer {
   async fn initialize(
     &self,
     params: InitializeParams,
@@ -2726,13 +2726,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.rename(params).await
   }
 
-  async fn request_else(
-    &self,
-    method: &str,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    self.0.lock().await.request_else(method, params).await
-  }
+  // async fn request_else(
+  //   &self,
+  //   method: &str,
+  //   params: Option<Value>,
+  // ) -> LspResult<Option<Value>> {
+  //   self.0.lock().await.request_else(method, params).await
+  // }
 
   async fn selection_range(
     &self,
@@ -2770,7 +2770,7 @@ impl lspower::LanguageServer for LanguageServer {
   }
 }
 
-// These are implementations of custom commands supported by the LSP
+// These are implementations of custom commands supported by the lsp_types
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.

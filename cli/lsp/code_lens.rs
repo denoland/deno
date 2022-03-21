@@ -19,7 +19,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
+use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
@@ -48,15 +48,15 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
-fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp::Range {
+fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp_types::Range {
   let start = parsed_source.source().line_and_column_index(span.lo);
   let end = parsed_source.source().line_and_column_index(span.hi);
-  lsp::Range {
-    start: lsp::Position {
+  lsp_types::Range {
+    start: lsp_types::Position {
       line: start.line_index as u32,
       character: start.column_index as u32,
     },
-    end: lsp::Position {
+    end: lsp_types::Position {
       line: end.line_index as u32,
       character: end.column_index as u32,
     },
@@ -64,7 +64,7 @@ fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp::Range {
 }
 
 struct DenoTestCollector {
-  code_lenses: Vec<lsp::CodeLens>,
+  code_lenses: Vec<lsp_types::CodeLens>,
   parsed_source: ParsedSource,
   specifier: ModuleSpecifier,
   test_vars: HashSet<String>,
@@ -89,16 +89,16 @@ impl DenoTestCollector {
   fn add_code_lens<N: AsRef<str>>(
     &mut self,
     name: &N,
-    range: lsp::Range,
+    range: lsp_types::Range,
     title: &str,
     inspect: bool,
   ) {
     let options = json!({
       "inspect": inspect,
     });
-    self.code_lenses.push(lsp::CodeLens {
+    self.code_lenses.push(lsp_types::CodeLens {
       range,
-      command: Some(lsp::Command {
+      command: Some(lsp_types::Command {
         title: title.to_string(),
         command: "deno.test".to_string(),
         arguments: Some(vec![
@@ -150,7 +150,7 @@ impl DenoTestCollector {
   }
 
   /// Move out the code lenses from the collector.
-  fn take(self) -> Vec<lsp::CodeLens> {
+  fn take(self) -> Vec<lsp_types::CodeLens> {
     self.code_lenses
   }
 }
@@ -237,10 +237,10 @@ impl Visit for DenoTestCollector {
 }
 
 async fn resolve_implementation_code_lens(
-  code_lens: lsp::CodeLens,
+  code_lens: lsp_types::CodeLens,
   data: CodeLensData,
   language_server: &language_server::Inner,
-) -> Result<lsp::CodeLens, AnyError> {
+) -> Result<lsp_types::CodeLens, AnyError> {
   let asset_or_doc =
     language_server.get_cached_asset_or_document(&data.specifier)?;
   let line_index = asset_or_doc.line_index();
@@ -270,7 +270,7 @@ async fn resolve_implementation_code_lens(
       } else {
         "1 implementation".to_string()
       };
-      lsp::Command {
+      lsp_types::Command {
         title,
         command: "deno.showReferences".to_string(),
         arguments: Some(vec![
@@ -280,24 +280,24 @@ async fn resolve_implementation_code_lens(
         ]),
       }
     } else {
-      lsp::Command {
+      lsp_types::Command {
         title: "0 implementations".to_string(),
         command: "".to_string(),
         arguments: None,
       }
     };
-    Ok(lsp::CodeLens {
+    Ok(lsp_types::CodeLens {
       range: code_lens.range,
       command: Some(command),
       data: None,
     })
   } else {
-    let command = Some(lsp::Command {
+    let command = Some(lsp_types::Command {
       title: "0 implementations".to_string(),
       command: "".to_string(),
       arguments: None,
     });
-    Ok(lsp::CodeLens {
+    Ok(lsp_types::CodeLens {
       range: code_lens.range,
       command,
       data: None,
@@ -306,10 +306,10 @@ async fn resolve_implementation_code_lens(
 }
 
 async fn resolve_references_code_lens(
-  code_lens: lsp::CodeLens,
+  code_lens: lsp_types::CodeLens,
   data: CodeLensData,
   language_server: &language_server::Inner,
-) -> Result<lsp::CodeLens, AnyError> {
+) -> Result<lsp_types::CodeLens, AnyError> {
   let asset_or_document =
     language_server.get_cached_asset_or_document(&data.specifier)?;
   let line_index = asset_or_document.line_index();
@@ -342,7 +342,7 @@ async fn resolve_references_code_lens(
       } else {
         "1 reference".to_string()
       };
-      lsp::Command {
+      lsp_types::Command {
         title,
         command: "deno.showReferences".to_string(),
         arguments: Some(vec![
@@ -352,24 +352,24 @@ async fn resolve_references_code_lens(
         ]),
       }
     } else {
-      lsp::Command {
+      lsp_types::Command {
         title: "0 references".to_string(),
         command: "".to_string(),
         arguments: None,
       }
     };
-    Ok(lsp::CodeLens {
+    Ok(lsp_types::CodeLens {
       range: code_lens.range,
       command: Some(command),
       data: None,
     })
   } else {
-    let command = lsp::Command {
+    let command = lsp_types::Command {
       title: "0 references".to_string(),
       command: "".to_string(),
       arguments: None,
     };
-    Ok(lsp::CodeLens {
+    Ok(lsp_types::CodeLens {
       range: code_lens.range,
       command: Some(command),
       data: None,
@@ -378,9 +378,9 @@ async fn resolve_references_code_lens(
 }
 
 pub(crate) async fn resolve_code_lens(
-  code_lens: lsp::CodeLens,
+  code_lens: lsp_types::CodeLens,
   language_server: &language_server::Inner,
-) -> Result<lsp::CodeLens, AnyError> {
+) -> Result<lsp_types::CodeLens, AnyError> {
   let data: CodeLensData =
     serde_json::from_value(code_lens.data.clone().unwrap())?;
   match data.source {
@@ -399,7 +399,7 @@ pub(crate) async fn collect(
   config: &Config,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
-) -> Result<Vec<lsp::CodeLens>, AnyError> {
+) -> Result<Vec<lsp_types::CodeLens>, AnyError> {
   let mut code_lenses = collect_test(specifier, parsed_source, config)?;
   code_lenses.extend(
     collect_tsc(
@@ -418,7 +418,7 @@ fn collect_test(
   specifier: &ModuleSpecifier,
   parsed_source: Option<ParsedSource>,
   config: &Config,
-) -> Result<Vec<lsp::CodeLens>, AnyError> {
+) -> Result<Vec<lsp_types::CodeLens>, AnyError> {
   if config.specifier_code_lens_test(specifier) {
     if let Some(parsed_source) = parsed_source {
       let mut collector =
@@ -436,7 +436,7 @@ async fn collect_tsc(
   workspace_settings: &WorkspaceSettings,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
-) -> Result<Vec<lsp::CodeLens>, AnyError> {
+) -> Result<Vec<lsp_types::CodeLens>, AnyError> {
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
   navigation_tree.walk(&|i, mp| {
     let mut code_lenses = code_lenses.borrow_mut();
@@ -587,18 +587,18 @@ mod tests {
     assert_eq!(
       collector.take(),
       vec![
-        lsp::CodeLens {
-          range: lsp::Range {
-            start: lsp::Position {
+        lsp_types::CodeLens {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
               line: 1,
               character: 11
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 1,
               character: 15
             }
           },
-          command: Some(lsp::Command {
+          command: Some(lsp_types::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
             command: "deno.test".to_string(),
             arguments: Some(vec![
@@ -611,18 +611,18 @@ mod tests {
           }),
           data: None,
         },
-        lsp::CodeLens {
-          range: lsp::Range {
-            start: lsp::Position {
+        lsp_types::CodeLens {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
               line: 1,
               character: 11
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 1,
               character: 15
             }
           },
-          command: Some(lsp::Command {
+          command: Some(lsp_types::Command {
             title: "Debug".to_string(),
             command: "deno.test".to_string(),
             arguments: Some(vec![
@@ -635,18 +635,18 @@ mod tests {
           }),
           data: None,
         },
-        lsp::CodeLens {
-          range: lsp::Range {
-            start: lsp::Position {
+        lsp_types::CodeLens {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
               line: 6,
               character: 11
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 6,
               character: 15
             }
           },
-          command: Some(lsp::Command {
+          command: Some(lsp_types::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
             command: "deno.test".to_string(),
             arguments: Some(vec![
@@ -659,18 +659,18 @@ mod tests {
           }),
           data: None,
         },
-        lsp::CodeLens {
-          range: lsp::Range {
-            start: lsp::Position {
+        lsp_types::CodeLens {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
               line: 6,
               character: 11
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 6,
               character: 15
             }
           },
-          command: Some(lsp::Command {
+          command: Some(lsp_types::Command {
             title: "Debug".to_string(),
             command: "deno.test".to_string(),
             arguments: Some(vec![
@@ -683,18 +683,18 @@ mod tests {
           }),
           data: None,
         },
-        lsp::CodeLens {
-          range: lsp::Range {
-            start: lsp::Position {
+        lsp_types::CodeLens {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
               line: 8,
               character: 11
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 8,
               character: 15
             }
           },
-          command: Some(lsp::Command {
+          command: Some(lsp_types::Command {
             title: "▶\u{fe0e} Run Test".to_string(),
             command: "deno.test".to_string(),
             arguments: Some(vec![
@@ -707,18 +707,18 @@ mod tests {
           }),
           data: None,
         },
-        lsp::CodeLens {
-          range: lsp::Range {
-            start: lsp::Position {
+        lsp_types::CodeLens {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
               line: 8,
               character: 11
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 8,
               character: 15
             }
           },
-          command: Some(lsp::Command {
+          command: Some(lsp_types::Command {
             title: "Debug".to_string(),
             command: "deno.test".to_string(),
             arguments: Some(vec![
