@@ -97,6 +97,21 @@ const dylib = Deno.dlopen(libPath, {
     ],
     result: "void",
   },
+  "register_callback": {
+    parameters: [
+      {
+        function: {
+          parameters: [],
+          result: "i32"
+        }
+      }
+    ],
+    result: "void",
+  },
+  "call_registered_callback": {
+    parameters: [],
+    result: "i32"
+  },
   "get_add_u32_ptr": {
     parameters: [],
     result: "pointer",
@@ -183,6 +198,9 @@ console.log(dylib.symbols.add_usize(123, 456));
 console.log(dylib.symbols.add_isize(123, 456));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+dylib.symbols.register_callback(function() { return 420 });
+const result = dylib.symbols.call_registered_callback();
+console.log(result);
 
 // test callbacks
 dylib.symbols.add_callback((a, b, ptr) => {
@@ -192,6 +210,7 @@ dylib.symbols.add_callback((a, b, ptr) => {
   console.log("[js] callback called");
   return a + b;
 });
+
 
 dylib.symbols.chain_multiple_callbacks(() => {
   console.log("get a");

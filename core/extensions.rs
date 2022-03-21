@@ -23,7 +23,16 @@ pub struct Extension {
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
+  destructor: Option<Box<dyn Fn()>>,
   initialized: bool,
+}
+
+impl Drop for Extension {
+  fn drop(&mut self) {
+    if let Some(destructor) = self.destructor.take() {
+      destructor();
+    };
+  }
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -91,6 +100,7 @@ pub struct ExtensionBuilder {
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
+  destructor: Option<Box<dyn Fn()>>,
 }
 
 impl ExtensionBuilder {
@@ -120,6 +130,13 @@ impl ExtensionBuilder {
     self
   }
 
+  pub fn destructor<F: 'static>(&mut self, destructor: F) -> &mut Self
+  where
+    F: Fn(),
+  {
+    self.destructor = Some(Box::new(destructor));
+    self
+  }
   pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
     F: Fn(&mut OpState, &mut Context) -> bool + 'static,
@@ -137,6 +154,7 @@ impl ExtensionBuilder {
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
       event_loop_middleware: self.event_loop_middleware.take(),
+      destructor: self.destructor.take(),
       initialized: false,
     }
   }

@@ -164,12 +164,24 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
   let arg0 = f.sig.inputs.first();
   let uses_opstate = arg0.map(is_mut_ref_opstate).unwrap_or_default();
+  let uses_rc_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
-    quote! { op_state, }
+    quote! { &mut state.borrow_mut(), }
+  } else if uses_rc_opstate {
+    quote! { unsafe {
+      let ptr = state_refcell_raw as *const std::cell::RefCell<#core::OpState>;
+      // Increment so it will later be decremented/dropped by the underlaying func it is moved to
+      std::rc::Rc::increment_strong_count(ptr);
+      std::rc::Rc::from_raw(ptr)
+    }, }
   } else {
     quote! {}
   };
-  let rust_i0 = if uses_opstate { 1 } else { 0 };
+  let rust_i0 = if uses_opstate || uses_rc_opstate {
+    1
+  } else {
+    0
+  };
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
@@ -190,11 +202,10 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
     let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
 
-    let op_state = &mut state.borrow_mut();
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
+    let op_state = &mut state.borrow_mut();
     op_state.tracker.track_sync(op_id);
-
     #ret
   }
 }

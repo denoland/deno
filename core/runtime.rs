@@ -345,7 +345,11 @@ impl JsRuntime {
       }
       (isolate, None)
     };
-
+    {
+      let mut op_state = op_state.borrow_mut();
+      op_state.put(&mut *isolate as *mut v8::Isolate);
+      op_state.put(Some(global_context.clone()));
+    }
     let inspector =
       JsRuntimeInspector::new(&mut isolate, global_context.clone());
 
@@ -655,6 +659,14 @@ impl JsRuntime {
     state.borrow_mut().global_context.take();
 
     self.inspector.take();
+    // Drop other v8::Global handles before snapshotting
+    std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut self.extensions);
+    {
+      let state = state.borrow();
+      let mut op_state = state.op_state.borrow_mut();
+      op_state.take::<Option<v8::Global<v8::Context>>>();
+    }
 
     // Overwrite existing ModuleMap to drop v8::Global handles
     self
@@ -663,9 +675,6 @@ impl JsRuntime {
         Rc::new(NoopModuleLoader),
         state.borrow().op_state.clone(),
       ))));
-    // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_recv_cb);
-
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)

@@ -48,6 +48,19 @@ pub extern "C" fn add_callback(cb: extern "C" fn(i32, i32, *const u8) -> i32) {
   println!("[rust] cb returned {}", result);
 }
 
+static mut REGISTERED_CALLBACK: Option<extern "C" fn() -> i32> = None;
+
+#[no_mangle]
+pub extern "C" fn register_callback(cb: extern "C" fn() -> i32) {
+  unsafe { REGISTERED_CALLBACK = Some(cb) };
+}
+
+#[no_mangle]
+pub extern "C" fn call_registered_callback() -> i32 {
+  let func = unsafe { REGISTERED_CALLBACK.unwrap() };
+  func()
+}
+
 #[no_mangle]
 pub extern "C" fn chain_multiple_callbacks(
   get_a: Option<extern "C" fn() -> i32>,

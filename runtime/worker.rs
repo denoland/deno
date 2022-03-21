@@ -95,10 +95,6 @@ impl MainWorker {
       })
       .build();
 
-    // Allocate isolate pointer.
-    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> =
-      MaybeUninit::uninit();
-
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -128,7 +124,7 @@ impl MainWorker {
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable, isolate_ptr),
+      deno_ffi::init::<Permissions>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -167,13 +163,6 @@ impl MainWorker {
       extensions,
       ..Default::default()
     });
-
-    // Initialize isolate ptr memory.
-    {
-      let isolate = js_runtime.v8_isolate();
-      // SAFETY: `isolate_ptr` is valid for writes and properly aligned.
-      isolate_ptr.write(isolate);
-    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

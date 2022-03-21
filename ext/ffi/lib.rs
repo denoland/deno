@@ -138,10 +138,18 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn init<P: FfiPermissions + 'static>(
-  unstable: bool,
-  isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>,
-) -> Extension {
+// Data avaiable on the Isolate thread.
+struct IsolateData {
+  isolate: *mut v8::Isolate,
+  global_context: v8::Global<v8::Context>,
+  scope_alive: bool,
+}
+
+thread_local! {
+  static ISOLATE: RefCell<Option<IsolateData>> = RefCell::new(None);
+}
+
+pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/ffi",
@@ -172,8 +180,27 @@ pub fn init<P: FfiPermissions + 'static>(
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
       state.put(Unstable(unstable));
-      state.put(unsafe { isolate_ptr.assume_init() });
+      let isolate_ptr = state.borrow::<*mut v8::Isolate>();
+      let global_context = state
+        .borrow::<Option<v8::Global<v8::Context>>>()
+        .clone()
+        .unwrap();
+      ISOLATE.with(|cell| {
+        let mut store = cell.borrow_mut();
+        *store = Some(IsolateData {
+          isolate: *isolate_ptr,
+          global_context,
+          scope_alive: false,
+        });
+      });
       Ok(())
+    })
+    .destructor(|| {
+      // Free isolate data and global handle.
+      ISOLATE.with(|cell| {
+        let mut store = cell.borrow_mut();
+        *store = None;
+      });
     })
     .build()
 }
@@ -591,7 +618,6 @@ fn ffi_call(
   symbol: &Symbol,
   // For callbacks
   functions: Vec<v8::Local<v8::Function>>,
-  mut callback_context: Option<*mut v8::OwnedIsolate>,
 ) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -652,32 +678,35 @@ fn ffi_call(
   if !offsets.is_empty() {
     for (cb, offset) in functions.into_iter().zip(offsets) {
       // Grab the persistent for callback & current scope.
-      let isolate_ptr = callback_context.as_mut().unwrap();
-      let global = v8::Global::new(unsafe { &mut **isolate_ptr }, cb);
-
-      // NOTE: `into_raw` leaks.
-      let cb_info = CallbackInfo::new(*isolate_ptr, global.into_raw());
+      let global = ISOLATE.with(|cell| unsafe {
+        let isolate = cell.borrow_mut().as_ref().unwrap().isolate;
+        // NOTE: `into_raw` leaks.
+        let global = v8::Global::new(&mut *isolate, cb);
+        global.into_raw()
+      });
+      dbg!(global.as_ptr() as u64);
+      let info = CallbackInfo::new(global);
       let signature = &symbol.parameter_types[offset];
-      let (mut info, cif) = match signature {
+      let cif = match signature {
         NativeType::Function {
           ref parameters,
           ref result,
-        } => (
-          cb_info,
-          Cif::new(
+        } => Cif::new(
             parameters.iter().map(libffi::middle::Type::from),
             libffi::middle::Type::from(*result.clone()),
           ),
-        ),
         _ => unreachable!(),
       };
 
       let closure =
-        libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
+        libffi::middle::Closure::new(cif, deno_ffi_callback, &info);
       call_args[offset] = Arg::new(closure.code_ptr());
+      
+      std::mem::forget(global);
       // So this is a bad API. We need to ensure that the destructor for the closure is not run.
       // Ideally, `code_ptr()` should consume the closure.
       std::mem::forget(closure);
+      std::mem::forget(info);
     }
   }
 
@@ -737,35 +766,26 @@ fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
 }
 
 pub struct CallbackInfo {
-  isolate_ptr: *mut v8::OwnedIsolate,
   cb: NonNull<v8::Function>,
 }
 
 impl CallbackInfo {
-  pub fn new(
-    isolate_ptr: *mut v8::OwnedIsolate,
-    cb: NonNull<v8::Function>,
-  ) -> Self {
-    Self { isolate_ptr, cb }
+  pub fn new(cb: NonNull<v8::Function>) -> Self {
+    Self { cb }
   }
 }
 
-unsafe extern "C" fn deno_ffi_callback(
+unsafe fn trigger_callback<'s>(
   cif: &libffi::low::ffi_cif,
   result: &mut c_void,
   args: *const *const c_void,
-  info: &mut CallbackInfo,
+  info: &CallbackInfo,
+  scope: &mut v8::HandleScope<'s>,
+  isolate: &mut v8::Isolate,
 ) {
-  let isolate: &mut v8::OwnedIsolate = unsafe { &mut *info.isolate_ptr };
-  let global = v8::Global::from_raw(isolate, info.cb);
-
-  let scope = &mut v8::HandleScope::new(isolate);
-  let ctx = v8::Context::new(scope);
-  let scope = &mut v8::HandleScope::with_context(unsafe { &mut *info.isolate_ptr }, ctx);
-
-  let func = global.open(scope).to_object(scope).unwrap();
-  let func = v8::Local::<v8::Function>::try_from(func).unwrap();
-
+  dbg!(info.cb.as_ptr() as u64);
+  let cb = v8::Global::from_raw(isolate, info.cb);
+  let func = v8::Local::new(scope, cb);
   let result = result as *mut c_void;
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
   let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
@@ -852,43 +872,82 @@ unsafe extern "C" fn deno_ffi_callback(
     _ => {
       panic!("Unsupported callback return type")
     }
-  }
+  };
+}
+
+unsafe extern "C" fn deno_ffi_callback(
+  cif: &libffi::low::ffi_cif,
+  result: &mut c_void,
+  args: *const *const c_void,
+  info: &CallbackInfo,
+) {
+  ISOLATE.with(|cell| {
+    let store = cell.borrow();
+    match store.as_ref() {
+      Some(IsolateData {
+        isolate,
+        global_context,
+        scope_alive,
+      }) => {
+        let ctx = global_context.clone();
+        let local_ctx: v8::Local<v8::Context> = std::mem::transmute(ctx.into_raw());
+        let mut scope = v8::CallbackScope::new(local_ctx);
+
+        dbg!("Calling callback syncronously.");
+        trigger_callback(cif, result, args, info, &mut scope, &mut **isolate);
+      }
+      None => {
+        dbg!("Calling callback asyncronously from a different thread");
+        // We're not on the Isolate thread.
+      }
+    }
+  });
+}
+
+fn set_scope_state(alive: bool) {
+  ISOLATE.with(|cell| {
+    let mut data = cell.borrow_mut();
+    if let Some(data) = data.as_mut() {
+      data.scope_alive = alive;
+    }
+  })
 }
 
 /// A variant of `op_ffi_call` that has the ability to
 /// pass the given callback to the symbol.
 #[op]
 fn op_ffi_call_cb(
-  state: &mut deno_core::OpState,
+  state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
-  cb: Vec<serde_v8::Value>,
+  cb: Vec<serde_v8::Value<'_>>,
 ) -> Result<Value, AnyError> {
+  let state = state.borrow_mut();
+  set_scope_state(true);
   let resource = state
     .resource_table
     .get::<DynamicLibraryResource>(args.rid)?;
-
-  let isolate_ptr = state.borrow::<*mut v8::OwnedIsolate>();
 
   let symbol = resource
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
-    
-
-  let fns = cb.iter()
+  drop(state);
+  let fns = cb
+    .iter()
     .map(|value| {
       let v8_value = value.v8_value;
-      v8::Local::<v8::Function>::try_from(v8_value)
-      .unwrap()
+      v8::Local::<v8::Function>::try_from(v8_value).unwrap()
     })
     .collect();
-  ffi_call(args, symbol, fns, Some(*isolate_ptr))
+  let result = ffi_call(args, symbol, fns);
+  set_scope_state(false);
+  result
 }
 
 #[op]
 fn op_ffi_call_ptr(args: FfiCallPtrArgs) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  ffi_call(args.into(), &symbol, vec![], None)
+  ffi_call(args.into(), &symbol, vec![])
 }
 
 #[op]
@@ -896,11 +955,9 @@ async fn op_ffi_call_ptr_nonblocking(
   args: FfiCallPtrArgs,
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  tokio::task::spawn_blocking(move || {
-    ffi_call(args.into(), &symbol, vec![], None)
-  })
-  .await
-  .unwrap()
+  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol, vec![]))
+    .await
+    .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -983,7 +1040,7 @@ fn op_ffi_call(
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
-  ffi_call(args, symbol, vec![], None)
+  ffi_call(args, symbol, vec![])
 }
 
 /// A non-blocking FFI call.
@@ -1002,7 +1059,7 @@ async fn op_ffi_call_nonblocking(
     .ok_or_else(bad_resource_id)?
     .clone();
 
-  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, vec![], None))
+  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, vec![]))
     .await
     .unwrap()
 }
