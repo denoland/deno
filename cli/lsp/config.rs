@@ -361,19 +361,26 @@ impl Config {
 
   /// Given the configured workspaces or root URI and the their settings,
   /// update and resolve any paths that should be enabled
-  pub async fn update_enabled_paths(&mut self, client: Client) {
+  pub async fn update_enabled_paths(&mut self, client: Client) -> bool {
     if let Some(workspace_folders) = self.workspace_folders.clone() {
+      let mut touched = false;
       for (workspace, folder) in workspace_folders {
         if let Ok(settings) = client.specifier_configuration(&folder.uri).await
         {
-          self.update_enabled_paths_entry(&workspace, settings.enable_paths);
+          if self.update_enabled_paths_entry(&workspace, settings.enable_paths)
+          {
+            touched = true;
+          }
         }
       }
+      touched
     } else if let Some(root_uri) = self.root_uri.clone() {
       self.update_enabled_paths_entry(
         &root_uri,
         self.settings.workspace.enable_paths.clone(),
-      );
+      )
+    } else {
+      false
     }
   }
 
@@ -382,9 +389,10 @@ impl Config {
     &mut self,
     workspace: &ModuleSpecifier,
     enabled_paths: Vec<String>,
-  ) {
+  ) -> bool {
     let workspace = fs_util::ensure_directory_specifier(workspace.clone());
     let key = workspace.to_string();
+    let mut touched = false;
     if !enabled_paths.is_empty() {
       if let Ok(workspace_path) = fs_util::specifier_to_file_path(&workspace) {
         let mut paths = Vec::new();
@@ -400,12 +408,15 @@ impl Config {
           }
         }
         if !paths.is_empty() {
+          touched = true;
           self.enabled_paths.insert(key, paths);
         }
       }
     } else {
+      touched = true;
       self.enabled_paths.remove(&key);
     }
+    touched
   }
 
   pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {

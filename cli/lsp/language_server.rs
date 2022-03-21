@@ -983,7 +983,6 @@ impl Inner {
     }
 
     self.config.workspace_folders = Some(workspace_folders);
-    self.config.update_enabled_paths(self.client.clone()).await;
     self.performance.measure(mark);
   }
 
@@ -2534,13 +2533,15 @@ impl lspower::LanguageServer for LanguageServer {
             }
           }
         }
-        language_server
-          .0
-          .lock()
-          .await
-          .config
-          .update_enabled_paths(client)
-          .await;
+        let mut ls = language_server.0.lock().await;
+        if ls.config.update_enabled_paths(client).await {
+          ls.diagnostics_server.invalidate_all();
+          // this will be called in the inner did_change_configuration, but the
+          // problem then becomes, if there was a change, the snapshot used
+          // will be an out of date one, so we will call it again here if the
+          // workspace folders have been touched
+          ls.send_diagnostics_update();
+        }
       });
     }
 
@@ -2590,13 +2591,11 @@ impl lspower::LanguageServer for LanguageServer {
     };
     let language_server = self.clone();
     tokio::spawn(async move {
-      language_server
-        .0
-        .lock()
-        .await
-        .config
-        .update_enabled_paths(client)
-        .await;
+      let mut ls = language_server.0.lock().await;
+      if ls.config.update_enabled_paths(client).await {
+        ls.diagnostics_server.invalidate_all();
+        ls.send_diagnostics_update();
+      }
     });
   }
 

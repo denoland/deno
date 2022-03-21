@@ -324,6 +324,7 @@ impl DiagnosticsServer {
     &self,
     message: SnapshotForDiagnostics,
   ) -> Result<(), AnyError> {
+    log::info!("diagnostic_server::update()");
     // todo(dsherret): instead of queuing up messages, it would be better to
     // instead only store the latest message (ex. maybe using a
     // tokio::sync::watch::channel)
@@ -845,7 +846,8 @@ async fn generate_deps_diagnostics(
       break;
     }
     let mut diagnostics = Vec::new();
-    if config.specifier_enabled(document.specifier()) {
+    let specifier = document.specifier();
+    if config.specifier_enabled(specifier) {
       for (_, dependency) in document.dependencies() {
         diagnose_dependency(
           &mut diagnostics,
@@ -866,7 +868,7 @@ async fn generate_deps_diagnostics(
       }
     }
     diagnostics_vec.push((
-      document.specifier().clone(),
+      specifier.clone(),
       document.maybe_lsp_version(),
       diagnostics,
     ));
