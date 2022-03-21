@@ -14,7 +14,8 @@ use std::fs;
 use tempfile::TempDir;
 use test_util::deno_exe_path;
 use test_util::http_server;
-use test_util::lsp::{LspClient, LspResponseError};
+use test_util::lsp::LspClient;
+use test_util::lsp::LspResponseError;
 use test_util::testdata_path;
 use tower_lsp::lsp_types;
 
