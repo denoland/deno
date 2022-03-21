@@ -51,7 +51,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let core = core_import();
 
-  let v8_body = if func.sig.asyncness.is_some() {
+  let is_async = func.sig.asyncness.is_some();
+  let v8_body = if is_async {
     codegen_v8_async(&core, &func)
   } else {
     codegen_v8_sync(&core, &func)
@@ -82,6 +83,8 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #core::OpDecl {
           name: Self::name(),
           v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+          enabled: true,
+          is_async: #is_async,
         }
       }
 

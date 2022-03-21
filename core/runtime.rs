@@ -14,6 +14,8 @@ use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
+use crate::op_void_async;
+use crate::op_void_sync;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -472,7 +474,7 @@ impl JsRuntime {
     // macroware wraps an opfn in all the middleware
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
-    // Flatten ops & apply middlware
+    // Flatten ops, apply middlware & override disabled ops
     extensions
       .iter_mut()
       .filter_map(|e| e.init_ops())
@@ -480,6 +482,16 @@ impl JsRuntime {
       .map(|d| OpDecl {
         name: d.name,
         ..macroware(d)
+      })
+      .map(|op| match op.enabled {
+        true => op,
+        false => OpDecl {
+          v8_fn_ptr: match op.is_async {
+            true => op_void_async::v8_fn_ptr(),
+            false => op_void_sync::v8_fn_ptr(),
+          },
+          ..op
+        },
       })
       .collect()
   }
