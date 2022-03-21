@@ -142,8 +142,6 @@ jobs:
           export_default_credentials: true
 
       - name: Error on warning
-        # TODO(piscisaureus): enable this on Windows again.
-        if: "!startsWith(matrix.os, 'windows')"
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
