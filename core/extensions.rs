@@ -65,7 +65,7 @@ impl Extension {
 
     let mut ops = self.ops.take()?;
     for op in ops.iter_mut() {
-      op.enabled = self.enabled || op.enabled;
+      op.enabled = self.enabled && op.enabled;
     }
     Some(ops)
   }
