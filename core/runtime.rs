@@ -5,8 +5,8 @@ use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
-use crate::extensions::OpPair;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
@@ -297,13 +297,12 @@ impl JsRuntime {
 
     let op_state = Rc::new(RefCell::new(op_state));
 
-    let refs = bindings::external_references(&ops, op_state.clone());
-    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
+      let mut creator =
+        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -319,7 +318,7 @@ impl JsRuntime {
         .create_params
         .take()
         .unwrap_or_else(v8::Isolate::create_params)
-        .external_references(&**refs);
+        .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -463,7 +462,7 @@ impl JsRuntime {
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpPair> {
+  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = extensions
       .iter_mut()
@@ -471,15 +470,17 @@ impl JsRuntime {
       .collect();
 
     // macroware wraps an opfn in all the middleware
-    let macroware =
-      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+    let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops & apply middlware
     extensions
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
-      .map(|(name, opfn)| (name, macroware(name, opfn)))
+      .map(|d| OpDecl {
+        name: d.name,
+        ..macroware(d)
+      })
       .collect()
   }
 
@@ -506,24 +507,64 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grab a Global handle to a function returned by the given expression
-  fn grab_fn(
-    scope: &mut v8::HandleScope,
-    code: &str,
-  ) -> v8::Global<v8::Function> {
-    let code = v8::String::new(scope, code).unwrap();
-    let script = v8::Script::compile(scope, code, None).unwrap();
-    let v8_value = script.run(scope).unwrap();
-    let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
-    v8::Global::new(scope, cb)
+  /// Grab a Global handle to a v8 value returned by the expression
+  pub(crate) fn grab<'s, T>(
+    scope: &mut v8::HandleScope<'s>,
+    root: v8::Local<'s, v8::Value>,
+    path: &str,
+  ) -> Option<v8::Local<'s, T>>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
+  {
+    path
+      .split('.')
+      .fold(Some(root), |p, k| {
+        let p = v8::Local::<v8::Object>::try_from(p?).ok()?;
+        let k = v8::String::new(scope, k)?;
+        p.get(scope, k.into())
+      })?
+      .try_into()
+      .ok()
+  }
+
+  pub(crate) fn grab_global<'s, T>(
+    scope: &mut v8::HandleScope<'s>,
+    path: &str,
+  ) -> Option<v8::Local<'s, T>>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
+  {
+    let context = scope.get_current_context();
+    let global = context.global(scope);
+    Self::grab(scope, global.into(), path)
+  }
+
+  pub(crate) fn ensure_objs<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    root: v8::Local<'s, v8::Object>,
+    path: &str,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    path.split('.').fold(Some(root), |p, k| {
+      let k = v8::String::new(scope, k)?.into();
+      match p?.get(scope, k) {
+        Some(v) if !v.is_null_or_undefined() => v.try_into().ok(),
+        _ => {
+          let o = v8::Object::new(scope);
+          p?.set(scope, k, o.into());
+          Some(o)
+        }
+      }
+    })
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
-    let mut scope = self.handle_scope();
-    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
+    let scope = &mut self.handle_scope();
+    let recv_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
+    let recv_cb = v8::Global::new(scope, recv_cb);
     // Put global handles in state
-    let state_rc = JsRuntime::state(&scope);
+    let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
   }
@@ -594,6 +635,19 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
+
+    // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
+    // TODO(@AaronO): make ops stable across snapshots
+    {
+      let scope = &mut self.handle_scope();
+      let o = Self::grab_global::<v8::Object>(scope, "Deno.core.ops").unwrap();
+      let names = o.get_own_property_names(scope).unwrap();
+      for i in 0..names.length() {
+        let key = names.get_index(scope, i).unwrap();
+        o.delete(scope, key);
+      }
+    }
+
     let state = Self::state(self.v8_isolate());
 
     // Note: create_blob() method must not be called from within a HandleScope.
@@ -2062,7 +2116,7 @@ pub mod tests {
   #[test]
   fn test_error_builder() {
     #[op]
-    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+    fn op_err() -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -2468,8 +2522,6 @@ assertEquals(1, notify_return_value);
     #[op]
     async fn op_async_borrow(
       op_state: Rc<RefCell<OpState>>,
-      _: (),
-      _: (),
     ) -> Result<(), Error> {
       let n = {
         let op_state = op_state.borrow();
@@ -2509,11 +2561,7 @@ assertEquals(1, notify_return_value);
   #[tokio::test]
   async fn test_set_macrotask_callback_set_next_tick_callback() {
     #[op]
-    async fn op_async_sleep(
-      _op_state: Rc<RefCell<OpState>>,
-      _: (),
-      _: (),
-    ) -> Result<(), Error> {
+    async fn op_async_sleep() -> Result<(), Error> {
       // Future must be Poll::Pending on first call
       tokio::time::sleep(std::time::Duration::from_millis(1)).await;
       Ok(())
@@ -2588,13 +2636,13 @@ assertEquals(1, notify_return_value);
     static NEXT_TICK: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_macrotask(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+    fn op_macrotask() -> Result<(), AnyError> {
       MACROTASK.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
 
     #[op]
-    fn op_next_tick(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+    fn op_next_tick() -> Result<(), AnyError> {
       NEXT_TICK.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
@@ -2725,21 +2773,13 @@ assertEquals(1, notify_return_value);
     static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_promise_reject(
-      _: &mut OpState,
-      _: (),
-      _: (),
-    ) -> Result<(), AnyError> {
+    fn op_promise_reject() -> Result<(), AnyError> {
       PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
 
     #[op]
-    fn op_uncaught_exception(
-      _: &mut OpState,
-      _: (),
-      _: (),
-    ) -> Result<(), AnyError> {
+    fn op_uncaught_exception() -> Result<(), AnyError> {
       UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
       Ok(())
     }
@@ -2813,5 +2853,25 @@ assertEquals(1, notify_return_value);
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
     assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
+  }
+
+  #[test]
+  fn test_op_return_serde_v8_error() {
+    #[op]
+    fn op_err() -> Result<std::collections::BTreeMap<u64, u64>, anyhow::Error> {
+      Ok([(1, 2), (3, 4)].into_iter().collect()) // Maps can't have non-string keys in serde_v8
+    }
+
+    let ext = Extension::builder().ops(vec![op_err::decl()]).build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    assert!(runtime
+      .execute_script(
+        "test_op_return_serde_v8_error.js",
+        "Deno.core.opSync('op_err')"
+      )
+      .is_err());
   }
 }

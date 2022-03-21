@@ -579,7 +579,7 @@ Deno.test(
 
 Deno.test({
   name: "unrefTimer",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer = setTimeout(() => console.log("1"));
@@ -592,7 +592,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - mix ref and unref 1",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 200);
@@ -607,7 +607,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - mix ref and unref 2",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 200);
@@ -623,7 +623,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref interval",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       let i = 0;
@@ -642,7 +642,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref then ref 1",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 10);
@@ -656,7 +656,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref then ref",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => {
@@ -673,9 +673,82 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - invalid calls do nothing",
-  permissions: { run: true },
   fn: () => {
     Deno.unrefTimer(NaN);
     Deno.refTimer(NaN);
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with no listeners",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      // This unref timer expires before the signal, and if it does expire, then
+      // it means the signal has kept the event loop alive.
+      const timer = setTimeout(() => console.log("Unexpected!"), 1500);
+      Deno.unrefTimer(timer);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listeners",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(1000);
+      signal.addEventListener("abort", () => console.log("Event fired!"));
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Event fired!\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with removed listeners",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      const callback = () => console.log("Unexpected: Event fired");
+      signal.addEventListener("abort", callback);
+
+      setTimeout(() => {
+        console.log("Removing the listener.");
+        signal.removeEventListener("abort", callback);
+      }, 500);
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Removing the listener.\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listener for a non-abort event",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      signal.addEventListener("someOtherEvent", () => {
+        console.log("Unexpected: someOtherEvent called");
+      });
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
   },
 });

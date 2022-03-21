@@ -21,7 +21,6 @@
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
-    Error,
     Int8ArrayPrototype,
     Int16ArrayPrototype,
     Int32ArrayPrototype,
@@ -58,24 +57,7 @@
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
   const consoleInternal = window.__bootstrap.console;
-
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  /**
-   * @param {unknown} cond
-   * @param {string=} msg
-   * @returns {asserts cond}
-   */
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
-    }
-  }
+  const { AssertionError, assert } = window.__bootstrap.infra;
 
   /** @template T */
   class Deferred {

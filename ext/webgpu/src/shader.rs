@@ -29,7 +29,6 @@ pub struct CreateShaderModuleArgs {
 pub fn op_webgpu_create_shader_module(
   state: &mut OpState,
   args: CreateShaderModuleArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

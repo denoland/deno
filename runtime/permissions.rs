@@ -1432,12 +1432,6 @@ pub enum ChildUnitPermissionArg {
   NotGranted,
 }
 
-impl Default for ChildUnitPermissionArg {
-  fn default() -> Self {
-    ChildUnitPermissionArg::Inherit
-  }
-}
-
 impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
@@ -1455,7 +1449,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
       where
         E: de::Error,
       {
-        Ok(ChildUnitPermissionArg::Inherit)
+        Ok(ChildUnitPermissionArg::NotGranted)
       }
 
       fn visit_str<E>(self, v: &str) -> Result<ChildUnitPermissionArg, E>
@@ -1491,12 +1485,6 @@ pub enum ChildUnaryPermissionArg {
   GrantedList(Vec<String>),
 }
 
-impl Default for ChildUnaryPermissionArg {
-  fn default() -> Self {
-    ChildUnaryPermissionArg::Inherit
-  }
-}
-
 impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
@@ -1514,7 +1502,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
       where
         E: de::Error,
       {
-        Ok(ChildUnaryPermissionArg::Inherit)
+        Ok(ChildUnaryPermissionArg::NotGranted)
       }
 
       fn visit_str<E>(self, v: &str) -> Result<ChildUnaryPermissionArg, E>
@@ -1557,7 +1545,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
 }
 
 /// Directly deserializable from JS worker and test permission options.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
   hrtime: ChildUnitPermissionArg,
@@ -1566,6 +1554,32 @@ pub struct ChildPermissionsArg {
   read: ChildUnaryPermissionArg,
   run: ChildUnaryPermissionArg,
   write: ChildUnaryPermissionArg,
+}
+
+impl ChildPermissionsArg {
+  pub fn inherit() -> Self {
+    ChildPermissionsArg {
+      env: ChildUnaryPermissionArg::Inherit,
+      hrtime: ChildUnitPermissionArg::Inherit,
+      net: ChildUnaryPermissionArg::Inherit,
+      ffi: ChildUnaryPermissionArg::Inherit,
+      read: ChildUnaryPermissionArg::Inherit,
+      run: ChildUnaryPermissionArg::Inherit,
+      write: ChildUnaryPermissionArg::Inherit,
+    }
+  }
+
+  pub fn none() -> Self {
+    ChildPermissionsArg {
+      env: ChildUnaryPermissionArg::NotGranted,
+      hrtime: ChildUnitPermissionArg::NotGranted,
+      net: ChildUnaryPermissionArg::NotGranted,
+      ffi: ChildUnaryPermissionArg::NotGranted,
+      read: ChildUnaryPermissionArg::NotGranted,
+      run: ChildUnaryPermissionArg::NotGranted,
+      write: ChildUnaryPermissionArg::NotGranted,
+    }
+  }
 }
 
 impl<'de> Deserialize<'de> for ChildPermissionsArg {
@@ -1585,7 +1599,7 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
       where
         E: de::Error,
       {
-        Ok(ChildPermissionsArg::default())
+        Ok(ChildPermissionsArg::inherit())
       }
 
       fn visit_str<E>(self, v: &str) -> Result<ChildPermissionsArg, E>
@@ -1593,17 +1607,9 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
         E: de::Error,
       {
         if v == "inherit" {
-          Ok(ChildPermissionsArg::default())
+          Ok(ChildPermissionsArg::inherit())
         } else if v == "none" {
-          Ok(ChildPermissionsArg {
-            env: ChildUnaryPermissionArg::NotGranted,
-            hrtime: ChildUnitPermissionArg::NotGranted,
-            net: ChildUnaryPermissionArg::NotGranted,
-            ffi: ChildUnaryPermissionArg::NotGranted,
-            read: ChildUnaryPermissionArg::NotGranted,
-            run: ChildUnaryPermissionArg::NotGranted,
-            write: ChildUnaryPermissionArg::NotGranted,
-          })
+          Ok(ChildPermissionsArg::none())
         } else {
           Err(de::Error::invalid_value(de::Unexpected::Str(v), &self))
         }
@@ -1613,7 +1619,7 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
       where
         V: de::MapAccess<'de>,
       {
-        let mut child_permissions_arg = ChildPermissionsArg::default();
+        let mut child_permissions_arg = ChildPermissionsArg::none();
         while let Some((key, value)) =
           v.next_entry::<String, serde_json::Value>()?
         {
@@ -2647,7 +2653,7 @@ mod tests {
   #[test]
   fn test_deserialize_child_permissions_arg() {
     assert_eq!(
-      ChildPermissionsArg::default(),
+      ChildPermissionsArg::inherit(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::Inherit,
         hrtime: ChildUnitPermissionArg::Inherit,
@@ -2659,11 +2665,7 @@ mod tests {
       }
     );
     assert_eq!(
-      serde_json::from_value::<ChildPermissionsArg>(json!("inherit")).unwrap(),
-      ChildPermissionsArg::default()
-    );
-    assert_eq!(
-      serde_json::from_value::<ChildPermissionsArg>(json!("none")).unwrap(),
+      ChildPermissionsArg::none(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::NotGranted,
         hrtime: ChildUnitPermissionArg::NotGranted,
@@ -2675,8 +2677,16 @@ mod tests {
       }
     );
     assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!("inherit")).unwrap(),
+      ChildPermissionsArg::inherit()
+    );
+    assert_eq!(
+      serde_json::from_value::<ChildPermissionsArg>(json!("none")).unwrap(),
+      ChildPermissionsArg::none()
+    );
+    assert_eq!(
       serde_json::from_value::<ChildPermissionsArg>(json!({})).unwrap(),
-      ChildPermissionsArg::default()
+      ChildPermissionsArg::none()
     );
     assert_eq!(
       serde_json::from_value::<ChildPermissionsArg>(json!({
@@ -2685,7 +2695,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -2695,7 +2705,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         hrtime: ChildUnitPermissionArg::Granted,
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -2705,7 +2715,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         hrtime: ChildUnitPermissionArg::NotGranted,
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -2725,7 +2735,7 @@ mod tests {
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::Granted,
         write: ChildUnaryPermissionArg::Granted,
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -2745,7 +2755,7 @@ mod tests {
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
         write: ChildUnaryPermissionArg::NotGranted,
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     );
     assert_eq!(
@@ -2778,7 +2788,7 @@ mod tests {
           "foo",
           "file:///bar/baz"
         ]),
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     );
   }
@@ -2799,7 +2809,7 @@ mod tests {
           hrtime: ChildUnitPermissionArg::NotGranted,
           net: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
           ffi: ChildUnaryPermissionArg::NotGranted,
-          ..Default::default()
+          ..ChildPermissionsArg::none()
         }
       )
       .unwrap(),
@@ -2813,7 +2823,7 @@ mod tests {
       &mut main_perms.clone(),
       ChildPermissionsArg {
         net: ChildUnaryPermissionArg::Granted,
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     )
     .is_err());
@@ -2821,7 +2831,7 @@ mod tests {
       &mut main_perms.clone(),
       ChildPermissionsArg {
         net: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar", "baz"]),
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     )
     .is_err());
@@ -2829,7 +2839,7 @@ mod tests {
       &mut main_perms,
       ChildPermissionsArg {
         ffi: ChildUnaryPermissionArg::GrantedList(svec!["foo"]),
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       }
     )
     .is_err());
@@ -2848,7 +2858,7 @@ mod tests {
       ChildPermissionsArg {
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::GrantedList(svec!["foo", "bar"]),
-        ..Default::default()
+        ..ChildPermissionsArg::none()
       },
     )
     .unwrap();
@@ -2866,7 +2876,7 @@ mod tests {
     assert!(main_perms.write.check(&PathBuf::from("foo")).is_err());
     let worker_perms = create_child_permissions(
       &mut main_perms.clone(),
-      ChildPermissionsArg::default(),
+      ChildPermissionsArg::none(),
     )
     .unwrap();
     assert_eq!(worker_perms.write.denied_list, main_perms.write.denied_list);

@@ -14,6 +14,7 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
 use std::panic::catch_unwind;
+use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
@@ -58,7 +59,6 @@ type UrlParts = String;
 /// optional part to "set" after parsing. Return `UrlParts`.
 #[op]
 pub fn op_url_parse(
-  _state: &mut deno_core::OpState,
   href: String,
   base_href: Option<String>,
 ) -> Result<UrlParts, AnyError> {
@@ -92,7 +92,6 @@ pub enum UrlSetter {
 
 #[op]
 pub fn op_url_reparse(
-  _state: &mut deno_core::OpState,
   href: String,
   setter_opts: (UrlSetter, String),
 ) -> Result<UrlParts, AnyError> {
@@ -162,7 +161,6 @@ fn url_result(
 
 #[op]
 pub fn op_url_parse_search_params(
-  _state: &mut deno_core::OpState,
   args: Option<String>,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Vec<(String, String)>, AnyError> {
@@ -182,12 +180,14 @@ pub fn op_url_parse_search_params(
 
 #[op]
 pub fn op_url_stringify_search_params(
-  _state: &mut deno_core::OpState,
   args: Vec<(String, String)>,
-  _: (),
 ) -> Result<String, AnyError> {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
   Ok(search)
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_url.d.ts")
 }

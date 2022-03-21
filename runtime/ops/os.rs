@@ -40,7 +40,7 @@ pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
 }
 
 #[op]
-fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
+fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<Permissions>()
@@ -71,11 +71,7 @@ fn op_set_env(
 }
 
 #[op]
-fn op_env(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<HashMap<String, String>, AnyError> {
+fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check_all()?;
   Ok(env::vars().collect())
 }
@@ -84,7 +80,6 @@ fn op_env(
 fn op_get_env(
   state: &mut OpState,
   key: String,
-  _: (),
 ) -> Result<Option<String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
@@ -98,11 +93,7 @@ fn op_get_env(
 }
 
 #[op]
-fn op_delete_env(
-  state: &mut OpState,
-  key: String,
-  _: (),
-) -> Result<(), AnyError> {
+fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
   state.borrow_mut::<Permissions>().env.check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
@@ -112,27 +103,19 @@ fn op_delete_env(
 }
 
 #[op]
-fn op_set_exit_code(
-  state: &mut OpState,
-  code: i32,
-  _: (),
-) -> Result<(), AnyError> {
+fn op_set_exit_code(state: &mut OpState, code: i32) -> Result<(), AnyError> {
   state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
   Ok(())
 }
 
 #[op]
-fn op_exit(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+fn op_exit(state: &mut OpState) -> Result<(), AnyError> {
   let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
   std::process::exit(code)
 }
 
 #[op]
-fn op_loadavg(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(f64, f64, f64), AnyError> {
+fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
   state.borrow_mut::<Permissions>().env.check_all()?;
   match sys_info::loadavg() {
@@ -142,7 +125,7 @@ fn op_loadavg(
 }
 
 #[op]
-fn op_hostname(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
+fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
   state.borrow_mut::<Permissions>().env.check_all()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
@@ -150,11 +133,7 @@ fn op_hostname(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
 }
 
 #[op]
-fn op_os_release(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
   state.borrow_mut::<Permissions>().env.check_all()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
@@ -164,8 +143,6 @@ fn op_os_release(
 #[op]
 fn op_network_interfaces(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<Vec<NetworkInterface>, AnyError> {
   super::check_unstable(state, "Deno.networkInterfaces");
   state.borrow_mut::<Permissions>().env.check_all()?;
@@ -232,8 +209,6 @@ struct MemInfo {
 #[op]
 fn op_system_memory_info(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<Option<MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
   state.borrow_mut::<Permissions>().env.check_all()?;
@@ -253,11 +228,7 @@ fn op_system_memory_info(
 
 #[cfg(not(windows))]
 #[op]
-fn op_getuid(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<Option<u32>, AnyError> {
+fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
   state.borrow_mut::<Permissions>().env.check_all()?;
   unsafe { Ok(Some(libc::getuid())) }
@@ -265,11 +236,7 @@ fn op_getuid(
 
 #[cfg(windows)]
 #[op]
-fn op_getuid(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<Option<u32>, AnyError> {
+fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
   state.borrow_mut::<Permissions>().env.check_all()?;
   Ok(None)
