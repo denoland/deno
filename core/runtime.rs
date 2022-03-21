@@ -2854,4 +2854,24 @@ assertEquals(1, notify_return_value);
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
     assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
   }
+
+  #[test]
+  fn test_op_return_serde_v8_error() {
+    #[op]
+    fn op_err() -> Result<std::collections::BTreeMap<u64, u64>, anyhow::Error> {
+      Ok([(1, 2), (3, 4)].into_iter().collect()) // Maps can't have non-string keys in serde_v8
+    }
+
+    let ext = Extension::builder().ops(vec![op_err::decl()]).build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    assert!(runtime
+      .execute_script(
+        "test_op_return_serde_v8_error.js",
+        "Deno.core.opSync('op_err')"
+      )
+      .is_err());
+  }
 }
