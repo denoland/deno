@@ -273,6 +273,7 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: true,
+    enable_paths: Vec::new(),
     config: None,
     certificate_stores: None,
     cache: None,

@@ -340,8 +340,22 @@
      */
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      const buffer = await this.arrayBuffer();
-      return core.decode(new Uint8Array(buffer));
+      const buffer = await this.#u8Array(this.size);
+      return core.decode(buffer);
+    }
+
+    async #u8Array(size) {
+      const bytes = new Uint8Array(size);
+      const partIterator = toIterator(this[_parts]);
+      let offset = 0;
+      for await (const chunk of partIterator) {
+        const byteLength = chunk.byteLength;
+        if (byteLength > 0) {
+          TypedArrayPrototypeSet(bytes, chunk, offset);
+          offset += byteLength;
+        }
+      }
+      return bytes;
     }
 
     /**
@@ -349,14 +363,8 @@
      */
     async arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
-      const stream = this.stream();
-      const bytes = new Uint8Array(this.size);
-      let offset = 0;
-      for await (const chunk of stream) {
-        TypedArrayPrototypeSet(bytes, chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return bytes.buffer;
+      const buf = await this.#u8Array(this.size);
+      return buf.buffer;
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
@@ -394,7 +402,10 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // BlobPart is passed to processBlobParts after conversion, which calls core.encode()
+    // on the string.
+    // core.encode() is equivalent to USVString normalization.
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
     webidl.converters["BlobPart"],
