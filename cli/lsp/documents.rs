@@ -35,7 +35,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 
 static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([(
