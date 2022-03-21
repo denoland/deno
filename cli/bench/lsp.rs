@@ -6,12 +6,12 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspResponseError;
+use tower_lsp::lsp_types;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
 static FIXTURE_DB_TS: &str = include_str!("testdata/db.ts");
@@ -163,7 +163,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
   assert_eq!(method, "textDocument/publishDiagnostics");
 
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Vec<lsp::CodeLens>>(
+    .write_request::<_, _, Vec<lsp_types::CodeLens>>(
       "textDocument/codeLens",
       json!({
         "textDocument": {
@@ -179,7 +179,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   for code_lens in res {
     let (maybe_res, maybe_err) = client
-      .write_request::<_, _, lsp::CodeLens>("codeLens/resolve", code_lens)
+      .write_request::<_, _, lsp_types::CodeLens>("codeLens/resolve", code_lens)
       .unwrap();
     assert!(maybe_err.is_none());
     assert!(maybe_res.is_some());
@@ -226,18 +226,18 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
     let file_name = format!("file:///a/file_{}.ts", i);
     client.write_notification(
       "textDocument/didChange",
-      lsp::DidChangeTextDocumentParams {
-        text_document: lsp::VersionedTextDocumentIdentifier {
+      lsp_types::DidChangeTextDocumentParams {
+        text_document: lsp_types::VersionedTextDocumentIdentifier {
           uri: Url::parse(&file_name).unwrap(),
           version: 2,
         },
-        content_changes: vec![lsp::TextDocumentContentChangeEvent {
-          range: Some(lsp::Range {
-            start: lsp::Position {
+        content_changes: vec![lsp_types::TextDocumentContentChangeEvent {
+          range: Some(lsp_types::Range {
+            start: lsp_types::Position {
               line: 0,
               character: 13,
             },
-            end: lsp::Position {
+            end: lsp_types::Position {
               line: 0,
               character: 16,
             },
@@ -253,11 +253,11 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
     let file_name = format!("file:///a/file_{}.ts", i);
     let (maybe_res, maybe_err) = client.write_request::<_, _, Value>(
       "textDocument/formatting",
-      lsp::DocumentFormattingParams {
-        text_document: lsp::TextDocumentIdentifier {
+      lsp_types::DocumentFormattingParams {
+        text_document: lsp_types::TextDocumentIdentifier {
           uri: Url::parse(&file_name).unwrap(),
         },
-        options: lsp::FormattingOptions {
+        options: lsp_types::FormattingOptions {
           tab_size: 2,
           insert_spaces: true,
           ..Default::default()
