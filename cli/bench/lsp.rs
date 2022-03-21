@@ -163,7 +163,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
   assert_eq!(method, "textDocument/publishDiagnostics");
 
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Vec<lsp_types::CodeLens>>(
+    .write_request::<_, _, Vec<lsp::CodeLens>>(
       "textDocument/codeLens",
       json!({
         "textDocument": {
@@ -179,7 +179,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   for code_lens in res {
     let (maybe_res, maybe_err) = client
-      .write_request::<_, _, lsp_types::CodeLens>("codeLens/resolve", code_lens)
+      .write_request::<_, _, lsp::CodeLens>("codeLens/resolve", code_lens)
       .unwrap();
     assert!(maybe_err.is_none());
     assert!(maybe_res.is_some());
@@ -226,18 +226,18 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
     let file_name = format!("file:///a/file_{}.ts", i);
     client.write_notification(
       "textDocument/didChange",
-      lsp_types::DidChangeTextDocumentParams {
-        text_document: lsp_types::VersionedTextDocumentIdentifier {
+      lsp::DidChangeTextDocumentParams {
+        text_document: lsp::VersionedTextDocumentIdentifier {
           uri: Url::parse(&file_name).unwrap(),
           version: 2,
         },
-        content_changes: vec![lsp_types::TextDocumentContentChangeEvent {
-          range: Some(lsp_types::Range {
-            start: lsp_types::Position {
+        content_changes: vec![lsp::TextDocumentContentChangeEvent {
+          range: Some(lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 13,
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 16,
             },
@@ -253,11 +253,11 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
     let file_name = format!("file:///a/file_{}.ts", i);
     let (maybe_res, maybe_err) = client.write_request::<_, _, Value>(
       "textDocument/formatting",
-      lsp_types::DocumentFormattingParams {
-        text_document: lsp_types::TextDocumentIdentifier {
+      lsp::DocumentFormattingParams {
+        text_document: lsp::TextDocumentIdentifier {
           uri: Url::parse(&file_name).unwrap(),
         },
-        options: lsp_types::FormattingOptions {
+        options: lsp::FormattingOptions {
           tab_size: 2,
           insert_spaces: true,
           ..Default::default()
