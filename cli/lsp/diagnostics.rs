@@ -324,7 +324,6 @@ impl DiagnosticsServer {
     &self,
     message: SnapshotForDiagnostics,
   ) -> Result<(), AnyError> {
-    log::info!("diagnostic_server::update()");
     // todo(dsherret): instead of queuing up messages, it would be better to
     // instead only store the latest message (ex. maybe using a
     // tokio::sync::watch::channel)
