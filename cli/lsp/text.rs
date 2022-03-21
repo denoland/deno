@@ -6,14 +6,14 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use dissimilar::diff;
 use dissimilar::Chunk;
-use tower_lsp::jsonrpc;
-use tower_lsp::lsp_types;
-use tower_lsp::lsp_types::TextEdit;
 use std::collections::HashMap;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 use text_size::TextRange;
 use text_size::TextSize;
+use tower_lsp::jsonrpc;
+use tower_lsp::lsp_types;
+use tower_lsp::lsp_types::TextEdit;
 
 fn partition_point<T, P>(slice: &[T], mut predicate: P) -> usize
 where
@@ -135,7 +135,10 @@ impl LineIndex {
   }
 
   /// Return a u8 offset based on a u16 position.
-  pub fn offset(&self, position: lsp_types::Position) -> Result<TextSize, AnyError> {
+  pub fn offset(
+    &self,
+    position: lsp_types::Position,
+  ) -> Result<TextSize, AnyError> {
     let col = self.utf16_to_utf8_col(position.line, position.character);
     if let Some(line_offset) = self.utf8_offsets.get(position.line as usize) {
       Ok(line_offset + col)
@@ -146,7 +149,10 @@ impl LineIndex {
 
   /// Convert an lsp_types Position into a tsc/TypeScript "position", which is really
   /// an u16 byte offset from the start of the string represented as an u32.
-  pub fn offset_tsc(&self, position: lsp_types::Position) -> jsonrpc::Result<u32> {
+  pub fn offset_tsc(
+    &self,
+    position: lsp_types::Position,
+  ) -> jsonrpc::Result<u32> {
     self
       .offset_utf16(position)
       .map(|ts| ts.into())

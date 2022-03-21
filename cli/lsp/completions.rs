@@ -20,10 +20,10 @@ use deno_core::serde::Serialize;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
-use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
+use tower_lsp::lsp_types;
 
 static FILE_PROTO_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
@@ -147,10 +147,12 @@ pub(crate) async fn get_import_completions(
     Some(lsp_types::CompletionResponse::List(completion_list))
   } else if text.starts_with("./") || text.starts_with("../") {
     // completions for local relative modules
-    Some(lsp_types::CompletionResponse::List(lsp_types::CompletionList {
-      is_incomplete: false,
-      items: get_local_completions(specifier, &text, &range)?,
-    }))
+    Some(lsp_types::CompletionResponse::List(
+      lsp_types::CompletionList {
+        is_incomplete: false,
+        items: get_local_completions(specifier, &text, &range)?,
+      },
+    ))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
     check_auto_config_registry(&text, config, client, module_registries).await;
@@ -193,10 +195,12 @@ pub(crate) async fn get_import_completions(
       is_incomplete = origin_items.is_incomplete;
       items.extend(origin_items.items);
     }
-    Some(lsp_types::CompletionResponse::List(lsp_types::CompletionList {
-      is_incomplete,
-      items,
-    }))
+    Some(lsp_types::CompletionResponse::List(
+      lsp_types::CompletionList {
+        is_incomplete,
+        items,
+      },
+    ))
   }
 }
 
@@ -270,11 +274,12 @@ fn get_import_map_completions(
                 let new_text = specifier_str.replace(&resolved, &key);
                 if specifier_str.starts_with(&resolved) {
                   let label = specifier_str.replace(&resolved, "");
-                  let text_edit =
-                    Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+                  let text_edit = Some(lsp_types::CompletionTextEdit::Edit(
+                    lsp_types::TextEdit {
                       range: *range,
                       new_text: new_text.clone(),
-                    }));
+                    },
+                  ));
                   Some(lsp_types::CompletionItem {
                     label,
                     kind: Some(lsp_types::CompletionItemKind::MODULE),
@@ -299,10 +304,11 @@ fn get_import_map_completions(
           } else {
             Some(lsp_types::CompletionItemKind::MODULE)
           };
-          let text_edit = Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-            range: *range,
-            new_text: label.clone(),
-          }));
+          let text_edit =
+            Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+              range: *range,
+              new_text: label.clone(),
+            }));
           items.push(lsp_types::CompletionItem {
             label: label.clone(),
             kind,
@@ -364,24 +370,27 @@ fn get_local_completions(
           if is_parent && !full_text.starts_with(current) {
             return None;
           }
-          let text_edit = Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-            range: *range,
-            new_text: full_text.clone(),
-          }));
+          let text_edit =
+            Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+              range: *range,
+              new_text: full_text.clone(),
+            }));
           let filter_text = if full_text.starts_with(current) {
             Some(full_text)
           } else {
             Some(format!("{}{}", current, label))
           };
           match de.file_type() {
-            Ok(file_type) if file_type.is_dir() => Some(lsp_types::CompletionItem {
-              label,
-              kind: Some(lsp_types::CompletionItemKind::FOLDER),
-              filter_text,
-              sort_text: Some("1".to_string()),
-              text_edit,
-              ..Default::default()
-            }),
+            Ok(file_type) if file_type.is_dir() => {
+              Some(lsp_types::CompletionItem {
+                label,
+                kind: Some(lsp_types::CompletionItemKind::FOLDER),
+                filter_text,
+                sort_text: Some("1".to_string()),
+                text_edit,
+                ..Default::default()
+              })
+            }
             Ok(file_type) if file_type.is_file() => {
               if is_supported_ext(&de.path()) {
                 Some(lsp_types::CompletionItem {
@@ -451,10 +460,11 @@ fn get_workspace_completions(
             "(local)".to_string()
           },
         );
-        let text_edit = Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-          range: *range,
-          new_text: label.clone(),
-        }));
+        let text_edit =
+          Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+            range: *range,
+            new_text: label.clone(),
+          }));
         Some(lsp_types::CompletionItem {
           label,
           kind: Some(lsp_types::CompletionItemKind::FILE),
@@ -796,19 +806,21 @@ mod tests {
         kind: Some(lsp_types::CompletionItemKind::FILE),
         detail: Some("(remote)".to_string()),
         sort_text: Some("1".to_string()),
-        text_edit: Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
-              line: 0,
-              character: 20
+        text_edit: Some(lsp_types::CompletionTextEdit::Edit(
+          lsp_types::TextEdit {
+            range: lsp_types::Range {
+              start: lsp_types::Position {
+                line: 0,
+                character: 20
+              },
+              end: lsp_types::Position {
+                line: 0,
+                character: 21,
+              }
             },
-            end: lsp_types::Position {
-              line: 0,
-              character: 21,
-            }
-          },
-          new_text: "https://deno.land/x/a/b/c.ts".to_string(),
-        })),
+            new_text: "https://deno.land/x/a/b/c.ts".to_string(),
+          }
+        )),
         ..Default::default()
       }]
     );

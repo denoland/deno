@@ -45,9 +45,6 @@ use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use log::warn;
-use tower_lsp::jsonrpc::Error as LspError;
-use tower_lsp::jsonrpc::Result as LspResult;
-use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -63,6 +60,9 @@ use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
@@ -592,7 +592,9 @@ impl From<ScriptElementKind> for lsp_types::CompletionItemKind {
       ScriptElementKind::ClassElement | ScriptElementKind::TypeElement => {
         lsp_types::CompletionItemKind::CLASS
       }
-      ScriptElementKind::InterfaceElement => lsp_types::CompletionItemKind::INTERFACE,
+      ScriptElementKind::InterfaceElement => {
+        lsp_types::CompletionItemKind::INTERFACE
+      }
       ScriptElementKind::Warning => lsp_types::CompletionItemKind::TEXT,
       ScriptElementKind::ScriptElement => lsp_types::CompletionItemKind::FILE,
       ScriptElementKind::Directory => lsp_types::CompletionItemKind::FOLDER,
@@ -1197,21 +1199,27 @@ impl RenameLocations {
               uri: uri.clone(),
               version: asset_or_doc.document_lsp_version(),
             },
-            edits:
-              Vec::<lsp_types::OneOf<lsp_types::TextEdit, lsp_types::AnnotatedTextEdit>>::new(),
+            edits: Vec::<
+              lsp_types::OneOf<
+                lsp_types::TextEdit,
+                lsp_types::AnnotatedTextEdit,
+              >,
+            >::new(),
           },
         );
       }
 
       // push TextEdit for ensured `TextDocumentEdit.edits`.
       let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
-      document_edit.edits.push(lsp_types::OneOf::Left(lsp_types::TextEdit {
-        range: location
-          .document_span
-          .text_span
-          .to_range(asset_or_doc.line_index()),
-        new_text: new_name.to_string(),
-      }));
+      document_edit
+        .edits
+        .push(lsp_types::OneOf::Left(lsp_types::TextEdit {
+          range: location
+            .document_span
+            .text_span
+            .to_range(asset_or_doc.line_index()),
+          new_text: new_name.to_string(),
+        }));
     }
 
     Ok(lsp_types::WorkspaceEdit {
@@ -1385,16 +1393,16 @@ impl FileTextChanges {
       .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
     if self.is_new_file.unwrap_or(false) {
-      ops.push(lsp_types::DocumentChangeOperation::Op(lsp_types::ResourceOp::Create(
-        lsp_types::CreateFile {
+      ops.push(lsp_types::DocumentChangeOperation::Op(
+        lsp_types::ResourceOp::Create(lsp_types::CreateFile {
           uri: specifier.clone(),
           options: Some(lsp_types::CreateFileOptions {
             ignore_if_exists: Some(true),
             overwrite: None,
           }),
           annotation_id: None,
-        },
-      )));
+        }),
+      ));
     }
 
     let edits = self
@@ -1402,13 +1410,16 @@ impl FileTextChanges {
       .iter()
       .map(|tc| tc.as_text_edit(line_index.clone()))
       .collect();
-    ops.push(lsp_types::DocumentChangeOperation::Edit(lsp_types::TextDocumentEdit {
-      text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
-        version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
+    ops.push(lsp_types::DocumentChangeOperation::Edit(
+      lsp_types::TextDocumentEdit {
+        text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+          uri: specifier.clone(),
+          version: maybe_asset_or_document
+            .and_then(|d| d.document_lsp_version()),
+        },
+        edits,
       },
-      edits,
-    }));
+    ));
 
     Ok(ops)
   }
@@ -1497,8 +1508,9 @@ impl RefactorActionInfo {
       let maybe_match = ALL_KNOWN_REFACTOR_ACTION_KINDS
         .iter()
         .find(|action| action.matches(&self.name));
-      maybe_match
-        .map_or(lsp_types::CodeActionKind::REFACTOR, |action| action.kind.clone())
+      maybe_match.map_or(lsp_types::CodeActionKind::REFACTOR, |action| {
+        action.kind.clone()
+      })
     }
   }
 
@@ -1901,10 +1913,12 @@ impl CompletionEntryDetails {
           .join("");
         value = format!("{}\n\n{}", value, tag_documentation);
       }
-      Some(lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
-        kind: lsp_types::MarkupKind::Markdown,
-        value,
-      }))
+      Some(lsp_types::Documentation::MarkupContent(
+        lsp_types::MarkupContent {
+          kind: lsp_types::MarkupKind::Markdown,
+          value,
+        },
+      ))
     } else {
       None
     };
@@ -2926,7 +2940,9 @@ impl From<lsp_types::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
   fn from(kind: lsp_types::SignatureHelpTriggerKind) -> Self {
     match kind {
       lsp_types::SignatureHelpTriggerKind::INVOKED => Self::Invoked,
-      lsp_types::SignatureHelpTriggerKind::TRIGGER_CHARACTER => Self::CharacterTyped,
+      lsp_types::SignatureHelpTriggerKind::TRIGGER_CHARACTER => {
+        Self::CharacterTyped
+      }
       lsp_types::SignatureHelpTriggerKind::CONTENT_CHANGE => Self::Retrigger,
       _ => Self::Unknown,
     }

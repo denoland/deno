@@ -9,10 +9,10 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use tower_lsp::lsp_types;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tower_lsp::lsp_types;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -254,7 +254,8 @@ pub struct Config {
   enabled_paths: HashMap<String, Vec<String>>,
   pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
-  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp_types::WorkspaceFolder)>>,
+  pub workspace_folders:
+    Option<Vec<(ModuleSpecifier, lsp_types::WorkspaceFolder)>>,
 }
 
 impl Config {

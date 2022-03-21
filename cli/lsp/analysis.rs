@@ -16,13 +16,13 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use tower_lsp::lsp_types;
-use tower_lsp::lsp_types::Position;
-use tower_lsp::lsp_types::Range;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use tower_lsp::lsp_types;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
@@ -335,7 +335,9 @@ pub(crate) async fn ts_changes_to_edit(
   }
   Ok(Some(lsp_types::WorkspaceEdit {
     changes: None,
-    document_changes: Some(lsp_types::DocumentChanges::Edits(text_document_edits)),
+    document_changes: Some(lsp_types::DocumentChanges::Edits(
+      text_document_edits,
+    )),
     change_annotations: None,
   }))
 }
@@ -481,7 +483,10 @@ impl CodeActionCollection {
     }
 
     let mut changes = HashMap::new();
-    changes.insert(specifier.clone(), vec![lsp_types::TextEdit { new_text, range }]);
+    changes.insert(
+      specifier.clone(),
+      vec![lsp_types::TextEdit { new_text, range }],
+    );
     let ignore_file_action = lsp_types::CodeAction {
       title: format!("Disable {} for the entire file", code),
       kind: Some(lsp_types::CodeActionKind::QUICKFIX),
@@ -651,9 +656,15 @@ impl CodeActionCollection {
       .actions
       .into_iter()
       .map(|i| match i {
-        CodeActionKind::Tsc(c, _) => lsp_types::CodeActionOrCommand::CodeAction(c),
-        CodeActionKind::Deno(c) => lsp_types::CodeActionOrCommand::CodeAction(c),
-        CodeActionKind::DenoLint(c) => lsp_types::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Tsc(c, _) => {
+          lsp_types::CodeActionOrCommand::CodeAction(c)
+        }
+        CodeActionKind::Deno(c) => {
+          lsp_types::CodeActionOrCommand::CodeAction(c)
+        }
+        CodeActionKind::DenoLint(c) => {
+          lsp_types::CodeActionOrCommand::CodeAction(c)
+        }
       })
       .collect()
   }

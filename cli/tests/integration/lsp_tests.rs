@@ -8,7 +8,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use tower_lsp::lsp_types;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 use std::fs;
@@ -17,6 +16,7 @@ use test_util::deno_exe_path;
 use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
+use tower_lsp::lsp_types;
 
 fn load_fixture(path: &str) -> Value {
   load_fixture_as(path)
@@ -191,7 +191,10 @@ impl CollectedDiagnostics {
     messages
   }
 
-  pub fn with_source(&self, source: &str) -> lsp_types::PublishDiagnosticsParams {
+  pub fn with_source(
+    &self,
+    source: &str,
+  ) -> lsp_types::PublishDiagnosticsParams {
     self
       .viewed_messages()
       .iter()
@@ -1021,9 +1024,9 @@ fn lsp_hover_disabled() {
 
 #[test]
 fn lsp_workspace_enable_paths() {
-  let mut params: lsp_types::InitializeParams = serde_json::from_value(load_fixture(
-    "initialize_params_workspace_enable_paths.json",
-  ))
+  let mut params: lsp_types::InitializeParams = serde_json::from_value(
+    load_fixture("initialize_params_workspace_enable_paths.json"),
+  )
   .unwrap();
   // we aren't actually writing anything to the tempdir in this test, but we
   // just need a legitimate file path on the host system so that logic that
@@ -5072,7 +5075,9 @@ fn lsp_lint_with_config() {
   assert_eq!(diagnostics.len(), 1);
   assert_eq!(
     diagnostics[0].code,
-    Some(lsp_types::NumberOrString::String("ban-untagged-todo".to_string()))
+    Some(lsp_types::NumberOrString::String(
+      "ban-untagged-todo".to_string()
+    ))
   );
   session.shutdown_and_exit();
 }

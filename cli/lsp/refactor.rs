@@ -6,8 +6,8 @@
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
-use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
+use tower_lsp::lsp_types;
 
 pub struct RefactorCodeActionKind {
   pub kind: lsp_types::CodeActionKind,
@@ -22,17 +22,23 @@ impl RefactorCodeActionKind {
 
 pub static EXTRACT_FUNCTION: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "function"]
-      .join(".")
-      .into(),
+    kind: [
+      lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(),
+      "function",
+    ]
+    .join(".")
+    .into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("function_")),
   });
 
 pub static EXTRACT_CONSTANT: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "constant"]
-      .join(".")
-      .into(),
+    kind: [
+      lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(),
+      "constant",
+    ]
+    .join(".")
+    .into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("constant_")),
   });
 
@@ -48,9 +54,12 @@ pub static EXTRACT_TYPE: Lazy<RefactorCodeActionKind> =
 
 pub static EXTRACT_INTERFACE: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(), "interface"]
-      .join(".")
-      .into(),
+    kind: [
+      lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str(),
+      "interface",
+    ]
+    .join(".")
+    .into(),
     matches_callback: Box::new(|tag: &str| {
       tag.starts_with("Extract to interface")
     }),
@@ -58,9 +67,13 @@ pub static EXTRACT_INTERFACE: Lazy<RefactorCodeActionKind> =
 
 pub static MOVE_NEWFILE: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp_types::CodeActionKind::REFACTOR.as_str(), "move", "newFile"]
-      .join(".")
-      .into(),
+    kind: [
+      lsp_types::CodeActionKind::REFACTOR.as_str(),
+      "move",
+      "newFile",
+    ]
+    .join(".")
+    .into(),
     matches_callback: Box::new(|tag: &str| {
       tag.starts_with("Move to a new file")
     }),
@@ -68,9 +81,12 @@ pub static MOVE_NEWFILE: Lazy<RefactorCodeActionKind> =
 
 pub static REWRITE_IMPORT: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(), "import"]
-      .join(".")
-      .into(),
+    kind: [
+      lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(),
+      "import",
+    ]
+    .join(".")
+    .into(),
     matches_callback: Box::new(|tag: &str| {
       tag.starts_with("Convert namespace import")
         || tag.starts_with("Convert named imports")
@@ -79,9 +95,12 @@ pub static REWRITE_IMPORT: Lazy<RefactorCodeActionKind> =
 
 pub static REWRITE_EXPORT: Lazy<RefactorCodeActionKind> =
   Lazy::new(|| RefactorCodeActionKind {
-    kind: [lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(), "export"]
-      .join(".")
-      .into(),
+    kind: [
+      lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str(),
+      "export",
+    ]
+    .join(".")
+    .into(),
     matches_callback: Box::new(|tag: &str| {
       tag.starts_with("Convert default export")
         || tag.starts_with("Convert named export")

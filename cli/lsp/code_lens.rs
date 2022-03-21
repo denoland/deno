@@ -19,13 +19,13 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use tower_lsp::lsp_types;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
@@ -48,7 +48,10 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
-fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp_types::Range {
+fn span_to_range(
+  span: &Span,
+  parsed_source: &ParsedSource,
+) -> lsp_types::Range {
   let start = parsed_source.source().line_and_column_index(span.lo);
   let end = parsed_source.source().line_and_column_index(span.hi);
   lsp_types::Range {

@@ -27,7 +27,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
-use tower_lsp::lsp_types;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
@@ -35,6 +34,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types;
 
 pub(crate) type SnapshotForDiagnostics =
   (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
@@ -335,10 +335,14 @@ impl DiagnosticsServer {
   }
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp_types::DiagnosticSeverity {
+impl<'a> From<&'a diagnostics::DiagnosticCategory>
+  for lsp_types::DiagnosticSeverity
+{
   fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp_types::DiagnosticSeverity::ERROR,
+      diagnostics::DiagnosticCategory::Error => {
+        lsp_types::DiagnosticSeverity::ERROR
+      }
       diagnostics::DiagnosticCategory::Warning => {
         lsp_types::DiagnosticSeverity::WARNING
       }
@@ -429,7 +433,9 @@ fn ts_json_to_diagnostics(
             2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
             | 7028 => Some(vec![lsp_types::DiagnosticTag::UNNECESSARY]),
             // These are codes that indicated the variable is deprecated.
-            2789 | 6385 | 6387 => Some(vec![lsp_types::DiagnosticTag::DEPRECATED]),
+            2789 | 6385 | 6387 => {
+              Some(vec![lsp_types::DiagnosticTag::DEPRECATED])
+            }
             _ => None,
           },
           data: None,

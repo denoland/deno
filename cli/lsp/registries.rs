@@ -31,12 +31,12 @@ use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::error;
-use tower_lsp::lsp_types;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use tower_lsp::lsp_types;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -480,10 +480,11 @@ impl ModuleRegistry {
       s,
       &current_specifier[offset..]
     );
-    let text_edit = Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-      range: *range,
-      new_text: full_text.clone(),
-    }));
+    let text_edit =
+      Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+        range: *range,
+        new_text: full_text.clone(),
+      }));
     let filter_text = Some(full_text);
     completions.insert(
       s,
@@ -634,10 +635,9 @@ impl ModuleRegistry {
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
           lsp_types::Documentation::String(doc) => Some(doc),
-          lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
-            value,
-            ..
-          }) => Some(value),
+          lsp_types::Documentation::MarkupContent(
+            lsp_types::MarkupContent { value, .. },
+          ) => Some(value),
         };
       }
     }
@@ -661,7 +661,8 @@ impl ModuleRegistry {
         if let Some(registries) = self.origins.get(&origin) {
           let path = &specifier[Position::BeforePath..];
           let path_offset = offset - origin_len;
-          let mut completions = HashMap::<String, lsp_types::CompletionItem>::new();
+          let mut completions =
+            HashMap::<String, lsp_types::CompletionItem>::new();
           let mut is_incomplete = false;
           let mut did_match = false;
           for registry in registries {
@@ -759,12 +760,13 @@ impl ModuleRegistry {
                           }
                           let item_specifier = base.join(&path).ok()?;
                           let full_text = item_specifier.as_str();
-                          let text_edit = Some(lsp_types::CompletionTextEdit::Edit(
-                            lsp_types::TextEdit {
-                              range: *range,
-                              new_text: full_text.to_string(),
-                            },
-                          ));
+                          let text_edit =
+                            Some(lsp_types::CompletionTextEdit::Edit(
+                              lsp_types::TextEdit {
+                                range: *range,
+                                new_text: full_text.to_string(),
+                              },
+                            ));
                           let command = if key.name == last_key_name
                             && !item.ends_with('/')
                             && !specifier_exists(&item_specifier)
@@ -828,10 +830,12 @@ impl ModuleRegistry {
                       url.set_path(s);
                       let full_text = url.as_str();
                       let text_edit =
-                        Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-                          range: *range,
-                          new_text: full_text.to_string(),
-                        }));
+                        Some(lsp_types::CompletionTextEdit::Edit(
+                          lsp_types::TextEdit {
+                            range: *range,
+                            new_text: full_text.to_string(),
+                          },
+                        ));
                       let filter_text = Some(full_text.to_string());
                       completions.insert(
                         s.to_string(),
@@ -869,15 +873,17 @@ impl ModuleRegistry {
                           }
                           for (idx, item) in items.into_iter().enumerate() {
                             let path = format!("{}{}", prefix, item);
-                            let kind = Some(lsp_types::CompletionItemKind::FOLDER);
+                            let kind =
+                              Some(lsp_types::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
-                            let text_edit = Some(
-                              lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-                                range: *range,
-                                new_text: full_text.to_string(),
-                              }),
-                            );
+                            let text_edit =
+                              Some(lsp_types::CompletionTextEdit::Edit(
+                                lsp_types::TextEdit {
+                                  range: *range,
+                                  new_text: full_text.to_string(),
+                                },
+                              ));
                             let command = if k.name == last_key_name
                               && !specifier_exists(&item_specifier)
                             {
@@ -965,10 +971,11 @@ impl ModuleRegistry {
           origin.pop();
         }
         if origin.starts_with(current_specifier) {
-          let text_edit = Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-            range: *range,
-            new_text: origin.clone(),
-          }));
+          let text_edit =
+            Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+              range: *range,
+              new_text: origin.clone(),
+            }));
           Some(lsp_types::CompletionItem {
             label: origin,
             kind: Some(lsp_types::CompletionItemKind::FOLDER),
@@ -1367,10 +1374,12 @@ mod tests {
       .await;
     assert_eq!(
       documentation,
-      Some(lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
-        kind: lsp_types::MarkupKind::Markdown,
-        value: "**a**".to_string(),
-      }))
+      Some(lsp_types::Documentation::MarkupContent(
+        lsp_types::MarkupContent {
+          kind: lsp_types::MarkupKind::Markdown,
+          value: "**a**".to_string(),
+        }
+      ))
     );
 
     let range = lsp_types::Range {
@@ -1438,10 +1447,16 @@ mod tests {
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 2);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp_types::CompletionItemKind::FILE));
+    assert_eq!(
+      completions[0].kind,
+      Some(lsp_types::CompletionItemKind::FILE)
+    );
     assert!(completions[0].command.is_some());
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp_types::CompletionItemKind::FILE));
+    assert_eq!(
+      completions[0].kind,
+      Some(lsp_types::CompletionItemKind::FILE)
+    );
     assert!(completions[1].command.is_some());
 
     let range = lsp_types::Range {
@@ -1463,7 +1478,10 @@ mod tests {
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 1);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp_types::CompletionItemKind::FILE));
+    assert_eq!(
+      completions[0].kind,
+      Some(lsp_types::CompletionItemKind::FILE)
+    );
     assert!(completions[0].command.is_some());
 
     let range = lsp_types::Range {
@@ -1488,7 +1506,10 @@ mod tests {
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 1);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp_types::CompletionItemKind::FILE));
+    assert_eq!(
+      completions[0].kind,
+      Some(lsp_types::CompletionItemKind::FILE)
+    );
     assert!(completions[0].command.is_some());
   }
 
@@ -1521,7 +1542,8 @@ mod tests {
     assert_eq!(completions.len(), 3);
     for completion in completions {
       assert!(completion.text_edit.is_some());
-      if let lsp_types::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
+      if let lsp_types::CompletionTextEdit::Edit(edit) =
+        completion.text_edit.unwrap()
       {
         assert_eq!(
           edit.new_text,
@@ -1550,7 +1572,8 @@ mod tests {
     assert_eq!(completions.len(), 2);
     for completion in completions {
       assert!(completion.text_edit.is_some());
-      if let lsp_types::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
+      if let lsp_types::CompletionTextEdit::Edit(edit) =
+        completion.text_edit.unwrap()
       {
         assert_eq!(
           edit.new_text,
@@ -1591,7 +1614,8 @@ mod tests {
     assert_eq!(completions.len(), 3);
     for completion in completions {
       assert!(completion.text_edit.is_some());
-      if let lsp_types::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
+      if let lsp_types::CompletionTextEdit::Edit(edit) =
+        completion.text_edit.unwrap()
       {
         assert_eq!(
           edit.new_text,
