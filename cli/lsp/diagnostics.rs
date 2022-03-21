@@ -845,7 +845,8 @@ async fn generate_deps_diagnostics(
       break;
     }
     let mut diagnostics = Vec::new();
-    if config.specifier_enabled(document.specifier()) {
+    let specifier = document.specifier();
+    if config.specifier_enabled(specifier) {
       for (_, dependency) in document.dependencies() {
         diagnose_dependency(
           &mut diagnostics,
@@ -866,7 +867,7 @@ async fn generate_deps_diagnostics(
       }
     }
     diagnostics_vec.push((
-      document.specifier().clone(),
+      specifier.clone(),
       document.maybe_lsp_version(),
       diagnostics,
     ));
@@ -985,6 +986,7 @@ let c: number = "a";
           specifier.clone(),
           SpecifierSettings {
             enable: false,
+            enable_paths: Vec::new(),
             code_lens: Default::default(),
           },
         ),
