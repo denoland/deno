@@ -62,7 +62,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
-use tower_lsp::lsp_types;
+use tower_lsp::lsp_types as lsp;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
