@@ -2979,6 +2979,30 @@ assertEquals(1, notify_return_value);
   }
 
   #[test]
+  fn test_op_high_arity() {
+    #[op]
+    fn op_add_4(
+      x1: i64,
+      x2: i64,
+      x3: i64,
+      x4: i64,
+    ) -> Result<i64, anyhow::Error> {
+      Ok(x1 + x2 + x3 + x4)
+    }
+
+    let ext = Extension::builder().ops(vec![op_add_4::decl()]).build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    let r = runtime
+      .execute_script("test.js", "Deno.core.opSync('op_add_4', 1, 2, 3, 4)")
+      .unwrap();
+    let scope = &mut runtime.handle_scope();
+    assert_eq!(r.open(scope).integer_value(scope), Some(10));
+  }
+
+  #[test]
   fn js_realm_simple() {
     let mut runtime = JsRuntime::new(Default::default());
     let main_context = runtime.global_context();
