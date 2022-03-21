@@ -37,8 +37,8 @@ impl Client {
 
   pub async fn publish_diagnostics(
     &self,
-    uri: lsp_types::Url,
-    diags: Vec<lsp_types::Diagnostic>,
+    uri: lsp::Url,
+    diags: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
     self.0.publish_diagnostics(uri, diags, version).await;
@@ -53,14 +53,14 @@ impl Client {
 
   pub async fn specifier_configurations(
     &self,
-    specifiers: Vec<lsp_types::Url>,
+    specifiers: Vec<lsp::Url>,
   ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
     self.0.specifier_configurations(specifiers).await
   }
 
   pub async fn specifier_configuration(
     &self,
-    specifier: &lsp_types::Url,
+    specifier: &lsp::Url,
   ) -> Result<SpecifierSettings, AnyError> {
     let values = self
       .0
@@ -88,7 +88,7 @@ impl Client {
 
   pub async fn show_message(
     &self,
-    message_type: lsp_types::MessageType,
+    message_type: lsp::MessageType,
     message: impl std::fmt::Display,
   ) {
     self
@@ -99,7 +99,7 @@ impl Client {
 
   pub async fn register_capability(
     &self,
-    registrations: Vec<lsp_types::Registration>,
+    registrations: Vec<lsp::Registration>,
   ) -> Result<(), AnyError> {
     self.0.register_capability(registrations).await
   }
@@ -110,8 +110,8 @@ type AsyncReturn<T> = Pin<Box<dyn Future<Output = T> + 'static + Send>>;
 trait ClientTrait: Send + Sync {
   fn publish_diagnostics(
     &self,
-    uri: lsp_types::Url,
-    diagnostics: Vec<lsp_types::Diagnostic>,
+    uri: lsp::Url,
+    diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) -> AsyncReturn<()>;
   fn send_registry_state_notification(
@@ -120,17 +120,17 @@ trait ClientTrait: Send + Sync {
   ) -> AsyncReturn<()>;
   fn specifier_configurations(
     &self,
-    uris: Vec<lsp_types::Url>,
+    uris: Vec<lsp::Url>,
   ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>;
   fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>>;
   fn show_message(
     &self,
-    message_type: lsp_types::MessageType,
+    message_type: lsp::MessageType,
     text: String,
   ) -> AsyncReturn<()>;
   fn register_capability(
     &self,
-    registrations: Vec<lsp_types::Registration>,
+    registrations: Vec<lsp::Registration>,
   ) -> AsyncReturn<Result<(), AnyError>>;
 }
 
@@ -140,8 +140,8 @@ struct TowerClient(tower_lsp::Client);
 impl ClientTrait for TowerClient {
   fn publish_diagnostics(
     &self,
-    uri: lsp_types::Url,
-    diagnostics: Vec<lsp_types::Diagnostic>,
+    uri: lsp::Url,
+    diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) -> AsyncReturn<()> {
     let client = self.0.clone();
@@ -166,7 +166,7 @@ impl ClientTrait for TowerClient {
 
   fn specifier_configurations(
     &self,
-    uris: Vec<lsp_types::Url>,
+    uris: Vec<lsp::Url>,
   ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
   {
     let client = self.0.clone();
@@ -219,7 +219,7 @@ impl ClientTrait for TowerClient {
 
   fn show_message(
     &self,
-    message_type: lsp_types::MessageType,
+    message_type: lsp::MessageType,
     message: String,
   ) -> AsyncReturn<()> {
     let client = self.0.clone();
@@ -228,7 +228,7 @@ impl ClientTrait for TowerClient {
 
   fn register_capability(
     &self,
-    registrations: Vec<lsp_types::Registration>,
+    registrations: Vec<lsp::Registration>,
   ) -> AsyncReturn<Result<(), AnyError>> {
     let client = self.0.clone();
     Box::pin(async move {
@@ -246,8 +246,8 @@ struct ReplClient;
 impl ClientTrait for ReplClient {
   fn publish_diagnostics(
     &self,
-    _uri: lsp_types::Url,
-    _diagnostics: Vec<lsp_types::Diagnostic>,
+    _uri: lsp::Url,
+    _diagnostics: Vec<lsp::Diagnostic>,
     _version: Option<i32>,
   ) -> AsyncReturn<()> {
     Box::pin(future::ready(()))
@@ -262,7 +262,7 @@ impl ClientTrait for ReplClient {
 
   fn specifier_configurations(
     &self,
-    uris: Vec<lsp_types::Url>,
+    uris: Vec<lsp::Url>,
   ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
   {
     // all specifiers are enabled for the REPL
@@ -286,7 +286,7 @@ impl ClientTrait for ReplClient {
 
   fn show_message(
     &self,
-    _message_type: lsp_types::MessageType,
+    _message_type: lsp::MessageType,
     _message: String,
   ) -> AsyncReturn<()> {
     Box::pin(future::ready(()))
@@ -294,7 +294,7 @@ impl ClientTrait for ReplClient {
 
   fn register_capability(
     &self,
-    _registrations: Vec<lsp_types::Registration>,
+    _registrations: Vec<lsp::Registration>,
   ) -> AsyncReturn<Result<(), AnyError>> {
     Box::pin(future::ready(Ok(())))
   }

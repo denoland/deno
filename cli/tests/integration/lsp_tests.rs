@@ -64,7 +64,7 @@ fn init(init_path: &str) -> LspClient {
 fn did_open<V>(
   client: &mut LspClient,
   params: V,
-) -> Vec<lsp_types::PublishDiagnosticsParams>
+) -> Vec<lsp::PublishDiagnosticsParams>
 where
   V: Serialize,
 {
@@ -95,7 +95,7 @@ fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
   let mut diagnostics = vec![];
   for _ in 0..3 {
     let (method, response) = client
-      .read_notification::<lsp_types::PublishDiagnosticsParams>()
+      .read_notification::<lsp::PublishDiagnosticsParams>()
       .unwrap();
     assert_eq!(method, "textDocument/publishDiagnostics");
     diagnostics.push(response.unwrap());
@@ -180,11 +180,11 @@ impl TestSession {
 }
 
 #[derive(Debug, Clone)]
-struct CollectedDiagnostics(Vec<lsp_types::PublishDiagnosticsParams>);
+struct CollectedDiagnostics(Vec<lsp::PublishDiagnosticsParams>);
 
 impl CollectedDiagnostics {
   /// Gets the diagnostics that the editor will see after all the publishes.
-  pub fn viewed(&self) -> Vec<lsp_types::Diagnostic> {
+  pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
     self
       .viewed_messages()
       .into_iter()
@@ -193,7 +193,7 @@ impl CollectedDiagnostics {
   }
 
   /// Gets the messages that the editor will see after all the publishes.
-  pub fn viewed_messages(&self) -> Vec<lsp_types::PublishDiagnosticsParams> {
+  pub fn viewed_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
     // go over the publishes in reverse order in order to get
     // the final messages that will be shown in the editor
     let mut messages = Vec::new();
@@ -206,10 +206,7 @@ impl CollectedDiagnostics {
     messages
   }
 
-  pub fn with_source(
-    &self,
-    source: &str,
-  ) -> lsp_types::PublishDiagnosticsParams {
+  pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
     self
       .viewed_messages()
       .iter()
@@ -226,7 +223,7 @@ impl CollectedDiagnostics {
     &self,
     specifier: &str,
     source: &str,
-  ) -> lsp_types::PublishDiagnosticsParams {
+  ) -> lsp::PublishDiagnosticsParams {
     let specifier = ModuleSpecifier::parse(specifier).unwrap();
     self
       .viewed_messages()
@@ -252,7 +249,7 @@ fn lsp_startup_shutdown() {
 #[test]
 fn lsp_init_tsconfig() {
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let tsconfig =
     serde_json::to_vec_pretty(&load_fixture("lib.tsconfig.json")).unwrap();
@@ -292,7 +289,7 @@ fn lsp_init_tsconfig() {
 
 #[test]
 fn lsp_tsconfig_types() {
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let temp_dir = TempDir::new().expect("could not create temp dir");
   let tsconfig =
@@ -338,8 +335,8 @@ fn lsp_tsconfig_bad_config_path() {
   let mut client = init("initialize_params_bad_config_option.json");
   let (method, maybe_params) = client.read_notification().unwrap();
   assert_eq!(method, "window/showMessage");
-  assert_eq!(maybe_params, Some(lsp_types::ShowMessageParams {
-    typ: lsp_types::MessageType::WARNING,
+  assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
+    typ: lsp::MessageType::WARNING,
     message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
   }));
   let diagnostics = did_open(
@@ -359,7 +356,7 @@ fn lsp_tsconfig_bad_config_path() {
 
 #[test]
 fn lsp_triple_slash_types() {
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let temp_dir = TempDir::new().expect("could not create temp dir");
   let a_dts = load_fixture_str("a.d.ts");
@@ -396,7 +393,7 @@ fn lsp_triple_slash_types() {
 #[test]
 fn lsp_import_map() {
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
     serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
@@ -497,7 +494,7 @@ fn lsp_import_map_data_url() {
   // This indicates that the import map from initialize_params_import_map.json
   // is applied correctly.
   assert!(diagnostics.any(|diagnostic| diagnostic.code
-    == Some(lsp_types::NumberOrString::String("no-cache".to_string()))
+    == Some(lsp::NumberOrString::String("no-cache".to_string()))
     && diagnostic
       .message
       .contains("https://deno.land/x/example/mod.ts")));
@@ -507,7 +504,7 @@ fn lsp_import_map_data_url() {
 #[test]
 fn lsp_import_map_config_file() {
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
 
   let deno_import_map_jsonc =
@@ -678,7 +675,7 @@ fn lsp_import_assertions() {
 #[test]
 fn lsp_import_map_import_completions() {
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
     serde_json::to_vec_pretty(&load_fixture("import-map-completions.json"))
@@ -1039,9 +1036,9 @@ fn lsp_hover_disabled() {
 
 #[test]
 fn lsp_workspace_enable_paths() {
-  let mut params: lsp_types::InitializeParams = serde_json::from_value(
-    load_fixture("initialize_params_workspace_enable_paths.json"),
-  )
+  let mut params: lsp::InitializeParams = serde_json::from_value(load_fixture(
+    "initialize_params_workspace_enable_paths.json",
+  ))
   .unwrap();
   // we aren't actually writing anything to the tempdir in this test, but we
   // just need a legitimate file path on the host system so that logic that
@@ -1052,7 +1049,7 @@ fn lsp_workspace_enable_paths() {
     ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
 
   params.root_uri = Some(root_specifier.clone());
-  params.workspace_folders = Some(vec![lsp_types::WorkspaceFolder {
+  params.workspace_folders = Some(vec![lsp::WorkspaceFolder {
     uri: root_specifier.clone(),
     name: "project".to_string(),
   }]);
@@ -2205,7 +2202,7 @@ fn lsp_format_mbc() {
 #[test]
 fn lsp_format_exclude_with_config() {
   let temp_dir = TempDir::new().unwrap();
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
@@ -2261,7 +2258,7 @@ fn lsp_format_exclude_with_config() {
 fn lsp_format_exclude_default_config() {
   let temp_dir = TempDir::new().unwrap();
   let workspace_root = temp_dir.path().canonicalize().unwrap();
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
@@ -2928,7 +2925,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Vec<lsp_types::CodeLens>>(
+    .write_request::<_, _, Vec<lsp::CodeLens>>(
       "textDocument/codeLens",
       json!({
         "textDocument": {
@@ -2942,7 +2939,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
   let res = maybe_res.unwrap();
   assert!(res.len() > 50);
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, lsp_types::CodeLens>(
+    .write_request::<_, _, lsp::CodeLens>(
       "codeLens/resolve",
       json!({
         "range": {
@@ -3556,7 +3553,7 @@ fn lsp_completions() {
     )
     .unwrap();
   assert!(maybe_err.is_none());
-  if let Some(lsp_types::CompletionResponse::List(list)) = maybe_res {
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.len() > 90);
   } else {
@@ -3679,7 +3676,7 @@ fn lsp_completions_registry() {
     )
     .unwrap();
   assert!(maybe_err.is_none());
-  if let Some(lsp_types::CompletionResponse::List(list)) = maybe_res {
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
   } else {
@@ -3791,7 +3788,7 @@ fn lsp_auto_discover_registry() {
 fn lsp_cache_location() {
   let _g = http_server();
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_registry.json"))
       .unwrap();
 
@@ -3909,13 +3906,13 @@ fn lsp_cache_location() {
   session.shutdown_and_exit();
 }
 
-/// Sets the TLS root certificate on startup, which allows the lsp_types to connect to
+/// Sets the TLS root certificate on startup, which allows the lsp to connect to
 /// the custom signed test server and be able to retrieve the registry config
 /// and cache files.
 #[test]
 fn lsp_tls_cert() {
   let _g = http_server();
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_tls_cert.json"))
       .unwrap();
 
@@ -4062,39 +4059,39 @@ fn lsp_diagnostics_warn_redirect() {
   let diagnostics = read_diagnostics(&mut client);
   assert_eq!(
     diagnostics.with_source("deno"),
-    lsp_types::PublishDiagnosticsParams {
+    lsp::PublishDiagnosticsParams {
       uri: Url::parse("file:///a/file.ts").unwrap(),
       diagnostics: vec![
-        lsp_types::Diagnostic {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 19
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 60
             }
           },
-          severity: Some(lsp_types::DiagnosticSeverity::WARNING),
-          code: Some(lsp_types::NumberOrString::String("deno-warn".to_string())),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
+          code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
           source: Some("deno".to_string()),
           message: "foobar".to_string(),
           ..Default::default()
         },
-        lsp_types::Diagnostic {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
+        lsp::Diagnostic {
+          range: lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 19
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 60
             }
           },
-          severity: Some(lsp_types::DiagnosticSeverity::INFORMATION),
-          code: Some(lsp_types::NumberOrString::String("redirect".to_string())),
+          severity: Some(lsp::DiagnosticSeverity::INFORMATION),
+          code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
           message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".".to_string(),
           data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"})),
@@ -4588,7 +4585,7 @@ fn lsp_format_markdown() {
 #[test]
 fn lsp_format_with_config() {
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.fmt.jsonc")).unwrap();
@@ -4868,7 +4865,7 @@ fn lsp_configuration_did_change() {
     )
     .unwrap();
   assert!(maybe_err.is_none());
-  if let Some(lsp_types::CompletionResponse::List(list)) = maybe_res {
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
   } else {
@@ -5067,7 +5064,7 @@ console.log(snake_case);
 #[test]
 fn lsp_lint_with_config() {
   let temp_dir = TempDir::new().expect("could not create temp dir");
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.lint.jsonc")).unwrap();
@@ -5091,9 +5088,7 @@ fn lsp_lint_with_config() {
   assert_eq!(diagnostics.len(), 1);
   assert_eq!(
     diagnostics[0].code,
-    Some(lsp_types::NumberOrString::String(
-      "ban-untagged-todo".to_string()
-    ))
+    Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
   );
   session.shutdown_and_exit();
 }
@@ -5101,7 +5096,7 @@ fn lsp_lint_with_config() {
 #[test]
 fn lsp_lint_exclude_with_config() {
   let temp_dir = TempDir::new().unwrap();
-  let mut params: lsp_types::InitializeParams =
+  let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.lint.exclude.jsonc"))

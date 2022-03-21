@@ -254,8 +254,7 @@ pub struct Config {
   enabled_paths: HashMap<String, Vec<String>>,
   pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
-  pub workspace_folders:
-    Option<Vec<(ModuleSpecifier, lsp_types::WorkspaceFolder)>>,
+  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
 }
 
 impl Config {
@@ -328,7 +327,7 @@ impl Config {
 
   pub fn update_capabilities(
     &mut self,
-    capabilities: &lsp_types::ClientCapabilities,
+    capabilities: &lsp::ClientCapabilities,
   ) {
     if let Some(experimental) = &capabilities.experimental {
       self.client_capabilities.status_notification = experimental

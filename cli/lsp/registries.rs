@@ -464,10 +464,10 @@ impl ModuleRegistry {
   fn complete_literal(
     &self,
     s: String,
-    completions: &mut HashMap<String, lsp_types::CompletionItem>,
+    completions: &mut HashMap<String, lsp::CompletionItem>,
     current_specifier: &str,
     offset: usize,
-    range: &lsp_types::Range,
+    range: &lsp::Range,
   ) {
     let label = if s.starts_with('/') {
       s[0..].to_string()
@@ -480,17 +480,16 @@ impl ModuleRegistry {
       s,
       &current_specifier[offset..]
     );
-    let text_edit =
-      Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-        range: *range,
-        new_text: full_text.clone(),
-      }));
+    let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+      range: *range,
+      new_text: full_text.clone(),
+    }));
     let filter_text = Some(full_text);
     completions.insert(
       s,
-      lsp_types::CompletionItem {
+      lsp::CompletionItem {
         label,
-        kind: Some(lsp_types::CompletionItemKind::FOLDER),
+        kind: Some(lsp::CompletionItemKind::FOLDER),
         filter_text,
         sort_text: Some("1".to_string()),
         text_edit,
@@ -631,13 +630,14 @@ impl ModuleRegistry {
           .fetch(&endpoint, &mut Permissions::allow_all())
           .await
           .ok()?;
-        let documentation: lsp_types::Documentation =
+        let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
-          lsp_types::Documentation::String(doc) => Some(doc),
-          lsp_types::Documentation::MarkupContent(
-            lsp_types::MarkupContent { value, .. },
-          ) => Some(value),
+          lsp::Documentation::String(doc) => Some(doc),
+          lsp::Documentation::MarkupContent(lsp::MarkupContent {
+            value,
+            ..
+          }) => Some(value),
         };
       }
     }
@@ -651,9 +651,9 @@ impl ModuleRegistry {
     &self,
     current_specifier: &str,
     offset: usize,
-    range: &lsp_types::Range,
+    range: &lsp::Range,
     specifier_exists: impl Fn(&ModuleSpecifier) -> bool,
-  ) -> Option<lsp_types::CompletionList> {
+  ) -> Option<lsp::CompletionList> {
     if let Ok(specifier) = Url::parse(current_specifier) {
       let origin = base_url(&specifier);
       let origin_len = origin.chars().count();
@@ -661,8 +661,7 @@ impl ModuleRegistry {
         if let Some(registries) = self.origins.get(&origin) {
           let path = &specifier[Position::BeforePath..];
           let path_offset = offset - origin_len;
-          let mut completions =
-            HashMap::<String, lsp_types::CompletionItem>::new();
+          let mut completions = HashMap::<String, lsp::CompletionItem>::new();
           let mut is_incomplete = false;
           let mut did_match = false;
           for registry in registries {
@@ -744,9 +743,9 @@ impl ModuleRegistry {
                           let kind = if key.name == last_key_name
                             && !item.ends_with('/')
                           {
-                            Some(lsp_types::CompletionItemKind::FILE)
+                            Some(lsp::CompletionItemKind::FILE)
                           } else {
-                            Some(lsp_types::CompletionItemKind::FOLDER)
+                            Some(lsp::CompletionItemKind::FOLDER)
                           };
                           let mut params = match_result.params.clone();
                           params.insert(
@@ -760,18 +759,17 @@ impl ModuleRegistry {
                           }
                           let item_specifier = base.join(&path).ok()?;
                           let full_text = item_specifier.as_str();
-                          let text_edit =
-                            Some(lsp_types::CompletionTextEdit::Edit(
-                              lsp_types::TextEdit {
-                                range: *range,
-                                new_text: full_text.to_string(),
-                              },
-                            ));
+                          let text_edit = Some(lsp::CompletionTextEdit::Edit(
+                            lsp::TextEdit {
+                              range: *range,
+                              new_text: full_text.to_string(),
+                            },
+                          ));
                           let command = if key.name == last_key_name
                             && !item.ends_with('/')
                             && !specifier_exists(&item_specifier)
                           {
-                            Some(lsp_types::Command {
+                            Some(lsp::Command {
                               title: "".to_string(),
                               command: "deno.cache".to_string(),
                               arguments: Some(vec![json!([item_specifier])]),
@@ -794,7 +792,7 @@ impl ModuleRegistry {
                           );
                           completions.insert(
                             item,
-                            lsp_types::CompletionItem {
+                            lsp::CompletionItem {
                               label,
                               kind,
                               detail,
@@ -825,21 +823,19 @@ impl ModuleRegistry {
                   Token::String(s) => {
                     if s.starts_with(path) {
                       let label = s.to_string();
-                      let kind = Some(lsp_types::CompletionItemKind::FOLDER);
+                      let kind = Some(lsp::CompletionItemKind::FOLDER);
                       let mut url = specifier.clone();
                       url.set_path(s);
                       let full_text = url.as_str();
                       let text_edit =
-                        Some(lsp_types::CompletionTextEdit::Edit(
-                          lsp_types::TextEdit {
-                            range: *range,
-                            new_text: full_text.to_string(),
-                          },
-                        ));
+                        Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                          range: *range,
+                          new_text: full_text.to_string(),
+                        }));
                       let filter_text = Some(full_text.to_string());
                       completions.insert(
                         s.to_string(),
-                        lsp_types::CompletionItem {
+                        lsp::CompletionItem {
                           label,
                           kind,
                           filter_text,
@@ -873,21 +869,19 @@ impl ModuleRegistry {
                           }
                           for (idx, item) in items.into_iter().enumerate() {
                             let path = format!("{}{}", prefix, item);
-                            let kind =
-                              Some(lsp_types::CompletionItemKind::FOLDER);
+                            let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
-                            let text_edit =
-                              Some(lsp_types::CompletionTextEdit::Edit(
-                                lsp_types::TextEdit {
-                                  range: *range,
-                                  new_text: full_text.to_string(),
-                                },
-                              ));
+                            let text_edit = Some(
+                              lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                                range: *range,
+                                new_text: full_text.to_string(),
+                              }),
+                            );
                             let command = if k.name == last_key_name
                               && !specifier_exists(&item_specifier)
                             {
-                              Some(lsp_types::Command {
+                              Some(lsp::Command {
                                 title: "".to_string(),
                                 command: "deno.cache".to_string(),
                                 arguments: Some(vec![json!([item_specifier])]),
@@ -903,7 +897,7 @@ impl ModuleRegistry {
                             let data = get_data(registry, &specifier, k, &path);
                             completions.insert(
                               item.clone(),
-                              lsp_types::CompletionItem {
+                              lsp::CompletionItem {
                                 label: item,
                                 kind,
                                 detail,
@@ -932,7 +926,7 @@ impl ModuleRegistry {
           return if completions.is_empty() && !did_match {
             None
           } else {
-            Some(lsp_types::CompletionList {
+            Some(lsp::CompletionList {
               items: completions.into_iter().map(|(_, i)| i).collect(),
               is_incomplete,
             })
@@ -947,7 +941,7 @@ impl ModuleRegistry {
   pub(crate) async fn get_documentation(
     &self,
     url: &str,
-  ) -> Option<lsp_types::Documentation> {
+  ) -> Option<lsp::Documentation> {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
@@ -960,8 +954,8 @@ impl ModuleRegistry {
   pub fn get_origin_completions(
     &self,
     current_specifier: &str,
-    range: &lsp_types::Range,
-  ) -> Option<lsp_types::CompletionList> {
+    range: &lsp::Range,
+  ) -> Option<lsp::CompletionList> {
     let items = self
       .origins
       .keys()
@@ -971,14 +965,13 @@ impl ModuleRegistry {
           origin.pop();
         }
         if origin.starts_with(current_specifier) {
-          let text_edit =
-            Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
-              range: *range,
-              new_text: origin.clone(),
-            }));
-          Some(lsp_types::CompletionItem {
+          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: origin.clone(),
+          }));
+          Some(lsp::CompletionItem {
             label: origin,
-            kind: Some(lsp_types::CompletionItemKind::FOLDER),
+            kind: Some(lsp::CompletionItemKind::FOLDER),
             detail: Some("(registry)".to_string()),
             sort_text: Some("2".to_string()),
             text_edit,
@@ -988,9 +981,9 @@ impl ModuleRegistry {
           None
         }
       })
-      .collect::<Vec<lsp_types::CompletionItem>>();
+      .collect::<Vec<lsp::CompletionItem>>();
     if !items.is_empty() {
-      Some(lsp_types::CompletionList {
+      Some(lsp::CompletionList {
         items,
         is_incomplete: false,
       })
@@ -1226,12 +1219,12 @@ mod tests {
       .enable("http://localhost:4545/")
       .await
       .expect("could not enable");
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 21,
       },
@@ -1245,17 +1238,17 @@ mod tests {
     assert_eq!(completions[0].label, "http://localhost:4545");
     assert_eq!(
       completions[0].text_edit,
-      Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range,
         new_text: "http://localhost:4545".to_string()
       }))
     );
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 36,
       },
@@ -1269,7 +1262,7 @@ mod tests {
     assert_eq!(completions[0].label, "http://localhost:4545");
     assert_eq!(
       completions[0].text_edit,
-      Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit {
+      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range,
         new_text: "http://localhost:4545".to_string()
       }))
@@ -1287,12 +1280,12 @@ mod tests {
       .enable("http://localhost:4545/")
       .await
       .expect("could not enable");
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 41,
       },
@@ -1303,12 +1296,12 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 3);
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 42,
       },
@@ -1319,12 +1312,12 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 3);
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 44,
       },
@@ -1344,12 +1337,12 @@ mod tests {
     );
 
     // testing for incremental searching for a module
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 45,
       },
@@ -1374,20 +1367,18 @@ mod tests {
       .await;
     assert_eq!(
       documentation,
-      Some(lsp_types::Documentation::MarkupContent(
-        lsp_types::MarkupContent {
-          kind: lsp_types::MarkupKind::Markdown,
-          value: "**a**".to_string(),
-        }
-      ))
+      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
+        kind: lsp::MarkupKind::Markdown,
+        value: "**a**".to_string(),
+      }))
     );
 
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 46,
       },
@@ -1405,12 +1396,12 @@ mod tests {
       }))
     );
 
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 49,
       },
@@ -1428,12 +1419,12 @@ mod tests {
       }))
     );
 
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 53,
       },
@@ -1447,24 +1438,18 @@ mod tests {
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 2);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(
-      completions[0].kind,
-      Some(lsp_types::CompletionItemKind::FILE)
-    );
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[0].command.is_some());
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
-    assert_eq!(
-      completions[0].kind,
-      Some(lsp_types::CompletionItemKind::FILE)
-    );
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[1].command.is_some());
 
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 54,
       },
@@ -1478,18 +1463,15 @@ mod tests {
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 1);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(
-      completions[0].kind,
-      Some(lsp_types::CompletionItemKind::FILE)
-    );
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[0].command.is_some());
 
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 55,
       },
@@ -1506,10 +1488,7 @@ mod tests {
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 1);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(
-      completions[0].kind,
-      Some(lsp_types::CompletionItemKind::FILE)
-    );
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[0].command.is_some());
   }
 
@@ -1524,12 +1503,12 @@ mod tests {
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
       .expect("could not enable");
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 42,
       },
@@ -1542,8 +1521,7 @@ mod tests {
     assert_eq!(completions.len(), 3);
     for completion in completions {
       assert!(completion.text_edit.is_some());
-      if let lsp_types::CompletionTextEdit::Edit(edit) =
-        completion.text_edit.unwrap()
+      if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
       {
         assert_eq!(
           edit.new_text,
@@ -1554,12 +1532,12 @@ mod tests {
       }
     }
 
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 46,
       },
@@ -1572,8 +1550,7 @@ mod tests {
     assert_eq!(completions.len(), 2);
     for completion in completions {
       assert!(completion.text_edit.is_some());
-      if let lsp_types::CompletionTextEdit::Edit(edit) =
-        completion.text_edit.unwrap()
+      if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
       {
         assert_eq!(
           edit.new_text,
@@ -1596,12 +1573,12 @@ mod tests {
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
       .expect("could not enable");
-    let range = lsp_types::Range {
-      start: lsp_types::Position {
+    let range = lsp::Range {
+      start: lsp::Position {
         line: 0,
         character: 20,
       },
-      end: lsp_types::Position {
+      end: lsp::Position {
         line: 0,
         character: 42,
       },
@@ -1614,8 +1591,7 @@ mod tests {
     assert_eq!(completions.len(), 3);
     for completion in completions {
       assert!(completion.text_edit.is_some());
-      if let lsp_types::CompletionTextEdit::Edit(edit) =
-        completion.text_edit.unwrap()
+      if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
       {
         assert_eq!(
           edit.new_text,
