@@ -2334,7 +2334,7 @@ fn issue9750() {
       Input("yy\n"),
       Output("⚠️  ️Deno requests env access. Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
-      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
     ],
