@@ -16,7 +16,6 @@
     ErrorCaptureStackTrace,
     Promise,
     ObjectEntries,
-    ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
     MapPrototypeDelete,
@@ -27,11 +26,15 @@
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
+  const ops = window.Deno.core.ops;
+  const opIds = Object.keys(ops).reduce((a, v, i) => {
+    a[v] = i;
+    return a;
+  }, {});
 
   // Available on start due to bindings.
-  const { opcallSync, opcallAsync } = window.Deno.core;
+  const { refOp_, unrefOp_ } = window.Deno.core;
 
-  let opsCache = {};
   const errorMap = {};
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -99,13 +102,15 @@
     return promise;
   }
 
-  function ops() {
-    return opsCache;
-  }
-
-  function syncOpsCache() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
+  function hasPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      return MapPrototypeHas(promiseMap, promiseId);
+    }
+    // Otherwise check it in ring
+    const idx = promiseId % RING_SIZE;
+    return promiseRing[idx] != NO_PROMISE;
   }
 
   function opresolve() {
@@ -149,7 +154,7 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
+    const maybeError = ops[opName](opIds[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -168,8 +173,22 @@
     return p;
   }
 
-  function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
+  function opSync(opName, arg1, arg2) {
+    return unwrapOpResult(ops[opName](opIds[opName], arg1, arg2));
+  }
+
+  function refOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    refOp_(promiseId);
+  }
+
+  function unrefOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    unrefOp_(promiseId);
   }
 
   function resources() {
@@ -203,7 +222,7 @@
   function metrics() {
     const [aggregate, perOps] = opSync("op_metrics");
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      ObjectEntries(opsCache),
+      ObjectEntries(opIds),
       ([opName, opId]) => [opName, perOps[opId]],
     ));
     return aggregate;
@@ -232,7 +251,6 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
-    ops,
     close,
     tryClose,
     read,
@@ -244,7 +262,6 @@
     registerErrorBuilder,
     registerErrorClass,
     opresolve,
-    syncOpsCache,
     BadResource,
     BadResourcePrototype,
     Interrupted,
@@ -252,6 +269,8 @@
     enableOpCallTracing,
     isOpCallTracingEnabled,
     opCallTraces,
+    refOp,
+    unrefOp,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

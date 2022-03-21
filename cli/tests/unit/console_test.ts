@@ -1609,6 +1609,24 @@ Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
   });
 });
 
+// console.log(new Proxy(new Set(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedSet() {
+  mockConsole((console, out) => {
+    const proxiedSet = new Proxy(new Set(), {});
+    console.log(proxiedSet);
+    assertEquals(stripColor(out.toString()), "Set {}\n");
+  });
+});
+
+// console.log(new Proxy(new Map(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
+  mockConsole((console, out) => {
+    const proxiedMap = new Proxy(new Map(), {});
+    console.log(proxiedMap);
+    assertEquals(stripColor(out.toString()), "Map {}\n");
+  });
+});
+
 // console.dir test
 Deno.test(function consoleDir() {
   mockConsole((console, out) => {

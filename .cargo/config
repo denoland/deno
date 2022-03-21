@@ -1,2 +1,14 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.'cfg(all(windows, debug_assertions))']
+rustflags = [
+  "-C",
+  "target-feature=+crt-static",
+  "-C",
+  # double the stack size to prevent swc overflowing the stack in debug
+  "link-arg=/STACK:2097152",
+]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

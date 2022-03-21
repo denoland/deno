@@ -18,7 +18,7 @@
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
-  const mimesniff = window.__bootstrap.mimesniff;
+  const { extractMimeType } = window.__bootstrap.mimesniff;
   const { URL } = window.__bootstrap.url;
   const {
     getDecodeSplitHeader,
@@ -30,9 +30,6 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
-    MapPrototypeHas,
-    MapPrototypeGet,
-    MapPrototypeSet,
     ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
@@ -162,41 +159,11 @@
 
   class Response {
     get [_mimeType]() {
-      let charset = null;
-      let essence = null;
-      let mimeType = null;
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
         "Content-Type",
       );
-      if (values === null) return null;
-      for (const value of values) {
-        const temporaryMimeType = mimesniff.parseMimeType(value);
-        if (
-          temporaryMimeType === null ||
-          mimesniff.essence(temporaryMimeType) == "*/*"
-        ) {
-          continue;
-        }
-        mimeType = temporaryMimeType;
-        if (mimesniff.essence(mimeType) !== essence) {
-          charset = null;
-          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
-          if (newCharset !== undefined) {
-            charset = newCharset;
-          }
-          essence = mimesniff.essence(mimeType);
-        } else {
-          if (
-            MapPrototypeHas(mimeType.parameters, "charset") === null &&
-            charset !== null
-          ) {
-            MapPrototypeSet(mimeType.parameters, "charset", charset);
-          }
-        }
-      }
-      if (mimeType === null) return null;
-      return mimeType;
+      return extractMimeType(values);
     }
     get [_body]() {
       return this[_response].body;
@@ -265,9 +232,9 @@
         context: "Argument 2",
       });
 
-      if (init.status < 200 || init.status > 599) {
+      if ((init.status < 200 || init.status > 599) && init.status != 101) {
         throw new RangeError(
-          `The status provided (${init.status}) is outside the range [200, 599].`,
+          `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
         );
       }
 

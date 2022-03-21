@@ -8,8 +8,7 @@ pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -44,11 +43,13 @@ pub type Message = (String, Vec<u8>);
 
 struct Unstable(bool); // --unstable
 
-pub fn op_broadcast_subscribe<BC: BroadcastChannel + 'static>(
+#[op]
+pub fn op_broadcast_subscribe<BC>(
   state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, AnyError>
+where
+  BC: BroadcastChannel + 'static,
+{
   let unstable = state.borrow::<Unstable>().0;
 
   if !unstable {
@@ -63,31 +64,42 @@ pub fn op_broadcast_subscribe<BC: BroadcastChannel + 'static>(
   Ok(state.resource_table.add(resource))
 }
 
-pub fn op_broadcast_unsubscribe<BC: BroadcastChannel + 'static>(
+#[op]
+pub fn op_broadcast_unsubscribe<BC>(
   state: &mut OpState,
   rid: ResourceId,
   _buf: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  BC: BroadcastChannel + 'static,
+{
   let resource = state.resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow::<BC>();
   bc.unsubscribe(&resource)
 }
 
-pub async fn op_broadcast_send<BC: BroadcastChannel + 'static>(
+#[op]
+pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
   (rid, name): (ResourceId, String),
   buf: ZeroCopyBuf,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  BC: BroadcastChannel + 'static,
+{
   let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.send(&resource, name, buf.to_vec()).await
 }
 
-pub async fn op_broadcast_recv<BC: BroadcastChannel + 'static>(
+#[op]
+pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
-) -> Result<Option<Message>, AnyError> {
+) -> Result<Option<Message>, AnyError>
+where
+  BC: BroadcastChannel + 'static,
+{
   let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.recv(&resource).await
@@ -103,16 +115,10 @@ pub fn init<BC: BroadcastChannel + 'static>(
       "01_broadcast_channel.js",
     ))
     .ops(vec![
-      (
-        "op_broadcast_subscribe",
-        op_sync(op_broadcast_subscribe::<BC>),
-      ),
-      (
-        "op_broadcast_unsubscribe",
-        op_sync(op_broadcast_unsubscribe::<BC>),
-      ),
-      ("op_broadcast_send", op_async(op_broadcast_send::<BC>)),
-      ("op_broadcast_recv", op_async(op_broadcast_recv::<BC>)),
+      op_broadcast_subscribe::decl::<BC>(),
+      op_broadcast_unsubscribe::decl::<BC>(),
+      op_broadcast_send::decl::<BC>(),
+      op_broadcast_recv::decl::<BC>(),
     ])
     .state(move |state| {
       state.put(bc.clone());

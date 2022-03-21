@@ -1,19 +1,25 @@
-use crate::OpFn;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
 use std::task::Context;
 
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
 pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
-pub type OpPair = (&'static str, Box<OpFn>);
-pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
+pub type OpFnRef = v8::FunctionCallback;
+pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
+
+#[derive(Clone, Copy)]
+pub struct OpDecl {
+  pub name: &'static str,
+  pub v8_fn_ptr: OpFnRef,
+}
 
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops: Option<Vec<OpPair>>,
+  ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
@@ -37,7 +43,7 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(&mut self) -> Option<Vec<OpPair>> {
+  pub fn init_ops(&mut self) -> Option<Vec<OpDecl>> {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
@@ -81,7 +87,7 @@ impl Extension {
 #[derive(Default)]
 pub struct ExtensionBuilder {
   js: Vec<SourcePair>,
-  ops: Vec<OpPair>,
+  ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
@@ -93,7 +99,7 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
+  pub fn ops(&mut self, ops: Vec<OpDecl>) -> &mut Self {
     self.ops.extend(ops);
     self
   }
@@ -108,7 +114,7 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+    F: Fn(OpDecl) -> OpDecl + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
     self

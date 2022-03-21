@@ -1,0 +1,3 @@
+Warning deno task is unstable and may drastically change in the future
+Task exit_code_5 echo $(echo 10 ; exit 2) && exit 5
+10

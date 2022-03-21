@@ -380,7 +380,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true }, ignore: true },
   async function netUdpSendReceiveBroadcast() {
     // Must bind sender to an address that can send to the broadcast address on MacOS.
     // Macos will give us error 49 when sending the broadcast packet if we omit hostname here.

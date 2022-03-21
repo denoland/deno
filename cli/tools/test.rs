@@ -543,6 +543,10 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
+      if block.get(1) == None {
+        return None;
+      }
+
       let maybe_attributes: Option<Vec<_>> = block
         .get(1)
         .map(|attributes| attributes.as_str().split(' ').collect());
@@ -663,7 +667,12 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
+  // The pattern matches code blocks as well as anything in HTML comment syntax,
+  // but it stores the latter without any capturing groups. This way, a simple
+  // check can be done to see if a block is inside a comment (and skip typechecking)
+  // or not by checking for the presence of capturing groups in the matches.
+  let blocks_regex =
+    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
@@ -733,7 +742,7 @@ async fn check_specifiers(
   if !inline_files.is_empty() {
     let specifiers = inline_files
       .iter()
-      .map(|file| (file.specifier.clone(), ModuleKind::Esm))
+      .map(|file| file.specifier.clone())
       .collect();
 
     for file in inline_files {
@@ -755,7 +764,7 @@ async fn check_specifiers(
     .iter()
     .filter_map(|(specifier, mode)| {
       if *mode != TestMode::Documentation {
-        Some((specifier.clone(), ModuleKind::Esm))
+        Some(specifier.clone())
       } else {
         None
       }

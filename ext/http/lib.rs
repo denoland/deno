@@ -20,8 +20,8 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -72,19 +72,13 @@ pub fn init() -> Extension {
       "01_http.js",
     ))
     .ops(vec![
-      ("op_http_accept", op_async(op_http_accept)),
-      ("op_http_read", op_async(op_http_read)),
-      ("op_http_write_headers", op_async(op_http_write_headers)),
-      ("op_http_write", op_async(op_http_write)),
-      ("op_http_shutdown", op_async(op_http_shutdown)),
-      (
-        "op_http_websocket_accept_header",
-        op_sync(op_http_websocket_accept_header),
-      ),
-      (
-        "op_http_upgrade_websocket",
-        op_async(op_http_upgrade_websocket),
-      ),
+      op_http_accept::decl(),
+      op_http_read::decl(),
+      op_http_write_headers::decl(),
+      op_http_write::decl(),
+      op_http_shutdown::decl(),
+      op_http_websocket_accept_header::decl(),
+      op_http_upgrade_websocket::decl(),
     ])
     .build()
 }
@@ -295,9 +289,9 @@ impl HttpAcceptor {
 }
 
 /// A resource representing a single HTTP request/response stream.
-struct HttpStreamResource {
+pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
-  rd: AsyncRefCell<HttpRequestReader>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
@@ -330,7 +324,7 @@ impl Resource for HttpStreamResource {
 }
 
 /// The read half of an HTTP stream.
-enum HttpRequestReader {
+pub enum HttpRequestReader {
   Headers(Request<Body>),
   Body(Peekable<Body>),
   Closed,
@@ -371,10 +365,10 @@ struct NextRequestResponse(
   String,
 );
 
+#[op]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
@@ -501,6 +495,7 @@ struct RespondArgs(
   Vec<(ByteString, ByteString)>,
 );
 
+#[op]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
@@ -522,50 +517,36 @@ async fn op_http_write_headers(
 
   builder.headers_mut().unwrap().reserve(headers.len());
   for (key, value) in &headers {
-    match &*key.to_ascii_lowercase() {
-      b"cache-control" => {
-        if let Ok(value) = std::str::from_utf8(value) {
-          if let Some(cache_control) = CacheControl::from_value(value) {
-            // We skip compression if the cache-control header value is set to
-            // "no-transform"
-            if cache_control.no_transform {
-              headers_allow_compression = false;
-            }
+    if key.eq_ignore_ascii_case(b"cache-control") {
+      if let Ok(value) = std::str::from_utf8(value) {
+        if let Some(cache_control) = CacheControl::from_value(value) {
+          // We skip compression if the cache-control header value is set to
+          // "no-transform"
+          if cache_control.no_transform {
+            headers_allow_compression = false;
           }
-        } else {
-          headers_allow_compression = false;
         }
-      }
-      b"content-range" => {
-        // we skip compression if the `content-range` header value is set, as it
-        // indicates the contents of the body were negotiated based directly
-        // with the user code and we can't compress the response
+      } else {
         headers_allow_compression = false;
       }
-      b"content-type" => {
-        if !value.is_empty() {
-          content_type_header = Some(value);
-        }
-      }
-      b"content-encoding" => {
-        // we don't compress if a content-encoding header was provided
-        headers_allow_compression = false;
-      }
+    } else if key.eq_ignore_ascii_case(b"content-range") {
+      // we skip compression if the `content-range` header value is set, as it
+      // indicates the contents of the body were negotiated based directly
+      // with the user code and we can't compress the response
+      headers_allow_compression = false;
+    } else if key.eq_ignore_ascii_case(b"content-type") && !value.is_empty() {
+      content_type_header = Some(value);
+    } else if key.eq_ignore_ascii_case(b"content-encoding") {
+      // we don't compress if a content-encoding header was provided
+      headers_allow_compression = false;
+    } else if key.eq_ignore_ascii_case(b"etag") && !value.is_empty() {
       // we store the values of ETag and Vary and skip adding them for now, as
       // we may need to modify or change.
-      b"etag" => {
-        if !value.is_empty() {
-          etag_header = Some(value);
-          continue;
-        }
-      }
-      b"vary" => {
-        if !value.is_empty() {
-          vary_header = Some(value);
-          continue;
-        }
-      }
-      _ => {}
+      etag_header = Some(value);
+      continue;
+    } else if key.eq_ignore_ascii_case(b"vary") && !value.is_empty() {
+      vary_header = Some(value);
+      continue;
     }
     builder = builder.header(key.as_ref(), value.as_ref());
   }
@@ -697,6 +678,7 @@ async fn op_http_write_headers(
   }
 }
 
+#[op]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -737,10 +719,10 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
+#[op]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
@@ -751,6 +733,7 @@ async fn op_http_shutdown(
   Ok(())
 }
 
+#[op]
 async fn op_http_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -799,11 +782,8 @@ async fn op_http_read(
   fut.try_or_cancel(cancel_handle).await
 }
 
-fn op_http_websocket_accept_header(
-  _: &mut OpState,
-  key: String,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),
@@ -811,10 +791,10 @@ fn op_http_websocket_accept_header(
   Ok(base64::encode(digest))
 }
 
+#[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let stream = state
     .borrow_mut()

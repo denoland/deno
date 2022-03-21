@@ -1,0 +1,8 @@
+running 4 benches from [WILDCARD]/bench/quiet.ts
+bench console.log ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
+bench console.error ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
+bench console.info ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
+bench console.warn ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
+
+bench result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
