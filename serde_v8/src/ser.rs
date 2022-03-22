@@ -246,7 +246,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
     }
     let ptr: &U = value;
     // SAFETY: MagicalSerializer only ever receives single field u64s,
-    // type-safety is ensured by magic_name checks in `serialize_struct()`
+    // type-safety is ensured by MAGIC_NAME checks in `serialize_struct()`
     self.opaque = unsafe { opaque_recv(ptr) };
     Ok(())
   }
