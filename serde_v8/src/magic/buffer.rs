@@ -1,12 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::Error;
 use std::convert::TryFrom;
-use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 
+use super::tr8::FromV8;
+use super::tr8::ToV8;
 use super::zero_copy_buf::ZeroCopyBuf;
+use crate::impl_magic;
 
 // An asymmetric wrapper around ZeroCopyBuf,
 // allowing us to use a single type for familiarity
@@ -14,6 +17,7 @@ pub enum MagicBuffer {
   FromV8(ZeroCopyBuf),
   ToV8(Mutex<Option<Box<[u8]>>>),
 }
+impl_magic!(MagicBuffer);
 
 impl MagicBuffer {
   pub fn empty() -> Self {
@@ -94,61 +98,54 @@ impl From<Vec<u8>> for MagicBuffer {
   }
 }
 
-pub const BUF_NAME: &str = "$__v8_magic_Buffer";
-pub const BUF_FIELD_1: &str = "$__v8_magic_buffer_1";
-pub const BUF_FIELD_2: &str = "$__v8_magic_buffer_2";
-
-impl serde::Serialize for MagicBuffer {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    use serde::ser::SerializeStruct;
-
-    let mut s = serializer.serialize_struct(BUF_NAME, 1)?;
-    let boxed: Box<[u8]> = match self {
+impl ToV8 for MagicBuffer {
+  fn to_v8<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
+    let buf: Box<[u8]> = match self {
       Self::FromV8(buf) => {
         let value: &[u8] = buf;
         value.into()
       }
       Self::ToV8(x) => x.lock().unwrap().take().expect("MagicBuffer was empty"),
     };
-    let hack: [usize; 2] = unsafe { std::mem::transmute(boxed) };
-    let f1: u64 = hack[0] as u64;
-    let f2: u64 = hack[1] as u64;
-    s.serialize_field(BUF_FIELD_1, &f1)?;
-    s.serialize_field(BUF_FIELD_2, &f2)?;
-    s.end()
+
+    if buf.is_empty() {
+      let ab = v8::ArrayBuffer::new(scope, 0);
+      return Ok(
+        v8::Uint8Array::new(scope, ab, 0, 0)
+          .expect("Failed to create UintArray8")
+          .into(),
+      );
+    }
+    let buf_len = buf.len();
+    let backing_store =
+      v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    let backing_store_shared = backing_store.make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+    Ok(
+      v8::Uint8Array::new(scope, ab, 0, buf_len)
+        .expect("Failed to create UintArray8")
+        .into(),
+    )
   }
 }
 
-impl<'de, 's> serde::Deserialize<'de> for MagicBuffer {
-  fn deserialize<D>(deserializer: D) -> Result<MagicBuffer, D::Error>
-  where
-    D: serde::Deserializer<'de>,
-  {
-    struct ValueVisitor {}
-
-    impl<'de> serde::de::Visitor<'de> for ValueVisitor {
-      type Value = MagicBuffer;
-
-      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a serde_v8::MagicBuffer")
-      }
-
-      fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-      where
-        E: serde::de::Error,
-      {
-        let p1: &[usize] = unsafe { &*(v as *const [u8] as *const [usize]) };
-        let p2: [usize; 4] = [p1[0], p1[1], p1[2], p1[3]];
-        let zero_copy: ZeroCopyBuf = unsafe { std::mem::transmute(p2) };
-        Ok(MagicBuffer::FromV8(zero_copy))
-      }
+impl FromV8 for MagicBuffer {
+  fn from_v8(
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, crate::Error> {
+    let zero_copy_buf = match value.is_array_buffer() {
+      // ArrayBuffer
+      true => v8::Local::<v8::ArrayBuffer>::try_from(value)
+        .and_then(ZeroCopyBuf::try_from),
+      // maybe ArrayBufferView
+      false => v8::Local::<v8::ArrayBufferView>::try_from(value)
+        .and_then(|view| ZeroCopyBuf::try_from((scope, view))),
     }
-
-    static FIELDS: [&str; 0] = [];
-    let visitor = ValueVisitor {};
-    deserializer.deserialize_struct(BUF_NAME, &FIELDS, visitor)
+    .map_err(|_| Error::ExpectedBuffer)?;
+    Ok(Self::FromV8(zero_copy_buf))
   }
 }
