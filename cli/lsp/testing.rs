@@ -73,7 +73,7 @@ fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
   )
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct TestDefinition {
   id: String,
   level: usize,
@@ -151,7 +151,7 @@ impl TestDefinition {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TestDefinitions {
   /// definitions of tests and their steps which were statically discovered from
   /// the source document.
@@ -1149,7 +1149,7 @@ async fn test_specifier(
   Ok(())
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct TestFilter {
   maybe_include: Option<HashMap<String, TestDefinition>>,
   maybe_exclude: Option<HashMap<String, TestDefinition>>,
@@ -1747,5 +1747,213 @@ impl TestServer {
     snapshot: Arc<StateSnapshot>,
   ) -> Result<(), AnyError> {
     self.update_channel.send(snapshot).map_err(|err| err.into())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_ast::swc::common::BytePos;
+  use deno_ast::swc::common::SyntaxContext;
+  use deno_core::resolve_url;
+
+  fn new_span(lo: u32, hi: u32, ctxt: u32) -> Span {
+    Span {
+      lo: BytePos(lo),
+      hi: BytePos(hi),
+      ctxt: SyntaxContext::from_u32(ctxt),
+    }
+  }
+
+  #[test]
+  fn test_test_collector() {
+    let specifier = resolve_url("file:///a/example.ts").unwrap();
+    let source = Arc::new(
+      r#"
+      Deno.test({
+        name: "test a",
+        async fn(t) {
+          await t.step("a step", ({ step }) => {
+            await step({
+              name: "sub step",
+              fn() {}
+            })
+          });
+        }
+      });
+
+      Deno.test(async function useFnName({ step: s }) {
+        await s("step c", () => {});
+      });
+
+      Deno.test("test b", () => {});
+
+      const { test } = Deno;
+      test("test c", () => {});
+
+      const t = Deno.test;
+      t("test d", () => {});
+    "#
+      .to_string(),
+    );
+
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      source: deno_ast::SourceTextInfo::new(source),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let mut collector = TestCollector::new(specifier);
+    parsed_module.module().visit_with(&mut collector);
+    assert_eq!(
+      collector.take(),
+      vec![
+        TestDefinition {
+          id: "cf31850c831233526df427cdfd25b6b84b2af0d6ce5f8ee1d22c465234b46348".to_string(),
+          level: 0,
+          name: "test a".to_string(),
+          span: new_span(12, 16, 0),
+          steps: Some(vec![
+            TestDefinition {
+              id: "4c7333a1e47721631224408c467f32751fe34b876cab5ec1f6ac71980ff15ad3".to_string(),
+              level: 1,
+              name: "a step".to_string(),
+              span: new_span(83, 87, 0),
+              steps: Some(vec![
+                TestDefinition {
+                  id: "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201".to_string(),
+                  level: 2,
+                  name: "sub step".to_string(),
+                  span: new_span(132, 136, 3),
+                  steps: None,
+                }
+              ])
+            }
+          ]),
+        },
+        TestDefinition {
+          id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
+          level: 0,
+          name: "useFnName".to_string(),
+          span: new_span(254, 258, 0),
+          steps: Some(vec![
+            TestDefinition {
+              id: "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
+              level: 1,
+              name: "step c".to_string(),
+              span: new_span(313, 314, 4),
+              steps: None,
+            }
+          ])
+        },
+        TestDefinition {
+          id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
+          level: 0,
+          name: "test b".to_string(),
+          span: new_span(358, 362, 0),
+          steps: None,
+        },
+        TestDefinition {
+          id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
+          level: 0,
+          name: "test c".to_string(),
+          span: new_span(420, 424, 1),
+          steps: None,
+        },
+        TestDefinition {
+          id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
+          level: 0,
+          name: "test d".to_string(),
+          span: new_span(480, 481, 1),
+          steps: None,
+        }
+      ]
+    );
+  }
+
+  #[test]
+  fn test_as_queue_and_filters() {
+    let specifier = ModuleSpecifier::parse("file:///a/file.ts").unwrap();
+    let params = lsp_custom::TestRunRequestParams {
+      id: 1,
+      kind: lsp_custom::TestRunKind::Run,
+      include: Some(vec![lsp_custom::TestIdentifier {
+        text_document: lsp::TextDocumentIdentifier {
+          uri: specifier.clone(),
+        },
+        id: None,
+        step_id: None,
+      }]),
+      exclude: Some(vec![lsp_custom::TestIdentifier {
+        text_document: lsp::TextDocumentIdentifier {
+          uri: specifier.clone(),
+        },
+        id: Some(
+          "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
+            .to_string(),
+        ),
+        step_id: None,
+      }]),
+    };
+    let mut tests = HashMap::new();
+    let test_def_a = TestDefinition {
+      id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
+        .to_string(),
+      level: 0,
+      name: "test a".to_string(),
+      span: new_span(420, 424, 1),
+      steps: None,
+    };
+    let test_def_b = TestDefinition {
+      id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
+        .to_string(),
+      level: 0,
+      name: "test b".to_string(),
+      span: new_span(480, 481, 1),
+      steps: None,
+    };
+    let test_definitions = TestDefinitions {
+      discovered: vec![test_def_a, test_def_b.clone()],
+      injected: vec![],
+      script_version: "1".to_string(),
+    };
+    tests.insert(specifier.clone(), test_definitions.clone());
+    let (queue, filters) = as_queue_and_filters(&params, &tests);
+    assert_eq!(json!(queue), json!([specifier.clone()]));
+    let mut exclude = HashMap::new();
+    exclude.insert(
+      "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
+        .to_string(),
+      test_def_b,
+    );
+    let maybe_filter = filters.get(&specifier);
+    assert!(maybe_filter.is_some());
+    let filter = maybe_filter.unwrap();
+    assert_eq!(
+      filter,
+      &TestFilter {
+        maybe_include: None,
+        maybe_exclude: Some(exclude),
+      }
+    );
+    assert_eq!(
+      filter.as_ids(&test_definitions),
+      vec![
+        "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
+          .to_string()
+      ]
+    );
+    assert_eq!(
+      filter.as_test_options(),
+      json!({
+        "filter": {
+          "include": null,
+          "exclude": vec!["test b"],
+        }
+      })
+    );
   }
 }

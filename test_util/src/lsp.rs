@@ -167,15 +167,19 @@ where
 }
 
 impl LspClient {
-  pub fn new(deno_exe: &Path) -> Result<Self> {
+  pub fn new(deno_exe: &Path, maybe_cwd: Option<&Path>) -> Result<Self> {
     let deno_dir = new_deno_dir();
-    let mut child = Command::new(deno_exe)
+    let mut command = Command::new(deno_exe);
+    command
       .env("DENO_DIR", deno_dir.path())
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
-      .stderr(Stdio::null())
-      .spawn()?;
+      .stderr(Stdio::null());
+    if let Some(dir) = maybe_cwd {
+      command.current_dir(dir);
+    }
+    let mut child = command.spawn()?;
 
     let stdout = child.stdout.take().unwrap();
     let reader = io::BufReader::new(stdout);
