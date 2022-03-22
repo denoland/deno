@@ -3,18 +3,9 @@
 pub(crate) const MAGIC_FIELD: &str = "$__v8_magic_field";
 
 pub(crate) trait MagicType {
-  fn magic_field() -> &'static str {
-    MAGIC_FIELD
-  }
-
-  fn name() -> &'static str {
-    Self::magic_name()
-  }
-
-  fn magic_name() -> &'static str {
-    std::any::type_name::<Self>()
-  }
-
+  const MAGIC_FIELD: &'static str = MAGIC_FIELD;
+  const NAME: &'static str;
+  const MAGIC_NAME: &'static str;
   // TODO(@AaronO): blocked on https://github.com/rust-lang/rust/issues/63084
   // const MAGIC_NAME: &'static str = std::any::type_name::<Self>();
 }
@@ -43,7 +34,7 @@ where
 {
   use serde::ser::SerializeStruct;
 
-  let mut s = serializer.serialize_struct(T::magic_name(), 1)?;
+  let mut s = serializer.serialize_struct(T::MAGIC_NAME, 1)?;
   let ptr = opaque_send(x);
   s.serialize_field(MAGIC_FIELD, &ptr)?;
   s.end()
@@ -68,7 +59,7 @@ where
       formatter: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
       formatter.write_str("a ")?;
-      formatter.write_str(std::any::type_name::<T>())
+      formatter.write_str(T::NAME)
     }
 
     fn visit_u64<E>(self, ptr: u64) -> Result<Self::Value, E>
@@ -81,7 +72,7 @@ where
   }
 
   deserializer.deserialize_struct(
-    T::magic_name(),
+    T::MAGIC_NAME,
     &[MAGIC_FIELD],
     ValueVisitor::<T> {
       p1: std::marker::PhantomData,
@@ -124,7 +115,10 @@ pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
 #[macro_export]
 macro_rules! impl_magic {
   ($t:ty) => {
-    impl crate::magic::tr8::MagicType for $t {}
+    impl crate::magic::tr8::MagicType for $t {
+      const NAME: &'static str = stringify!($t);
+      const MAGIC_NAME: &'static str = concat!("$__v8_magic_", stringify!($t));
+    }
 
     impl serde::Serialize for $t {
       fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

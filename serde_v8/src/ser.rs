@@ -240,7 +240,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
     key: &'static str,
     value: &U,
   ) -> Result<()> {
-    if key != T::magic_field() {
+    if key != T::MAGIC_FIELD {
       unreachable!()
     }
     let ptr: &U = value;
@@ -516,24 +516,28 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     name: &'static str,
     len: usize,
   ) -> Result<Self::SerializeStruct> {
-    // Magic types
-    // TODO(@AaronO): turn into match, once https://github.com/rust-lang/rust/issues/63084
-    if name == ByteString::magic_name() {
-      let m = MagicalSerializer::<ByteString>::new(self.scope);
-      Ok(StructSerializers::MagicByteString(m))
-    } else if name == U16String::magic_name() {
-      let m = MagicalSerializer::<U16String>::new(self.scope);
-      Ok(StructSerializers::MagicU16String(m))
-    } else if name == Buffer::magic_name() {
-      let m = MagicalSerializer::<Buffer>::new(self.scope);
-      Ok(StructSerializers::MagicBuffer(m))
-    } else if name == magic::Value::magic_name() {
-      let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
-      Ok(StructSerializers::Magic(m))
-    } else {
-      // Regular structs
-      let o = ObjectSerializer::new(self.scope, len);
-      Ok(StructSerializers::Regular(o))
+    match name {
+      ByteString::MAGIC_NAME => {
+        let m = MagicalSerializer::<ByteString>::new(self.scope);
+        Ok(StructSerializers::MagicByteString(m))
+      }
+      U16String::MAGIC_NAME => {
+        let m = MagicalSerializer::<U16String>::new(self.scope);
+        Ok(StructSerializers::MagicU16String(m))
+      }
+      Buffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<Buffer>::new(self.scope);
+        Ok(StructSerializers::MagicBuffer(m))
+      }
+      magic::Value::MAGIC_NAME => {
+        let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
+        Ok(StructSerializers::Magic(m))
+      }
+      _ => {
+        // Regular structs
+        let o = ObjectSerializer::new(self.scope, len);
+        Ok(StructSerializers::Regular(o))
+      }
     }
   }
 

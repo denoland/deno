@@ -339,33 +339,38 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    // Magic types
-    if name == Buffer::magic_name() {
-      let x = Buffer::from_v8(self.scope, self.input)?;
-      return visit_magic(visitor, x);
-    } else if name == ByteString::magic_name() {
-      let x = ByteString::from_v8(self.scope, self.input)?;
-      return visit_magic(visitor, x);
-    } else if name == U16String::magic_name() {
-      let x = U16String::from_v8(self.scope, self.input)?;
-      return visit_magic(visitor, x);
-    } else if name == magic::Value::magic_name() {
-      let x = magic::Value::from_v8(self.scope, self.input)?;
-      return visit_magic(visitor, x);
+    match name {
+      Buffer::MAGIC_NAME => {
+        let x = Buffer::from_v8(self.scope, self.input)?;
+        visit_magic(visitor, x)
+      }
+      ByteString::MAGIC_NAME => {
+        let x = ByteString::from_v8(self.scope, self.input)?;
+        visit_magic(visitor, x)
+      }
+      U16String::MAGIC_NAME => {
+        let x = U16String::from_v8(self.scope, self.input)?;
+        visit_magic(visitor, x)
+      }
+      magic::Value::MAGIC_NAME => {
+        let x = magic::Value::from_v8(self.scope, self.input)?;
+        visit_magic(visitor, x)
+      }
+      _ => {
+        // Regular struct
+        let obj = v8::Local::<v8::Object>::try_from(self.input)
+          .map_err(|_| Error::ExpectedObject)?;
+        let struct_access = StructAccess {
+          fields,
+          obj,
+          pos: 0,
+          scope: self.scope,
+          _cache: None,
+        };
+
+        visitor.visit_seq(struct_access)
+      }
     }
-
-    // Regular struct
-    let obj = v8::Local::<v8::Object>::try_from(self.input)
-      .map_err(|_| Error::ExpectedObject)?;
-    let struct_access = StructAccess {
-      fields,
-      obj,
-      pos: 0,
-      scope: self.scope,
-      _cache: None,
-    };
-
-    visitor.visit_seq(struct_access)
   }
 
   /// To be compatible with `serde-json`, we expect enums to be:
