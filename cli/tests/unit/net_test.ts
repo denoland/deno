@@ -867,3 +867,20 @@ Deno.test(
     assertEquals(output.trim(), "accepted");
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netListenUnrefConcurrentAccept() {
+    const timer = setTimeout(() => {}, 1000);
+    const listener = Deno.listen({ port: 3500 });
+    listener.accept().catch(() => {});
+    listener.unref();
+    // Unref'd listener still causes Busy error
+    // on concurrent accept calls.
+    await assertRejects(async () => {
+      await listener.accept(); // The program exits here
+    }, Deno.errors.Busy);
+    listener.close();
+    clearTimeout(timer);
+  },
+);
