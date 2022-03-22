@@ -25,27 +25,6 @@ impl MagicBuffer {
   }
 }
 
-impl<'s> TryFrom<v8::Local<'s, v8::ArrayBuffer>> for MagicBuffer {
-  type Error = v8::DataError;
-  fn try_from(buffer: v8::Local<v8::ArrayBuffer>) -> Result<Self, Self::Error> {
-    Ok(Self::FromV8(ZeroCopyBuf::try_from(buffer)?))
-  }
-}
-
-// TODO(@AaronO): consider streamlining this as "ScopedValue" ?
-type ScopedView<'a, 'b, 's> = (
-  &'s mut v8::HandleScope<'a>,
-  v8::Local<'b, v8::ArrayBufferView>,
-);
-impl<'a, 'b, 's> TryFrom<ScopedView<'a, 'b, 's>> for MagicBuffer {
-  type Error = v8::DataError;
-  fn try_from(
-    scoped_view: ScopedView<'a, 'b, 's>,
-  ) -> Result<Self, Self::Error> {
-    Ok(Self::FromV8(ZeroCopyBuf::try_from(scoped_view)?))
-  }
-}
-
 impl Clone for MagicBuffer {
   fn clone(&self) -> Self {
     match self {
