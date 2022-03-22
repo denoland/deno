@@ -2334,7 +2334,7 @@ fn issue9750() {
       Input("yy\n"),
       Output("⚠️  ️Deno requests env access. Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
-      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
     ],
@@ -2510,4 +2510,10 @@ itest!(config_not_auto_discovered_for_remote_script {
   args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
   output_str: Some("ok\n"),
   http_server: true,
+});
+
+itest!(wasm_streaming_panic_test {
+  args: "run wasm_streaming_panic_test.js",
+  output: "wasm_streaming_panic_test.js.out",
+  exit_code: 1,
 });

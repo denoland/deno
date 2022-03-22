@@ -315,7 +315,7 @@
       "description": "Configuration for deno task",
       "type": "object",
       "patternProperties": {
-        "^[A-Za-z][A-Za-z0-9_\\-]*$": {
+        "^[A-Za-z][A-Za-z0-9_\\-:]*$": {
           "type": "string",
           "description": "Command to execute for this task name."
         }
