@@ -2511,3 +2511,16 @@ itest!(config_not_auto_discovered_for_remote_script {
   output_str: Some("ok\n"),
   http_server: true,
 });
+
+itest!(wasm_streaming_panic_test {
+  args: "run wasm_streaming_panic_test.js",
+  output: "wasm_streaming_panic_test.js.out",
+  exit_code: 1,
+});
+
+// Regression test for https://github.com/denoland/deno/issues/13897.
+itest!(fetch_async_error_stack {
+  args: "run --quiet -A fetch_async_error_stack.ts",
+  output: "fetch_async_error_stack.ts.out",
+  exit_code: 1,
+});

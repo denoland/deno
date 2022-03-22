@@ -14,12 +14,14 @@ use deno_http::http_create_conn_resource;
 use deno_http::HttpRequestReader;
 use deno_http::HttpStreamResource;
 use deno_net::io::TcpStreamResource;
-use deno_net::io::UnixStreamResource;
 use deno_net::ops_tls::TlsStream;
 use deno_net::ops_tls::TlsStreamResource;
 use hyper::upgrade::Parts;
 use serde::Serialize;
 use tokio::net::TcpStream;
+
+#[cfg(unix)]
+use deno_net::io::UnixStreamResource;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 

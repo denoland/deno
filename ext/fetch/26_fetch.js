@@ -409,8 +409,13 @@
    * @param {RequestInit} init
    */
   function fetch(input, init = {}) {
+    // There is an async dispatch later that causes a stack trace disconnect.
+    // We reconnect it by assigning the result of that dispatch to `opPromise`,
+    // awaiting `opPromise` in an inner function also named `fetch()` and
+    // returning the result from that.
+    let opPromise = undefined;
     // 1.
-    return new Promise((resolve, reject) => {
+    const result = new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // 2.
@@ -441,7 +446,7 @@
       }
 
       // 12.
-      PromisePrototypeCatch(
+      opPromise = PromisePrototypeCatch(
         PromisePrototypeThen(
           mainFetch(request, false, requestObject.signal),
           (response) => {
@@ -479,6 +484,14 @@
         },
       );
     });
+    if (opPromise) {
+      PromisePrototypeCatch(result, () => {});
+      return (async function fetch() {
+        await opPromise;
+        return result;
+      })();
+    }
+    return result;
   }
 
   function abortFetch(request, responseObject, error) {
@@ -556,7 +569,7 @@
         core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        core.opSync("op_wasm_streaming_abort", rid, err);
+        core.abortWasmStreaming(rid, err);
       }
     })();
   }
