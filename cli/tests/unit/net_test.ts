@@ -810,7 +810,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true, read: true } },
   async function netListenUnref() {
     const [statusCode, _output] = await execCode(`
       async function main() {
@@ -825,7 +825,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true, read: true } },
   async function netListenUnref() {
     const [statusCode, _output] = await execCode(`
       async function main() {
@@ -844,7 +844,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true, read: true } },
   async function netListenUnrefAndRef() {
     const p = execCode(`
       async function main() {
