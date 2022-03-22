@@ -6,4 +6,3 @@ Deno.test("test 1", () => {
     type: "module",
   });
 });
-
