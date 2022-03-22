@@ -1922,7 +1922,7 @@ mod tests {
     };
     tests.insert(specifier.clone(), test_definitions.clone());
     let (queue, filters) = as_queue_and_filters(&params, &tests);
-    assert_eq!(json!(queue), json!([specifier.clone()]));
+    assert_eq!(json!(queue), json!([specifier]));
     let mut exclude = HashMap::new();
     exclude.insert(
       "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"

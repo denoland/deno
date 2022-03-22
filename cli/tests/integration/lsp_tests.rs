@@ -5297,7 +5297,7 @@ Deno.test({
   fs::write(&module_path, &contents).unwrap();
   fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
 
-  params.root_uri = Some(root_specifier.clone());
+  params.root_uri = Some(root_specifier);
 
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe, None).unwrap();
