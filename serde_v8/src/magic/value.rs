@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::magic::tr8::impl_magic;
-use crate::magic::tr8::FromV8;
-use crate::magic::tr8::ToV8;
+use crate::magic::transl8::impl_magic;
+use crate::magic::transl8::FromV8;
+use crate::magic::transl8::ToV8;
 use std::mem::transmute;
 
 /// serde_v8::Value allows passing through `v8::Value`s untouched

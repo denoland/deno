@@ -6,10 +6,10 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 
-use super::tr8::FromV8;
-use super::tr8::ToV8;
+use super::transl8::FromV8;
+use super::transl8::ToV8;
 use super::zero_copy_buf::ZeroCopyBuf;
-use crate::magic::tr8::impl_magic;
+use crate::magic::transl8::impl_magic;
 
 // An asymmetric wrapper around ZeroCopyBuf,
 // allowing us to use a single type for familiarity

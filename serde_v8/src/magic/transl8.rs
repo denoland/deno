@@ -114,7 +114,7 @@ pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
 
 macro_rules! impl_magic {
   ($t:ty) => {
-    impl crate::magic::tr8::MagicType for $t {
+    impl crate::magic::transl8::MagicType for $t {
       const NAME: &'static str = stringify!($t);
       const MAGIC_NAME: &'static str = concat!("$__v8_magic_", stringify!($t));
     }
@@ -124,7 +124,7 @@ macro_rules! impl_magic {
       where
         S: serde::Serializer,
       {
-        crate::magic::tr8::magic_serialize(serializer, self)
+        crate::magic::transl8::magic_serialize(serializer, self)
       }
     }
 
@@ -133,7 +133,7 @@ macro_rules! impl_magic {
       where
         D: serde::Deserializer<'de>,
       {
-        crate::magic::tr8::magic_deserialize(deserializer)
+        crate::magic::transl8::magic_deserialize(deserializer)
       }
     }
   };

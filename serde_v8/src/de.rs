@@ -4,8 +4,8 @@ use serde::Deserialize;
 
 use crate::error::{Error, Result};
 use crate::keys::{v8_struct_key, KeyCache};
-use crate::magic::tr8::FromV8;
-use crate::magic::tr8::{visit_magic, MagicType};
+use crate::magic::transl8::FromV8;
+use crate::magic::transl8::{visit_magic, MagicType};
 use crate::payload::ValueType;
 use crate::{magic, Buffer, ByteString, U16String};
 

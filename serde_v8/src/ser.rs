@@ -6,7 +6,7 @@ use std::cell::RefCell;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
-use crate::magic::tr8::{opaque_deref, opaque_recv, MagicType, ToV8};
+use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
 use crate::{magic, Buffer, ByteString, U16String};
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;

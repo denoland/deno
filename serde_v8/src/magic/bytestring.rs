@@ -2,8 +2,8 @@
 
 use std::ops::{Deref, DerefMut};
 
-use super::tr8::{FromV8, ToV8};
-use crate::magic::tr8::impl_magic;
+use super::transl8::{FromV8, ToV8};
+use crate::magic::transl8::impl_magic;
 use crate::Error;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
