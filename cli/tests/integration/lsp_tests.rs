@@ -4426,7 +4426,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert_eq!(res.averages.len(), 13);
+    assert_eq!(res.averages.len(), 14);
   } else {
     panic!("unexpected result");
   }
