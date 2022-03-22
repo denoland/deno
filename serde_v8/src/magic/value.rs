@@ -7,7 +7,7 @@ use std::mem::transmute;
 
 /// serde_v8::Value allows passing through `v8::Value`s untouched
 /// when de/serializing & allows mixing rust & v8 values in structs, tuples...
-// 
+//
 // SAFETY: caveat emptor, the rust-compiler can no longer link lifetimes to their
 // original scope, you must take special care in ensuring your handles don't outlive their scope
 pub struct Value<'s> {
