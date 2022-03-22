@@ -6,8 +6,6 @@ pub(crate) trait MagicType {
   const MAGIC_FIELD: &'static str = MAGIC_FIELD;
   const NAME: &'static str;
   const MAGIC_NAME: &'static str;
-  // TODO(@AaronO): blocked on https://github.com/rust-lang/rust/issues/63084
-  // const MAGIC_NAME: &'static str = std::any::type_name::<Self>();
 }
 
 pub(crate) trait ToV8 {

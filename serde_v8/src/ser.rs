@@ -6,6 +6,7 @@ use std::cell::RefCell;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
+use crate::magic::transl8::MAGIC_FIELD;
 use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
 use crate::{magic, Buffer, ByteString, U16String};
 
@@ -240,7 +241,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
     key: &'static str,
     value: &U,
   ) -> Result<()> {
-    if key != T::MAGIC_FIELD {
+    if key != MAGIC_FIELD {
       unreachable!()
     }
     let ptr: &U = value;
