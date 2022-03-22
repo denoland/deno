@@ -241,11 +241,15 @@
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
 
+        const deferred = request[_deferred];
+        const ws = resp[_ws];
+        
         try {
           await core.opAsync(
             "op_http_write_headers",
             [streamRid, innerResp.status ?? 200, innerResp.headerList],
             isStreamingResponseBody ? null : respBody,
+            ws && deferred && isStreamingResponseBody,
           );
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
@@ -303,7 +307,6 @@
           }
         }
 
-        const deferred = request[_deferred];
         if (deferred) {
           const res = await core.opAsync("op_http_upgrade", streamRid);
           let conn;
@@ -319,7 +322,6 @@
 
           deferred.resolve([conn, res.readBuf]);
         }
-        const ws = resp[_ws];
         if (ws) {
           const wsRid = await core.opAsync(
             "op_http_upgrade_websocket",
