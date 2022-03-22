@@ -518,16 +518,16 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   ) -> Result<Self::SerializeStruct> {
     // Magic types
     // TODO(@AaronO): turn into match, once https://github.com/rust-lang/rust/issues/63084
-    if ByteString::magic_name() == name {
+    if name == ByteString::magic_name() {
       let m = MagicalSerializer::<ByteString>::new(self.scope);
       Ok(StructSerializers::MagicByteString(m))
-    } else if U16String::magic_name() == name {
+    } else if name == U16String::magic_name() {
       let m = MagicalSerializer::<U16String>::new(self.scope);
       Ok(StructSerializers::MagicU16String(m))
-    } else if Buffer::magic_name() == name {
+    } else if name == Buffer::magic_name() {
       let m = MagicalSerializer::<Buffer>::new(self.scope);
       Ok(StructSerializers::MagicBuffer(m))
-    } else if magic::Value::magic_name() == name {
+    } else if name == magic::Value::magic_name() {
       let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
       Ok(StructSerializers::Magic(m))
     } else {
