@@ -7,8 +7,11 @@ use deno_core::error::AnyError;
 use deno_core::op;
 
 use deno_core::Extension;
+#[cfg(unix)]
 use deno_core::OpState;
+#[cfg(unix)]
 use std::cell::RefCell;
+#[cfg(unix)]
 use std::rc::Rc;
 
 #[cfg(unix)]
@@ -225,18 +228,18 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 #[op]
-pub fn op_signal_bind(_state: &mut OpState) -> Result<(), AnyError> {
+pub fn op_signal_bind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
 #[op]
-fn op_signal_unbind(_state: &mut OpState) -> Result<(), AnyError> {
+fn op_signal_unbind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
 #[op]
-async fn op_signal_poll(_state: Rc<RefCell<OpState>>) -> Result<(), AnyError> {
+async fn op_signal_poll() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }

@@ -17,9 +17,7 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use shared::operation_error;
 
-use std::cell::RefCell;
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
@@ -53,6 +51,7 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::convert::TryFrom;
+use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
@@ -169,7 +168,6 @@ pub struct SignArg {
 
 #[op]
 pub async fn op_crypto_sign_key(
-  _state: Rc<RefCell<OpState>>,
   args: SignArg,
   zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -324,7 +322,6 @@ pub struct VerifyArg {
 
 #[op]
 pub async fn op_crypto_verify_key(
-  _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
   zero_copy: ZeroCopyBuf,
 ) -> Result<bool, AnyError> {
@@ -485,7 +482,6 @@ pub struct DeriveKeyArg {
 
 #[op]
 pub async fn op_crypto_derive_bits(
-  _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -807,7 +803,6 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
 
 #[op]
 pub async fn op_crypto_subtle_digest(
-  _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -831,7 +826,6 @@ pub struct WrapUnwrapKeyArg {
 
 #[op]
 pub fn op_crypto_wrap_key(
-  _state: &mut OpState,
   args: WrapUnwrapKeyArg,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -861,7 +855,6 @@ pub fn op_crypto_wrap_key(
 
 #[op]
 pub fn op_crypto_unwrap_key(
-  _state: &mut OpState,
   args: WrapUnwrapKeyArg,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -888,4 +881,8 @@ pub fn op_crypto_unwrap_key(
     }
     _ => Err(type_error("Unsupported algorithm")),
   }
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }

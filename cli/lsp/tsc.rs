@@ -882,11 +882,6 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
-    log::info!(
-      "to_target file_name: {} specifier: {}",
-      self.file_name,
-      specifier
-    );
     let asset_or_doc =
       language_server.get_maybe_cached_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();

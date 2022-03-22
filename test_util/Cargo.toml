@@ -20,6 +20,7 @@ futures = "0.3.21"
 hyper = { version = "0.14.12", features = ["server", "http1", "http2", "runtime"] }
 lazy_static = "1.4.0"
 os_pipe = "1.0.1"
+pretty_assertions = "=1.2.0"
 regex = "1.5.5"
 rustls-pemfile = "0.2.1"
 serde = { version = "1.0.126", features = ["derive"] }

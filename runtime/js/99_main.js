@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
+  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -705,7 +706,7 @@ delete Object.prototype.__proto__;
       ObjectFreeze(globalThis.Deno.core);
     } else {
       delete globalThis.Deno;
-      util.assert(globalThis.Deno === undefined);
+      infra.assert(globalThis.Deno === undefined);
     }
   }
 

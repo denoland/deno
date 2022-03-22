@@ -109,6 +109,7 @@
     serveHttp: __bootstrap.http.serveHttp,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    upgradeHttp: __bootstrap.http.upgradeHttp,
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,

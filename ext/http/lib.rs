@@ -289,9 +289,9 @@ impl HttpAcceptor {
 }
 
 /// A resource representing a single HTTP request/response stream.
-struct HttpStreamResource {
+pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
-  rd: AsyncRefCell<HttpRequestReader>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
@@ -324,7 +324,7 @@ impl Resource for HttpStreamResource {
 }
 
 /// The read half of an HTTP stream.
-enum HttpRequestReader {
+pub enum HttpRequestReader {
   Headers(Request<Body>),
   Body(Peekable<Body>),
   Closed,
@@ -517,50 +517,36 @@ async fn op_http_write_headers(
 
   builder.headers_mut().unwrap().reserve(headers.len());
   for (key, value) in &headers {
-    match &*key.to_ascii_lowercase() {
-      b"cache-control" => {
-        if let Ok(value) = std::str::from_utf8(value) {
-          if let Some(cache_control) = CacheControl::from_value(value) {
-            // We skip compression if the cache-control header value is set to
-            // "no-transform"
-            if cache_control.no_transform {
-              headers_allow_compression = false;
-            }
+    if key.eq_ignore_ascii_case(b"cache-control") {
+      if let Ok(value) = std::str::from_utf8(value) {
+        if let Some(cache_control) = CacheControl::from_value(value) {
+          // We skip compression if the cache-control header value is set to
+          // "no-transform"
+          if cache_control.no_transform {
+            headers_allow_compression = false;
           }
-        } else {
-          headers_allow_compression = false;
         }
-      }
-      b"content-range" => {
-        // we skip compression if the `content-range` header value is set, as it
-        // indicates the contents of the body were negotiated based directly
-        // with the user code and we can't compress the response
+      } else {
         headers_allow_compression = false;
       }
-      b"content-type" => {
-        if !value.is_empty() {
-          content_type_header = Some(value);
-        }
-      }
-      b"content-encoding" => {
-        // we don't compress if a content-encoding header was provided
-        headers_allow_compression = false;
-      }
+    } else if key.eq_ignore_ascii_case(b"content-range") {
+      // we skip compression if the `content-range` header value is set, as it
+      // indicates the contents of the body were negotiated based directly
+      // with the user code and we can't compress the response
+      headers_allow_compression = false;
+    } else if key.eq_ignore_ascii_case(b"content-type") && !value.is_empty() {
+      content_type_header = Some(value);
+    } else if key.eq_ignore_ascii_case(b"content-encoding") {
+      // we don't compress if a content-encoding header was provided
+      headers_allow_compression = false;
+    } else if key.eq_ignore_ascii_case(b"etag") && !value.is_empty() {
       // we store the values of ETag and Vary and skip adding them for now, as
       // we may need to modify or change.
-      b"etag" => {
-        if !value.is_empty() {
-          etag_header = Some(value);
-          continue;
-        }
-      }
-      b"vary" => {
-        if !value.is_empty() {
-          vary_header = Some(value);
-          continue;
-        }
-      }
-      _ => {}
+      etag_header = Some(value);
+      continue;
+    } else if key.eq_ignore_ascii_case(b"vary") && !value.is_empty() {
+      vary_header = Some(value);
+      continue;
     }
     builder = builder.header(key.as_ref(), value.as_ref());
   }
@@ -797,10 +783,7 @@ async fn op_http_read(
 }
 
 #[op]
-fn op_http_websocket_accept_header(
-  _: &mut OpState,
-  key: String,
-) -> Result<String, AnyError> {
+fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),

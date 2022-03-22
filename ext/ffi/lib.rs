@@ -648,17 +648,13 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 }
 
 #[op]
-fn op_ffi_call_ptr(
-  _state: &mut deno_core::OpState,
-  args: FfiCallPtrArgs,
-) -> Result<Value, AnyError> {
+fn op_ffi_call_ptr(args: FfiCallPtrArgs) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
   ffi_call(args.into(), &symbol)
 }
 
 #[op]
 async fn op_ffi_call_ptr_nonblocking(
-  _state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
