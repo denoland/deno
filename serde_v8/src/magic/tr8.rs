@@ -99,11 +99,11 @@ where
 }
 
 pub(crate) fn opaque_send<T: Sized>(x: &T) -> u64 {
-  (x as *const T as *const u8) as u64
+  (x as *const T) as u64
 }
 
 pub(crate) fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
-  unsafe { *(ptr as *const T as *const u8 as *const u64) }
+  unsafe { *(ptr as *const T as *const u64) }
 }
 
 pub(crate) fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
