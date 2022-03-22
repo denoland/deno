@@ -88,7 +88,7 @@ fn child_lines(
 
 #[test]
 fn lint_watch_test() {
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new().unwrap();
   let badly_linted_original =
     util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_output =
@@ -103,8 +103,7 @@ fn lint_watch_test() {
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
 
-  std::fs::copy(&badly_linted_original, &badly_linted)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -115,7 +114,7 @@ fn lint_watch_test() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
-    .expect("Failed to spawn script");
+    .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
@@ -125,8 +124,7 @@ fn lint_watch_test() {
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed1, &badly_linted)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   output = read_all_lints(&mut stderr_lines);
@@ -134,8 +132,7 @@ fn lint_watch_test() {
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed2, &badly_linted)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
@@ -150,7 +147,7 @@ fn lint_watch_test() {
 
 #[test]
 fn lint_watch_without_args_test() {
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new().unwrap();
   let badly_linted_original =
     util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_output =
@@ -165,8 +162,7 @@ fn lint_watch_without_args_test() {
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
 
-  std::fs::copy(&badly_linted_original, &badly_linted)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(t.path())
@@ -176,7 +172,7 @@ fn lint_watch_without_args_test() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
-    .expect("Failed to spawn script");
+    .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
@@ -187,16 +183,14 @@ fn lint_watch_without_args_test() {
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed1, &badly_linted)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
   assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed2, &badly_linted)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   output = read_all_lints(&mut stderr_lines);
@@ -212,7 +206,7 @@ fn lint_watch_without_args_test() {
 
 #[test]
 fn lint_all_files_on_each_change_test() {
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new().unwrap();
   let badly_linted_fixed0 =
     util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_fixed1 =
@@ -222,10 +216,8 @@ fn lint_all_files_on_each_change_test() {
 
   let badly_linted_1 = t.path().join("badly_linted_1.js");
   let badly_linted_2 = t.path().join("badly_linted_2.js");
-  std::fs::copy(&badly_linted_fixed0, &badly_linted_1)
-    .expect("Failed to copy file");
-  std::fs::copy(&badly_linted_fixed1, &badly_linted_2)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed0, &badly_linted_1).unwrap();
+  std::fs::copy(&badly_linted_fixed1, &badly_linted_2).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -236,13 +228,12 @@ fn lint_all_files_on_each_change_test() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
-    .expect("Failed to spawn script");
+    .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
-  std::fs::copy(&badly_linted_fixed2, &badly_linted_2)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed2, &badly_linted_2).unwrap();
 
   assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
