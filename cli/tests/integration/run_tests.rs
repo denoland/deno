@@ -2512,6 +2512,12 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
+itest!(wasm_streaming_panic_test {
+  args: "run wasm_streaming_panic_test.js",
+  output: "wasm_streaming_panic_test.js.out",
+  exit_code: 1,
+});
+
 itest!(report_error {
   args: "run --quiet report_error.ts",
   output: "report_error.ts.out",

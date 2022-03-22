@@ -152,9 +152,9 @@
     return res;
   }
 
-  function opAsync(opName, arg1 = null, arg2 = null) {
+  function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](opIds[opName], promiseId, arg1, arg2);
+    const maybeError = ops[opName](opIds[opName], promiseId, ...args);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -173,8 +173,8 @@
     return p;
   }
 
-  function opSync(opName, arg1, arg2) {
-    return unwrapOpResult(ops[opName](opIds[opName], arg1, arg2));
+  function opSync(opName, ...args) {
+    return unwrapOpResult(ops[opName](opIds[opName], ...args));
   }
 
   function refOp(promiseId) {

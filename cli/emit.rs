@@ -743,9 +743,8 @@ pub(crate) fn bundle(
       if options.emit_ignore_directives {
         // write leading comments in bundled file
         use swc::codegen::text_writer::WriteJs;
-        use swc::common::source_map::DUMMY_SP;
         let cmt = IGNORE_DIRECTIVES.join("\n") + "\n";
-        wr.write_comment(DUMMY_SP, &cmt)?;
+        wr.write_comment(&cmt)?;
       }
 
       let mut emitter = swc::codegen::Emitter {

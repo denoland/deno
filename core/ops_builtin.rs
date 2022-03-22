@@ -26,7 +26,6 @@ pub(crate) fn init_builtins() -> Extension {
       op_print::decl(),
       op_resources::decl(),
       op_wasm_streaming_feed::decl(),
-      op_wasm_streaming_abort::decl(),
       op_wasm_streaming_set_url::decl(),
       op_void_sync::decl(),
       op_void_async::decl(),
@@ -138,28 +137,6 @@ pub fn op_wasm_streaming_feed(
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
   wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
-
-  Ok(())
-}
-
-/// Abort a WasmStreamingResource.
-#[op]
-pub fn op_wasm_streaming_abort(
-  state: &mut OpState,
-  rid: ResourceId,
-  exception: serde_v8::Value,
-) -> Result<(), Error> {
-  let wasm_streaming =
-    state.resource_table.take::<WasmStreamingResource>(rid)?;
-
-  // At this point there are no clones of Rc<WasmStreamingResource> on the
-  // resource table, and no one should own a reference because we're never
-  // cloning them. So we can be sure `wasm_streaming` is the only reference.
-  if let Ok(wsr) = Rc::try_unwrap(wasm_streaming) {
-    wsr.0.into_inner().abort(Some(exception.v8_value));
-  } else {
-    panic!("Couldn't consume WasmStreamingResource.");
-  }
 
   Ok(())
 }
