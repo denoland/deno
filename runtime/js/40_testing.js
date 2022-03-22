@@ -173,13 +173,16 @@
           preOp.opsCompletedAsync;
 
         if (dispatchedDiff > completedDiff) {
-          const [name, hint] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = dispatchedDiff - completedDiff;
           let message = `${count} async operation${
             count === 1 ? "" : "s"
           } to ${name} ${
             count === 1 ? "was" : "were"
-          } started in this test, but never completed. This is often caused by not ${hint}.`;
+          } started in this test, but never completed.`;
+          if (hint) {
+            message += ` This is often caused by not ${hint}.`;
+          }
           const traces = [];
           for (const [id, { opName, stack }] of postTraces) {
             if (opName !== key) continue;
