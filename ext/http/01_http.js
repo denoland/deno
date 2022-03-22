@@ -181,15 +181,10 @@
     remoteAddr,
     localAddr,
   ) {
-    const isPromise = true;
     return async function respondWith(resp) {
       try {
-        if (isPromise || ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-          resp = await resp;
-        }
-
+        resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
-          if (!isPromise) resp = await resp;
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
           );
