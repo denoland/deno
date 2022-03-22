@@ -7,10 +7,12 @@ use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::OpState;
 use crate::PromiseId;
+use crate::ResourceId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use log::debug;
@@ -98,6 +100,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       },
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: abort_wasm_streaming.map_fn_to(),
       },
     ])
   });
@@ -226,6 +231,7 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
+  set_func(scope, core_val, "abortWasmStreaming", abort_wasm_streaming);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -762,8 +768,6 @@ fn set_wasm_streaming_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  use crate::ops_builtin::WasmStreamingResource;
-
   let cb = match arg0_to_cb(scope, args) {
     Ok(cb) => cb,
     Err(()) => return,
@@ -803,6 +807,48 @@ fn set_wasm_streaming_callback(
       .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
+}
+
+fn abort_wasm_streaming(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let rid: ResourceId = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(rid) => rid,
+    Err(_) => return throw_type_error(scope, "Invalid argument"),
+  };
+  let exception = args.get(1);
+
+  let wasm_streaming = {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+    let wsr = state
+      .op_state
+      .borrow_mut()
+      .resource_table
+      .take::<WasmStreamingResource>(rid);
+    match wsr {
+      Ok(wasm_streaming) => wasm_streaming,
+      Err(err) => {
+        let message = v8::String::new(scope, &err.to_string()).unwrap();
+        let v8_error = v8::Exception::error(scope, message);
+        scope.throw_exception(v8_error);
+        return;
+      }
+    }
+  };
+
+  // At this point there are no clones of Rc<WasmStreamingResource> on the
+  // resource table, and no one should own a reference because we're never
+  // cloning them. So we can be sure `wasm_streaming` is the only reference.
+  if let Ok(wsr) = std::rc::Rc::try_unwrap(wasm_streaming) {
+    // NOTE: v8::WasmStreaming::abort can't be called while `state` is borrowed;
+    // see https://github.com/denoland/deno/issues/13917
+    wsr.0.into_inner().abort(Some(exception));
+  } else {
+    panic!("Couldn't consume WasmStreamingResource.");
+  }
 }
 
 fn encode(
