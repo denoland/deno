@@ -39,7 +39,6 @@
     ArrayPrototypeSome,
     Error,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
