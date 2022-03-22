@@ -252,9 +252,9 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 
   fn end(self) -> JsResult<'a> {
     // SAFETY: transerialization assumptions imply `T` is still alive.
-    let bs: &T = unsafe { opaque_deref(self.opaque) };
+    let x: &T = unsafe { opaque_deref(self.opaque) };
     let scope = &mut *self.scope.borrow_mut();
-    bs.to_v8(scope)
+    x.to_v8(scope)
   }
 }
 
