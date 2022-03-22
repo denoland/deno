@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 use super::tr8::{FromV8, ToV8};
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq, Debug)]
 pub struct U16String(pub Vec<u16>);
 impl_magic!(U16String);
 

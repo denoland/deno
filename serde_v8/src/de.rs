@@ -7,7 +7,7 @@ use crate::keys::{v8_struct_key, KeyCache};
 use crate::magic::tr8::FromV8;
 use crate::magic::tr8::{visit_magic, MagicType};
 use crate::payload::ValueType;
-use crate::{magic, Buffer, ByteString};
+use crate::{magic, Buffer, ByteString, U16String};
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -345,6 +345,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       return visit_magic(visitor, x);
     } else if name == ByteString::magic_name() {
       let x = ByteString::from_v8(self.scope, self.input)?;
+      return visit_magic(visitor, x);
+    } else if name == U16String::magic_name() {
+      let x = U16String::from_v8(self.scope, self.input)?;
       return visit_magic(visitor, x);
     } else if name == magic::Value::magic_name() {
       let x = magic::Value::from_v8(self.scope, self.input)?;

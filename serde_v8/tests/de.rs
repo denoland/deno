@@ -2,9 +2,9 @@
 use serde::Deserialize;
 
 use serde_v8::utils::{js_exec, v8_do};
-use serde_v8::Buffer;
 use serde_v8::ByteString;
 use serde_v8::Error;
+use serde_v8::{Buffer, U16String};
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -316,3 +316,16 @@ detest!(
 detest!(de_bstr, ByteString, "'hello'", ByteString("hello".into()));
 defail!(defail_bstr, ByteString, "'👋bye'", |e| e
   == Err(Error::ExpectedLatin1));
+
+detest!(
+  de_u16str,
+  U16String,
+  "'hello'",
+  U16String("hello".encode_utf16().collect())
+);
+detest!(
+  de_u16str_non_latin1,
+  U16String,
+  "'👋bye'",
+  U16String("👋bye".encode_utf16().collect())
+);
