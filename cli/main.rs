@@ -43,6 +43,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
+use crate::flags::CheckFlags;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -599,6 +600,21 @@ async fn cache_command(
   }
 
   Ok(0)
+}
+
+async fn check_command(
+  flags: Flags,
+  check_flags: CheckFlags,
+) -> Result<i32, AnyError> {
+  // NOTE(bartlomieju): currently just an alias for `deno cache`, but
+  // it will be changed in Deno 2.0.
+  cache_command(
+    flags,
+    CacheFlags {
+      files: check_flags.files,
+    },
+  )
+  .await
 }
 
 async fn eval_command(
@@ -1364,6 +1380,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Cache(cache_flags) => {
       cache_command(flags, cache_flags).boxed_local()
+    }
+    DenoSubcommand::Check(check_flags) => {
+      check_command(flags, check_flags).boxed_local()
     }
     DenoSubcommand::Compile(compile_flags) => {
       compile_command(flags, compile_flags).boxed_local()

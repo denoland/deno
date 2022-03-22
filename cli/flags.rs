@@ -55,6 +55,11 @@ pub struct CacheFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct CheckFlags {
+  pub files: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<PathBuf>,
@@ -188,6 +193,7 @@ pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
   Cache(CacheFlags),
+  Check(CheckFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -499,6 +505,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("bench", m)) => bench_parse(&mut flags, m),
     Some(("bundle", m)) => bundle_parse(&mut flags, m),
     Some(("cache", m)) => cache_parse(&mut flags, m),
+    Some(("check", m)) => check_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("completions", m)) => completions_parse(&mut flags, m, app),
     Some(("coverage", m)) => coverage_parse(&mut flags, m),
@@ -573,6 +580,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(bench_subcommand())
     .subcommand(bundle_subcommand())
     .subcommand(cache_subcommand())
+    .subcommand(check_subcommand())
     .subcommand(compile_subcommand())
     .subcommand(completions_subcommand())
     .subcommand(coverage_subcommand())
@@ -684,6 +692,29 @@ Download and compile a module with all of its static dependencies and save them
 in the local cache, without running any code:
 
   deno cache https://deno.land/std/http/file_server.ts
+
+Future runs of this module will trigger no downloads or compilation unless
+--reload is specified.",
+    )
+}
+
+fn check_subcommand<'a>() -> App<'a> {
+  compile_args(App::new("check"))
+    .arg(
+      Arg::new("file")
+        .takes_value(true)
+        .required(true)
+        .min_values(1)
+        .value_hint(ValueHint::FilePath),
+    )
+    .about("Type check the dependencies")
+    .long_about(
+      "Cache, type check and compile remote dependencies recursively.
+
+Download and compile a module with all of its static dependencies and save them
+in the local cache, without running any code:
+
+  deno check https://deno.land/std/http/file_server.ts
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
@@ -2048,6 +2079,16 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .map(String::from)
     .collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
+}
+
+fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  compile_args_parse(flags, matches);
+  let files = matches
+    .values_of("file")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
 }
 
 fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -3485,6 +3526,20 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Cache(CacheFlags {
+          files: svec!["script.ts"],
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn check() {
+    let r = flags_from_vec(svec!["deno", "check", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
         }),
         ..Flags::default()
