@@ -675,6 +675,44 @@ impl JsRuntime {
     snapshot
   }
 
+  /// Returns the namespace object of a module.
+  ///
+  /// This is only available after module evaluation has completed.
+  /// This function panics if module has not been instantiated.
+  pub fn get_module_namespace(
+    &mut self,
+    module_id: ModuleId,
+  ) -> Result<v8::Global<v8::Object>, Error> {
+    let module_map_rc = Self::module_map(self.v8_isolate());
+
+    let module_handle = module_map_rc
+      .borrow()
+      .get_handle(module_id)
+      .expect("ModuleInfo not found");
+
+    let scope = &mut self.handle_scope();
+
+    let module = module_handle.open(scope);
+
+    if module.get_status() == v8::ModuleStatus::Errored {
+      let exception = module.get_exception();
+      let err = exception_to_err_result(scope, exception, false)
+        .map_err(|err| attach_handle_to_error(scope, err, exception));
+      return err;
+    }
+
+    assert!(matches!(
+      module.get_status(),
+      v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
+    ));
+
+    let module_namespace: v8::Local<v8::Object> =
+      v8::Local::try_from(module.get_module_namespace())
+        .map_err(|err: v8::DataError| generic_error(err.to_string()))?;
+
+    Ok(v8::Global::new(scope, module_namespace))
+  }
+
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -2187,6 +2225,89 @@ pub mod tests {
   }
 
   #[test]
+  fn test_get_module_namespace() {
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        async { Err(generic_error("Module loading is not supported")) }
+          .boxed_local()
+      }
+    }
+
+    let loader = std::rc::Rc::new(ModsLoader::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    let specifier = crate::resolve_url("file:///main.js").unwrap();
+    let source_code = r#"
+      export const a = "b";
+      export default 1 + 2;
+      "#
+    .to_string();
+
+    let module_id = futures::executor::block_on(
+      runtime.load_main_module(&specifier, Some(source_code)),
+    )
+    .unwrap();
+
+    let _ = runtime.mod_evaluate(module_id);
+
+    let module_namespace = runtime.get_module_namespace(module_id).unwrap();
+
+    let scope = &mut runtime.handle_scope();
+
+    let module_namespace =
+      v8::Local::<v8::Object>::new(scope, module_namespace);
+
+    assert!(module_namespace.is_module_namespace_object());
+
+    let unknown_export_name = v8::String::new(scope, "none").unwrap();
+    let binding = module_namespace.get(scope, unknown_export_name.into());
+
+    assert!(binding.is_some());
+    assert!(binding.unwrap().is_undefined());
+
+    let empty_export_name = v8::String::new(scope, "").unwrap();
+    let binding = module_namespace.get(scope, empty_export_name.into());
+
+    assert!(binding.is_some());
+    assert!(binding.unwrap().is_undefined());
+
+    let a_export_name = v8::String::new(scope, "a").unwrap();
+    let binding = module_namespace.get(scope, a_export_name.into());
+
+    assert!(binding.unwrap().is_string());
+    assert_eq!(binding.unwrap(), v8::String::new(scope, "b").unwrap());
+
+    let default_export_name = v8::String::new(scope, "default").unwrap();
+    let binding = module_namespace.get(scope, default_export_name.into());
+
+    assert!(binding.unwrap().is_number());
+    assert_eq!(binding.unwrap(), v8::Number::new(scope, 3_f64));
+  }
+
+  #[test]
   fn test_heap_limits() {
     let create_params =
       v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
@@ -2873,5 +2994,29 @@ assertEquals(1, notify_return_value);
         "Deno.core.opSync('op_err')"
       )
       .is_err());
+  }
+
+  #[test]
+  fn test_op_high_arity() {
+    #[op]
+    fn op_add_4(
+      x1: i64,
+      x2: i64,
+      x3: i64,
+      x4: i64,
+    ) -> Result<i64, anyhow::Error> {
+      Ok(x1 + x2 + x3 + x4)
+    }
+
+    let ext = Extension::builder().ops(vec![op_add_4::decl()]).build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    let r = runtime
+      .execute_script("test.js", "Deno.core.opSync('op_add_4', 1, 2, 3, 4)")
+      .unwrap();
+    let scope = &mut runtime.handle_scope();
+    assert_eq!(r.open(scope).integer_value(scope), Some(10));
   }
 }
