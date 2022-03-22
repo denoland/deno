@@ -3,7 +3,6 @@
 pub(crate) const MAGIC_FIELD: &str = "$__v8_magic_field";
 
 pub(crate) trait MagicType {
-  const MAGIC_FIELD: &'static str = MAGIC_FIELD;
   const NAME: &'static str;
   const MAGIC_NAME: &'static str;
 }
