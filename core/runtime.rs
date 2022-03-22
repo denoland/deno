@@ -2910,4 +2910,25 @@ assertEquals(1, notify_return_value);
     let scope = &mut runtime.handle_scope();
     assert_eq!(r.open(scope).integer_value(scope), Some(10));
   }
+
+  #[test]
+  fn test_op_disabled() {
+    #[op]
+    fn op_foo() -> Result<i64, anyhow::Error> {
+      Ok(42)
+    }
+
+    let ext = Extension::builder()
+      .ops(vec![op_foo::decl().disable()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    let r = runtime
+      .execute_script("test.js", "Deno.core.opSync('op_foo')")
+      .unwrap();
+    let scope = &mut runtime.handle_scope();
+    assert!(r.open(scope).is_undefined());
+  }
 }
