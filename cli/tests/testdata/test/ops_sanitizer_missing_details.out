@@ -7,7 +7,7 @@ failures:
 test 1
 Test case is leaking async ops.
 
-- 2 async operations to op_close were started in this test, but never completed.
+- 1 async operation to op_write was started in this test, but never completed.
 
 To get more details where ops were leaked, run again with --trace-ops flag.
 

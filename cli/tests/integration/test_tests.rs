@@ -181,7 +181,7 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
 });
 
 itest!(ops_sanitizer_missing_details {
-  args: "test test/ops_sanitizer_missing_details.ts",
+  args: "test --allow-write --allow-read test/ops_sanitizer_missing_details.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_missing_details.out",
 });

@@ -173,12 +173,7 @@
           preOp.opsCompletedAsync;
 
         if (dispatchedDiff > completedDiff) {
-          const maybeDetails = OP_DETAILS[key];
-          let name = key;
-          let hint = null;
-          if (maybeDetails) {
-            [name, hint] = maybeDetails;
-          }
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = dispatchedDiff - completedDiff;
           let message = `${count} async operation${
             count === 1 ? "" : "s"
