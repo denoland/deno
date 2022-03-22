@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use super::tr8::FromV8;
 use super::tr8::ToV8;
 use super::zero_copy_buf::ZeroCopyBuf;
-use crate::impl_magic;
+use crate::magic::tr8::impl_magic;
 
 // An asymmetric wrapper around ZeroCopyBuf,
 // allowing us to use a single type for familiarity

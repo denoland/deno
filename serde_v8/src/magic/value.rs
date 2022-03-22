@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::impl_magic;
+use crate::magic::tr8::impl_magic;
 use crate::magic::tr8::FromV8;
 use crate::magic::tr8::ToV8;
 use std::mem::transmute;

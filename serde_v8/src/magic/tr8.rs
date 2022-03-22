@@ -112,7 +112,6 @@ pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
   std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr))
 }
 
-#[macro_export]
 macro_rules! impl_magic {
   ($t:ty) => {
     impl crate::magic::tr8::MagicType for $t {
@@ -139,3 +138,4 @@ macro_rules! impl_magic {
     }
   };
 }
+pub(crate) use impl_magic;

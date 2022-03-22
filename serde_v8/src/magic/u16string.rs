@@ -1,4 +1,4 @@
-use crate::impl_magic;
+use crate::magic::tr8::impl_magic;
 use crate::Error;
 use std::ops::{Deref, DerefMut};
 
