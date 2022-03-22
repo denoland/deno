@@ -94,7 +94,7 @@ impl ToV8 for MagicBuffer {
       let ab = v8::ArrayBuffer::new(scope, 0);
       return Ok(
         v8::Uint8Array::new(scope, ab, 0, 0)
-          .expect("Failed to create UintArray8")
+          .expect("Failed to create Uint8Array")
           .into(),
       );
     }
@@ -105,7 +105,7 @@ impl ToV8 for MagicBuffer {
     let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
     Ok(
       v8::Uint8Array::new(scope, ab, 0, buf_len)
-        .expect("Failed to create UintArray8")
+        .expect("Failed to create Uint8Array")
         .into(),
     )
   }
