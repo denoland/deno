@@ -98,7 +98,7 @@ fn node_resolve(
 
     if protocol == "node" {
       let split_specifier = url.as_str().split(':');
-      let specifier = split_specifier.skip(1).collect::<Vec<_>>().join("");
+      let specifier = split_specifier.skip(1).collect::<String>();
       if let Some(resolved) =
         crate::compat::try_resolve_builtin_module(&specifier)
       {
