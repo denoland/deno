@@ -15,7 +15,7 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeEsmResolver {
+pub struct NodeEsmResolver {
   maybe_import_map_resolver: Option<ImportMapResolver>,
 }
 
