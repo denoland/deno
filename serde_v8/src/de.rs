@@ -341,34 +341,28 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     match name {
       Buffer::MAGIC_NAME => {
-        let x = Buffer::from_v8(self.scope, self.input)?;
-        visit_magic(visitor, x)
+        visit_magic(visitor, Buffer::from_v8(self.scope, self.input)?)
       }
       ByteString::MAGIC_NAME => {
-        let x = ByteString::from_v8(self.scope, self.input)?;
-        visit_magic(visitor, x)
+        visit_magic(visitor, ByteString::from_v8(self.scope, self.input)?)
       }
       U16String::MAGIC_NAME => {
-        let x = U16String::from_v8(self.scope, self.input)?;
-        visit_magic(visitor, x)
+        visit_magic(visitor, U16String::from_v8(self.scope, self.input)?)
       }
       magic::Value::MAGIC_NAME => {
-        let x = magic::Value::from_v8(self.scope, self.input)?;
-        visit_magic(visitor, x)
+        visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
       }
       _ => {
         // Regular struct
         let obj = v8::Local::<v8::Object>::try_from(self.input)
           .map_err(|_| Error::ExpectedObject)?;
-        let struct_access = StructAccess {
+        visitor.visit_seq(StructAccess {
           fields,
           obj,
           pos: 0,
           scope: self.scope,
           _cache: None,
-        };
-
-        visitor.visit_seq(struct_access)
+        })
       }
     }
   }
