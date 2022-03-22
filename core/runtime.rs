@@ -14,6 +14,8 @@ use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
+use crate::op_void_async;
+use crate::op_void_sync;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -472,7 +474,7 @@ impl JsRuntime {
     // macroware wraps an opfn in all the middleware
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
-    // Flatten ops & apply middlware
+    // Flatten ops, apply middlware & override disabled ops
     extensions
       .iter_mut()
       .filter_map(|e| e.init_ops())
@@ -480,6 +482,16 @@ impl JsRuntime {
       .map(|d| OpDecl {
         name: d.name,
         ..macroware(d)
+      })
+      .map(|op| match op.enabled {
+        true => op,
+        false => OpDecl {
+          v8_fn_ptr: match op.is_async {
+            true => op_void_async::v8_fn_ptr(),
+            false => op_void_sync::v8_fn_ptr(),
+          },
+          ..op
+        },
       })
       .collect()
   }
@@ -3018,5 +3030,26 @@ assertEquals(1, notify_return_value);
       .unwrap();
     let scope = &mut runtime.handle_scope();
     assert_eq!(r.open(scope).integer_value(scope), Some(10));
+  }
+
+  #[test]
+  fn test_op_disabled() {
+    #[op]
+    fn op_foo() -> Result<i64, anyhow::Error> {
+      Ok(42)
+    }
+
+    let ext = Extension::builder()
+      .ops(vec![op_foo::decl().disable()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    let r = runtime
+      .execute_script("test.js", "Deno.core.opSync('op_foo')")
+      .unwrap();
+    let scope = &mut runtime.handle_scope();
+    assert!(r.open(scope).is_undefined());
   }
 }
