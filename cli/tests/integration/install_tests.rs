@@ -87,7 +87,7 @@ fn install_custom_dir_env_var() {
 
 #[test]
 fn installer_test_local_module_run() {
-  let temp_dir = TempDir::new().expect("tempdir fail");
+  let temp_dir = TempDir::new().unwrap();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let status = util::deno_cmd()
@@ -116,7 +116,7 @@ fn installer_test_local_module_run() {
     .arg("foo")
     .env("PATH", util::target_dir())
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
   assert!(stdout_str.ends_with("hello, foo"));
 }
@@ -124,7 +124,7 @@ fn installer_test_local_module_run() {
 #[test]
 fn installer_test_remote_module_run() {
   let _g = util::http_server();
-  let temp_dir = TempDir::new().expect("tempdir fail");
+  let temp_dir = TempDir::new().unwrap();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let status = util::deno_cmd()
@@ -151,7 +151,7 @@ fn installer_test_remote_module_run() {
     .arg("foo")
     .env("PATH", util::target_dir())
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
