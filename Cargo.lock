@@ -1088,13 +1088,14 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.1.9"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4b477c481d76502130fc5a212900fbe9da9520ad65c54c7e6a7cb129df082fb"
+checksum = "4f7cfd6605b7291387e54a732e5b5fa8c1fb0d6757dbf4309740ad79c1e1e215"
 dependencies = [
  "anyhow",
  "futures",
  "os_pipe",
+ "path-dedot",
  "tokio",
 ]
 
@@ -2829,6 +2830,15 @@ name = "path-clean"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecba01bf2678719532c5e3059e0b5f0811273d94b397088b82e3bd0a78c78fdd"
+
+[[package]]
+name = "path-dedot"
+version = "3.0.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f326e2a3331685a5e3d4633bb9836bd92126e08037cb512252f3612f616a0b28"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "pem-rfc7468"
