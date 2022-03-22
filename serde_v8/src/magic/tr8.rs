@@ -75,7 +75,8 @@ where
     where
       E: serde::de::Error,
     {
-      Ok(opaque_take(ptr))
+      // SAFETY: opaque ptr originates from visit_magic, which forgets ownership so we can take it
+      Ok(unsafe { opaque_take(ptr) })
     }
   }
 
@@ -93,25 +94,31 @@ where
   V: serde::de::Visitor<'de>,
   E: serde::de::Error,
 {
-  let y = visitor.visit_u64::<E>(unsafe { std::mem::transmute(&x) });
+  let y = visitor.visit_u64::<E>(opaque_send(&x));
   std::mem::forget(x);
   y
 }
 
+/// Constructs an "opaque" ptr from a reference to transerialize
 pub(crate) fn opaque_send<T: Sized>(x: &T) -> u64 {
   (x as *const T) as u64
 }
 
-pub(crate) fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
-  unsafe { *(ptr as *const T as *const u64) }
+/// Copies an "opaque" ptr from a reference to an opaque ptr (transerialized)
+/// NOTE: ptr-to-ptr, extra indirection
+pub(crate) unsafe fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
+  *(ptr as *const T as *const u64)
 }
 
-pub(crate) fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
-  unsafe { std::mem::transmute(ptr) }
+/// Transmutes an "opaque" ptr back into a reference
+pub(crate) unsafe fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
+  std::mem::transmute(ptr)
 }
 
-pub(crate) fn opaque_take<T>(ptr: u64) -> T {
-  unsafe { std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr)) }
+/// Transmutes & copies the value from the "opaque" ptr
+/// NOTE: takes ownership & requires other end to forget its ownership
+pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
+  std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr))
 }
 
 #[macro_export]

@@ -244,13 +244,15 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
       unreachable!()
     }
     let ptr: &U = value;
-    self.opaque = opaque_recv(ptr);
+    // SAFETY: MagicalSerializer only ever receives single field u64s,
+    // type-safety is ensured by magic_name checks in `serialize_struct()`
+    self.opaque = unsafe { opaque_recv(ptr) };
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
-    // SAFETY: MagicType transerialization guarantees `T` is still alive.
-    let bs: &T = opaque_deref(self.opaque);
+    // SAFETY: transerialization assumptions imply `T` is still alive.
+    let bs: &T = unsafe { opaque_deref(self.opaque) };
     let scope = &mut *self.scope.borrow_mut();
     bs.to_v8(scope)
   }
