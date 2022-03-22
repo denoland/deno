@@ -144,7 +144,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
-  pub global_context: Option<v8::Global<v8::Context>>,
+  global_realm: Option<JsRealm>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
@@ -356,7 +356,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
-      global_context: Some(global_context),
+      global_realm: Some(JsRealm(global_context)),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
@@ -408,9 +408,7 @@ impl JsRuntime {
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
-    let state = Self::state(self.v8_isolate());
-    let state = state.borrow();
-    state.global_context.clone().unwrap()
+    self.global_realm().0
   }
 
   pub fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
@@ -422,7 +420,9 @@ impl JsRuntime {
   }
 
   pub fn global_realm(&mut self) -> JsRealm {
-    JsRealm::new(self.global_context())
+    let state = Self::state(self.v8_isolate());
+    let state = state.borrow();
+    state.global_realm.clone().unwrap()
   }
 
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
@@ -660,7 +660,7 @@ impl JsRuntime {
 
     // Note: create_blob() method must not be called from within a HandleScope.
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
-    state.borrow_mut().global_context.take();
+    state.borrow_mut().global_realm.take();
 
     self.inspector.take();
 
