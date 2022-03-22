@@ -48,6 +48,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     const conn = await listener.accept();
+    listener.close();
     const httpConn = Deno.serveHttp(conn);
     const reqEvent = await httpConn.nextRequest();
     assert(reqEvent);
@@ -58,7 +59,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
       new Response("Hello World", { headers: { "foo": "bar" } }),
     );
     httpConn.close();
-    listener.close();
   })();
 
   const resp = await fetch("http://127.0.0.1:4501/", {
@@ -1875,9 +1875,9 @@ Deno.test("upgradeHttp unix", {
     const conn = await listener.accept();
     listener.close();
     const httpConn = Deno.serveHttp(conn);
-    const maybeReq = await httpConn.nextRequest();
-    assert(maybeReq);
-    const { request, respondWith } = maybeReq;
+    const reqEvent = await httpConn.nextRequest();
+    assert(reqEvent);
+    const { request, respondWith } = reqEvent;
     const p = Deno.upgradeHttp(request);
 
     const promise = (async () => {
