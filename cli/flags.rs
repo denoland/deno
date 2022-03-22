@@ -261,6 +261,7 @@ pub struct Flags {
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub typecheck_mode: TypecheckMode,
+  pub has_check_flag: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
@@ -1346,6 +1347,7 @@ fn run_subcommand<'a>() -> App<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
+    .arg(check_arg())
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
@@ -1936,6 +1938,17 @@ modules will be ignored.",
     )
 }
 
+fn check_arg<'a>() -> Arg<'a> {
+  Arg::new("check")
+    .long("check")
+    .help("Type check modules")
+    .long_help(
+      "Type checking of modules.
+Currently this is a default behavior to type check modules, but in future releases
+Deno will not automatically type check without the --check flag.",
+    )
+}
+
 fn script_arg<'a>() -> Arg<'a> {
   Arg::new("script_arg")
     .multiple_values(true)
@@ -2388,6 +2401,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
+  check_arg_parse(flags, matches);
 
   let mut script: Vec<String> = matches
     .values_of("script_arg")
@@ -2762,6 +2776,10 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else if matches.is_present("no-check") {
     flags.typecheck_mode = TypecheckMode::None;
   }
+}
+
+fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.has_check_flag = matches.is_present("check");
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5392,6 +5410,28 @@ mod tests {
         allow_net: Some(vec![]),
         no_prompt: true,
         argv: svec!["arg1", "arg2"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_with_check() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable",
+      "--check",
+      "script.ts",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        has_check_flag: true,
+        unstable: true,
         ..Flags::default()
       }
     );
