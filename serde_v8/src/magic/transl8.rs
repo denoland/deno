@@ -1,5 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+//! Transerialization extends the set of serde-compatible types (for given de/serializers).
+//! By "hackishly" transmuting references across serde boundaries as u64s.
+//! Type-safety is enforced using special struct names for each "magic type".
+//! Memory-safety relies on transerialized values being "pinned" during de/serialization.
+
 pub(crate) const MAGIC_FIELD: &str = "$__v8_magic_field";
 
 pub(crate) trait MagicType {
