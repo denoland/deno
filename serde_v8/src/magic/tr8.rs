@@ -44,7 +44,7 @@ where
   use serde::ser::SerializeStruct;
 
   let mut s = serializer.serialize_struct(T::magic_name(), 1)?;
-  let ptr = send_opaque(x);
+  let ptr = opaque_send(x);
   s.serialize_field(MAGIC_FIELD, &ptr)?;
   s.end()
 }
@@ -75,7 +75,7 @@ where
     where
       E: serde::de::Error,
     {
-      Ok(unsafe { std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr)) })
+      Ok(opaque_take(ptr))
     }
   }
 
@@ -98,16 +98,20 @@ where
   y
 }
 
-pub(crate) fn send_opaque<T: Sized>(x: &T) -> u64 {
+pub(crate) fn opaque_send<T: Sized>(x: &T) -> u64 {
   (x as *const T as *const u8) as u64
 }
 
-pub(crate) fn recv_opaque<T: ?Sized>(ptr: &T) -> u64 {
+pub(crate) fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
   unsafe { *(ptr as *const T as *const u8 as *const u64) }
 }
 
-pub(crate) fn deref_opaque<'a, T>(opaque: u64) -> &'a T {
-  unsafe { std::mem::transmute(opaque) }
+pub(crate) fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
+  unsafe { std::mem::transmute(ptr) }
+}
+
+pub(crate) fn opaque_take<T>(ptr: u64) -> T {
+  unsafe { std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr)) }
 }
 
 #[macro_export]

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
-use crate::magic::tr8::{deref_opaque, recv_opaque, MagicType, ToV8};
+use crate::magic::tr8::{opaque_deref, opaque_recv, MagicType, ToV8};
 use crate::{magic, Buffer, ByteString, U16String};
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
@@ -244,13 +244,13 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
       unreachable!()
     }
     let ptr: &U = value;
-    self.opaque = recv_opaque(ptr);
+    self.opaque = opaque_recv(ptr);
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
     // SAFETY: MagicType transerialization guarantees `T` is still alive.
-    let bs: &T = deref_opaque(self.opaque);
+    let bs: &T = opaque_deref(self.opaque);
     let scope = &mut *self.scope.borrow_mut();
     bs.to_v8(scope)
   }
