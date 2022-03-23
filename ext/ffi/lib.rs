@@ -103,7 +103,7 @@ impl DynamicLibraryResource {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::from),
-      foreign_fn.result.into(),
+      foreign_fn.result.clone().into(),
     );
 
     self.symbols.insert(
@@ -167,7 +167,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .build()
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum NativeType {
   Void,
@@ -184,6 +184,32 @@ enum NativeType {
   F32,
   F64,
   Pointer,
+  Struct(Vec<NativeType>),
+}
+
+impl NativeType {
+  fn get_size(&self) -> usize {
+    match self {
+      NativeType::Void => 0,
+      NativeType::U8 | NativeType::I8 => 1,
+      NativeType::U16 | NativeType::I16 => 2,
+      NativeType::U32 | NativeType::I32 | NativeType::F32 => 4,
+      NativeType::U64
+      | NativeType::I64
+      | NativeType::F64
+      | NativeType::Pointer => 8,
+      NativeType::USize | NativeType::ISize => std::mem::size_of::<usize>(),
+      NativeType::Struct(fields) => NativeType::compute_struct_size(fields),
+    }
+  }
+
+  fn compute_struct_size(fields: &[NativeType]) -> usize {
+    let mut size = 0;
+    for field in fields {
+      size += field.get_size();
+    }
+    size
+  }
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -203,6 +229,9 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
       NativeType::Pointer => libffi::middle::Type::pointer(),
+      NativeType::Struct(fields) => libffi::middle::Type::structure(
+        fields.iter().map(|field| field.clone().into()),
+      ),
     }
   }
 }
@@ -223,6 +252,7 @@ union NativeValue {
   f32_value: f32,
   f64_value: f64,
   pointer: *const u8,
+  structure: *const u8,
 }
 
 impl NativeValue {
@@ -277,12 +307,28 @@ impl NativeValue {
           }
         }
       }
+      NativeType::Struct(_) => {
+        if value.is_null() {
+          Self {
+            structure: ptr::null(),
+          }
+        } else {
+          Self {
+            structure: u64::from(serde_json::from_value::<U32x2>(value)?)
+              as *const u8,
+          }
+        }
+      }
     };
     Ok(value)
   }
 
   fn buffer(ptr: *const u8) -> Self {
     Self { pointer: ptr }
+  }
+
+  fn structure(ptr: *const u8) -> Self {
+    Self { structure: ptr }
   }
 
   unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
@@ -301,6 +347,7 @@ impl NativeValue {
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
       NativeType::Pointer => Arg::new(&self.pointer),
+      NativeType::Struct(_) => Arg::new(&*self.structure),
     }
   }
 }
@@ -541,14 +588,14 @@ impl FfiCallPtrArgs {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::from),
-      self.def.result.into(),
+      self.def.result.clone().into(),
     );
 
     Symbol {
       cif,
       ptr,
       parameter_types: self.def.parameters.clone(),
-      result_type: self.def.result,
+      result_type: self.def.result.clone(),
     }
   }
 }
@@ -562,13 +609,13 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 
   let mut native_values: Vec<NativeValue> = vec![];
 
-  for (&native_type, value) in symbol
+  for (native_type, value) in symbol
     .parameter_types
     .iter()
     .zip(args.parameters.into_iter())
   {
     match native_type {
-      NativeType::Pointer => match value.as_u64() {
+      NativeType::Pointer | NativeType::Struct(_) => match value.as_u64() {
         Some(idx) => {
           let buf = buffers
             .get(idx as usize)
@@ -576,15 +623,19 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
               generic_error(format!("No buffer present at index {}", idx))
             })?
             .unwrap();
-          native_values.push(NativeValue::buffer(buf.as_ptr()));
+          native_values.push(match native_type {
+            NativeType::Struct(_) => NativeValue::structure(buf.as_ptr()),
+            NativeType::Pointer => NativeValue::buffer(buf.as_ptr()),
+            _ => unreachable!(),
+          });
         }
         _ => {
-          let value = NativeValue::new(native_type, value)?;
+          let value = NativeValue::new(native_type.clone(), value)?;
           native_values.push(value);
         }
       },
       _ => {
-        let value = NativeValue::new(native_type, value)?;
+        let value = NativeValue::new(native_type.clone(), value)?;
         native_values.push(value);
       }
     }
@@ -594,55 +645,70 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .parameter_types
     .iter()
     .zip(native_values.iter())
-    .map(|(&native_type, native_value)| unsafe {
-      native_value.as_arg(native_type)
+    .map(|(native_type, native_value)| unsafe {
+      native_value.as_arg(native_type.clone())
     })
     .collect::<Vec<_>>();
 
-  Ok(match symbol.result_type {
-    NativeType::Void => {
+  Ok(match &symbol.result_type {
+    &NativeType::Void => {
       json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) })
     }
-    NativeType::U8 => {
+    &NativeType::U8 => {
       json!(unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) })
     }
-    NativeType::I8 => {
+    &NativeType::I8 => {
       json!(unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) })
     }
-    NativeType::U16 => {
+    &NativeType::U16 => {
       json!(unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) })
     }
-    NativeType::I16 => {
+    &NativeType::I16 => {
       json!(unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) })
     }
-    NativeType::U32 => {
+    &NativeType::U32 => {
       json!(unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) })
     }
-    NativeType::I32 => {
+    &NativeType::I32 => {
       json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
     }
-    NativeType::U64 => {
+    &NativeType::U64 => {
       json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) })
     }
-    NativeType::I64 => {
+    &NativeType::I64 => {
       json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) })
     }
-    NativeType::USize => {
+    &NativeType::USize => {
       json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) })
     }
-    NativeType::ISize => {
+    &NativeType::ISize => {
       json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) })
     }
-    NativeType::F32 => {
+    &NativeType::F32 => {
       json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
     }
-    NativeType::F64 => {
+    &NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
-    NativeType::Pointer => {
+    &NativeType::Pointer => {
       json!(U32x2::from(unsafe {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
+    }
+    NativeType::Struct(fields) => {
+      // libffi's middle API doesn't have any way to specify return types
+      // at runtime. So we're using the `raw` API.
+      let size = NativeType::compute_struct_size(fields);
+      let mut result = vec![0u8; size];
+      unsafe {
+        libffi::raw::ffi_call(
+          symbol.cif.as_raw_ptr(),
+          Some(*symbol.ptr.as_safe_fun()),
+          result.as_mut_ptr() as *mut c_void,
+          call_args.as_ptr() as *mut *mut c_void,
+        );
+      }
+      json!(result)
     }
   })
 }
@@ -722,7 +788,10 @@ fn op_ffi_get_static(
     NativeType::F64 => {
       json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
     }
-    NativeType::Pointer => {
+    NativeType::Pointer | NativeType::Struct(_) => {
+      // Static structs are referenced by pointers.
+      // Structs passed/returned by value is only possible
+      // in function call.
       json!(U32x2::from(data_ptr as *const u8 as u64))
     }
   })

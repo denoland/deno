@@ -38,6 +38,15 @@ const remote = Deno.dlopen(
     static12: { type: "i64" },
     static13: { type: "f32" },
     static14: { type: "f64" },
+    static15: { type: { struct: ["f64"] } },
+    method20: {
+      parameters: [{ struct: ["i32", "i32"] }],
+      result: "void",
+    },
+    method21: {
+      parameters: [],
+      result: { struct: ["i32", "i32"] },
+    },
   } as const,
 );
 
@@ -178,3 +187,14 @@ const static13_right: number = remote.symbols.static13;
 // @ts-expect-error: Invalid member type
 const static14_wrong: null = remote.symbols.static14;
 const static14_right: number = remote.symbols.static14;
+// @ts-expect-error: Invalid member type
+const static15_wrong: number = remote.symbols.static15;
+const static15_right: Deno.UnsafePointer = remote.symbols.static15;
+
+// @ts-expect-error: Invalid argument
+remote.symbols.method20(0);
+remote.symbols.method20(new Int32Array(1));
+
+// @ts-expect-error: Invalid return type
+<null> remote.symbols.method21(new Int32Array(1));
+<Uint8Array> remote.symbols.method21(new Int32Array(1));

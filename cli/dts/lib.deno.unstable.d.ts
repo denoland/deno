@@ -319,9 +319,7 @@ declare namespace Deno {
    */
   export function getUid(): number | null;
 
-  /** All possible types for interfacing with foreign functions */
-  export type NativeType =
-    | "void"
+  export type NativeNumberType =
     | "u8"
     | "i8"
     | "u16"
@@ -333,8 +331,20 @@ declare namespace Deno {
     | "usize"
     | "isize"
     | "f32"
-    | "f64"
-    | "pointer";
+    | "f64";
+
+  /** All possible types for interfacing with foreign functions */
+  export type NativeType =
+    | NativeNumberType
+    | "void"
+    | "pointer"
+    | NativeStructType;
+
+  export interface NativeStructType<
+    Fields extends readonly NativeType[] = readonly NativeType[],
+  > {
+    struct: Fields;
+  }
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
@@ -361,19 +371,18 @@ declare namespace Deno {
     [name: string]: ForeignFunction | ForeignStatic;
   }
 
-  /** All possible number types interfacing with foreign functions */
-  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
-
   /** Infers a foreign function return type */
   type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
     ? void
-    : T extends StaticNativeNumberType ? number
+    : T extends NativeNumberType ? number
     : T extends "pointer" ? UnsafePointer
+    : T extends NativeStructType ? Uint8Array
     : never;
 
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
-    : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
+    : T extends NativeNumberType ? number
+    : T extends "pointer" | NativeStructType
+      ? Deno.UnsafePointer | Deno.TypedArray | null
     : unknown;
 
   /** Infers a foreign function parameter list. */

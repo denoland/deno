@@ -153,7 +153,9 @@
       const type = types[i];
       const arg = args[i];
 
-      if (type === "pointer") {
+      if (
+        type === "pointer" || (typeof type === "object" && "struct" in type)
+      ) {
         if (
           ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
           arg.byteLength !== undefined
@@ -205,6 +207,13 @@
           return promise.then((value) => new UnsafePointer(unpackU64(value)));
         }
 
+        if (
+          typeof this.definition.result === "object" &&
+          "struct" in this.definition.result
+        ) {
+          return promise.then((value) => new Uint8Array(value));
+        }
+
         return promise;
       } else {
         const result = core.opSync("op_ffi_call_ptr", {
@@ -216,6 +225,13 @@
 
         if (this.definition.result === "pointer") {
           return new UnsafePointer(unpackU64(result));
+        }
+
+        if (
+          typeof this.definition.result === "object" &&
+          "struct" in this.definition.result
+        ) {
+          return new Uint8Array(result);
         }
 
         return result;
@@ -248,9 +264,15 @@
               type,
             },
           );
-          if (type === "pointer" || type === "u64") {
+          if (
+            type === "pointer" || type === "u64" ||
+            (typeof type === "object" && "struct" in type)
+          ) {
             value = unpackU64(value);
-            if (type === "pointer") {
+            if (
+              type === "pointer" ||
+              (typeof type === "object" && "struct" in type)
+            ) {
               value = new UnsafePointer(value);
             }
           } else if (type === "i64") {
@@ -288,6 +310,13 @@
               );
             }
 
+            if (
+              typeof symbols[symbol].result === "object" &&
+              "struct" in symbols[symbol].result
+            ) {
+              return promise.then((value) => new Uint8Array(value));
+            }
+
             return promise;
           } else {
             const result = core.opSync("op_ffi_call", {
@@ -299,6 +328,13 @@
 
             if (symbols[symbol].result === "pointer") {
               return new UnsafePointer(unpackU64(result));
+            }
+
+            if (
+              typeof symbols[symbol].result === "object" &&
+              "struct" in symbols[symbol].result
+            ) {
+              return new Uint8Array(result);
             }
 
             return result;

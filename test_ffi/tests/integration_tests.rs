@@ -72,6 +72,7 @@ fn basic() {
     Static u32: 42\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
+    Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
     After\n\
     true\n\
     Correct number of resources\n";

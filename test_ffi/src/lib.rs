@@ -123,3 +123,22 @@ pub struct Structure {
 
 #[no_mangle]
 pub static static_ptr: Structure = Structure { _data: 42 };
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Rect {
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+}
+
+#[no_mangle]
+pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+  Rect { x, y, w, h }
+}
+
+#[no_mangle]
+pub extern "C" fn print_rect(rect: Rect) {
+  println!("{:?}", rect);
+}
