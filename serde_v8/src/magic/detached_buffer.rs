@@ -45,7 +45,7 @@ impl ToV8 for DetachedBuffer {
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let buffer = v8::ArrayBuffer::with_backing_store(scope, &self.0.store);
-    let Range { start, end } = self.0.range.clone();
+    let Range { start, end } = self.0.range;
     let (off, len) = (start, end - start);
     let v = v8::Uint8Array::new(scope, buffer, off, len).unwrap();
     Ok(v.into())
