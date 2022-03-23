@@ -316,8 +316,7 @@
 
           deferred.resolve([conn, res.readBuf]);
         }
-
-        const ws = request[_ws];
+        const ws = resp[_ws];
         if (ws) {
           const wsRid = await core.opAsync(
             "op_http_upgrade_websocket",
