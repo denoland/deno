@@ -3050,4 +3050,61 @@ assertEquals(1, notify_return_value);
     let scope = &mut runtime.handle_scope();
     assert!(r.open(scope).is_undefined());
   }
+
+  #[test]
+  fn test_op_detached_buffer() {
+    use serde_v8::DetachedBuffer;
+
+    #[op]
+    fn op_sum_take(b: DetachedBuffer) -> Result<u64, anyhow::Error> {
+      Ok(b.as_ref().iter().clone().map(|x| *x as u64).sum())
+    }
+
+    #[op]
+    fn op_boomerang(
+      b: DetachedBuffer,
+    ) -> Result<DetachedBuffer, anyhow::Error> {
+      Ok(b)
+    }
+
+    let ext = Extension::builder()
+      .ops(vec![op_sum_take::decl(), op_boomerang::decl()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    let r = runtime
+      .execute_script(
+        "test.js",
+        r#"
+        const a1 = new Uint8Array([1,2,3]);
+        const a1b = a1.subarray(0, 2);
+        const a2 = new Uint8Array([5,10,15]);
+        const a2b = a1.subarray(0, 2);
+        
+        let sum = Deno.core.opSync('op_sum_take', a1);
+        if (sum !== 6) {
+          throw new Error("Bad sum");
+        }
+        if (a1.length > 0 || a1b.length > 0) {
+          throw new Error("expecting a1 & a1b to be detached");
+        }
+        
+        const a3 = Deno.core.opSync('op_boomerang', a2);
+        if (a3.byteLength != 3) {
+          throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
+        }
+        if (a3[0] !== 5 || a3[1] !== 10) {
+          throw new Error(`Invalid a3: ${a3[0]}, ${a3[1]}`);
+        }
+        if (a2.byteLength > 0 || a2b.byteLength > 0) {
+          throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
+        }
+      "#,
+      )
+      .unwrap();
+    let scope = &mut runtime.handle_scope();
+    assert!(r.open(scope).is_undefined());
+  }
 }
