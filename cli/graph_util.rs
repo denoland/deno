@@ -22,9 +22,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 /// Matches the `@ts-check` pragma.
-static TS_CHECK_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap()
-});
+static TS_CHECK_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
 
 pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
