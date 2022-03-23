@@ -9,6 +9,9 @@ readme = "README.md"
 repository = "https://github.com/denoland/deno"
 description = "Rust to V8 serialization and deserialization"
 
+[lib]
+path = "lib.rs"
+
 [dependencies]
 serde = { version = "1.0.130", features = ["derive"] }
 serde_bytes = "0.11"
