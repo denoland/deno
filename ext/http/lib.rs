@@ -500,7 +500,6 @@ async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
   data: Option<StringOrBuffer>,
-  close: bool,
 ) -> Result<(), AnyError> {
   let RespondArgs(rid, status, headers) = args;
   let stream = state
