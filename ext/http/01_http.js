@@ -181,7 +181,6 @@
     localAddr,
   ) {
     return async function respondWith(resp) {
-      let closeQuick = false;
       try {
         resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
