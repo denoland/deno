@@ -774,6 +774,7 @@
     const step = new TestStep({
       name: test.name,
       parent: undefined,
+      parentContext: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
@@ -1048,6 +1049,7 @@
    * @typedef {{
    *   name: string,
    *   parent: TestStep | undefined,
+   *   parentContext: TestContext | undefined,
    *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -1079,6 +1081,10 @@
 
     get parent() {
       return this.#params.parent;
+    }
+
+    get parentContext() {
+      return this.#params.parentContext;
     }
 
     get rootTestDescription() {
@@ -1257,9 +1263,7 @@
       /**
        * Parent test context.
        */
-      parent: parentStep.parent
-        ? createTestContext(parentStep.parent)
-        : undefined,
+      parentContext: parentStep.parentContext ?? undefined,
       /**
        * File Uri of the test code.
        */
@@ -1280,6 +1284,7 @@
         const subStep = new TestStep({
           name: definition.name,
           parent: parentStep,
+          parentContext: this,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,
