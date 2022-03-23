@@ -954,6 +954,7 @@ impl LspTestReporter {
   }
 
   fn progress(&self, message: TestRunProgressMessage) {
+    log::info!("progress {}", json!(message));
     self
       .channel
       .send(TestingNotification::Progress(
