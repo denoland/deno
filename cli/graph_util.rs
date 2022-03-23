@@ -132,7 +132,10 @@ impl GraphData {
             }
           }
           let ts_check = match &media_type {
-            MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+            MediaType::JavaScript
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::Jsx => {
               let parsed_source = module.maybe_parsed_source.as_ref().unwrap();
               parsed_source
                 .get_leading_comments()
