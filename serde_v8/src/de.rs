@@ -132,23 +132,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::Object => self.deserialize_map(visitor),
       // Map to Vec<u8> when deserialized via deserialize_any
       // e.g: for untagged enums or StringOrBuffer
-      ValueType::ArrayBufferView => {
-        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
-          .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_from((
-              &mut *self.scope,
-              view,
-            ))
-          })
-          .map_err(|_| Error::ExpectedBuffer)
-          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
-      }
-      ValueType::ArrayBuffer => {
-        v8::Local::<v8::ArrayBuffer>::try_from(self.input)
-          .and_then(|buffer| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_from(buffer)
-          })
-          .map_err(|_| Error::ExpectedBuffer)
+      ValueType::ArrayBufferView | ValueType::ArrayBuffer => {
+        magic::zero_copy_buf::ZeroCopyBuf::from_v8(&mut *self.scope, self.input)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
     }

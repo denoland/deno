@@ -1,7 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::Error;
-use std::convert::TryFrom;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Mutex;
@@ -116,15 +114,6 @@ impl FromV8 for MagicBuffer {
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    let zero_copy_buf = match value.is_array_buffer() {
-      // ArrayBuffer
-      true => v8::Local::<v8::ArrayBuffer>::try_from(value)
-        .and_then(ZeroCopyBuf::try_from),
-      // maybe ArrayBufferView
-      false => v8::Local::<v8::ArrayBufferView>::try_from(value)
-        .and_then(|view| ZeroCopyBuf::try_from((scope, view))),
-    }
-    .map_err(|_| Error::ExpectedBuffer)?;
-    Ok(Self::FromV8(zero_copy_buf))
+    Ok(Self::FromV8(ZeroCopyBuf::from_v8(scope, value)?))
   }
 }
