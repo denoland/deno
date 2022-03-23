@@ -6,7 +6,9 @@ use std::cell::RefCell;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
-use crate::magic;
+use crate::magic::transl8::MAGIC_FIELD;
+use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
+use crate::{magic, Buffer, ByteString, U16String};
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -212,191 +214,55 @@ impl<'a, 'b, 'c> ser::SerializeStruct for ObjectSerializer<'a, 'b, 'c> {
   }
 }
 
-pub struct MagicSerializer<'a> {
-  v8_value: Option<v8::Local<'a, v8::Value>>,
-}
-
-impl<'a> ser::SerializeStruct for MagicSerializer<'a> {
-  type Ok = JsValue<'a>;
-  type Error = Error;
-
-  fn serialize_field<T: ?Sized + Serialize>(
-    &mut self,
-    key: &'static str,
-    value: &T,
-  ) -> Result<()> {
-    if key != magic::FIELD {
-      unreachable!();
-    }
-    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
-    let mv: magic::Value<'a> = unsafe { std::mem::transmute(transmuted) };
-    self.v8_value = Some(mv.v8_value);
-    Ok(())
-  }
-
-  fn end(self) -> JsResult<'a> {
-    Ok(self.v8_value.unwrap())
-  }
-}
-
-// TODO(@AaronO): refactor this and streamline how we transmute values
-pub struct MagicBufferSerializer<'a, 'b, 'c> {
+pub struct MagicalSerializer<'a, 'b, 'c, T> {
   scope: ScopePtr<'a, 'b, 'c>,
-  f1: u64,
-  f2: u64,
+  opaque: u64,
+  p1: std::marker::PhantomData<T>,
 }
 
-impl<'a, 'b, 'c> MagicBufferSerializer<'a, 'b, 'c> {
-  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
+impl<'a, 'b, 'c, T> MagicalSerializer<'a, 'b, 'c, T> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> MagicalSerializer<'a, 'b, 'c, T> {
     Self {
       scope,
-      f1: 0,
-      f2: 0,
+      opaque: 0,
+      p1: std::marker::PhantomData::<T> {},
     }
   }
 }
 
-impl<'a, 'b, 'c> ser::SerializeStruct for MagicBufferSerializer<'a, 'b, 'c> {
-  type Ok = JsValue<'a>;
-  type Error = Error;
-
-  fn serialize_field<T: ?Sized + Serialize>(
-    &mut self,
-    key: &'static str,
-    value: &T,
-  ) -> Result<()> {
-    // Get u64 chunk
-    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
-    match key {
-      magic::buffer::BUF_FIELD_1 => self.f1 = transmuted,
-      magic::buffer::BUF_FIELD_2 => self.f2 = transmuted,
-      _ => unreachable!(),
-    }
-    Ok(())
-  }
-
-  fn end(self) -> JsResult<'a> {
-    let x: [usize; 2] = [self.f1 as usize, self.f2 as usize];
-    let buf: Box<[u8]> = unsafe { std::mem::transmute(x) };
-    let scope = &mut *self.scope.borrow_mut();
-    let v8_value = boxed_slice_to_uint8array(scope, buf);
-    Ok(v8_value.into())
-  }
-}
-
-pub struct MagicByteStringSerializer<'a, 'b, 'c> {
-  scope: ScopePtr<'a, 'b, 'c>,
-  ptr: Option<std::ptr::NonNull<u8>>,
-  len: Option<usize>,
-}
-
-impl<'a, 'b, 'c> MagicByteStringSerializer<'a, 'b, 'c> {
-  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
-    Self {
-      scope,
-      ptr: None,
-      len: None,
-    }
-  }
-}
-
-impl<'a, 'b, 'c> ser::SerializeStruct
-  for MagicByteStringSerializer<'a, 'b, 'c>
+impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
+  for MagicalSerializer<'a, 'b, 'c, T>
 {
   type Ok = JsValue<'a>;
   type Error = Error;
 
-  fn serialize_field<T: ?Sized + Serialize>(
+  fn serialize_field<U: ?Sized + Serialize>(
     &mut self,
     key: &'static str,
-    value: &T,
+    value: &U,
   ) -> Result<()> {
-    // Get u64 chunk
-    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
-    match key {
-      magic::bytestring::FIELD_PTR => {
-        self.ptr = std::ptr::NonNull::new(transmuted as *mut u8);
-      }
-      magic::bytestring::FIELD_LEN => {
-        self.len = Some(transmuted as usize);
-      }
-      _ => unreachable!(),
-    }
+    assert_eq!(key, MAGIC_FIELD);
+    let ptr: &U = value;
+    // SAFETY: MagicalSerializer only ever receives single field u64s,
+    // type-safety is ensured by MAGIC_NAME checks in `serialize_struct()`
+    self.opaque = unsafe { opaque_recv(ptr) };
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
-    // SAFETY: This function is only called from ByteString::serialize(), which
-    // guarantees the Vec is still alive.
-    let bytes = unsafe {
-      std::slice::from_raw_parts(self.ptr.unwrap().as_ptr(), self.len.unwrap())
-    };
+    // SAFETY: transerialization assumptions imply `T` is still alive.
+    let x: &T = unsafe { opaque_deref(self.opaque) };
     let scope = &mut *self.scope.borrow_mut();
-    let v8_value =
-      v8::String::new_from_one_byte(scope, bytes, v8::NewStringType::Normal)
-        .unwrap();
-    Ok(v8_value.into())
-  }
-}
-
-pub struct MagicU16StringSerializer<'a, 'b, 'c> {
-  scope: ScopePtr<'a, 'b, 'c>,
-  ptr: Option<std::ptr::NonNull<u16>>,
-  len: Option<usize>,
-}
-
-impl<'a, 'b, 'c> MagicU16StringSerializer<'a, 'b, 'c> {
-  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
-    Self {
-      scope,
-      ptr: None,
-      len: None,
-    }
-  }
-}
-
-impl<'a, 'b, 'c> ser::SerializeStruct for MagicU16StringSerializer<'a, 'b, 'c> {
-  type Ok = JsValue<'a>;
-  type Error = Error;
-
-  fn serialize_field<T: ?Sized + Serialize>(
-    &mut self,
-    key: &'static str,
-    value: &T,
-  ) -> Result<()> {
-    // Get u64 chunk
-    let transmuted = value.serialize(magic::FieldSerializer {})?;
-    match key {
-      magic::u16string::FIELD_PTR => {
-        self.ptr = std::ptr::NonNull::new(transmuted as *mut u16)
-      }
-      magic::u16string::FIELD_LEN => self.len = Some(transmuted as usize),
-      _ => unreachable!(),
-    }
-    Ok(())
-  }
-
-  fn end(self) -> JsResult<'a> {
-    // SAFETY: This function is only called from U16String::serialize(), which
-    // guarantees the Vec is still alive.
-    let slice = unsafe {
-      std::slice::from_raw_parts(self.ptr.unwrap().as_ptr(), self.len.unwrap())
-    };
-    let scope = &mut *self.scope.borrow_mut();
-
-    let v8_value =
-      v8::String::new_from_two_byte(scope, slice, v8::NewStringType::Normal)
-        .unwrap();
-    Ok(v8_value.into())
+    x.to_v8(scope)
   }
 }
 
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
-  Magic(MagicSerializer<'a>),
-  MagicBuffer(MagicBufferSerializer<'a, 'b, 'c>),
-  MagicByteString(MagicByteStringSerializer<'a, 'b, 'c>),
-  MagicU16String(MagicU16StringSerializer<'a, 'b, 'c>),
+  Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
+  MagicBuffer(MagicalSerializer<'a, 'b, 'c, Buffer>),
+  MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
+  MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -650,23 +516,24 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     len: usize,
   ) -> Result<Self::SerializeStruct> {
     match name {
-      magic::NAME => {
-        let m: MagicSerializer<'a> = MagicSerializer { v8_value: None };
-        Ok(StructSerializers::Magic(m))
-      }
-      magic::buffer::BUF_NAME => {
-        let m = MagicBufferSerializer::new(self.scope);
-        Ok(StructSerializers::MagicBuffer(m))
-      }
-      magic::bytestring::NAME => {
-        let m = MagicByteStringSerializer::new(self.scope);
+      ByteString::MAGIC_NAME => {
+        let m = MagicalSerializer::<ByteString>::new(self.scope);
         Ok(StructSerializers::MagicByteString(m))
       }
-      magic::u16string::NAME => {
-        let m = MagicU16StringSerializer::new(self.scope);
+      U16String::MAGIC_NAME => {
+        let m = MagicalSerializer::<U16String>::new(self.scope);
         Ok(StructSerializers::MagicU16String(m))
       }
+      Buffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<Buffer>::new(self.scope);
+        Ok(StructSerializers::MagicBuffer(m))
+      }
+      magic::Value::MAGIC_NAME => {
+        let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
+        Ok(StructSerializers::Magic(m))
+      }
       _ => {
+        // Regular structs
         let o = ObjectSerializer::new(self.scope, len);
         Ok(StructSerializers::Regular(o))
       }
@@ -684,22 +551,4 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     let x = self.serialize_struct(variant, len)?;
     Ok(VariantSerializer::new(scope, variant, x))
   }
-}
-
-// Used to map MagicBuffers to v8
-pub fn boxed_slice_to_uint8array<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  buf: Box<[u8]>,
-) -> v8::Local<'a, v8::Uint8Array> {
-  if buf.is_empty() {
-    let ab = v8::ArrayBuffer::new(scope, 0);
-    return v8::Uint8Array::new(scope, ab, 0, 0)
-      .expect("Failed to create UintArray8");
-  }
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
 }
