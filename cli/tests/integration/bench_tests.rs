@@ -2,6 +2,12 @@
 
 use crate::itest;
 
+itest!(requires_unstable {
+  args: "bench bench/requires_unstable.js",
+  exit_code: 70,
+  output: "bench/requires_unstable.out",
+});
+
 itest!(overloads {
   args: "bench --unstable bench/overloads.ts",
   exit_code: 0,
