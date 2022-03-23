@@ -241,9 +241,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
     key: &'static str,
     value: &U,
   ) -> Result<()> {
-    if key != MAGIC_FIELD {
-      unreachable!()
-    }
+    assert_eq!(key, MAGIC_FIELD);
     let ptr: &U = value;
     // SAFETY: MagicalSerializer only ever receives single field u64s,
     // type-safety is ensured by MAGIC_NAME checks in `serialize_struct()`
