@@ -42,7 +42,6 @@
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeHas,
     SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
@@ -352,8 +351,7 @@
           }
         }
       } finally {
-        if (SetPrototypeHas(httpConn.managedResources, streamRid)) {
-          SetPrototypeDelete(httpConn.managedResources, streamRid);
+        if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
           core.close(streamRid);
         }
       }
