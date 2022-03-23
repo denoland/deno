@@ -251,7 +251,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
-  pub(crate) async fn prepare_module_load(
+  pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
@@ -486,7 +486,7 @@ impl ProcState {
     Ok(())
   }
 
-  pub(crate) fn resolve(
+  pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,

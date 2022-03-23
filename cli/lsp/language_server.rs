@@ -72,7 +72,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
 /// Snapshot of the state used by TSC.
 #[derive(Debug, Default)]
-pub(crate) struct StateSnapshot {
+pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
@@ -80,7 +80,7 @@ pub(crate) struct StateSnapshot {
 }
 
 #[derive(Debug)]
-pub(crate) struct Inner {
+pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: Assets,
@@ -88,13 +88,13 @@ pub(crate) struct Inner {
   /// which is used by the language server
   cache_metadata: cache::CacheMetadata,
   /// The LSP client that this LSP server is connected to.
-  pub(crate) client: Client,
+  pub client: Client,
   /// Configuration information.
-  pub(crate) config: Config,
+  pub config: Config,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
-  pub(crate) documents: Documents,
+  pub documents: Documents,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -108,11 +108,11 @@ pub(crate) struct Inner {
   /// options.
   maybe_config_file: Option<ConfigFile>,
   /// An optional configuration for linter which has been taken from specified config file.
-  pub(crate) maybe_lint_config: Option<LintConfig>,
+  pub maybe_lint_config: Option<LintConfig>,
   /// An optional configuration for formatter which has been taken from specified config file.
   maybe_fmt_config: Option<FmtConfig>,
   /// An optional import map which is used to resolve modules.
-  pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -120,9 +120,9 @@ pub(crate) struct Inner {
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
-  pub(crate) ts_server: Arc<TsServer>,
+  pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
-  pub(crate) url_map: urls::LspUrlMap,
+  pub url_map: urls::LspUrlMap,
 }
 
 impl LanguageServer {
@@ -180,7 +180,7 @@ impl Inner {
 
   /// Searches assets and open documents which might be performed asynchronously,
   /// hydrating in memory caches for subsequent requests.
-  pub(crate) async fn get_asset_or_document(
+  pub async fn get_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<AssetOrDocument> {
@@ -200,7 +200,7 @@ impl Inner {
 
   /// Searches assets and open documents which might be performed asynchronously,
   /// hydrating in memory caches for subsequent requests.
-  pub(crate) async fn get_maybe_asset_or_document(
+  pub async fn get_maybe_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<Option<AssetOrDocument>> {
@@ -223,7 +223,7 @@ impl Inner {
 
   /// Only searches already cached assets and documents. If
   /// the asset or document cannot be found an error is returned.
-  pub(crate) fn get_cached_asset_or_document(
+  pub fn get_cached_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<AssetOrDocument> {
@@ -242,7 +242,7 @@ impl Inner {
 
   /// Only searches already cached assets and documents. If
   /// the asset or document cannot be found, `None` is returned.
-  pub(crate) fn get_maybe_cached_asset_or_document(
+  pub fn get_maybe_cached_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<AssetOrDocument> {
@@ -257,7 +257,7 @@ impl Inner {
     }
   }
 
-  pub(crate) async fn get_navigation_tree(
+  pub async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<Arc<tsc::NavigationTree>, AnyError> {
@@ -384,7 +384,7 @@ impl Inner {
     Ok(())
   }
 
-  pub(crate) fn snapshot(&self) -> Arc<StateSnapshot> {
+  pub fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
