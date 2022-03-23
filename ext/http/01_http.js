@@ -237,7 +237,6 @@
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
 
-
         try {
           await core.opAsync(
             "op_http_write_headers",
@@ -355,10 +354,9 @@
           }
         }
       } finally {
-         const deleted = SetPrototypeDelete(httpConn.managedResources, streamRid);
-         if(deleted) {
-           core.close(streamRid)
-         }
+        if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
+          core.close(streamRid);
+        }
       }
     };
   }
