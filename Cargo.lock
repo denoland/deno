@@ -777,6 +777,7 @@ dependencies = [
  "http",
  "import_map",
  "jsonc-parser",
+ "lazy_static",
  "libc",
  "log",
  "lspower",

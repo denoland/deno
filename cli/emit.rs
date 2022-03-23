@@ -266,41 +266,37 @@ pub fn get_ts_config(
 /// Transform the graph into root specifiers that we can feed `tsc`. We have to
 /// provide the media type for root modules because `tsc` does not "resolve" the
 /// media type like other modules, as well as a root specifier needs any
-/// redirects resolved. If we aren't checking JavaScript, we need to include all
-/// the emittable files in the roots, so they get type checked and optionally
-/// emitted, otherwise they would be ignored if only imported into JavaScript.
+/// redirects resolved. We need to include all the emittable files in the roots,
+/// so they get type checked and optionally emitted, otherwise they would be
+/// ignored if only imported into JavaScript.
 fn get_tsc_roots(
-  roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: &GraphData,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
-  if !check_js {
-    graph_data
-      .entries()
-      .into_iter()
-      .filter_map(|(specifier, module_entry)| match module_entry {
-        ModuleEntry::Module { media_type, .. } => match &media_type {
-          MediaType::TypeScript
-          | MediaType::Tsx
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Jsx => Some((specifier.clone(), *media_type)),
-          _ => None,
-        },
-        _ => None,
-      })
-      .collect()
-  } else {
-    roots
-      .iter()
-      .filter_map(|(specifier, _)| match graph_data.get(specifier) {
-        Some(ModuleEntry::Module { media_type, .. }) => {
+  graph_data
+    .entries()
+    .into_iter()
+    .filter_map(|(specifier, module_entry)| match module_entry {
+      ModuleEntry::Module {
+        media_type,
+        ts_check,
+        ..
+      } => match &media_type {
+        MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Jsx => Some((specifier.clone(), *media_type)),
+        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
+          if check_js || *ts_check =>
+        {
           Some((specifier.clone(), *media_type))
         }
         _ => None,
-      })
-      .collect()
-  }
+      },
+      _ => None,
+    })
+    .collect()
 }
 
 /// A hashing function that takes the source code, version and optionally a
@@ -393,7 +389,7 @@ pub fn check_and_maybe_emit(
   ) {
     return Ok(Default::default());
   }
-  let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
+  let root_names = get_tsc_roots(&segment_graph_data, check_js);
   if options.log_checks {
     for (root, _) in roots {
       let root_str = root.to_string();
@@ -461,20 +457,25 @@ pub fn check_and_maybe_emit(
         // resolve it via the graph.
         let graph_data = graph_data.read();
         let specifier = graph_data.follow_redirect(&specifiers[0]);
-        let (source_bytes, media_type) = match graph_data.get(&specifier) {
-          Some(ModuleEntry::Module {
-            code, media_type, ..
-          }) => (code.as_bytes(), *media_type),
-          _ => {
-            log::debug!("skipping emit for {}", specifier);
-            continue;
-          }
-        };
+        let (source_bytes, media_type, ts_check) =
+          match graph_data.get(&specifier) {
+            Some(ModuleEntry::Module {
+              code,
+              media_type,
+              ts_check,
+              ..
+            }) => (code.as_bytes(), *media_type, *ts_check),
+            _ => {
+              log::debug!("skipping emit for {}", specifier);
+              continue;
+            }
+          };
         // Sometimes if `tsc` sees a CommonJS file or a JSON module, it will
         // _helpfully_ output it, which we don't really want to do unless
         // someone has enabled check_js.
         if matches!(media_type, MediaType::Json)
           || (!check_js
+            && !ts_check
             && matches!(
               media_type,
               MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
@@ -862,10 +863,13 @@ fn valid_emit(
   reload_exclusions: &HashSet<ModuleSpecifier>,
 ) -> bool {
   let config_bytes = ts_config.as_bytes();
-  let emit_js = ts_config.get_check_js();
+  let check_js = ts_config.get_check_js();
   for (specifier, module_entry) in graph_data.entries() {
     if let ModuleEntry::Module {
-      code, media_type, ..
+      code,
+      media_type,
+      ts_check,
+      ..
     } = module_entry
     {
       match media_type {
@@ -875,7 +879,7 @@ fn valid_emit(
         | MediaType::Tsx
         | MediaType::Jsx => {}
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-          if !emit_js {
+          if !check_js && !ts_check {
             continue;
           }
         }

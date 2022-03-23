@@ -13,11 +13,18 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+lazy_static! {
+  /// Matches the `@ts-check` pragma.
+  static ref TS_CHECK_RE: Regex = Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap();
+}
 
 pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
@@ -33,6 +40,8 @@ pub enum ModuleEntry {
     code: Arc<String>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
+    /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
+    ts_check: bool,
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
     checked_libs: HashSet<TypeLib>,
@@ -122,9 +131,20 @@ impl GraphData {
               }
             }
           }
+          let ts_check = match &media_type {
+            MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+              let parsed_source = module.maybe_parsed_source.as_ref().unwrap();
+              parsed_source
+                .get_leading_comments()
+                .iter()
+                .any(|c| TS_CHECK_RE.is_match(&c.text))
+            }
+            _ => false,
+          };
           let module_entry = ModuleEntry::Module {
             code,
             dependencies: module.dependencies.clone(),
+            ts_check,
             media_type,
             checked_libs: Default::default(),
             maybe_types,
