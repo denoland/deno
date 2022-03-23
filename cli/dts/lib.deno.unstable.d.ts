@@ -1296,6 +1296,22 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
+  export interface Listener extends AsyncIterable<Conn> {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Make the listener not block the event loop from finishing.
+     */
+    unref(): void;
+  }
+
   /** **UNSTABLE**: New API should be tested first.
    *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
