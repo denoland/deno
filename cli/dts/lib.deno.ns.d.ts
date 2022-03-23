@@ -2209,9 +2209,11 @@ declare namespace Deno {
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
     /**
-     * Stops watching the file system and closes the watcher resource.
+     * This method is automatically called when you break from the for-await
+     * loop on the watcher, and that stops watching the file system.
      *
-     * @deprecated Will be removed at 2.0.
+     * This method shouldn't be called explicitly from the user's code. You
+     * should use `.close()` method instead for stopping the watcher.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
