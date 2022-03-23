@@ -42,7 +42,6 @@
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeHas,
     SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
