@@ -7,9 +7,9 @@
   function listen(options) {
     if (options.transport === "unix") {
       const res = net.opListen(options);
-      return new Listener(res.rid, res.localAddr);
+      return new net.Listener(res.rid, res.localAddr);
     } else {
-      return net.listen(options, Listener);
+      return net.listen(options);
     }
   }
 
@@ -41,20 +41,9 @@
     }
   }
 
-  class Listener extends net.Listener {
-    ref() {
-      this[net.listenerRef]();
-    }
-
-    unref() {
-      this[net.listenerUnref]();
-    }
-  }
-
   window.__bootstrap.netUnstable = {
     connect,
     listenDatagram,
     listen,
-    Listener,
   };
 })(this);

@@ -160,7 +160,7 @@ impl TlsStream {
       .inner_mut()
       .tls
       .alpn_protocol()
-      .map(|s| ByteString(s.to_owned()))
+      .map(|s| s.to_owned().into())
   }
 }
 

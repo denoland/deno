@@ -141,3 +141,33 @@ macro_rules! impl_magic {
   };
 }
 pub(crate) use impl_magic;
+
+macro_rules! impl_wrapper {
+  ($i:item) => {
+    #[derive(
+      PartialEq,
+      Eq,
+      Clone,
+      Debug,
+      Default,
+      derive_more::Deref,
+      derive_more::DerefMut,
+      derive_more::AsRef,
+      derive_more::AsMut,
+      derive_more::From,
+    )]
+    #[as_mut(forward)]
+    #[as_ref(forward)]
+    #[from(forward)]
+    $i
+  };
+}
+pub(crate) use impl_wrapper;
+
+// macro_rules! magic_wrapper {
+//   (pub struct $t1:ident($t2:tt)) => {
+//     crate::magic::transl8::impl_wrapper!(pub struct $t1($t2););
+//     crate::magic::transl8::impl_magic!($t1);
+//   };
+// }
+// pub(crate) use magic_wrapper;
