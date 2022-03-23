@@ -13,7 +13,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -21,10 +21,10 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-lazy_static! {
-  /// Matches the `@ts-check` pragma.
-  static ref TS_CHECK_RE: Regex = Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap();
-}
+/// Matches the `@ts-check` pragma.
+static TS_CHECK_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap()
+});
 
 pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
