@@ -339,8 +339,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       _ => {
         // Regular struct
-        let obj = v8::Local::<v8::Object>::try_from(self.input)
-          .map_err(|_| Error::ExpectedObject)?;
+        let obj = self.input.try_into().or(Err(Error::ExpectedObject))?;
         visitor.visit_seq(StructAccess {
           fields,
           obj,
