@@ -4,9 +4,10 @@ use serde::Deserialize;
 
 use crate::error::{Error, Result};
 use crate::keys::{v8_struct_key, KeyCache};
+use crate::magic::transl8::FromV8;
+use crate::magic::transl8::{visit_magic, MagicType};
 use crate::payload::ValueType;
-
-use crate::magic;
+use crate::{magic, Buffer, ByteString, U16String};
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -131,23 +132,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::Object => self.deserialize_map(visitor),
       // Map to Vec<u8> when deserialized via deserialize_any
       // e.g: for untagged enums or StringOrBuffer
-      ValueType::ArrayBufferView => {
-        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
-          .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_from((
-              &mut *self.scope,
-              view,
-            ))
-          })
-          .map_err(|_| Error::ExpectedBuffer)
-          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
-      }
-      ValueType::ArrayBuffer => {
-        v8::Local::<v8::ArrayBuffer>::try_from(self.input)
-          .and_then(|buffer| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_from(buffer)
-          })
-          .map_err(|_| Error::ExpectedBuffer)
+      ValueType::ArrayBufferView | ValueType::ArrayBuffer => {
+        magic::zero_copy_buf::ZeroCopyBuf::from_v8(&mut *self.scope, self.input)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
     }
@@ -338,71 +324,31 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    // Magic for serde_v8::magic::Value, to passthrough v8::Value
-    // TODO: ensure this is cross-platform and there's no alternative
-    if name == magic::NAME {
-      let mv = magic::Value {
-        v8_value: self.input,
-      };
-      let hack: u64 = unsafe { std::mem::transmute(mv) };
-      return visitor.visit_u64(hack);
-    }
-
-    // Magic Buffer
-    if name == magic::buffer::BUF_NAME {
-      let zero_copy_buf = match self.input.is_array_buffer() {
-        // ArrayBuffer
-        true => v8::Local::<v8::ArrayBuffer>::try_from(self.input)
-          .and_then(magic::zero_copy_buf::ZeroCopyBuf::try_from),
-        // maybe ArrayBufferView
-        false => v8::Local::<v8::ArrayBufferView>::try_from(self.input)
-          .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_from((
-              &mut *self.scope,
-              view,
-            ))
-          }),
+    match name {
+      Buffer::MAGIC_NAME => {
+        visit_magic(visitor, Buffer::from_v8(self.scope, self.input)?)
       }
-      .map_err(|_| Error::ExpectedBuffer)?;
-      let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
-      return visitor.visit_bytes(&data);
-    }
-
-    // Magic ByteString
-    if name == magic::bytestring::NAME {
-      let v8str = v8::Local::<v8::String>::try_from(self.input)
-        .map_err(|_| Error::ExpectedString)?;
-      if !v8str.contains_only_onebyte() {
-        return Err(Error::ExpectedLatin1);
+      ByteString::MAGIC_NAME => {
+        visit_magic(visitor, ByteString::from_v8(self.scope, self.input)?)
       }
-      let len = v8str.length();
-      let mut buffer = Vec::with_capacity(len);
-      #[allow(clippy::uninit_vec)]
-      unsafe {
-        buffer.set_len(len);
+      U16String::MAGIC_NAME => {
+        visit_magic(visitor, U16String::from_v8(self.scope, self.input)?)
       }
-      let written = v8str.write_one_byte(
-        self.scope,
-        &mut buffer,
-        0,
-        v8::WriteOptions::NO_NULL_TERMINATION,
-      );
-      assert!(written == len);
-      return visitor.visit_byte_buf(buffer);
+      magic::Value::MAGIC_NAME => {
+        visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
+      }
+      _ => {
+        // Regular struct
+        let obj = self.input.try_into().or(Err(Error::ExpectedObject))?;
+        visitor.visit_seq(StructAccess {
+          fields,
+          obj,
+          pos: 0,
+          scope: self.scope,
+          _cache: None,
+        })
+      }
     }
-
-    // Regular struct
-    let obj = v8::Local::<v8::Object>::try_from(self.input)
-      .map_err(|_| Error::ExpectedObject)?;
-    let struct_access = StructAccess {
-      fields,
-      obj,
-      pos: 0,
-      scope: self.scope,
-      _cache: None,
-    };
-
-    visitor.visit_seq(struct_access)
   }
 
   /// To be compatible with `serde-json`, we expect enums to be:
