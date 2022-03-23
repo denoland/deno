@@ -486,13 +486,6 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  namespace test {
-    /**
-     * After the test of the module, registered function will be called.
-     */
-    export function teardown(fn: () => void | Promise<void>): void;
-  }
-
   export const env: {
     /** Retrieve the value of an environment variable. Returns `undefined` if that
      * key doesn't exist.

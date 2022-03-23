@@ -985,8 +985,6 @@
       reportTestResult(description, result, elapsed);
     }
 
-    if (teardownFn) await teardownFn();
-
     globalThis.console = originalConsole;
   }
 
@@ -1423,12 +1421,6 @@
   function getOrDefault(value, defaultValue) {
     return value == null ? defaultValue : value;
   }
-
-  let teardownFn;
-  function teardown(fn) {
-    teardownFn = fn;
-  }
-  test.teardown = teardown;
 
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
