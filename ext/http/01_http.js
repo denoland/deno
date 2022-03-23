@@ -39,7 +39,6 @@
     ArrayPrototypeSome,
     Error,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -183,10 +182,7 @@
   ) {
     return async function respondWith(resp) {
       try {
-        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-          resp = await resp;
-        }
-
+        resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
