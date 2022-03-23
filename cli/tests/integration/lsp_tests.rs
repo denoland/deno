@@ -38,7 +38,7 @@ fn load_fixture_str(path: &str) -> String {
 
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", load_fixture(init_path))
     .unwrap();
@@ -247,7 +247,7 @@ fn lsp_init_tsconfig() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -290,7 +290,7 @@ fn lsp_tsconfig_types() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -350,7 +350,7 @@ fn lsp_triple_slash_types() {
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -397,7 +397,7 @@ fn lsp_import_map() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -516,7 +516,7 @@ fn lsp_import_map_config_file() {
   .unwrap();
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -725,7 +725,7 @@ fn lsp_import_map_import_completions() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -1085,7 +1085,7 @@ fn lsp_workspace_enable_paths() {
   }]);
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -2240,7 +2240,7 @@ fn lsp_format_exclude_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -2292,7 +2292,7 @@ fn lsp_format_exclude_default_config() {
   params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -3824,7 +3824,7 @@ fn lsp_cache_location() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -3945,7 +3945,7 @@ fn lsp_tls_cert() {
   params.root_uri = Some(Url::from_file_path(testdata_path()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -4622,7 +4622,7 @@ fn lsp_format_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5101,7 +5101,7 @@ fn lsp_lint_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5134,7 +5134,7 @@ fn lsp_lint_exclude_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5300,7 +5300,7 @@ Deno.test({
   params.root_uri = Some(root_specifier);
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, None).unwrap();
+  let mut client = LspClient::new(&deno_exe, true).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
