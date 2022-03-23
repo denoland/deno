@@ -662,8 +662,6 @@ impl JsRuntime {
 
     let state = Self::state(self.v8_isolate());
 
-    // Note: create_blob() method must not be called from within a HandleScope.
-    // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
     self.inspector.take();
