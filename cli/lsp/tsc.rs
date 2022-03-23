@@ -124,7 +124,7 @@ impl TsServer {
     Self(tx)
   }
 
-  pub(crate) async fn request<R>(
+  pub async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -137,7 +137,7 @@ impl TsServer {
       .await
   }
 
-  pub(crate) async fn request_with_cancellation<R>(
+  pub async fn request_with_cancellation<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -282,7 +282,7 @@ impl Assets {
     self.assets.lock().get(k).cloned()
   }
 
-  pub(crate) async fn get(
+  pub async fn get(
     &self,
     specifier: &ModuleSpecifier,
     // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
@@ -774,7 +774,7 @@ fn display_parts_to_string(
 }
 
 impl QuickInfo {
-  pub(crate) fn to_hover(
+  pub fn to_hover(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -829,7 +829,7 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub(crate) async fn to_link(
+  pub async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -927,7 +927,7 @@ pub struct NavigateToItem {
 }
 
 impl NavigateToItem {
-  pub(crate) async fn to_symbol_information(
+  pub async fn to_symbol_information(
     &self,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
@@ -1131,7 +1131,7 @@ pub struct ImplementationLocation {
 }
 
 impl ImplementationLocation {
-  pub(crate) fn to_location(
+  pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1148,7 +1148,7 @@ impl ImplementationLocation {
     }
   }
 
-  pub(crate) async fn to_link(
+  pub async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1175,7 +1175,7 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub(crate) async fn into_workspace_edit(
+  pub async fn into_workspace_edit(
     self,
     new_name: &str,
     language_server: &language_server::Inner,
@@ -1265,7 +1265,7 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub(crate) async fn to_definition(
+  pub async fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1345,7 +1345,7 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub(crate) async fn to_text_document_edit(
+  pub async fn to_text_document_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
@@ -1366,7 +1366,7 @@ impl FileTextChanges {
     })
   }
 
-  pub(crate) async fn to_text_document_change_ops(
+  pub async fn to_text_document_change_ops(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
@@ -1603,7 +1603,7 @@ pub struct RefactorEditInfo {
 }
 
 impl RefactorEditInfo {
-  pub(crate) async fn to_workspace_edit(
+  pub async fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
@@ -1668,7 +1668,7 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub(crate) fn to_location(
+  pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
     url_map: &LspUrlMap,
@@ -1700,7 +1700,7 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
-  pub(crate) async fn try_resolve_call_hierarchy_item(
+  pub async fn try_resolve_call_hierarchy_item(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
@@ -1718,7 +1718,7 @@ impl CallHierarchyItem {
     ))
   }
 
-  pub(crate) fn to_call_hierarchy_item(
+  pub fn to_call_hierarchy_item(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1801,7 +1801,7 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
-  pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
+  pub async fn try_resolve_call_hierarchy_incoming_call(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
@@ -1835,7 +1835,7 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
-  pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
+  pub async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1876,7 +1876,7 @@ pub struct CompletionEntryDetails {
 }
 
 impl CompletionEntryDetails {
-  pub(crate) fn as_completion_item(
+  pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
     language_server: &language_server::Inner,
@@ -2285,7 +2285,7 @@ pub struct SignatureHelpItems {
 }
 
 impl SignatureHelpItems {
-  pub(crate) fn into_signature_help(
+  pub fn into_signature_help(
     self,
     language_server: &language_server::Inner,
   ) -> lsp::SignatureHelp {
@@ -2314,7 +2314,7 @@ pub struct SignatureHelpItem {
 }
 
 impl SignatureHelpItem {
-  pub(crate) fn into_signature_information(
+  pub fn into_signature_information(
     self,
     language_server: &language_server::Inner,
   ) -> lsp::SignatureInformation {
@@ -2362,7 +2362,7 @@ pub struct SignatureHelpParameter {
 }
 
 impl SignatureHelpParameter {
-  pub(crate) fn into_parameter_information(
+  pub fn into_parameter_information(
     self,
     language_server: &language_server::Inner,
   ) -> lsp::ParameterInformation {
@@ -3252,7 +3252,7 @@ impl RequestMethod {
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
-pub(crate) fn request(
+pub fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
