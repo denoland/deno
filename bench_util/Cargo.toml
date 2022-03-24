@@ -10,7 +10,8 @@ readme = "README.md"
 repository = "https://github.com/denoland/deno"
 description = "Bench and profiling utilities for deno crates"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+path = "lib.rs"
 
 [dependencies]
 bencher = "0.1"
