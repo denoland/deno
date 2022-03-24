@@ -69,7 +69,7 @@ jobs:
 
       - name: Push changes
         if: ${{ github.event.inputs.real == 'true' }}
-        run: git push
+        run: git push -u origin HEAD
 
       - name: Create draft pull request
         if: ${{ github.event.inputs.real == 'true' }}
