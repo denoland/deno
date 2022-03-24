@@ -149,7 +149,7 @@ pub struct RunFlags {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ServeFlags {
-  pub port: String,
+  pub port: u32,
   pub host: String,
   pub script: String,
 }
@@ -1362,6 +1362,24 @@ fn serve_subcommand<'a>() -> App<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
+    .arg(
+      Arg::new("port")
+        .long("port")
+        .takes_value(true)
+        .required(false)
+        .help("Port to serve on, defaults to 8080")
+        .validator(|val: &str| match val.parse::<u32>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("port should be a positive integer".to_string()),
+        }),
+    )
+    .arg(
+      Arg::new("host")
+        .long("host")
+        .takes_value(true)
+        .required(false)
+        .help("Hostname to serve on, defaults to 0.0.0.0"),
+    )
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
     .about("Execute a server")
@@ -2410,9 +2428,26 @@ fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn serve_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let script = matches.value_of("script_arg").unwrap().to_string();
-  let port = "8080".to_string();
-  let host = "0.0.0.0".to_string();
+  let mut script: Vec<String> = matches
+    .values_of("script_arg")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  assert!(!script.is_empty());
+  let script_args = script.split_off(1);
+  let script = script[0].to_string();
+  for v in script_args {
+    flags.argv.push(v);
+  }
+
+  let port = match matches.value_of("port") {
+    Some(p) => p.parse::<u32>().unwrap(),
+    None => 8080,
+  };
+  let host = match matches.value_of("host") {
+    Some(h) => h.to_string(),
+    None => "0.0.0.0".to_string(),
+  };
   flags.subcommand = DenoSubcommand::Serve(ServeFlags { port, host, script });
 }
 
@@ -5382,9 +5417,34 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Serve(ServeFlags {
           script: "server.ts".to_string(),
-          port: "8080".to_string(),
+          port: 8080,
           host: "0.0.0.0".into(),
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "4000",
+      "--host",
+      "127.0.0.1",
+      "server.ts",
+      "foo",
+      "bar",
+      "fizz"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags {
+          script: "server.ts".to_string(),
+          port: 4000,
+          host: "127.0.0.1".into(),
+        }),
+        argv: svec!["foo", "bar", "fizz"],
         ..Flags::default()
       }
     );

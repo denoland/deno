@@ -1322,13 +1322,32 @@ async fn serve_command(
   let ps = ProcState::build(Arc::new(flags)).await?;
 
   let resolved_specifier = resolve_url_or_path(&serve_flags.script)?;
-  let source = vec![
-    format!(r#"import handler from "{}";"#, resolved_specifier),
-    r#"import { serve } from "https://deno.land/std@0.130.0/http/server.ts";"#.to_string(),
-    r#"const p = serve(handler, { port: 8080, hostname: "0.0.0.0", onError: (e) => { console.log(e); return new Response((e as any).toString(), { status: 500 }); } });"#.to_string(),
-    r#"console.log("Listening on http://0.0.0.0:8080");"#.to_string(),
-    r#"await p;"#.to_string(),
-  ];
+  let source = format!(
+    r#"
+import * as handler from "{}";
+import {{ serve }} from "https://deno.land/std@0.130.0/http/server.ts";
+
+if (!("default" in handler)) {{
+  throw new Error("handler file is missing a default export");
+}}
+
+const p = serve(handler.default, {{ 
+  port: {}, 
+  hostname: "{}", 
+  onError: (e) => {{ 
+    console.log(e); 
+    return new Response((e as any).toString(), {{ status: 500 }}); 
+  }} 
+}});
+console.log("Listening on http://{}:{}");
+await p;
+  "#,
+    resolved_specifier,
+    serve_flags.port,
+    serve_flags.host,
+    serve_flags.host,
+    serve_flags.port
+  );
 
   let specifier = resolve_url_or_path("./$deno$serve.ts").unwrap();
 
@@ -1336,7 +1355,7 @@ async fn serve_command(
     local: "".into(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: Arc::new(source.join("\n")),
+    source: Arc::new(source),
     specifier: specifier.clone(),
     maybe_headers: None,
   };
@@ -1348,7 +1367,7 @@ async fn serve_command(
 
   worker.execute_main_module(&specifier).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(false).await?;
+  worker.run_event_loop(true).await?;
   worker.dispatch_unload_event(&located_script_name!())?;
 
   Ok(0)
