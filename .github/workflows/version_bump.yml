@@ -67,12 +67,9 @@ jobs:
       # - name: Dry publish
       #   run: ./tools/release/02_publish_crates.ts --dry
 
-      - name: Push changes
-        if: ${{ github.event.inputs.real == 'true' }}
-        run: git push -u origin HEAD
-
       - name: Create draft pull request
         if: ${{ github.event.inputs.real == 'true' }}
         uses: peter-evans/create-pull-request@v3
         with:
+          base: ${{ github.ref }}
           draft: true
