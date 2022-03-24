@@ -122,7 +122,7 @@ declare namespace Deno {
      * If set to `true`, the global `net` permission will be requested.
      * If set to `false`, the global `net` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     env?: "inherit" | boolean | string[];
 
@@ -131,7 +131,7 @@ declare namespace Deno {
      * If set to `true`, the global `hrtime` permission will be requested.
      * If set to `false`, the global `hrtime` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     hrtime?: "inherit" | boolean;
 
@@ -142,7 +142,7 @@ declare namespace Deno {
      * if set to `string[]`, the `net` permission will be requested with the
      * specified host strings with the format `"<host>[:<port>]`.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      *
      * Examples:
      *
@@ -213,7 +213,7 @@ declare namespace Deno {
      * If set to `true`, the global `ffi` permission will be requested.
      * If set to `false`, the global `ffi` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     ffi?: "inherit" | boolean | Array<string | URL>;
 
@@ -224,7 +224,7 @@ declare namespace Deno {
      * If set to `Array<string | URL>`, the `read` permission will be requested with the
      * specified file paths.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     read?: "inherit" | boolean | Array<string | URL>;
 
@@ -233,7 +233,7 @@ declare namespace Deno {
      * If set to `true`, the global `run` permission will be requested.
      * If set to `false`, the global `run` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     run?: "inherit" | boolean | Array<string | URL>;
 
@@ -244,7 +244,7 @@ declare namespace Deno {
      * If set to `Array<string | URL>`, the `write` permission will be requested with the
      * specified file paths.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     write?: "inherit" | boolean | Array<string | URL>;
   }

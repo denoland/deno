@@ -23,7 +23,7 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub(crate) type MaybeImportsResult =
+pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
 /// The transpile options that are significant out of a user provided tsconfig

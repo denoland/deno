@@ -36,7 +36,7 @@ use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-pub(crate) type SnapshotForDiagnostics =
+pub type SnapshotForDiagnostics =
   (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
@@ -137,7 +137,7 @@ impl TsDiagnosticsStore {
 }
 
 #[derive(Debug)]
-pub(crate) struct DiagnosticsServer {
+pub struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<SnapshotForDiagnostics>>,
   ts_diagnostics: TsDiagnosticsStore,
   client: Client,
@@ -160,7 +160,7 @@ impl DiagnosticsServer {
     }
   }
 
-  pub(crate) fn get_ts_diagnostics(
+  pub fn get_ts_diagnostics(
     &self,
     specifier: &ModuleSpecifier,
     document_version: Option<i32>,
@@ -168,16 +168,16 @@ impl DiagnosticsServer {
     self.ts_diagnostics.get(specifier, document_version)
   }
 
-  pub(crate) fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
+  pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
     self.ts_diagnostics.invalidate(specifiers);
   }
 
-  pub(crate) fn invalidate_all(&self) {
+  pub fn invalidate_all(&self) {
     self.ts_diagnostics.invalidate_all();
   }
 
   #[allow(unused_must_use)]
-  pub(crate) fn start(&mut self) {
+  pub fn start(&mut self) {
     let (tx, mut rx) = mpsc::unbounded_channel::<SnapshotForDiagnostics>();
     self.channel = Some(tx);
     let client = self.client.clone();
@@ -320,7 +320,7 @@ impl DiagnosticsServer {
     });
   }
 
-  pub(crate) fn update(
+  pub fn update(
     &self,
     message: SnapshotForDiagnostics,
   ) -> Result<(), AnyError> {
@@ -573,7 +573,7 @@ struct DiagnosticDataRedirect {
 }
 
 /// An enum which represents diagnostic errors which originate from Deno itself.
-pub(crate) enum DenoDiagnostic {
+pub enum DenoDiagnostic {
   /// A `x-deno-warn` is associated with the specifier and should be displayed
   /// as a warning to the user.
   DenoWarn(String),
@@ -627,7 +627,7 @@ impl DenoDiagnostic {
 
   /// A "static" method which for a diagnostic that originated from the
   /// structure returns a code action which can resolve the diagnostic.
-  pub(crate) fn get_code_action(
+  pub fn get_code_action(
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<lsp::CodeAction, AnyError> {
@@ -713,7 +713,7 @@ impl DenoDiagnostic {
 
   /// Given a reference to the code from an LSP diagnostic, determine if the
   /// diagnostic is fixable or not
-  pub(crate) fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
+  pub fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
     if let Some(lsp::NumberOrString::String(code)) = code {
       matches!(
         code.as_str(),
@@ -726,10 +726,7 @@ impl DenoDiagnostic {
 
   /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
   /// provided.
-  pub(crate) fn to_lsp_diagnostic(
-    &self,
-    range: &lsp::Range,
-  ) -> lsp::Diagnostic {
+  pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
@@ -845,7 +842,8 @@ async fn generate_deps_diagnostics(
       break;
     }
     let mut diagnostics = Vec::new();
-    if config.specifier_enabled(document.specifier()) {
+    let specifier = document.specifier();
+    if config.specifier_enabled(specifier) {
       for (_, dependency) in document.dependencies() {
         diagnose_dependency(
           &mut diagnostics,
@@ -866,7 +864,7 @@ async fn generate_deps_diagnostics(
       }
     }
     diagnostics_vec.push((
-      document.specifier().clone(),
+      specifier.clone(),
       document.maybe_lsp_version(),
       diagnostics,
     ));
@@ -985,6 +983,7 @@ let c: number = "a";
           specifier.clone(),
           SpecifierSettings {
             enable: false,
+            enable_paths: Vec::new(),
             code_lens: Default::default(),
           },
         ),

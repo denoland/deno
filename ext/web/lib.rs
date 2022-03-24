@@ -9,14 +9,14 @@ use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::U16String;
 use deno_core::ZeroCopyBuf;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -84,58 +84,31 @@ pub fn init<P: TimersPermission + 'static>(
       "15_performance.js",
     ))
     .ops(vec![
-      ("op_base64_decode", op_sync(op_base64_decode)),
-      ("op_base64_encode", op_sync(op_base64_encode)),
-      ("op_base64_atob", op_sync(op_base64_atob)),
-      ("op_base64_btoa", op_sync(op_base64_btoa)),
-      (
-        "op_encoding_normalize_label",
-        op_sync(op_encoding_normalize_label),
-      ),
-      ("op_encoding_new_decoder", op_sync(op_encoding_new_decoder)),
-      ("op_encoding_decode", op_sync(op_encoding_decode)),
-      ("op_encoding_encode_into", op_sync(op_encoding_encode_into)),
-      ("op_blob_create_part", op_sync(op_blob_create_part)),
-      ("op_blob_slice_part", op_sync(op_blob_slice_part)),
-      ("op_blob_read_part", op_async(op_blob_read_part)),
-      ("op_blob_remove_part", op_sync(op_blob_remove_part)),
-      (
-        "op_blob_create_object_url",
-        op_sync(op_blob_create_object_url),
-      ),
-      (
-        "op_blob_revoke_object_url",
-        op_sync(op_blob_revoke_object_url),
-      ),
-      ("op_blob_from_object_url", op_sync(op_blob_from_object_url)),
-      (
-        "op_message_port_create_entangled",
-        op_sync(op_message_port_create_entangled),
-      ),
-      (
-        "op_message_port_post_message",
-        op_sync(op_message_port_post_message),
-      ),
-      (
-        "op_message_port_recv_message",
-        op_async(op_message_port_recv_message),
-      ),
-      (
-        "op_compression_new",
-        op_sync(compression::op_compression_new),
-      ),
-      (
-        "op_compression_write",
-        op_sync(compression::op_compression_write),
-      ),
-      (
-        "op_compression_finish",
-        op_sync(compression::op_compression_finish),
-      ),
-      ("op_now", op_sync(op_now::<P>)),
-      ("op_timer_handle", op_sync(op_timer_handle)),
-      ("op_sleep", op_async(op_sleep)),
-      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
+      op_base64_decode::decl(),
+      op_base64_encode::decl(),
+      op_base64_atob::decl(),
+      op_base64_btoa::decl(),
+      op_encoding_normalize_label::decl(),
+      op_encoding_new_decoder::decl(),
+      op_encoding_decode::decl(),
+      op_encoding_encode_into::decl(),
+      op_blob_create_part::decl(),
+      op_blob_slice_part::decl(),
+      op_blob_read_part::decl(),
+      op_blob_remove_part::decl(),
+      op_blob_create_object_url::decl(),
+      op_blob_revoke_object_url::decl(),
+      op_blob_from_object_url::decl(),
+      op_message_port_create_entangled::decl(),
+      op_message_port_post_message::decl(),
+      op_message_port_recv_message::decl(),
+      compression::op_compression_new::decl(),
+      compression::op_compression_write::decl(),
+      compression::op_compression_finish::decl(),
+      op_now::decl::<P>(),
+      op_timer_handle::decl(),
+      op_sleep::decl(),
+      op_sleep_sync::decl::<P>(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -148,21 +121,15 @@ pub fn init<P: TimersPermission + 'static>(
     .build()
 }
 
-fn op_base64_decode(
-  _: &mut OpState,
-  input: String,
-  _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
+#[op]
+fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
   let mut input = input.into_bytes();
   input.retain(|c| !c.is_ascii_whitespace());
   Ok(b64_decode(&input)?.into())
 }
 
-fn op_base64_atob(
-  _: &mut OpState,
-  s: ByteString,
-  _: (),
-) -> Result<ByteString, AnyError> {
+#[op]
+fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
   let mut s = s.0;
   s.retain(|c| !c.is_ascii_whitespace());
 
@@ -211,19 +178,13 @@ fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
   Ok(out)
 }
 
-fn op_base64_encode(
-  _: &mut OpState,
-  s: ZeroCopyBuf,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_base64_encode(s: ZeroCopyBuf) -> Result<String, AnyError> {
   Ok(b64_encode(&s))
 }
 
-fn op_base64_btoa(
-  _: &mut OpState,
-  s: ByteString,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_base64_btoa(s: ByteString) -> Result<String, AnyError> {
   Ok(b64_encode(&s))
 }
 
@@ -241,11 +202,8 @@ struct DecoderOptions {
   fatal: bool,
 }
 
-fn op_encoding_normalize_label(
-  _state: &mut OpState,
-  label: String,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
       range_error(format!(
@@ -256,10 +214,10 @@ fn op_encoding_normalize_label(
   Ok(encoding.name().to_lowercase())
 }
 
+#[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
   options: DecoderOptions,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let DecoderOptions {
     label,
@@ -295,11 +253,12 @@ struct DecodeOptions {
   stream: bool,
 }
 
+#[op]
 fn op_encoding_decode(
   state: &mut OpState,
   data: ZeroCopyBuf,
   options: DecodeOptions,
-) -> Result<String, AnyError> {
+) -> Result<U16String, AnyError> {
   let DecodeOptions { rid, stream } = options;
 
   let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
@@ -307,23 +266,20 @@ fn op_encoding_decode(
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
 
-  let max_buffer_length = if fatal {
-    decoder
-      .max_utf8_buffer_length_without_replacement(data.len())
-      .ok_or_else(|| range_error("Value too large to decode."))?
-  } else {
-    decoder
-      .max_utf8_buffer_length(data.len())
-      .ok_or_else(|| range_error("Value too large to decode."))?
-  };
+  let max_buffer_length = decoder
+    .max_utf16_buffer_length(data.len())
+    .ok_or_else(|| range_error("Value too large to decode."))?;
 
-  let mut output = String::with_capacity(max_buffer_length);
+  let mut output = U16String::with_zeroes(max_buffer_length);
 
   if fatal {
-    let (result, _) =
-      decoder.decode_to_string_without_replacement(&data, &mut output, !stream);
+    let (result, _, written) =
+      decoder.decode_to_utf16_without_replacement(&data, &mut output, !stream);
     match result {
-      DecoderResult::InputEmpty => Ok(output),
+      DecoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output)
+      }
       DecoderResult::OutputFull => {
         Err(range_error("Provided buffer too small."))
       }
@@ -332,9 +288,13 @@ fn op_encoding_decode(
       }
     }
   } else {
-    let (result, _, _) = decoder.decode_to_string(&data, &mut output, !stream);
+    let (result, _, written, _) =
+      decoder.decode_to_utf16(&data, &mut output, !stream);
     match result {
-      CoderResult::InputEmpty => Ok(output),
+      CoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output)
+      }
       CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
     }
   }
@@ -358,8 +318,8 @@ struct EncodeIntoResult {
   written: usize,
 }
 
+#[op]
 fn op_encoding_encode_into(
-  _state: &mut OpState,
   input: String,
   mut buffer: ZeroCopyBuf,
 ) -> Result<EncodeIntoResult, AnyError> {

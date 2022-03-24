@@ -134,7 +134,7 @@ impl HttpCache {
     })
   }
 
-  pub(crate) fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
+  pub fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
     Some(self.location.join(url_to_filename(url)?))
   }
 

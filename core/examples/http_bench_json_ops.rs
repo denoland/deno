@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
+use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -16,6 +17,11 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+
+// This is a hack to make the `#[op]` macro work with
+// deno_core examples.
+// You can remove this:
+use deno_core::*;
 
 struct Logger;
 
@@ -119,10 +125,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let ext = deno_core::Extension::builder()
-    .ops(vec![
-      ("listen", deno_core::op_sync(op_listen)),
-      ("accept", deno_core::op_async(op_accept)),
-    ])
+    .ops(vec![op_listen::decl(), op_accept::decl()])
     .build();
 
   JsRuntime::new(deno_core::RuntimeOptions {
@@ -131,7 +134,8 @@ fn create_js_runtime() -> JsRuntime {
   })
 }
 
-fn op_listen(state: &mut OpState, _: (), _: ()) -> Result<ResourceId, Error> {
+#[op]
+fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
@@ -141,10 +145,10 @@ fn op_listen(state: &mut OpState, _: (), _: ()) -> Result<ResourceId, Error> {
   Ok(rid)
 }
 
+#[op]
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<ResourceId, Error> {
   log::debug!("accept rid={}", rid);
 
