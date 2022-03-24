@@ -57,6 +57,7 @@ use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
+use crate::flags::ServeFlags;
 use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
@@ -1314,6 +1315,45 @@ async fn vendor_command(
   Ok(0)
 }
 
+async fn serve_command(
+  flags: Flags,
+  serve_flags: ServeFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(Arc::new(flags)).await?;
+
+  let resolved_specifier = resolve_url_or_path(&serve_flags.script)?;
+  let source = vec![
+    format!(r#"import handler from "{}";"#, resolved_specifier),
+    r#"import { serve } from "https://deno.land/std@0.130.0/http/server.ts";"#.to_string(),
+    r#"const p = serve(handler, { port: 8080, hostname: "0.0.0.0", onError: (e) => { console.log(e); return new Response((e as any).toString(), { status: 500 }); } });"#.to_string(),
+    r#"console.log("Listening on http://0.0.0.0:8080");"#.to_string(),
+    r#"await p;"#.to_string(),
+  ];
+
+  let specifier = resolve_url_or_path("./$deno$serve.ts").unwrap();
+
+  let file = File {
+    local: "".into(),
+    maybe_types: None,
+    media_type: MediaType::TypeScript,
+    source: Arc::new(source.join("\n")),
+    specifier: specifier.clone(),
+    maybe_headers: None,
+  };
+  ps.file_fetcher.insert_cached(file.clone());
+
+  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+  let mut worker =
+    create_main_worker(&ps, specifier.clone(), permissions, vec![]);
+
+  worker.execute_main_module(&specifier).await?;
+  worker.dispatch_load_event(&located_script_name!())?;
+  worker.run_event_loop(false).await?;
+  worker.dispatch_unload_event(&located_script_name!())?;
+
+  Ok(0)
+}
+
 fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
@@ -1387,6 +1427,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Task(task_flags) => {
       task_command(flags, task_flags).boxed_local()
+    }
+    DenoSubcommand::Serve(serve_flags) => {
+      serve_command(flags, serve_flags).boxed_local()
     }
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()

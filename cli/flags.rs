@@ -148,6 +148,13 @@ pub struct RunFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct ServeFlags {
+  pub port: String,
+  pub host: String,
+  pub script: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TaskFlags {
   pub task: String,
 }
@@ -203,6 +210,7 @@ pub enum DenoSubcommand {
   Run(RunFlags),
   Task(TaskFlags),
   Test(TestFlags),
+  Serve(ServeFlags),
   Types,
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
@@ -513,6 +521,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("run", m)) => run_parse(&mut flags, m),
     Some(("task", m)) => task_parse(&mut flags, m),
     Some(("test", m)) => test_parse(&mut flags, m),
+    Some(("serve", m)) => serve_parse(&mut flags, m),
     Some(("types", m)) => types_parse(&mut flags, m),
     Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
     Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
@@ -586,6 +595,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
+    .subcommand(serve_subcommand())
     .subcommand(task_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
@@ -1342,6 +1352,19 @@ Deno allows specifying the filename '-' to read the file from stdin.
 
   curl https://deno.land/std/examples/welcome.ts | deno run -",
     )
+}
+
+fn serve_subcommand<'a>() -> App<'a> {
+  runtime_args(App::new("serve"), true, true)
+    .arg(
+      watch_arg(true)
+        .conflicts_with("inspect")
+        .conflicts_with("inspect-brk"),
+    )
+    .arg(no_clear_screen_arg())
+    .setting(AppSettings::TrailingVarArg)
+    .arg(script_arg().required(true))
+    .about("Execute a server")
 }
 
 fn task_subcommand<'a>() -> App<'a> {
@@ -2382,6 +2405,15 @@ fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   flags.subcommand = DenoSubcommand::Task(TaskFlags { task: task_name });
+}
+
+fn serve_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  runtime_args_parse(flags, matches, true, true);
+
+  let script = matches.value_of("script_arg").unwrap().to_string();
+  let port = "8080".to_string();
+  let host = "0.0.0.0".to_string();
+  flags.subcommand = DenoSubcommand::Serve(ServeFlags { port, host, script });
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5337,6 +5369,22 @@ mod tests {
         allow_net: Some(vec![]),
         no_prompt: true,
         argv: svec!["arg1", "arg2"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn serve() {
+    let r = flags_from_vec(svec!["deno", "serve", "server.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags {
+          script: "server.ts".to_string(),
+          port: "8080".to_string(),
+          host: "0.0.0.0".into(),
+        }),
         ..Flags::default()
       }
     );
