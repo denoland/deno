@@ -20,7 +20,9 @@ on:
 jobs:
   build:
     name: version bump
-    runs-on: ubuntu-20.04-xl
+    # todo: add back
+    # runs-on: ubuntu-20.04-xl
+    runs-on: ubuntu-latest
     timeout-minutes: 90
 
     env:
