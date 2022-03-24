@@ -1941,11 +1941,18 @@ modules will be ignored.",
 fn check_arg<'a>() -> Arg<'a> {
   Arg::new("check")
     .long("check")
+    .takes_value(true)
+    .require_equals(true)
+    .min_values(0)
+    .value_name("CHECK_TYPE")
     .help("Type check modules")
     .long_help(
-      "Type checking of modules.
+      "Type check modules.
 Currently this is a default behavior to type check modules, but in future releases
-Deno will not automatically type check without the --check flag.",
+Deno will not automatically type check without the --check flag.
+
+If the value of '--check=all' is supplied, diagnostic errors from remote modules
+will be included.",
     )
 }
 
@@ -2780,6 +2787,17 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.has_check_flag = matches.is_present("check");
+  if let Some(cache_type) = matches.value_of("check") {
+    match cache_type {
+      "all" => flags.check = CheckFlag::All,
+      _ => debug!(
+        "invalid value for 'check' of '{}' using default",
+        cache_type
+      ),
+    }
+  } else if matches.is_present("check") {
+    flags.check = CheckFlag::Local;
+  }
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {

@@ -1172,8 +1172,9 @@ async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
-  if flags.check == CheckFlag::All && !flags.has_check_flag {
-    info!("{} In future releases deno run will not automatically type check without the --check flag.", colors::yellow("Warning"));
+  if !flags.has_check_flag && flags.check == CheckFlag::All {
+    info!("{} In future releases deno run will not automatically type check without the --check flag. 
+To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.", colors::yellow("Warning"));
   }
 
   // Read script content from stdin
@@ -1497,7 +1498,7 @@ pub fn main() {
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
-    let flags = match flags::flags_from_vec(args) {
+    let mut flags = match flags::flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
         if err.kind == clap::ErrorKind::DisplayHelp
@@ -1513,6 +1514,13 @@ pub fn main() {
     }
 
     logger::init(flags.log_level);
+
+    let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
+    if let Some(env_var) = future_check_env_var {
+      if env_var == "1" {
+        flags.check = CheckFlag::None;
+      }
+    }
 
     let exit_code = get_subcommand(flags).await;
 
