@@ -50,21 +50,21 @@ impl ZeroCopyBuf {
   }
 }
 
-pub(crate) fn to_ranged_buffer<'a, 's>(
+pub(crate) fn to_ranged_buffer<'s>(
   scope: &mut v8::HandleScope<'s>,
-  value: v8::Local<'a, v8::Value>,
-) -> Result<(v8::Local<'a, v8::ArrayBuffer>, Range<usize>), v8::DataError> {
+  value: v8::Local<v8::Value>,
+) -> Result<(v8::Local<'s, v8::ArrayBuffer>, Range<usize>), v8::DataError> {
   if value.is_array_buffer_view() {
     let view: v8::Local<v8::ArrayBufferView> = value.try_into()?;
     let (offset, len) = (view.byte_offset(), view.byte_length());
     let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
       expected: "view to have a buffer",
     })?;
-    let buffer = unsafe { std::mem::transmute(buffer) }; // lifetime hack
+    let buffer = v8::Local::new(scope, buffer); // recreate handle to avoid lifetime issues
     return Ok((buffer, offset..offset + len));
   }
   let b: v8::Local<v8::ArrayBuffer> = value.try_into()?;
-  let b = unsafe { std::mem::transmute(b) }; // lifetime hack
+  let b = v8::Local::new(scope, b); // recreate handle to avoid lifetime issues
   Ok((b, 0..b.byte_length()))
 }
 
