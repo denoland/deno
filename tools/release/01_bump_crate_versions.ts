@@ -16,6 +16,8 @@ if (Deno.args.some((a) => a === "--patch")) {
   await cliCrate.increment("patch");
 } else if (Deno.args.some((a) => a === "--minor")) {
   await cliCrate.increment("minor");
+} else if (Deno.args.some((a) => a === "--major")) {
+  await cliCrate.increment("major");
 } else {
   await cliCrate.promptAndIncrement();
 }

@@ -2,25 +2,26 @@ name: version_bump
 
 on: workflow_dispatch
 
+inputs:
+  releaseKind:
+    description: 'Kind of version bump'
+    default: 'patch'
+    type: choice
+    options:
+    - patch
+    - minor
+    - major
+    required: true
+  real:
+    description: 'Real release'
+    type: boolean
+    required: false
+
 jobs:
   build:
     name: version bump
     runs-on: ubuntu-20.04-xl
     timeout-minutes: 90
-
-    inputs:
-      releaseKind:
-        description: 'Kind of version bump'
-        default: 'patch'
-        type: choice
-        options:
-        - minor
-        - patch
-        required: true
-      real:
-        description: 'Real release'
-        type: boolean
-        required: false
 
     env:
       CARGO_TERM_COLOR: always
