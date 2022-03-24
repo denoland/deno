@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.65.0"
+version = "0.66.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -16,8 +16,8 @@ path = "lib.rs"
 [dependencies]
 bytes = "1.1.0"
 data-url = "0.1.0"
-deno_core = { version = "0.124.0", path = "../../core" }
-deno_tls = { version = "0.29.0", path = "../tls" }
+deno_core = { version = "0.125.0", path = "../../core" }
+deno_tls = { version = "0.30.0", path = "../tls" }
 dyn-clone = "1"
 http = "0.2.4"
 reqwest = { version = "0.11.10", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
