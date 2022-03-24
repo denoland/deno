@@ -54,7 +54,10 @@ jobs:
       - name: Commit changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./tools/release/commit_versions.ts
+        run: |
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git config --global user.name "${{ github.actor }}"
+          ./tools/release/commit_versions.ts
 
       - name: Dry publish
         run: ./tools/release/02_publish_crates.ts --dry
