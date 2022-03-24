@@ -48,24 +48,10 @@ jobs:
         with:
           deno-version: v1.19.3
 
-      - name: Store original branch name
-        shell: bash
-        # https://stackoverflow.com/a/58035262/188246
-        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-        id: original_branch
-
       - name: Run version bump
         run: |
           git remote add upstream https://github.com/denoland/deno
           ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
-
-      - name: Commit changes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git config user.name "${{ github.actor }}"
-          ./tools/release/02_commit_versions.ts
 
       # todo(https://github.com/rust-lang/cargo/issues/1169): enable
       # once cargo supports doing a dry publish for multiple
@@ -73,9 +59,12 @@ jobs:
       # - name: Dry publish
       #   run: ./tools/release/03_publish_crates.ts --dry
 
-      - name: Create draft pull request
+      - name: Create PR
         if: ${{ github.event.inputs.real == 'true' }}
-        uses: peter-evans/create-pull-request@v3
-        with:
-          base: ${{ steps.original_branch.outputs.branch }}
-          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          ./tools/release/02_create_pr.ts
