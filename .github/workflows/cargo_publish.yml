@@ -37,4 +37,6 @@ jobs:
         run: ./tools/release/02_publish_crates.ts --real
 
       - name: Create release tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./tools/release/create_release_tag.ts

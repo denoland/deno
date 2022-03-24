@@ -52,6 +52,8 @@ jobs:
         run: ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
 
       - name: Commit changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./tools/release/commit_versions.ts
 
       - name: Dry publish
