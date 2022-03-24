@@ -504,4 +504,4 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-pub(crate) type Result<T> = std::result::Result<T, AnyError>;
+pub type Result<T> = std::result::Result<T, AnyError>;

@@ -4,6 +4,8 @@ use std::cell::Cell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use super::transl8::FromV8;
+
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
 /// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
@@ -43,28 +45,33 @@ impl ZeroCopyBuf {
       }),
     }
   }
-}
 
-impl<'s> TryFrom<v8::Local<'s, v8::ArrayBuffer>> for ZeroCopyBuf {
-  type Error = v8::DataError;
-  fn try_from(buffer: v8::Local<v8::ArrayBuffer>) -> Result<Self, Self::Error> {
-    Self::from_buffer(buffer, 0, buffer.byte_length())
+  pub fn from_view(
+    scope: &mut v8::HandleScope,
+    view: v8::Local<v8::ArrayBufferView>,
+  ) -> Result<Self, v8::DataError> {
+    let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
+      expected: "view to have a buffer",
+    })?;
+    Self::from_buffer(buffer, view.byte_offset(), view.byte_length())
   }
 }
 
-// TODO(@AaronO): consider streamlining this as "ScopedValue" ?
-type ScopedView<'a, 'b, 's> = (
-  &'s mut v8::HandleScope<'a>,
-  v8::Local<'b, v8::ArrayBufferView>,
-);
-impl<'a, 'b, 's> TryFrom<ScopedView<'a, 'b, 's>> for ZeroCopyBuf {
-  type Error = v8::DataError;
-  fn try_from(
-    scoped_view: ScopedView<'a, 'b, 's>,
-  ) -> Result<Self, Self::Error> {
-    let (scope, view) = scoped_view;
-    let buffer = view.buffer(scope).unwrap();
-    Self::from_buffer(buffer, view.byte_offset(), view.byte_length())
+impl FromV8 for ZeroCopyBuf {
+  fn from_v8(
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, crate::Error> {
+    if value.is_array_buffer() {
+      value
+        .try_into()
+        .and_then(|b| Self::from_buffer(b, 0, b.byte_length()))
+    } else {
+      value
+        .try_into()
+        .and_then(|view| Self::from_view(scope, view))
+    }
+    .map_err(|_| crate::Error::ExpectedBuffer)
   }
 }
 

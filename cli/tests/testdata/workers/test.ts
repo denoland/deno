@@ -584,6 +584,68 @@ Deno.test("Worker with disabled permissions", async function () {
   worker.terminate();
 });
 
+Deno.test("Worker permissions are not inherited with empty permission object", async function () {
+  const worker = new Worker(
+    new URL("./permission_echo.js", import.meta.url).href,
+    {
+      type: "module",
+      deno: {
+        namespace: true,
+        permissions: {},
+      },
+    },
+  );
+
+  const promise = deferred();
+  worker.onmessage = (e) => {
+    promise.resolve(e.data);
+  };
+
+  worker.postMessage(null);
+  assertEquals(await promise, {
+    env: "prompt",
+    hrtime: "prompt",
+    net: "prompt",
+    ffi: "prompt",
+    read: "prompt",
+    run: "prompt",
+    write: "prompt",
+  });
+  worker.terminate();
+});
+
+Deno.test("Worker permissions are not inherited with single specified permission", async function () {
+  const worker = new Worker(
+    new URL("./permission_echo.js", import.meta.url).href,
+    {
+      type: "module",
+      deno: {
+        namespace: true,
+        permissions: {
+          net: true,
+        },
+      },
+    },
+  );
+
+  const promise = deferred();
+  worker.onmessage = (e) => {
+    promise.resolve(e.data);
+  };
+
+  worker.postMessage(null);
+  assertEquals(await promise, {
+    env: "prompt",
+    hrtime: "prompt",
+    net: "granted",
+    ffi: "prompt",
+    read: "prompt",
+    run: "prompt",
+    write: "prompt",
+  });
+  worker.terminate();
+});
+
 Deno.test("Worker with invalid permission arg", function () {
   assertThrows(
     () =>
@@ -593,7 +655,7 @@ Deno.test("Worker with invalid permission arg", function () {
         deno: { permissions: { env: "foo" } },
       }),
     TypeError,
-    'Error parsing args: (deno.permissions.env) invalid value: string "foo", expected "inherit" or boolean or string[]',
+    'Error parsing args at position 1: (deno.permissions.env) invalid value: string "foo", expected "inherit" or boolean or string[]',
   );
 });
 

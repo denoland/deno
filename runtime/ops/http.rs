@@ -20,6 +20,11 @@ use hyper::upgrade::Parts;
 use serde::Serialize;
 use tokio::net::TcpStream;
 
+#[cfg(unix)]
+use deno_net::io::UnixStreamResource;
+#[cfg(unix)]
+use tokio::net::UnixStream;
+
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![op_http_start::decl(), op_http_upgrade::decl()])
@@ -116,6 +121,24 @@ async fn op_http_upgrade(
           .borrow_mut()
           .resource_table
           .add(TcpStreamResource::new(tcp_stream.into_split())),
+        read_buf: read_buf.to_vec().into(),
+      });
+    }
+    Err(transport) => transport,
+  };
+  #[cfg(unix)]
+  let transport = match transport.downcast::<UnixStream>() {
+    Ok(Parts {
+      io: unix_stream,
+      read_buf,
+      ..
+    }) => {
+      return Ok(HttpUpgradeResult {
+        conn_type: "unix",
+        conn_rid: state
+          .borrow_mut()
+          .resource_table
+          .add(UnixStreamResource::new(unix_stream.into_split())),
         read_buf: read_buf.to_vec().into(),
       });
     }
