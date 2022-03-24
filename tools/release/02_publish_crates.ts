@@ -39,7 +39,7 @@ function parseIsReal() {
 
   // force the call to be explicit and provide one of these
   // so that it's obvious what's happening
-  if (!isDry || !isReal) {
+  if (!isDry && !isReal) {
     console.error("Please run with `--dry` or `--real`.");
     Deno.exit(1);
   }
