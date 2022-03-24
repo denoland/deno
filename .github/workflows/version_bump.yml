@@ -48,6 +48,12 @@ jobs:
         with:
           deno-version: v1.19.3
 
+      - name: Store original branch name
+        shell: bash
+        # https://stackoverflow.com/a/58035262/188246
+        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        id: original_branch
+
       - name: Run version bump
         run: |
           git remote add upstream https://github.com/denoland/deno
@@ -71,5 +77,5 @@ jobs:
         if: ${{ github.event.inputs.real == 'true' }}
         uses: peter-evans/create-pull-request@v3
         with:
-          base: ${{ github.ref }}
+          base: ${{ steps.original_branch.outputs.branch }}
           draft: true
