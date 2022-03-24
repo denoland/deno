@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-run=cargo,git
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { createOctoKit, getGitHubRepository } from "./deps.ts";
@@ -33,9 +33,11 @@ console.log(`Opened PR at ${openedPr.data.url}`);
 
 function getPrBody() {
   let text = `Bumped versions for ${cliCrate.version}`;
+
   const actor = Deno.env.get("GH_WORKFLOW_ACTOR");
   if (actor != null) {
     text += `\n\ncc @${actor}`;
   }
+
   return text;
 }
