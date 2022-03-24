@@ -59,13 +59,13 @@ jobs:
         run: |
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git config user.name "${{ github.actor }}"
-          ./tools/release/commit_versions.ts
+          ./tools/release/02_commit_versions.ts
 
       # todo(https://github.com/rust-lang/cargo/issues/1169): enable
       # once cargo supports doing a dry publish for multiple
       # unpublished packages
       # - name: Dry publish
-      #   run: ./tools/release/02_publish_crates.ts --dry
+      #   run: ./tools/release/03_publish_crates.ts --dry
 
       - name: Create draft pull request
         if: ${{ github.event.inputs.real == 'true' }}
