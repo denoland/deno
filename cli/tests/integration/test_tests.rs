@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use test_util as util;
@@ -97,6 +97,18 @@ itest!(markdown_windows {
   output: "test/markdown_windows.out",
 });
 
+itest!(markdown_full_block_names {
+  args: "test --doc --allow-all test/markdown_full_block_names.md",
+  exit_code: 1,
+  output: "test/markdown_full_block_names.out",
+});
+
+itest!(markdown_ignore_html_comment {
+  args: "test --doc --allow-all test/markdown_with_comment.md",
+  exit_code: 1,
+  output: "test/markdown_with_comment.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
@@ -146,7 +158,7 @@ itest!(allow_none {
 });
 
 itest!(ops_sanitizer_unstable {
-  args: "test --unstable test/ops_sanitizer_unstable.ts",
+  args: "test --unstable --trace-ops test/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_unstable.out",
 });
@@ -157,14 +169,32 @@ itest!(ops_sanitizer_timeout_failure {
 });
 
 itest!(ops_sanitizer_multiple_timeout_tests {
-  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  args: "test --trace-ops test/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_multiple_timeout_tests.out",
+});
+
+itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
+  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
+});
+
+itest!(ops_sanitizer_missing_details {
+  args: "test --allow-write --allow-read test/ops_sanitizer_missing_details.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_missing_details.out",
 });
 
 itest!(ops_sanitizer_nexttick {
   args: "test test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
+});
+
+itest!(resource_sanitizer {
+  args: "test --allow-read test/resource_sanitizer.ts",
+  exit_code: 1,
+  output: "test/resource_sanitizer.out",
 });
 
 itest!(exit_sanitizer {
@@ -222,37 +252,43 @@ itest!(aggregate_error {
 });
 
 itest!(steps_passing_steps {
-  args: "test --unstable test/steps/passing_steps.ts",
+  args: "test test/steps/passing_steps.ts",
   exit_code: 0,
   output: "test/steps/passing_steps.out",
 });
 
 itest!(steps_passing_steps_concurrent {
-  args: "test --unstable --jobs=2 test/steps/passing_steps.ts",
+  args: "test --jobs=2 test/steps/passing_steps.ts",
   exit_code: 0,
   output: "test/steps/passing_steps.out",
 });
 
 itest!(steps_failing_steps {
-  args: "test --unstable test/steps/failing_steps.ts",
+  args: "test test/steps/failing_steps.ts",
   exit_code: 1,
   output: "test/steps/failing_steps.out",
 });
 
 itest!(steps_ignored_steps {
-  args: "test --unstable test/steps/ignored_steps.ts",
+  args: "test test/steps/ignored_steps.ts",
   exit_code: 0,
   output: "test/steps/ignored_steps.out",
 });
 
 itest!(steps_invalid_usage {
-  args: "test --unstable test/steps/invalid_usage.ts",
+  args: "test test/steps/invalid_usage.ts",
   exit_code: 1,
   output: "test/steps/invalid_usage.out",
 });
 
-itest!(steps_no_unstable_flag {
-  args: "test test/steps/no_unstable_flag.ts",
+itest!(no_prompt_by_default {
+  args: "test test/no_prompt_by_default.ts",
   exit_code: 1,
-  output: "test/steps/no_unstable_flag.out",
+  output: "test/no_prompt_by_default.out",
+});
+
+itest!(no_prompt_with_denied_perms {
+  args: "test --allow-read test/no_prompt_with_denied_perms.ts",
+  exit_code: 1,
+  output: "test/no_prompt_with_denied_perms.out",
 });

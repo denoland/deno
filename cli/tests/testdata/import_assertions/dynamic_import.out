@@ -1,0 +1,2 @@
+[WILDCARD]
+Module { default: { a: "b", c: { d: 10 } } }

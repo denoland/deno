@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 ///!
 ///! Provides information about what capabilities that are supported by the
@@ -154,7 +154,7 @@ pub fn server_capabilities(
     workspace: Some(WorkspaceServerCapabilities {
       workspace_folders: Some(WorkspaceFoldersServerCapabilities {
         supported: Some(true),
-        change_notifications: None,
+        change_notifications: Some(OneOf::Left(true)),
       }),
       file_operations: None,
     }),

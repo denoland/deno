@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -91,7 +91,7 @@ impl Lockfile {
 }
 
 #[derive(Debug)]
-pub(crate) struct Locker(Option<Arc<Mutex<Lockfile>>>);
+pub struct Locker(Option<Arc<Mutex<Lockfile>>>);
 
 impl deno_graph::source::Locker for Locker {
   fn check_or_insert(
@@ -117,7 +117,7 @@ impl deno_graph::source::Locker for Locker {
   }
 }
 
-pub(crate) fn as_maybe_locker(
+pub fn as_maybe_locker(
   lockfile: Option<Arc<Mutex<Lockfile>>>,
 ) -> Option<Rc<RefCell<Box<dyn deno_graph::source::Locker>>>> {
   lockfile.as_ref().map(|lf| {

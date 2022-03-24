@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -504,4 +504,4 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-pub(crate) type Result<T> = std::result::Result<T, AnyError>;
+pub type Result<T> = std::result::Result<T, AnyError>;

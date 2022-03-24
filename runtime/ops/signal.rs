@@ -1,14 +1,17 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::Extension;
+#[cfg(unix)]
 use deno_core::OpState;
+#[cfg(unix)]
 use std::cell::RefCell;
+#[cfg(unix)]
 use std::rc::Rc;
 
 #[cfg(unix)]
@@ -31,9 +34,9 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_signal_bind", op_sync(op_signal_bind)),
-      ("op_signal_unbind", op_sync(op_signal_unbind)),
-      ("op_signal_poll", op_async(op_signal_poll)),
+      op_signal_bind::decl(),
+      op_signal_unbind::decl(),
+      op_signal_poll::decl(),
     ])
     .build()
 }
@@ -97,7 +100,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
     "SIGHUP" => Ok(1),
@@ -174,15 +177,20 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
 }
 
 #[cfg(unix)]
+#[op]
 fn op_signal_bind(
   state: &mut OpState,
   sig: String,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
-  super::check_unstable(state, "Deno.signal");
   let signo = signal_str_to_int(&sig)?;
+  if signal_hook_registry::FORBIDDEN.contains(&signo) {
+    return Err(type_error(format!(
+      "Binding to signal '{}' is not allowed",
+      sig
+    )));
+  }
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).unwrap()),
+    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo))?),
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);
@@ -190,13 +198,11 @@ fn op_signal_bind(
 }
 
 #[cfg(unix)]
+#[op]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<bool, AnyError> {
-  super::check_unstable2(&state, "Deno.signal");
-
   let resource = state
     .borrow_mut()
     .resource_table
@@ -211,39 +217,29 @@ async fn op_signal_poll(
 }
 
 #[cfg(unix)]
+#[op]
 pub fn op_signal_unbind(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.signal");
   state.resource_table.close(rid)?;
   Ok(())
 }
 
 #[cfg(not(unix))]
-pub fn op_signal_bind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+pub fn op_signal_bind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
-fn op_signal_unbind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+fn op_signal_unbind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
-async fn op_signal_poll(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+async fn op_signal_poll() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }

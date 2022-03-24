@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -60,6 +60,9 @@ declare namespace globalThis {
       declare function parseMimeType(input: string): MimeType | null;
       declare function essence(mimeType: MimeType): string;
       declare function serializeMimeType(mimeType: MimeType): string;
+      declare function extractMimeType(
+        headerValues: string[] | null,
+      ): MimeType | null;
     }
 
     declare var eventTarget: {

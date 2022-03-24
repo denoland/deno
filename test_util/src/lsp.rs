@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::new_deno_dir;
 
@@ -122,7 +122,16 @@ where
   R: de::DeserializeOwned,
 {
   let maybe_params = match maybe_params {
-    Some(params) => Some(serde_json::from_value(params)?),
+    Some(params) => {
+      Some(serde_json::from_value(params.clone()).map_err(|err| {
+        anyhow::anyhow!(
+          "Could not deserialize message '{}': {}\n\n{:?}",
+          method,
+          err,
+          params
+        )
+      })?)
+    }
     None => None,
   };
   Ok((method, maybe_params))
@@ -337,8 +346,20 @@ mod tests {
 
   #[test]
   fn test_read_message() {
-    let msg = b"content-length: 11\r\n\r\nhello world";
-    let mut reader = std::io::Cursor::new(msg);
-    assert_eq!(read_message(&mut reader).unwrap(), b"hello world");
+    let msg1 = b"content-length: 11\r\n\r\nhello world";
+    let mut reader1 = std::io::Cursor::new(msg1);
+    assert_eq!(read_message(&mut reader1).unwrap(), b"hello world");
+
+    let msg2 = b"content-length: 5\r\n\r\nhello world";
+    let mut reader2 = std::io::Cursor::new(msg2);
+    assert_eq!(read_message(&mut reader2).unwrap(), b"hello");
+  }
+
+  #[test]
+  #[should_panic(expected = "failed to fill whole buffer")]
+  fn test_invalid_read_message() {
+    let msg1 = b"content-length: 12\r\n\r\nhello world";
+    let mut reader1 = std::io::Cursor::new(msg1);
+    read_message(&mut reader1).unwrap();
   }
 }

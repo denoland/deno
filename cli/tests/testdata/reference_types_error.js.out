@@ -1,0 +1,2 @@
+error: Module not found "file:///[WILDCARD]/nonexistent.d.ts".
+    at file:///[WILDCARD]/reference_types_error.js:1:23

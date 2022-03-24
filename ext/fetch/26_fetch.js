@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -15,7 +15,9 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
-  const { errorReadableStream } = window.__bootstrap.streams;
+  const { BlobPrototype } = window.__bootstrap.file;
+  const { errorReadableStream, ReadableStreamPrototype } =
+    window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
     toInnerRequest,
@@ -27,21 +29,23 @@
     abortedNetworkError,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypePush,
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
+    ObjectPrototypeIsPrototypeOf,
     Promise,
     PromisePrototypeThen,
     PromisePrototypeCatch,
+    SafeArrayIterator,
     String,
     StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
     WeakMap,
     WeakMapPrototypeDelete,
     WeakMapPrototypeGet,
@@ -88,10 +92,7 @@
   function createResponseBodyStream(responseBodyRid, terminator) {
     function onAbort() {
       if (readable) {
-        errorReadableStream(
-          readable,
-          new DOMException("Ongoing fetch was aborted.", "AbortError"),
-        );
+        errorReadableStream(readable, terminator.reason);
       }
       core.tryClose(responseBodyRid);
     }
@@ -121,9 +122,7 @@
         } catch (err) {
           RESOURCE_REGISTRY.unregister(readable);
           if (terminator.aborted) {
-            controller.error(
-              new DOMException("Ongoing fetch was aborted.", "AbortError"),
-            );
+            controller.error(terminator.reason);
           } else {
             // There was an error while reading a chunk of the body, so we
             // error.
@@ -155,9 +154,7 @@
       }
 
       const body = new InnerBody(req.blobUrlEntry.stream());
-      terminator[abortSignal.add](() =>
-        body.error(new DOMException("Ongoing fetch was aborted.", "AbortError"))
-      );
+      terminator[abortSignal.add](() => body.error(terminator.reason));
 
       return {
         headerList: [
@@ -172,7 +169,7 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...req.urlList],
+        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
       };
     }
 
@@ -180,8 +177,16 @@
     let reqBody = null;
 
     if (req.body !== null) {
-      if (req.body.streamOrStatic instanceof ReadableStream) {
-        if (req.body.length === null || req.body.source instanceof Blob) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStreamPrototype,
+          req.body.streamOrStatic,
+        )
+      ) {
+        if (
+          req.body.length === null ||
+          ObjectPrototypeIsPrototypeOf(BlobPrototype, req.body.source)
+        ) {
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
@@ -204,14 +209,19 @@
       }
     }
 
-    const { requestRid, requestBodyRid, cancelHandleRid } = opFetch({
-      method: req.method,
-      url: req.currentUrl(),
-      headers: req.headerList,
-      clientRid: req.clientRid,
-      hasBody: reqBody !== null,
-      bodyLength: req.body?.length,
-    }, reqBody instanceof Uint8Array ? reqBody : null);
+    const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
+      {
+        method: req.method,
+        url: req.currentUrl(),
+        headers: req.headerList,
+        clientRid: req.clientRid,
+        hasBody: reqBody !== null,
+        bodyLength: req.body?.length,
+      },
+      ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody)
+        ? reqBody
+        : null,
+    );
 
     function onAbort() {
       if (cancelHandleRid !== null) {
@@ -224,7 +234,10 @@
     terminator[abortSignal.add](onAbort);
 
     if (requestBodyRid !== null) {
-      if (reqBody === null || !(reqBody instanceof ReadableStream)) {
+      if (
+        reqBody === null ||
+        !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, reqBody)
+      ) {
         throw new TypeError("Unreachable");
       }
       const reader = reqBody.getReader();
@@ -239,7 +252,7 @@
             },
           );
           if (done) break;
-          if (!(value instanceof Uint8Array)) {
+          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
             await reader.cancel("value not a Uint8Array");
             break;
           }
@@ -319,7 +332,7 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...req.urlList];
+      response.urlList = [...new SafeArrayIterator(req.urlList)];
     }
 
     return response;
@@ -328,6 +341,7 @@
   /**
    * @param {InnerRequest} request
    * @param {InnerResponse} response
+   * @param {AbortSignal} terminator
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
@@ -395,8 +409,13 @@
    * @param {RequestInit} init
    */
   function fetch(input, init = {}) {
+    // There is an async dispatch later that causes a stack trace disconnect.
+    // We reconnect it by assigning the result of that dispatch to `opPromise`,
+    // awaiting `opPromise` in an inner function also named `fetch()` and
+    // returning the result from that.
+    let opPromise = undefined;
     // 1.
-    return new Promise((resolve, reject) => {
+    const result = new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // 2.
@@ -405,7 +424,7 @@
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
-        reject(abortFetch(request, null));
+        reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
 
@@ -416,7 +435,9 @@
       // 10.
       function onabort() {
         locallyAborted = true;
-        reject(abortFetch(request, responseObject));
+        reject(
+          abortFetch(request, responseObject, requestObject.signal.reason),
+        );
       }
       requestObject.signal[abortSignal.add](onabort);
 
@@ -425,7 +446,7 @@
       }
 
       // 12.
-      PromisePrototypeCatch(
+      opPromise = PromisePrototypeCatch(
         PromisePrototypeThen(
           mainFetch(request, false, requestObject.signal),
           (response) => {
@@ -433,7 +454,13 @@
             if (locallyAborted) return;
             // 12.2.
             if (response.aborted) {
-              reject(request, responseObject);
+              reject(
+                abortFetch(
+                  request,
+                  responseObject,
+                  requestObject.signal.reason,
+                ),
+              );
               requestObject.signal[abortSignal.remove](onabort);
               return;
             }
@@ -457,10 +484,17 @@
         },
       );
     });
+    if (opPromise) {
+      PromisePrototypeCatch(result, () => {});
+      return (async function fetch() {
+        await opPromise;
+        return result;
+      })();
+    }
+    return result;
   }
 
-  function abortFetch(request, responseObject) {
-    const error = new DOMException("Ongoing fetch was aborted.", "AbortError");
+  function abortFetch(request, responseObject, error) {
     if (request.body !== null) {
       if (WeakMapPrototypeHas(requestBodyReaders, request)) {
         WeakMapPrototypeGet(requestBodyReaders, request).cancel(error);
@@ -535,7 +569,7 @@
         core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        core.opSync("op_wasm_streaming_abort", rid, err);
+        core.abortWasmStreaming(rid, err);
       }
     })();
   }

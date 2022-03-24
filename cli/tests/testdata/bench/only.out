@@ -1,0 +1,7 @@
+Check [WILDCARD]/bench/only.ts
+running 1 bench from [WILDCARD]/bench/only.ts
+bench only ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+
+bench result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out ([WILDCARD])
+
+error: Bench failed because the "only" option was used

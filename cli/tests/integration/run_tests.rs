@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url;
 use std::process::Command;
@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -233,7 +233,6 @@ itest!(_070_location {
 itest!(_071_location_unset {
   args: "run 071_location_unset.ts",
   output: "071_location_unset.ts.out",
-  exit_code: 1,
 });
 
 itest!(_072_location_relative_fetch {
@@ -467,22 +466,21 @@ itest!(_082_prepare_stack_trace_throw {
 #[test]
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new().unwrap();
   let module_url =
     url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
       .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
-  std::fs::create_dir_all(faulty_map_path.parent().unwrap())
-    .expect("Failed to create faulty source map dir.");
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+  std::fs::create_dir_all(faulty_map_path.parent().unwrap()).unwrap();
+  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
-    .expect("Failed to spawn script");
+    .unwrap();
   // Before https://github.com/denoland/deno/issues/6965 was fixed, the faulty
   // old external source map would cause a panic while formatting the error
   // and the exit code would be 101. The external source map should be ignored
@@ -522,9 +520,9 @@ fn _090_run_permissions_request() {
   let args = "run --quiet 090_run_permissions_request.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
-    Output("⚠️  ️Deno requests run access to \"ls\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Output("⚠️  ️Deno requests run access to \"ls\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("y\n"),
-    Output("⚠️  ️Deno requests run access to \"cat\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Output("⚠️  ️Deno requests run access to \"cat\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("n\n"),
     Output("granted\r\n"),
     Output("prompt\r\n"),
@@ -1489,6 +1487,12 @@ itest!(import_file_with_colon {
   http_server: true,
 });
 
+itest!(import_extensionless {
+  args: "run --quiet --reload import_extensionless.ts",
+  output: "import_extensionless.ts.out",
+  http_server: true,
+});
+
 itest!(classic_workers_event_loop {
   args:
     "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
@@ -1582,6 +1586,45 @@ itest!(worker_message_before_close {
 itest!(worker_close_in_wasm_reactions {
   args: "run --quiet --reload --allow-read worker_close_in_wasm_reactions.js",
   output: "worker_close_in_wasm_reactions.js.out",
+});
+
+itest!(reference_types_error {
+  args: "run --config checkjs.tsconfig.json reference_types_error.js",
+  output: "reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_no_check {
+  args: "run --no-check reference_types_error.js",
+  output_str: Some(""),
+});
+
+itest!(jsx_import_source_error {
+  args: "run --config jsx/deno-jsx-error.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_error.out",
+  exit_code: 1,
+});
+
+itest!(shebang_tsc {
+  args: "run --quiet shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_swc {
+  args: "run --quiet --no-check shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_with_json_imports_tsc {
+  args: "run --quiet import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
+
+itest!(shebang_with_json_imports_swc {
+  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
 });
 
 #[test]
@@ -2153,9 +2196,9 @@ mod permissions {
     let args = "run --quiet 061_permissions_request.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
-      Output("⚠️  ️Deno requests read access to \"foo\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access to \"foo\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
-      Output("⚠️  ️Deno requests read access to \"bar\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access to \"bar\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("granted\r\n"),
       Output("prompt\r\n"),
@@ -2168,7 +2211,7 @@ mod permissions {
     let args = "run --quiet 062_permissions_request_global.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
-      Output("⚠️  ️Deno requests read access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access. Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
@@ -2288,9 +2331,9 @@ fn issue9750() {
     vec![
       Output("Enter 'yy':\r\n"),
       Input("yy\n"),
-      Output("⚠️  ️Deno requests env access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests env access. Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
-      Output("⚠️  ️Deno requests env access to \"SECRET\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
     ],
@@ -2342,7 +2385,7 @@ fn issue12453() {
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
-  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod_dir = TempDir::new().unwrap();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2376,7 +2419,7 @@ fn issue12740() {
 /// Regression test for https://github.com/denoland/deno/issues/12807.
 #[test]
 fn issue12807() {
-  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod_dir = TempDir::new().unwrap();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2408,3 +2451,75 @@ fn issue12807() {
     .unwrap();
   assert!(status.success());
 }
+
+itest!(issue_13562 {
+  args: "run issue13562.ts",
+  output: "issue13562.ts.out",
+});
+
+itest!(import_assertions_static_import {
+  args: "run --allow-read import_assertions/static_import.ts",
+  output: "import_assertions/static_import.out",
+});
+
+itest!(import_assertions_static_export {
+  args: "run --allow-read import_assertions/static_export.ts",
+  output: "import_assertions/static_export.out",
+});
+
+itest!(import_assertions_static_error {
+  args: "run --allow-read import_assertions/static_error.ts",
+  output: "import_assertions/static_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_dynamic_import {
+  args: "run --allow-read import_assertions/dynamic_import.ts",
+  output: "import_assertions/dynamic_import.out",
+});
+
+itest!(import_assertions_dynamic_error {
+  args: "run --allow-read import_assertions/dynamic_error.ts",
+  output: "import_assertions/dynamic_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_type_check {
+  args: "run --allow-read import_assertions/type_check.ts",
+  output: "import_assertions/type_check.out",
+  exit_code: 1,
+});
+
+itest!(delete_window {
+  args: "run delete_window.js",
+  output_str: Some("true\n"),
+});
+
+itest!(colors_without_global_this {
+  args: "run colors_without_globalThis.js",
+  output_str: Some("true\n"),
+});
+
+itest!(config_auto_discovered_for_local_script {
+  args: "run --quiet run/with_config/frontend_work.ts",
+  output_str: Some("ok\n"),
+});
+
+itest!(config_not_auto_discovered_for_remote_script {
+  args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
+  output_str: Some("ok\n"),
+  http_server: true,
+});
+
+itest!(wasm_streaming_panic_test {
+  args: "run wasm_streaming_panic_test.js",
+  output: "wasm_streaming_panic_test.js.out",
+  exit_code: 1,
+});
+
+// Regression test for https://github.com/denoland/deno/issues/13897.
+itest!(fetch_async_error_stack {
+  args: "run --quiet -A fetch_async_error_stack.ts",
+  output: "fetch_async_error_stack.ts.out",
+  exit_code: 1,
+});

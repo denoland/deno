@@ -1,18 +1,23 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::Location;
 use crate::cache;
 use crate::cache::CacherLoader;
 use crate::colors;
+use crate::compat;
 use crate::create_main_worker;
+use crate::display;
 use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::CheckFlag;
 use crate::flags::Flags;
+use crate::flags::TestFlags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::graph_util::contains_specifier;
+use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
@@ -30,8 +35,8 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -45,11 +50,11 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +150,16 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TestSpecifierOptions {
+  compat_mode: bool,
+  concurrent_jobs: NonZeroUsize,
+  fail_fast: Option<NonZeroUsize>,
+  filter: Option<String>,
+  shuffle: Option<u64>,
+  trace_ops: bool,
 }
 
 impl TestSummary {
@@ -258,7 +273,7 @@ impl PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
     if let Some(error_text) = result.error() {
@@ -267,22 +282,6 @@ impl PrettyTestReporter {
       }
     }
   }
-}
-
-/// A function that converts a milisecond elapsed time to a string that
-/// represents a human readable version of that time.
-fn human_elapsed(elapsed: u128) -> String {
-  if elapsed < 1_000 {
-    return format!("({}ms)", elapsed);
-  }
-  if elapsed < 1_000 * 60 {
-    return format!("({}s)", elapsed / 1000);
-  }
-
-  let seconds = elapsed / 1_000;
-  let minutes = seconds / 60;
-  let seconds_remainder = seconds % 60;
-  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -348,7 +347,7 @@ impl TestReporter for PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
   }
 
@@ -426,7 +425,8 @@ impl TestReporter for PrettyTestReporter {
       get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
-      colors::gray(human_elapsed(elapsed.as_millis())),
+      colors::gray(
+        format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
 }
@@ -445,21 +445,15 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  channel: Sender<TestEvent>,
+  channel: UnboundedSender<TestEvent>,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let init_ops = |js_runtime: &mut JsRuntime| {
-    ops::testing::init(js_runtime);
-
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<Sender<TestEvent>>(channel.clone());
-  };
-
-  let mut worker =
-    create_main_worker(&ps, specifier.clone(), permissions, Some(&init_ops));
+  let mut worker = create_main_worker(
+    &ps,
+    specifier.clone(),
+    permissions,
+    vec![ops::testing::init(channel.clone())],
+  );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -476,35 +470,58 @@ async fn test_specifier(
     None
   };
 
+  // Enable op call tracing in core to enable better debugging of op sanitizer
+  // failures.
+  if options.trace_ops {
+    worker
+      .execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )
+      .unwrap();
+  }
+
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {
-    // We execute the module module as a side module so that import.meta.main is not set.
-    worker.execute_side_module(&specifier).await?;
+    if options.compat_mode {
+      worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      worker.execute_side_module(&compat::MODULE_URL).await?;
+
+      let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
+
+      if use_esm_loader {
+        worker.execute_side_module(&specifier).await?;
+      } else {
+        compat::load_cjs_module(
+          &mut worker.js_runtime,
+          &specifier.to_file_path().unwrap().display().to_string(),
+          false,
+        )?;
+        worker.run_event_loop(false).await?;
+      }
+    } else {
+      // We execute the module module as a side module so that import.meta.main is not set.
+      worker.execute_side_module(&specifier).await?;
+    }
   }
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'));",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
 
   let test_result = worker.js_runtime.execute_script(
     &located_script_name!(),
     &format!(
       r#"Deno[Deno.internal].runTests({})"#,
       json!({
-        "filter": filter,
-        "shuffle": shuffle,
+        "filter": options.filter,
+        "shuffle": options.shuffle,
       }),
     ),
   )?;
 
   worker.js_runtime.resolve_value(test_result).await?;
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'));",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -516,15 +533,20 @@ async fn test_specifier(
 }
 
 fn extract_files_from_regex_blocks(
-  location: &Location,
+  specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
+  file_line_index: usize,
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<File>, AnyError> {
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
+      if block.get(1) == None {
+        return None;
+      }
+
       let maybe_attributes: Option<Vec<_>> = block
         .get(1)
         .map(|attributes| attributes.as_str().split(' ').collect());
@@ -536,10 +558,12 @@ fn extract_files_from_regex_blocks(
 
         match attributes.get(0) {
           Some(&"js") => MediaType::JavaScript,
+          Some(&"javascript") => MediaType::JavaScript,
           Some(&"mjs") => MediaType::Mjs,
           Some(&"cjs") => MediaType::Cjs,
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
+          Some(&"typescript") => MediaType::TypeScript,
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
@@ -575,9 +599,9 @@ fn extract_files_from_regex_blocks(
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
-        location.specifier,
-        location.line + line_offset,
-        location.line + line_offset + line_count,
+        specifier,
+        file_line_index + line_offset + 1,
+        file_line_index + line_offset + line_count + 1,
         file_media_type.as_ts_extension(),
       ))
       .unwrap();
@@ -623,12 +647,11 @@ fn extract_files_from_source_comments(
       true
     })
     .flat_map(|comment| {
-      let location = Location::from_pos(&parsed_source, comment.span.lo);
-
       extract_files_from_regex_blocks(
-        &location,
+        specifier,
         &comment.text,
         media_type,
+        parsed_source.source().line_index(comment.span.lo),
         &blocks_regex,
         &lines_regex,
       )
@@ -644,19 +667,19 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let location = Location {
-    specifier: specifier.to_string(),
-    line: 1,
-    col: 0,
-  };
-
-  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
+  // The pattern matches code blocks as well as anything in HTML comment syntax,
+  // but it stores the latter without any capturing groups. This way, a simple
+  // check can be done to see if a block is inside a comment (and skip typechecking)
+  // or not by checking for the presence of capturing groups in the matches.
+  let blocks_regex =
+    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
-    &location,
+    specifier,
     source,
     media_type,
+    /* file line index */ 0,
     &blocks_regex,
     &lines_regex,
   )
@@ -696,7 +719,7 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
-  ps: ProcState,
+  ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
   lib: emit::TypeLib,
@@ -766,13 +789,10 @@ async fn test_specifiers(
   ps: ProcState,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
-  let specifiers_with_mode = if let Some(seed) = shuffle {
+  let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
     specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
@@ -782,7 +802,9 @@ async fn test_specifiers(
     specifiers_with_mode
   };
 
-  let (sender, receiver) = channel::<TestEvent>();
+  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let concurrent_jobs = options.concurrent_jobs;
+  let fail_fast = options.fail_fast;
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
@@ -790,25 +812,14 @@ async fn test_specifiers(
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
-      let filter = filter.clone();
       let sender = sender.clone();
+      let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let join_handle = std::thread::spawn(move || {
-          let future = test_specifier(
-            ps,
-            permissions,
-            specifier,
-            mode,
-            filter,
-            shuffle,
-            sender,
-          );
+        let future =
+          test_specifier(ps, permissions, specifier, mode, sender, options);
 
-          run_basic(future)
-        });
-
-        join_handle.join().unwrap()
+        run_basic(future)
       })
     });
 
@@ -820,12 +831,12 @@ async fn test_specifiers(
     create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
 
   let handler = {
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn(async move {
       let earlier = Instant::now();
       let mut summary = TestSummary::new();
       let mut used_only = false;
 
-      for event in receiver.iter() {
+      while let Some(event) = receiver.recv().await {
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
@@ -974,7 +985,7 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
-  ps: ProcState,
+  ps: &ProcState,
   include: Vec<String>,
   ignore: Vec<PathBuf>,
   include_inline: bool,
@@ -997,79 +1008,63 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  allow_none: bool,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let ps = ProcState::build(Arc::new(flags)).await?;
+  let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    ps.clone(),
-    include.unwrap_or_else(|| vec![".".to_string()]),
-    ignore.clone(),
-    doc,
+    &ps,
+    test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
+    test_flags.ignore.clone(),
+    test_flags.doc,
   )
   .await?;
 
-  if !allow_none && specifiers_with_mode.is_empty() {
+  if !test_flags.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
-  let lib = if flags.unstable {
+  let lib = if ps.flags.unstable {
     emit::TypeLib::UnstableDenoWindow
   } else {
     emit::TypeLib::DenoWindow
   };
 
-  check_specifiers(
-    ps.clone(),
-    permissions.clone(),
-    specifiers_with_mode.clone(),
-    lib,
-  )
-  .await?;
+  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone(), lib)
+    .await?;
 
-  if no_run {
+  if test_flags.no_run {
     return Ok(());
   }
 
+  let compat = ps.flags.compat;
   test_specifiers(
     ps,
     permissions,
     specifiers_with_mode,
-    fail_fast,
-    filter,
-    shuffle,
-    concurrent_jobs,
+    TestSpecifierOptions {
+      compat_mode: compat,
+      concurrent_jobs: test_flags.concurrent_jobs,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter,
+      shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
+    },
   )
   .await?;
 
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests_with_watch(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
+  let flags = Arc::new(flags);
   let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.permissions_options());
 
   let lib = if flags.unstable {
     emit::TypeLib::UnstableDenoWindow
@@ -1077,8 +1072,10 @@ pub async fn run_tests_with_watch(
     emit::TypeLib::DenoWindow
   };
 
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
+  let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let no_check = ps.flags.check == CheckFlag::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
@@ -1093,14 +1090,10 @@ pub async fn run_tests_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
@@ -1109,9 +1102,14 @@ pub async fn run_tests_with_watch(
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
+    let check_js = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.get_check_js())
+      .unwrap_or(false);
 
     async move {
-      let test_modules = if doc {
+      let test_modules = if test_flags.doc {
         collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
       } else {
         collect_specifiers(include.clone(), &ignore, is_supported_test_path)
@@ -1123,7 +1121,7 @@ pub async fn run_tests_with_watch(
       } else {
         test_modules
           .iter()
-          .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
+          .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
       let maybe_imports = if let Some(result) = maybe_imports {
@@ -1139,16 +1137,20 @@ pub async fn run_tests_with_watch(
           .map(|im| im.as_resolver())
       };
       let graph = deno_graph::create_graph(
-        test_modules.clone(),
+        test_modules
+          .iter()
+          .map(|s| (s.clone(), ModuleKind::Esm))
+          .collect(),
         false,
         maybe_imports,
         cache.as_mut_loader(),
         maybe_resolver,
         maybe_locker,
         None,
+        None,
       )
       .await;
-      graph.valid()?;
+      graph_valid(&graph, !no_check, check_js)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1158,21 +1160,32 @@ pub async fn run_tests_with_watch(
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
+          no_check: bool,
         ) {
           if let Some(module) = maybe_module {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
                   output.insert(specifier);
-
-                  get_dependencies(graph, graph.get(specifier), output);
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                    no_check,
+                  );
                 }
               }
-              if let Some(specifier) = &dep.get_type() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(graph, graph.get(specifier), output);
+              if !no_check {
+                if let Some(specifier) = &dep.get_type() {
+                  if !output.contains(specifier) {
+                    output.insert(specifier);
+                    get_dependencies(
+                      graph,
+                      graph.get(specifier),
+                      output,
+                      no_check,
+                    );
+                  }
                 }
               }
             }
@@ -1182,7 +1195,7 @@ pub async fn run_tests_with_watch(
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules);
+        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
 
         paths_to_watch.extend(
           modules
@@ -1195,7 +1208,7 @@ pub async fn run_tests_with_watch(
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&&path) {
-              modules_to_reload.push(specifier);
+              modules_to_reload.push((specifier, ModuleKind::Esm));
               break;
             }
           }
@@ -1226,8 +1239,9 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let filter = filter.clone();
+  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+    let flags = flags.clone();
+    let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
     let lib = lib.clone();
@@ -1236,37 +1250,43 @@ pub async fn run_tests_with_watch(
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        ps.clone(),
+        &ps,
         include.clone(),
         ignore.clone(),
-        doc,
+        test_flags.doc,
       )
       .await?
       .iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
+      .filter(|(specifier, _)| {
+        contains_specifier(&modules_to_reload, specifier)
+      })
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(
-        ps.clone(),
+        &ps,
         permissions.clone(),
         specifiers_with_mode.clone(),
         lib,
       )
       .await?;
 
-      if no_run {
+      if test_flags.no_run {
         return Ok(());
       }
 
       test_specifiers(
-        ps.clone(),
+        ps,
         permissions.clone(),
         specifiers_with_mode,
-        fail_fast,
-        filter.clone(),
-        shuffle,
-        concurrent_jobs,
+        TestSpecifierOptions {
+          compat_mode: flags.compat,
+          concurrent_jobs: test_flags.concurrent_jobs,
+          fail_fast: test_flags.fail_fast,
+          filter: filter.clone(),
+          shuffle: test_flags.shuffle,
+          trace_ops: test_flags.trace_ops,
+        },
       )
       .await?;
 
@@ -1274,23 +1294,15 @@ pub async fn run_tests_with_watch(
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Test").await?;
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    file_watcher::PrintConfig {
+      job_name: "Test".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
+  )
+  .await?;
 
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_human_elapsed() {
-    assert_eq!(human_elapsed(1), "(1ms)");
-    assert_eq!(human_elapsed(256), "(256ms)");
-    assert_eq!(human_elapsed(1000), "(1s)");
-    assert_eq!(human_elapsed(1001), "(1s)");
-    assert_eq!(human_elapsed(1020), "(1s)");
-    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
-    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
-  }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows, deferred, delay } from "./test_util.ts";
 
 Deno.test(
@@ -201,5 +201,39 @@ Deno.test(
       // deno-lint-ignore no-explicit-any
       Deno.removeSignalListener("SIGINT", "handler" as any);
     });
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  function signalForbiddenSignalTest() {
+    assertThrows(
+      () => Deno.addSignalListener("SIGKILL", () => {}),
+      TypeError,
+      "Binding to signal 'SIGKILL' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSTOP", () => {}),
+      TypeError,
+      "Binding to signal 'SIGSTOP' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGILL", () => {}),
+      TypeError,
+      "Binding to signal 'SIGILL' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGFPE", () => {}),
+      TypeError,
+      "Binding to signal 'SIGFPE' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSEGV", () => {}),
+      TypeError,
+      "Binding to signal 'SIGSEGV' is not allowed",
+    );
   },
 );

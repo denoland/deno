@@ -1,13 +1,16 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
+use crate::flags::UpgradeFlags;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
+use once_cell::sync::Lazy;
 use semver_parser::version::parse as semver_parse;
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -15,23 +18,23 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
-lazy_static::lazy_static! {
-  static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
-}
+static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
-pub async fn upgrade_command(
-  dry_run: bool,
-  force: bool,
-  canary: bool,
-  version: Option<String>,
-  output: Option<PathBuf>,
-  ca_file: Option<String>,
-) -> Result<(), AnyError> {
+pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
+  let old_exe_path = std::env::current_exe()?;
+  let permissions = fs::metadata(&old_exe_path)?.permissions();
+
+  if permissions.readonly() {
+    bail!("You do not have write permission to {:?}", old_exe_path);
+  }
+
   let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
+  let ca_file = upgrade_flags.ca_file.or_else(|| env::var("DENO_CERT").ok());
   if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
@@ -40,17 +43,18 @@ pub async fn upgrade_command(
 
   let client = client_builder.build()?;
 
-  let install_version = match version {
+  let install_version = match upgrade_flags.version {
     Some(passed_version) => {
-      if canary
+      if upgrade_flags.canary
         && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
       {
         bail!("Invalid commit hash passed");
-      } else if !canary && semver_parse(&passed_version).is_err() {
+      } else if !upgrade_flags.canary && semver_parse(&passed_version).is_err()
+      {
         bail!("Invalid semver passed");
       }
 
-      let current_is_passed = if canary {
+      let current_is_passed = if upgrade_flags.canary {
         crate::version::GIT_COMMIT_HASH == passed_version
       } else if !crate::version::is_canary() {
         crate::version::deno() == passed_version
@@ -58,7 +62,10 @@ pub async fn upgrade_command(
         false
       };
 
-      if !force && output.is_none() && current_is_passed {
+      if !upgrade_flags.force
+        && upgrade_flags.output.is_none()
+        && current_is_passed
+      {
         println!("Version {} is already installed", crate::version::deno());
         return Ok(());
       } else {
@@ -66,13 +73,13 @@ pub async fn upgrade_command(
       }
     }
     None => {
-      let latest_version = if canary {
+      let latest_version = if upgrade_flags.canary {
         get_latest_canary_version(&client).await?
       } else {
         get_latest_release_version(&client).await?
       };
 
-      let current_is_most_recent = if canary {
+      let current_is_most_recent = if upgrade_flags.canary {
         let mut latest_hash = latest_version.clone();
         latest_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == latest_hash
@@ -84,7 +91,10 @@ pub async fn upgrade_command(
         false
       };
 
-      if !force && output.is_none() && current_is_most_recent {
+      if !upgrade_flags.force
+        && upgrade_flags.output.is_none()
+        && current_is_most_recent
+      {
         println!(
           "Local deno version {} is the most recent release",
           crate::version::deno()
@@ -97,7 +107,7 @@ pub async fn upgrade_command(
     }
   };
 
-  let download_url = if canary {
+  let download_url = if upgrade_flags.canary {
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME
@@ -113,14 +123,12 @@ pub async fn upgrade_command(
 
   println!("Deno is upgrading to version {}", &install_version);
 
-  let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data, cfg!(windows))?;
-  let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
-  if !dry_run {
-    match output {
+  if !upgrade_flags.dry_run {
+    match upgrade_flags.output {
       Some(path) => {
         fs::rename(&new_exe_path, &path)
           .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
@@ -145,7 +153,7 @@ async fn get_latest_release_version(
     .await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
 
-  Ok(version.replace("v", ""))
+  Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(

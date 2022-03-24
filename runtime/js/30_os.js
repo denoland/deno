@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -22,6 +22,14 @@
 
   function systemMemoryInfo() {
     return core.opSync("op_system_memory_info");
+  }
+
+  function networkInterfaces() {
+    return core.opSync("op_network_interfaces");
+  }
+
+  function getUid() {
+    return core.opSync("op_getuid");
   }
 
   // This is an internal only method used by the test harness to override the
@@ -83,11 +91,13 @@
   window.__bootstrap.os = {
     env,
     execPath,
-    setExitHandler,
     exit,
-    osRelease,
-    systemMemoryInfo,
+    getUid,
     hostname,
     loadavg,
+    networkInterfaces,
+    osRelease,
+    setExitHandler,
+    systemMemoryInfo,
   };
 })(this);
