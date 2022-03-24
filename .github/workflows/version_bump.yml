@@ -54,9 +54,6 @@ jobs:
       - name: Dry publish
         run: ./tools/release/02_publish_crates.ts --dry
 
-      - name: Cargo test
-        run: cargo test --locked
-
       - name: Commit and push changes
         if: ${{ github.event.inputs.real == 'true' }}
         run: ./tools/release/commit_versions.ts
