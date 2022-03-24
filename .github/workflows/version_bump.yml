@@ -51,12 +51,15 @@ jobs:
       - name: Run version bump
         run: ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
 
+      - name: Commit changes
+        run: ./tools/release/commit_versions.ts
+
       - name: Dry publish
         run: ./tools/release/02_publish_crates.ts --dry
 
-      - name: Commit and push changes
+      - name: Push changes
         if: ${{ github.event.inputs.real == 'true' }}
-        run: ./tools/release/commit_versions.ts
+        run: git push
 
       - name: Create draft pull request
         if: ${{ github.event.inputs.real == 'true' }}
