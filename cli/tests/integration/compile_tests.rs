@@ -36,6 +36,10 @@ fn compile() {
   assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
 }
 
+// this is ignored, because when building on a release build, the test attempts
+// to download a binary of a yet to be published version.
+// TODO(@kitsonk) https://github.com/denoland/deno/issues/14103
+#[ignore]
 #[test]
 #[cfg(windows)]
 // https://github.com/denoland/deno/issues/9667
