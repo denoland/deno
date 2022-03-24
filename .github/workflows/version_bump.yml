@@ -49,18 +49,23 @@ jobs:
           deno-version: v1.19.3
 
       - name: Run version bump
-        run: ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
+        run: |
+          git remote add upstream https://github.com/denoland/deno
+          ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
 
       - name: Commit changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-          git config --global user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
           ./tools/release/commit_versions.ts
 
-      - name: Dry publish
-        run: ./tools/release/02_publish_crates.ts --dry
+      # todo(https://github.com/rust-lang/cargo/issues/1169): enable
+      # once cargo supports doing a dry publish for multiple
+      # unpublished packages
+      # - name: Dry publish
+      #   run: ./tools/release/02_publish_crates.ts --dry
 
       - name: Push changes
         if: ${{ github.event.inputs.real == 'true' }}
