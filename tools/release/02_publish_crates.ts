@@ -3,6 +3,9 @@
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { Crate, getCratesPublishOrder } from "./deps.ts";
 
+const isReal = parseIsReal();
+console.log(`Running a ${isReal ? "real" : "dry"} cargo publish...`);
+
 const workspace = await DenoWorkspace.load();
 const cliCrate = workspace.getCliCrate();
 
@@ -23,9 +26,23 @@ try {
 }
 
 async function publishCrate(crate: Crate) {
-  if (Deno.args.some((a) => a === "dry")) {
-    await crate.publishDryRun();
-  } else {
+  if (isReal) {
     await crate.publish();
+  } else {
+    await crate.publishDryRun();
   }
+}
+
+function parseIsReal() {
+  const isReal = Deno.args.some((a) => a === "--real");
+  const isDry = Deno.args.some((a) => a === "--dry");
+
+  // force the call to be explicit and provide one of these
+  // so that it's obvious what's happening
+  if (!isDry || !isReal) {
+    console.error("Please run with `--dry` or `--real`.");
+    Deno.exit(1);
+  }
+
+  return isReal;
 }
