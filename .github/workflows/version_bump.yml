@@ -49,7 +49,7 @@ jobs:
           deno-version: v1.19.3
 
       - name: Run version bump
-        run: ./tools/release/01_bump_crate_versions.ts --$INPUT_RELEASEKIND
+        run: ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
 
       - name: Dry publish
         run: ./tools/release/02_publish_crates.ts --dry
