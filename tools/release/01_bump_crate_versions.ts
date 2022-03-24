@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo --allow-net
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { GitLogOutput, path, semver } from "./deps.ts";
@@ -119,7 +119,7 @@ async function updateStdVersion() {
   const text = Deno.readTextFileSync(compatFilePath);
   Deno.writeTextFileSync(
     compatFilePath,
-    text.replace(/std@[0-9]+\.[0-9]+\.[0-9]+/, newStdVersion),
+    text.replace(/std@[0-9]+\.[0-9]+\.[0-9]+/, `std@${newStdVersion}`),
   );
 }
 
