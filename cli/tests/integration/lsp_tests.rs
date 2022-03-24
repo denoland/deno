@@ -233,7 +233,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 fn lsp_init_tsconfig() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let tsconfig =
@@ -276,7 +276,7 @@ fn lsp_init_tsconfig() {
 fn lsp_tsconfig_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let tsconfig =
     serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
   fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
@@ -343,7 +343,7 @@ fn lsp_tsconfig_bad_config_path() {
 fn lsp_triple_slash_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let a_dts = load_fixture_str("a.d.ts");
   fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
 
@@ -377,7 +377,7 @@ fn lsp_triple_slash_types() {
 
 #[test]
 fn lsp_import_map() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -488,7 +488,7 @@ fn lsp_import_map_data_url() {
 
 #[test]
 fn lsp_import_map_config_file() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
 
@@ -659,7 +659,7 @@ fn lsp_import_assertions() {
 
 #[test]
 fn lsp_import_map_import_completions() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -1413,21 +1413,16 @@ fn lsp_hover_change_mbc() {
 
 #[test]
 fn lsp_hover_closed_document() {
-  let temp_dir = TempDir::new()
-    .expect("could not create temp dir")
-    .into_path();
+  let temp_dir = TempDir::new().unwrap().into_path();
   let a_path = temp_dir.join("a.ts");
-  fs::write(a_path, r#"export const a = "a";"#).expect("could not write file");
+  fs::write(a_path, r#"export const a = "a";"#).unwrap();
   let b_path = temp_dir.join("b.ts");
-  fs::write(&b_path, r#"export * from "./a.ts";"#)
-    .expect("could not write file");
-  let b_specifier =
-    Url::from_file_path(b_path).expect("could not convert path");
+  fs::write(&b_path, r#"export * from "./a.ts";"#).unwrap();
+  let b_specifier = Url::from_file_path(b_path).unwrap();
   let c_path = temp_dir.join("c.ts");
   fs::write(&c_path, "import { a } from \"./b.ts\";\nconsole.log(a);\n")
-    .expect("could not write file");
-  let c_specifier =
-    Url::from_file_path(c_path).expect("could not convert path");
+    .unwrap();
+  let c_specifier = Url::from_file_path(c_path).unwrap();
 
   let mut client = init("initialize_params.json");
   client
@@ -3772,7 +3767,7 @@ fn lsp_auto_discover_registry() {
 #[test]
 fn lsp_cache_location() {
   let _g = http_server();
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_registry.json"))
       .unwrap();
@@ -4568,7 +4563,7 @@ fn lsp_format_markdown() {
 
 #[test]
 fn lsp_format_with_config() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -5047,7 +5042,7 @@ console.log(snake_case);
 
 #[test]
 fn lsp_lint_with_config() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =

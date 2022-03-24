@@ -7,7 +7,7 @@ use test_util as util;
 
 #[test]
 fn compile() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("welcome.exe")
   } else {
@@ -36,12 +36,15 @@ fn compile() {
   assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
 }
 
+// this is ignored, because when building on a release build, the test attempts
+// to download a binary of a yet to be published version.
+// TODO(@kitsonk) https://github.com/denoland/deno/issues/14103
 #[ignore]
 #[test]
 #[cfg(windows)]
 // https://github.com/denoland/deno/issues/9667
 fn compile_windows_ext() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = dir.path().join("welcome_9667");
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -65,7 +68,7 @@ fn compile_windows_ext() {
 
 #[test]
 fn standalone_args() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -101,7 +104,7 @@ fn standalone_args() {
 
 #[test]
 fn standalone_error() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -143,7 +146,7 @@ fn standalone_error() {
 
 #[test]
 fn standalone_error_module_with_imports() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -183,7 +186,7 @@ fn standalone_error_module_with_imports() {
 
 #[test]
 fn standalone_load_datauri() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("load_datauri.exe")
   } else {
@@ -215,7 +218,7 @@ fn standalone_load_datauri() {
 
 #[test]
 fn standalone_compiler_ops() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("standalone_compiler_ops.exe")
   } else {
@@ -247,7 +250,7 @@ fn standalone_compiler_ops() {
 
 #[test]
 fn compile_with_directory_output_flag() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\random\")
   } else {
@@ -285,14 +288,14 @@ fn compile_with_directory_output_flag() {
 
 #[test]
 fn compile_with_file_exists_error() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\")
   } else {
     dir.path().join("args/")
   };
   let file_path = dir.path().join("args");
-  File::create(&file_path).expect("cannot create file");
+  File::create(&file_path).unwrap();
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
@@ -320,13 +323,13 @@ fn compile_with_file_exists_error() {
 
 #[test]
 fn compile_with_directory_exists_error() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
     dir.path().join("args")
   };
-  std::fs::create_dir(&exe).expect("cannot create directory");
+  std::fs::create_dir(&exe).unwrap();
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
@@ -354,14 +357,13 @@ fn compile_with_directory_exists_error() {
 
 #[test]
 fn compile_with_conflict_file_exists_error() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
     dir.path().join("args")
   };
-  std::fs::write(&exe, b"SHOULD NOT BE OVERWRITTEN")
-    .expect("cannot create file");
+  std::fs::write(&exe, b"SHOULD NOT BE OVERWRITTEN").unwrap();
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
@@ -387,13 +389,13 @@ fn compile_with_conflict_file_exists_error() {
   dbg!(&stderr);
   assert!(stderr.contains(&expected_stderr));
   assert!(std::fs::read(&exe)
-    .expect("cannot read file")
+    .unwrap()
     .eq(b"SHOULD NOT BE OVERWRITTEN"));
 }
 
 #[test]
 fn compile_and_overwrite_file() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -431,7 +433,7 @@ fn compile_and_overwrite_file() {
 
 #[test]
 fn standalone_runtime_flags() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("flags.exe")
   } else {
@@ -470,7 +472,7 @@ fn standalone_runtime_flags() {
 
 #[test]
 fn standalone_import_map() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("import_map.exe")
   } else {
@@ -505,7 +507,7 @@ fn standalone_import_map() {
 #[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
-  let dir = TempDir::new().expect("tempdir fail");
+  let dir = TempDir::new().unwrap();
   let exe = if cfg!(windows) {
     dir.path().join("hello_world.exe")
   } else {

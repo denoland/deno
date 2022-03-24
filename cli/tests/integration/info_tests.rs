@@ -8,7 +8,7 @@ use test_util as util;
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/048_media_types_jsx.ts";
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new().unwrap();
 
   let mut deno = util::deno_cmd()
     .env("DENO_DIR", t.path())
@@ -16,8 +16,8 @@ fn info_with_compiled_source() {
     .arg("cache")
     .arg(&module_path)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
 
   let output = util::deno_cmd()
@@ -27,7 +27,7 @@ fn info_with_compiled_source() {
     .arg("info")
     .arg(&module_path)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
 
   let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   eprintln!("{}", str_output);

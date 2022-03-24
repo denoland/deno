@@ -1,13 +1,12 @@
+use crate::magic::transl8::impl_magic;
+use crate::Error;
 use std::ops::{Deref, DerefMut};
 
-use serde::Serialize;
+use super::transl8::{FromV8, ToV8};
 
-pub const NAME: &str = "$__v8_magic_u16string";
-pub const FIELD_PTR: &str = "$__v8_magic_u16string_ptr";
-pub const FIELD_LEN: &str = "$__v8_magic_u16string_len";
-
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq, Debug)]
 pub struct U16String(pub Vec<u16>);
+impl_magic!(U16String);
 
 impl U16String {
   pub fn with_zeroes(length: usize) -> U16String {
@@ -45,18 +44,40 @@ impl AsMut<[u16]> for U16String {
   }
 }
 
-impl Serialize for U16String {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    use serde::ser::SerializeStruct;
-
-    let mut s = serializer.serialize_struct(NAME, 3)?;
-    s.serialize_field(FIELD_PTR, &(self.0.as_ptr() as usize))?;
-    s.serialize_field(FIELD_LEN, &self.0.len())?;
-    s.end()
+impl ToV8 for U16String {
+  fn to_v8<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
+    let v =
+      v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal)
+        .unwrap();
+    Ok(v.into())
   }
 }
 
-// TODO: Deserialize
+impl FromV8 for U16String {
+  fn from_v8(
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, crate::Error> {
+    let v8str = v8::Local::<v8::String>::try_from(value)
+      .map_err(|_| Error::ExpectedString)?;
+    let len = v8str.length();
+    let mut buffer = Vec::with_capacity(len);
+    // SAFETY: we set length == capacity (see previous line),
+    // before immediately writing into that buffer and sanity check with an assert
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+      buffer.set_len(len);
+      let written = v8str.write(
+        scope,
+        &mut buffer,
+        0,
+        v8::WriteOptions::NO_NULL_TERMINATION,
+      );
+      assert!(written == len);
+    }
+    Ok(U16String(buffer))
+  }
+}
