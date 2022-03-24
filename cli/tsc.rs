@@ -80,7 +80,7 @@ macro_rules! inc {
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
-pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
+pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
   Lazy::new(|| {
     (&[
       (
@@ -238,7 +238,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub(crate) graph_data: Arc<RwLock<GraphData>>,
+  pub graph_data: Arc<RwLock<GraphData>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -248,7 +248,7 @@ pub struct Request {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct Response {
+pub struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
   /// Any files that were emitted during the check.
@@ -627,7 +627,7 @@ fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
+pub fn exec(request: Request) -> Result<Response, AnyError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
   // extensions and remap any that are unacceptable to tsc and add them to the
@@ -730,7 +730,7 @@ mod tests {
   use std::fs;
 
   #[derive(Debug, Default)]
-  pub(crate) struct MockLoader {
+  pub struct MockLoader {
     pub fixtures: PathBuf,
   }
 

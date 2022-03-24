@@ -96,7 +96,7 @@ impl deno_graph::SourceParser for SourceParser {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LanguageId {
+pub enum LanguageId {
   JavaScript,
   Jsx,
   TypeScript,
@@ -527,7 +527,7 @@ impl Document {
   }
 }
 
-pub(crate) fn to_hover_text(result: &Resolved) -> String {
+pub fn to_hover_text(result: &Resolved) -> String {
   match result {
     Resolved::Ok { specifier, .. } => match specifier.scheme() {
       "data" => "_(a data url)_".to_string(),
@@ -544,7 +544,7 @@ pub(crate) fn to_hover_text(result: &Resolved) -> String {
   }
 }
 
-pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -697,7 +697,7 @@ fn get_document_path(
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Documents {
+pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
   /// A flag that indicates that stated data is potentially invalid and needs to

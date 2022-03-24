@@ -30,7 +30,7 @@ export function pathToAbsoluteFileUrl(path: string): URL {
 
 const decoder = new TextDecoder();
 
-export async function execCode(code: string) {
+export async function execCode(code: string): Promise<[number, string]> {
   const p = Deno.run({
     cmd: [
       Deno.execPath(),
