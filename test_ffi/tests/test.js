@@ -227,6 +227,8 @@ console.log("Static ptr value:", view.getUint32());
 
 const rect = dylib.symbols.make_rect(10, 20, 100, 200);
 dylib.symbols.print_rect(rect);
+// Ensure that `rect` backing memory was not deallocated by Rust in FFI call.
+console.log(rect);
 
 function cleanup() {
   dylib.close();

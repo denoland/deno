@@ -73,6 +73,7 @@ fn basic() {
     Static ptr: true\n\
     Static ptr value: 42\n\
     Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Uint8Array(32) [\n  0, 0, 0,   0,  0,  0, 36, 64, 0,\n  0, 0, 0,   0,  0, 52, 64,  0, 0,\n  0, 0, 0,   0, 89, 64,  0,  0, 0,\n  0, 0, 0, 105, 64\n]\n\
     After\n\
     true\n\
     Correct number of resources\n";

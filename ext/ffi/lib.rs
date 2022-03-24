@@ -194,11 +194,10 @@ impl NativeType {
       NativeType::U8 | NativeType::I8 => 1,
       NativeType::U16 | NativeType::I16 => 2,
       NativeType::U32 | NativeType::I32 | NativeType::F32 => 4,
-      NativeType::U64
-      | NativeType::I64
-      | NativeType::F64
-      | NativeType::Pointer => 8,
-      NativeType::USize | NativeType::ISize => std::mem::size_of::<usize>(),
+      NativeType::U64 | NativeType::I64 | NativeType::F64 => 8,
+      NativeType::USize | NativeType::ISize | NativeType::Pointer => {
+        std::mem::size_of::<usize>()
+      }
       NativeType::Struct(fields) => NativeType::compute_struct_size(fields),
     }
   }

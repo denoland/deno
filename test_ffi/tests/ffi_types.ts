@@ -196,5 +196,5 @@ remote.symbols.method20(0);
 remote.symbols.method20(new Int32Array(1));
 
 // @ts-expect-error: Invalid return type
-<null> remote.symbols.method21(new Int32Array(1));
-<Uint8Array> remote.symbols.method21(new Int32Array(1));
+<null> remote.symbols.method21();
+<Uint8Array> remote.symbols.method21();

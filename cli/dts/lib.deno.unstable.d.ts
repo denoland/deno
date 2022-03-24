@@ -379,6 +379,10 @@ declare namespace Deno {
     : T extends NativeStructType ? Uint8Array
     : never;
 
+  type StaticForeignSymbolType<T extends NativeType> = T extends
+    NativeStructType ? UnsafePointer
+    : StaticForeignFunctionResult<T>;
+
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
     : T extends NativeNumberType ? number
     : T extends "pointer" | NativeStructType
@@ -400,7 +404,7 @@ declare namespace Deno {
       T["nonblocking"],
       StaticForeignFunctionResult<T["result"]>
     >
-      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+      : T extends ForeignStatic ? StaticForeignSymbolType<T["type"]>
       : never;
 
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
