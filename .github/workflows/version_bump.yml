@@ -1,21 +1,21 @@
 name: version_bump
 
-on: workflow_dispatch
-
-inputs:
-  releaseKind:
-    description: 'Kind of version bump'
-    default: 'patch'
-    type: choice
-    options:
-    - patch
-    - minor
-    - major
-    required: true
-  real:
-    description: 'Real release'
-    type: boolean
-    required: false
+on:
+  workflow_dispatch:
+    inputs:
+      releaseKind:
+        description: 'Kind of version bump'
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+        required: true
+      real:
+        description: 'Real release'
+        type: boolean
+        required: false
 
 jobs:
   build:
