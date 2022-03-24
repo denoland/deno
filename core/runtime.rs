@@ -3079,19 +3079,23 @@ assertEquals(1, notify_return_value);
         "test.js",
         r#"
         const a1 = new Uint8Array([1,2,3]);
-        const a1b = a1.subarray(0, 2);
+        const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
-        const a2b = a1.subarray(0, 2);
+        const a2b = a2.subarray(0, 3);
         
-        let sum = Deno.core.opSync('op_sum_take', a1);
+        
+        if (!(a1.length > 0 && a1b.length > 0)) {
+          throw new Error("a1 & a1b should have a length");
+        }
+        let sum = Deno.core.opSync('op_sum_take', a1b);
         if (sum !== 6) {
-          throw new Error("Bad sum");
+          throw new Error(`Bad sum: ${sum}`);
         }
         if (a1.length > 0 || a1b.length > 0) {
           throw new Error("expecting a1 & a1b to be detached");
         }
-        
-        const a3 = Deno.core.opSync('op_boomerang', a2);
+
+        const a3 = Deno.core.opSync('op_boomerang', a2b);
         if (a3.byteLength != 3) {
           throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
         }
