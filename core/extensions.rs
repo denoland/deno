@@ -16,6 +16,7 @@ pub struct OpDecl {
   pub v8_fn_ptr: OpFnRef,
   pub enabled: bool,
   pub is_async: bool, // TODO(@AaronO): enum sync/async/fast ?
+  pub is_unstable: bool,
 }
 
 impl OpDecl {
