@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-net --allow-run=cargo,git
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-net --allow-run=cargo,git --no-check
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { createOctoKit, getGitHubRepository } from "./deps.ts";
@@ -36,7 +36,7 @@ function getPrBody() {
     `Please ensure:\n` +
     `- [ ] Crate versions are bumped correctly\n` +
     `- [ ] deno_std version is incremented in the code\n` +
-    `- [ ] Releases.md is updated correctly\n` +
+    `- [ ] Releases.md is updated correctly\n\n` +
     `To make edits to this PR:\n` +
     "```shell\n" +
     `git fetch upstream ${newBranchName} && git checkout -b ${newBranchName} upstream/${newBranchName}\n` +
