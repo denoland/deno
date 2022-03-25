@@ -32,11 +32,19 @@ const openedPr = await octoKit.request("POST /repos/{owner}/{repo}/pulls", {
 console.log(`Opened PR at ${openedPr.data.url}`);
 
 function getPrBody() {
-  let text = `Bumped versions for ${cliCrate.version}`;
+  let text = `Bumped versions for ${cliCrate.version}\n\n` +
+    `Please ensure:\n` +
+    `- [ ] Crate versions are bumped correctly\n` +
+    `- [ ] deno_std version is incremented in the code\n` +
+    `- [ ] Releases.md is updated correctly\n` +
+    `To make edits to this PR:\n` +
+    "```shell\n" +
+    `git fetch upstream ${newBranchName} && git checkout -b ${newBranchName} upstream/${newBranchName}\n` +
+    "```\n";
 
   const actor = Deno.env.get("GH_WORKFLOW_ACTOR");
   if (actor != null) {
-    text += `\n\ncc @${actor}`;
+    text += `\ncc @${actor}`;
   }
 
   return text;
