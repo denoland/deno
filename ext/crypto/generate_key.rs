@@ -7,6 +7,7 @@ use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
+use ring::signature::Ed25519KeyPair;
 use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
@@ -36,6 +37,8 @@ pub enum GenerateKeyOptions {
     hash: ShaHash,
     length: Option<usize>,
   },
+  #[serde(rename = "ED25519")]
+  Ed25519,
 }
 
 #[op]
@@ -52,9 +55,17 @@ pub async fn op_crypto_generate_key(
     GenerateKeyOptions::Hmac { hash, length } => {
       generate_key_hmac(hash, length)
     }
+    GenerateKeyOptions::Ed25519 => generate_key_ed25519(),
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
+}
+
+fn generate_key_ed25519() -> Result<Vec<u8>, AnyError> {
+  let rng = ring::rand::SystemRandom::new();
+  let pkcs8_bytes = Ed25519KeyPair::generate_pkcs8(&rng)
+    .map_err(|e| operation_error(e.to_string()))?;
+  Ok(pkcs8_bytes.as_ref().to_vec())
 }
 
 fn generate_key_rsa(

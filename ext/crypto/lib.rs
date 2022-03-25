@@ -35,6 +35,7 @@ use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
+use ring::signature::Ed25519KeyPair;
 use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs1::der::Decodable;
@@ -303,6 +304,11 @@ pub async fn op_crypto_sign_key(
       let signature = ring::hmac::sign(&key, data);
       signature.as_ref().to_vec()
     }
+    Algorithm::Ed25519 => {
+      let key_pair = Ed25519KeyPair::from_pkcs8(&*args.key.data)?;
+      let signature = key_pair.sign(data);
+      signature.as_ref().to_vec()
+    }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
@@ -457,6 +463,22 @@ pub async fn op_crypto_verify_key(
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
+      public_key.verify(data, &*args.signature).is_ok()
+    }
+    Algorithm::Ed25519 => {
+      let private_key;
+      let public_key_bytes = match args.key.r#type {
+        KeyType::Private => {
+          private_key = Ed25519KeyPair::from_pkcs8(&*args.key.data)?;
+          private_key.public_key().as_ref()
+        }
+        KeyType::Public => &*args.key.data,
+        _ => unreachable!(),
+      };
+      let public_key = ring::signature::UnparsedPublicKey::new(
+        &ring::signature::ED25519,
+        public_key_bytes,
+      );
       public_key.verify(data, &*args.signature).is_ok()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
