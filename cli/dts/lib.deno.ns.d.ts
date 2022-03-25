@@ -2398,7 +2398,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[] | [URL, ...string[]];
+    cmd: readonly string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;
