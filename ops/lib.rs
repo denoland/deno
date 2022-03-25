@@ -45,8 +45,16 @@ impl syn::parse::Parse for MacroArgs {
       syn::punctuated::Punctuated::<Ident, syn::Token![,]>::parse_terminated(
         input,
       )?;
-    let is_unstable = vars.iter().any(|v| v == "unstable");
-    Ok(Self { is_unstable })
+    let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
+    let vars: Vec<_> = vars.iter().map(String::as_str).collect();
+    match vars[..] {
+      ["unstable"] => Ok(Self { is_unstable: true }),
+      [] => Ok(Self { is_unstable: false }),
+      _ => Err(syn::Error::new(
+        input.span(),
+        "Ops expect #[op] or #[op(unstable)]",
+      )),
+    }
   }
 }
 
