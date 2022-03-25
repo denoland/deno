@@ -20,9 +20,7 @@ on:
 jobs:
   build:
     name: version bump
-    # todo: add back
-    # runs-on: ubuntu-20.04-xl
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04-xl
     timeout-minutes: 90
 
     env:
@@ -52,12 +50,6 @@ jobs:
         run: |
           git remote add upstream https://github.com/denoland/deno
           ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
-
-      # todo(https://github.com/rust-lang/cargo/issues/1169): enable
-      # once cargo supports doing a dry publish for multiple
-      # unpublished packages
-      # - name: Dry publish
-      #   run: ./tools/release/03_publish_crates.ts --dry
 
       - name: Create PR
         if: ${{ github.event.inputs.real == 'true' }}
