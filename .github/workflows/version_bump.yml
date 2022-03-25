@@ -12,10 +12,6 @@ on:
         - minor
         - major
         required: true
-      real:
-        description: 'Real release'
-        type: boolean
-        required: false
 
 jobs:
   build:
@@ -52,7 +48,6 @@ jobs:
           ./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}
 
       - name: Create PR
-        if: ${{ github.event.inputs.real == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}

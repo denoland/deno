@@ -72,10 +72,8 @@ verify on GitHub that everything looks correct.
 2. Click on the "Run workflow" button.
    1. In the drop down, select the minor branch if doing a path release or the
       main branch if doing a minor release.
-   2. For the kind of release, select "patch" for a patch release or "minor" for
-      a minor release.
-   3. Check "real" for this being a real release.
-   4. Run the workflow.
+   2. For the kind of release, select either "patch", "minor", or "major".
+   3. Run the workflow.
 
 3. Wait for the workflow to complete and for a pull request to be automatically
    opened.
