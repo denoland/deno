@@ -28,7 +28,7 @@ for (const crate of workspace.getCliDependencyCrates()) {
 }
 
 // update the lock file
-await workspace.getCliCrate().cargoCheck();
+await workspace.getCliCrate().cargoUpdate("--workspace");
 
 // try to update the Releases.md markdown text
 try {
