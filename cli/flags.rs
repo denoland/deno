@@ -238,6 +238,26 @@ impl Default for TypecheckMode {
   }
 }
 
+// TODO(bartlomieju): remove once type checking is skipped by default (probably
+// in 1.23)
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureTypeCheckFlag {
+  /// Type check all modules. The default value.
+  All,
+  /// Skip type checking of all modules. Represents `--no-check` on the command
+  /// line.
+  None,
+  /// Only type check local modules. Represents `--no-check=remote` on the
+  /// command line.
+  Local,
+}
+
+impl Default for FutureTypeCheckFlag {
+  fn default() -> Self {
+    Self::None
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -261,6 +281,9 @@ pub struct Flags {
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub typecheck_mode: TypecheckMode,
+  // TODO(bartlomieju): should be removed in favor of `check`
+  // once type checking is skipped by default
+  pub future_check: FutureTypeCheckFlag,
   pub has_check_flag: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
@@ -1940,6 +1963,7 @@ modules will be ignored.",
 
 fn check_arg<'a>() -> Arg<'a> {
   Arg::new("check")
+    .conflicts_with("no-check")
     .long("check")
     .takes_value(true)
     .require_equals(true)
@@ -2789,14 +2813,14 @@ fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.has_check_flag = matches.is_present("check");
   if let Some(cache_type) = matches.value_of("check") {
     match cache_type {
-      "all" => flags.check = CheckFlag::All,
+      "all" => flags.future_check = FutureTypeCheckFlag::All,
       _ => debug!(
         "invalid value for 'check' of '{}' using default",
         cache_type
       ),
     }
   } else if matches.is_present("check") {
-    flags.check = CheckFlag::Local;
+    flags.future_check = FutureTypeCheckFlag::Local;
   }
 }
 
@@ -5448,10 +5472,60 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
+        future_check: FutureTypeCheckFlag::Local,
         has_check_flag: true,
         unstable: true,
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable",
+      "--check=all",
+      "script.ts",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        future_check: FutureTypeCheckFlag::All,
+        has_check_flag: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable",
+      "--check=foo",
+      "script.ts",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        future_check: FutureTypeCheckFlag::None,
+        has_check_flag: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--no-check",
+      "--check",
+      "script.ts",
+    ]);
+    assert!(r.is_err());
   }
 }

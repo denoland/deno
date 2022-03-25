@@ -52,6 +52,7 @@ use crate::flags::DocFlags;
 use crate::flags::EvalFlags;
 use crate::flags::Flags;
 use crate::flags::FmtFlags;
+use crate::flags::FutureTypeCheckFlag;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
@@ -1515,10 +1516,18 @@ pub fn main() {
 
     logger::init(flags.log_level);
 
+    // TODO(bartlomieju): remove once type checking is skipped by default (probably
+    // in 1.23).
+    // If this env var is set we're gonna override default behavior of type checking
+    // and use behavior defined by the `--check` flag.
     let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
     if let Some(env_var) = future_check_env_var {
       if env_var == "1" {
-        flags.check = CheckFlag::None;
+        flags.check = match &flags.future_check {
+          FutureTypeCheckFlag::None => CheckFlag::None,
+          FutureTypeCheckFlag::All => CheckFlag::All,
+          FutureTypeCheckFlag::Local => CheckFlag::Local,
+        }
       }
     }
 

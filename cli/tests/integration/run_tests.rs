@@ -1068,6 +1068,7 @@ itest!(unbuffered_stdout {
 itest!(v8_flags_run {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(v8_flags_unrecognized {
