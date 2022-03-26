@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use fallible_iterator::FallibleIterator;
 use rusqlite::params;
@@ -110,6 +111,38 @@ pub fn op_indexeddb_open(state: &mut OpState) -> Result<(), AnyError> {
     state.put(IndexedDbManager(conn));
   }
 
+  Ok(())
+}
+
+pub struct Transaction(rusqlite::Transaction<'static>);
+
+#[op]
+pub fn op_indexeddb_transaction_create(
+  state: &mut OpState,
+) -> Result<ResourceId, AnyError> {
+  let idbmanager = state.borrow_mut::<IndexedDbManager>();
+  let transaction = idbmanager.0.transaction()?;
+  let rid = state.resource_table.add(Transaction(transaction));
+  Ok(rid)
+}
+
+#[op]
+pub fn op_indexeddb_transaction_commit(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let rid = state.resource_table.take::<Transaction>(rid)?;
+  rid.0.commit()?;
+  Ok(())
+}
+
+#[op]
+pub fn op_indexeddb_transaction_abort(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let rid = state.resource_table.take::<Transaction>(rid)?;
+  rid.0.rollback()?;
   Ok(())
 }
 

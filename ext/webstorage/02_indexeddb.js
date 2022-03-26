@@ -134,11 +134,6 @@
         type: "string",
         value: input,
       };
-    } else if (false) { // TODO: is a buffer source type
-      return {
-        type: "binary",
-        value: input.slice(),
-      };
     } else if (ArrayIsArray(input)) {
       SetPrototypeAdd(seen, input);
       const keys = [];
@@ -154,7 +149,15 @@
         value: keys,
       };
     } else {
-      return null;
+      try {
+        const value = webidl.converters.BufferSource(input);
+        return {
+          type: "binary",
+          value: value.slice(),
+        };
+      } catch (_) {
+        return null;
+      }
     }
   }
 
@@ -288,7 +291,7 @@
       case "date":
         return new Date(key.value);
       case "binary":
-        return new Uint8Array(key.value).buffer; // TODO: check
+        return new Uint8Array(key.value).buffer;
       case "array": {
         return key.value.map(keyToValue);
       }
@@ -341,14 +344,15 @@
   function clone(transaction, value) {
     assert(transaction[_state] === "active");
     transaction[_state] = "inactive";
-    // TODO: 3., 4.: what is StructuredSerializeForStorage? Do we have it?
+    const serialized = core.serialize(value); // TODO: add bool for extra SAB handling
+    const cloned = core.deserialize(serialized);
     transaction[_state] = "active";
-    // TODO: 6.
+    return cloned;
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#abort-a-transaction
   function abortTransaction(transaction, error) {
-    // TODO: 1.:refactors ops to use sqlite transactions and use a resource
+    core.opSync("op_indexeddb_transaction_abort", transaction[_rid]);
     if (transaction[_mode] === "versionchange") {
       abortUpgradeTransaction(transaction);
     }
@@ -358,7 +362,7 @@
     }
     for (const request of transaction[_requestList]) {
       // TODO: abort the steps to asynchronously execute a request
-      request[_processed] = true;
+      request[_processedDeferred].resolve();
       request[_done] = true;
       request[_result] = undefined;
       request[_error] = new DOMException("", "AbortError");
@@ -379,6 +383,7 @@
     );
     if (transaction[_mode] === "versionchange") {
       // TODO: 6.3.: the transaction should have an openrequest, but the spec doesnt specify this ever
+      // TODO: add a global map for openrequests and find by transaction
     }
   }
 
@@ -469,7 +474,7 @@
           errored = true;
         }
       }
-      request[_processed] = true;
+      request[_processedDeferred].resolve();
       source[_transaction][_requestList].slice(
         source[_transaction][_requestList].findIndex((r) => r === request),
         1,
@@ -525,13 +530,13 @@
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#commit-a-transaction
-  // TODO: this is all very weird, and not sure how integrates with sqlite transactions
   function commitTransaction(transaction) {
     transaction[_state] = "committing";
     (async () => {
       for (const request of transaction[_requestList]) {
         await request[_processedDeferred].promise;
       }
+      core.opSync("op_indexeddb_transaction_commit", transaction[_rid]); // TODO: not sure if the right place
       if (transaction[_state] !== "committing") {
         return;
       }
@@ -552,7 +557,6 @@
   const _error = Symbol("[[error]]");
   const _source = Symbol("[[source]]");
   const _transaction = Symbol("[[transaction]]");
-  const _processed = Symbol("[[processed]]");
   const _processedDeferred = Symbol("[[processedDeferred]]");
   const _done = Symbol("[[done]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbrequest
@@ -563,7 +567,6 @@
     }
 
     [_processedDeferred] = new Deferred();
-    [_processed];
     [_done] = false;
 
     [_result];
@@ -700,7 +703,7 @@
       (async () => {
         try {
           const res = deleteDatabase(name, request);
-          request[_processed] = true;
+          request[_processedDeferred].resolve();
           request[_result] = undefined;
           request[_done] = true;
           request.dispatchEvent(
@@ -712,7 +715,7 @@
             }),
           );
         } catch (e) {
-          request[_processed] = true;
+          request[_processedDeferred].resolve();
           request[_error] = e;
           request[_done] = true;
           request.dispatchEvent(
@@ -791,7 +794,7 @@
       }
       // TODO: 3.: somehow get all transactions
       if (forced) {
-        // TODO: 4.: where is this event listened from? makes no sense
+        // TODO: 4.: fire to IDBDatabase class
       }
     }
   }
@@ -880,8 +883,10 @@
       if (mode !== "readonly" && mode !== "readwrite") {
         throw new TypeError("");
       }
+      let rid = core.opSync("op_indexeddb_transaction_create");
       const transaction = webidl.createBranded(IDBTransaction);
       // TODO: connection: figure out connection & database structures
+      transaction[_rid] = rid;
       transaction[_mode] = mode;
       transaction[_durabilityHint] = options.durability;
       // TODO: scope: figure out connection & database structures
@@ -1077,7 +1082,7 @@
 
   // Ref: https://w3c.github.io/IndexedDB/#add-or-put
   function addOrPut(handle, value, key, noOverwrite) {
-    // TODO: 3.: source has been deleted
+    // TODO: 3.: source has been deleted: be an op
 
     if (handle[_transaction][_state] !== "active") {
       throw new DOMException("", "TransactionInactiveError");
@@ -1294,7 +1299,7 @@
         context: "Argument 1",
       });
 
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
 
       if (this[_transaction][_mode] !== "versionchange") {
         throw new DOMException("", "InvalidStateError");
@@ -1322,13 +1327,13 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-keypath
     get keyPath() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      return this[_keyPath]; // TODO: convert?
+      return this[_keyPath];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-indexnames
     get indexNames() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO: op maybe? or caching?
+      // TODO: add indexset to this
     }
 
     [_transaction];
@@ -1387,7 +1392,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1404,7 +1409,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-clear
     clear() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1426,7 +1431,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1446,7 +1451,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1472,7 +1477,7 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1498,7 +1503,7 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1517,7 +1522,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1540,7 +1545,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1572,7 +1577,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1601,11 +1606,11 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] === "finished") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: 5., 6.: op? or cache?
+      // TODO: check indexset on this
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-createindex
@@ -1628,11 +1633,11 @@
       if (this[_transaction][_mode] !== "versionchange") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 6.: op? or cache?
+      // TODO: 6.: op
       if (!isValidKeyPath(keyPath)) {
         throw new DOMException("", "SyntaxError");
       }
@@ -1640,7 +1645,7 @@
         throw new DOMException("", "InvalidAccessError");
       }
       // TODO: 11.: ops
-      // TODO: 12.: seems we need a cache?
+      // TODO: 12.: indexset on this
       const index = new Index();
       index.name = name;
       index.multiEntry = options.multiEntry;
@@ -1663,11 +1668,11 @@
       if (this[_transaction][_mode] !== "versionchange") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 6., 7., 8.: op?
+      // TODO: 6., 7., 8.: op
     }
   }
   webidl.configurePrototype(IDBObjectStore);
@@ -1762,7 +1767,7 @@
         throw new DOMException("", "TransactionInactiveError");
       }
 
-      // TODO: 6.: source has been deleted
+      // TODO: 6.: source has been deleted: be an op
       // TODO: 7.: should it be this's _name? or this's _index's name
       // TODO: 8.: op? or cache?
 
@@ -1779,7 +1784,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbindex-keypath
     get keyPath() {
       webidl.assertBranded(this, IDBIndexPrototype);
-      return this[_storeHandle][_store].keyPath; // TODO: convert?
+      return this[_storeHandle][_store].keyPath;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbindex-multientry
@@ -1803,7 +1808,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1823,7 +1828,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1849,7 +1854,7 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1876,7 +1881,7 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1895,7 +1900,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1918,7 +1923,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1950,7 +1955,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -2256,12 +2261,12 @@
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
       if (!this[_gotValue]) {
         throw new DOMException("", "InvalidStateError");
       }
       this[_gotValue] = false;
-      this[_request][_processed] = false;
+      this[_request][_processedDeferred] = new Deferred();
       this[_request][_done] = false;
 
       return asynchronouslyExecuteRequest(
@@ -2282,7 +2287,7 @@
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
       if (key !== undefined) {
         key = valueToKey(key);
         if (key === null) {
@@ -2302,7 +2307,7 @@
         }
       }
       this[_gotValue] = false;
-      this[_request][_processed] = false;
+      this[_request][_processedDeferred] = new Deferred();
       this[_request][_done] = false;
 
       return asynchronouslyExecuteRequest(
@@ -2328,7 +2333,7 @@
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 3.: source has been deleted
+      // TODO: 3.: source has been deleted: be an op
       if (!(this[_source] instanceof IDBIndex)) {
         throw new DOMException("", "InvalidAccessError");
       }
@@ -2373,7 +2378,7 @@
         throw new DOMException("", "DataError");
       }
       this[_gotValue] = false;
-      this[_request][_processed] = false;
+      this[_request][_processedDeferred] = new Deferred();
       this[_request][_done] = false;
 
       return asynchronouslyExecuteRequest(
@@ -2398,14 +2403,14 @@
       if (this[_transaction][_mode] === "readonly") {
         throw new DOMException("", "ReadOnlyError");
       }
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
       if (!this[_gotValue]) {
         throw new DOMException("", "InvalidStateError");
       }
       if (this[_keyOnly]) {
         throw new DOMException("", "InvalidStateError");
       }
-      const cloned = clone(value); // TODO: during transaction?
+      const cloned = clone(value); // TODO: during transaction?: open issue or mail
       if (this[_effectiveObjectStore][_store].keyPath !== null) {
         const kpk = extractKeyFromValueUsingKeyPath(
           cloned,
@@ -2437,7 +2442,7 @@
       if (this[_transaction][_mode] === "readonly") {
         throw new DOMException("", "ReadOnlyError");
       }
-      // TODO: 4.: source has been deleted
+      // TODO: 4.: source has been deleted: be an op
       if (!this[_gotValue]) {
         throw new DOMException("", "InvalidStateError");
       }
@@ -2463,8 +2468,11 @@
   const _mode = Symbol("[[mode]]");
   const _durabilityHint = Symbol("[[durabilityHint]]");
   const _db = Symbol("[[db]]");
+  const _rid = Symbol("[[rid]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbtransaction
   class IDBTransaction extends EventTarget {
+    [_rid];
+
     [_requestList] = [];
     /** @type {TransactionState} */
     [_state] = "active";
@@ -2481,7 +2489,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-objectstorenames
     get objectStoreNames() {
       webidl.assertBranded(this, IDBTransactionPrototype);
-      // TODO: from _db and cache? or op?
+      // TODO: from _db and cache
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-mode
@@ -2520,7 +2528,7 @@
       if (this[_state] === "finished") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: 2., 3.: cache?
+      // TODO: 2., 3.: cache
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-commit
