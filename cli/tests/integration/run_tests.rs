@@ -1002,6 +1002,7 @@ itest!(type_definitions_for_export {
   args: "run --reload type_definitions_for_export.ts",
   output: "type_definitions_for_export.ts.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_directives_01 {
@@ -1022,31 +1023,36 @@ itest!(type_directives_js_main {
 });
 
 itest!(type_directives_redirect {
-  args: "run --reload type_directives_redirect.ts",
+  args: "run --reload --check type_directives_redirect.ts",
   output: "type_directives_redirect.ts.out",
   http_server: true,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_headers_deno_types {
-  args: "run --reload type_headers_deno_types.ts",
+  args: "run --reload --check type_headers_deno_types.ts",
   output: "type_headers_deno_types.ts.out",
   http_server: true,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_type_imports {
-  args: "run --reload ts_type_imports.ts",
+  args: "run --reload --check ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
+  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_type_only_import {
-  args: "run --reload ts_type_only_import.ts",
+  args: "run --reload --check ts_type_only_import.ts",
   output: "ts_type_only_import.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(swc_syntax_error {
@@ -1101,12 +1107,14 @@ itest!(wasm_shared {
 itest!(wasm_async {
   args: "run wasm_async.js",
   output: "wasm_async.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(wasm_unreachable {
   args: "run --allow-read wasm_unreachable.js",
   output: "wasm_unreachable.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(wasm_url {
@@ -1183,6 +1191,7 @@ itest!(unstable_enabled {
 itest!(unstable_disabled_js {
   args: "run --reload unstable.js",
   output: "unstable_disabled_js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_enabled_js {
@@ -1223,6 +1232,7 @@ itest!(dynamic_import_conditional {
 itest!(tsx_imports {
   args: "run --reload tsx_imports.ts",
   output: "tsx_imports.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fix_dynamic_import_errors {
@@ -2516,6 +2526,7 @@ itest!(wasm_streaming_panic_test {
   args: "run wasm_streaming_panic_test.js",
   output: "wasm_streaming_panic_test.js.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // Regression test for https://github.com/denoland/deno/issues/13897.
@@ -2529,88 +2540,103 @@ itest!(unstable_ffi_1 {
   args: "run unstable_ffi_1.js",
   output: "unstable_ffi_1.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_2 {
   args: "run unstable_ffi_2.js",
   output: "unstable_ffi_2.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_3 {
   args: "run unstable_ffi_3.js",
   output: "unstable_ffi_3.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_4 {
   args: "run unstable_ffi_4.js",
   output: "unstable_ffi_4.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_5 {
   args: "run unstable_ffi_5.js",
   output: "unstable_ffi_5.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_6 {
   args: "run unstable_ffi_6.js",
   output: "unstable_ffi_6.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_7 {
   args: "run unstable_ffi_7.js",
   output: "unstable_ffi_7.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_8 {
   args: "run unstable_ffi_8.js",
   output: "unstable_ffi_8.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_9 {
   args: "run unstable_ffi_9.js",
   output: "unstable_ffi_9.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_10 {
   args: "run unstable_ffi_10.js",
   output: "unstable_ffi_10.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_11 {
   args: "run unstable_ffi_11.js",
   output: "unstable_ffi_11.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_12 {
   args: "run unstable_ffi_12.js",
   output: "unstable_ffi_12.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_13 {
   args: "run unstable_ffi_13.js",
   output: "unstable_ffi_13.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_14 {
   args: "run unstable_ffi_14.js",
   output: "unstable_ffi_14.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_15 {
   args: "run unstable_ffi_15.js",
   output: "unstable_ffi_15.js.out",
   exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
