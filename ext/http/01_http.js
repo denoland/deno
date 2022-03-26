@@ -29,6 +29,8 @@
     _idleTimeoutDuration,
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
+    _connection,
+    _createWebSocketStreams,
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
@@ -314,30 +316,24 @@
 
           deferred.resolve([conn, res.readBuf]);
         }
-        const ws = resp[_ws];
-        if (ws) {
-          const wsRid = await core.opAsync(
+        if (resp[_ws]) {
+          if (resp[_ws].kind === null) {
+            throw new Error(
+              "No websocket was used from Deno.upgradeWebSocket() call",
+            );
+          }
+          const ws = resp[_ws].kind === "socket"
+            ? resp[_ws].socket
+            : resp[_ws].stream;
+          ws[_rid] = await core.opAsync(
             "op_http_upgrade_websocket",
             streamRid,
           );
-          ws[_rid] = wsRid;
-          ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
           httpConn.close();
 
-          if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", { rid: wsRid });
-
-            ws[_readyState] = WebSocket.CLOSED;
-
-            const errEvent = new ErrorEvent("error");
-            ws.dispatchEvent(errEvent);
-
-            const event = new CloseEvent("close");
-            ws.dispatchEvent(event);
-
-            core.tryClose(wsRid);
-          } else {
+          if (ws instanceof WebSocket) {
+            ws[_protocol] = resp.headers.get("sec-websocket-protocol");
             ws[_readyState] = WebSocket.OPEN;
             const event = new Event("open");
             ws.dispatchEvent(event);
@@ -350,6 +346,14 @@
               );
             }
             ws[_serverHandleIdleTimeout]();
+          } else {
+            const { readable, writable } = ws[_createWebSocketStreams]();
+            ws[_connection].resolve({
+              readable,
+              writable,
+              extensions: "",
+              protocol: resp.headers.get("sec-websocket-protocol"),
+            });
           }
         }
       } finally {
@@ -449,11 +453,34 @@
     const socket = webidl.createBranded(WebSocket);
     setEventTargetData(socket);
     socket[_server] = true;
-    response[_ws] = socket;
     socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
     socket[_idleTimeoutTimeout] = null;
 
-    return { response, socket };
+    const stream = webidl.createBranded(WebSocketStream);
+    stream[_server] = true;
+    stream[_idleTimeoutDuration] = options.idleTimeout ?? 120;
+    stream[_idleTimeoutTimeout] = null;
+
+    const webSocketSelector = { kind: null, socket, stream };
+    response[_ws] = webSocketSelector;
+
+    return {
+      response,
+      get socket() {
+        if (webSocketSelector.kind === "stream") {
+          throw new TypeError("Websocket already taken as WebSocketStream");
+        }
+        webSocketSelector.kind = "socket";
+        return socket;
+      },
+      get stream() {
+        if (webSocketSelector.kind === "socket") {
+          throw new TypeError("Websocket already taken as WebSocket");
+        }
+        webSocketSelector.kind = "stream";
+        return stream;
+      },
+    };
   }
 
   function upgradeHttp(req) {

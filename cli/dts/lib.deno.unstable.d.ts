@@ -1350,6 +1350,12 @@ declare namespace Deno {
    */
   export function unrefTimer(id: number): void;
 
+  export interface WebSocketUpgrade {
+    response: Response;
+    socket: WebSocket;
+    stream: WebSocketStream;
+  }
+
   /** **UNSTABLE**: new API, yet to be vetter.
    *
    * Allows to "hijack" a connection that the request is associated with.
