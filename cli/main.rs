@@ -52,7 +52,7 @@ use crate::flags::DocFlags;
 use crate::flags::EvalFlags;
 use crate::flags::Flags;
 use crate::flags::FmtFlags;
-use crate::flags::FutureTypeCheckFlag;
+use crate::flags::FutureTypecheckMode;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
@@ -1173,7 +1173,7 @@ async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
-  if !flags.has_check_flag && flags.check == CheckFlag::All {
+  if !flags.has_check_flag && flags.typecheck_mode == TypecheckMode::All {
     info!("{} In future releases deno run will not automatically type check without the --check flag. 
 To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.", colors::yellow("Warning"));
   }
@@ -1523,10 +1523,10 @@ pub fn main() {
     let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
     if let Some(env_var) = future_check_env_var {
       if env_var == "1" {
-        flags.check = match &flags.future_check {
-          FutureTypeCheckFlag::None => CheckFlag::None,
-          FutureTypeCheckFlag::All => CheckFlag::All,
-          FutureTypeCheckFlag::Local => CheckFlag::Local,
+        flags.typecheck_mode = match &flags.future_typecheck_mode {
+          FutureTypecheckMode::None => TypecheckMode::None,
+          FutureTypecheckMode::All => TypecheckMode::All,
+          FutureTypecheckMode::Local => TypecheckMode::Local,
         }
       }
     }

@@ -3,7 +3,7 @@
 use crate::deno_dir::DenoDir;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
-use crate::flags::FutureTypeCheckFlag;
+use crate::flags::FutureTypecheckMode;
 use crate::flags::RunFlags;
 use crate::flags::TypecheckMode;
 use crate::standalone::Metadata;
@@ -288,7 +288,7 @@ pub fn compile_to_runtime_flags(
     lock: None,
     log_level: flags.log_level,
     typecheck_mode: TypecheckMode::All,
-    future_check: FutureTypeCheckFlag::None,
+    future_typecheck_mode: FutureTypecheckMode::None,
     has_check_flag: false,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags

@@ -241,7 +241,7 @@ impl Default for TypecheckMode {
 // TODO(bartlomieju): remove once type checking is skipped by default (probably
 // in 1.23)
 #[derive(Debug, Clone, PartialEq)]
-pub enum FutureTypeCheckFlag {
+pub enum FutureTypecheckMode {
   /// Type check all modules. The default value.
   All,
   /// Skip type checking of all modules. Represents `--no-check` on the command
@@ -252,7 +252,7 @@ pub enum FutureTypeCheckFlag {
   Local,
 }
 
-impl Default for FutureTypeCheckFlag {
+impl Default for FutureTypecheckMode {
   fn default() -> Self {
     Self::None
   }
@@ -283,7 +283,7 @@ pub struct Flags {
   pub typecheck_mode: TypecheckMode,
   // TODO(bartlomieju): should be removed in favor of `check`
   // once type checking is skipped by default
-  pub future_check: FutureTypeCheckFlag,
+  pub future_typecheck_mode: FutureTypecheckMode,
   pub has_check_flag: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
@@ -2813,14 +2813,14 @@ fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.has_check_flag = matches.is_present("check");
   if let Some(cache_type) = matches.value_of("check") {
     match cache_type {
-      "all" => flags.future_check = FutureTypeCheckFlag::All,
+      "all" => flags.future_typecheck_mode = FutureTypecheckMode::All,
       _ => debug!(
         "invalid value for 'check' of '{}' using default",
         cache_type
       ),
     }
   } else if matches.is_present("check") {
-    flags.future_check = FutureTypeCheckFlag::Local;
+    flags.future_typecheck_mode = FutureTypecheckMode::Local;
   }
 }
 
@@ -5472,7 +5472,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_check: FutureTypeCheckFlag::Local,
+        future_typecheck_mode: FutureTypecheckMode::Local,
         has_check_flag: true,
         unstable: true,
         ..Flags::default()
@@ -5492,7 +5492,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_check: FutureTypeCheckFlag::All,
+        future_typecheck_mode: FutureTypecheckMode::All,
         has_check_flag: true,
         unstable: true,
         ..Flags::default()
@@ -5512,7 +5512,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_check: FutureTypeCheckFlag::None,
+        future_typecheck_mode: FutureTypecheckMode::None,
         has_check_flag: true,
         unstable: true,
         ..Flags::default()
