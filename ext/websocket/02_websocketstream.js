@@ -203,7 +203,7 @@
             } else {
               this[_rid] = create.rid;
 
-              const { readable, writable } = this[_createWebSocketStreams];
+              const { readable, writable } = this[_createWebSocketStreams]();
 
               this[_connection].resolve({
                 readable,
@@ -291,10 +291,12 @@
 
           switch (kind) {
             case "string": {
+              this[_serverHandleIdleTimeout]();
               controller.enqueue(value);
               break;
             }
             case "binary": {
+              this[_serverHandleIdleTimeout]();
               controller.enqueue(value);
               break;
             }
@@ -302,6 +304,10 @@
               await core.opAsync("op_ws_send", this[_rid], {
                 kind: "pong",
               });
+              break;
+            }
+            case "pong": {
+              this[_serverHandleIdleTimeout]();
               break;
             }
             case "closed":
