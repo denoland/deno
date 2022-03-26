@@ -637,9 +637,7 @@ fn cafile_bundle_remote_exports() {
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
-    .arg("--check")
     .arg("--cert")
     .arg(cafile)
     .arg(mod1)
@@ -662,7 +660,9 @@ fn cafile_bundle_remote_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&test)
     .output()
     .expect("failed to spawn script");
