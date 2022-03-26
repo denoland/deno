@@ -13,9 +13,7 @@ fn bundle_exports() {
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
-    .arg("--check")
     .arg(mod1)
     .arg(&bundle)
     .spawn()
@@ -58,7 +56,6 @@ fn bundle_exports_no_check() {
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
     .arg(mod1)
     .arg(&bundle)
@@ -102,9 +99,7 @@ fn bundle_circular() {
   let bundle = t.path().join("circular1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
-    .arg("--check")
     .arg(circular1)
     .arg(&bundle)
     .spawn()
@@ -136,9 +131,7 @@ fn bundle_single_module() {
   let bundle = t.path().join("single_module.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
-    .arg("--check")
     .arg(single_module)
     .arg(&bundle)
     .spawn()
@@ -171,9 +164,7 @@ fn bundle_tla() {
   let bundle = t.path().join("tla.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
-    .arg("--check")
     .arg(tla_import)
     .arg(&bundle)
     .spawn()
@@ -216,7 +207,6 @@ fn bundle_js() {
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
     .arg(mod6)
     .arg(&bundle)
@@ -280,9 +270,7 @@ fn bundle_import_map() {
   let bundle = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
-    .arg("--check")
     .arg("--import-map")
     .arg(import_map_path)
     .arg(import)
@@ -326,7 +314,6 @@ fn bundle_import_map_no_check() {
   let bundle = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
     .arg("--import-map")
     .arg(import_map_path)
@@ -371,7 +358,6 @@ fn bundle_json_module() {
   let bundle = t.path().join("mod7.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
     .arg(mod7)
     .arg(&bundle)
@@ -405,7 +391,6 @@ fn bundle_json_module_escape_sub() {
   let bundle = t.path().join("mod8.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("bundle")
     .arg(mod8)
     .arg(&bundle)
