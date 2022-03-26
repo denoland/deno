@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.20.2"
+version = "1.20.3"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -844,7 +844,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -854,14 +854,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.125.0"
+version = "0.126.0"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -883,7 +883,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.57.0"
+version = "0.58.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -929,7 +929,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "base64 0.13.0",
  "brotli",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1031,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2 1.0.36",
@@ -1041,7 +1041,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.51.0"
+version = "0.52.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1115,7 +1115,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1127,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.74.0"
+version = "0.75.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.44.0"
+version = "0.45.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1155,14 +1155,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1176,7 +1176,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2319,9 +2319,9 @@ checksum = "c7d73b3f436185384286bd8098d17ec07c9a7d2388a6599f824d8502b529702a"
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.22.2"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290b64917f8b0cb885d9de0f9959fe1f775d7fa12f1da2db9001c1c8ab60f89d"
+checksum = "cb644c388dfaefa18035c12614156d285364769e818893da0dda9030c80ad2ba"
 dependencies = [
  "cc",
  "pkg-config",
@@ -3427,9 +3427,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.25.4"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c4b1eaf239b47034fb450ee9cdedd7d0226571689d8823030c4b6c2cb407152"
+checksum = "85127183a999f7db96d1a976a309eebbfb6ea3b0b400ddd8340190129de6eb7a"
 dependencies = [
  "bitflags",
  "fallible-iterator",
@@ -3705,7 +3705,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "bencher",
  "serde",

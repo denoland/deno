@@ -401,7 +401,7 @@
         return webidl.converters["Request"](V, opts);
       }
     }
-    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    // Passed to new URL(...) which implicitly converts DOMString -> USVString
     return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(

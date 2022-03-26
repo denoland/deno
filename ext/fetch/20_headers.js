@@ -210,7 +210,7 @@
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");
         // The following if statement is not spec compliant.
-        // `set-cookie` is the only header that can not be concatentated,
+        // `set-cookie` is the only header that can not be concatenated,
         // so must be given to the user as multiple headers.
         // The else block of the if statement is spec compliant again.
         if (name === "set-cookie") {
