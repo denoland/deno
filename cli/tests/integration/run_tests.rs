@@ -2613,3 +2613,8 @@ itest!(unstable_ffi_15 {
   output: "unstable_ffi_15.js.out",
   exit_code: 70,
 });
+
+itest!(allow_run_allowlist_resolution {
+  args: "run --quiet -A allow_run_allowlist_resolution.ts",
+  output: "allow_run_allowlist_resolution.ts.out",
+});

@@ -27,6 +27,7 @@ use std::string::ToString;
 use std::sync::atomic::AtomicBool;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
+use which::which;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -862,9 +863,19 @@ impl UnaryPermission<RunDescriptor> {
     } else if self.global_state == PermissionState::Granted
       || match cmd {
         None => false,
-        Some(cmd) => self
-          .granted_list
-          .contains(&RunDescriptor::from_str(cmd).unwrap()),
+        Some(cmd) => {
+          let d = RunDescriptor::from_str(cmd).unwrap();
+          self.granted_list.contains(&d)
+            || match &d {
+              RunDescriptor::Name(name) => match which(name) {
+                Ok(path) => {
+                  self.granted_list.contains(&RunDescriptor::Path(path))
+                }
+                _ => false,
+              },
+              _ => false,
+            }
+        }
       }
     {
       PermissionState::Granted
@@ -1218,7 +1229,18 @@ impl Permissions {
         .as_ref()
         .map(|v| {
           v.iter()
-            .map(|x| RunDescriptor::from_str(x).unwrap())
+            .flat_map(|x| {
+              // If a bare name is given as the command, resolve it now and add
+              // both RunDescriptor::Name(name) and RunDescriptor::Path(path)
+              // to the allowlist.
+              let d = RunDescriptor::from_str(x).unwrap();
+              if let RunDescriptor::Name(name) = &d {
+                if let Ok(path) = which(name) {
+                  return vec![d, RunDescriptor::Path(path)];
+                }
+              }
+              vec![d]
+            })
             .collect()
         })
         .unwrap_or_else(HashSet::new),
