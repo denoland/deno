@@ -2137,7 +2137,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  compile_args_parse(flags, matches);
+  compile_args_without_no_check_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -2620,6 +2620,18 @@ fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   no_remote_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
+  ca_file_arg_parse(flags, matches);
+}
+
+fn compile_args_without_no_check_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+) {
+  import_map_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
