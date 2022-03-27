@@ -10,15 +10,19 @@
 // | **`Deno.run({ cmd: "/usr/bin/echo" })`** | ✅                                          | ✅                                          |
 
 const execPath = Deno.execPath();
-const execPathParent = execPath.replace(/(?<=[/\\])[^/\\]+$/, "");
+const execPathParent = execPath.replace(/[/\\][^/\\]+$/, "");
 
 const testUrl = `data:application/typescript;base64,${
   btoa(`
   console.log(await Deno.permissions.query({ name: "run", command: "deno" }));
-  console.log(await Deno.permissions.query({ name: "run", command: "${execPath}" }));
+  console.log(await Deno.permissions.query({ name: "run", command: "${
+    execPath.replaceAll("\\", "\\\\")
+  }" }));
   Deno.env.set("PATH", "");
   console.log(await Deno.permissions.query({ name: "run", command: "deno" }));
-  console.log(await Deno.permissions.query({ name: "run", command: "${execPath}" }));
+  console.log(await Deno.permissions.query({ name: "run", command: "${
+    execPath.replaceAll("\\", "\\\\")
+  }" }));
 `)
 }`;
 
