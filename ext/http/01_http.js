@@ -30,6 +30,7 @@
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
     _connection,
+    _closed,
     _createWebSocketStreams,
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
@@ -460,6 +461,8 @@
     stream[_server] = true;
     stream[_idleTimeoutDuration] = options.idleTimeout ?? 120;
     stream[_idleTimeoutTimeout] = null;
+    stream[_connection] = new Deferred();
+    stream[_closed] = new Deferred();
 
     const webSocketSelector = { kind: null, socket, stream };
     response[_ws] = webSocketSelector;

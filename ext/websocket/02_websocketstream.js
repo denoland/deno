@@ -288,6 +288,7 @@
             "op_ws_next_event",
             this[_rid],
           );
+          console.log(kind);
 
           switch (kind) {
             case "string": {
@@ -436,6 +437,7 @@
 
   window.__bootstrap.webSocket.WebSocketStream = WebSocketStream;
   window.__bootstrap.webSocket._connection = _connection;
+  window.__bootstrap.webSocket._closed = _closed;
   window.__bootstrap.webSocket._createWebSocketStreams =
     _createWebSocketStreams;
 })(this);
