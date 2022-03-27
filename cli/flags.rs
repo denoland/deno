@@ -723,7 +723,7 @@ Future runs of this module will trigger no downloads or compilation unless
 }
 
 fn check_subcommand<'a>() -> App<'a> {
-  compile_args(App::new("check"))
+  compile_args_without_no_check(App::new("check"))
     .arg(
       Arg::new("file")
         .takes_value(true)
@@ -1658,6 +1658,17 @@ fn compile_args(app: App) -> App {
     .arg(no_remote_arg())
     .arg(config_arg())
     .arg(no_check_arg())
+    .arg(reload_arg())
+    .arg(lock_arg())
+    .arg(lock_write_arg())
+    .arg(ca_file_arg())
+}
+
+fn compile_args_without_no_check(app: App) -> App {
+  app
+    .arg(import_map_arg())
+    .arg(no_remote_arg())
+    .arg(config_arg())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
