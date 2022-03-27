@@ -56,6 +56,8 @@ mod bench;
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "check_tests.rs"]
+mod check;
 #[path = "compat_tests.rs"]
 mod compat;
 #[path = "compile_tests.rs"]
