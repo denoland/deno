@@ -288,7 +288,6 @@
             "op_ws_next_event",
             this[_rid],
           );
-          console.log(kind);
 
           switch (kind) {
             case "string": {
