@@ -2674,3 +2674,14 @@ itest!(unstable_ffi_15 {
   exit_code: 70,
   envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
+
+itest!(future_check1 {
+  args: "run future_check.ts",
+  output: "future_check1.out",
+});
+
+itest!(future_check2 {
+  args: "run --check future_check.ts",
+  output: "future_check2.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
