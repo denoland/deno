@@ -590,7 +590,7 @@ fn lsp_deno_task() {
     r#"{
     "tasks": {
       "build": "deno test",
-      "some%test": "deno bundle mod.ts"
+      "some:test": "deno bundle mod.ts"
     }
   }"#,
   )
