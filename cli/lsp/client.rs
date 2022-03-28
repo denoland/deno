@@ -16,12 +16,13 @@ use crate::lsp::repl::get_repl_workspace_settings;
 use super::config::SpecifierSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
+use super::testing::lsp_custom as testing_lsp_custom;
 
 #[derive(Debug)]
 pub enum TestingNotification {
-  Module(lsp_custom::TestModuleNotificationParams),
-  DeleteModule(lsp_custom::TestModuleDeleteNotificationParams),
-  Progress(lsp_custom::TestRunProgressParams),
+  Module(testing_lsp_custom::TestModuleNotificationParams),
+  DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),
+  Progress(testing_lsp_custom::TestRunProgressParams),
 }
 
 #[derive(Clone)]
@@ -188,18 +189,18 @@ impl ClientTrait for LspowerClient {
       match notification {
         TestingNotification::Module(params) => {
           client
-            .send_custom_notification::<lsp_custom::TestModuleNotification>(
+            .send_custom_notification::<testing_lsp_custom::TestModuleNotification>(
               params,
             )
             .await
         }
         TestingNotification::DeleteModule(params) => client
-          .send_custom_notification::<lsp_custom::TestModuleDeleteNotification>(
+          .send_custom_notification::<testing_lsp_custom::TestModuleDeleteNotification>(
             params,
           )
           .await,
         TestingNotification::Progress(params) => client
-          .send_custom_notification::<lsp_custom::TestRunProgressNotification>(
+          .send_custom_notification::<testing_lsp_custom::TestRunProgressNotification>(
             params,
           )
           .await,

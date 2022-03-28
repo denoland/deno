@@ -2159,7 +2159,7 @@ impl Inner {
         self.reload_import_registries().await
       }
       lsp_custom::TASK_REQUEST => self.get_tasks(),
-      lsp_custom::TEST_RUN_REQUEST => {
+      testing::TEST_RUN_REQUEST => {
         if let Some(testing_server) = &self.maybe_testing_server {
           match params.map(serde_json::from_value) {
             Some(Ok(params)) => testing_server
@@ -2171,7 +2171,7 @@ impl Inner {
           Err(LspError::invalid_request())
         }
       }
-      lsp_custom::TEST_RUN_CANCEL_REQUEST => {
+      testing::TEST_RUN_CANCEL_REQUEST => {
         if let Some(testing_server) = &self.maybe_testing_server {
           match params.map(serde_json::from_value) {
             Some(Ok(params)) => testing_server.run_cancel_request(params),
