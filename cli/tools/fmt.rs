@@ -658,7 +658,12 @@ fn test_is_supported_ext_fmt() {
   assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
   assert!(is_supported_ext_fmt(Path::new("foo.json")));
   assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+}
+
+#[test]
+fn test_is_located_in_git() {
   assert!(is_located_in_git(Path::new(".git/bad.json")));
   assert!(is_located_in_git(Path::new("test/.git/bad.json")));
+  assert!(is_located_in_git(Path::new("test\\.git\\bad.json")));
   assert!(!is_located_in_git(Path::new("test/bad.git/bad.json")));
 }
