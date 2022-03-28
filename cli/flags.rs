@@ -1696,7 +1696,11 @@ fn permission_args(app: Command) -> Command {
     )
 }
 
-fn runtime_args(app: Command, include_perms: bool, include_inspector: bool) -> Command {
+fn runtime_args(
+  app: Command,
+  include_perms: bool,
+  include_inspector: bool,
+) -> Command {
   let app = compile_args(app);
   let app = if include_perms {
     permission_args(app)
