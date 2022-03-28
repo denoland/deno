@@ -227,7 +227,7 @@ pub async fn write_standalone_binary(
   {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o777);
-    tokio::fs::set_permissions(output, perms).await?;
+    tokio::fs::set_permissions(output_path, perms).await?;
   }
 
   Ok(())
