@@ -617,7 +617,7 @@ fn lsp_deno_task() {
         "detail": "deno test"
       },
       {
-        "name": "some%test",
+        "name": "some:test",
         "detail": "deno bundle mod.ts"
       }
     ]))
