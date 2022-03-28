@@ -1267,7 +1267,7 @@
       /**
        * Parent test context.
        */
-      parentContext: parentStep.parentContext ?? undefined,
+      parent: parentStep.parentContext ?? undefined,
       /**
        * File Uri of the test code.
        */
