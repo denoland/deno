@@ -2141,6 +2141,7 @@ impl Inner {
       lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST => {
         self.reload_import_registries().await
       }
+      lsp_custom::TASK_REQUEST => self.get_tasks(),
       lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
         match params.map(serde_json::from_value) {
           Some(Ok(params)) => Ok(Some(
@@ -2829,6 +2830,15 @@ impl Inner {
   fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
     json!({ "averages": averages })
+  }
+
+  fn get_tasks(&self) -> LspResult<Option<Value>> {
+    Ok(
+      self
+        .maybe_config_file
+        .as_ref()
+        .and_then(|cf| cf.to_lsp_tasks()),
+    )
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
