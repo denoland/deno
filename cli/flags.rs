@@ -2843,9 +2843,9 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec(svec!["deno", "--version"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::DisplayVersion);
     let r = flags_from_vec(svec!["deno", "-V"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::DisplayVersion);
   }
 
   #[test]
@@ -5195,7 +5195,7 @@ mod tests {
     let error_message = r.unwrap_err().to_string();
     assert!(&error_message
       .contains("error: The following required arguments were not provided:"));
-    assert!(&error_message.contains("--watch=<FILES>..."));
+    assert!(&error_message.contains("--watch[=<FILES>...]"));
   }
 
   #[test]
