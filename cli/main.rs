@@ -1469,8 +1469,8 @@ pub fn main() {
     let flags = match flags::flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
-        if err.kind == clap::ErrorKind::DisplayHelp
-          || err.kind == clap::ErrorKind::DisplayVersion =>
+        if err.kind() == clap::ErrorKind::DisplayHelp
+          || err.kind() == clap::ErrorKind::DisplayVersion =>
       {
         err.print().unwrap();
         std::process::exit(0);
