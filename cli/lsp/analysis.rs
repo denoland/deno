@@ -173,7 +173,7 @@ fn check_specifier(
 
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
-pub(crate) fn fix_ts_import_changes(
+pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
   documents: &Documents,
@@ -323,7 +323,7 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub(crate) async fn ts_changes_to_edit(
+pub async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
@@ -366,7 +366,7 @@ pub struct CodeActionCollection {
 }
 
 impl CodeActionCollection {
-  pub(crate) fn add_deno_fix_action(
+  pub fn add_deno_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -376,7 +376,7 @@ impl CodeActionCollection {
     Ok(())
   }
 
-  pub(crate) fn add_deno_lint_ignore_action(
+  pub fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -539,7 +539,7 @@ impl CodeActionCollection {
   }
 
   /// Add a TypeScript code fix action to the code actions collection.
-  pub(crate) async fn add_ts_fix_action(
+  pub async fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,

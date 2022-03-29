@@ -15,6 +15,7 @@ use std::fmt;
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
+  "BenchDefinition",
   "CompilerOptions",
   "CreateHttpClientOptions",
   "DatagramConn",
@@ -39,6 +40,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixListenOptions",
   "addSignalListener",
   "applySourceMap",
+  "bench",
   "connect",
   "consoleSize",
   "createHttpClient",
