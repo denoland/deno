@@ -169,7 +169,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
 
 /// Create and populate a root cert store based on the passed options and
 /// environment.
-pub(crate) fn get_root_cert_store(
+pub fn get_root_cert_store(
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_file: Option<String>,
@@ -314,7 +314,7 @@ pub struct FileFetcher {
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
-  pub(crate) http_cache: HttpCache,
+  pub http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
   download_log_level: log::Level,
@@ -392,7 +392,7 @@ impl FileFetcher {
   /// Fetch cached remote file.
   ///
   /// This is a recursive operation if source file has redirections.
-  pub(crate) fn fetch_cached(
+  pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
     redirect_limit: i64,

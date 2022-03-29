@@ -435,6 +435,16 @@ declare class Response implements Body {
  * ```
  */
 declare function fetch(
-  input: Request | URL | string,
+  input: Request | string,
+  init?: RequestInit,
+): Promise<Response>;
+// TODO(kt3k): Remove the following overloaded declaration for 2.0.
+/** @deprecated URL is deprecated as the first argument. Use string or Request object instead.
+ *
+ * Fetch a resource from the network. It returns a `Promise` that resolves to the
+ * `Response` to that `Request`, whether it is successful or not.
+ */
+declare function fetch(
+  input: URL | Request | string,
   init?: RequestInit,
 ): Promise<Response>;

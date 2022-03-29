@@ -10,9 +10,9 @@ use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
+use crate::flags::TypecheckMode;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -1075,7 +1075,7 @@ pub async fn run_tests_with_watch(
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.check == CheckFlag::None;
+  let no_check = ps.flags.typecheck_mode == TypecheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(

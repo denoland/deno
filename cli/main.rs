@@ -43,7 +43,6 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
-use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -59,6 +58,7 @@ use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
+use crate::flags::TypecheckMode;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::flags::VendorFlags;
@@ -70,7 +70,6 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::source_maps::apply_source_map;
-use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -423,18 +422,8 @@ async fn compile_command(
   let ps = ProcState::build(Arc::new(flags)).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.as_ref().and_then(|output| {
-    if fs_util::path_has_trailing_slash(output) {
-      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
-      Some(output.join(infer_file_name))
-    } else {
-      Some(output.to_path_buf())
-    }
-  }).or_else(|| {
-    infer_name_from_url(&module_specifier).map(PathBuf::from)
-  }).ok_or_else(|| generic_error(
-    "An executable name was not provided. One could not be inferred from the URL. Aborting.",
-  ))?;
+  let output_path =
+    tools::standalone::resolve_compile_executable_output_path(&compile_flags)?;
 
   let graph = Arc::try_unwrap(
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?,
@@ -467,14 +456,9 @@ async fn compile_command(
   )
   .await?;
 
-  info!("{} {}", colors::green("Emit"), output.display());
+  info!("{} {}", colors::green("Emit"), output_path.display());
 
-  tools::standalone::write_standalone_binary(
-    output.clone(),
-    compile_flags.target,
-    final_bin,
-  )
-  .await?;
+  tools::standalone::write_standalone_binary(output_path, final_bin).await?;
 
   Ok(0)
 }
@@ -693,10 +677,14 @@ async fn create_graph_and_maybe_check(
     .as_ref()
     .map(|cf| cf.get_check_js())
     .unwrap_or(false);
-  graph_valid(&graph, ps.flags.check != CheckFlag::None, check_js)?;
+  graph_valid(
+    &graph,
+    ps.flags.typecheck_mode != TypecheckMode::None,
+    check_js,
+  )?;
   graph_lock_or_exit(&graph);
 
-  if ps.flags.check != CheckFlag::None {
+  if ps.flags.typecheck_mode != TypecheckMode::None {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -720,7 +708,7 @@ async fn create_graph_and_maybe_check(
       Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
-        check: ps.flags.check.clone(),
+        typecheck_mode: ps.flags.typecheck_mode.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -751,7 +739,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.check == CheckFlag::None {
+  if flags.typecheck_mode == TypecheckMode::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -1020,7 +1008,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .as_ref()
         .map(|cf| cf.get_check_js())
         .unwrap_or(false);
-      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None, check_js)?;
+      graph_valid(
+        &graph,
+        ps.flags.typecheck_mode != flags::TypecheckMode::None,
+        check_js,
+      )?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph
@@ -1469,8 +1461,8 @@ pub fn main() {
     let flags = match flags::flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
-        if err.kind == clap::ErrorKind::DisplayHelp
-          || err.kind == clap::ErrorKind::DisplayVersion =>
+        if err.kind() == clap::ErrorKind::DisplayHelp
+          || err.kind() == clap::ErrorKind::DisplayVersion =>
       {
         err.print().unwrap();
         std::process::exit(0);

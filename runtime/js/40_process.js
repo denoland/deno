@@ -9,6 +9,7 @@
   const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
+    ArrayPrototypeSlice,
     TypeError,
     isNaN,
     ObjectEntries,
@@ -110,7 +111,7 @@
     stdin = "inherit",
   }) {
     if (cmd[0] != null) {
-      cmd[0] = pathFromURL(cmd[0]);
+      cmd = [pathFromURL(cmd[0]), ...ArrayPrototypeSlice(cmd, 1)];
     }
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),
