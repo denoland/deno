@@ -140,17 +140,24 @@ impl LanguageServer {
     }
   }
 
-  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
+  pub async fn performance_request(
+    &self,
+    _: Option<Value>,
+  ) -> LspResult<Option<Value>> {
     Ok(Some(self.0.lock().await.get_performance()))
   }
 
   pub async fn reload_import_registries_request(
     &self,
+    _: Option<Value>,
   ) -> LspResult<Option<Value>> {
     self.0.lock().await.reload_import_registries().await
   }
 
-  pub async fn task_request(&self) -> LspResult<Option<Value>> {
+  pub async fn task_request(
+    &self,
+    _: Option<Value>,
+  ) -> LspResult<Option<Value>> {
     self.0.lock().await.get_tasks()
   }
 
