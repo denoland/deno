@@ -52,7 +52,7 @@ use crate::flags::DocFlags;
 use crate::flags::EvalFlags;
 use crate::flags::Flags;
 use crate::flags::FmtFlags;
-use crate::flags::FutureTypecheckMode;
+use crate::flags::FutureTypeCheckMode;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
@@ -60,7 +60,7 @@ use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
-use crate::flags::TypecheckMode;
+use crate::flags::TypeCheckMode;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::flags::VendorFlags;
@@ -696,12 +696,12 @@ async fn create_graph_and_maybe_check(
     .unwrap_or(false);
   graph_valid(
     &graph,
-    ps.flags.typecheck_mode != TypecheckMode::None,
+    ps.flags.type_check_mode != TypeCheckMode::None,
     check_js,
   )?;
   graph_lock_or_exit(&graph);
 
-  if ps.flags.typecheck_mode != TypecheckMode::None {
+  if ps.flags.type_check_mode != TypeCheckMode::None {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -725,7 +725,7 @@ async fn create_graph_and_maybe_check(
       Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
-        typecheck_mode: ps.flags.typecheck_mode.clone(),
+        type_check_mode: ps.flags.type_check_mode.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -756,7 +756,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.typecheck_mode == TypecheckMode::None {
+  if flags.type_check_mode == TypeCheckMode::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -1027,7 +1027,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .unwrap_or(false);
       graph_valid(
         &graph,
-        ps.flags.typecheck_mode != flags::TypecheckMode::None,
+        ps.flags.type_check_mode != flags::TypeCheckMode::None,
         check_js,
       )?;
 
@@ -1157,7 +1157,7 @@ async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
-  if !flags.has_check_flag && flags.typecheck_mode == TypecheckMode::All {
+  if !flags.has_check_flag && flags.type_check_mode == TypeCheckMode::All {
     info!("{} In future releases deno run will not automatically type check without the --check flag. 
 To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.", colors::yellow("Warning"));
   }
@@ -1507,10 +1507,10 @@ pub fn main() {
     let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
     if let Some(env_var) = future_check_env_var {
       if env_var == "1" {
-        flags.typecheck_mode = match &flags.future_typecheck_mode {
-          FutureTypecheckMode::None => TypecheckMode::None,
-          FutureTypecheckMode::All => TypecheckMode::All,
-          FutureTypecheckMode::Local => TypecheckMode::Local,
+        flags.type_check_mode = match &flags.future_type_check_mode {
+          FutureTypeCheckMode::None => TypeCheckMode::None,
+          FutureTypeCheckMode::All => TypeCheckMode::All,
+          FutureTypeCheckMode::Local => TypeCheckMode::Local,
         }
       }
     }

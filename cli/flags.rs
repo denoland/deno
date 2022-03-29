@@ -219,7 +219,7 @@ impl Default for DenoSubcommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypecheckMode {
+pub enum TypeCheckMode {
   /// Type check all modules. The default value.
   All,
   /// Skip type checking of all modules. Represents `--no-check` on the command
@@ -230,7 +230,7 @@ pub enum TypecheckMode {
   Local,
 }
 
-impl Default for TypecheckMode {
+impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::All
   }
@@ -239,7 +239,7 @@ impl Default for TypecheckMode {
 // TODO(bartlomieju): remove once type checking is skipped by default (probably
 // in 1.23)
 #[derive(Debug, Clone, PartialEq)]
-pub enum FutureTypecheckMode {
+pub enum FutureTypeCheckMode {
   /// Type check all modules. The default value.
   All,
   /// Skip type checking of all modules. Represents `--no-check` on the command
@@ -250,7 +250,7 @@ pub enum FutureTypecheckMode {
   Local,
 }
 
-impl Default for FutureTypecheckMode {
+impl Default for FutureTypeCheckMode {
   fn default() -> Self {
     Self::None
   }
@@ -278,10 +278,10 @@ pub struct Flags {
   /// the language server is configured with an explicit cache option.
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
-  pub typecheck_mode: TypecheckMode,
+  pub type_check_mode: TypeCheckMode,
   // TODO(bartlomieju): should be removed in favor of `check`
   // once type checking is skipped by default
-  pub future_typecheck_mode: FutureTypecheckMode,
+  pub future_type_check_mode: FutureTypeCheckMode,
   pub has_check_flag: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
@@ -729,17 +729,13 @@ fn check_subcommand<'a>() -> Command<'a> {
         .min_values(1)
         .value_hint(ValueHint::FilePath),
     )
-    .about("Type check the dependencies")
+    .about("Type-check the dependencies")
     .long_about(
-      "Cache, type check and compile remote dependencies recursively.
-
-Download and compile a module with all of its static dependencies and save them
-in the local cache, without running any code:
+      "Download and type-check without execution.
 
   deno check https://deno.land/std/http/file_server.ts
 
-Future runs of this module will trigger no downloads or compilation unless
---reload is specified.",
+Unless --reload is specified, this command will not re-download already cached dependencies.",
     )
 }
 
@@ -2823,14 +2819,14 @@ fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
-      "remote" => flags.typecheck_mode = TypecheckMode::Local,
+      "remote" => flags.type_check_mode = TypeCheckMode::Local,
       _ => debug!(
         "invalid value for 'no-check' of '{}' using default",
         cache_type
       ),
     }
   } else if matches.is_present("no-check") {
-    flags.typecheck_mode = TypecheckMode::None;
+    flags.type_check_mode = TypeCheckMode::None;
   }
 }
 
@@ -2838,14 +2834,14 @@ fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.has_check_flag = matches.is_present("check");
   if let Some(cache_type) = matches.value_of("check") {
     match cache_type {
-      "all" => flags.future_typecheck_mode = FutureTypecheckMode::All,
+      "all" => flags.future_type_check_mode = FutureTypeCheckMode::All,
       _ => debug!(
         "invalid value for 'check' of '{}' using default",
         cache_type
       ),
     }
   } else if matches.is_present("check") {
-    flags.future_typecheck_mode = FutureTypecheckMode::Local;
+    flags.future_type_check_mode = FutureTypeCheckMode::Local;
   }
 }
 
@@ -3797,7 +3793,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3882,7 +3878,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4150,7 +4146,7 @@ mod tests {
           source_file: "script.ts".to_string(),
           out_file: None,
         }),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4372,7 +4368,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4523,7 +4519,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4539,7 +4535,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        typecheck_mode: TypecheckMode::Local,
+        type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
     );
@@ -5211,7 +5207,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -5484,62 +5480,41 @@ mod tests {
 
   #[test]
   fn run_with_check() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--unstable",
-      "--check",
-      "script.ts",
-    ]);
+    let r = flags_from_vec(svec!["deno", "run", "--check", "script.ts",]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_typecheck_mode: FutureTypecheckMode::Local,
+        future_type_check_mode: FutureTypeCheckMode::Local,
         has_check_flag: true,
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--unstable",
-      "--check=all",
-      "script.ts",
-    ]);
+    let r = flags_from_vec(svec!["deno", "run", "--check=all", "script.ts",]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_typecheck_mode: FutureTypecheckMode::All,
+        future_type_check_mode: FutureTypeCheckMode::All,
         has_check_flag: true,
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--unstable",
-      "--check=foo",
-      "script.ts",
-    ]);
+    let r = flags_from_vec(svec!["deno", "run", "--check=foo", "script.ts",]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_typecheck_mode: FutureTypecheckMode::None,
+        future_type_check_mode: FutureTypeCheckMode::None,
         has_check_flag: true,
-        unstable: true,
         ..Flags::default()
       }
     );
