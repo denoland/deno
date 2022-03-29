@@ -26,7 +26,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
   TestingNotification::DeleteModule(
@@ -36,12 +35,6 @@ fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
   )
 }
 
-#[derive(Debug)]
-enum RunRequest {
-  Start(u32),
-  Cancel(u32),
-}
-
 /// The main structure which handles requests and sends notifications related
 /// to the Testing API.
 #[derive(Debug)]
@@ -49,7 +42,7 @@ pub struct TestServer {
   client: Client,
   performance: Arc<Performance>,
   /// A channel for handling run requests from the client
-  run_channel: mpsc::UnboundedSender<RunRequest>,
+  run_channel: mpsc::UnboundedSender<u32>,
   /// A map of run ids to test runs
   runs: Arc<Mutex<HashMap<u32, TestRun>>>,
   /// Tests that are discovered from a versioned document
@@ -70,7 +63,7 @@ impl TestServer {
 
     let (update_channel, mut update_rx) =
       mpsc::unbounded_channel::<Arc<StateSnapshot>>();
-    let (run_channel, mut run_rx) = mpsc::unbounded_channel::<RunRequest>();
+    let (run_channel, mut run_rx) = mpsc::unbounded_channel::<u32>();
 
     let server = Self {
       client,
@@ -144,7 +137,6 @@ impl TestServer {
 
     let client = server.client.clone();
     let runs = server.runs.clone();
-    let mut tokens = HashMap::<u32, CancellationToken>::new();
     let _run_join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
 
@@ -152,35 +144,25 @@ impl TestServer {
         loop {
           match run_rx.recv().await {
             None => break,
-            Some(RunRequest::Start(id)) => {
+            Some(id) => {
               let maybe_run = {
                 let runs = runs.lock();
                 runs.get(&id).cloned()
               };
               if let Some(run) = maybe_run {
-                let token = {
-                  let token = CancellationToken::new();
-                  tokens.insert(id, token.clone());
-                  token
-                };
-                match run.exec(&client, token, maybe_root_uri.as_ref()).await {
+                match run.exec(&client, maybe_root_uri.as_ref()).await {
                   Ok(_) => (),
                   Err(err) => {
                     client.show_message(lsp::MessageType::ERROR, err).await;
                   }
                 }
-                tokens.remove(&id);
                 client.send_test_notification(TestingNotification::Progress(
                   lsp_custom::TestRunProgressParams {
                     id,
                     message: lsp_custom::TestRunProgressMessage::End,
                   },
                 ));
-              }
-            }
-            Some(RunRequest::Cancel(id)) => {
-              if let Some(token) = tokens.get(&id) {
-                token.cancel();
+                runs.lock().remove(&id);
               }
             }
           }
@@ -191,18 +173,8 @@ impl TestServer {
     server
   }
 
-  fn cancel_run(&self, id: u32) -> Result<(), AnyError> {
-    self
-      .run_channel
-      .send(RunRequest::Cancel(id))
-      .map_err(|err| err.into())
-  }
-
   fn enqueue_run(&self, id: u32) -> Result<(), AnyError> {
-    self
-      .run_channel
-      .send(RunRequest::Start(id))
-      .map_err(|err| err.into())
+    self.run_channel.send(id).map_err(|err| err.into())
   }
 
   /// A request from the client to cancel a test run.
@@ -210,11 +182,8 @@ impl TestServer {
     &self,
     params: lsp_custom::TestRunCancelParams,
   ) -> LspResult<Option<Value>> {
-    if self.runs.lock().contains_key(&params.id) {
-      self.cancel_run(params.id).map_err(|err| {
-        log::error!("cannot cancel run: {}", err);
-        LspError::internal_error()
-      })?;
+    if let Some(run) = self.runs.lock().get(&params.id) {
+      run.cancel();
       Ok(Some(json!(true)))
     } else {
       Ok(Some(json!(false)))

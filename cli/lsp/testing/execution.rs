@@ -179,34 +179,40 @@ async fn test_specifier(
   specifier: ModuleSpecifier,
   mode: test::TestMode,
   channel: mpsc::UnboundedSender<test::TestEvent>,
+  token: CancellationToken,
   options: Option<Value>,
 ) -> Result<(), AnyError> {
-  let mut worker = create_main_worker(
-    &ps,
-    specifier.clone(),
-    permissions,
-    vec![ops::testing::init(channel.clone())],
-  );
+  if !token.is_cancelled() {
+    let mut worker = create_main_worker(
+      &ps,
+      specifier.clone(),
+      permissions,
+      vec![ops::testing::init(channel.clone())],
+    );
 
-  worker
-    .execute_script(&located_script_name!(), "Deno.core.enableOpCallTracing();")
-    .unwrap();
+    worker
+      .execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )
+      .unwrap();
 
-  if mode != test::TestMode::Documentation {
-    worker.execute_side_module(&specifier).await?;
+    if mode != test::TestMode::Documentation {
+      worker.execute_side_module(&specifier).await?;
+    }
+
+    worker.dispatch_load_event(&located_script_name!())?;
+
+    let options = options.unwrap_or_else(|| json!({}));
+    let test_result = worker.js_runtime.execute_script(
+      &located_script_name!(),
+      &format!(r#"Deno[Deno.internal].runTests({})"#, json!(options)),
+    )?;
+
+    worker.js_runtime.resolve_value(test_result).await?;
+
+    worker.dispatch_unload_event(&located_script_name!())?;
   }
-
-  worker.dispatch_load_event(&located_script_name!())?;
-
-  let options = options.unwrap_or_else(|| json!({}));
-  let test_result = worker.js_runtime.execute_script(
-    &located_script_name!(),
-    &format!(r#"Deno[Deno.internal].runTests({})"#, json!(options)),
-  )?;
-
-  worker.js_runtime.resolve_value(test_result).await?;
-
-  worker.dispatch_unload_event(&located_script_name!())?;
 
   Ok(())
 }
@@ -218,6 +224,7 @@ pub struct TestRun {
   filters: HashMap<ModuleSpecifier, TestFilter>,
   queue: HashSet<ModuleSpecifier>,
   tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
+  token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
 }
 
@@ -238,6 +245,7 @@ impl TestRun {
       filters,
       queue,
       tests,
+      token: CancellationToken::new(),
       workspace_settings,
     }
   }
@@ -271,45 +279,15 @@ impl TestRun {
       .collect()
   }
 
-  fn get_args(&self) -> Vec<&str> {
-    let mut args = vec!["deno", "test"];
-    args.extend(
-      self
-        .workspace_settings
-        .testing
-        .args
-        .iter()
-        .map(|s| s.as_str()),
-    );
-    if self.workspace_settings.unstable && !args.contains(&"--unstable") {
-      args.push("--unstable");
-    }
-    if let Some(config) = &self.workspace_settings.config {
-      if !args.contains(&"--config") && !args.contains(&"-c") {
-        args.push("--config");
-        args.push(config.as_str());
-      }
-    }
-    if let Some(import_map) = &self.workspace_settings.import_map {
-      if !args.contains(&"--import-map") {
-        args.push("--import-map");
-        args.push(import_map.as_str());
-      }
-    }
-    if self.kind == lsp_custom::TestRunKind::Debug
-      && !args.contains(&"--inspect")
-      && !args.contains(&"--inspect-brk")
-    {
-      args.push("--inspect");
-    }
-    args
+  /// If being executed, cancel the test.
+  pub fn cancel(&self) {
+    self.token.cancel();
   }
 
   /// Execute the tests, dispatching progress notifications to the client.
   pub async fn exec(
     &self,
     client: &Client,
-    token: CancellationToken,
     maybe_root_uri: Option<&ModuleSpecifier>,
   ) -> Result<(), AnyError> {
     let args = self.get_args();
@@ -351,6 +329,7 @@ impl TestRun {
       let permissions = permissions.clone();
       let sender = sender.clone();
       let options = self.filters.get(&specifier).map(|f| f.as_test_options());
+      let token = self.token.clone();
 
       tokio::task::spawn_blocking(move || {
         let future = test_specifier(
@@ -359,6 +338,7 @@ impl TestRun {
           specifier,
           test::TestMode::Executable,
           sender,
+          token,
           options,
         );
 
@@ -436,10 +416,6 @@ impl TestRun {
             }
           }
 
-          if token.is_cancelled() {
-            break;
-          }
-
           if let Some(count) = fail_fast {
             if summary.failed >= count {
               break;
@@ -474,6 +450,40 @@ impl TestRun {
     result??;
 
     Ok(())
+  }
+
+  fn get_args(&self) -> Vec<&str> {
+    let mut args = vec!["deno", "test"];
+    args.extend(
+      self
+        .workspace_settings
+        .testing
+        .args
+        .iter()
+        .map(|s| s.as_str()),
+    );
+    if self.workspace_settings.unstable && !args.contains(&"--unstable") {
+      args.push("--unstable");
+    }
+    if let Some(config) = &self.workspace_settings.config {
+      if !args.contains(&"--config") && !args.contains(&"-c") {
+        args.push("--config");
+        args.push(config.as_str());
+      }
+    }
+    if let Some(import_map) = &self.workspace_settings.import_map {
+      if !args.contains(&"--import-map") {
+        args.push("--import-map");
+        args.push(import_map.as_str());
+      }
+    }
+    if self.kind == lsp_custom::TestRunKind::Debug
+      && !args.contains(&"--inspect")
+      && !args.contains(&"--inspect-brk")
+    {
+      args.push("--inspect");
+    }
+    args
   }
 }
 
