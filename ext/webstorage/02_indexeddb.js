@@ -300,10 +300,16 @@
 
   // Ref: https://w3c.github.io/IndexedDB/#valid-key-path
   function isValidKeyPath(key) {
-    if (typeof key === "string" && key.length === 0) {
-      return true;
-    } else {
+    if (typeof key === "string") {
+      if (key.length === 0) {
+        return true;
+      } else {
+      }
       // TODO: complete implementation
+    } else if (ArrayIsArray(key)) {
+      return key.every(isValidKeyPath);
+    } else {
+      return false;
     }
   }
 
@@ -344,13 +350,19 @@
   function clone(transaction, value) {
     assert(transaction[_state] === "active");
     transaction[_state] = "inactive";
-    const serialized = core.serialize(value); // TODO: add bool for extra SAB handling
+    const serialized = core.serialize(value, {
+      disallowSab: true,
+    });
     const cloned = core.deserialize(serialized);
     transaction[_state] = "active";
     return cloned;
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#abort-a-transaction
+  /**
+   * @param transaction {IDBTransaction}
+   * @param error {any}
+   */
   function abortTransaction(transaction, error) {
     core.opSync("op_indexeddb_transaction_abort", transaction[_rid]);
     if (transaction[_mode] === "versionchange") {
@@ -374,7 +386,7 @@
       );
     }
     if (transaction[_mode] === "versionchange") {
-      // TODO: 6.1.: figure out connection & database structures
+      transaction[_connection][_upgradeTransaction] = null;
     }
     transaction.dispatchEvent(
       new Event("abort", {
@@ -382,14 +394,14 @@
       }),
     );
     if (transaction[_mode] === "versionchange") {
-      // TODO: 6.3.: the transaction should have an openrequest, but the spec doesnt specify this ever
+      // TODO: 6.3.: the transaction should have an openrequest
       // TODO: add a global map for openrequests and find by transaction
     }
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#abort-an-upgrade-transaction
   function abortUpgradeTransaction(transaction) {
-    // TODO: figure out connection & database structures
+    // TODO
   }
 
   const _failure = Symbol("failure");
@@ -543,7 +555,7 @@
       // TODO: 2.3., 2.4.
 
       if (transaction[_mode] === "versionchange") {
-        // TODO: 2.5.1.: figure out connection & database structures
+        transaction[_connection][_upgradeTransaction] = null;
       }
       transaction[_state] = "finished";
       transaction.dispatchEvent(new Event("complete"));
@@ -627,14 +639,109 @@
 
   webidl.configurePrototype(IDBOpenDBRequest);
 
+  /** @type {Map<string, Array<IDBOpenDBRequest>>} */
+  const connectionQueue = new Map();
+
+  // Ref: https://w3c.github.io/IndexedDB/#run-an-upgrade-transaction
+  /**
+   * @param connection {IDBDatabase}
+   * @param version {number}
+   * @param request {IDBOpenDBRequest}
+   */
+  function runUpgradeTransaction(connection, version, request) {
+    const transaction = webidl.createBranded(IDBTransaction);
+    transaction[_mode] = "versionchange";
+    transaction[_connection] = connection;
+    transaction[_scope] = connection[_objectStoreSet];
+    connection[_upgradeTransaction] = transaction;
+    transaction[_state] = "inactive";
+    // TODO: 6.: start transaction (call op_indexeddb_transaction_create)
+    const oldVersion = connection[_db].version;
+    // TODO: 8.: change db version
+    request[_processedDeferred].resolve();
+
+    request[_result] = connection;
+    request[_transaction] = transaction;
+    request[_done] = true;
+    transaction[_state] = "active";
+    // TODO(@crowlKats): legacyOutputDidListenersThrowFlag
+    request.dispatchEvent(
+      new IDBVersionChangeEvent("upgradeneeded", {
+        bubbles: false,
+        cancelable: false,
+        oldVersion,
+        version,
+      }),
+    );
+    transaction[_state] = "inactive";
+
+    // TODO: 11.
+  }
+
   // Ref: https://w3c.github.io/IndexedDB/#open-a-database
-  function openDatabase(name, version) {
-    // TODO: figure out connection & database structures
+  /**
+   * @param name {string}
+   * @param version {number | undefined}
+   * @param request {IDBOpenDBRequest}
+   */
+  async function openDatabase(name, version, request) {
+    for (const openRequest of connectionQueue.get(name) ?? []) {
+      await openRequest[_processedDeferred].promise;
+    }
+    connectionQueue.get(name)?.push(request) ??
+      connectionQueue.set(name, [request]);
+    const [newVersion, dbVersion] = core.opSync(
+      "op_indexeddb_open_database",
+      name,
+      version,
+    );
+    const connection = webidl.createBranded(IDBDatabase);
+    connection[_version] = newVersion;
+
+    if (dbVersion < newVersion) {
+      // TODO(@crowlKats): 10.1, 10.2, 10.3, 10.4, 10.5: multi-process database connections
+      runUpgradeTransaction(connection, newVersion, request);
+    }
+    return connection;
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#delete-a-database
-  function deleteDatabase(name, request) {
-    // TODO: figure out connection & database structures
+  async function deleteDatabase(name, request) {
+    for (const openRequest of connectionQueue.get(name) ?? []) {
+      await openRequest[_processedDeferred].promise;
+    }
+    connectionQueue.get(name)?.push(request) ??
+      connectionQueue.set(name, [request]);
+    // TODO: 4.: op to check if db exists
+
+    for (const entry of []) { // TODO: openConnections
+      if (!entry[_closePending]) {
+        entry.dispatchEvent(
+          new IDBVersionChangeEvent("versionchange", {
+            bubbles: false,
+            cancelable: false,
+            oldVersion: "", // TODO: db's version from 4.
+            newVersion: null,
+          }),
+        );
+      }
+    }
+    for (const entry of []) { // TODO: openConnections
+      if (!entry[_closePending]) {
+        request.dispatchEvent(
+          new IDBVersionChangeEvent("blocked", {
+            bubbles: false,
+            cancelable: false,
+            oldVersion: "", // TODO: db's version from 4.
+            newVersion: null,
+          }),
+        );
+        break;
+      }
+    }
+
+    // TODO: 11.: op to delete db
+    // TODO: 12.: return db's version from 4.
   }
 
   // Ref: https://w3c.github.io/IndexedDB/#idbfactory
@@ -668,7 +775,7 @@
 
       (async () => {
         try {
-          const res = openDatabase(name, version);
+          const res = await openDatabase(name, version, request);
           request[_result] = res;
           request[_done] = true;
           request.dispatchEvent(new Event("success"));
@@ -702,7 +809,7 @@
 
       (async () => {
         try {
-          const res = deleteDatabase(name, request);
+          const res = await deleteDatabase(name, request);
           request[_processedDeferred].resolve();
           request[_result] = undefined;
           request[_done] = true;
@@ -774,51 +881,48 @@
 
   // Ref: https://w3c.github.io/IndexedDB/#database-connection
   class Connection {
-    /** @type {Set<IDBDatabase>} */
-    databases = new Set();
+    /** @type {IDBDatabase} */
+    database;
     /** @type {number} */
     version;
     /** @type {boolean} */
     closePending = false;
-    /** @type {Map<String, IDBObjectStore>} */
-    objectStoreSet;
 
-    /**
-     * @param forced {boolean}
-     */
-    // Ref: https://w3c.github.io/IndexedDB/#close-a-database-connection
-    close(forced) {
-      this.closePending = true;
-      if (forced) {
-        // TODO: 2: somehow get all transactions
-      }
-      // TODO: 3.: somehow get all transactions
-      if (forced) {
-        // TODO: 4.: fire to IDBDatabase class
-      }
-    }
+    objectStoreSet; // TODO
   }
 
-  /** @type {Set<Connection>} */
+  class Database {
+    /** @type {number} */
+    version;
+    /** @type {string} */
+    name;
+  }
+
+  /** @type {Set<IDBDatabase>} */
   const connections = new Set();
 
   const _name = Symbol("[[name]]");
   const _version = Symbol("[[version]]");
-  const _closePending = Symbol("[[closePending]]");
   const _objectStores = Symbol("[[objectStores]]");
   const _upgradeTransaction = Symbol("[[upgradeTransaction]]");
-  const _connection = Symbol("[[connection]]");
+  const _db = Symbol("[[db]]");
+  const _closePending = Symbol("[[closePending]]");
+  const _objectStoreSet = Symbol("[[objectStoreSet]]");
+  const _close = Symbol("[[close]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbdatabase
   // TODO: finalizationRegistry: If an IDBDatabase object is garbage collected, the associated connection must be closed.
   class IDBDatabase extends EventTarget {
-    /** @type {boolean} */
-    [_closePending] = false;
     /** @type {Set<ObjectStore>} */
     [_objectStores] = new Set();
     /** @type {(IDBTransaction | null)} */
     [_upgradeTransaction] = null;
-    /** @type {Connection} */
-    [_connection];
+    /** @type {Database} */
+    [_db];
+    /** @type {boolean} */
+    [_closePending] = false;
+
+    /** @type {Map<string, Store>} */
+    [_objectStoreSet]; // TODO: update on upgrade transaction
 
     constructor() {
       super();
@@ -844,7 +948,7 @@
       webidl.assertBranded(this, IDBDatabasePrototype);
       return ArrayPrototypeSort([
         ...new SafeArrayIterator(
-          MapPrototypeKeys(this[_connection].objectStoreSet),
+          MapPrototypeKeys(this[_objectStoreSet]),
         ),
       ]);
     }
@@ -870,7 +974,7 @@
         context: "Argument 3",
       });
 
-      if (this[_closePending]) {
+      if (this[_connection][_closePending]) {
         throw new DOMException("", "InvalidStateError");
       }
       const scope = new Set(
@@ -883,20 +987,35 @@
       if (mode !== "readonly" && mode !== "readwrite") {
         throw new TypeError("");
       }
-      let rid = core.opSync("op_indexeddb_transaction_create");
+      const rid = core.opSync("op_indexeddb_transaction_create");
       const transaction = webidl.createBranded(IDBTransaction);
-      // TODO: connection: figure out connection & database structures
+      transaction[_connection] = this;
       transaction[_rid] = rid;
       transaction[_mode] = mode;
       transaction[_durabilityHint] = options.durability;
-      // TODO: scope: figure out connection & database structures
+      // TODO: scope: get all stores and filter keep only ones in scope & assign to transaction[_scope]
       return transaction;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-close
     close() {
       webidl.assertBranded(this, IDBDatabasePrototype);
-      this[_connection].close(false);
+      this[_close](false);
+    }
+
+    /**
+     * @param forced {boolean}
+     */
+    // Ref: https://w3c.github.io/IndexedDB/#close-a-database-connection
+    [_close](forced) {
+      this[_closePending] = true;
+      if (forced) {
+        // TODO: 2: somehow get all transactions
+      }
+      // TODO: 3.: somehow get all transactions
+      if (forced) {
+        this.dispatchEvent(new Event("close"));
+      }
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
@@ -946,7 +1065,7 @@
         "op_indexeddb_database_create_object_store",
         this[_name],
         name,
-        // TODO: keypath: probably an enum, since it can be a string or array of strings and there is different behaviour depending on type
+        keyPath,
       );
 
       const store = new Store(options.autoIncrement);
@@ -978,11 +1097,11 @@
         throw new DOMException("", "TransactionInactiveError");
       }
 
-      const store = MapPrototypeGet(this[_connection].objectStoreSet, name);
+      const store = MapPrototypeGet(this[_objectStoreSet], name);
       if (store === undefined) {
         throw new DOMException("", "NotFoundError");
       }
-      MapPrototypeDelete(this[_connection].objectStoreSet, name);
+      MapPrototypeDelete(this[_objectStoreSet], name);
 
       // TODO 6.: ops
     }
@@ -995,6 +1114,7 @@
   webidl.configurePrototype(IDBDatabase);
   const IDBDatabasePrototype = IDBDatabase.prototype;
 
+  // Ref: https://w3c.github.io/IndexedDB/#object-store-construct
   class Store {
     /** @type {string} */
     name;
@@ -1080,9 +1200,51 @@
     return key;
   }
 
+  /**
+   * @param store {IDBObjectStore}
+   */
+  function assertObjectStore(store) {
+    return core.opSync(
+      "op_indexeddb_object_store_exists",
+      store[_store].database[_name],
+      store[_store].name,
+    );
+  }
+
+  /**
+   * @param index {IDBIndex}
+   */
+  function assertIndex(index) {
+    assertObjectStore(index[_storeHandle]);
+    return core.opSync(
+      "op_indexeddb_index_exists",
+      index[_storeHandle][_store].database[_name],
+      index[_storeHandle][_store].name,
+      index[_index].name,
+    );
+  }
+
+  /**
+   * @param cursor {IDBCursor}
+   */
+  function assertCursor(cursor) {
+    assertObjectStore(cursor[_effectiveObjectStore]);
+    if (cursor[_source] instanceof IDBObjectStore) {
+      assertObjectStore(cursor[_source]);
+    } else {
+      assertIndex(cursor[_source]);
+    }
+  }
+
   // Ref: https://w3c.github.io/IndexedDB/#add-or-put
+  /**
+   * @param handle {IDBObjectStore}
+   * @param value {any}
+   * @param key {any}
+   * @param noOverwrite {boolean}
+   */
   function addOrPut(handle, value, key, noOverwrite) {
-    // TODO: 3.: source has been deleted: be an op
+    assertObjectStore(handle);
 
     if (handle[_transaction][_state] !== "active") {
       throw new DOMException("", "TransactionInactiveError");
@@ -1243,12 +1405,141 @@
           (cursor[_direction] === "next" || cursor[_direction] === "prev"),
       );
     }
-    // TODO: 4.: this and following tODOs are to do with ops
+    /** @type {[Key, Uint8Array][]} */
+    const records = cursor[_source] instanceof IDBObjectStore
+      ? core.opSync(
+        "op_indexeddb_object_store_get_records",
+        cursor[_source][_store].database[_name],
+        cursor[_source][_name],
+      )
+      : core.opSync("op_indexeddb_index_get_records"); // TODO
     let position = cursor[_position];
     let objectStorePosition = cursor[_objectStorePosition];
+
+    // TODO: check: we call valueToKey, but the spec never says to do that, but references key comparison.
+    let foundRecord = undefined;
     for (; count > 0; count--) {
-      // TODO: 9.1.
-      if (res === undefined) {
+      switch (cursor[_direction]) {
+        case "next": {
+          foundRecord = records.find(([recordKey, value]) => {
+            let a = true;
+            if (key !== undefined) {
+              a = compareTwoKeys(recordKey, key) !== -1;
+            }
+
+            let b = true;
+            if (primaryKey !== undefined) {
+              b =
+                (compareTwoKeys(recordKey, key) === 0 &&
+                  compareTwoKeys(
+                      valueToKey(core.deserialize(value)),
+                      primaryKey,
+                    ) !== -1) || compareTwoKeys(recordKey, key) === 1;
+            }
+
+            let c = true;
+            if (position !== undefined) {
+              if (cursor[_source] instanceof IDBObjectStore) {
+                c = compareTwoKeys(recordKey, position) === 1;
+              } else {
+                c =
+                  (compareTwoKeys(recordKey, position) === 0 &&
+                    compareTwoKeys(
+                        valueToKey(core.deserialize(value)),
+                        valueToKey(cursor[_objectStorePosition]),
+                      ) === 1) || compareTwoKeys(recordKey, position) === 1;
+              }
+            }
+
+            return a && b && c && keyInRange(cursor[_range], recordKey);
+          });
+          break;
+        }
+        case "nextunique": {
+          foundRecord = records.find(([recordKey, value]) => {
+            let a = true;
+            if (key !== undefined) {
+              a = compareTwoKeys(recordKey, key) !== -1;
+            }
+
+            let b = true;
+            if (position !== undefined) {
+              b = compareTwoKeys(recordKey, position) === 1;
+            }
+
+            return a && b && keyInRange(cursor[_range], recordKey);
+          });
+          break;
+        }
+        case "prev": {
+          for (let i = records.length - 1; i >= 0; i--) {
+            const [recordKey, value] = records[i];
+            let a = true;
+            if (key !== undefined) {
+              a = compareTwoKeys(recordKey, key) !== 1;
+            }
+
+            let b = true;
+            if (primaryKey !== undefined) {
+              b =
+                (compareTwoKeys(recordKey, key) === 0 &&
+                  compareTwoKeys(
+                      valueToKey(core.deserialize(value)),
+                      primaryKey,
+                    ) !== 1) || compareTwoKeys(recordKey, key) === -1;
+            }
+
+            let c = true;
+            if (position !== undefined) {
+              if (cursor[_source] instanceof IDBObjectStore) {
+                c = compareTwoKeys(recordKey, position) === -1;
+              } else {
+                c =
+                  (compareTwoKeys(recordKey, position) === 0 &&
+                    compareTwoKeys(
+                        valueToKey(core.deserialize(value)),
+                        valueToKey(cursor[_objectStorePosition]),
+                      ) === -1) || compareTwoKeys(recordKey, position) === -1;
+              }
+            }
+
+            if (a && b && c && keyInRange(cursor[_range], recordKey)) {
+              foundRecord = records[i];
+              break;
+            }
+          }
+          break;
+        }
+        case "prevunique": {
+          let tempRecord = undefined;
+          for (let i = records.length - 1; i >= 0; i--) {
+            const [recordKey, value] = records[i];
+            let a = true;
+            if (key !== undefined) {
+              a = compareTwoKeys(recordKey, key) !== 1;
+            }
+
+            let b = true;
+            if (position !== undefined) {
+              b = compareTwoKeys(recordKey, position) === -1;
+            }
+
+            if (a && b && keyInRange(cursor[_range], recordKey)) {
+              tempRecord = records[i];
+              break;
+            }
+          }
+
+          if (tempRecord !== undefined) {
+            foundRecord = records.find(([recordKey, value]) => {
+              return compareTwoKeys(recordKey, tempRecord[0]) === 0;
+            });
+          }
+          break;
+        }
+      }
+
+      if (foundRecord === undefined) {
         if (cursor[_source] instanceof IDBIndex) {
           cursor[_objectStorePosition] = undefined;
         }
@@ -1257,15 +1548,21 @@
         }
         return null;
       }
-      // TODO: 9.3., 9.4.
+
+      position = foundRecord[0];
+      if (cursor[_source] instanceof IDBIndex) {
+        objectStorePosition = core.deserialize(foundRecord[1]);
+      }
     }
+
     cursor[_position] = position;
     if (cursor[_source] instanceof IDBIndex) {
       cursor[_objectStorePosition] = objectStorePosition;
     }
-    // TODO: 12.
+    cursor[_key] = foundRecord[0];
     if (!cursor[_keyOnly]) {
-      // TODO: 13.1., 13.2.
+      // TODO: referencedValue: investigate it, and replace normal value usages for it where appropriate.
+      cursor[_value] = core.deserialize(foundRecord[1]);
     }
     cursor[_gotValue] = true;
     return cursor;
@@ -1273,6 +1570,7 @@
 
   const _keyPath = Symbol("[[keyPath]]");
   const _store = Symbol("[[store]]");
+  const _indexSet = Symbol("[[indexSet]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbobjectstore
   class IDBObjectStore {
     constructor() {
@@ -1283,7 +1581,10 @@
     [_transaction];
     /** @type {Store} */
     [_store];
+    /** @type {Map<string, Index>} */
+    [_indexSet]; // TODO: set
 
+    /** @type {string} */
     [_name];
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-name
     get name() {
@@ -1298,21 +1599,16 @@
         prefix: "Failed to set 'name' on 'IDBObjectStore'",
         context: "Argument 1",
       });
-
-      // TODO: 4.: source has been deleted: be an op
-
+      assertObjectStore(this);
       if (this[_transaction][_mode] !== "versionchange") {
         throw new DOMException("", "InvalidStateError");
       }
-
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-
       if (this[_store][_name] === name) {
         return;
       }
-
       core.opSync(
         "op_indexeddb_object_store_rename",
         this[_store].database.name,
@@ -1333,7 +1629,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-indexnames
     get indexNames() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO: add indexset to this
+      return [...this[_indexSet].keys()];
     }
 
     [_transaction];
@@ -1392,7 +1688,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1409,7 +1705,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-clear
     clear() {
       webidl.assertBranded(this, IDBObjectStorePrototype);
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1431,7 +1727,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1451,7 +1747,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1477,7 +1773,7 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1503,7 +1799,7 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1522,7 +1818,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1545,7 +1841,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1577,7 +1873,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1606,11 +1902,18 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] === "finished") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: check indexset on this
+      const index = this[_indexSet].get(name);
+      if (index === undefined) {
+        throw new DOMException("", "NotFoundError");
+      }
+      const indexHandle = webidl.createBranded(IDBIndex);
+      indexHandle[_index] = index;
+      indexHandle[_storeHandle] = this;
+      return indexHandle;
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbobjectstore-createindex
@@ -1633,11 +1936,12 @@
       if (this[_transaction][_mode] !== "versionchange") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: 4.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 6.: op
+      // TODO: 6.: op? since we have indexset, we should check that. if it isnt reliable, then whats the point of the cache?
+
       if (!isValidKeyPath(keyPath)) {
         throw new DOMException("", "SyntaxError");
       }
@@ -1645,11 +1949,11 @@
         throw new DOMException("", "InvalidAccessError");
       }
       // TODO: 11.: ops
-      // TODO: 12.: indexset on this
       const index = new Index();
       index.name = name;
       index.multiEntry = options.multiEntry;
       index.unique = options.unique;
+      this[_indexSet].set(name, index);
       const indexHandle = webidl.createBranded(IDBIndex);
       indexHandle[_index] = index;
       indexHandle[_storeHandle] = this;
@@ -1668,7 +1972,7 @@
       if (this[_transaction][_mode] !== "versionchange") {
         throw new DOMException("", "InvalidStateError");
       }
-      // TODO: 4.: source has been deleted: be an op
+      assertObjectStore(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1679,10 +1983,17 @@
   const IDBObjectStorePrototype = IDBObjectStore.prototype;
 
   // Ref: https://w3c.github.io/IndexedDB/#retrieve-a-referenced-value-from-an-index
+  /**
+   * @param index {IDBIndex}
+   * @param range {IDBKeyRange}
+   */
   function retrieveReferencedValueFromIndex(index, range) {
     const val = core.opSync(
       "op_indexeddb_index_retrieve_value",
-      // TODO: args (index needs to be structured properly)
+      index[_storeHandle][_transaction][_connection][_name],
+      index[_storeHandle][_store][_name],
+      index[_index][_name],
+      range,
     );
     if (val === null) {
       return undefined;
@@ -1695,7 +2006,11 @@
   function retrieveMultipleReferencedValuesFromIndex(index, range, count) {
     const vals = core.opSync(
       "op_indexeddb_index_retrieve_multiple_values",
-      // TODO: args (index needs to be structured properly)
+      index[_storeHandle][_transaction][_connection][_name],
+      index[_storeHandle][_store][_name],
+      index[_index][_name],
+      range,
+      count,
     );
     return vals.map((val) => core.deserialize(val));
   }
@@ -1704,7 +2019,10 @@
   function retrieveValueFromIndex(index, range) {
     const val = core.opSync(
       "op_indexeddb_index_retrieve_value",
-      // TODO: args (index needs to be structured properly)
+      index[_storeHandle][_transaction][_connection][_name],
+      index[_storeHandle][_store][_name],
+      index[_index][_name],
+      range,
     );
     if (val === undefined) {
       return undefined;
@@ -1717,7 +2035,11 @@
   function retrieveMultipleValuesFromIndex(index, range, count) {
     const vals = core.opSync(
       "op_indexeddb_index_retrieve_multiple_values",
-      // TODO: args (index needs to be structured properly)
+      index[_storeHandle][_transaction][_connection][_name],
+      index[_storeHandle][_store][_name],
+      index[_index][_name],
+      range,
+      count,
     );
     return vals.map((val) => keyToValue(val));
   }
@@ -1767,9 +2089,10 @@
         throw new DOMException("", "TransactionInactiveError");
       }
 
-      // TODO: 6.: source has been deleted: be an op
+      assertIndex(this);
+
       // TODO: 7.: should it be this's _name? or this's _index's name
-      // TODO: 8.: op? or cache?
+      // TODO: 8.: cache
 
       this[_index].name = name;
       this[_name] = name;
@@ -1808,14 +2131,14 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
       const range = valueToKeyRange(query, true);
       return asynchronouslyExecuteRequest(
         this,
-        () => retrieveReferencedValueFromIndex(this[_index], range),
+        () => retrieveReferencedValueFromIndex(this, range),
       );
     }
 
@@ -1828,14 +2151,14 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
       const range = valueToKeyRange(query, true);
       return asynchronouslyExecuteRequest(
         this,
-        () => retrieveValueFromIndex(this[_index], range),
+        () => retrieveValueFromIndex(this, range),
       );
     }
 
@@ -1854,15 +2177,14 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
       const range = valueToKeyRange(query, true);
       return asynchronouslyExecuteRequest(
         this,
-        () =>
-          retrieveMultipleReferencedValuesFromIndex(this[_index], range, count),
+        () => retrieveMultipleReferencedValuesFromIndex(this, range, count),
       );
     }
 
@@ -1881,14 +2203,14 @@
           enforceRange: true,
         });
       }
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
       const range = valueToKeyRange(query, true);
       return asynchronouslyExecuteRequest(
         this,
-        () => retrieveMultipleValuesFromIndex(this[_index], range, count),
+        () => retrieveMultipleValuesFromIndex(this, range, count),
       );
     }
 
@@ -1900,7 +2222,7 @@
         prefix,
         context: "Argument 1",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1923,7 +2245,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -1955,7 +2277,7 @@
         prefix,
         context: "Argument 2",
       });
-      // TODO: 3.: source has been deleted: be an op
+      assertIndex(this);
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
@@ -2261,7 +2583,7 @@
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 4.: source has been deleted: be an op
+      assertCursor(this);
       if (!this[_gotValue]) {
         throw new DOMException("", "InvalidStateError");
       }
@@ -2287,7 +2609,7 @@
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 4.: source has been deleted: be an op
+      assertCursor(this);
       if (key !== undefined) {
         key = valueToKey(key);
         if (key === null) {
@@ -2333,7 +2655,7 @@
       if (this[_transaction][_state] !== "active") {
         throw new DOMException("", "TransactionInactiveError");
       }
-      // TODO: 3.: source has been deleted: be an op
+      assertCursor(this);
       if (!(this[_source] instanceof IDBIndex)) {
         throw new DOMException("", "InvalidAccessError");
       }
@@ -2403,7 +2725,7 @@
       if (this[_transaction][_mode] === "readonly") {
         throw new DOMException("", "ReadOnlyError");
       }
-      // TODO: 4.: source has been deleted: be an op
+      assertCursor(this);
       if (!this[_gotValue]) {
         throw new DOMException("", "InvalidStateError");
       }
@@ -2442,7 +2764,7 @@
       if (this[_transaction][_mode] === "readonly") {
         throw new DOMException("", "ReadOnlyError");
       }
-      // TODO: 4.: source has been deleted: be an op
+      assertCursor(this);
       if (!this[_gotValue]) {
         throw new DOMException("", "InvalidStateError");
       }
@@ -2467,8 +2789,9 @@
   const _state = Symbol("[[state]]");
   const _mode = Symbol("[[mode]]");
   const _durabilityHint = Symbol("[[durabilityHint]]");
-  const _db = Symbol("[[db]]");
   const _rid = Symbol("[[rid]]");
+  const _connection = Symbol("[[connection]]");
+  const _scope = Symbol("[[scope]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbtransaction
   class IDBTransaction extends EventTarget {
     [_rid];
@@ -2479,7 +2802,8 @@
     [_mode];
     [_durabilityHint];
     [_error];
-    [_db];
+    [_connection];
+    [_scope];
 
     constructor() {
       super();
@@ -2507,7 +2831,7 @@
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-db
     get db() {
       webidl.assertBranded(this, IDBTransactionPrototype);
-      return this[_db];
+      return this[_connection];
     }
 
     // Ref: https://w3c.github.io/IndexedDB/#dom-idbtransaction-error

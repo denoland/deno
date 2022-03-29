@@ -122,3 +122,31 @@ pub fn get_constraint_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionConstraintError>()
     .map(|_| "DOMExceptionConstraintError")
 }
+
+#[derive(Debug)]
+pub struct DomExceptionInvalidStateError {
+  pub msg: String,
+}
+
+impl DomExceptionInvalidStateError {
+  pub fn new(msg: &str) -> Self {
+    DomExceptionInvalidStateError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl fmt::Display for DomExceptionInvalidStateError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl std::error::Error for DomExceptionInvalidStateError {}
+
+pub fn get_invalid_state_error_class_name(
+  e: &AnyError,
+) -> Option<&'static str> {
+  e.downcast_ref::<DomExceptionInvalidStateError>()
+    .map(|_| "DOMExceptionInvalidStateError")
+}

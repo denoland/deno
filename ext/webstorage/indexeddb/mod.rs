@@ -1,6 +1,6 @@
 use super::DomExceptionNotSupportedError;
 use super::OriginStorageDir;
-use crate::DomExceptionConstraintError;
+use crate::{DomExceptionConstraintError, DomExceptionInvalidStateError};
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_json;
@@ -201,7 +201,7 @@ pub fn op_indexeddb_database_create_object_store(
   state: &mut OpState,
   database_name: String,
   name: String,
-  key_path: Option<String>,
+  key_path: serde_json::Value,
 ) -> Result<(), AnyError> {
   let conn = &state.borrow::<IndexedDbManager>().0;
 
@@ -228,6 +228,29 @@ pub fn op_indexeddb_database_create_object_store(
     // TODO: unique_index
     database_name,
   ])?;
+
+  Ok(())
+}
+
+#[op]
+pub fn op_indexeddb_object_store_exists(
+  state: &mut OpState,
+  database_name: String,
+  name: String,
+) -> Result<(), AnyError> {
+  let conn = &state.borrow::<IndexedDbManager>().0;
+
+  let mut stmt = conn.prepare_cached(
+    "SELECT * FROM object_store WHERE name = ? AND database_name = ?",
+  )?;
+  if !stmt.exists(params![name, database_name])? {
+    return Err(
+      DomExceptionInvalidStateError::new(&format!(
+        "ObjectStore with name '{name}' does not exists"
+      ))
+      .into(),
+    );
+  }
 
   Ok(())
 }
@@ -774,6 +797,36 @@ pub fn op_indexeddb_object_store_count_records(
   Ok(res.count() as u64)
 }
 
+#[op]
+pub fn op_indexeddb_index_exists(
+  state: &mut OpState,
+  database_name: String,
+  store_name: String,
+  index_name: String,
+) -> Result<(), AnyError> {
+  let conn = &state.borrow::<IndexedDbManager>().0;
+
+  let mut stmt = conn.prepare_cached(
+    "SELECT id FROM object_store WHERE name = ? AND database_name = ?",
+  )?;
+  let object_store_id: u64 =
+    stmt.query_row(params![store_name, database_name], |row| row.get(0))?;
+
+  let mut stmt = conn.prepare_cached(
+    "SELECT * FROM index WHERE name = ? AND object_store_id = ?",
+  )?;
+  if !stmt.exists(params![index_name, object_store_id])? {
+    return Err(
+      DomExceptionInvalidStateError::new(&format!(
+        "Index with name '{index_name}' does not exists"
+      ))
+      .into(),
+    );
+  }
+
+  Ok(())
+}
+
 // Ref: https://w3c.github.io/IndexedDB/#count-the-records-in-a-range
 #[op]
 pub fn op_indexeddb_index_count_records(
@@ -824,6 +877,7 @@ pub fn op_indexeddb_index_retrieve_multiple_values(
   store_name: String,
   index_name: String,
   range: Range,
+  count: Option<u64>,
 ) -> Result<Vec<ZeroCopyBuf>, AnyError> {
   let conn = &state.borrow::<IndexedDbManager>().0;
 
@@ -842,4 +896,39 @@ pub fn op_indexeddb_index_retrieve_multiple_values(
   todo!();
 
   Ok(None)
+}
+
+#[derive(Serialize, Clone)]
+enum Direction {
+  Next,
+  Nextunique,
+  Prev,
+  Prevunique,
+}
+
+// Ref: https://w3c.github.io/IndexedDB/#iterate-a-cursor
+#[op]
+pub fn op_indexeddb_object_store_get_records(
+  state: &mut OpState,
+  database_name: String,
+  store_name: String,
+) -> Result<Vec<(Key, Vec<u8>)>, AnyError> {
+  let conn = &state.borrow::<IndexedDbManager>().0;
+
+  let mut stmt = conn.prepare_cached(
+    "SELECT id FROM object_store WHERE name = ? AND database_name = ?",
+  )?;
+  let object_store_id: u64 =
+    stmt.query_row(params![store_name, database_name], |row| row.get(0))?;
+
+  let mut stmt = conn.prepare_cached(
+    "SELECT key, value FROM record WHERE object_store_id = ?",
+  )?;
+  let res = stmt
+    .query_map(params![object_store_id], |row| {
+      Ok((row.get::<usize, Key>(0)?, row.get::<usize, Vec<u8>>(1)?))
+    })?
+    .collect::<Result<_, rusqlite::Error>>()?;
+
+  Ok(res)
 }

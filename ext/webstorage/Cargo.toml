@@ -18,5 +18,5 @@ async-trait = "0.1.52"
 deno_core = { version = "0.124.0", path = "../../core" }
 deno_web = { version = "0.73.0", path = "../web" }
 fallible-iterator = "0.2.0"
-rusqlite = { version = "0.25.3", features = ["unlock_notify", "bundled"] }
+rusqlite = { version = "0.25.3", features = ["unlock_notify", "bundled", "serde_json"] }
 serde = { version = "1.0.129", features = ["derive"] }

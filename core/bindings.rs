@@ -911,6 +911,7 @@ fn decode(
 
 struct SerializeDeserialize<'a> {
   host_objects: Option<v8::Local<'a, v8::Array>>,
+  disallow_sab: bool,
 }
 
 impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
@@ -929,6 +930,9 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut HandleScope<'s>,
     shared_array_buffer: Local<'s, SharedArrayBuffer>,
   ) -> Option<u32> {
+    if self.disallow_sab {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
@@ -1055,6 +1059,7 @@ fn serialize(
   let options = options.unwrap_or(SerializeDeserializeOptions {
     host_objects: None,
     transfered_array_buffers: None,
+    disallow_sab: false,
   });
 
   let host_objects = match options.host_objects {
@@ -1079,7 +1084,10 @@ fn serialize(
     None => None,
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects,
+    disallow_sab: options.disallow_sab,
+  });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
 
@@ -1150,6 +1158,8 @@ fn serialize(
 struct SerializeDeserializeOptions<'a> {
   host_objects: Option<serde_v8::Value<'a>>,
   transfered_array_buffers: Option<serde_v8::Value<'a>>,
+  #[serde(default)]
+  disallow_sab: bool,
 }
 
 fn deserialize(
@@ -1177,6 +1187,7 @@ fn deserialize(
   let options = options.unwrap_or(SerializeDeserializeOptions {
     host_objects: None,
     transfered_array_buffers: None,
+    disallow_sab: false,
   });
 
   let host_objects = match options.host_objects {
@@ -1201,7 +1212,10 @@ fn deserialize(
     None => None,
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects,
+    disallow_sab: options.disallow_sab,
+  });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
 
