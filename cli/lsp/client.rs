@@ -157,7 +157,7 @@ impl ClientTrait for TowerClient {
     let client = self.0.clone();
     Box::pin(async move {
       client
-        .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+        .send_notification::<lsp_custom::RegistryStateNotification>(
           params,
         )
         .await
