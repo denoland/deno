@@ -57,7 +57,7 @@ pub type HeadersMap = HashMap<String, String>;
 /// This is heavily influenced by
 /// https://github.com/kornelski/rusty-http-cache-semantics which is BSD
 /// 2-Clause Licensed and copyright Kornel Lesiński
-pub(crate) struct CacheSemantics {
+pub struct CacheSemantics {
   cache_control: CacheControl,
   cached: SystemTime,
   headers: HashMap<String, String>,

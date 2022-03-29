@@ -30,7 +30,7 @@
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
-  const { TcpConn } = window.__bootstrap.net;
+  const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
   const { Deferred } = window.__bootstrap.streams;
   const {
@@ -39,11 +39,9 @@
     ArrayPrototypeSome,
     Error,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeHas,
     SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
@@ -183,10 +181,7 @@
   ) {
     return async function respondWith(resp) {
       try {
-        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-          resp = await resp;
-        }
-
+        resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
@@ -311,6 +306,8 @@
             conn = new TcpConn(res.connRid, remoteAddr, localAddr);
           } else if (res.connType === "tls") {
             conn = new TlsConn(res.connRid, remoteAddr, localAddr);
+          } else if (res.connType === "unix") {
+            conn = new UnixConn(res.connRid, remoteAddr, localAddr);
           } else {
             throw new Error("unreachable");
           }
@@ -356,8 +353,7 @@
           }
         }
       } finally {
-        if (SetPrototypeHas(httpConn.managedResources, streamRid)) {
-          SetPrototypeDelete(httpConn.managedResources, streamRid);
+        if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
           core.close(streamRid);
         }
       }

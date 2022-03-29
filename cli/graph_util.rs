@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-pub(crate) fn contains_specifier(
+pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
   specifier: &ModuleSpecifier,
 ) -> bool {
@@ -28,7 +28,7 @@ pub(crate) fn contains_specifier(
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum ModuleEntry {
+pub enum ModuleEntry {
   Module {
     code: Arc<String>,
     dependencies: BTreeMap<String, Dependency>,
@@ -47,7 +47,7 @@ pub(crate) enum ModuleEntry {
 
 /// Composes data from potentially many `ModuleGraph`s.
 #[derive(Debug, Default)]
-pub(crate) struct GraphData {
+pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
@@ -58,7 +58,7 @@ pub(crate) struct GraphData {
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub(crate) fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+  pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
         continue;
@@ -139,13 +139,13 @@ impl GraphData {
     }
   }
 
-  pub(crate) fn entries(&self) -> HashMap<&ModuleSpecifier, &ModuleEntry> {
+  pub fn entries(&self) -> HashMap<&ModuleSpecifier, &ModuleEntry> {
     self.modules.iter().collect()
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.
   /// Return `None` if any modules are not known.
-  pub(crate) fn walk<'a>(
+  pub fn walk<'a>(
     &'a self,
     roots: &[(ModuleSpecifier, ModuleKind)],
     follow_dynamic: bool,
@@ -235,7 +235,7 @@ impl GraphData {
 
   /// Clone part of `self`, containing only modules which are dependencies of
   /// `roots`. Returns `None` if any roots are not known.
-  pub(crate) fn graph_segment(
+  pub fn graph_segment(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
   ) -> Option<Self> {
@@ -263,7 +263,7 @@ impl GraphData {
   /// so. Returns `Some(Err(_))` if there is a known module graph or resolution
   /// error statically reachable from `roots`. Returns `None` if any modules are
   /// not known.
-  pub(crate) fn check(
+  pub fn check(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
     follow_type_only: bool,
@@ -360,7 +360,7 @@ impl GraphData {
 
   /// Mark `roots` and all of their dependencies as type checked under `lib`.
   /// Assumes that all of those modules are known.
-  pub(crate) fn set_type_checked(
+  pub fn set_type_checked(
     &mut self,
     roots: &[(ModuleSpecifier, ModuleKind)],
     lib: &TypeLib,
@@ -380,7 +380,7 @@ impl GraphData {
   }
 
   /// Check if `roots` are all marked as type checked under `lib`.
-  pub(crate) fn is_type_checked(
+  pub fn is_type_checked(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
     lib: &TypeLib,
@@ -398,7 +398,7 @@ impl GraphData {
 
   /// If `specifier` is known and a redirect, return the found specifier.
   /// Otherwise return `specifier`.
-  pub(crate) fn follow_redirect(
+  pub fn follow_redirect(
     &self,
     specifier: &ModuleSpecifier,
   ) -> ModuleSpecifier {
@@ -408,7 +408,7 @@ impl GraphData {
     }
   }
 
-  pub(crate) fn get<'a>(
+  pub fn get<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
   ) -> Option<&'a ModuleEntry> {
@@ -418,7 +418,7 @@ impl GraphData {
   // TODO(bartlomieju): after saving translated source
   // it's never removed, potentially leading to excessive
   // memory consumption
-  pub(crate) fn add_cjs_esm_translation(
+  pub fn add_cjs_esm_translation(
     &mut self,
     specifier: &ModuleSpecifier,
     source: String,
@@ -429,7 +429,7 @@ impl GraphData {
     assert!(prev.is_none());
   }
 
-  pub(crate) fn get_cjs_esm_translation<'a>(
+  pub fn get_cjs_esm_translation<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
   ) -> Option<&'a String> {
@@ -446,7 +446,7 @@ impl From<&ModuleGraph> for GraphData {
 }
 
 /// Like `graph.valid()`, but enhanced with referrer info.
-pub(crate) fn graph_valid(
+pub fn graph_valid(
   graph: &ModuleGraph,
   follow_type_only: bool,
   check_js: bool,
@@ -457,7 +457,7 @@ pub(crate) fn graph_valid(
 }
 
 /// Calls `graph.lock()` and exits on errors.
-pub(crate) fn graph_lock_or_exit(graph: &ModuleGraph) {
+pub fn graph_lock_or_exit(graph: &ModuleGraph) {
   if let Err(err) = graph.lock() {
     log::error!("{} {}", colors::red("error:"), err);
     std::process::exit(10);

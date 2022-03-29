@@ -51,6 +51,7 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::convert::TryFrom;
+use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
@@ -880,4 +881,8 @@ pub fn op_crypto_unwrap_key(
     }
     _ => Err(type_error("Unsupported algorithm")),
   }
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }

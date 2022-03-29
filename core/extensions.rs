@@ -16,6 +16,18 @@ pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 pub struct OpDecl {
   pub name: &'static str,
   pub v8_fn_ptr: OpFnRef,
+  pub enabled: bool,
+  pub is_async: bool, // TODO(@AaronO): enum sync/async/fast ?
+}
+
+impl OpDecl {
+  pub fn enabled(self, enabled: bool) -> Self {
+    Self { enabled, ..self }
+  }
+
+  pub fn disable(self) -> Self {
+    self.enabled(false)
+  }
 }
 
 #[derive(Default)]
@@ -26,6 +38,7 @@ pub struct Extension {
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
+  enabled: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -52,7 +65,11 @@ impl Extension {
     }
     self.initialized = true;
 
-    self.ops.take()
+    let mut ops = self.ops.take()?;
+    for op in ops.iter_mut() {
+      op.enabled = self.enabled && op.enabled;
+    }
+    Some(ops)
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
@@ -82,6 +99,14 @@ impl Extension {
       .as_ref()
       .map(|f| f(op_state, cx))
       .unwrap_or(false)
+  }
+
+  pub fn enabled(self, enabled: bool) -> Self {
+    Self { enabled, ..self }
+  }
+
+  pub fn disable(self) -> Self {
+    self.enabled(false)
   }
 }
 
@@ -140,6 +165,7 @@ impl ExtensionBuilder {
       middleware_fn: self.middleware.take(),
       event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
+      enabled: true,
     }
   }
 }

@@ -7,6 +7,7 @@ import {
   assertThrows,
   deferred,
   delay,
+  execCode,
 } from "./test_util.ts";
 
 let isCI: boolean;
@@ -380,7 +381,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true }, ignore: true },
   async function netUdpSendReceiveBroadcast() {
     // Must bind sender to an address that can send to the broadcast address on MacOS.
     // Macos will give us error 49 when sending the broadcast packet if we omit hostname here.
@@ -805,5 +806,81 @@ Deno.test(
     await readable.pipeTo(file.writable);
     const res = await Deno.readTextFile(path);
     assertEquals(res, "hello world!");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true } },
+  async function netListenUnref() {
+    const [statusCode, _output] = await execCode(`
+      async function main() {
+        const listener = Deno.listen({ port: 3500 });
+        listener.unref();
+        await listener.accept(); // This doesn't block the program from exiting
+      }
+      main();
+    `);
+    assertEquals(statusCode, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true } },
+  async function netListenUnref() {
+    const [statusCode, _output] = await execCode(`
+      async function main() {
+        const listener = Deno.listen({ port: 3500 });
+        await listener.accept();
+        listener.unref();
+        await listener.accept(); // The program exits here
+        throw new Error(); // The program doesn't reach here
+      }
+      main();
+      const conn = await Deno.connect({ port: 3500 });
+      conn.close();
+    `);
+    assertEquals(statusCode, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true, net: true } },
+  async function netListenUnrefAndRef() {
+    const p = execCode(`
+      async function main() {
+        const listener = Deno.listen({ port: 3500 });
+        listener.unref();
+        listener.ref(); // This restores 'ref' state of listener
+        await listener.accept();
+        console.log("accepted")
+      }
+      main();
+    `);
+    // TODO(kt3k): This is racy. Find a correct way to
+    // wait for the server to be ready
+    setTimeout(async () => {
+      const conn = await Deno.connect({ port: 3500 });
+      conn.close();
+    }, 200);
+    const [statusCode, output] = await p;
+    assertEquals(statusCode, 0);
+    assertEquals(output.trim(), "accepted");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netListenUnrefConcurrentAccept() {
+    const timer = setTimeout(() => {}, 1000);
+    const listener = Deno.listen({ port: 3500 });
+    listener.accept().catch(() => {});
+    listener.unref();
+    // Unref'd listener still causes Busy error
+    // on concurrent accept calls.
+    await assertRejects(async () => {
+      await listener.accept(); // The program exits here
+    }, Deno.errors.Busy);
+    listener.close();
+    clearTimeout(timer);
   },
 );

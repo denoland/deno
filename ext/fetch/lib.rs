@@ -45,6 +45,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
@@ -168,6 +169,10 @@ impl FetchHandler for DefaultFileFetchHandler {
 pub trait FetchPermissions {
   fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
   fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
 
 #[derive(Deserialize)]
