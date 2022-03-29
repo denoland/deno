@@ -38,6 +38,16 @@ mod tests {
   use super::*;
 
   #[test]
+  fn cli_snapshot_checksum() {
+    // NOTE: Update this checksum if you've changed the snapshot.
+    let mut expected = [0u8; 16];
+    hex::decode_to_slice("07c8a56925209d3f3ace6a16cc811750", &mut expected)
+      .unwrap();
+    let actual = md5::compute(&*CLI_SNAPSHOT);
+    assert_eq!(expected, actual.0, "CLI_SNAPSHOT checksum mismatch. If you've changed the snapshot, update the checksum.");
+  }
+
+  #[test]
   fn cli_snapshot() {
     let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
       startup_snapshot: Some(deno_isolate_init()),
