@@ -15,7 +15,6 @@ use tempfile::TempDir;
 use test_util::deno_exe_path;
 use test_util::http_server;
 use test_util::lsp::LspClient;
-use test_util::lsp::LspResponseError;
 use test_util::testdata_path;
 use tower_lsp::lsp_types as lsp;
 
@@ -35,20 +34,6 @@ fn load_fixture_str(path: &str) -> String {
   let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   fs::read_to_string(path).unwrap()
-}
-
-fn write_custom_command(
-  client: &mut LspClient,
-  command: &str,
-  params: Value,
-) -> deno_core::anyhow::Result<(Option<Value>, Option<LspResponseError>)> {
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-        "command": command,
-        "arguments": [params]
-    }),
-  )
 }
 
 fn init(init_path: &str) -> LspClient {
@@ -990,16 +975,16 @@ fn lsp_hover_asset() {
     )
     .unwrap();
   assert!(maybe_error.is_none());
-  let (_, maybe_error) = write_custom_command(
-    &mut client,
-    "deno/virtualTextDocument",
-    json!({
-      "textDocument": {
-        "uri": "deno:asset/lib.deno.shared_globals.d.ts"
-      }
-    }),
-  )
-  .unwrap();
+  let (_, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "deno/virtualTextDocument",
+      json!({
+        "textDocument": {
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+        }
+      }),
+    )
+    .unwrap();
   assert!(maybe_error.is_none());
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -1635,17 +1620,17 @@ fn lsp_hover_dependency() {
     &mut client,
     load_fixture("did_open_params_import_hover.json"),
   );
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": "file:///a/file.ts",
-      },
-      "uris": [],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client
@@ -1965,21 +1950,21 @@ fn lsp_hover_typescript_types() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": "file:///a/file.ts",
-      },
-      "uris": [
-        {
-          "uri": "http://127.0.0.1:4545/xTypeScriptTypes.js",
-        }
-      ],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/xTypeScriptTypes.js",
+          }
+        ],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client
@@ -2952,16 +2937,16 @@ fn lsp_code_lens_non_doc_nav_tree() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "deno/virtualTextDocument",
-    json!({
-      "textDocument": {
-        "uri": "deno:asset/lib.deno.shared_globals.d.ts"
-      }
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/virtualTextDocument",
+      json!({
+        "textDocument": {
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+        }
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client
@@ -3857,17 +3842,18 @@ fn lsp_cache_location() {
   let diagnostics =
     session.did_open(load_fixture("did_open_params_import_hover.json"));
   assert_eq!(diagnostics.viewed().len(), 7);
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut session.client,
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": "file:///a/file.ts",
-      },
-      "uris": [],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = session
+    .client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = session
@@ -3946,7 +3932,7 @@ fn lsp_cache_location() {
   session.shutdown_and_exit();
 }
 
-/// Sets the TLS root certificate on startup, which allows the lsp to connect to
+/// Sets the TLS root certificate on startup, which allows the LSP to connect to
 /// the custom signed test server and be able to retrieve the registry config
 /// and cache files.
 #[test]
@@ -3978,17 +3964,18 @@ fn lsp_tls_cert() {
     session.did_open(load_fixture("did_open_params_tls_cert.json"));
   let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics.len(), 7);
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut session.client,
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": "file:///a/file.ts",
-      },
-      "uris": [],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = session
+    .client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = session
@@ -4079,21 +4066,21 @@ fn lsp_diagnostics_warn_redirect() {
       },
     }),
   );
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": "file:///a/file.ts",
-      },
-      "uris": [
-        {
-          "uri": "http://127.0.0.1:4545/x_deno_warning.js",
-        }
-      ],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/x_deno_warning.js",
+          }
+        ],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let diagnostics = read_diagnostics(&mut client);
@@ -4159,22 +4146,21 @@ fn lsp_redirect_quick_fix() {
       },
     }),
   );
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "deno/cache",
-    json!({
-
-      "referrer": {
-        "uri": "file:///a/file.ts",
-      },
-      "uris": [
-        {
-          "uri": "http://127.0.0.1:4545/x_deno_warning.js",
-        }
-      ],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/x_deno_warning.js",
+          }
+        ],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let diagnostics = read_diagnostics(&mut client)
@@ -4435,11 +4421,9 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) =
-    write_custom_command(&mut client, "deno/performance", json!({})).unwrap();
-  let maybe_res: Option<PerformanceAverages> = maybe_res
-    .and_then(|val| serde_json::from_value(val).ok())
-    .flatten();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, PerformanceAverages>("deno/performance", json!({}))
+    .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
     assert_eq!(res.averages.len(), 13);
@@ -4644,9 +4628,9 @@ fn lsp_format_with_config() {
     .unwrap();
 
   client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
+      .write_notification(
+        "textDocument/didOpen",
+        json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
           "languageId": "typescript",
@@ -4654,8 +4638,8 @@ fn lsp_format_with_config() {
           "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
         }
       }),
-    )
-    .unwrap();
+      )
+      .unwrap();
 
   // The options below should be ignored in favor of configuration from config file.
   let (maybe_res, maybe_err) = client
@@ -5199,21 +5183,21 @@ export function B() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = write_custom_command(
-    &mut client,
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": "file:///a/file.tsx",
-      },
-      "uris": [
-        {
-          "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
-        }
-      ],
-    }),
-  )
-  .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.tsx",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
+          }
+        ],
+      }),
+    )
+    .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client

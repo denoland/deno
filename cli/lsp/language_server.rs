@@ -11,7 +11,6 @@ use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
-use serde_json::from_value;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -134,7 +133,7 @@ impl LanguageServer {
     &self,
     param: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    match param.map(|it| serde_json::from_value(it)) {
+    match param.map(serde_json::from_value) {
       Some(Ok(params)) => self.0.lock().await.cache(params).await,
       Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
       None => Err(LspError::invalid_params("Missing parameters")),
@@ -159,7 +158,7 @@ impl LanguageServer {
     &self,
     param: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    match param.map(|it| serde_json::from_value(it)) {
+    match param.map(serde_json::from_value) {
       Some(Ok(params)) => Ok(Some(
         serde_json::to_value(
           self.0.lock().await.virtual_text_document(params).await?,
@@ -1402,8 +1401,8 @@ impl Inner {
     let result = if kind.as_str().starts_with(CodeActionKind::QUICKFIX.as_str())
     {
       let snapshot = self.snapshot();
-      let code_action_data: CodeActionData =
-        from_value(data).map_err(|err| {
+      let code_action_data: CodeActionData = serde_json::from_value(data)
+        .map_err(|err| {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
@@ -1447,8 +1446,8 @@ impl Inner {
     } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
       let snapshot = self.snapshot();
       let mut code_action = params.clone();
-      let action_data: refactor::RefactorCodeActionData = from_value(data)
-        .map_err(|err| {
+      let action_data: refactor::RefactorCodeActionData =
+        serde_json::from_value(data).map_err(|err| {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
