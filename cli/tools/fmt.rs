@@ -26,7 +26,6 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use log::debug;
 use log::info;
-use regex::Regex;
 use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
@@ -89,7 +88,7 @@ pub async fn format(
   );
 
   let fmt_predicate =
-    |path: &Path| is_supported_ext_fmt(path) && !is_located_in_git(path);
+    |path: &Path| is_supported_ext_fmt(path) && !is_contain_git(path);
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -625,12 +624,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn is_located_in_git(path: &Path) -> bool {
-  let re = Regex::new(r"(^|[\\/])\.git[\\/]").unwrap();
-  match path.to_str() {
-    Some(value) => re.is_match(value),
-    None => false,
-  }
+fn is_contain_git(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == ".git")
 }
 
 #[test]
@@ -662,8 +657,8 @@ fn test_is_supported_ext_fmt() {
 
 #[test]
 fn test_is_located_in_git() {
-  assert!(is_located_in_git(Path::new(".git/bad.json")));
-  assert!(is_located_in_git(Path::new("test/.git/bad.json")));
-  assert!(is_located_in_git(Path::new("test\\.git\\bad.json")));
-  assert!(!is_located_in_git(Path::new("test/bad.git/bad.json")));
+  assert!(is_contain_git(Path::new("test/.git")));
+  assert!(is_contain_git(Path::new(".git/bad.json")));
+  assert!(is_contain_git(Path::new("test/.git/bad.json")));
+  assert!(!is_contain_git(Path::new("test/bad.git/bad.json")));
 }
