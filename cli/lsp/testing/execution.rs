@@ -583,8 +583,7 @@ impl From<&test::TestStepDescription> for lsp_custom::TestIdentifier {
 }
 
 struct LspTestReporter {
-  /// a channel for dispatching testing notification messages on its own thread
-  channel: mpsc::UnboundedSender<TestingNotification>,
+  client: Client,
   current_origin: Option<String>,
   maybe_root_uri: Option<ModuleSpecifier>,
   id: u32,
@@ -599,21 +598,8 @@ impl LspTestReporter {
     maybe_root_uri: Option<&ModuleSpecifier>,
     tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
   ) -> Self {
-    let (channel, mut rx) = mpsc::unbounded_channel::<TestingNotification>();
-
-    let _join_handle = tokio::task::spawn(async move {
-      loop {
-        match rx.recv().await {
-          None => break,
-          Some(params) => {
-            client.send_test_notification(params).await;
-          }
-        }
-      }
-    });
-
     Self {
-      channel,
+      client,
       current_origin: None,
       maybe_root_uri: maybe_root_uri.cloned(),
       id: run.id,
@@ -650,18 +636,15 @@ impl LspTestReporter {
             .unwrap_or_else(|| "<unknown>".to_string())
         };
         self
-          .channel
-          .send(TestingNotification::Module(
+          .client
+          .send_test_notification(TestingNotification::Module(
             lsp_custom::TestModuleNotificationParams {
               text_document: lsp::TextDocumentIdentifier { uri: specifier },
               kind: lsp_custom::TestModuleNotificationKind::Insert,
               label,
               tests: vec![prev],
             },
-          ))
-          .unwrap_or_else(|err| {
-            lsp_log!("{}", err);
-          });
+          ));
       }
     }
   }
@@ -689,33 +672,27 @@ impl LspTestReporter {
           .unwrap_or_else(|| "<unknown>".to_string())
       };
       self
-        .channel
-        .send(TestingNotification::Module(
+        .client
+        .send_test_notification(TestingNotification::Module(
           lsp_custom::TestModuleNotificationParams {
             text_document: lsp::TextDocumentIdentifier { uri: specifier },
             kind: lsp_custom::TestModuleNotificationKind::Insert,
             label,
             tests: vec![desc.into()],
           },
-        ))
-        .unwrap_or_else(|err| {
-          lsp_log!("{}", err);
-        });
+        ));
     }
   }
 
   fn progress(&self, message: lsp_custom::TestRunProgressMessage) {
     self
-      .channel
-      .send(TestingNotification::Progress(
+      .client
+      .send_test_notification(TestingNotification::Progress(
         lsp_custom::TestRunProgressParams {
           id: self.id,
           message,
         },
-      ))
-      .unwrap_or_else(|err| {
-        lsp_log!("{}", err);
-      });
+      ));
   }
 
   fn includes_step(&self, desc: &test::TestStepDescription) -> bool {

@@ -599,7 +599,7 @@ fn lsp_deno_task() {
   params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();

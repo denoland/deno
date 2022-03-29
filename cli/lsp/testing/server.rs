@@ -120,24 +120,20 @@ impl TestServer {
                       script_version,
                     };
                     if !test_definitions.discovered.is_empty() {
-                      client
-                        .send_test_notification(
-                          test_definitions.as_notification(
-                            specifier,
-                            mru.as_ref(),
-                            parsed_source.source(),
-                          ),
-                        )
-                        .await;
+                      client.send_test_notification(
+                        test_definitions.as_notification(
+                          specifier,
+                          mru.as_ref(),
+                          parsed_source.source(),
+                        ),
+                      );
                     }
                     tests.insert(specifier.clone(), test_definitions);
                   }
                 }
               }
               for key in keys {
-                client
-                  .send_test_notification(as_delete_notification(key))
-                  .await;
+                client.send_test_notification(as_delete_notification(key));
               }
               performance.measure(mark);
             }
@@ -174,14 +170,12 @@ impl TestServer {
                   }
                 }
                 tokens.remove(&id);
-                client
-                  .send_test_notification(TestingNotification::Progress(
-                    lsp_custom::TestRunProgressParams {
-                      id,
-                      message: lsp_custom::TestRunProgressMessage::End,
-                    },
-                  ))
-                  .await;
+                client.send_test_notification(TestingNotification::Progress(
+                  lsp_custom::TestRunProgressParams {
+                    id,
+                    message: lsp_custom::TestRunProgressMessage::End,
+                  },
+                ));
               }
             }
             Some(RunRequest::Cancel(id)) => {

@@ -59,8 +59,8 @@ impl Client {
     self.0.send_registry_state_notification(params).await;
   }
 
-  pub async fn send_test_notification(&self, params: TestingNotification) {
-    self.0.send_test_notification(params).await;
+  pub fn send_test_notification(&self, params: TestingNotification) {
+    self.0.send_test_notification(params);
   }
 
   pub async fn specifier_configurations(
@@ -130,10 +130,7 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   ) -> AsyncReturn<()>;
-  fn send_test_notification(
-    &self,
-    params: TestingNotification,
-  ) -> AsyncReturn<()>;
+  fn send_test_notification(&self, params: TestingNotification);
   fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
@@ -180,12 +177,9 @@ impl ClientTrait for LspowerClient {
     })
   }
 
-  fn send_test_notification(
-    &self,
-    notification: TestingNotification,
-  ) -> AsyncReturn<()> {
+  fn send_test_notification(&self, notification: TestingNotification) {
     let client = self.0.clone();
-    Box::pin(async move {
+    tokio::task::spawn(async move {
       match notification {
         TestingNotification::Module(params) => {
           client
@@ -205,7 +199,7 @@ impl ClientTrait for LspowerClient {
           )
           .await,
       }
-    })
+    });
   }
 
   fn specifier_configurations(
@@ -304,11 +298,8 @@ impl ClientTrait for ReplClient {
     Box::pin(future::ready(()))
   }
 
-  fn send_test_notification(
-    &self,
-    _params: TestingNotification,
-  ) -> AsyncReturn<()> {
-    Box::pin(future::ready(()))
+  fn send_test_notification(&self, _params: TestingNotification) {
+    ()
   }
 
   fn specifier_configurations(
