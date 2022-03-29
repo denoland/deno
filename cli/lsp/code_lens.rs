@@ -377,7 +377,7 @@ async fn resolve_references_code_lens(
   }
 }
 
-pub(crate) async fn resolve_code_lens(
+pub async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
   language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
@@ -393,7 +393,7 @@ pub(crate) async fn resolve_code_lens(
   }
 }
 
-pub(crate) async fn collect(
+pub async fn collect(
   specifier: &ModuleSpecifier,
   parsed_source: Option<ParsedSource>,
   config: &Config,

@@ -24,7 +24,7 @@ pub struct EmitMetadata {
   pub version_hash: String,
 }
 
-pub(crate) enum CacheType {
+pub enum CacheType {
   Declaration,
   Emit,
   SourceMap,
@@ -34,7 +34,7 @@ pub(crate) enum CacheType {
 
 /// A trait which provides a concise implementation to getting and setting
 /// values in a cache.
-pub(crate) trait Cacher {
+pub trait Cacher {
   /// Get a value from the cache.
   fn get(
     &self,
@@ -53,7 +53,7 @@ pub(crate) trait Cacher {
 /// Combines the cacher trait along with the deno_graph Loader trait to provide
 /// a single interface to be able to load and cache modules when building a
 /// graph.
-pub(crate) trait CacherLoader: Cacher + Loader {
+pub trait CacherLoader: Cacher + Loader {
   fn as_cacher(&self) -> &dyn Cacher;
   fn as_mut_loader(&mut self) -> &mut dyn Loader;
   fn as_mut_cacher(&mut self) -> &mut dyn Cacher;
@@ -61,7 +61,7 @@ pub(crate) trait CacherLoader: Cacher + Loader {
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
-pub(crate) struct FetchCacher {
+pub struct FetchCacher {
   disk_cache: DiskCache,
   dynamic_permissions: Permissions,
   file_fetcher: Arc<FileFetcher>,
@@ -252,7 +252,7 @@ impl CacherLoader for FetchCacher {
 /// An in memory cache that is used by the runtime `Deno.emit()` API to provide
 /// the same behavior as the disk cache when sources are provided.
 #[derive(Debug)]
-pub(crate) struct MemoryCacher {
+pub struct MemoryCacher {
   sources: HashMap<String, Arc<String>>,
   declarations: HashMap<ModuleSpecifier, String>,
   emits: HashMap<ModuleSpecifier, String>,

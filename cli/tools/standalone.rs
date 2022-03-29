@@ -2,15 +2,19 @@
 
 use crate::deno_dir::DenoDir;
 use crate::flags::CheckFlag;
+use crate::flags::CompileFlags;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::RunFlags;
+use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
@@ -25,6 +29,8 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+
+use super::installer::infer_name_from_url;
 
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
@@ -159,44 +165,26 @@ pub async fn create_standalone_binary(
 /// This function writes out a final binary to specified path. If output path
 /// is not already standalone binary it will return error instead.
 pub async fn write_standalone_binary(
-  output: PathBuf,
-  target: Option<String>,
+  output_path: PathBuf,
   final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
-  let output = match target {
-    Some(target) => {
-      if target.contains("windows") {
-        output.with_extension("exe")
-      } else {
-        output
-      }
-    }
-    None => {
-      if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-        output.with_extension("exe")
-      } else {
-        output
-      }
-    }
-  };
-
-  if output.exists() {
+  if output_path.exists() {
     // If the output is a directory, throw error
-    if output.is_dir() {
+    if output_path.is_dir() {
       bail!(
         concat!(
           "Could not compile to file '{}' because a directory exists with ",
           "the same name. You can use the `--output <file-path>` flag to ",
           "provide an alternative name."
         ),
-        output.display()
+        output_path.display()
       );
     }
 
     // Make sure we don't overwrite any file not created by Deno compiler.
     // Check for magic trailer in last 24 bytes.
     let mut has_trailer = false;
-    let mut output_file = File::open(&output)?;
+    let mut output_file = File::open(&output_path)?;
     // This seek may fail because the file is too small to possibly be
     // `deno compile` output.
     if output_file.seek(SeekFrom::End(-24)).is_ok() {
@@ -212,15 +200,15 @@ pub async fn write_standalone_binary(
           "and cannot be overwritten. Please delete the existing file or ",
           "use the `--output <file-path` flag to provide an alternative name."
         ),
-        output.display()
+        output_path.display()
       );
     }
 
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
     // (see https://github.com/denoland/deno/issues/10310)
-    std::fs::remove_file(&output)?;
+    std::fs::remove_file(&output_path)?;
   } else {
-    let output_base = &output.parent().unwrap();
+    let output_base = &output_path.parent().unwrap();
     if output_base.exists() && output_base.is_file() {
       bail!(
         concat!(
@@ -234,12 +222,12 @@ pub async fn write_standalone_binary(
     tokio::fs::create_dir_all(output_base).await?;
   }
 
-  tokio::fs::write(&output, final_bin).await?;
+  tokio::fs::write(&output_path, final_bin).await?;
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o777);
-    tokio::fs::set_permissions(output, perms).await?;
+    tokio::fs::set_permissions(output_path, perms).await?;
   }
 
   Ok(())
@@ -302,4 +290,72 @@ pub fn compile_to_runtime_flags(
     watch: None,
     no_clear_screen: false,
   })
+}
+
+pub fn resolve_compile_executable_output_path(
+  compile_flags: &CompileFlags,
+) -> Result<PathBuf, AnyError> {
+  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  compile_flags.output.as_ref().and_then(|output| {
+    if fs_util::path_has_trailing_slash(output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output.to_path_buf())
+    }
+  }).or_else(|| {
+    infer_name_from_url(&module_specifier).map(PathBuf::from)
+  }).ok_or_else(|| generic_error(
+    "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+  )).map(|output| {
+    match &compile_flags.target {
+      Some(target) => {
+        if target.contains("windows") {
+          output.with_extension("exe")
+        } else {
+          output
+        }
+      }
+      None => {
+        if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+          output.with_extension("exe")
+        } else {
+          output
+        }
+      }
+    }
+  })
+}
+
+#[cfg(test)]
+mod test {
+  pub use super::*;
+
+  #[test]
+  fn resolve_compile_executable_output_path_target_linux() {
+    let path = resolve_compile_executable_output_path(&CompileFlags {
+      source_file: "mod.ts".to_string(),
+      output: Some(PathBuf::from("./file")),
+      args: Vec::new(),
+      target: Some("x86_64-unknown-linux-gnu".to_string()),
+    })
+    .unwrap();
+
+    // no extension, no matter what the operating system is
+    // because the target was specified as linux
+    // https://github.com/denoland/deno/issues/9667
+    assert_eq!(path.file_name().unwrap(), "file");
+  }
+
+  #[test]
+  fn resolve_compile_executable_output_path_target_windows() {
+    let path = resolve_compile_executable_output_path(&CompileFlags {
+      source_file: "mod.ts".to_string(),
+      output: Some(PathBuf::from("./file")),
+      args: Vec::new(),
+      target: Some("x86_64-pc-windows-msvc".to_string()),
+    })
+    .unwrap();
+    assert_eq!(path.file_name().unwrap(), "file.exe");
+  }
 }

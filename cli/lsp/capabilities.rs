@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 ///!
 ///! Provides information about what capabilities that are supported by the
 ///! language server, which helps determine what messages are sent from the
@@ -158,8 +159,10 @@ pub fn server_capabilities(
       }),
       file_operations: None,
     }),
-    experimental: None,
     linked_editing_range_provider: None,
     moniker_provider: None,
+    experimental: Some(json!({
+      "denoConfigTasks": true,
+    })),
   }
 }

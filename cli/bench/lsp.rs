@@ -333,9 +333,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 /// Generate benchmarks for the LSP server.
-pub(crate) fn benchmarks(
-  deno_exe: &Path,
-) -> Result<HashMap<String, u64>, AnyError> {
+pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
   println!("-> Start benchmarking lsp");
   let mut exec_times = HashMap::new();
 

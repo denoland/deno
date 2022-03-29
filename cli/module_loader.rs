@@ -15,7 +15,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 
-pub(crate) struct CliModuleLoader {
+pub struct CliModuleLoader {
   pub lib: TypeLib,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. They are decoupled from the worker (dynamic) permissions since
