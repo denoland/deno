@@ -54,8 +54,8 @@ itest!(ignore_require {
 #[cfg(target_os = "linux")]
 #[test]
 fn relative_home_dir() {
-  use tempfile::TempDir;
   use test_util as util;
+  use test_util::TempDir;
 
   let deno_dir = TempDir::new_in(util::testdata_path()).unwrap();
   let path = deno_dir.path().strip_prefix(util::testdata_path()).unwrap();

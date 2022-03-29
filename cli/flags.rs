@@ -3792,8 +3792,9 @@ mod tests {
 
   #[test]
   fn allow_read_allowlist() {
-    use tempfile::TempDir;
-    let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
+    use test_util::TempDir;
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().to_path_buf();
 
     let r = flags_from_vec(svec![
       "deno",
@@ -3815,8 +3816,9 @@ mod tests {
 
   #[test]
   fn allow_write_allowlist() {
-    use tempfile::TempDir;
-    let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
+    use test_util::TempDir;
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().to_path_buf();
 
     let r = flags_from_vec(svec![
       "deno",

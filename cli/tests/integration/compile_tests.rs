@@ -2,12 +2,12 @@
 
 use std::fs::File;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn compile() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("welcome.exe")
   } else {
@@ -38,7 +38,7 @@ fn compile() {
 
 #[test]
 fn standalone_args() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -74,7 +74,7 @@ fn standalone_args() {
 
 #[test]
 fn standalone_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -116,7 +116,7 @@ fn standalone_error() {
 
 #[test]
 fn standalone_error_module_with_imports() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -156,7 +156,7 @@ fn standalone_error_module_with_imports() {
 
 #[test]
 fn standalone_load_datauri() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("load_datauri.exe")
   } else {
@@ -188,7 +188,7 @@ fn standalone_load_datauri() {
 
 #[test]
 fn standalone_compiler_ops() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("standalone_compiler_ops.exe")
   } else {
@@ -220,7 +220,7 @@ fn standalone_compiler_ops() {
 
 #[test]
 fn compile_with_directory_output_flag() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\random\")
   } else {
@@ -258,7 +258,7 @@ fn compile_with_directory_output_flag() {
 
 #[test]
 fn compile_with_file_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\")
   } else {
@@ -293,7 +293,7 @@ fn compile_with_file_exists_error() {
 
 #[test]
 fn compile_with_directory_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -327,7 +327,7 @@ fn compile_with_directory_exists_error() {
 
 #[test]
 fn compile_with_conflict_file_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -365,7 +365,7 @@ fn compile_with_conflict_file_exists_error() {
 
 #[test]
 fn compile_and_overwrite_file() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -403,7 +403,7 @@ fn compile_and_overwrite_file() {
 
 #[test]
 fn standalone_runtime_flags() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("flags.exe")
   } else {
@@ -442,7 +442,7 @@ fn standalone_runtime_flags() {
 
 #[test]
 fn standalone_import_map() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("import_map.exe")
   } else {
@@ -477,7 +477,7 @@ fn standalone_import_map() {
 #[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("hello_world.exe")
   } else {

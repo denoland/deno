@@ -3298,7 +3298,7 @@ mod tests {
   use crate::lsp::text::LineIndex;
   use std::path::Path;
   use std::path::PathBuf;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
@@ -3326,7 +3326,7 @@ mod tests {
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());

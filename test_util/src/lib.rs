@@ -40,7 +40,6 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
-use tempfile::TempDir;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -50,6 +49,9 @@ use tokio_tungstenite::accept_async;
 
 pub mod lsp;
 pub mod pty;
+mod temp_dir;
+
+pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -1654,7 +1656,7 @@ pub fn run_and_collect_output_with_args(
 }
 
 pub fn new_deno_dir() -> TempDir {
-  TempDir::new().expect("tempdir fail")
+  TempDir::new()
 }
 
 pub fn deno_cmd() -> Command {

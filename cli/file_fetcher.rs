@@ -746,7 +746,7 @@ mod tests {
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use std::rc::Rc;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn setup(
     cache_setting: CacheSetting,
@@ -761,8 +761,7 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
-    let temp_dir =
-      maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new().unwrap()));
+    let temp_dir = maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new()));
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
@@ -1227,7 +1226,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
@@ -1397,7 +1396,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
@@ -1526,7 +1525,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
@@ -1551,7 +1550,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
@@ -1618,7 +1617,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_revalidates() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let temp_dir = Rc::new(TempDir::new());
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =
@@ -1645,7 +1644,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_still_fresh() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let temp_dir = Rc::new(TempDir::new());
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =

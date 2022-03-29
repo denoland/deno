@@ -138,10 +138,10 @@ mod tests {
   use std::fs::File;
   use std::io::prelude::*;
   use std::io::Write;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn setup() -> (TempDir, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let temp_dir = TempDir::new();
 
     let file_path = temp_dir.path().join("valid_lockfile.json");
     let mut file = File::create(file_path).expect("write file fail");
@@ -158,10 +158,6 @@ mod tests {
     (temp_dir, file_path)
   }
 
-  fn teardown(temp_dir: TempDir) {
-    temp_dir.close().expect("file close error");
-  }
-
   #[test]
   fn new_nonexistent_lockfile() {
     let file_path = PathBuf::from("nonexistent_lock_file.json");
@@ -170,7 +166,7 @@ mod tests {
 
   #[test]
   fn new_valid_lockfile() {
-    let (temp_dir, file_path) = setup();
+    let (_temp_dir_guard, file_path) = setup();
 
     let result = Lockfile::new(file_path, false).unwrap();
 
@@ -182,13 +178,11 @@ mod tests {
 
     assert_eq!(keys.len(), 2);
     assert_eq!(keys, expected_keys);
-
-    teardown(temp_dir);
   }
 
   #[test]
   fn new_lockfile_from_file_and_insert() {
-    let (temp_dir, file_path) = setup();
+    let (_temp_dir_guard, file_path) = setup();
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 
@@ -205,8 +199,6 @@ mod tests {
     ];
     assert_eq!(keys.len(), 3);
     assert_eq!(keys, expected_keys);
-
-    teardown(temp_dir);
   }
 
   #[test]
@@ -264,13 +256,11 @@ mod tests {
       Some("https://deno.land/std@0.71.0/textproto/mod.ts")
     );
     assert!(keys.next().is_none());
-
-    teardown(temp_dir);
   }
 
   #[test]
   fn check_or_insert_lockfile_false() {
-    let (temp_dir, file_path) = setup();
+    let (_temp_dir_guard, file_path) = setup();
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 
@@ -290,7 +280,5 @@ mod tests {
       "This is new Source code",
     );
     assert!(!check_false);
-
-    teardown(temp_dir);
   }
 }

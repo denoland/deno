@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::fs;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn branch() {
@@ -20,8 +20,8 @@ fn final_blankline() {
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new().unwrap();
-  let tempdir = TempDir::new().unwrap();
+  let deno_dir = TempDir::new();
+  let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
   let status = util::deno_cmd_with_deno_dir(deno_dir.path())
@@ -100,8 +100,8 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
 #[test]
 fn multifile_coverage() {
-  let deno_dir = TempDir::new().unwrap();
-  let tempdir = TempDir::new().unwrap();
+  let deno_dir = TempDir::new();
+  let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
   let status = util::deno_cmd_with_deno_dir(deno_dir.path())
