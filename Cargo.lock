@@ -115,9 +115,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.55"
+version = "1.0.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "159bb86af3a200e19a068f4224eae4c8bb2d0fa054c7e5d1cacd5cef95e684cd"
+checksum = "4361135be9122e0870de935d7c439aef945b9f9ddd4199a553b5270b49c82a27"
 
 [[package]]
 name = "arrayvec"
@@ -1264,21 +1264,22 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.50.0"
+version = "0.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a596556533e5739e71dfe105c8b4496c3eccaf5aa96d14b19db2fdf4157085a"
+checksum = "4ac67835685dd407cfb415eec8a114bafa6ab6de9bad29ba93d29f874f40bc1a"
 dependencies = [
  "anyhow",
  "bumpalo",
+ "indexmap",
  "rustc-hash",
  "serde",
 ]
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d7673b479d64372e60e344722789ed9c61ea1023e9a8a13c7da8e7d63b0f7dc"
+checksum = "1a83f35e23681206c2a69a65946e66e5bb692543c6e0377c32208452a8995fe2"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -1289,9 +1290,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.12.2"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00a8c4e905bf5c95dbcc6eab7d81a1d884f7fbd0e7f2fd99af0154692fabc8a8"
+checksum = "254ee918c51c21fa6ca20fe9556f3177b0b5be141df64952c6e353d17dbb5923"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -1302,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.65.1"
+version = "0.66.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e482c9fe4929ec672d2bdaf0b6dcfee88684ec23858f0c54f225b565f08882ac"
+checksum = "e464d85d3db3ba0c53b1bf207f13d32aba614ff5c032497f240938738568bc20"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -3641,9 +3642,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.133"
+version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97565067517b60e2d1ea8b268e59ce036de907ac523ad83a0475da04e818989a"
+checksum = "ce31e24b01e1e524df96f1c2fdd054405f8d7376249a5110886fb4b658484789"
 dependencies = [
  "serde_derive",
 ]
@@ -3659,9 +3660,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.133"
+version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed201699328568d8d08208fdd080e3ff594e6c422e438b6705905da01005d537"
+checksum = "08597e7152fcd306f41838ed3e37be9eaeed2b61c42e2117266a554fab4662f9"
 dependencies = [
  "proc-macro2 1.0.36",
  "quote 1.0.14",

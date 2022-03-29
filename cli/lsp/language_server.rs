@@ -1063,11 +1063,13 @@ impl Inner {
       };
 
       match format_result {
-        Ok(new_text) => Some(text::get_edits(
-          document.content().as_str(),
-          &new_text,
-          document.line_index().as_ref(),
-        )),
+        Ok(new_text) => new_text.map(|new_text| {
+          text::get_edits(
+            document.content().as_str(),
+            &new_text,
+            document.line_index().as_ref(),
+          )
+        }),
         Err(err) => {
           // TODO(lucacasonato): handle error properly
           warn!("Format error: {}", err);
