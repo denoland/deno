@@ -472,7 +472,11 @@ To evaluate code in the shell:
 ";
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
+pub fn flags_from_vec<I, T>(args: I) -> clap::Result<Flags>
+where
+  I: IntoIterator<Item = T>,
+  T: Into<std::ffi::OsString> + Clone,
+{
   let version = crate::version::deno();
   let app = clap_root(&version);
   let matches = app.clone().try_get_matches_from(args)?;
