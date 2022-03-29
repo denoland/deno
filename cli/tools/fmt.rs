@@ -90,31 +90,32 @@ pub async fn format(
     maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
   );
 
+  let fmt_predicate =
+    |path: &Path| is_supported_ext_fmt(path) && !is_contain_git(path);
+
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let result =
-      collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
-        |files| {
-          let refmt_files = if let Some(paths) = changed {
-            if check {
-              files
-                .iter()
-                .any(|path| paths.contains(path))
-                .then(|| files)
-                .unwrap_or_else(|| [].to_vec())
-            } else {
-              files
-                .into_iter()
-                .filter(|path| paths.contains(path))
-                .collect::<Vec<_>>()
-            }
+    let result = collect_files(&include_files, &exclude_files, fmt_predicate)
+      .map(|files| {
+        let refmt_files = if let Some(paths) = changed {
+          if check {
+            files
+              .iter()
+              .any(|path| paths.contains(path))
+              .then(|| files)
+              .unwrap_or_else(|| [].to_vec())
           } else {
             files
-          };
-          (refmt_files, fmt_options.clone())
-        },
-      );
+              .into_iter()
+              .filter(|path| paths.contains(path))
+              .collect::<Vec<_>>()
+          }
+        } else {
+          files
+        };
+        (refmt_files, fmt_options.clone())
+      });
 
     let paths_to_watch = include_files.clone();
     async move {
@@ -150,15 +151,14 @@ pub async fn format(
     )
     .await?;
   } else {
-    let files =
-      collect_files(&include_files, &exclude_files, is_supported_ext_fmt)
-        .and_then(|files| {
-          if files.is_empty() {
-            Err(generic_error("No target files found."))
-          } else {
-            Ok(files)
-          }
-        })?;
+    let files = collect_files(&include_files, &exclude_files, fmt_predicate)
+      .and_then(|files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      })?;
     operation((files, fmt_options.clone())).await?;
   }
 
@@ -624,6 +624,10 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
+fn is_contain_git(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == ".git")
+}
+
 #[test]
 fn test_is_supported_ext_fmt() {
   assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
@@ -649,4 +653,12 @@ fn test_is_supported_ext_fmt() {
   assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
   assert!(is_supported_ext_fmt(Path::new("foo.json")));
   assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+}
+
+#[test]
+fn test_is_located_in_git() {
+  assert!(is_contain_git(Path::new("test/.git")));
+  assert!(is_contain_git(Path::new(".git/bad.json")));
+  assert!(is_contain_git(Path::new("test/.git/bad.json")));
+  assert!(!is_contain_git(Path::new("test/bad.git/bad.json")));
 }
