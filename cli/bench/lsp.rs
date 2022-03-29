@@ -48,7 +48,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
-    client.write_request("initialize", params)?;
+    client.write_request("initialize", Some(params))?;
   assert!(response_error.is_none());
 
   client.write_notification("initialized", json!({}))?;
@@ -86,37 +86,33 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
     serde_json::from_slice(FIXTURE_DB_MESSAGES)?;
 
   for msg in messages {
+    let params = Some(msg.params);
     match msg.fixture_type {
       FixtureType::Action => {
-        client.write_request::<_, _, Value>(
-          "textDocument/codeAction",
-          msg.params,
-        )?;
+        client
+          .write_request::<_, _, Value>("textDocument/codeAction", params)?;
       }
       FixtureType::Change => {
-        client.write_notification("textDocument/didChange", msg.params)?;
+        client.write_notification("textDocument/didChange", params)?;
       }
       FixtureType::Completion => {
-        client.write_request::<_, _, Value>(
-          "textDocument/completion",
-          msg.params,
-        )?;
+        client
+          .write_request::<_, _, Value>("textDocument/completion", params)?;
       }
       FixtureType::Highlight => {
         client.write_request::<_, _, Value>(
           "textDocument/documentHighlight",
-          msg.params,
+          params,
         )?;
       }
       FixtureType::Hover => {
-        client
-          .write_request::<_, _, Value>("textDocument/hover", msg.params)?;
+        client.write_request::<_, _, Value>("textDocument/hover", params)?;
       }
     }
   }
 
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
-    client.write_request("shutdown", json!(null))?;
+    client.write_request::<_, Value, _>("shutdown", None)?;
   assert!(response_error.is_none());
 
   client.write_notification("exit", json!(null))?;
@@ -129,7 +125,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, maybe_err) =
-    client.write_request::<_, _, Value>("initialize", params)?;
+    client.write_request::<_, _, Value>("initialize", Some(params))?;
   assert!(maybe_err.is_none());
   client.write_notification("initialized", json!({}))?;
 
@@ -165,11 +161,11 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Vec<lsp::CodeLens>>(
       "textDocument/codeLens",
-      json!({
+      Some(json!({
         "textDocument": {
           "uri": "file:///testdata/code_lens.ts"
         }
-      }),
+      })),
     )
     .unwrap();
   assert!(maybe_err.is_none());
@@ -179,7 +175,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   for code_lens in res {
     let (maybe_res, maybe_err) = client
-      .write_request::<_, _, lsp::CodeLens>("codeLens/resolve", code_lens)
+      .write_request::<_, _, lsp::CodeLens>("codeLens/resolve", Some(code_lens))
       .unwrap();
     assert!(maybe_err.is_none());
     assert!(maybe_res.is_some());
@@ -193,7 +189,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, maybe_err) =
-    client.write_request::<_, _, Value>("initialize", params)?;
+    client.write_request::<_, _, Value>("initialize", Some(params))?;
   assert!(maybe_err.is_none());
   client.write_notification("initialized", json!({}))?;
 
@@ -253,7 +249,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
     let file_name = format!("file:///a/file_{}.ts", i);
     let (maybe_res, maybe_err) = client.write_request::<_, _, Value>(
       "textDocument/formatting",
-      lsp::DocumentFormattingParams {
+      Some(lsp::DocumentFormattingParams {
         text_document: lsp::TextDocumentIdentifier {
           uri: Url::parse(&file_name).unwrap(),
         },
@@ -263,7 +259,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
           ..Default::default()
         },
         work_done_progress_params: Default::default(),
-      },
+      }),
     )?;
     assert!(maybe_err.is_none());
     assert!(maybe_res.is_some());
@@ -275,7 +271,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
   }
 
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
-    client.write_request("shutdown", json!(null))?;
+    client.write_request::<_, Value, _>("shutdown", None)?;
   assert!(response_error.is_none());
 
   client.write_notification("exit", json!(null))?;
@@ -289,7 +285,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, response_error) =
-    client.write_request::<_, _, Value>("initialize", params)?;
+    client.write_request::<_, Value, Value>("initialize", Some(params))?;
   assert!(response_error.is_none());
 
   client.write_notification("initialized", json!({}))?;
@@ -324,7 +320,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
   assert_eq!(method, "textDocument/publishDiagnostics");
 
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
-    client.write_request("shutdown", json!(null))?;
+    client.write_request::<_, Value, _>("shutdown", None)?;
   assert!(response_error.is_none());
 
   client.write_notification("exit", json!(null))?;

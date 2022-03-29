@@ -285,19 +285,26 @@ impl LspClient {
   pub fn write_request<S, V, R>(
     &mut self,
     method: S,
-    params: V,
+    params: Option<V>,
   ) -> Result<(Option<R>, Option<LspResponseError>)>
   where
     S: AsRef<str>,
     V: Serialize,
     R: de::DeserializeOwned,
   {
-    let value = json!({
-      "jsonrpc": "2.0",
-      "id": self.request_id,
-      "method": method.as_ref(),
-      "params": params,
-    });
+    let value = match params {
+      Some(params) => json!({
+        "jsonrpc": "2.0",
+        "id": self.request_id,
+        "method": method.as_ref(),
+        "params": params,
+      }),
+      None => json!({
+        "jsonrpc": "2.0",
+        "id": self.request_id,
+        "method": method.as_ref(),
+      }),
+    };
     self.write(value)?;
 
     loop {

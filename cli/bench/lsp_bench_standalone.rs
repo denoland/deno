@@ -18,7 +18,7 @@ fn incremental_change_wait(bench: &mut Bencher) {
     include_bytes!("testdata/initialize_params.json");
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON).unwrap();
   let (_, maybe_err) = client
-    .write_request::<_, _, Value>("initialize", params)
+    .write_request::<_, _, Value>("initialize", Some(params))
     .unwrap();
   assert!(maybe_err.is_none());
   client.write_notification("initialized", json!({})).unwrap();
