@@ -298,9 +298,7 @@ impl ClientTrait for ReplClient {
     Box::pin(future::ready(()))
   }
 
-  fn send_test_notification(&self, _params: TestingNotification) {
-    ()
-  }
+  fn send_test_notification(&self, _params: TestingNotification) {}
 
   fn specifier_configurations(
     &self,
