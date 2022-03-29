@@ -7,8 +7,11 @@ use deno_core::error::AnyError;
 use deno_core::op;
 
 use deno_core::Extension;
+#[cfg(unix)]
 use deno_core::OpState;
+#[cfg(unix)]
 use std::cell::RefCell;
+#[cfg(unix)]
 use std::rc::Rc;
 
 #[cfg(unix)]

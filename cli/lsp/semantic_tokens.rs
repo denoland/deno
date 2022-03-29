@@ -12,8 +12,8 @@ use tower_lsp::lsp_types::SemanticTokenType;
 use tower_lsp::lsp_types::SemanticTokens;
 use tower_lsp::lsp_types::SemanticTokensLegend;
 
-pub(crate) const MODIFIER_MASK: u32 = 255;
-pub(crate) const TYPE_OFFSET: u32 = 8;
+pub const MODIFIER_MASK: u32 = 255;
+pub const TYPE_OFFSET: u32 = 8;
 
 enum TokenType {
   Class = 0,

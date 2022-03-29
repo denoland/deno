@@ -16,7 +16,7 @@ mod completions;
 mod config;
 mod diagnostics;
 mod documents;
-pub(crate) mod language_server;
+pub mod language_server;
 mod logging;
 mod lsp_custom;
 mod parent_process_checker;
