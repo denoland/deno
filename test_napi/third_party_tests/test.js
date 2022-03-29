@@ -109,6 +109,56 @@ Deno.test("@swc/core transform", () => {
   });
 });
 
+Deno.test("lmdb", () => {
+  const { open } = require("lmdb");
+  console.log(open)
+});
+
+
+Deno.test("@prisma/engines", async () => {
+  const engine = require("@prisma/engines");
+  const glob = require("glob");
+
+  assert(engine.enginesVersion);
+  const path = engine.getEnginesPath();
+
+  strictEqual(engine.getCliQueryEngineBinaryType(), "libquery-engine");
+  const file = glob.sync(path + "*.node");
+  strictEqual(file.length, 1);
+  const dylib = file[0];
+
+  const { QueryEngine, version } = require(dylib);
+
+  assert(version());
+  const qEngine = new QueryEngine({
+    datamodel: `
+    generator client {
+      provider = "prisma-client-js"
+    }
+    
+    datasource db {
+      provider = "sqlite"
+      url      = "file:./prisma_client_test.db"
+    }
+
+    model User {
+      id      String   @default(cuid()) @id
+      name    String
+    }
+    `,
+    env: {},
+    logQueries: true,
+    ignoreEnvVarErrors: false,
+    logLevel: "debug",
+    configDir: ".",
+  }, console.info);
+
+  assert(qEngine);
+  await qEngine.connect({ enableRawQueries: true });
+  await qEngine.disconnect();
+});
+
+
 Deno.test("snappy", () => {
   const snappy = require("snappy");
   const original = Deno.readFileSync("test_parcel_optimizer.jpeg");
@@ -218,49 +268,6 @@ Deno.test("@parcel/transformer-js", () => {
   const { default: Transformer } = require("@parcel/transformer-js");
   const CONFIG = Symbol.for("parcel-plugin-config");
   assert(Transformer[CONFIG]);
-});
-
-Deno.test("@prisma/engines", async () => {
-  const engine = require("@prisma/engines");
-  const glob = require("glob");
-
-  assert(engine.enginesVersion);
-  const path = engine.getEnginesPath();
-
-  strictEqual(engine.getCliQueryEngineBinaryType(), "libquery-engine");
-  const file = glob.sync(path + "*.node");
-  strictEqual(file.length, 1);
-  const dylib = file[0];
-
-  const { QueryEngine, version } = require(dylib);
-
-  assert(version());
-  const qEngine = new QueryEngine({
-    datamodel: `
-    generator client {
-      provider = "prisma-client-js"
-    }
-    
-    datasource db {
-      provider = "sqlite"
-      url      = "file:./prisma_client_test.db"
-    }
-
-    model User {
-      id      String   @default(cuid()) @id
-      name    String
-    }
-    `,
-    env: {},
-    logQueries: true,
-    ignoreEnvVarErrors: false,
-    logLevel: "debug",
-    configDir: ".",
-  }, console.info);
-
-  assert(qEngine);
-  await qEngine.connect({ enableRawQueries: true });
-  await qEngine.disconnect();
 });
 
 Deno.test("@parcel/watcher", () => {

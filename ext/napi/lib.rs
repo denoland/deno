@@ -479,6 +479,8 @@ impl op_napi_open {
     deno_core::OpDecl {
       name: Self::name(),
       v8_fn_ptr: Self::v8_fn_ptr(),
+      enabled: true,
+      is_async: false,
     }
   }
 

@@ -29,6 +29,7 @@
     "dprint-node": "^1.0.5",
     "ffi-napi": "^4.0.3",
     "glob": "^7.2.0",
+    "lmdb": "2.3.0-alpha.1",
     "msgpackr-extract": "1.1.0-napi",
     "node-gyp": "^8.4.1",
     "skia-canvas": "^0.9.28",
