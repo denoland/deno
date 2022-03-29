@@ -92,9 +92,9 @@ nix = "=0.23.0"
 
 [dev-dependencies]
 # Used in benchmark
-test_util = { path = "../test_util" }
-md5 = "0.7.0"
 hex = "0.4.3"
+md5 = "0.7.0"
+test_util = { path = "../test_util" }
 
 [package.metadata.docs.rs]
 features = ["docsrs"]
