@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// This is done to avoid having `import_map` be a direct dependency of
 /// `deno_graph`.
 #[derive(Debug, Clone)]
-pub(crate) struct ImportMapResolver(Arc<ImportMap>);
+pub struct ImportMapResolver(Arc<ImportMap>);
 
 impl ImportMapResolver {
   pub fn new(import_map: Arc<ImportMap>) -> Self {
@@ -37,7 +37,7 @@ impl Resolver for ImportMapResolver {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct JsxResolver {
+pub struct JsxResolver {
   jsx_import_source_module: String,
   maybe_import_map_resolver: Option<ImportMapResolver>,
 }
