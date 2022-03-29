@@ -117,10 +117,10 @@ declare namespace Deno {
   export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
 
   export interface PermissionOptionsObject {
-    /** Specifies if the `net` permission should be requested or revoked.
+    /** Specifies if the `env` permission should be requested or revoked.
      * If set to `"inherit"`, the current `env` permission will be inherited.
-     * If set to `true`, the global `net` permission will be requested.
-     * If set to `false`, the global `net` permission will be revoked.
+     * If set to `true`, the global `env` permission will be requested.
+     * If set to `false`, the global `env` permission will be revoked.
      *
      * Defaults to `false`.
      */
@@ -2398,7 +2398,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[] | [URL, ...string[]];
+    cmd: readonly string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;

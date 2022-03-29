@@ -466,22 +466,21 @@ itest!(_082_prepare_stack_trace_throw {
 #[test]
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new().unwrap();
   let module_url =
     url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
       .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
-  std::fs::create_dir_all(faulty_map_path.parent().unwrap())
-    .expect("Failed to create faulty source map dir.");
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+  std::fs::create_dir_all(faulty_map_path.parent().unwrap()).unwrap();
+  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
-    .expect("Failed to spawn script");
+    .unwrap();
   // Before https://github.com/denoland/deno/issues/6965 was fixed, the faulty
   // old external source map would cause a panic while formatting the error
   // and the exit code would be 101. The external source map should be ignored
@@ -2334,7 +2333,7 @@ fn issue9750() {
       Input("yy\n"),
       Output("⚠️  ️Deno requests env access. Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
-      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
     ],
@@ -2386,7 +2385,7 @@ fn issue12453() {
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
-  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod_dir = TempDir::new().unwrap();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2420,7 +2419,7 @@ fn issue12740() {
 /// Regression test for https://github.com/denoland/deno/issues/12807.
 #[test]
 fn issue12807() {
-  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod_dir = TempDir::new().unwrap();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2510,4 +2509,107 @@ itest!(config_not_auto_discovered_for_remote_script {
   args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
   output_str: Some("ok\n"),
   http_server: true,
+});
+
+itest!(wasm_streaming_panic_test {
+  args: "run wasm_streaming_panic_test.js",
+  output: "wasm_streaming_panic_test.js.out",
+  exit_code: 1,
+});
+
+// Regression test for https://github.com/denoland/deno/issues/13897.
+itest!(fetch_async_error_stack {
+  args: "run --quiet -A fetch_async_error_stack.ts",
+  output: "fetch_async_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(unstable_ffi_1 {
+  args: "run unstable_ffi_1.js",
+  output: "unstable_ffi_1.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_2 {
+  args: "run unstable_ffi_2.js",
+  output: "unstable_ffi_2.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_3 {
+  args: "run unstable_ffi_3.js",
+  output: "unstable_ffi_3.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_4 {
+  args: "run unstable_ffi_4.js",
+  output: "unstable_ffi_4.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_5 {
+  args: "run unstable_ffi_5.js",
+  output: "unstable_ffi_5.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_6 {
+  args: "run unstable_ffi_6.js",
+  output: "unstable_ffi_6.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_7 {
+  args: "run unstable_ffi_7.js",
+  output: "unstable_ffi_7.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_8 {
+  args: "run unstable_ffi_8.js",
+  output: "unstable_ffi_8.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_9 {
+  args: "run unstable_ffi_9.js",
+  output: "unstable_ffi_9.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_10 {
+  args: "run unstable_ffi_10.js",
+  output: "unstable_ffi_10.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_11 {
+  args: "run unstable_ffi_11.js",
+  output: "unstable_ffi_11.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_12 {
+  args: "run unstable_ffi_12.js",
+  output: "unstable_ffi_12.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_13 {
+  args: "run unstable_ffi_13.js",
+  output: "unstable_ffi_13.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_14 {
+  args: "run unstable_ffi_14.js",
+  output: "unstable_ffi_14.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_15 {
+  args: "run unstable_ffi_15.js",
+  output: "unstable_ffi_15.js.out",
+  exit_code: 70,
 });

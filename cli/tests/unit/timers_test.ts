@@ -579,7 +579,7 @@ Deno.test(
 
 Deno.test({
   name: "unrefTimer",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer = setTimeout(() => console.log("1"));
@@ -592,7 +592,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - mix ref and unref 1",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 200);
@@ -607,7 +607,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - mix ref and unref 2",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 200);
@@ -623,7 +623,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref interval",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       let i = 0;
@@ -642,7 +642,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref then ref 1",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 10);
@@ -656,7 +656,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref then ref",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => {
@@ -673,7 +673,6 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - invalid calls do nothing",
-  permissions: { run: true },
   fn: () => {
     Deno.unrefTimer(NaN);
     Deno.refTimer(NaN);
@@ -682,7 +681,7 @@ Deno.test({
 
 Deno.test({
   name: "AbortSignal.timeout() with no listeners",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const signal = AbortSignal.timeout(2000);
@@ -699,7 +698,7 @@ Deno.test({
 
 Deno.test({
   name: "AbortSignal.timeout() with listeners",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const signal = AbortSignal.timeout(1000);
@@ -712,7 +711,7 @@ Deno.test({
 
 Deno.test({
   name: "AbortSignal.timeout() with removed listeners",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const signal = AbortSignal.timeout(2000);
@@ -736,7 +735,7 @@ Deno.test({
 
 Deno.test({
   name: "AbortSignal.timeout() with listener for a non-abort event",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const signal = AbortSignal.timeout(2000);

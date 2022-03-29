@@ -5,7 +5,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 
-pub(crate) fn err_invalid_module_specifier(
+pub fn err_invalid_module_specifier(
   request: &str,
   reason: &str,
   maybe_base: Option<String>,
@@ -22,7 +22,7 @@ pub(crate) fn err_invalid_module_specifier(
   type_error(msg)
 }
 
-pub(crate) fn err_invalid_package_config(
+pub fn err_invalid_package_config(
   path: &str,
   maybe_base: Option<String>,
   maybe_message: Option<String>,
@@ -43,22 +43,18 @@ pub(crate) fn err_invalid_package_config(
   generic_error(msg)
 }
 
-pub(crate) fn err_module_not_found(
-  path: &str,
-  base: &str,
-  typ: &str,
-) -> AnyError {
+pub fn err_module_not_found(path: &str, base: &str, typ: &str) -> AnyError {
   generic_error(format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find {} \"{}\" imported from \"{}\"",
     typ, path, base
   ))
 }
 
-pub(crate) fn err_unsupported_dir_import(path: &str, base: &str) -> AnyError {
+pub fn err_unsupported_dir_import(path: &str, base: &str) -> AnyError {
   generic_error(format!("[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules imported from {}", path, base))
 }
 
-pub(crate) fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
+pub fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
   let mut msg =
     "[ERR_UNSUPPORTED_ESM_URL_SCHEME] Only file and data URLS are supported by the default ESM loader"
       .to_string();
@@ -74,7 +70,7 @@ pub(crate) fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
   generic_error(msg)
 }
 
-pub(crate) fn err_invalid_package_target(
+pub fn err_invalid_package_target(
   pkg_path: String,
   key: String,
   target: String,
@@ -102,7 +98,7 @@ pub(crate) fn err_invalid_package_target(
   generic_error(msg)
 }
 
-pub(crate) fn err_package_path_not_exported(
+pub fn err_package_path_not_exported(
   pkg_path: String,
   subpath: String,
   maybe_base: Option<String>,
@@ -125,7 +121,7 @@ pub(crate) fn err_package_path_not_exported(
   generic_error(msg)
 }
 
-pub(crate) fn err_package_import_not_defined(
+pub fn err_package_import_not_defined(
   specifier: &str,
   package_path: Option<String>,
   base: &str,

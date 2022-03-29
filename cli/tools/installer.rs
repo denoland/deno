@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::flags::InstallFlags;
+use crate::flags::TypecheckMode;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -306,10 +306,12 @@ fn resolve_shim_data(
 
   // we should avoid a default branch here to ensure we continue to cover any
   // changes to this flag.
-  match flags.check {
-    CheckFlag::All => (),
-    CheckFlag::None => executable_args.push("--no-check".to_string()),
-    CheckFlag::Local => executable_args.push("--no-check=remote".to_string()),
+  match flags.typecheck_mode {
+    TypecheckMode::All => (),
+    TypecheckMode::None => executable_args.push("--no-check".to_string()),
+    TypecheckMode::Local => {
+      executable_args.push("--no-check=remote".to_string())
+    }
   }
 
   if flags.unstable {
@@ -397,13 +399,10 @@ fn is_in_path(dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::parking_lot::Mutex;
-  use once_cell::sync::Lazy;
+
   use std::process::Command;
   use tempfile::TempDir;
   use test_util::testdata_path;
-
-  pub static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
   #[test]
   fn install_infer_name_from_url() {
@@ -479,66 +478,8 @@ mod tests {
   }
 
   #[test]
-  fn install_basic() {
-    let _guard = ENV_LOCK.lock();
-    let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
-    // NOTE: this test overrides environmental variables
-    // don't add other tests in this file that mess with "HOME" and "USEPROFILE"
-    // otherwise transient failures are possible because tests are run in parallel.
-    // It means that other test can override env vars when this test is running.
-    let original_home = env::var_os("HOME");
-    let original_user_profile = env::var_os("HOME");
-    let original_install_root = env::var_os("DENO_INSTALL_ROOT");
-    env::set_var("HOME", &temp_dir_str);
-    env::set_var("USERPROFILE", &temp_dir_str);
-    env::set_var("DENO_INSTALL_ROOT", "");
-
-    install(
-      Flags::default(),
-      InstallFlags {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
-        args: vec![],
-        name: Some("echo_test".to_string()),
-        root: None,
-        force: false,
-      },
-    )
-    .expect("Install failed");
-
-    if let Some(home) = original_home {
-      env::set_var("HOME", home);
-    }
-    if let Some(user_profile) = original_user_profile {
-      env::set_var("USERPROFILE", user_profile);
-    }
-    if let Some(install_root) = original_install_root {
-      env::set_var("DENO_INSTALL_ROOT", install_root);
-    }
-
-    let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
-    assert!(file_path.exists());
-
-    if cfg!(windows) {
-      file_path = file_path.with_extension("cmd");
-    }
-
-    let content = fs::read_to_string(file_path).unwrap();
-    // It's annoying when shell scripts don't have NL at the end.
-    assert_eq!(content.chars().last().unwrap(), '\n');
-
-    if cfg!(windows) {
-      assert!(
-        content.contains(r#""run" "http://localhost:4545/echo_server.ts""#)
-      );
-    } else {
-      assert!(content.contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
-    }
-  }
-
-  #[test]
   fn install_unstable() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -555,7 +496,7 @@ mod tests {
         force: false,
       },
     )
-    .expect("Install failed");
+    .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
@@ -640,48 +581,12 @@ mod tests {
   }
 
   #[test]
-  fn install_custom_dir_env_var() {
-    let _guard = ENV_LOCK.lock();
-    let temp_dir = TempDir::new().expect("tempdir fail");
-    let bin_dir = temp_dir.path().join("bin");
-    std::fs::create_dir(&bin_dir).unwrap();
-    let original_install_root = env::var_os("DENO_INSTALL_ROOT");
-    env::set_var("DENO_INSTALL_ROOT", temp_dir.path());
-
-    let shim_data = resolve_shim_data(
-      &Flags::default(),
-      &InstallFlags {
-        module_url: "http://localhost:4545/echo_server.ts".to_string(),
-        args: vec![],
-        name: Some("echo_test".to_string()),
-        root: None,
-        force: false,
-      },
-    )
-    .unwrap();
-
-    if let Some(install_root) = original_install_root {
-      env::set_var("DENO_INSTALL_ROOT", install_root);
-    }
-
-    assert_eq!(
-      fs::canonicalize(shim_data.installation_dir).unwrap(),
-      fs::canonicalize(bin_dir).unwrap()
-    );
-    assert_eq!(shim_data.name, "echo_test");
-    assert_eq!(
-      shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
-    );
-  }
-
-  #[test]
   fn install_with_flags() {
     let shim_data = resolve_shim_data(
       &Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
@@ -758,7 +663,7 @@ mod tests {
 
   #[test]
   fn install_local_module() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let local_module = env::current_dir().unwrap().join("echo_server.ts");
@@ -775,7 +680,7 @@ mod tests {
         force: false,
       },
     )
-    .expect("Install failed");
+    .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
@@ -789,7 +694,7 @@ mod tests {
 
   #[test]
   fn install_force() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -803,7 +708,7 @@ mod tests {
         force: false,
       },
     )
-    .expect("Install failed");
+    .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
@@ -850,7 +755,7 @@ mod tests {
 
   #[test]
   fn install_with_config() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     let config_file_path = temp_dir.path().join("test_tsconfig.json");
     let config = "{}";
@@ -886,7 +791,7 @@ mod tests {
   #[cfg(not(windows))]
   #[test]
   fn install_shell_escaping() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -900,7 +805,7 @@ mod tests {
         force: false,
       },
     )
-    .expect("Install failed");
+    .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
@@ -919,12 +824,9 @@ mod tests {
     }
   }
 
-  // This test is disabled because it uses the `deno` binary found in `$PATH`.
-  // It should use the one located in `./target/{debug|release}/`.
   #[test]
-  #[ignore]
   fn install_unicode() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let unicode_dir = temp_dir.path().join("Magnús");
@@ -943,7 +845,7 @@ mod tests {
         force: false,
       },
     )
-    .expect("Install failed");
+    .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
     if cfg!(windows) {
@@ -951,13 +853,20 @@ mod tests {
     }
 
     // We need to actually run it to make sure the URL is interpreted correctly
-    let status = Command::new(file_path).spawn().unwrap().wait().unwrap();
+    let status = Command::new(file_path)
+      .env_clear()
+      // use the deno binary in the target directory
+      .env("PATH", test_util::target_dir())
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
     assert!(status.success());
   }
 
   #[test]
   fn install_with_import_map() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     let import_map_path = temp_dir.path().join("import_map.json");
     let import_map_url = Url::from_file_path(&import_map_path).unwrap();
@@ -1005,7 +914,7 @@ mod tests {
   // Regression test for https://github.com/denoland/deno/issues/10556.
   #[test]
   fn install_file_url() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
     let file_module_string =
@@ -1041,7 +950,7 @@ mod tests {
 
   #[test]
   fn uninstall_basic() {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir = TempDir::new().unwrap();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -1059,7 +968,7 @@ mod tests {
     File::create(&file_path).unwrap();
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
-      .expect("Uninstall failed");
+      .unwrap();
 
     assert!(!file_path.exists());
     assert!(!file_path.with_extension("tsconfig.json").exists());
