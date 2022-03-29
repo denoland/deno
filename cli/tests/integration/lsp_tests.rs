@@ -580,6 +580,51 @@ fn lsp_import_map_config_file() {
 }
 
 #[test]
+fn lsp_deno_task() {
+  let temp_dir = TempDir::new().unwrap();
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  fs::write(
+    workspace_root.join("deno.jsonc"),
+    r#"{
+    "tasks": {
+      "build": "deno test",
+      "some:test": "deno bundle mod.ts"
+    }
+  }"#,
+  )
+  .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>("deno/task", json!({}))
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "name": "build",
+        "detail": "deno test"
+      },
+      {
+        "name": "some:test",
+        "detail": "deno bundle mod.ts"
+      }
+    ]))
+  );
+}
+
+#[test]
 fn lsp_import_assertions() {
   let mut client = init("initialize_params_import_map.json");
   client
