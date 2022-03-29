@@ -27,7 +27,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
@@ -40,7 +40,7 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_core::OpFn;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
@@ -124,7 +124,7 @@ impl TsServer {
     Self(tx)
   }
 
-  pub(crate) async fn request<R>(
+  pub async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -137,7 +137,7 @@ impl TsServer {
       .await
   }
 
-  pub(crate) async fn request_with_cancellation<R>(
+  pub async fn request_with_cancellation<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -282,7 +282,7 @@ impl Assets {
     self.assets.lock().get(k).cloned()
   }
 
-  pub(crate) async fn get(
+  pub async fn get(
     &self,
     specifier: &ModuleSpecifier,
     // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
@@ -774,7 +774,7 @@ fn display_parts_to_string(
 }
 
 impl QuickInfo {
-  pub(crate) fn to_hover(
+  pub fn to_hover(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -829,7 +829,7 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub(crate) async fn to_link(
+  pub async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -882,11 +882,6 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
-    log::info!(
-      "to_target file_name: {} specifier: {}",
-      self.file_name,
-      specifier
-    );
     let asset_or_doc =
       language_server.get_maybe_cached_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
@@ -932,7 +927,7 @@ pub struct NavigateToItem {
 }
 
 impl NavigateToItem {
-  pub(crate) async fn to_symbol_information(
+  pub async fn to_symbol_information(
     &self,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
@@ -1136,7 +1131,7 @@ pub struct ImplementationLocation {
 }
 
 impl ImplementationLocation {
-  pub(crate) fn to_location(
+  pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1153,7 +1148,7 @@ impl ImplementationLocation {
     }
   }
 
-  pub(crate) async fn to_link(
+  pub async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1180,7 +1175,7 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub(crate) async fn into_workspace_edit(
+  pub async fn into_workspace_edit(
     self,
     new_name: &str,
     language_server: &language_server::Inner,
@@ -1270,7 +1265,7 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub(crate) async fn to_definition(
+  pub async fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1350,7 +1345,7 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub(crate) async fn to_text_document_edit(
+  pub async fn to_text_document_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
@@ -1371,7 +1366,7 @@ impl FileTextChanges {
     })
   }
 
-  pub(crate) async fn to_text_document_change_ops(
+  pub async fn to_text_document_change_ops(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
@@ -1608,7 +1603,7 @@ pub struct RefactorEditInfo {
 }
 
 impl RefactorEditInfo {
-  pub(crate) async fn to_workspace_edit(
+  pub async fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
@@ -1673,7 +1668,7 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub(crate) fn to_location(
+  pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
     url_map: &LspUrlMap,
@@ -1705,7 +1700,7 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
-  pub(crate) async fn try_resolve_call_hierarchy_item(
+  pub async fn try_resolve_call_hierarchy_item(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
@@ -1723,7 +1718,7 @@ impl CallHierarchyItem {
     ))
   }
 
-  pub(crate) fn to_call_hierarchy_item(
+  pub fn to_call_hierarchy_item(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1806,7 +1801,7 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
-  pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
+  pub async fn try_resolve_call_hierarchy_incoming_call(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
@@ -1840,7 +1835,7 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
-  pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
+  pub async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
@@ -1881,7 +1876,7 @@ pub struct CompletionEntryDetails {
 }
 
 impl CompletionEntryDetails {
-  pub(crate) fn as_completion_item(
+  pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
     language_server: &language_server::Inner,
@@ -2290,7 +2285,7 @@ pub struct SignatureHelpItems {
 }
 
 impl SignatureHelpItems {
-  pub(crate) fn into_signature_help(
+  pub fn into_signature_help(
     self,
     language_server: &language_server::Inner,
   ) -> lsp::SignatureHelp {
@@ -2319,7 +2314,7 @@ pub struct SignatureHelpItem {
 }
 
 impl SignatureHelpItem {
-  pub(crate) fn into_signature_information(
+  pub fn into_signature_information(
     self,
     language_server: &language_server::Inner,
   ) -> lsp::SignatureInformation {
@@ -2367,7 +2362,7 @@ pub struct SignatureHelpParameter {
 }
 
 impl SignatureHelpParameter {
-  pub(crate) fn into_parameter_information(
+  pub fn into_parameter_information(
     self,
     language_server: &language_server::Inner,
   ) -> lsp::ParameterInformation {
@@ -2502,19 +2497,6 @@ fn normalize_specifier<S: AsRef<str>>(
     .map_err(|err| err.into())
 }
 
-// buffer-less json_sync ops
-fn op_lsp<F, V, R>(op_fn: F) -> Box<OpFn>
-where
-  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
-  V: de::DeserializeOwned,
-  R: Serialize + 'static,
-{
-  op_sync(move |s, args, _: ()| {
-    let state = s.borrow_mut::<State>();
-    op_fn(state, args)
-  })
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
@@ -2524,10 +2506,12 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
+#[op]
 fn op_dispose(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_dispose", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
@@ -2541,7 +2525,12 @@ struct SpecifierArgs {
   specifier: String,
 }
 
-fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
+#[op]
+fn op_exists(
+  state: &mut OpState,
+  args: SpecifierArgs,
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
   // forrest for the trees as well as it compounds any lsp performance
@@ -2569,10 +2558,12 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source has changed.
+#[op]
 fn op_get_change_range(
-  state: &mut State,
+  state: &mut OpState,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_change_range", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
@@ -2613,10 +2604,12 @@ fn op_get_change_range(
   r
 }
 
+#[op]
 fn op_get_length(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) =
@@ -2644,10 +2637,12 @@ struct GetTextArgs {
   end: usize,
 }
 
+#[op]
 fn op_get_text(
-  state: &mut State,
+  state: &mut OpState,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
@@ -2664,14 +2659,18 @@ fn op_get_text(
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
-fn op_is_cancelled(state: &mut State, _: ()) -> Result<bool, AnyError> {
+#[op]
+fn op_is_cancelled(state: &mut OpState) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   Ok(state.token.is_cancelled())
 }
 
+#[op]
 fn op_load(
-  state: &mut State,
+  state: &mut OpState,
   args: SpecifierArgs,
 ) -> Result<Option<String>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let document = state.state_snapshot.documents.get(&specifier);
@@ -2679,10 +2678,12 @@ fn op_load(
   Ok(document.map(|d| d.content().to_string()))
 }
 
+#[op]
 fn op_resolve(
-  state: &mut State,
+  state: &mut OpState,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
@@ -2713,15 +2714,19 @@ fn op_resolve(
   result
 }
 
-fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+#[op]
+fn op_respond(state: &mut OpState, args: Response) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   state.response = Some(args);
   Ok(true)
 }
 
+#[op]
 fn op_script_names(
-  state: &mut State,
+  state: &mut OpState,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  let state = state.borrow_mut::<State>();
   Ok(
     state
       .state_snapshot
@@ -2739,10 +2744,12 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
+#[op]
 fn op_script_version(
-  state: &mut State,
+  state: &mut OpState,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
+  let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
@@ -2776,17 +2783,17 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_dispose", op_lsp(op_dispose)),
-      ("op_exists", op_lsp(op_exists)),
-      ("op_get_change_range", op_lsp(op_get_change_range)),
-      ("op_get_length", op_lsp(op_get_length)),
-      ("op_get_text", op_lsp(op_get_text)),
-      ("op_is_cancelled", op_lsp(op_is_cancelled)),
-      ("op_load", op_lsp(op_load)),
-      ("op_resolve", op_lsp(op_resolve)),
-      ("op_respond", op_lsp(op_respond)),
-      ("op_script_names", op_lsp(op_script_names)),
-      ("op_script_version", op_lsp(op_script_version)),
+      op_dispose::decl(),
+      op_exists::decl(),
+      op_get_change_range::decl(),
+      op_get_length::decl(),
+      op_get_text::decl(),
+      op_is_cancelled::decl(),
+      op_load::decl(),
+      op_resolve::decl(),
+      op_respond::decl(),
+      op_script_names::decl(),
+      op_script_version::decl(),
     ])
     .state(move |state| {
       state.put(State::new(
@@ -3245,7 +3252,7 @@ impl RequestMethod {
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
-pub(crate) fn request(
+pub fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
@@ -3832,7 +3839,7 @@ mod tests {
 
   #[test]
   fn test_op_exists() {
-    let (_, state_snapshot, _) = setup(
+    let (mut rt, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -3843,9 +3850,12 @@ mod tests {
       &[],
     );
     let performance = Arc::new(Performance::default());
-    let mut state = State::new(state_snapshot, performance);
-    let actual = op_exists(
-      &mut state,
+    let state = State::new(state_snapshot, performance);
+    let op_state = rt.op_state();
+    let mut op_state = op_state.borrow_mut();
+    op_state.put(state);
+    let actual = op_exists::call(
+      &mut op_state,
       SpecifierArgs {
         specifier: "/error/unknown:something/index.d.ts".to_string(),
       },

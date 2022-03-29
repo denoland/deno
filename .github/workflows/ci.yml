@@ -65,7 +65,7 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           # Use depth > 1, because sometimes we need to rebuild main and if
           # other commits have landed it will become impossible to rebuild if
@@ -86,12 +86,6 @@ jobs:
               -czvf target/release/deno_src.tar.gz -C .. deno
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install clippy and rustfmt
-        if: matrix.job == 'lint'
-        run: |
-          rustup component add clippy
-          rustup component add rustfmt
 
       - name: Install Deno
         if: matrix.job == 'lint'
@@ -148,8 +142,6 @@ jobs:
           export_default_credentials: true
 
       - name: Error on warning
-        # TODO(piscisaureus): enable this on Windows again.
-        if: "!startsWith(matrix.os, 'windows')"
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
@@ -467,6 +459,7 @@ jobs:
                                              --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&
@@ -481,6 +474,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Upload wpt results to wpt.fyi
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&

@@ -57,24 +57,22 @@ where
     .write_notification("textDocument/didOpen", params)
     .unwrap();
 
-  handle_configuration_request(client);
+  handle_configuration_request(
+    client,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "test": true
+      }
+    }]),
+  );
   read_diagnostics(client).0
 }
 
-fn handle_configuration_request(client: &mut LspClient) {
+fn handle_configuration_request(client: &mut LspClient, result: Value) {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(
-      id,
-      json!([{
-        "enable": true,
-        "codeLens": {
-          "test": true
-        }
-      }]),
-    )
-    .unwrap();
+  client.write_response(id, result).unwrap();
 }
 
 fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
@@ -95,6 +93,17 @@ fn shutdown(client: &mut LspClient) {
     .write_request::<_, _, Value>("shutdown", json!(null))
     .unwrap();
   client.write_notification("exit", json!(null)).unwrap();
+}
+
+pub fn ensure_directory_specifier(
+  mut specifier: ModuleSpecifier,
+) -> ModuleSpecifier {
+  let path = specifier.path();
+  if !path.ends_with('/') {
+    let new_path = format!("{}/", path);
+    specifier.set_path(&new_path);
+  }
+  specifier
 }
 
 struct TestSession {
@@ -224,7 +233,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 fn lsp_init_tsconfig() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let tsconfig =
@@ -267,7 +276,7 @@ fn lsp_init_tsconfig() {
 fn lsp_tsconfig_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let tsconfig =
     serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
   fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
@@ -334,7 +343,7 @@ fn lsp_tsconfig_bad_config_path() {
 fn lsp_triple_slash_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let a_dts = load_fixture_str("a.d.ts");
   fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
 
@@ -368,7 +377,7 @@ fn lsp_triple_slash_types() {
 
 #[test]
 fn lsp_import_map() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -479,7 +488,7 @@ fn lsp_import_map_data_url() {
 
 #[test]
 fn lsp_import_map_config_file() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
 
@@ -571,6 +580,51 @@ fn lsp_import_map_config_file() {
 }
 
 #[test]
+fn lsp_deno_task() {
+  let temp_dir = TempDir::new().unwrap();
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  fs::write(
+    workspace_root.join("deno.jsonc"),
+    r#"{
+    "tasks": {
+      "build": "deno test",
+      "some:test": "deno bundle mod.ts"
+    }
+  }"#,
+  )
+  .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>("deno/task", json!({}))
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "name": "build",
+        "detail": "deno test"
+      },
+      {
+        "name": "some:test",
+        "detail": "deno bundle mod.ts"
+      }
+    ]))
+  );
+}
+
+#[test]
 fn lsp_import_assertions() {
   let mut client = init("initialize_params_import_map.json");
   client
@@ -586,7 +640,15 @@ fn lsp_import_assertions() {
       }),
     )
     .unwrap();
-  handle_configuration_request(&mut client);
+  handle_configuration_request(
+    &mut client,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "test": true
+      }
+    }]),
+  );
 
   let diagnostics = CollectedDiagnostics(did_open(
     &mut client,
@@ -642,7 +704,7 @@ fn lsp_import_assertions() {
 
 #[test]
 fn lsp_import_map_import_completions() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -981,11 +1043,7 @@ fn lsp_hover_disabled() {
     )
     .unwrap();
 
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": false }]))
-    .unwrap();
+  handle_configuration_request(&mut client, json!([{ "enable": false }]));
 
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -1003,6 +1061,205 @@ fn lsp_hover_disabled() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_workspace_enable_paths() {
+  let mut params: lsp::InitializeParams = serde_json::from_value(load_fixture(
+    "initialize_params_workspace_enable_paths.json",
+  ))
+  .unwrap();
+  // we aren't actually writing anything to the tempdir in this test, but we
+  // just need a legitimate file path on the host system so that logic that
+  // tries to convert to and from the fs paths works on all env
+  let temp_dir = TempDir::new().unwrap();
+
+  let root_specifier =
+    ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
+
+  params.root_uri = Some(root_specifier.clone());
+  params.workspace_folders = Some(vec![lsp::WorkspaceFolder {
+    uri: root_specifier.clone(),
+    name: "project".to_string(),
+  }]);
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  handle_configuration_request(
+    &mut client,
+    json!([{
+      "enable": false,
+      "enablePaths": [
+        "./worker"
+      ],
+    }]),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./other/file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./file.ts").unwrap(),
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./other/file.ts").unwrap(),
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 20,
+        }
+      }
+    }))
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+        },
+        "position": {
+          "line": 0,
+          "character": 19
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 20,
+        }
+      }
+    }))
+  );
+
   shutdown(&mut client);
 }
 
@@ -1201,21 +1458,16 @@ fn lsp_hover_change_mbc() {
 
 #[test]
 fn lsp_hover_closed_document() {
-  let temp_dir = TempDir::new()
-    .expect("could not create temp dir")
-    .into_path();
+  let temp_dir = TempDir::new().unwrap().into_path();
   let a_path = temp_dir.join("a.ts");
-  fs::write(a_path, r#"export const a = "a";"#).expect("could not write file");
+  fs::write(a_path, r#"export const a = "a";"#).unwrap();
   let b_path = temp_dir.join("b.ts");
-  fs::write(&b_path, r#"export * from "./a.ts";"#)
-    .expect("could not write file");
-  let b_specifier =
-    Url::from_file_path(b_path).expect("could not convert path");
+  fs::write(&b_path, r#"export * from "./a.ts";"#).unwrap();
+  let b_specifier = Url::from_file_path(b_path).unwrap();
   let c_path = temp_dir.join("c.ts");
   fs::write(&c_path, "import { a } from \"./b.ts\";\nconsole.log(a);\n")
-    .expect("could not write file");
-  let c_specifier =
-    Url::from_file_path(c_path).expect("could not convert path");
+    .unwrap();
+  let c_specifier = Url::from_file_path(c_path).unwrap();
 
   let mut client = init("initialize_params.json");
   client
@@ -3560,7 +3812,7 @@ fn lsp_auto_discover_registry() {
 #[test]
 fn lsp_cache_location() {
   let _g = http_server();
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_registry.json"))
       .unwrap();
@@ -4356,7 +4608,7 @@ fn lsp_format_markdown() {
 
 #[test]
 fn lsp_format_with_config() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -4835,7 +5087,7 @@ console.log(snake_case);
 
 #[test]
 fn lsp_lint_with_config() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =

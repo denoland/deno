@@ -15,6 +15,7 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use os_pipe::pipe;
+use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
@@ -1801,7 +1802,9 @@ impl CheckOutputIntegrationTest {
       std::fs::read_to_string(output_path).expect("cannot read output")
     };
 
-    if !wildcard_match(&expected, &actual) {
+    if !expected.contains("[WILDCARD]") {
+      assert_eq!(actual, expected)
+    } else if !wildcard_match(&expected, &actual) {
       println!("OUTPUT\n{}\nOUTPUT", actual);
       println!("EXPECTED\n{}\nEXPECTED", expected);
       panic!("pattern match failed");
@@ -2090,6 +2093,7 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn parse_wrk_output_1() {

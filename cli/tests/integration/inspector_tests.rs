@@ -156,9 +156,8 @@ async fn inspector_connect() {
 
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
-  let (_socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (_socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!("101 Switching Protocols", response.status().to_string());
   child.kill().unwrap();
   child.wait().unwrap();
@@ -181,9 +180,8 @@ async fn inspector_break_on_first_line() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
@@ -273,9 +271,7 @@ async fn inspector_pause() {
 
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
-  let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (mut socket, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
 
   /// Returns the next websocket message as a string ignoring
   /// Debugger.scriptParsed messages.
@@ -383,9 +379,8 @@ async fn inspector_does_not_hang() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
@@ -524,9 +519,8 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     .filter(|s| s.as_str() != "Debugger session started.");
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
@@ -690,6 +684,7 @@ async fn inspector_connect_non_ws() {
 }
 
 #[tokio::test]
+#[ignore] // https://github.com/denoland/deno/issues/13491
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let mut child = util::deno_cmd()
@@ -706,9 +701,8 @@ async fn inspector_break_on_first_line_in_test() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
@@ -801,9 +795,8 @@ async fn inspector_with_ts_files() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
@@ -927,9 +920,8 @@ async fn inspector_memory() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
@@ -1042,9 +1034,8 @@ async fn inspector_profile() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-    .await
-    .expect("Can't connect");
+  let (socket, response) =
+    tokio_tungstenite::connect_async(ws_url).await.unwrap();
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();

@@ -6,6 +6,78 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.20.3 / 2022.03.25
+
+- fix(ext/fetch): deprecate URL as the first arg in types (#14113)
+- fix(ext/ffi): enforce unstable check on ops (#14115)
+- fix(runtime): do not modify user provided `cmd` array in `Deno.run` (#14109)
+
+### 1.20.2 / 2022.03.24
+
+- feat(lsp): support deno.enablePaths setting (#13978)
+- fix(bench): require --unstable flag in JavaScript (#14091)
+- fix(test): don't error on missing op details (#14074)
+- fix(compat): Changes an instance of collect::<Vec<_>>().join("") to
+  collect::<String>() (#14082)
+- fix(tests): do not use global env vars in install tests (#14078)
+- fix(ext/fetch): Connect async error stack with user code (#13899)
+- fix(unstable): upgrade deno_task_shell to 0.2 (#14073)
+- fix: upgrade to swc_ecmascript 0.137.0 (#14067)
+- fix(fetch): Fix uncaught rejection panic with
+  `WebAssembly.instantiateStreaming` (#13925)
+- fix(core): variadic opSync/opAsync (#14062)
+- fix(runtime): actually don't inherit runtime permissions (#14024)
+- fix(ext/console): fix error with a Proxy of a Map (#14032)
+- fix(ops): throw TypeError on op return failure (#14033)
+- fix(cli): improve `deno compile` error messages (#13944)
+- fix(cli): add support for DENO_CERT in upgrade command (#13862)
+- fix(config-file): fix config-file.v1.json schema to allow colons in the task
+  name (#14013)
+- perf(http): avoid Set.has() when closing connection resource (#14085)
+- perf(http): avoid checking promise every request (#14079)
+- perf(http): avoid per header alloc (#14051)
+
+### 1.20.1 / 2022.03.16
+
+- BREAKING: don't inherit permissions by default (#13668)
+- feat(cli): support data url (#13667)
+- feat(cli): update to TypeScript 4.6.2 (#13474)
+- feat(compat): CJS/ESM interoperability (#13553)
+- feat(core): Event loop middlewares for Extensions (#13816)
+- feat(core): codegen ops (#13861)
+- feat(ext/crypto): AES-GCM support for 128bit IVs (#13805)
+- feat(ext/fetch): Allow Response status 101 (#13969)
+- feat(ext/http): auto-compression of fixed response bodies (#13769)
+- feat(ext/net): Use socket2 crate to create TcpListener (#13808)
+- feat(ext/net): support cert, key options in listenTls (#13740)
+- feat(ext/web): Add `AbortSignal.timeout()` (#13687)
+- feat(net): add Deno.UnixConn interface (#13787)
+- feat(ops): custom arity (#13949)
+- feat(ops): optional OpState (#13954)
+- feat(unstable): Add Deno.upgradeHttp API (#13618)
+- feat: "deno bench" subcommand (#13713)
+- feat: "deno task" subcommand (#13725)
+- feat: Add Deno.TcpConn class, change return type from Deno.connect (#13714)
+- feat: allow specification of import map in config file (#13739)
+- feat: deno test --trace-ops (#13770)
+- fix(compat): cjs/esm interop for dynamic imports (#13792)
+- fix(core): Don't override structured clone error messages from V8 (#13942)
+- fix(core): nuke Deno.core.ops pre-snapshot (#13970)
+- fix(ext/crypto): handle JWK import with "use" (#13912)
+- fix(ext/crypto): use EcKeyImportParams dictionary (#13894)
+- fix(ext/http): drop content-length header on compression (#13866)
+- fix(info): print deno info paths with unescaped backslashes on windows
+  (#13847)
+- fix(test): skip typechecking for blocks inside HTML comments (#13889)
+- fix: shell completion hints (#13876)
+- fix: upgrade reqwest to 0.11.10 (#13951)
+- perf(web): Optimize `TextDecoder` by adding a new `U16String` type (#13923)
+- perf(web): optimize Blob.text and Blob.arrayBuffer (#13981)
+- perf(web): use DOMString for BlobParts (#13979)
+- perf: opt-level-3 all of ext (#13940)
+
+Note 1.20.0 was dead on arrival, see https://github.com/denoland/deno/pull/13993
+
 ### 1.19.3 / 2022.03.10
 
 - fix(ci): restore compatibility with older glibc (#13846)

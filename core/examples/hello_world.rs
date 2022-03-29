@@ -2,27 +2,33 @@
 //!  This example shows you how to define ops in Rust and then call them from
 //!  JavaScript.
 
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
+
+// This is a hack to make the `#[op]` macro work with
+// deno_core examples.
+// You can remove this:
+use deno_core::*;
+
+#[op]
+fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
+  // Sum inputs
+  let sum = nums.iter().fold(0.0, |a, v| a + v);
+  // return as a Result<f64, AnyError>
+  Ok(sum)
+}
 
 fn main() {
   // Build a deno_core::Extension providing custom ops
   let ext = Extension::builder()
     .ops(vec![
       // An op for summing an array of numbers
-      (
-        "op_sum",
-        // The op-layer automatically deserializes inputs
-        // and serializes the returned Result & value
-        op_sync(|_state, nums: Vec<f64>, _: ()| {
-          // Sum inputs
-          let sum = nums.iter().fold(0.0, |a, v| a + v);
-          // return as a Result<f64, AnyError>
-          Ok(sum)
-        }),
-      ),
+      // The op-layer automatically deserializes inputs
+      // and serializes the returned Result & value
+      op_sum::decl(),
     ])
     .build();
 

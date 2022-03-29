@@ -1,11 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use clap::App;
-use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
-use clap::ArgSettings;
 use clap::ColorChoice;
+use clap::Command;
+use clap::ValueHint;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
@@ -534,8 +533,8 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.allow_hrtime = true;
 }
 
-fn clap_root(version: &str) -> App {
-  clap::App::new("deno")
+fn clap_root(version: &str) -> Command {
+  clap::Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
     // Disable clap's auto-detection of terminal width
@@ -594,20 +593,20 @@ If the flag is set, restrict these messages to errors.",
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn bench_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("bench"), true, false)
-    .setting(AppSettings::TrailingVarArg)
+fn bench_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("bench"), true, false)
+    .trailing_var_arg(true)
     .arg(
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
         .help("Ignore files"),
     )
     .arg(
       Arg::new("filter")
-        .setting(ArgSettings::AllowHyphenValues)
+        .allow_hyphen_values(true)
         .long("filter")
         .takes_value(true)
         .help("Run benchmarks with this string or pattern in the bench name"),
@@ -638,10 +637,20 @@ Directory arguments are expanded to all contained files matching the glob
     )
 }
 
-fn bundle_subcommand<'a>() -> App<'a> {
-  compile_args(App::new("bundle"))
-    .arg(Arg::new("source_file").takes_value(true).required(true))
-    .arg(Arg::new("out_file").takes_value(true).required(false))
+fn bundle_subcommand<'a>() -> Command<'a> {
+  compile_args(Command::new("bundle"))
+    .arg(
+      Arg::new("source_file")
+        .takes_value(true)
+        .required(true)
+        .value_hint(ValueHint::FilePath),
+    )
+    .arg(
+      Arg::new("out_file")
+        .takes_value(true)
+        .required(false)
+        .value_hint(ValueHint::FilePath),
+    )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
     .about("Bundle module and dependencies into single file")
@@ -656,13 +665,14 @@ If no output file is given, the output is written to standard output:
     )
 }
 
-fn cache_subcommand<'a>() -> App<'a> {
-  compile_args(App::new("cache"))
+fn cache_subcommand<'a>() -> Command<'a> {
+  compile_args(Command::new("cache"))
     .arg(
       Arg::new("file")
         .takes_value(true)
         .required(true)
-        .min_values(1),
+        .min_values(1)
+        .value_hint(ValueHint::FilePath),
     )
     .about("Cache the dependencies")
     .long_about(
@@ -678,9 +688,9 @@ Future runs of this module will trigger no downloads or compilation unless
     )
 }
 
-fn compile_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("compile"), true, false)
-    .setting(AppSettings::TrailingVarArg)
+fn compile_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("compile"), true, false)
+    .trailing_var_arg(true)
     .arg(
       script_arg().required(true),
     )
@@ -690,6 +700,7 @@ fn compile_subcommand<'a>() -> App<'a> {
         .short('o')
         .help("Output file (defaults to $PWD/<inferred-name>)")
         .takes_value(true)
+        .value_hint(ValueHint::FilePath)
     )
     .arg(
       Arg::new("target")
@@ -724,9 +735,9 @@ aarch64-apple-darwin target is not supported in canary.
     )
 }
 
-fn completions_subcommand<'a>() -> App<'a> {
-  App::new("completions")
-    .setting(AppSettings::DisableHelpSubcommand)
+fn completions_subcommand<'a>() -> Command<'a> {
+  Command::new("completions")
+    .disable_help_subcommand(true)
     .arg(
       Arg::new("shell")
         .possible_values(&["bash", "fish", "powershell", "zsh", "fig"])
@@ -741,8 +752,8 @@ fn completions_subcommand<'a>() -> App<'a> {
     )
 }
 
-fn coverage_subcommand<'a>() -> App<'a> {
-  App::new("coverage")
+fn coverage_subcommand<'a>() -> Command<'a> {
+  Command::new("coverage")
     .about("Print coverage reports")
     .long_about(
       "Print coverage reports from coverage profiles.
@@ -781,9 +792,10 @@ Generate html reports from lcov:
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Ignore coverage files"),
+        .help("Ignore coverage files")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("include")
@@ -824,18 +836,20 @@ If no --output arg is specified then the report is written to stdout."
   )
     .takes_value(true)
     .require_equals(true)
+    .value_hint(ValueHint::FilePath)
   )
     .arg(
       Arg::new("files")
         .takes_value(true)
         .multiple_values(true)
         .multiple_occurrences(true)
-        .required(true),
+        .required(true)
+        .value_hint(ValueHint::AnyPath),
     )
 }
 
-fn doc_subcommand<'a>() -> App<'a> {
-  App::new("doc")
+fn doc_subcommand<'a>() -> Command<'a> {
+  Command::new("doc")
     .about("Show documentation for a module")
     .long_about(
       "Show documentation for a module.
@@ -879,8 +893,12 @@ Show documentation for runtime built-ins:
     // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
     // just a possible value of `source_file` so leading hyphens must be
     // enabled.
-    .setting(clap::AppSettings::AllowHyphenValues)
-    .arg(Arg::new("source_file").takes_value(true))
+    .allow_hyphen_values(true)
+    .arg(
+      Arg::new("source_file")
+        .takes_value(true)
+        .value_hint(ValueHint::FilePath),
+    )
     .arg(
       Arg::new("filter")
         .help("Dot separated path to symbol")
@@ -890,8 +908,8 @@ Show documentation for runtime built-ins:
     )
 }
 
-fn eval_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("eval"), false, true)
+fn eval_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("eval"), false, true)
     .about("Eval script")
     .long_about(
       "Evaluate JavaScript from the command line.
@@ -942,8 +960,8 @@ This command has implicit access to all permissions (--allow-all).",
     )
 }
 
-fn fmt_subcommand<'a>() -> App<'a> {
-  App::new("fmt")
+fn fmt_subcommand<'a>() -> Command<'a> {
+  Command::new("fmt")
     .about("Format source files")
     .long_about(
       "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
@@ -983,16 +1001,18 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Ignore formatting particular source files"),
+        .help("Ignore formatting particular source files")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("files")
         .takes_value(true)
         .multiple_values(true)
         .multiple_occurrences(true)
-        .required(false),
+        .required(false)
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
@@ -1039,8 +1059,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     )
 }
 
-fn info_subcommand<'a>() -> App<'a> {
-  App::new("info")
+fn info_subcommand<'a>() -> Command<'a> {
+  Command::new("info")
     .about("Show info about cache or info related to source file")
     .long_about(
       "Information about a module or the cache directories.
@@ -1062,7 +1082,7 @@ DENO_DIR: Directory containing Deno-managed files.
 Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
-    .arg(Arg::new("file").takes_value(true).required(false))
+    .arg(Arg::new("file").takes_value(true).required(false).value_hint(ValueHint::FilePath))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
     .arg(
@@ -1081,10 +1101,10 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
 }
 
-fn install_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("install"), true, true)
-    .setting(AppSettings::TrailingVarArg)
-    .arg(Arg::new("cmd").required(true).multiple_values(true))
+fn install_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("install"), true, true)
+    .trailing_var_arg(true)
+    .arg(Arg::new("cmd").required(true).multiple_values(true).value_hint(ValueHint::FilePath))
     .arg(
       Arg::new("name")
         .long("name")
@@ -1098,7 +1118,8 @@ fn install_subcommand<'a>() -> App<'a> {
         .help("Installation root")
         .takes_value(true)
         .multiple_occurrences(false)
-        .multiple_values(false))
+        .multiple_values(false)
+        .value_hint(ValueHint::DirPath))
     .arg(
       Arg::new("force")
         .long("force")
@@ -1136,9 +1157,9 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required.")
 }
 
-fn uninstall_subcommand<'a>() -> App<'a> {
-  App::new("uninstall")
-    .setting(AppSettings::TrailingVarArg)
+fn uninstall_subcommand<'a>() -> Command<'a> {
+  Command::new("uninstall")
+    .trailing_var_arg(true)
     .arg(
       Arg::new("name")
         .required(true)
@@ -1149,7 +1170,8 @@ fn uninstall_subcommand<'a>() -> App<'a> {
         .long("root")
         .help("Installation root")
         .takes_value(true)
-        .multiple_occurrences(false))
+        .multiple_occurrences(false)
+        .value_hint(ValueHint::DirPath))
     .about("Uninstall a script previously installed with deno install")
     .long_about(
       "Uninstalls an executable script in the installation root's bin directory.
@@ -1166,8 +1188,8 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno")
 }
 
-fn lsp_subcommand<'a>() -> App<'a> {
-  App::new("lsp")
+fn lsp_subcommand<'a>() -> Command<'a> {
+  Command::new("lsp")
     .about("Start the language server")
     .long_about(
       "The 'deno lsp' subcommand provides a way for code editors and IDEs to
@@ -1179,8 +1201,8 @@ How to connect various editors and IDEs to 'deno lsp':
 https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
 }
 
-fn lint_subcommand<'a>() -> App<'a> {
-  App::new("lint")
+fn lint_subcommand<'a>() -> Command<'a> {
+  Command::new("lint")
     .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
@@ -1220,7 +1242,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .long("rules-tags")
         .require_equals(true)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .conflicts_with("rules")
         .help("Use set of rules with a tag"),
     )
@@ -1229,7 +1251,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .long("rules-include")
         .require_equals(true)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .conflicts_with("rules")
         .help("Include lint rules"),
     )
@@ -1238,7 +1260,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .long("rules-exclude")
         .require_equals(true)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .conflicts_with("rules")
         .help("Exclude lint rules"),
     )
@@ -1247,9 +1269,10 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Ignore linting particular source files"),
+        .help("Ignore linting particular source files")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("json")
@@ -1262,14 +1285,15 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .multiple_values(true)
         .multiple_occurrences(true)
-        .required(false),
+        .required(false)
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
 }
 
-fn repl_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("repl"), false, true)
+fn repl_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("repl"), false, true)
     .about("Read Eval Print Loop")
     .arg(
       Arg::new("eval")
@@ -1281,15 +1305,15 @@ fn repl_subcommand<'a>() -> App<'a> {
     .arg(unsafely_ignore_certificate_errors_arg())
 }
 
-fn run_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("run"), true, true)
+fn run_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("run"), true, true)
     .arg(
       watch_arg(true)
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
-    .setting(AppSettings::TrailingVarArg)
+    .trailing_var_arg(true)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
     .long_about(
@@ -1318,9 +1342,9 @@ Deno allows specifying the filename '-' to read the file from stdin.
     )
 }
 
-fn task_subcommand<'a>() -> App<'a> {
-  App::new("task")
-    .setting(AppSettings::TrailingVarArg)
+fn task_subcommand<'a>() -> Command<'a> {
+  Command::new("task")
+    .trailing_var_arg(true)
     .arg(config_arg())
     .arg(Arg::new("task").help("Task to be executed"))
     .arg(
@@ -1337,16 +1361,17 @@ fn task_subcommand<'a>() -> App<'a> {
     )
 }
 
-fn test_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("test"), true, true)
-    .setting(AppSettings::TrailingVarArg)
+fn test_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("test"), true, true)
+    .trailing_var_arg(true)
     .arg(
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Ignore files"),
+        .help("Ignore files")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("no-run")
@@ -1389,7 +1414,7 @@ fn test_subcommand<'a>() -> App<'a> {
     )
     .arg(
       Arg::new("filter")
-        .setting(ArgSettings::AllowHyphenValues)
+        .allow_hyphen_values(true)
         .long("filter")
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
@@ -1436,7 +1461,8 @@ fn test_subcommand<'a>() -> App<'a> {
         .help("List of file names to run")
         .takes_value(true)
         .multiple_values(true)
-        .multiple_occurrences(true),
+        .multiple_occurrences(true)
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       watch_arg(false)
@@ -1461,8 +1487,8 @@ Directory arguments are expanded to all contained files matching the glob
     )
 }
 
-fn types_subcommand<'a>() -> App<'a> {
-  App::new("types")
+fn types_subcommand<'a>() -> Command<'a> {
+  Command::new("types")
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
@@ -1473,8 +1499,8 @@ The declaration file could be saved and used for typing information.",
     )
 }
 
-fn upgrade_subcommand<'a>() -> App<'a> {
-  App::new("upgrade")
+fn upgrade_subcommand<'a>() -> Command<'a> {
+  Command::new("upgrade")
     .about("Upgrade deno executable to given version")
     .long_about(
       "Upgrade deno executable to the given version.
@@ -1499,7 +1525,8 @@ update to a different location, use the --output flag
       Arg::new("output")
         .long("output")
         .help("The path to output the updated version to")
-        .takes_value(true),
+        .takes_value(true)
+        .value_hint(ValueHint::FilePath),
     )
     .arg(
       Arg::new("dry-run")
@@ -1520,8 +1547,8 @@ update to a different location, use the --output flag
     .arg(ca_file_arg())
 }
 
-fn vendor_subcommand<'a>() -> App<'a> {
-  App::new("vendor")
+fn vendor_subcommand<'a>() -> Command<'a> {
+  Command::new("vendor")
     .about("Vendor remote modules into a local directory")
     .long_about(
       "Vendor remote modules into a local directory.
@@ -1548,7 +1575,8 @@ Remote modules and multiple modules may also be specified:
       Arg::new("output")
         .long("output")
         .help("The directory to output the vendored modules to")
-        .takes_value(true),
+        .takes_value(true)
+        .value_hint(ValueHint::DirPath),
     )
     .arg(
       Arg::new("force")
@@ -1566,7 +1594,7 @@ Remote modules and multiple modules may also be specified:
     .arg(ca_file_arg())
 }
 
-fn compile_args(app: App) -> App {
+fn compile_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
@@ -1578,32 +1606,34 @@ fn compile_args(app: App) -> App {
     .arg(ca_file_arg())
 }
 
-fn permission_args(app: App) -> App {
+fn permission_args(app: Command) -> Command {
   app
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
         .min_values(0)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system read access"),
+        .help("Allow file system read access")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("allow-write")
         .long("allow-write")
         .min_values(0)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system write access"),
+        .help("Allow file system write access")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("allow-net")
         .long("allow-net")
         .min_values(0)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
         .help("Allow network access")
         .validator(crate::flags_allow_net::validator),
@@ -1614,7 +1644,7 @@ fn permission_args(app: App) -> App {
         .long("allow-env")
         .min_values(0)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
         .help("Allow environment access")
         .validator(|keys| {
@@ -1631,7 +1661,7 @@ fn permission_args(app: App) -> App {
         .long("allow-run")
         .min_values(0)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
         .help("Allow running subprocesses"),
     )
@@ -1640,9 +1670,10 @@ fn permission_args(app: App) -> App {
         .long("allow-ffi")
         .min_values(0)
         .takes_value(true)
-        .use_delimiter(true)
+        .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow loading dynamic libraries"),
+        .help("Allow loading dynamic libraries")
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("allow-hrtime")
@@ -1665,7 +1696,11 @@ fn permission_args(app: App) -> App {
     )
 }
 
-fn runtime_args(app: App, include_perms: bool, include_inspector: bool) -> App {
+fn runtime_args(
+  app: Command,
+  include_perms: bool,
+  include_inspector: bool,
+) -> Command {
   let app = compile_args(app);
   let app = if include_perms {
     permission_args(app)
@@ -1686,7 +1721,7 @@ fn runtime_args(app: App, include_perms: bool, include_inspector: bool) -> App {
     .arg(compat_arg())
 }
 
-fn inspect_args(app: App) -> App {
+fn inspect_args(app: Command) -> Command {
   app
     .arg(
       Arg::new("inspect")
@@ -1727,6 +1762,7 @@ Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
     )
     .takes_value(true)
+    .value_hint(ValueHint::FilePath)
 }
 
 fn reload_arg<'a>() -> Arg<'a> {
@@ -1734,7 +1770,7 @@ fn reload_arg<'a>() -> Arg<'a> {
     .short('r')
     .min_values(0)
     .takes_value(true)
-    .use_delimiter(true)
+    .use_value_delimiter(true)
     .require_equals(true)
     .long("reload")
     .help("Reload source code cache (recompile TypeScript)")
@@ -1748,6 +1784,7 @@ fn reload_arg<'a>() -> Arg<'a> {
 --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
   Reloads specific modules",
     )
+    .value_hint(ValueHint::FilePath)
 }
 
 fn ca_file_arg<'a>() -> Arg<'a> {
@@ -1756,6 +1793,7 @@ fn ca_file_arg<'a>() -> Arg<'a> {
     .value_name("FILE")
     .help("Load certificate authority from PEM encoded file")
     .takes_value(true)
+    .value_hint(ValueHint::FilePath)
 }
 
 fn cached_only_arg<'a>() -> Arg<'a> {
@@ -1783,6 +1821,7 @@ fn location_arg<'a>() -> Arg<'a> {
       Ok(())
     })
     .help("Value of 'globalThis.location' used by some web APIs")
+    .value_hint(ValueHint::Url)
 }
 
 fn enable_testing_features_arg<'a>() -> Arg<'a> {
@@ -1796,7 +1835,7 @@ fn v8_flags_arg<'a>() -> Arg<'a> {
   Arg::new("v8-flags")
     .long("v8-flags")
     .takes_value(true)
-    .use_delimiter(true)
+    .use_value_delimiter(true)
     .require_equals(true)
     .help("Set V8 command line options (for help: --v8-flags=--help)")
 }
@@ -1830,13 +1869,14 @@ fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
       .value_name("FILES")
       .min_values(0)
       .takes_value(true)
-      .use_delimiter(true)
+      .use_value_delimiter(true)
       .require_equals(true)
       .long_help(
         "UNSTABLE: Watch for file changes and restart process automatically.
 Local files from entry point module graph are watched by default.
 Additional paths might be watched by passing them as arguments to this flag.",
       )
+      .value_hint(ValueHint::AnyPath)
   } else {
     arg.long_help(
       "UNSTABLE: Watch for file changes and restart process automatically.
@@ -1880,6 +1920,7 @@ fn script_arg<'a>() -> Arg<'a> {
     ])
     .help("Script arg")
     .value_name("SCRIPT_ARG")
+    .value_hint(ValueHint::FilePath)
 }
 
 fn lock_arg<'a>() -> Arg<'a> {
@@ -1888,6 +1929,7 @@ fn lock_arg<'a>() -> Arg<'a> {
     .value_name("FILE")
     .help("Check the specified lock file")
     .takes_value(true)
+    .value_hint(ValueHint::FilePath)
 }
 
 fn lock_write_arg<'a>() -> Arg<'a> {
@@ -1914,6 +1956,7 @@ subcommands like `deno lint` or `deno fmt`.
 It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
     )
     .takes_value(true)
+    .value_hint(ValueHint::FilePath)
 }
 
 fn no_remote_arg<'a>() -> Arg<'a> {
@@ -1927,7 +1970,7 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
     .long("unsafely-ignore-certificate-errors")
     .min_values(0)
     .takes_value(true)
-    .use_delimiter(true)
+    .use_value_delimiter(true)
     .require_equals(true)
     .value_name("HOSTNAMES")
     .help("DANGER: Disables verification of TLS certificates")
@@ -2034,7 +2077,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn completions_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
-  mut app: clap::App,
+  mut app: clap::Command,
 ) {
   use clap_complete::generate;
   use clap_complete::shells::{Bash, Fish, PowerShell, Zsh};
@@ -2804,9 +2847,9 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec(svec!["deno", "--version"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::DisplayVersion);
     let r = flags_from_vec(svec!["deno", "-V"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::DisplayVersion);
   }
 
   #[test]
@@ -5156,7 +5199,7 @@ mod tests {
     let error_message = r.unwrap_err().to_string();
     assert!(&error_message
       .contains("error: The following required arguments were not provided:"));
-    assert!(&error_message.contains("--watch=<FILES>..."));
+    assert!(&error_message.contains("--watch[=<FILES>...]"));
   }
 
   #[test]

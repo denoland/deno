@@ -4,11 +4,14 @@ use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::Extension;
+#[cfg(unix)]
 use deno_core::OpState;
+#[cfg(unix)]
 use std::cell::RefCell;
+#[cfg(unix)]
 use std::rc::Rc;
 
 #[cfg(unix)]
@@ -31,9 +34,9 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_signal_bind", op_sync(op_signal_bind)),
-      ("op_signal_unbind", op_sync(op_signal_unbind)),
-      ("op_signal_poll", op_async(op_signal_poll)),
+      op_signal_bind::decl(),
+      op_signal_unbind::decl(),
+      op_signal_poll::decl(),
     ])
     .build()
 }
@@ -174,10 +177,10 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
 }
 
 #[cfg(unix)]
+#[op]
 fn op_signal_bind(
   state: &mut OpState,
   sig: String,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
@@ -195,10 +198,10 @@ fn op_signal_bind(
 }
 
 #[cfg(unix)]
+#[op]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<bool, AnyError> {
   let resource = state
     .borrow_mut()
@@ -214,38 +217,29 @@ async fn op_signal_poll(
 }
 
 #[cfg(unix)]
+#[op]
 pub fn op_signal_unbind(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
   state.resource_table.close(rid)?;
   Ok(())
 }
 
 #[cfg(not(unix))]
-pub fn op_signal_bind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+pub fn op_signal_bind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
-fn op_signal_unbind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+fn op_signal_unbind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
-async fn op_signal_poll(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+async fn op_signal_poll() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }

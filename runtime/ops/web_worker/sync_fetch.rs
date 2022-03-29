@@ -4,6 +4,7 @@ use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
@@ -30,6 +31,7 @@ pub struct SyncFetchScript {
   script: String,
 }
 
+#[op]
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
   scripts: Vec<String>,

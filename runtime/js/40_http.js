@@ -7,7 +7,7 @@
 
   function serveHttp(conn) {
     const rid = core.opSync("op_http_start", conn.rid);
-    return new HttpConn(rid);
+    return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
   }
 
   window.__bootstrap.http.serveHttp = serveHttp;

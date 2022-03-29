@@ -20,8 +20,8 @@ fn final_blankline() {
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let tempdir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new().unwrap();
+  let tempdir = TempDir::new().unwrap();
   let tempdir = tempdir.path().join("cov");
 
   let status = util::deno_cmd_with_deno_dir(deno_dir.path())
@@ -34,7 +34,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
-    .expect("failed to spawn test runner");
+    .unwrap();
 
   assert!(status.success());
 
@@ -46,7 +46,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   // Verify there's no "Check" being printed
   assert!(output.stderr.is_empty());
@@ -78,7 +78,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   let actual =
     util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
@@ -100,8 +100,8 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
 #[test]
 fn multifile_coverage() {
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let tempdir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new().unwrap();
+  let tempdir = TempDir::new().unwrap();
   let tempdir = tempdir.path().join("cov");
 
   let status = util::deno_cmd_with_deno_dir(deno_dir.path())
@@ -114,7 +114,7 @@ fn multifile_coverage() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
-    .expect("failed to spawn test runner");
+    .unwrap();
 
   assert!(status.success());
 
@@ -126,7 +126,7 @@ fn multifile_coverage() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   // Verify there's no "Check" being printed
   assert!(output.stderr.is_empty());
@@ -158,7 +158,7 @@ fn multifile_coverage() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   let actual =
     util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())

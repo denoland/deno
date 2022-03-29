@@ -6,8 +6,8 @@ use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -43,6 +43,11 @@ fn check_unstable(state: &OpState, api_name: &str) {
     );
     std::process::exit(70);
   }
+}
+
+pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
+  let state = state.borrow();
+  check_unstable(&state, api_name)
 }
 
 pub trait FfiPermissions {
@@ -140,27 +145,24 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       "00_ffi.js",
     ))
     .ops(vec![
-      ("op_ffi_load", op_sync(op_ffi_load::<P>)),
-      ("op_ffi_get_static", op_sync(op_ffi_get_static)),
-      ("op_ffi_call", op_sync(op_ffi_call)),
-      ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
-      ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
-      (
-        "op_ffi_call_ptr_nonblocking",
-        op_async(op_ffi_call_ptr_nonblocking),
-      ),
-      ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
-      ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
-      ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read::<P>)),
-      ("op_ffi_read_u8", op_sync(op_ffi_read_u8::<P>)),
-      ("op_ffi_read_i8", op_sync(op_ffi_read_i8::<P>)),
-      ("op_ffi_read_u16", op_sync(op_ffi_read_u16::<P>)),
-      ("op_ffi_read_i16", op_sync(op_ffi_read_i16::<P>)),
-      ("op_ffi_read_u32", op_sync(op_ffi_read_u32::<P>)),
-      ("op_ffi_read_i32", op_sync(op_ffi_read_i32::<P>)),
-      ("op_ffi_read_u64", op_sync(op_ffi_read_u64::<P>)),
-      ("op_ffi_read_f32", op_sync(op_ffi_read_f32::<P>)),
-      ("op_ffi_read_f64", op_sync(op_ffi_read_f64::<P>)),
+      op_ffi_load::decl::<P>(),
+      op_ffi_get_static::decl(),
+      op_ffi_call::decl(),
+      op_ffi_call_nonblocking::decl(),
+      op_ffi_call_ptr::decl::<P>(),
+      op_ffi_call_ptr_nonblocking::decl::<P>(),
+      op_ffi_ptr_of::decl::<P>(),
+      op_ffi_buf_copy_into::decl::<P>(),
+      op_ffi_cstr_read::decl::<P>(),
+      op_ffi_read_u8::decl::<P>(),
+      op_ffi_read_i8::decl::<P>(),
+      op_ffi_read_u16::decl::<P>(),
+      op_ffi_read_i16::decl::<P>(),
+      op_ffi_read_u32::decl::<P>(),
+      op_ffi_read_i32::decl::<P>(),
+      op_ffi_read_u64::decl::<P>(),
+      op_ffi_read_f32::decl::<P>(),
+      op_ffi_read_f64::decl::<P>(),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -464,10 +466,10 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
   }
 }
 
+#[op]
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -650,20 +652,39 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   })
 }
 
-fn op_ffi_call_ptr(
-  _state: &mut deno_core::OpState,
+#[op]
+fn op_ffi_call_ptr<FP>(
+  state: &mut deno_core::OpState,
   args: FfiCallPtrArgs,
-  _: (),
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafeFnPointer#call");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   let symbol = args.get_symbol();
   ffi_call(args.into(), &symbol)
 }
 
-async fn op_ffi_call_ptr_nonblocking(
-  _state: Rc<RefCell<deno_core::OpState>>,
+#[op]
+async fn op_ffi_call_ptr_nonblocking<FP>(
+  state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
-  _: (),
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
+
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check(None)?;
+  }
+
   let symbol = args.get_symbol();
   tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
     .await
@@ -678,10 +699,10 @@ struct FfiGetArgs {
   r#type: NativeType,
 }
 
+#[op]
 fn op_ffi_get_static(
   state: &mut deno_core::OpState,
   args: FfiGetArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
@@ -735,10 +756,10 @@ fn op_ffi_get_static(
   })
 }
 
+#[op]
 fn op_ffi_call(
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
@@ -753,10 +774,10 @@ fn op_ffi_call(
 }
 
 /// A non-blocking FFI call.
+#[op]
 async fn op_ffi_call_nonblocking(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
-  _: (),
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()
@@ -773,28 +794,32 @@ async fn op_ffi_call_nonblocking(
     .unwrap()
 }
 
+#[op]
 fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
   buf: ZeroCopyBuf,
-  _: (),
 ) -> Result<U32x2, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointer#of");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(U32x2::from(buf.as_ptr() as u64))
 }
 
+#[op]
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
-  _: (),
 ) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#copyInto");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -809,14 +834,16 @@ where
   }
 }
 
+#[op]
 fn op_ffi_cstr_read<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<String, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getCString");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -824,98 +851,112 @@ where
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
+#[op]
 fn op_ffi_read_u8<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u8, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getUint8");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u8) })
 }
 
+#[op]
 fn op_ffi_read_i8<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i8, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getInt8");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i8) })
 }
 
+#[op]
 fn op_ffi_read_u16<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u16, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getUint16");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u16) })
 }
 
+#[op]
 fn op_ffi_read_i16<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i16, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getInt16");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i16) })
 }
 
+#[op]
 fn op_ffi_read_u32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getUint32");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u32) })
 }
 
+#[op]
 fn op_ffi_read_i32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getInt32");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i32) })
 }
 
+#[op]
 fn op_ffi_read_u64<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<U32x2, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -924,28 +965,32 @@ where
   }))
 }
 
+#[op]
 fn op_ffi_read_f32<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<f32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getFloat32");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f32) })
 }
 
+#[op]
 fn op_ffi_read_f64<FP>(
   state: &mut deno_core::OpState,
   ptr: U32x2,
-  _: (),
 ) -> Result<f64, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getFloat64");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 

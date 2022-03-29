@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_broadcast_channel"
-version = "0.34.0"
+version = "0.38.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -15,6 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 async-trait = "0.1"
-deno_core = { version = "0.122.0", path = "../../core" }
+deno_core = { version = "0.126.0", path = "../../core" }
 tokio = { version = "1.10.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }

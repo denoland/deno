@@ -14,13 +14,13 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 pub use esm_resolver::check_if_should_use_esm_loader;
-pub(crate) use esm_resolver::NodeEsmResolver;
+pub use esm_resolver::NodeEsmResolver;
 
 // TODO(bartlomieju): this needs to be bumped manually for
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.129.0/";
+static STD_URL_STR: &str = "https://deno.land/std@0.132.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -77,20 +77,20 @@ static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
 static GLOBAL_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
 
-pub(crate) static GLOBAL_URL: Lazy<Url> =
+pub static GLOBAL_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
 
 static MODULE_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
 
-pub(crate) static MODULE_URL: Lazy<Url> =
+pub static MODULE_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
 
 static COMPAT_IMPORT_URL: Lazy<Url> =
   Lazy::new(|| Url::parse("flags:compat").unwrap());
 
 /// Provide imports into a module graph when the compat flag is true.
-pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {
+pub fn get_node_imports() -> Vec<(Url, Vec<String>)> {
   vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
 }
 
@@ -104,7 +104,7 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-pub(crate) fn load_cjs_module(
+pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,
   module: &str,
   main: bool,
@@ -123,7 +123,7 @@ pub(crate) fn load_cjs_module(
   Ok(())
 }
 
-pub(crate) fn add_global_require(
+pub fn add_global_require(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {
@@ -190,7 +190,7 @@ pub async fn translate_cjs_to_esm(
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
     // Firstly, resolve relate reexport specifier
-    let resolved_reexport = node_resolver::node_resolve(
+    let resolved_reexport = node_resolver::resolve(
       reexport,
       &specifier.to_file_path().unwrap(),
       // FIXME(bartlomieju): check if these conditions are okay, probably

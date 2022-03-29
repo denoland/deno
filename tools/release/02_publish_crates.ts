@@ -6,7 +6,9 @@ import { getCratesPublishOrder } from "./deps.ts";
 const workspace = await DenoWorkspace.load();
 const cliCrate = workspace.getCliCrate();
 
-const dependencyCrates = getCratesPublishOrder(workspace.getDependencyCrates());
+const dependencyCrates = getCratesPublishOrder(
+  workspace.getCliDependencyCrates(),
+);
 
 try {
   for (const [i, crate] of dependencyCrates.entries()) {

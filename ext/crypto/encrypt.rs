@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::shared::*;
 
 use aes::cipher::NewCipher;
@@ -16,6 +13,7 @@ use aes_gcm::AeadInPlace;
 use aes_gcm::NewAead;
 use aes_gcm::Nonce;
 use ctr::Ctr;
+use deno_core::op;
 
 use block_modes::BlockMode;
 use ctr::cipher::StreamCipher;
@@ -26,7 +24,6 @@ use ctr::flavors::Ctr64BE;
 use ctr::flavors::CtrFlavor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::OsRng;
 use rsa::pkcs1::FromRsaPublicKey;
@@ -79,8 +76,9 @@ pub enum EncryptAlgorithm {
     key_length: usize,
   },
 }
+
+#[op]
 pub async fn op_crypto_encrypt(
-  _state: Rc<RefCell<OpState>>,
   opts: EncryptOptions,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
