@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use tower_lsp::LspService;
-use tower_lsp::LspServiceBuilder;
 use tower_lsp::Server;
 
 pub use repl::ReplCompletionItem;
@@ -42,6 +41,7 @@ pub async fn start() -> Result<(), AnyError> {
       .custom_method(lsp_custom::CACHE_REQUEST, LanguageServer::cache_request)
       .custom_method(lsp_custom::PERFORMANCE_REQUEST, LanguageServer::performance_request)
       .custom_method(lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST, LanguageServer::reload_import_registries_request)
+      .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_request)
       .custom_method(lsp_custom::VIRTUAL_TEXT_DOCUMENT, LanguageServer::virtual_text_document)
       .finish();
 
