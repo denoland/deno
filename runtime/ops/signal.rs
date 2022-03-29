@@ -176,6 +176,56 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
+#[cfg(any(target_os = "solaris", target_os = "illumos"))]
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGUSR1" => Ok(16),
+    "SIGUSR2" => Ok(17),
+    "SIGCLD" => Ok(18),
+    "SIGCHLD" => Ok(18),
+    "SIGPWR" => Ok(19),
+    "SIGWINCH" => Ok(20),
+    "SIGURG" => Ok(21),
+    "SIGPOLL" => Ok(22),
+    "SIGIO" => Ok(22),
+    "SIGSTOP" => Ok(23),
+    "SIGTSTP" => Ok(24),
+    "SIGCONT" => Ok(25),
+    "SIGTTIN" => Ok(26),
+    "SIGTTOU" => Ok(27),
+    "SIGVTALRM" => Ok(28),
+    "SIGPROF" => Ok(29),
+    "SIGXCPU" => Ok(30),
+    "SIGXFSZ" => Ok(31),
+    "SIGWAITING" => Ok(32),
+    "SIGLWP" => Ok(33),
+    "SIGFREEZE" => Ok(34),
+    "SIGTHAW" => Ok(35),
+    "SIGCANCEL" => Ok(36),
+    "SIGLOST" => Ok(37),
+    "SIGXRES" => Ok(38),
+    "SIGJVM1" => Ok(39),
+    "SIGJVM2" => Ok(40),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
 #[cfg(unix)]
 #[op]
 fn op_signal_bind(

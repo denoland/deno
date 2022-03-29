@@ -2523,3 +2523,93 @@ itest!(fetch_async_error_stack {
   output: "fetch_async_error_stack.ts.out",
   exit_code: 1,
 });
+
+itest!(unstable_ffi_1 {
+  args: "run unstable_ffi_1.js",
+  output: "unstable_ffi_1.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_2 {
+  args: "run unstable_ffi_2.js",
+  output: "unstable_ffi_2.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_3 {
+  args: "run unstable_ffi_3.js",
+  output: "unstable_ffi_3.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_4 {
+  args: "run unstable_ffi_4.js",
+  output: "unstable_ffi_4.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_5 {
+  args: "run unstable_ffi_5.js",
+  output: "unstable_ffi_5.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_6 {
+  args: "run unstable_ffi_6.js",
+  output: "unstable_ffi_6.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_7 {
+  args: "run unstable_ffi_7.js",
+  output: "unstable_ffi_7.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_8 {
+  args: "run unstable_ffi_8.js",
+  output: "unstable_ffi_8.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_9 {
+  args: "run unstable_ffi_9.js",
+  output: "unstable_ffi_9.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_10 {
+  args: "run unstable_ffi_10.js",
+  output: "unstable_ffi_10.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_11 {
+  args: "run unstable_ffi_11.js",
+  output: "unstable_ffi_11.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_12 {
+  args: "run unstable_ffi_12.js",
+  output: "unstable_ffi_12.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_13 {
+  args: "run unstable_ffi_13.js",
+  output: "unstable_ffi_13.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_14 {
+  args: "run unstable_ffi_14.js",
+  output: "unstable_ffi_14.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_15 {
+  args: "run unstable_ffi_15.js",
+  output: "unstable_ffi_15.js.out",
+  exit_code: 70,
+});
