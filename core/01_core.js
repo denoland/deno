@@ -10,25 +10,18 @@
     TypeError,
     URIError,
     Map,
-    Array,
-    ArrayPrototypeFill,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
-    Promise,
     ObjectFromEntries,
-    MapPrototypeGet,
     MapPrototypeDelete,
     MapPrototypeSet,
-    PromisePrototypeThen,
+    PromisePrototypeCatch,
     PromisePrototypeFinally,
     StringPrototypeSlice,
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-
-  // Available on start due to bindings.
-  const { refOp_, unrefOp_ } = window.Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -39,11 +32,6 @@
   registerErrorClass("TypeError", TypeError);
   registerErrorClass("URIError", URIError);
 
-  let nextPromiseId = 1;
-  const promiseMap = new Map();
-  const RING_SIZE = 4 * 1024;
-  const NO_PROMISE = null; // Alias to null is faster than plain nulls
-  const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
   // TODO(bartlomieju): it future use `v8::Private` so it's not visible
   // to users. Currently missing bindings.
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
@@ -57,64 +45,6 @@
 
   function isOpCallTracingEnabled() {
     return opCallTracingEnabled;
-  }
-
-  function setPromise(promiseId) {
-    const idx = promiseId % RING_SIZE;
-    // Move old promise from ring to map
-    const oldPromise = promiseRing[idx];
-    if (oldPromise !== NO_PROMISE) {
-      const oldPromiseId = promiseId - RING_SIZE;
-      MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
-    }
-    // Set new promise
-    return promiseRing[idx] = newPromise();
-  }
-
-  function getPromise(promiseId) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      const promise = MapPrototypeGet(promiseMap, promiseId);
-      MapPrototypeDelete(promiseMap, promiseId);
-      return promise;
-    }
-    // Otherwise take from ring
-    const idx = promiseId % RING_SIZE;
-    const promise = promiseRing[idx];
-    promiseRing[idx] = NO_PROMISE;
-    return promise;
-  }
-
-  function newPromise() {
-    let resolve, reject;
-    const promise = new Promise((resolve_, reject_) => {
-      resolve = resolve_;
-      reject = reject_;
-    });
-    promise.resolve = resolve;
-    promise.reject = reject;
-    return promise;
-  }
-
-  function hasPromise(promiseId) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      return MapPrototypeHas(promiseMap, promiseId);
-    }
-    // Otherwise check it in ring
-    const idx = promiseId % RING_SIZE;
-    return promiseRing[idx] != NO_PROMISE;
-  }
-
-  function opresolve() {
-    for (let i = 0; i < arguments.length; i += 2) {
-      const promiseId = arguments[i];
-      const res = arguments[i + 1];
-      const promise = getPromise(promiseId);
-      promise.resolve(res);
-    }
   }
 
   function registerErrorClass(className, errorClass) {
@@ -148,11 +78,8 @@
   }
 
   function opAsync(opName, ...args) {
-    const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](promiseId, ...args);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
-    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    let [p, promiseId] = ops[opName](...args);
+    p = PromisePrototypeCatch(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
       // first 6 characters (the `Error\n` prefix) to get just the stack trace.
@@ -170,20 +97,6 @@
 
   function opSync(opName, ...args) {
     return unwrapOpResult(ops[opName](...args));
-  }
-
-  function refOp(promiseId) {
-    if (!hasPromise(promiseId)) {
-      return;
-    }
-    refOp_(promiseId);
-  }
-
-  function unrefOp(promiseId) {
-    if (!hasPromise(promiseId)) {
-      return;
-    }
-    unrefOp_(promiseId);
   }
 
   function resources() {
@@ -256,7 +169,6 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
-    opresolve,
     BadResource,
     BadResourcePrototype,
     Interrupted,
@@ -264,8 +176,6 @@
     enableOpCallTracing,
     isOpCallTracingEnabled,
     opCallTraces,
-    refOp,
-    unrefOp,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

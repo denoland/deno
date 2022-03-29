@@ -17,6 +17,7 @@ use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::promise_ring::PromiseRing;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -147,7 +148,6 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   global_realm: Option<JsRealm>,
-  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
@@ -158,13 +158,14 @@ pub(crate) struct JsRuntimeState {
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
+  pub(crate) promise_ring: Option<PromiseRing>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) unrefed_ops: HashSet<i32>,
+  pub(crate) unrefed_ops: HashSet<PromiseId>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   #[allow(dead_code)]
@@ -379,7 +380,6 @@ impl JsRuntime {
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
-      js_recv_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
@@ -389,6 +389,7 @@ impl JsRuntime {
       source_map_getter: options.source_map_getter,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
+      promise_ring: Some(PromiseRing::new()),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
@@ -421,8 +422,6 @@ impl JsRuntime {
     }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
-    // Init callbacks (opresolve)
-    js_runtime.init_cbs();
 
     js_runtime
   }
@@ -619,18 +618,6 @@ impl JsRuntime {
     })
   }
 
-  /// Grabs a reference to core.js' opresolve & syncOpsCache()
-  fn init_cbs(&mut self) {
-    let scope = &mut self.handle_scope();
-    let recv_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
-    let recv_cb = v8::Global::new(scope, recv_cb);
-    // Put global handles in state
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state.js_recv_cb.replace(recv_cb);
-  }
-
   /// Returns the runtime's op state, which can be used to maintain ops
   /// and access resources between op calls.
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
@@ -697,8 +684,6 @@ impl JsRuntime {
         Rc::new(NoopModuleLoader),
         state.borrow().op_state.clone(),
       ))));
-    // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -1654,44 +1639,52 @@ impl JsRuntime {
 
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
+    let prev_microtasks = self.v8_isolate().get_microtasks_policy();
+    self
+      .v8_isolate()
+      .set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
+
     let state_rc = Self::state(self.v8_isolate());
-
-    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
     let scope = &mut self.handle_scope();
-
-    // We return async responses to JS in unbounded batches (may change),
-    // each batch is a flat vector of tuples:
-    // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
-    // promise_id is a simple integer, op_result is an ops::OpResult
-    // which contains a value OR an error, encoded as a tuple.
-    // This batch is received in JS via the special `arguments` variable
-    // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
 
     // Now handle actual ops.
     {
       let mut state = state_rc.borrow_mut();
       state.have_unpolled_ops = false;
 
+      let op_state = state.op_state.clone();
+
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (promise_id, op_id, resp) = item;
+        op_state.borrow().tracker.track_async_completed(op_id);
         state.unrefed_ops.remove(&promise_id);
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
-        args.push(resp.to_v8(scope).unwrap());
+        let resolver = state.promise_ring.as_mut().unwrap().take(promise_id);
+        match resolver {
+          Some(resolver) => {
+            let resolver = resolver.open(scope);
+            match resp {
+              OpResult::Ok(x) => {
+                let value = x.to_v8(scope).unwrap();
+                resolver.resolve(scope, value);
+              }
+              OpResult::Err(err) => {
+                let value = serde_v8::to_v8(scope, err).unwrap();
+                resolver.reject(scope, value);
+              }
+            }
+          }
+          None => panic!(
+            "tried to resolve a promise_id: {} without a resolver!",
+            promise_id
+          ),
+        }
       }
     }
 
-    if args.is_empty() {
-      return Ok(());
-    }
-
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
-    let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
-
+    tc_scope.perform_microtask_checkpoint();
+    tc_scope.set_microtasks_policy(prev_microtasks);
     match tc_scope.exception() {
       None => Ok(()),
       Some(exception) => exception_to_err_result(tc_scope, exception, false),
@@ -1869,14 +1862,27 @@ impl JsRealm {
 }
 
 #[inline]
-pub fn queue_async_op(
-  scope: &v8::Isolate,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
-) {
+pub fn queue_async_op<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  op: impl Future<Output = (OpId, OpResult)> + 'static,
+) -> v8::Local<'s, v8::Value> {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
+  let promise_id = state.promise_ring.as_ref().unwrap().head();
+  let op = op.map(move |(op_id, result)| (promise_id, op_id, result));
   state.pending_ops.push(OpCall::eager(op));
   state.have_unpolled_ops = true;
+
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  state
+    .promise_ring
+    .as_mut()
+    .unwrap()
+    .put(v8::Global::new(scope, resolver));
+
+  let promise = resolver.get_promise(scope).into();
+  let v8_promise_id = v8::Integer::new_from_unsigned(scope, promise_id).into();
+  v8::Array::new_with_elements(scope, &[promise, v8_promise_id]).into()
 }
 
 #[cfg(test)]

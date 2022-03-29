@@ -139,7 +139,7 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     quote! {}
   };
   let rust_i0 = if uses_opstate { 1 } else { 0 };
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let type_params = &f.sig.generics.params;
 
   quote! {
@@ -150,19 +150,6 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
       as *const #core::_ops::OpCtx)
     };
     let op_id = ctx.id;
-
-    let promise_id = args.get(0);
-    let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
-      .map(|l| l.value() as #core::PromiseId)
-      .map_err(#core::anyhow::Error::from);
-    // Fail if promise id invalid (not an int)
-    let promise_id: #core::PromiseId = match promise_id {
-      Ok(promise_id) => promise_id,
-      Err(err) => {
-        #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
-        return;
-      }
-    };
 
     #arg_decls
 
@@ -175,10 +162,11 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
       state.get_error_class_fn
     };
 
-    #core::_ops::queue_async_op(scope, async move {
+    let promise_and_id = #core::_ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(#args_head #args_tail).await;
-      (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+      (op_id, #core::_ops::to_op_result(get_class, result))
     });
+    rv.set(promise_and_id.into());
   }
 }
 

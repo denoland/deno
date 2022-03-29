@@ -14,6 +14,7 @@ mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_metrics;
+mod promise_ring;
 mod resources;
 mod runtime;
 mod source_map;

@@ -188,8 +188,8 @@ pub fn initialize_context<'s>(
   let core_val = JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "refOp_", ref_op);
-  set_func(scope, core_val, "unrefOp_", unref_op);
+  set_func(scope, core_val, "refOp", ref_op);
+  set_func(scope, core_val, "unrefOp", unref_op);
   set_func(
     scope,
     core_val,
@@ -531,7 +531,7 @@ fn ref_op<'s>(
   let mut state = state_rc.borrow_mut();
 
   let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
-    .map(|l| l.value() as PromiseId)
+    .map(|l| l.uint32_value(scope).unwrap_or_default() as PromiseId)
     .map_err(Error::from)
   {
     Ok(promise_id) => promise_id,
@@ -540,6 +540,10 @@ fn ref_op<'s>(
       return;
     }
   };
+
+  if !state.promise_ring.as_ref().unwrap().has(promise_id) {
+    return;
+  }
 
   state.unrefed_ops.remove(&promise_id);
 }
@@ -562,6 +566,10 @@ fn unref_op<'s>(
       return;
     }
   };
+
+  if !state.promise_ring.as_ref().unwrap().has(promise_id) {
+    return;
+  }
 
   state.unrefed_ops.insert(promise_id);
 }
