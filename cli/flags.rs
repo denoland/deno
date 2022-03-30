@@ -213,7 +213,7 @@ impl Default for DenoSubcommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum CheckFlag {
+pub enum TypecheckMode {
   /// Type check all modules. The default value.
   All,
   /// Skip type checking of all modules. Represents `--no-check` on the command
@@ -224,7 +224,7 @@ pub enum CheckFlag {
   Local,
 }
 
-impl Default for CheckFlag {
+impl Default for TypecheckMode {
   fn default() -> Self {
     Self::All
   }
@@ -252,7 +252,7 @@ pub struct Flags {
   /// the language server is configured with an explicit cache option.
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
-  pub check: CheckFlag,
+  pub typecheck_mode: TypecheckMode,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
@@ -472,7 +472,11 @@ To evaluate code in the shell:
 ";
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
+pub fn flags_from_vec<I, T>(args: I) -> clap::Result<Flags>
+where
+  I: IntoIterator<Item = T>,
+  T: Into<std::ffi::OsString> + Clone,
+{
   let version = crate::version::deno();
   let app = clap_root(&version);
   let matches = app.clone().try_get_matches_from(args)?;
@@ -2714,14 +2718,14 @@ fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
-      "remote" => flags.check = CheckFlag::Local,
+      "remote" => flags.typecheck_mode = TypecheckMode::Local,
       _ => debug!(
         "invalid value for 'no-check' of '{}' using default",
         cache_type
       ),
     }
   } else if matches.is_present("no-check") {
-    flags.check = CheckFlag::None;
+    flags.typecheck_mode = TypecheckMode::None;
   }
 }
 
@@ -3659,7 +3663,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3744,7 +3748,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4012,7 +4016,7 @@ mod tests {
           source_file: "script.ts".to_string(),
           out_file: None,
         }),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         ..Flags::default()
       }
     );
@@ -4234,7 +4238,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4385,7 +4389,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         ..Flags::default()
       }
     );
@@ -4401,7 +4405,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        check: CheckFlag::Local,
+        typecheck_mode: TypecheckMode::Local,
         ..Flags::default()
       }
     );
@@ -5073,7 +5077,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,

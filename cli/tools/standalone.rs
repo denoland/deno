@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir::DenoDir;
-use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::RunFlags;
+use crate::flags::TypecheckMode;
 use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
@@ -274,7 +274,7 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    check: CheckFlag::All,
+    typecheck_mode: TypecheckMode::All,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors

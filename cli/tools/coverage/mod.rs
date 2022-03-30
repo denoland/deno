@@ -126,8 +126,10 @@ impl CoverageCollector {
 
       let mut out = BufWriter::new(File::create(filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formated_coverage =
-        format_json(&coverage, &Default::default()).unwrap_or(coverage);
+      let formated_coverage = format_json(&coverage, &Default::default())
+        .ok()
+        .flatten()
+        .unwrap_or(coverage);
 
       out.write_all(formated_coverage.as_bytes())?;
       out.flush()?;
