@@ -93,8 +93,8 @@ where
 }
 
 struct LspStdoutReader {
-  messages: Arc<(Mutex<Vec<LspMessage>>, Condvar)>,
-  all_messages: Vec<LspMessage>,
+  pending_messages: Arc<(Mutex<Vec<LspMessage>>, Condvar)>,
+  read_messages: Vec<LspMessage>,
 }
 
 impl LspStdoutReader {
@@ -114,36 +114,32 @@ impl LspStdoutReader {
     });
 
     LspStdoutReader {
-      messages,
-      all_messages: Vec::new(),
+      pending_messages: messages,
+      read_messages: Vec::new(),
     }
   }
 
-  pub fn is_empty(&self) -> bool {
-    self.messages.0.lock().is_empty()
-  }
-
-  pub fn len(&self) -> usize {
-    self.messages.0.lock().len()
+  pub fn pending_len(&self) -> usize {
+    self.pending_messages.0.lock().len()
   }
 
   pub fn had_message(&self, is_match: impl Fn(&LspMessage) -> bool) -> bool {
-    self.all_messages.iter().any(&is_match)
-      || self.messages.0.lock().iter().any(&is_match)
+    self.read_messages.iter().any(&is_match)
+      || self.pending_messages.0.lock().iter().any(&is_match)
   }
 
   pub fn read_message<R>(
     &mut self,
     mut get_match: impl FnMut(&LspMessage) -> Option<R>,
   ) -> R {
-    let (msg_queue, cvar) = &*self.messages;
+    let (msg_queue, cvar) = &*self.pending_messages;
     let mut msg_queue = msg_queue.lock();
     loop {
       for i in 0..msg_queue.len() {
         let msg = &msg_queue[i];
-        if let Some(result) = get_match(&msg) {
+        if let Some(result) = get_match(msg) {
           let msg = msg_queue.remove(i);
-          self.all_messages.push(msg);
+          self.read_messages.push(msg);
           return result;
         }
       }
@@ -261,11 +257,11 @@ impl LspClient {
   }
 
   pub fn queue_is_empty(&self) -> bool {
-    self.reader.is_empty()
+    self.reader.pending_len() == 0
   }
 
   pub fn queue_len(&self) -> usize {
-    self.reader.len()
+    self.reader.pending_len()
   }
 
   pub fn had_notification(&mut self, searching_method: &str) -> bool {
