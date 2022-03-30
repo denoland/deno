@@ -266,11 +266,14 @@ impl LspClient {
     self.reader.pending_len()
   }
 
-  pub fn had_notification(&mut self, searching_method: &str) -> bool {
-    self.reader.had_message(|message| match message {
+  // it's flaky to assert for a notification because a notification
+  // might arrive a little later, so only provide a method for asserting
+  // that there is no notification
+  pub fn assert_no_notification(&mut self, searching_method: &str) {
+    assert!(!self.reader.had_message(|message| match message {
       LspMessage::Notification(method, _) => method == searching_method,
       _ => false,
-    })
+    }))
   }
 
   pub fn read_notification<R>(&mut self) -> Result<(String, Option<R>)>

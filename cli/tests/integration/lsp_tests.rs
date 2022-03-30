@@ -4320,7 +4320,7 @@ fn lsp_format_no_changes() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
-  assert!(!client.had_notification("window/showMessage"));
+  client.assert_no_notification("window/showMessage");
   shutdown(&mut client);
 }
 
@@ -4354,7 +4354,6 @@ fn lsp_format_error() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
-  assert!(client.had_notification("window/showMessage"));
   shutdown(&mut client);
 }
 
