@@ -66,8 +66,8 @@ verify on GitHub that everything looks correct.
 
 ### Phase 1: Bumping versions
 
-1. After releasing deno_std, go to "Actions" on the GitHub repo and select the
-   "version_bump" workflow.
+1. After releasing deno_std, go to the "version_bump" workflow in the CLI repo's
+   actions: https://github.com/denoland/deno/actions/workflows/version_bump.yml
 
 2. Click on the "Run workflow" button.
    1. In the drop down, select the minor branch if doing a path release or the
@@ -84,7 +84,8 @@ verify on GitHub that everything looks correct.
 
 ### Phase 2: Publish
 
-1. Go to "Actions" on the GitHub repo and select the "cargo_publish" workflow.
+1. Go to the "cargo_publish" workflow in the CLI repo's actions:
+   https://github.com/denoland/deno/actions/workflows/cargo_publish.yml
 
 2. Run it on the same branch that you used before and wait for it to complete.
 
