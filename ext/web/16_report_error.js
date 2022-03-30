@@ -4,7 +4,8 @@
 ((window) => {
   const core = window.Deno.core;
   const { ErrorEvent } = window;
-  const { Error, TypeError } = window.__bootstrap.primordials;
+  const { Error, StringPrototypeStartsWith, TypeError } =
+    window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
 
   let errorReported = false;
@@ -39,10 +40,15 @@
       colno = jsError.frames[0].columnNumber;
     } else {
       const jsError = core.destructureError(new Error());
-      if (jsError.frames.length > 1) {
-        filename = jsError.frames[1].fileName;
-        lineno = jsError.frames[1].lineNumber;
-        colno = jsError.frames[1].columnNumber;
+      for (const frame of jsError.frames) {
+        if (
+          typeof frame.fileName == "string" &&
+          !StringPrototypeStartsWith(frame.fileName, "deno:")
+        ) {
+          filename = frame.fileName;
+          lineno = frame.lineNumber;
+          colno = frame.columnNumber;
+        }
       }
     }
     const event = new ErrorEvent("error", {
