@@ -48,6 +48,7 @@
           filename = frame.fileName;
           lineno = frame.lineNumber;
           colno = frame.columnNumber;
+          break;
         }
       }
     }
