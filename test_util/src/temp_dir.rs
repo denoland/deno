@@ -17,6 +17,8 @@ struct TempDirSession {
 
 /// For creating temporary directories in tests.
 ///
+/// This was done because `tempfiles::TempDir` was very slow on Windows.
+///
 /// Note: Do not use this in actual code as this does not protect against
 /// "insecure temporary file" security vulnerabilities.
 #[derive(Clone)]
