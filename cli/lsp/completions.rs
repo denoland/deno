@@ -612,10 +612,10 @@ mod tests {
   }
 
   fn setup(
+    temp_dir: &TempDir,
     documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
   ) -> Documents {
-    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     mock_documents(documents, sources, &location)
   }
@@ -776,7 +776,9 @@ mod tests {
         character: 21,
       },
     };
+    let temp_dir = TempDir::new();
     let documents = setup(
+      &temp_dir,
       &[
         (
           "file:///a/b/c.ts",

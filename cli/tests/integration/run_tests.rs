@@ -253,7 +253,7 @@ itest!(webstorage_serialization {
 fn webstorage_location_shares_origin() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -268,7 +268,7 @@ fn webstorage_location_shares_origin() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -290,7 +290,7 @@ fn webstorage_location_shares_origin() {
 fn webstorage_config_file() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -305,7 +305,7 @@ fn webstorage_config_file() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -320,7 +320,7 @@ fn webstorage_config_file() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -342,7 +342,7 @@ fn webstorage_config_file() {
 fn webstorage_location_precedes_config() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -359,7 +359,7 @@ fn webstorage_location_precedes_config() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -383,7 +383,7 @@ fn webstorage_location_precedes_config() {
 fn webstorage_main_module() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -396,7 +396,7 @@ fn webstorage_main_module() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -409,7 +409,7 @@ fn webstorage_main_module() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1804,7 +1804,7 @@ fn rust_log() {
 fn dont_cache_on_check_fail() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1818,7 +1818,7 @@ fn dont_cache_on_check_fail() {
   assert!(!output.status.success());
   assert!(!output.stderr.is_empty());
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2368,7 +2368,7 @@ itest!(eval_context_throw_dom_exception {
 fn issue12453() {
   let _g = util::http_server();
   let deno_dir = util::new_deno_dir();
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")

@@ -1136,16 +1136,16 @@ mod tests {
   use super::*;
   use test_util::TempDir;
 
-  fn setup() -> (Documents, PathBuf, TempDir) {
-    let temp_dir = TempDir::new();
+  fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
     let documents = Documents::new(&location);
-    (documents, location, temp_dir)
+    (documents, location)
   }
 
   #[test]
   fn test_documents_open() {
-    let (mut documents, _, _temp_dir_guard) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1161,7 +1161,8 @@ console.log(b);
 
   #[test]
   fn test_documents_change() {
-    let (mut documents, _, _temp_dir_guard) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1207,7 +1208,8 @@ console.log(b, "hello deno");
   fn test_documents_ensure_no_duplicates() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let (mut documents, documents_path, _temp_dir_guard) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, documents_path) = setup(&temp_dir);
     let file_path = documents_path.join("file.ts");
     let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
     fs::create_dir_all(&documents_path).unwrap();

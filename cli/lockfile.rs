@@ -140,9 +140,7 @@ mod tests {
   use std::io::Write;
   use test_util::TempDir;
 
-  fn setup() -> (TempDir, PathBuf) {
-    let temp_dir = TempDir::new();
-
+  fn setup(temp_dir: &TempDir) -> PathBuf {
     let file_path = temp_dir.path().join("valid_lockfile.json");
     let mut file = File::create(file_path).expect("write file fail");
 
@@ -153,9 +151,7 @@ mod tests {
 
     file.write_all(value.to_string().as_bytes()).unwrap();
 
-    let file_path = temp_dir.path().join("valid_lockfile.json");
-
-    (temp_dir, file_path)
+    temp_dir.path().join("valid_lockfile.json")
   }
 
   #[test]
@@ -166,7 +162,8 @@ mod tests {
 
   #[test]
   fn new_valid_lockfile() {
-    let (_temp_dir_guard, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let result = Lockfile::new(file_path, false).unwrap();
 
@@ -182,7 +179,8 @@ mod tests {
 
   #[test]
   fn new_lockfile_from_file_and_insert() {
-    let (_temp_dir_guard, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 
@@ -203,7 +201,8 @@ mod tests {
 
   #[test]
   fn new_lockfile_and_write() {
-    let (temp_dir, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let mut lockfile = Lockfile::new(file_path, true).unwrap();
 
@@ -260,7 +259,8 @@ mod tests {
 
   #[test]
   fn check_or_insert_lockfile_false() {
-    let (_temp_dir_guard, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 

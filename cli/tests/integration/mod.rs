@@ -366,7 +366,7 @@ fn ts_reload() {
   assert!(hello_ts.is_file());
 
   let deno_dir = TempDir::new();
-  let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let mut initial = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("cache")
     .arg(&hello_ts)
@@ -376,7 +376,7 @@ fn ts_reload() {
     initial.wait().expect("failed to wait for child process");
   assert!(status_initial.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("cache")
     .arg("--reload")
@@ -1111,7 +1111,7 @@ fn typecheck_core() {
     ),
   )
   .unwrap();
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .arg("run")
     .arg(test_file.to_str().unwrap())
     .output()

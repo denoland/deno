@@ -24,7 +24,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let status = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
@@ -38,7 +38,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   assert!(status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--unstable")
@@ -68,7 +68,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   assert!(output.status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
@@ -104,7 +104,7 @@ fn multifile_coverage() {
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let status = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
@@ -118,7 +118,7 @@ fn multifile_coverage() {
 
   assert!(status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--unstable")
@@ -148,7 +148,7 @@ fn multifile_coverage() {
 
   assert!(output.status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")

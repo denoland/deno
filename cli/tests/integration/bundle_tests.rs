@@ -158,7 +158,7 @@ fn bundle_tla() {
   // First we have to generate a bundle of some module that has exports.
   let tla_import = util::testdata_path().join("subdir/tla.ts");
   assert!(tla_import.is_file());
-  let t = test_util::TempDir::new();
+  let t = TempDir::new();
   let bundle = t.path().join("tla.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())

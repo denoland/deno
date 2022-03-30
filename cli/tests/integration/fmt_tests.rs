@@ -135,7 +135,8 @@ fn fmt_auto_ignore_git() {
     let mut bad_json_file = File::create(bad_json_path).unwrap();
     writeln!(bad_json_file, "bad json").unwrap();
   }
-  let t = TempDir::new().path().join("target");
+  let temp_dir = TempDir::new();
+  let t = temp_dir.path().join("target");
   let nest_git = t.join("nest").join(".git");
   let git_dir = t.join(".git");
   create_dir_all(&nest_git).unwrap();

@@ -745,13 +745,12 @@ mod tests {
   use deno_core::resolve_url_or_path;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
-  use std::rc::Rc;
   use test_util::TempDir;
 
   fn setup(
     cache_setting: CacheSetting,
-    maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>) {
+    maybe_temp_dir: Option<TempDir>,
+  ) -> (FileFetcher, TempDir) {
     let (file_fetcher, temp_dir, _) =
       setup_with_blob_store(cache_setting, maybe_temp_dir);
     (file_fetcher, temp_dir)
@@ -759,9 +758,9 @@ mod tests {
 
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
-    maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
-    let temp_dir = maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new()));
+    maybe_temp_dir: Option<TempDir>,
+  ) -> (FileFetcher, TempDir, BlobStore) {
+    let temp_dir = maybe_temp_dir.unwrap_or_else(|| TempDir::new());
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
@@ -1617,7 +1616,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_revalidates() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new());
+    let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =
@@ -1644,7 +1643,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_still_fresh() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new());
+    let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =
