@@ -4456,6 +4456,7 @@ dependencies = [
  "hyper",
  "lazy_static",
  "os_pipe",
+ "parking_lot 0.11.2",
  "pretty_assertions",
  "pty",
  "regex",

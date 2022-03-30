@@ -2189,149 +2189,6 @@ fn lsp_call_hierarchy() {
 }
 
 #[test]
-fn lsp_format_mbc() {
-  let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(
-    maybe_res,
-    Some(json!(load_fixture("formatting_mbc_response.json")))
-  );
-  shutdown(&mut client);
-}
-
-#[test]
-fn lsp_format_exclude_with_config() {
-  let temp_dir = TempDir::new().unwrap();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_fmt_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
-  }
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  let file_uri =
-    ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts"))
-      .unwrap()
-      .to_string();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": file_uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "function   myFunc(){}"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": file_uri
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
-}
-
-#[test]
-fn lsp_format_exclude_default_config() {
-  let temp_dir = TempDir::new().unwrap();
-  let workspace_root = temp_dir.path().canonicalize().unwrap();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
-
-  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  let file_uri =
-    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
-      .unwrap()
-      .to_string();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": file_uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "function   myFunc(){}"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": file_uri
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
-}
-
-#[test]
 fn lsp_large_doc_changes() {
   let mut client = init("initialize_params.json");
   did_open(&mut client, load_fixture("did_open_params_large.json"));
@@ -4430,6 +4287,216 @@ fn lsp_performance() {
   } else {
     panic!("unexpected result");
   }
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_no_changes() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console;\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  client.assert_no_notification("window/showMessage");
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_error() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console test test\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_mbc() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!(load_fixture("formatting_mbc_response.json")))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_exclude_with_config() {
+  let temp_dir = TempDir::new().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_fmt_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let file_uri =
+    ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts"))
+      .unwrap()
+      .to_string();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "function   myFunc(){}"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": file_uri
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_exclude_default_config() {
+  let temp_dir = TempDir::new().unwrap();
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let file_uri =
+    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
+      .unwrap()
+      .to_string();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "function   myFunc(){}"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": file_uri
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
   shutdown(&mut client);
 }
 
