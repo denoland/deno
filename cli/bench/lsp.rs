@@ -44,7 +44,7 @@ struct FixtureMessage {
 /// the end of the document and does a level of hovering and gets quick fix
 /// code actions.
 fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
@@ -125,7 +125,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, maybe_err) =
@@ -189,7 +189,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, maybe_err) =
@@ -285,7 +285,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
 
 /// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, response_error) =

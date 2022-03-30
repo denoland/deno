@@ -27,6 +27,7 @@ mod refactor;
 mod registries;
 mod repl;
 mod semantic_tokens;
+mod testing;
 mod text;
 mod tsc;
 mod urls;

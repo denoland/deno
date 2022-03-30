@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::flags::InstallFlags;
+use crate::flags::TypecheckMode;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -306,10 +306,12 @@ fn resolve_shim_data(
 
   // we should avoid a default branch here to ensure we continue to cover any
   // changes to this flag.
-  match flags.check {
-    CheckFlag::All => (),
-    CheckFlag::None => executable_args.push("--no-check".to_string()),
-    CheckFlag::Local => executable_args.push("--no-check=remote".to_string()),
+  match flags.typecheck_mode {
+    TypecheckMode::All => (),
+    TypecheckMode::None => executable_args.push("--no-check".to_string()),
+    TypecheckMode::Local => {
+      executable_args.push("--no-check=remote".to_string())
+    }
   }
 
   if flags.unstable {
@@ -584,7 +586,7 @@ mod tests {
       &Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        check: CheckFlag::None,
+        typecheck_mode: TypecheckMode::None,
         log_level: Some(Level::Error),
         ..Flags::default()
       },

@@ -163,6 +163,7 @@ pub fn server_capabilities(
     moniker_provider: None,
     experimental: Some(json!({
       "denoConfigTasks": true,
+      "testingApi":true,
     })),
   }
 }

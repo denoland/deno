@@ -43,7 +43,6 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
-use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -59,6 +58,7 @@ use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
+use crate::flags::TypecheckMode;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::flags::VendorFlags;
@@ -677,10 +677,14 @@ async fn create_graph_and_maybe_check(
     .as_ref()
     .map(|cf| cf.get_check_js())
     .unwrap_or(false);
-  graph_valid(&graph, ps.flags.check != CheckFlag::None, check_js)?;
+  graph_valid(
+    &graph,
+    ps.flags.typecheck_mode != TypecheckMode::None,
+    check_js,
+  )?;
   graph_lock_or_exit(&graph);
 
-  if ps.flags.check != CheckFlag::None {
+  if ps.flags.typecheck_mode != TypecheckMode::None {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -704,7 +708,7 @@ async fn create_graph_and_maybe_check(
       Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
-        check: ps.flags.check.clone(),
+        typecheck_mode: ps.flags.typecheck_mode.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -735,7 +739,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.check == CheckFlag::None {
+  if flags.typecheck_mode == TypecheckMode::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -1004,7 +1008,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .as_ref()
         .map(|cf| cf.get_check_js())
         .unwrap_or(false);
-      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None, check_js)?;
+      graph_valid(
+        &graph,
+        ps.flags.typecheck_mode != flags::TypecheckMode::None,
+        check_js,
+      )?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph

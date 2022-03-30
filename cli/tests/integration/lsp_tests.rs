@@ -38,7 +38,7 @@ fn load_fixture_str(path: &str) -> String {
 
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", load_fixture(init_path))
     .unwrap();
@@ -247,7 +247,7 @@ fn lsp_init_tsconfig() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -290,7 +290,7 @@ fn lsp_tsconfig_types() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -350,7 +350,7 @@ fn lsp_triple_slash_types() {
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -397,7 +397,7 @@ fn lsp_import_map() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -516,7 +516,7 @@ fn lsp_import_map_config_file() {
   .unwrap();
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -599,7 +599,7 @@ fn lsp_deno_task() {
   params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -725,7 +725,7 @@ fn lsp_import_map_import_completions() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -1085,7 +1085,7 @@ fn lsp_workspace_enable_paths() {
   }]);
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -2240,7 +2240,7 @@ fn lsp_format_exclude_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -2292,7 +2292,7 @@ fn lsp_format_exclude_default_config() {
   params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -3824,7 +3824,7 @@ fn lsp_cache_location() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -3945,7 +3945,7 @@ fn lsp_tls_cert() {
   params.root_uri = Some(Url::from_file_path(testdata_path()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -4426,7 +4426,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert_eq!(res.averages.len(), 13);
+    assert_eq!(res.averages.len(), 14);
   } else {
     panic!("unexpected result");
   }
@@ -4622,7 +4622,7 @@ fn lsp_format_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5101,7 +5101,7 @@ fn lsp_lint_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5134,7 +5134,7 @@ fn lsp_lint_exclude_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5234,5 +5234,232 @@ export function B() {
       }
     }))
   );
+  shutdown(&mut client);
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct TestData {
+  id: String,
+  label: String,
+  steps: Option<Vec<TestData>>,
+  range: Option<lsp::Range>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum TestModuleNotificationKind {
+  Insert,
+  Replace,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestModuleNotificationParams {
+  text_document: lsp::TextDocumentIdentifier,
+  kind: TestModuleNotificationKind,
+  label: String,
+  tests: Vec<TestData>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EnqueuedTestModule {
+  text_document: lsp::TextDocumentIdentifier,
+  ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestRunResponseParams {
+  enqueued: Vec<EnqueuedTestModule>,
+}
+
+#[test]
+fn lsp_testing_api() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().unwrap();
+
+  let root_specifier =
+    ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
+
+  let module_path = temp_dir.path().join("./test.ts");
+  let specifier = ModuleSpecifier::from_file_path(&module_path).unwrap();
+  let contents = r#"
+Deno.test({
+  name: "test a",
+  fn() {
+    console.log("test a");
+  }
+});
+"#;
+  fs::write(&module_path, &contents).unwrap();
+  fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
+
+  params.root_uri = Some(root_specifier);
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": specifier,
+          "languageId": "typescript",
+          "version": 1,
+          "text": contents,
+        }
+      }),
+    )
+    .unwrap();
+
+  handle_configuration_request(
+    &mut client,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "test": true
+      }
+    }]),
+  );
+
+  for _ in 0..4 {
+    let result = client.read_notification::<Value>();
+    assert!(result.is_ok());
+    let (method, notification) = result.unwrap();
+    if method.as_str() == "deno/testModule" {
+      let params: TestModuleNotificationParams =
+        serde_json::from_value(notification.unwrap()).unwrap();
+      assert_eq!(params.text_document.uri, specifier);
+      assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+      assert_eq!(params.label, "test.ts");
+      assert_eq!(params.tests.len(), 1);
+      let test = &params.tests[0];
+      assert_eq!(test.label, "test a");
+      assert!(test.steps.is_none());
+      assert_eq!(
+        test.range,
+        Some(lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 5,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 9,
+          }
+        })
+      );
+    }
+  }
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, TestRunResponseParams>(
+      "deno/testRun",
+      json!({
+        "id": 1,
+        "kind": "run",
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let res = maybe_res.unwrap();
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(res.enqueued[0].text_document.uri, specifier);
+  assert_eq!(res.enqueued[0].ids.len(), 1);
+  let id = res.enqueued[0].ids[0].clone();
+
+  let res = client.read_notification::<Value>();
+  assert!(res.is_ok());
+  let (method, notification) = res.unwrap();
+  assert_eq!(method, "deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+        },
+      }
+    }))
+  );
+
+  let res = client.read_notification::<Value>();
+  assert!(res.is_ok());
+  let (method, notification) = res.unwrap();
+  assert_eq!(method, "deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "output",
+        "value": "test a\r\n",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+        },
+      }
+    }))
+  );
+
+  let res = client.read_notification::<Value>();
+  assert!(res.is_ok());
+  let (method, notification) = res.unwrap();
+  assert_eq!(method, "deno/testRunProgress");
+  let notification = notification.unwrap();
+  let obj = notification.as_object().unwrap();
+  assert_eq!(obj.get("id"), Some(&json!(1)));
+  let message = obj.get("message").unwrap().as_object().unwrap();
+  match message.get("type").and_then(|v| v.as_str()) {
+    Some("passed") => {
+      assert_eq!(
+        message.get("test"),
+        Some(&json!({
+          "textDocument": {
+            "uri": specifier
+          },
+          "id": id,
+        }))
+      );
+      assert!(message.contains_key("duration"));
+
+      let res = client.read_notification::<Value>();
+      assert!(res.is_ok());
+      let (method, notification) = res.unwrap();
+      assert_eq!(method, "deno/testRunProgress");
+      assert_eq!(
+        notification,
+        Some(json!({
+          "id": 1,
+          "message": {
+            "type": "end",
+          }
+        }))
+      );
+    }
+    // sometimes on windows, the messages come out of order, but it actually is
+    // working, so if we do get the end before the passed, we will simply let
+    // the test pass
+    Some("end") => (),
+    _ => panic!("unexpected message {}", json!(notification)),
+  }
+
   shutdown(&mut client);
 }
