@@ -9,13 +9,14 @@ try {
 
 // Skip these tests on Linux and Mac CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-const isMacOrLinuxCi = (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI;
+const isLinuxOrMacCI =
+  (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI;
 // Skip these tests in WSL because it doesn't have good GPU support.
 const isWsl = await checkIsWsl();
 
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: isWsl || isMacOrLinuxCi,
+  ignore: isWsl || isLinuxOrMacCI,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -105,7 +106,7 @@ Deno.test({
 
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: isWsl || isMacOrLinuxCi,
+  ignore: isWsl || isLinuxOrMacCI,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
