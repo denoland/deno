@@ -5280,7 +5280,7 @@ struct TestRunResponseParams {
 fn lsp_testing_api() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
 
   let root_specifier =
     ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
