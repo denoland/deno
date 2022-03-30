@@ -2614,6 +2614,28 @@ itest!(unstable_ffi_15 {
   exit_code: 70,
 });
 
+itest!(event_listener_error {
+  args: "run --quiet event_listener_error.ts",
+  output: "event_listener_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(event_listener_error_handled {
+  args: "run --quiet event_listener_error_handled.ts",
+  output: "event_listener_error_handled.ts.out",
+});
+
+itest!(set_timeout_error {
+  args: "run --quiet set_timeout_error.ts",
+  output: "set_timeout_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(set_timeout_error_handled {
+  args: "run --quiet set_timeout_error_handled.ts",
+  output: "set_timeout_error_handled.ts.out",
+});
+
 itest!(report_error {
   args: "run --quiet report_error.ts",
   output: "report_error.ts.out",

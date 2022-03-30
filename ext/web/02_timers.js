@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const __bootstrap = window.__bootstrap;
   const core = window.Deno.core;
   const {
     ArrayPrototypePush,
@@ -139,13 +140,16 @@
 
         // 2.
         // 3.
-        // TODO(@andreubotella): Error handling.
         if (typeof callback === "function") {
-          FunctionPrototypeCall(
-            callback,
-            globalThis,
-            ...new SafeArrayIterator(args),
-          );
+          try {
+            FunctionPrototypeCall(
+              callback,
+              globalThis,
+              ...new SafeArrayIterator(args),
+            );
+          } catch (error) {
+            __bootstrap.reportError.reportException(error);
+          }
         } else {
           // TODO(@andreubotella): eval doesn't seem to have a primordial, but
           // it can be redefined in the global scope.

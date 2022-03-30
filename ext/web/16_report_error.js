@@ -84,6 +84,7 @@
 
   window.__bootstrap.reportError = {
     reportError,
+    reportException,
     setPrintException,
   };
 })(this);

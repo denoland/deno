@@ -7,6 +7,7 @@
 "use strict";
 
 ((window) => {
+  const __bootstrap = window.__bootstrap;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const consoleInternal = window.__bootstrap.console;
@@ -787,7 +788,11 @@
 
     setCurrentTarget(eventImpl, tuple.item);
 
-    innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
+    try {
+      innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
+    } catch (error) {
+      __bootstrap.reportError.reportException(error);
+    }
   }
 
   function normalizeAddEventHandlerOptions(
