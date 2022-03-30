@@ -20,7 +20,7 @@ pub use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.132.0/";
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.132.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -241,7 +241,7 @@ pub async fn translate_cjs_to_esm(
       .replace('\'', "\\\'")
       .replace('\"', "\\\"")
   ));
-  source.push("export default mod".to_string());
+  source.push("export default mod;".to_string());
 
   for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
     // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,

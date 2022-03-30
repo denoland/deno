@@ -89,9 +89,9 @@ jobs:
 
       - name: Install Deno
         if: matrix.job == 'lint'
-        run: |
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.13.2
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.19.3
 
       - name: Install Python
         uses: actions/setup-python@v1
