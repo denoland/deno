@@ -7,7 +7,7 @@ try {
   isCI = true;
 }
 
-// Skip these tests on Linux and Mac CI, because the vulkan emulator is not good enough
+// Skip these tests on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
 const isLinuxOrMacCI =
   (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI;
