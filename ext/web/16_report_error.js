@@ -4,19 +4,14 @@
 ((window) => {
   const core = window.Deno.core;
   const { ErrorEvent } = window;
-  const { Error, StringPrototypeStartsWith, TypeError } =
-    window.__bootstrap.primordials;
+  const {
+    Error,
+    PromisePrototypeThen,
+    PromiseResolve,
+    StringPrototypeStartsWith,
+    TypeError,
+  } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
-
-  let errorReported = false;
-
-  function handleReportExceptionMacrotask() {
-    if (errorReported) {
-      errorReported = false;
-      throw new Error(`Unhandled error event.`);
-    }
-    return true;
-  }
 
   let printException = undefined;
 
@@ -63,12 +58,12 @@
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
       printException?.(jsError);
-      // TODO(nayeemrmn): We need to throw an uncatchable error here that leads
-      // to termination of the runtime. We do this by scheduling one to be
-      // thrown in a new macrotask using this `errorReported` flag. Consider
-      // a new `JsRuntime` binding which immediately fails on an uncatchable
-      // error. May not be worth it.
-      errorReported = true;
+      // TODO(nayeemrmn): Use `queueMicrotask()` instead once it's fixed
+      // (https://github.com/denoland/deno/issues/14158). Largely because the
+      // `(in promise)` isn't desired.
+      PromisePrototypeThen(PromiseResolve(), () => {
+        throw new Error(`Unhandled error event.`);
+      });
     }
     reportExceptionStackedCalls--;
   }
@@ -88,7 +83,6 @@
   }
 
   window.__bootstrap.reportError = {
-    handleReportExceptionMacrotask,
     reportError,
     setPrintException,
   };

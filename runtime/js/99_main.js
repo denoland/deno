@@ -213,7 +213,6 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    core.setMacrotaskCallback(reportError.handleReportExceptionMacrotask);
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
     version.setVersions(
