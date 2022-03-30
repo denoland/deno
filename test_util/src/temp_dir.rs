@@ -30,6 +30,12 @@ impl Drop for TempDirInner {
   }
 }
 
+impl Default for TempDir {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl TempDir {
   pub fn new() -> Self {
     Self::new_inner(&std::env::temp_dir(), None)

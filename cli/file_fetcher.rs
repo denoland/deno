@@ -760,7 +760,7 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<TempDir>,
   ) -> (FileFetcher, TempDir, BlobStore) {
-    let temp_dir = maybe_temp_dir.unwrap_or_else(|| TempDir::new());
+    let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
