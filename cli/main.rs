@@ -593,6 +593,16 @@ async fn check_command(
 ) -> Result<i32, AnyError> {
   // NOTE(bartlomieju): currently just an alias for `deno cache`, but
   // it will be changed in Deno 2.0.
+  let mut flags = flags.clone();
+
+  // In `deno check` the default mode is to check only
+  // local modules, with `--all` we check remote modules too.
+  flags.type_check_mode = if check_flags.all {
+    TypeCheckMode::Local
+  } else {
+    TypeCheckMode::All
+  };
+
   cache_command(
     flags,
     CacheFlags {

@@ -55,6 +55,7 @@ pub struct CacheFlags {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct CheckFlags {
   pub files: Vec<String>,
+  pub all: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -722,6 +723,10 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn check_subcommand<'a>() -> Command<'a> {
   compile_args_without_no_check(Command::new("check"))
+  .arg(
+    Arg::new("all")
+      .long_help("Type-check all modules, including remote")
+  )
     .arg(
       Arg::new("file")
         .takes_value(true)
@@ -2141,7 +2146,8 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+  let all = matches.is_present("all");
+  flags.subcommand = DenoSubcommand::Check(CheckFlags { files, all });
 }
 
 fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
