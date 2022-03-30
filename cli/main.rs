@@ -598,9 +598,9 @@ async fn check_command(
   // In `deno check` the default mode is to check only
   // local modules, with `--all` we check remote modules too.
   flags.type_check_mode = if check_flags.all {
-    TypeCheckMode::Local
-  } else {
     TypeCheckMode::All
+  } else {
+    TypeCheckMode::Local
   };
 
   cache_command(
