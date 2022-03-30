@@ -9,10 +9,10 @@
 
   let errorReported = false;
 
-  function handleReportErrorMacrotask() {
+  function handleReportExceptionMacrotask() {
     if (errorReported) {
       errorReported = false;
-      throw new Error("Unhandled error event from 'reportError()'.");
+      throw new Error(`Unhandled error event.`);
     }
     return true;
   }
@@ -23,16 +23,11 @@
     printException = fn;
   }
 
-  function checkThis(thisArg) {
-    if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
-      throw new TypeError("Illegal invocation");
-    }
-  }
+  let reportExceptionStackedCalls = 0;
 
-  function reportError(error) {
-    checkThis(this);
-    const prefix = "Failed to call 'reportError'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+  // https://html.spec.whatwg.org/#report-the-exception
+  function reportException(error) {
+    reportExceptionStackedCalls++;
     const jsError = core.destructureError(error);
     const message = jsError.message;
     let filename = "";
@@ -58,19 +53,35 @@
       colno,
       error,
     });
-    if (window.dispatchEvent(event)) {
+    // Avoid recursing `reportException()` via error handlers more than once.
+    if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
       printException?.(jsError);
       // TODO(nayeemrmn): We need to throw an uncatchable error here that leads
-      // to termination of the current worker. We do this by scheduling one to
-      // be thrown in a new macrotask using this `errorReported` flag. Consider
+      // to termination of the runtime. We do this by scheduling one to be
+      // thrown in a new macrotask using this `errorReported` flag. Consider
       // a new `JsRuntime` binding which immediately fails on an uncatchable
       // error. May not be worth it.
       errorReported = true;
     }
+    reportExceptionStackedCalls--;
+  }
+
+  function checkThis(thisArg) {
+    if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
+      throw new TypeError("Illegal invocation");
+    }
+  }
+
+  // https://html.spec.whatwg.org/#dom-reporterror
+  function reportError(error) {
+    checkThis(this);
+    const prefix = "Failed to call 'reportError'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    reportException(error);
   }
 
   window.__bootstrap.reportError = {
-    handleReportErrorMacrotask,
+    handleReportExceptionMacrotask,
     reportError,
     setPrintException,
   };

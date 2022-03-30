@@ -4,5 +4,5 @@ reportError(new Error("foo"));
             ^
     at [WILDCARD]/report_error.ts:2:13
 2
-error: Uncaught Error: Unhandled error event from 'reportError()'.
-    at handleReportErrorMacrotask (deno:ext/web/16_report_error.js:[WILDCARD])
+error: Uncaught Error: Unhandled error event.
+    at handleReportExceptionMacrotask (deno:ext/web/16_report_error.js:[WILDCARD])
