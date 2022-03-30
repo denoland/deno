@@ -305,7 +305,7 @@
         return true;
       } else {
       }
-      // TODO: complete implementation
+      // TODO: figure out IdentifierName (https://tc39.es/ecma262/#prod-IdentifierName)
     } else if (ArrayIsArray(key)) {
       return key.every(isValidKeyPath);
     } else {
@@ -656,7 +656,7 @@
     connection[_upgradeTransaction] = transaction;
     transaction[_state] = "inactive";
     // TODO: 6.: start transaction (call op_indexeddb_transaction_create)
-    const oldVersion = connection[_db].version;
+    const oldVersion = connection[_version];
     // TODO: 8.: change db version
     request[_processedDeferred].resolve();
 
@@ -879,18 +879,6 @@
   webidl.configurePrototype(IDBFactory);
   const IDBFactoryPrototype = IDBFactory.prototype;
 
-  // Ref: https://w3c.github.io/IndexedDB/#database-connection
-  class Connection {
-    /** @type {IDBDatabase} */
-    database;
-    /** @type {number} */
-    version;
-    /** @type {boolean} */
-    closePending = false;
-
-    objectStoreSet; // TODO
-  }
-
   class Database {
     /** @type {number} */
     version;
@@ -909,6 +897,7 @@
   const _closePending = Symbol("[[closePending]]");
   const _objectStoreSet = Symbol("[[objectStoreSet]]");
   const _close = Symbol("[[close]]");
+  const _transactions = Symbol("[[transactions]]");
   // Ref: https://w3c.github.io/IndexedDB/#idbdatabase
   // TODO: finalizationRegistry: If an IDBDatabase object is garbage collected, the associated connection must be closed.
   class IDBDatabase extends EventTarget {
@@ -920,6 +909,8 @@
     [_db];
     /** @type {boolean} */
     [_closePending] = false;
+    /** @type {IDBTransaction[]} */
+    [_transactions] = [];
 
     /** @type {Map<string, Store>} */
     [_objectStoreSet]; // TODO: update on upgrade transaction
@@ -994,6 +985,7 @@
       transaction[_mode] = mode;
       transaction[_durabilityHint] = options.durability;
       // TODO: scope: get all stores and filter keep only ones in scope & assign to transaction[_scope]
+      this[_transactions].push(transaction);
       return transaction;
     }
 
@@ -1010,9 +1002,13 @@
     [_close](forced) {
       this[_closePending] = true;
       if (forced) {
-        // TODO: 2: somehow get all transactions
+        for (const transaction of this[_transactions]) {
+          abortTransaction(transaction, new DOMException("", "AbortError"));
+        }
       }
-      // TODO: 3.: somehow get all transactions
+      for (const transaction of this[_transactions]) {
+        // TODO: 3.: wait for all transactions to complete. this needs to be sync, but the requested action is inherently async
+      }
       if (forced) {
         this.dispatchEvent(new Event("close"));
       }
@@ -1073,7 +1069,7 @@
       store.database = this;
       store.keyPath = keypath;
       const objectStore = webidl.createBranded(IDBObjectStore);
-      objectStore[_name] = name; // TODO: objectstore name is inconsistent throughout the spec
+      objectStore[_name] = name;
       objectStore[_store] = store;
       objectStore[_transaction] = this[_upgradeTransaction];
       return objectStore;
@@ -1102,7 +1098,7 @@
         throw new DOMException("", "NotFoundError");
       }
       MapPrototypeDelete(this[_objectStoreSet], name);
-
+      core.opSync("op_indexeddb_database_delete_object_store", this[_name], store[_name]);
       // TODO 6.: ops
     }
   }

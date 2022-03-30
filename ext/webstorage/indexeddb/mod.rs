@@ -1,8 +1,10 @@
+use std::borrow::{Cow};
+use std::cell::RefCell;
 use super::DomExceptionNotSupportedError;
 use super::OriginStorageDir;
 use crate::{DomExceptionConstraintError, DomExceptionInvalidStateError};
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::{op, Resource};
 use deno_core::serde_json;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -17,6 +19,7 @@ use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cmp::Ordering;
+use std::rc::Rc;
 
 #[derive(Clone)]
 struct Database {
@@ -24,27 +27,32 @@ struct Database {
   version: u64,
 }
 
-pub struct IndexedDbManager(Connection);
+pub struct IndexedDb(Rc<RefCell<Connection>>, Option<rusqlite::Transaction<'static>>);
+
+impl Resource for IndexedDb {
+  fn name(&self) -> Cow<str> {
+    "indexedDb".into()
+  }
+}
 
 #[op]
 pub fn op_indexeddb_open(state: &mut OpState) -> Result<(), AnyError> {
-  if state.try_borrow::<IndexedDbManager>().is_none() {
-    let path = state.try_borrow::<OriginStorageDir>().ok_or_else(|| {
-      DomExceptionNotSupportedError::new(
-        "IndexedDB is not supported in this context.",
-      )
-    })?;
-    std::fs::create_dir_all(&path.0)?;
-    let conn = Connection::open(path.0.join("indexeddb"))?;
-    let initial_pragmas = "
+  let path = state.try_borrow::<OriginStorageDir>().ok_or_else(|| {
+    DomExceptionNotSupportedError::new(
+      "IndexedDB is not supported in this context.",
+    )
+  })?;
+  std::fs::create_dir_all(&path.0)?;
+  let conn = Connection::open(path.0.join("indexeddb"))?;
+  let initial_pragmas = "
     -- enable write-ahead-logging mode
     PRAGMA recursive_triggers = ON;
     PRAGMA secure_delete = OFF;
     PRAGMA foreign_keys = ON;
     ";
-    conn.execute_batch(initial_pragmas)?;
+  conn.execute_batch(initial_pragmas)?;
 
-    let create_statements = r#"
+  let create_statements = r#"
     CREATE TABLE IF NOT EXISTS database (
       name TEXT PRIMARY KEY,
       version INTEGER NOT NULL DEFAULT 0
@@ -105,24 +113,22 @@ pub fn op_indexeddb_open(state: &mut OpState) -> Result<(), AnyError> {
         REFERENCES record(object_store_id, key)
     ) WITHOUT ROWID;
     "#;
-    conn.execute_batch(create_statements)?;
+  conn.execute_batch(create_statements)?;
 
-    conn.set_prepared_statement_cache_capacity(128);
-    state.put(IndexedDbManager(conn));
-  }
+  conn.set_prepared_statement_cache_capacity(128);
+  state.resource_table.add(IndexedDb(Rc::new(RefCell::new(conn)), None));
 
   Ok(())
 }
-
-pub struct Transaction(rusqlite::Transaction<'static>);
 
 #[op]
 pub fn op_indexeddb_transaction_create(
   state: &mut OpState,
 ) -> Result<ResourceId, AnyError> {
-  let idbmanager = state.borrow_mut::<IndexedDbManager>();
-  let transaction = idbmanager.0.transaction()?;
-  let rid = state.resource_table.add(Transaction(transaction));
+  let idbmanager = state.borrow::<IndexedDbManager>();
+  let mut conn = idbmanager.0.borrow_mut();
+  let transaction = conn.transaction()?;
+  let rid = state.resource_table.add(IndexedDb(idbmanager.0.clone(), transaction));
   Ok(rid)
 }
 
@@ -131,8 +137,8 @@ pub fn op_indexeddb_transaction_commit(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let rid = state.resource_table.take::<Transaction>(rid)?;
-  rid.0.commit()?;
+  let idb = Rc::try_unwrap(state.resource_table.take::<IndexedDb>(rid)?).unwrap();
+  idb.1.commit()?;
   Ok(())
 }
 
@@ -141,8 +147,8 @@ pub fn op_indexeddb_transaction_abort(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let rid = state.resource_table.take::<Transaction>(rid)?;
-  rid.0.rollback()?;
+  let idb = Rc::try_unwrap(state.resource_table.take::<IndexedDb>(rid)?).unwrap();
+  idb.1.rollback()?;
   Ok(())
 }
 
@@ -228,6 +234,25 @@ pub fn op_indexeddb_database_create_object_store(
     // TODO: unique_index
     database_name,
   ])?;
+
+  Ok(())
+}
+
+// Ref: https://w3c.github.io/IndexedDB/#dom-idbdatabase-deleteobjectstore
+#[op]
+pub fn op_indexeddb_database_delete_object_store(
+  state: &mut OpState,
+  database_name: String,
+  name: String,
+) -> Result<(), AnyError> {
+  let conn = &state.borrow::<IndexedDbManager>().0;
+
+  let mut stmt: rusqlite::CachedStatement = conn.prepare_cached(
+    "DELETE FROM object_store WHERE name = ? AND database_name = ?",
+  )?;
+  stmt.execute(params![name, database_name])?;
+
+  // TODO: delete indexes & records. maybe use ON DELETE CASCADE?
 
   Ok(())
 }
@@ -407,7 +432,7 @@ struct Index {
   object_store_id: u64,
   database_name: String,
   name: String,
-  key_path: todo!(),
+  key_path: serde_json::Value,
   unique: bool,
   multi_entry: bool,
 }
@@ -786,7 +811,7 @@ pub fn op_indexeddb_object_store_count_records(
       row
         .map(|(key, val)| {
           if range.contains(&key) {
-            Some(val.into())
+            Some(())
           } else {
             None
           }
@@ -895,7 +920,7 @@ pub fn op_indexeddb_index_retrieve_multiple_values(
 
   todo!();
 
-  Ok(None)
+  Ok(Default::default())
 }
 
 #[derive(Serialize, Clone)]
