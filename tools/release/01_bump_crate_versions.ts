@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git --allow-net --no-check
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { GitLogOutput, path, semver } from "./deps.ts";
@@ -8,8 +8,19 @@ const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
 
+// update the std version used in the code
+await updateStdVersion();
+
 // increment the cli version
-await cliCrate.promptAndIncrement();
+if (Deno.args.some((a) => a === "--patch")) {
+  await cliCrate.increment("patch");
+} else if (Deno.args.some((a) => a === "--minor")) {
+  await cliCrate.increment("minor");
+} else if (Deno.args.some((a) => a === "--major")) {
+  await cliCrate.increment("major");
+} else {
+  await cliCrate.promptAndIncrement();
+}
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {
@@ -17,7 +28,7 @@ for (const crate of workspace.getCliDependencyCrates()) {
 }
 
 // update the lock file
-await workspace.getCliCrate().cargoCheck();
+await workspace.getCliCrate().cargoUpdate("--workspace");
 
 // try to update the Releases.md markdown text
 try {
@@ -99,5 +110,28 @@ async function getGitLog() {
     return new GitLogOutput(
       currentHistory.lines.filter((l) => !lastMinorMessages.has(l.message)),
     );
+  }
+}
+
+async function updateStdVersion() {
+  const newStdVersion = await getLatestStdVersion();
+  const compatFilePath = path.join(cliCrate.folderPath, "compat/mod.rs");
+  const text = Deno.readTextFileSync(compatFilePath);
+  Deno.writeTextFileSync(
+    compatFilePath,
+    text.replace(/std@[0-9]+\.[0-9]+\.[0-9]+/, `std@${newStdVersion}`),
+  );
+}
+
+async function getLatestStdVersion() {
+  const url =
+    "https://raw.githubusercontent.com/denoland/deno_std/main/version.ts";
+  const result = await fetch(url);
+  const text = await result.text();
+  const version = /"([0-9]+\.[0-9]+\.[0-9]+)"/.exec(text);
+  if (version == null) {
+    throw new Error(`Could not find version in text: ${text}`);
+  } else {
+    return version[1];
   }
 }
