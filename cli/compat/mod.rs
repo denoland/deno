@@ -241,7 +241,7 @@ pub async fn translate_cjs_to_esm(
       .replace('\'', "\\\'")
       .replace('\"', "\\\"")
   ));
-  source.push("export default mod".to_string());
+  source.push("export default mod;".to_string());
 
   for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
     // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
