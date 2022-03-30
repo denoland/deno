@@ -341,9 +341,9 @@ fn lsp_tsconfig_bad_config_path() {
 
 #[test]
 fn lsp_triple_slash_types() {
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new();
   let a_dts = load_fixture_str("a.d.ts");
   fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
 
