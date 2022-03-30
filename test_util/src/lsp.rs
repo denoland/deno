@@ -106,8 +106,10 @@ impl LspStdoutReader {
         while let Ok(Some(msg_buf)) = read_message(&mut buf_reader) {
           let msg = LspMessage::from(msg_buf.as_slice());
           let cvar = &messages.1;
-          let mut messages = messages.0.lock();
-          messages.push(msg);
+          {
+            let mut messages = messages.0.lock();
+            messages.push(msg);
+          }
           cvar.notify_all();
         }
       }
