@@ -725,8 +725,9 @@ fn check_subcommand<'a>() -> Command<'a> {
   compile_args_without_no_check(Command::new("check"))
   .arg(
     Arg::new("all")
-      .long_help("Type-check all modules, including remote")
-  )
+      .long("all")
+      .help("Type-check all modules, including remote")
+    )
     .arg(
       Arg::new("file")
         .takes_value(true)
@@ -3628,6 +3629,19 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
+          all: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "check", "--all", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          all: true,
         }),
         ..Flags::default()
       }
