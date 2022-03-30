@@ -4457,6 +4457,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "os_pipe",
+ "parking_lot 0.11.2",
  "pretty_assertions",
  "pty",
  "regex",

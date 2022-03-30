@@ -4396,7 +4396,7 @@ fn lsp_format_mbc() {
 
 #[test]
 fn lsp_format_exclude_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -4451,7 +4451,7 @@ fn lsp_format_exclude_with_config() {
 
 #[test]
 fn lsp_format_exclude_default_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let workspace_root = temp_dir.path().canonicalize().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
