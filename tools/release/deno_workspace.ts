@@ -12,7 +12,10 @@ export class DenoWorkspace {
 
   static async load(): Promise<DenoWorkspace> {
     return new DenoWorkspace(
-      await Repo.load("deno", DenoWorkspace.rootDirPath),
+      await Repo.load({
+        name: "deno",
+        path: DenoWorkspace.rootDirPath,
+      }),
     );
   }
 
