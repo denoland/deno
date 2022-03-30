@@ -47,6 +47,7 @@ use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
 use super::registries::ModuleRegistryOptions;
+use super::testing;
 use super::text;
 use super::tsc;
 use super::tsc::Assets;
@@ -107,14 +108,16 @@ pub struct Inner {
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
-  /// An optional configuration for linter which has been taken from specified config file.
-  pub maybe_lint_config: Option<LintConfig>,
   /// An optional configuration for formatter which has been taken from specified config file.
   maybe_fmt_config: Option<FmtConfig>,
   /// An optional import map which is used to resolve modules.
   pub maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// An optional configuration for linter which has been taken from specified config file.
+  pub maybe_lint_config: Option<LintConfig>,
+  /// A lazily create "server" for handling test run requests.
+  maybe_testing_server: Option<testing::TestServer>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -163,12 +166,13 @@ impl Inner {
       diagnostics_server,
       documents,
       maybe_cache_path: None,
-      maybe_lint_config: None,
-      maybe_fmt_config: None,
       maybe_cache_server: None,
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
+      maybe_lint_config: None,
+      maybe_fmt_config: None,
+      maybe_testing_server: None,
       module_registries,
       module_registries_location,
       performance,
@@ -781,6 +785,15 @@ impl Inner {
     }
     self.config.update_enabled_paths(self.client.clone()).await;
 
+    if self.config.client_capabilities.testing_api {
+      let test_server = testing::TestServer::new(
+        self.client.clone(),
+        self.performance.clone(),
+        self.config.root_uri.clone(),
+      );
+      self.maybe_testing_server = Some(test_server);
+    }
+
     lsp_log!("Server ready.");
   }
 
@@ -835,6 +848,7 @@ impl Inner {
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
           self.send_diagnostics_update();
+          self.send_testing_update();
         }
       }
       Err(err) => error!("{}", err),
@@ -860,6 +874,7 @@ impl Inner {
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
       self.send_diagnostics_update();
+      self.send_testing_update();
     }
     self.performance.measure(mark);
   }
@@ -909,6 +924,7 @@ impl Inner {
     );
 
     self.send_diagnostics_update();
+    self.send_testing_update();
   }
 
   async fn did_change_watched_files(
@@ -954,6 +970,7 @@ impl Inner {
       );
       self.diagnostics_server.invalidate_all();
       self.send_diagnostics_update();
+      self.send_testing_update();
     }
     self.performance.measure(mark);
   }
@@ -2143,6 +2160,29 @@ impl Inner {
         self.reload_import_registries().await
       }
       lsp_custom::TASK_REQUEST => self.get_tasks(),
+      testing::TEST_RUN_REQUEST => {
+        if let Some(testing_server) = &self.maybe_testing_server {
+          match params.map(serde_json::from_value) {
+            Some(Ok(params)) => testing_server
+              .run_request(params, self.config.get_workspace_settings()),
+            Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+            None => Err(LspError::invalid_params("Missing parameters")),
+          }
+        } else {
+          Err(LspError::invalid_request())
+        }
+      }
+      testing::TEST_RUN_CANCEL_REQUEST => {
+        if let Some(testing_server) = &self.maybe_testing_server {
+          match params.map(serde_json::from_value) {
+            Some(Ok(params)) => testing_server.run_cancel_request(params),
+            Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+            None => Err(LspError::invalid_params("Missing parameters")),
+          }
+        } else {
+          Err(LspError::invalid_request())
+        }
+      }
       lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
         match params.map(serde_json::from_value) {
           Some(Ok(params)) => Ok(Some(
@@ -2389,6 +2429,16 @@ impl Inner {
       error!("Cannot update diagnostics: {}", err);
     }
   }
+
+  /// Send a message to the testing server to look for any changes in tests and
+  /// update the client.
+  fn send_testing_update(&self) {
+    if let Some(testing_server) = &self.maybe_testing_server {
+      if let Err(err) = testing_server.update(self.snapshot()) {
+        error!("Cannot update testing server: {}", err);
+      }
+    }
+  }
 }
 
 #[lspower::async_trait]
@@ -2432,6 +2482,7 @@ impl lspower::LanguageServer for LanguageServer {
         // don't send diagnostics yet if we don't have the specifier settings
         if has_specifier_settings {
           inner.send_diagnostics_update();
+          inner.send_testing_update();
         }
       }
       (client, uri, specifier, has_specifier_settings)
@@ -2464,6 +2515,7 @@ impl lspower::LanguageServer for LanguageServer {
           .unwrap_or(false)
         {
           inner.send_diagnostics_update();
+          inner.send_testing_update();
         }
       });
     }
@@ -2823,6 +2875,7 @@ impl Inner {
     // invalidate some diagnostics
     self.diagnostics_server.invalidate(&[referrer]);
     self.send_diagnostics_update();
+    self.send_testing_update();
 
     self.performance.measure(mark);
     Ok(Some(json!(true)))

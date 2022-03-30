@@ -36,6 +36,7 @@ use lspower::LanguageServer;
 use super::client::Client;
 use super::config::CompletionSettings;
 use super::config::ImportCompletionSettings;
+use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
 #[derive(Debug)]
@@ -293,6 +294,10 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         auto_discover: false,
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
+    },
+    testing: TestingSettings {
+      args: vec![],
+      enable: false,
     },
   }
 }
