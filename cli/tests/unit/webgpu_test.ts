@@ -217,6 +217,7 @@ async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 
   async function hasMicrosoftProcVersion() {
+    // https://github.com/microsoft/WSL/issues/423#issuecomment-221627364
     try {
       const procVersion = await Deno.readTextFile("/proc/version");
       return /microsoft/i.test(procVersion);
