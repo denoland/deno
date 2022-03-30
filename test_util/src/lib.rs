@@ -369,9 +369,7 @@ async fn get_tls_config(
           ),
         )
         .with_single_cert(certs, PrivateKey(key))
-        .map_err(|e| {
-          anyhow!("Error setting cert: {:?}", e);
-        })
+        .map_err(|e| anyhow!("Error setting cert: {:?}", e))
         .unwrap();
 
       match http_versions {

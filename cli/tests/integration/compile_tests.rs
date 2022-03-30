@@ -36,36 +36,6 @@ fn compile() {
   assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
 }
 
-// this is ignored, because when building on a release build, the test attempts
-// to download a binary of a yet to be published version.
-// TODO(@kitsonk) https://github.com/denoland/deno/issues/14103
-#[ignore]
-#[test]
-#[cfg(windows)]
-// https://github.com/denoland/deno/issues/9667
-fn compile_windows_ext() {
-  let dir = TempDir::new().unwrap();
-  let exe = dir.path().join("welcome_9667");
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("--target")
-    .arg("x86_64-unknown-linux-gnu")
-    .arg("./test_util/std/examples/welcome.ts")
-    // TODO(kt3k): Prints command output to the test log for debugging purpose.
-    // Uncomment this line when this test become stable.
-    //.stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert!(std::path::Path::new(&exe).exists());
-}
-
 #[test]
 fn standalone_args() {
   let dir = TempDir::new().unwrap();

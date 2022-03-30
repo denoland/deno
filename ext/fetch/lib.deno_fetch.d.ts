@@ -445,6 +445,6 @@ declare function fetch(
  * `Response` to that `Request`, whether it is successful or not.
  */
 declare function fetch(
-  input: URL,
+  input: URL | Request | string,
   init?: RequestInit,
 ): Promise<Response>;

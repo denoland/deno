@@ -45,7 +45,10 @@ impl Lockfile {
     let j = json!(&self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
 
-    let format_s = format_json(&s, &Default::default()).unwrap_or(s);
+    let format_s = format_json(&s, &Default::default())
+      .ok()
+      .flatten()
+      .unwrap_or(s);
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)

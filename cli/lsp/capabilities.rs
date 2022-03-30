@@ -5,32 +5,8 @@
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
-use lspower::lsp::CallHierarchyServerCapability;
-use lspower::lsp::ClientCapabilities;
-use lspower::lsp::CodeActionKind;
-use lspower::lsp::CodeActionOptions;
-use lspower::lsp::CodeActionProviderCapability;
-use lspower::lsp::CodeLensOptions;
-use lspower::lsp::CompletionOptions;
-use lspower::lsp::DocumentSymbolOptions;
-use lspower::lsp::FoldingRangeProviderCapability;
-use lspower::lsp::HoverProviderCapability;
-use lspower::lsp::ImplementationProviderCapability;
-use lspower::lsp::OneOf;
-use lspower::lsp::SaveOptions;
-use lspower::lsp::SelectionRangeProviderCapability;
-use lspower::lsp::SemanticTokensFullOptions;
-use lspower::lsp::SemanticTokensOptions;
-use lspower::lsp::SemanticTokensServerCapabilities;
-use lspower::lsp::ServerCapabilities;
-use lspower::lsp::SignatureHelpOptions;
-use lspower::lsp::TextDocumentSyncCapability;
-use lspower::lsp::TextDocumentSyncKind;
-use lspower::lsp::TextDocumentSyncOptions;
-use lspower::lsp::TypeDefinitionProviderCapability;
-use lspower::lsp::WorkDoneProgressOptions;
-use lspower::lsp::WorkspaceFoldersServerCapabilities;
-use lspower::lsp::WorkspaceServerCapabilities;
+use deno_core::serde_json::json;
+use lspower::lsp::*;
 
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::semantic_tokens::get_legend;
@@ -158,8 +134,11 @@ pub fn server_capabilities(
       }),
       file_operations: None,
     }),
-    experimental: None,
     linked_editing_range_provider: None,
     moniker_provider: None,
+    experimental: Some(json!({
+      "denoConfigTasks": true,
+      "testingApi":true,
+    })),
   }
 }
