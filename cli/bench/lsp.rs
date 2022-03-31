@@ -6,7 +6,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
+use tower_lsp::lsp_types as lsp;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
