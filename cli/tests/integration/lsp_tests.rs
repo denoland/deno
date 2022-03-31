@@ -8,7 +8,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 use std::fs;
@@ -17,6 +16,7 @@ use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TempDir;
+use tower_lsp::lsp_types as lsp;
 
 fn load_fixture(path: &str) -> Value {
   load_fixture_as(path)
