@@ -16,6 +16,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_runtime::web_worker::WebWorkerInternalHandle;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -90,6 +91,14 @@ fn op_print_exception(
   let ps = state.borrow::<ProcState>();
   let source_mapped_error = apply_source_map(&js_error, ps.clone());
   let pretty_js_error = PrettyJsError::create(source_mapped_error);
-  eprintln!("{}: {:?}", colors::red_bold("error"), pretty_js_error);
+  let mut error_string = pretty_js_error.to_string();
+  if let Some(handle) = state.try_borrow::<WebWorkerInternalHandle>() {
+    error_string = format!(
+      "Uncaught (in worker \"{}\") {}",
+      handle.name,
+      error_string.trim_start_matches("Uncaught ")
+    );
+  }
+  eprintln!("{}: {}", colors::red_bold("error"), error_string);
   Ok(())
 }

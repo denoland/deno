@@ -119,6 +119,7 @@ pub struct WebWorkerInternalHandle {
   has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
+  pub name: String,
   pub worker_type: WebWorkerType,
 }
 
@@ -264,6 +265,7 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
+  name: String,
   worker_type: WebWorkerType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
@@ -272,13 +274,14 @@ fn create_handles(
   let has_terminated = Arc::new(AtomicBool::new(false));
   let terminate_waker = Arc::new(AtomicWaker::new());
   let internal_handle = WebWorkerInternalHandle {
-    sender: ctrl_tx,
+    name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
     has_terminated: has_terminated.clone(),
     terminate_waker: terminate_waker.clone(),
     isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
+    sender: ctrl_tx,
     worker_type,
   };
   let external_handle = SendableWebWorkerHandle {
@@ -452,7 +455,7 @@ impl WebWorker {
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
       let (internal_handle, external_handle) =
-        create_handles(handle, options.worker_type);
+        create_handles(handle, name.clone(), options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
