@@ -162,11 +162,12 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    if let Some(testing_server) = &self.0.lock().await.maybe_testing_server {
+    let inner = self.0.lock().await;
+    if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => testing_server.run_request(
           params,
-          self.0.lock().await.config.get_workspace_settings(),
+          inner.config.get_workspace_settings(),
         ),
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
