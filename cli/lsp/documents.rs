@@ -10,11 +10,10 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
-use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::text_encoding;
+use crate::{http_cache, text_encoding};
 
 use deno_ast::MediaType;
 use deno_ast::SourceTextInfo;
@@ -25,7 +24,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_graph::Resolved;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -36,6 +34,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([(

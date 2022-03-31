@@ -28,7 +28,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -36,6 +35,7 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types as lsp;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests

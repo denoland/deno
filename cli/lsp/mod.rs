@@ -1,9 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use lspower::LspService;
-use lspower::Server;
+use tower_lsp::LspService;
+use tower_lsp::Server;
 
+use crate::lsp::language_server::LanguageServer;
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
 
@@ -35,13 +36,31 @@ pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
-  let (service, messages) = LspService::new(|client| {
-    language_server::LanguageServer::new(client::Client::from_lspower(client))
-  });
-  Server::new(stdin, stdout)
-    .interleave(messages)
-    .serve(service)
-    .await;
+  let (service, socket) = LspService::build(|client| {
+    language_server::LanguageServer::new(client::Client::from_tower(client))
+  })
+  .custom_method(lsp_custom::CACHE_REQUEST, LanguageServer::cache_request)
+  .custom_method(
+    lsp_custom::PERFORMANCE_REQUEST,
+    LanguageServer::performance_request,
+  )
+  .custom_method(
+    lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST,
+    LanguageServer::reload_import_registries_request,
+  )
+  .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_request)
+  .custom_method(testing::TEST_RUN_REQUEST, LanguageServer::test_run_request)
+  .custom_method(
+    testing::TEST_RUN_CANCEL_REQUEST,
+    LanguageServer::test_run_cancel_request,
+  )
+  .custom_method(
+    lsp_custom::VIRTUAL_TEXT_DOCUMENT,
+    LanguageServer::virtual_text_document,
+  )
+  .finish();
+
+  Server::new(stdin, stdout, socket).serve(service).await;
 
   Ok(())
 }
