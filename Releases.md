@@ -15,7 +15,6 @@ https://github.com/denoland/deno_install
 - fix(runtime/ops/signal.rs): Add Solaris signals (#13931)
 - fix(task): handle `PATHEXT` with trailing semi-colon (#14140)
 - perf: micro-optimize core.encode (#14120)
-- refactor(flags): rename CheckFlag to TypecheckMode (#14111)
 
 ### 1.20.3 / 2022.03.25
 
