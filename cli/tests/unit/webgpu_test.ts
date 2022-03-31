@@ -7,11 +7,16 @@ try {
   isCI = true;
 }
 
-// Skip this test on linux CI, because the vulkan emulator is not good enough
-// yet, and skip on macOS because these do not have virtual GPUs.
+// Skip these tests on linux CI, because the vulkan emulator is not good enough
+// yet, and skip on macOS CI because these do not have virtual GPUs.
+const isLinuxOrMacCI =
+  (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI;
+// Skip these tests in WSL because it doesn't have good GPU support.
+const isWsl = await checkIsWsl();
+
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
+  ignore: isWsl || isLinuxOrMacCI,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -99,11 +104,9 @@ Deno.test({
   Deno.close(Number(resources[resources.length - 1]));
 });
 
-// Skip this test on linux CI, because the vulkan emulator is not good enough
-// yet, and skip on macOS because these do not have virtual GPUs.
 Deno.test({
   permissions: { read: true, env: true },
-  ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
+  ignore: isWsl || isLinuxOrMacCI,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
@@ -209,3 +212,17 @@ Deno.test({
   const resources = Object.keys(Deno.resources());
   Deno.close(Number(resources[resources.length - 1]));
 });
+
+async function checkIsWsl() {
+  return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
+
+  async function hasMicrosoftProcVersion() {
+    // https://github.com/microsoft/WSL/issues/423#issuecomment-221627364
+    try {
+      const procVersion = await Deno.readTextFile("/proc/version");
+      return /microsoft/i.test(procVersion);
+    } catch {
+      return false;
+    }
+  }
+}
