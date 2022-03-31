@@ -140,14 +140,12 @@
         error: null,
       });
 
-      let handled = false;
-
       this.dispatchEvent(event);
-      if (event.defaultPrevented) {
-        handled = true;
+      if (!event.defaultPrevented) {
+        window.dispatchEvent(event);
       }
 
-      return handled;
+      return event.defaultPrevented;
     }
 
     #pollControl = async () => {
@@ -165,7 +163,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              throw new Error("Unhandled error event in child worker.");
+              throw new Error("Unhandled error in child worker.");
             }
             break;
           }
