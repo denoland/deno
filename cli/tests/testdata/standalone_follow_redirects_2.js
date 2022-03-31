@@ -1,4 +1,4 @@
-// unversioned import redirects with depenedencies.
+// unversioned import redirects with dependencies.
 import {
   assertNotEquals as _a,
   assertStrictEquals as _b,
