@@ -8,10 +8,11 @@ const cliCrate = workspace.getCliCrate();
 
 await repo.gitFetchTags("origin");
 const tags = await repo.getGitTags();
+const tagName = `v${cliCrate.version}`;
 
-if (tags.has(cliCrate.version)) {
-  console.log(`Tag ${cliCrate.version} already exists.`);
+if (tags.has(tagName)) {
+  console.log(`Tag ${tagName} already exists.`);
 } else {
-  await repo.gitTag(cliCrate.version);
-  await repo.gitPush(cliCrate.version);
+  await repo.gitTag(tagName);
+  await repo.gitPush(tagName);
 }
