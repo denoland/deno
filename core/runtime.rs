@@ -3107,6 +3107,21 @@ assertEquals(1, notify_return_value);
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
+        
+        const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
+        const w32 = new Uint32Array(wmem.buffer);
+        w32[0] = 1; w32[1] = 2; w32[2] = 3;
+        const assertWasmThrow = (() => {
+          try {
+            let sum = Deno.core.opSync('op_sum_take', w32.subarray(0, 2));
+            return false;
+          } catch(e) {
+            return e.message.includes('ExpectedDetachable');
+          }
+        });
+        if (!assertWasmThrow()) {
+          throw new Error("expected wasm mem to not be detachable");
+        }
       "#,
       )
       .unwrap();

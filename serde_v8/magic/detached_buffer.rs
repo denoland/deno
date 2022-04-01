@@ -59,6 +59,9 @@ impl FromV8 for DetachedBuffer {
   ) -> Result<Self, crate::Error> {
     let (b, range) =
       to_ranged_buffer(scope, value).or(Err(crate::Error::ExpectedBuffer))?;
+    if !b.is_detachable() {
+      return Err(crate::Error::ExpectedDetachable);
+    }
     let store = b.get_backing_store();
     b.detach(); // Detach
     Ok(Self(ZeroCopyBuf { store, range }))
