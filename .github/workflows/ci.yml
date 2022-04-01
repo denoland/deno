@@ -556,7 +556,11 @@ jobs:
 
       - name: Create release notes
         shell: bash
-        if: matrix.profile == 'release'
+        if: |
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/')
         run: |
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
