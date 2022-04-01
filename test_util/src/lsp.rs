@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::new_deno_dir;
+use super::TempDir;
 
 use anyhow::Result;
 use lazy_static::lazy_static;
@@ -23,7 +24,6 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use tempfile::TempDir;
 
 lazy_static! {
   static ref CONTENT_TYPE_REG: Regex =
