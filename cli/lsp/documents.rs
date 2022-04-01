@@ -10,10 +10,10 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
+use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::http_cache;
 use crate::text_encoding;
 
 use deno_ast::MediaType;
