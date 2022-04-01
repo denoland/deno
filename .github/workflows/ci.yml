@@ -554,6 +554,14 @@ jobs:
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
           gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
+      - name: Get release notes
+        id: get-release-notes
+        run: echo "::set-output name=RELEASE_NOTES::$(./tool/release/05_output_release_notes.ts)"
+
+      # temporary test
+      - name: Output release notes
+        run: echo "${{ steps.get-release-notes.outputs.RELEASE_NOTES }}"
+
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
@@ -570,6 +578,7 @@ jobs:
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
+          body: ${{ steps.get-release-notes.outputs.RELEASE_NOTES }}
           draft: true
 
   publish-canary:
