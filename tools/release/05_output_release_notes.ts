@@ -9,6 +9,6 @@ console.log(
   workspace.getReleasesMdFile().getLatestReleaseText().fullText
     // escape percent signs and newlines in order to allow multiple
     // lines to be set in the GH action step output
-    .replace(/%/, "%25")
-    .replace(/\r?\n/, "%0A"),
+    .replace(/%/g, "%25")
+    .replace(/\r?\n/g, "%0A"),
 );
