@@ -559,7 +559,7 @@ jobs:
         shell: bash
         if: matrix.profile == 'release'
         run: |
-          export PATH=$PATH:$(pwd)/target/release/deno
+          export PATH=$PATH:$(pwd)/target/release
           echo "::set-output name=RELEASE_NOTES::$(./tools/release/05_output_release_notes.ts)"
 
       # temporary test
