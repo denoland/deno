@@ -3298,7 +3298,7 @@ mod tests {
   use crate::lsp::text::LineIndex;
   use std::path::Path;
   use std::path::PathBuf;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
@@ -3322,11 +3322,11 @@ mod tests {
   }
 
   fn setup(
+    temp_dir: &TempDir,
     debug: bool,
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());
@@ -3363,7 +3363,9 @@ mod tests {
 
   #[test]
   fn test_project_configure() {
+    let temp_dir = TempDir::new();
     setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3376,7 +3378,9 @@ mod tests {
 
   #[test]
   fn test_project_reconfigure() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3404,7 +3408,9 @@ mod tests {
 
   #[test]
   fn test_get_diagnostics() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3453,7 +3459,9 @@ mod tests {
 
   #[test]
   fn test_get_diagnostics_lib() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3483,7 +3491,9 @@ mod tests {
 
   #[test]
   fn test_module_resolution() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3518,7 +3528,9 @@ mod tests {
 
   #[test]
   fn test_bad_module_specifiers() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3569,7 +3581,9 @@ mod tests {
 
   #[test]
   fn test_remote_modules() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3604,7 +3618,9 @@ mod tests {
 
   #[test]
   fn test_partial_modules() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3676,7 +3692,9 @@ mod tests {
 
   #[test]
   fn test_no_debug_failure() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3726,7 +3744,9 @@ mod tests {
 
   #[test]
   fn test_request_asset() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3752,7 +3772,9 @@ mod tests {
 
   #[test]
   fn test_modify_sources() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, location) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3839,7 +3861,9 @@ mod tests {
 
   #[test]
   fn test_op_exists() {
+    let temp_dir = TempDir::new();
     let (mut rt, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3910,7 +3934,9 @@ mod tests {
         character: 16,
       })
       .unwrap();
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",

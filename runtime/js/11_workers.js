@@ -141,7 +141,8 @@
       });
 
       this.dispatchEvent(event);
-      if (!event.defaultPrevented) {
+      // Don't bubble error event to window for loader errors (`!e.fileName`).
+      if (e.fileName && !event.defaultPrevented) {
         window.dispatchEvent(event);
       }
 

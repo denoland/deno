@@ -28,6 +28,8 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -40,7 +42,6 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
-use tempfile::TempDir;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -50,6 +51,9 @@ use tokio_tungstenite::accept_async;
 
 pub mod lsp;
 pub mod pty;
+mod temp_dir;
+
+pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -1654,20 +1658,42 @@ pub fn run_and_collect_output_with_args(
 }
 
 pub fn new_deno_dir() -> TempDir {
-  TempDir::new().expect("tempdir fail")
+  TempDir::new()
 }
 
-pub fn deno_cmd() -> Command {
+pub struct DenoCmd {
+  // keep the deno dir directory alive for the duration of the command
+  _deno_dir: TempDir,
+  cmd: Command,
+}
+
+impl Deref for DenoCmd {
+  type Target = Command;
+  fn deref(&self) -> &Command {
+    &self.cmd
+  }
+}
+
+impl DerefMut for DenoCmd {
+  fn deref_mut(&mut self) -> &mut Command {
+    &mut self.cmd
+  }
+}
+
+pub fn deno_cmd() -> DenoCmd {
   let deno_dir = new_deno_dir();
-  deno_cmd_with_deno_dir(deno_dir.path())
+  deno_cmd_with_deno_dir(&deno_dir)
 }
 
-pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {
-  let e = deno_exe_path();
-  assert!(e.exists());
-  let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir);
-  c
+pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
+  let exe_path = deno_exe_path();
+  assert!(exe_path.exists());
+  let mut cmd = Command::new(exe_path);
+  cmd.env("DENO_DIR", deno_dir.path());
+  DenoCmd {
+    _deno_dir: deno_dir.clone(),
+    cmd,
+  }
 }
 
 pub fn run_powershell_script_file(
@@ -1735,7 +1761,8 @@ impl CheckOutputIntegrationTest {
 
     let (mut reader, writer) = pipe().unwrap();
     let testdata_dir = testdata_path();
-    let mut command = deno_cmd();
+    let deno_dir = new_deno_dir(); // keep this alive for the test
+    let mut command = deno_cmd_with_deno_dir(&deno_dir);
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args.iter());
