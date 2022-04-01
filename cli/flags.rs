@@ -555,7 +555,7 @@ fn clap_root(version: &str) -> Command {
       Arg::new("log-level")
         .short('L')
         .long("log-level")
-        .help("Set log level")
+        .help("Set log level for internal logging. Does not impact logging via javascript console")
         .takes_value(true)
         .possible_values(&["debug", "info"])
         .global(true),
