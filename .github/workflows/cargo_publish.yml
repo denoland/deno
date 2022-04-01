@@ -1,0 +1,42 @@
+name: cargo_publish
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: cargo publish
+    runs-on: ubuntu-20.04-xl
+    timeout-minutes: 90
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.19.3
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./tools/release/03_publish_crates.ts --real
+
+      - name: Create release tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/release/04_create_release_tag.ts

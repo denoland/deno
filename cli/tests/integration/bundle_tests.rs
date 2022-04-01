@@ -1,15 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::testdata_path().join("subdir/mod1.ts");
   assert!(mod1.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -51,7 +51,7 @@ fn bundle_exports_no_check() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::testdata_path().join("subdir/mod1.ts");
   assert!(mod1.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -94,7 +94,7 @@ fn bundle_circular() {
   // First we have to generate a bundle of some module that has exports.
   let circular1 = util::testdata_path().join("subdir/circular1.ts");
   assert!(circular1.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("circular1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -126,7 +126,7 @@ fn bundle_single_module() {
   // First we have to generate a bundle of some module that has exports.
   let single_module = util::testdata_path().join("subdir/single_module.ts");
   assert!(single_module.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("single_module.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -158,7 +158,7 @@ fn bundle_tla() {
   // First we have to generate a bundle of some module that has exports.
   let tla_import = util::testdata_path().join("subdir/tla.ts");
   assert!(tla_import.is_file());
-  let t = tempfile::TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("tla.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -200,7 +200,7 @@ fn bundle_js() {
   // First we have to generate a bundle of some module that has exports.
   let mod6 = util::testdata_path().join("subdir/mod6.js");
   assert!(mod6.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -228,7 +228,7 @@ fn bundle_dynamic_import() {
   let _g = util::http_server();
   let dynamic_import = util::testdata_path().join("bundle_dynamic_import.ts");
   assert!(dynamic_import.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -262,7 +262,7 @@ fn bundle_import_map() {
   let import = util::testdata_path().join("bundle_im.ts");
   let import_map_path = util::testdata_path().join("bundle_im.json");
   assert!(import.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -306,7 +306,7 @@ fn bundle_import_map_no_check() {
   let import = util::testdata_path().join("bundle_im.ts");
   let import_map_path = util::testdata_path().join("bundle_im.json");
   assert!(import.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -351,7 +351,7 @@ fn bundle_json_module() {
   // First we have to generate a bundle of some module that has exports.
   let mod7 = util::testdata_path().join("subdir/mod7.js");
   assert!(mod7.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("mod7.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -383,7 +383,7 @@ fn bundle_json_module_escape_sub() {
   // First we have to generate a bundle of some module that has exports.
   let mod8 = util::testdata_path().join("subdir/mod8.js");
   assert!(mod8.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("mod8.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())

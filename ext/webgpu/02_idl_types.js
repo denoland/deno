@@ -41,7 +41,7 @@
   } = window.__bootstrap.webgpu;
   const { SymbolIterator, TypeError } = window.__bootstrap.primordials;
 
-  // This needs to be initalized after all of the base classes are implmented,
+  // This needs to be initialized after all of the base classes are implemented,
   // otherwise their converters might not be available yet.
   // DICTIONARY: GPUObjectDescriptorBase
   const dictMembersGPUObjectDescriptorBase = [

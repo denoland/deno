@@ -135,7 +135,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let referrer = deno_core::resolve_url_or_path(referrer).unwrap();
+    // Try to follow redirects when resolving.
+    let referrer = match self.eszip.get_module(referrer) {
+      Some(eszip::Module { ref specifier, .. }) => {
+        deno_core::resolve_url_or_path(specifier)?
+      }
+      None => deno_core::resolve_url_or_path(referrer)?,
+    };
+
     self.maybe_import_map_resolver.as_ref().map_or_else(
       || {
         deno_core::resolve_import(specifier, referrer.as_str())
@@ -154,7 +161,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let module_specifier = module_specifier.clone();
 
     let is_data_uri = get_source_from_data_url(&module_specifier).ok();
-
     let module = self
       .eszip
       .get_module(module_specifier.as_str())

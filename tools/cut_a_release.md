@@ -64,63 +64,62 @@ previous release and start cherry-picking newer commits from the `main`.
 Once all relevant commits are cherry-picked, push the branch to the upstream and
 verify on GitHub that everything looks correct.
 
-1. Update your local branch (`v1.XX` for patch or `main` for minor) and checkout
-   another branch (e.g. `release_#.#.#`).
+### Phase 1: Bumping versions
 
-2. Run `./tools/release/01_bump_crate_versions.ts` to increase the versions of
-   all crates including the CLI. If you are doing a CLI patch release, answer
-   `y` to the _Increment patch?_ prompt.
+1. After releasing deno_std, go to the "version_bump" workflow in the CLI repo's
+   actions: https://github.com/denoland/deno/actions/workflows/version_bump.yml
 
-3. The above command will update the `Releases.md` file. Review it and ensure
-   its output is correct. **If you are cutting a minor release**: make sure that
-   there are no duplicate entries in previous releases; most often commits with
-   `fix` prefix would have been included in patch releases.
+2. Click on the "Run workflow" button.
+   1. In the drop down, select the minor branch if doing a path release or the
+      main branch if doing a minor release.
+   2. For the kind of release, select either "patch", "minor", or "major".
+   3. Run the workflow.
 
-4. Update link in `cli/compat/mod.rs` with the released version of `deno_std`
-   and do a search through the tests to find std urls that need to be updated.
+3. Wait for the workflow to complete and for a pull request to be automatically
+   opened.
 
-5. Create a PR for these changes. **If you are cutting a patch release**: make
-   sure to target `v1.XX` branch instead of `main` in your PR.
+4. Review the pull request and make any necessary changes.
 
-6. Make sure CI pipeline passes (DO NOT merge yet).
+5. Merge it.
 
-7. Publish the crates to `crates.io` by running
-   `./tools/release/02_publish_crates.ts`
+### Phase 2: Publish
 
-8. Merge the PR.
+1. Go to the "cargo_publish" workflow in the CLI repo's actions:
+   https://github.com/denoland/deno/actions/workflows/cargo_publish.yml
 
-9. Create a tag with the version number (with `v` prefix).
+2. Run it on the same branch that you used before and wait for it to complete.
 
-10. Wait for CI pipeline on the created tag branch to pass.
+3. This CI run create a tag which triggers a second CI run that publishes the
+   GitHub draft release.
 
-    The CI pipeline will create a release draft on GitHub
-    (https://github.com/denoland/deno/releases). Update the draft with the
-    contents of `Releases.md` that you previously added.
+   The CI pipeline will create a release draft on GitHub
+   (https://github.com/denoland/deno/releases). Update the draft with the
+   contents of `Releases.md` that you previously added.
 
-11. Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release draft
-    and to https://console.cloud.google.com/storage/browser/dl.deno.land
+4. Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release draft
+   and to https://console.cloud.google.com/storage/browser/dl.deno.land
 
-    ```
-    cargo build --release
-    cd target/release
-    zip -r deno-aarch64-apple-darwin.zip deno
-    ```
+   ```
+   cargo build --release
+   cd target/release
+   zip -r deno-aarch64-apple-darwin.zip deno
+   ```
 
-12. Publish the release on Github
+5. Publish the release on Github
 
-13. Update the Deno version on the website by updating
-    https://github.com/denoland/dotland/blob/main/versions.json.
+6. Update the Deno version on the website by updating
+   https://github.com/denoland/dotland/blob/main/versions.json.
 
-14. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
-    must match the CLI tag; you don't need to create dedicated commit for that
-    purpose, it's enough to tag the latest commit in that repo.
+7. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+   must match the CLI tag; you don't need to create dedicated commit for that
+   purpose, it's enough to tag the latest commit in that repo.
 
-15. For minor releases: make sure https://github.com/mdn/browser-compat-data has
-    been updated to reflect Web API changes in this release. Usually done ahead
-    of time by @lucacasonato.
+8. For minor releases: make sure https://github.com/mdn/browser-compat-data has
+   been updated to reflect Web API changes in this release. Usually done ahead
+   of time by @lucacasonato.
 
-16. **If you are cutting a patch release**: open a PR that forwards all commits
-    created in the release process to the `main` branch.
+9. **If you are cutting a patch release**: open a PR that forwards all commits
+   created in the release process to the `main` branch.
 
 ## Updating `doc.deno.land`
 

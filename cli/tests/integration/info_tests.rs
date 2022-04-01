@@ -1,14 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
   let module_path = "http://127.0.0.1:4545/048_media_types_jsx.ts";
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
 
   let mut deno = util::deno_cmd()
     .env("DENO_DIR", t.path())

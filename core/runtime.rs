@@ -3070,11 +3070,13 @@ assertEquals(1, notify_return_value);
     let ext = Extension::builder()
       .ops(vec![op_sum_take::decl(), op_boomerang::decl()])
       .build();
+
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
       ..Default::default()
     });
-    let r = runtime
+
+    runtime
       .execute_script(
         "test.js",
         r#"
@@ -3108,7 +3110,38 @@ assertEquals(1, notify_return_value);
       "#,
       )
       .unwrap();
-    let scope = &mut runtime.handle_scope();
-    assert!(r.open(scope).is_undefined());
+  }
+  fn test_op_unstable_disabling() {
+    #[op]
+    fn op_foo() -> Result<i64, anyhow::Error> {
+      Ok(42)
+    }
+
+    #[op(unstable)]
+    fn op_bar() -> Result<i64, anyhow::Error> {
+      Ok(42)
+    }
+
+    let ext = Extension::builder()
+      .ops(vec![op_foo::decl(), op_bar::decl()])
+      .middleware(|op| if op.is_unstable { op.disable() } else { op })
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    runtime
+      .execute_script(
+        "test.js",
+        r#"
+        if (Deno.core.opSync('op_foo') !== 42) {
+          throw new Error("Exptected op_foo() === 42");
+        }
+        if (Deno.core.opSync('op_bar') !== undefined) {
+          throw new Error("Expected op_bar to be disabled")
+        }
+      "#,
+      )
+      .unwrap();
   }
 }

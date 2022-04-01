@@ -62,7 +62,10 @@ pub(crate) fn to_ranged_buffer<'s>(
     })?;
     let buffer = v8::Local::new(scope, buffer); // recreate handle to avoid lifetime issues
     return Ok((buffer, offset..offset + len));
+    let (offset, len) = (view.byte_offset(), view.byte_length());
+    Self::from_buffer(buffer, offset..offset + len)
   }
+
   let b: v8::Local<v8::ArrayBuffer> = value.try_into()?;
   let b = v8::Local::new(scope, b); // recreate handle to avoid lifetime issues
   Ok((b, 0..b.byte_length()))
