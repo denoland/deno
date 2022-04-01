@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn fmt_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
     util::testdata_path().join("badly_formatted.mjs");
