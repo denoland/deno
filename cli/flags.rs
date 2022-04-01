@@ -558,6 +558,7 @@ fn clap_root(version: &str) -> Command {
         .help("Set log level for internal logging. Does not impact logging via javascript console")
         .takes_value(true)
         .possible_values(&["debug", "info"])
+        .hide(true)
         .global(true),
     )
     .arg(
