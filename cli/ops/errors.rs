@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::diagnostics::Diagnostics;
 use crate::fmt_errors::format_file_name;
@@ -6,18 +6,24 @@ use crate::proc_state::ProcState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
-  super::reg_sync(rt, "op_format_diagnostic", op_format_diagnostic);
-  super::reg_sync(rt, "op_format_file_name", op_format_file_name);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      op_apply_source_map::decl(),
+      op_format_diagnostic::decl(),
+      op_format_file_name::decl(),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]
@@ -36,10 +42,10 @@ struct AppliedSourceMap {
   column_number: u32,
 }
 
+#[op]
 fn op_apply_source_map(
   state: &mut OpState,
   args: ApplySourceMap,
-  _: (),
 ) -> Result<AppliedSourceMap, AnyError> {
   let mut mappings_map: CachedMaps = HashMap::new();
   let ps = state.borrow::<ProcState>().clone();
@@ -60,19 +66,13 @@ fn op_apply_source_map(
   })
 }
 
-fn op_format_diagnostic(
-  _state: &mut OpState,
-  args: Value,
-  _: (),
-) -> Result<Value, AnyError> {
+#[op]
+fn op_format_diagnostic(args: Value) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
 }
 
-fn op_format_file_name(
-  _state: &mut OpState,
-  file_name: String,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_format_file_name(file_name: String) -> Result<String, AnyError> {
   Ok(format_file_name(&file_name))
 }

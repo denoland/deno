@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub use deno_broadcast_channel;
 pub use deno_console;
@@ -8,7 +8,6 @@ pub use deno_fetch;
 pub use deno_ffi;
 pub use deno_http;
 pub use deno_net;
-pub use deno_timers;
 pub use deno_tls;
 pub use deno_url;
 pub use deno_web;

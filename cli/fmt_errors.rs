@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors::cyan;
 use crate::colors::italic_bold;
@@ -81,7 +81,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   if frame.is_promise_all {
     result += &italic_bold(&format!(
       "Promise.all (index {})",
-      frame.promise_index.unwrap_or_default().to_string()
+      frame.promise_index.unwrap_or_default()
     ))
     .to_string();
     return result;
@@ -128,9 +128,11 @@ fn format_frame(frame: &JsStackFrame) -> String {
   result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn format_stack(
   is_error: bool,
   message_line: &str,
+  cause: Option<&str>,
   source_line: Option<&str>,
   start_column: Option<i64>,
   end_column: Option<i64>,
@@ -151,6 +153,14 @@ fn format_stack(
       "\n{:indent$}    at {}",
       "",
       format_frame(frame),
+      indent = level
+    ));
+  }
+  if let Some(cause) = cause {
+    s.push_str(&format!(
+      "\n{:indent$}Caused by: {}",
+      "",
+      cause,
       indent = level
     ));
   }
@@ -262,12 +272,19 @@ impl fmt::Display for PrettyJsError {
       )];
     }
 
+    let cause = self
+      .0
+      .cause
+      .clone()
+      .map(|cause| format!("{}", PrettyJsError(*cause)));
+
     write!(
       f,
       "{}",
       &format_stack(
         true,
         &self.0.message,
+        cause.as_deref(),
         self.0.source_line.as_deref(),
         self.0.start_column,
         self.0.end_column,

@@ -1,7 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::future::Future;
 
 use deno_ast::swc::common::BytePos;
 use deno_ast::swc::common::Span;
@@ -34,11 +33,10 @@ use lspower::lsp::VersionedTextDocumentIdentifier;
 use lspower::lsp::WorkDoneProgressParams;
 use lspower::LanguageServer;
 
-use crate::logger;
-
 use super::client::Client;
 use super::config::CompletionSettings;
 use super::config::ImportCompletionSettings;
+use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
 #[derive(Debug)]
@@ -276,12 +274,16 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: true,
+    enable_paths: Vec::new(),
     config: None,
+    certificate_stores: None,
     cache: None,
     import_map: None,
     code_lens: Default::default(),
     internal_debug: false,
     lint: false,
+    tls_certificate: None,
+    unsafely_ignore_certificate_errors: None,
     unstable: false,
     suggest: CompletionSettings {
       complete_function_calls: false,
@@ -292,6 +294,10 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         auto_discover: false,
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
+    },
+    testing: TestingSettings {
+      args: vec![],
+      enable: false,
     },
   }
 }

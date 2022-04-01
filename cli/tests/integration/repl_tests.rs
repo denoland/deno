@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 
@@ -30,6 +30,17 @@ fn pty_multiline() {
     assert!(output.contains("/\\(/"));
     assert!(output.contains("/\\[/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
+  });
+}
+
+#[test]
+fn pty_null() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("null");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("null"));
   });
 }
 
@@ -123,6 +134,23 @@ fn pty_complete_primitives() {
 }
 
 #[test]
+fn pty_complete_expression() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_text("Deno.\t\t");
+    console.write_text("y");
+    console.write_line("");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert!(output.contains("Display all"));
+    assert!(output.contains("core"));
+    assert!(output.contains("args"));
+    assert!(output.contains("exit"));
+    assert!(output.contains("symlink"));
+    assert!(output.contains("permissions"));
+  });
+}
+
+#[test]
 fn pty_complete_imports() {
   util::with_pty(&["repl"], |mut console| {
     // single quotes
@@ -141,18 +169,6 @@ fn pty_complete_imports() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Deno.chdir('./subdir');");
     console.write_line("import '../001_hel\t'");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert!(output.contains("Hello World"));
-  });
-
-  // ensure nothing too bad happens when deleting the cwd
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line("Deno.mkdirSync('./temp-repl-lsp-dir');");
-    console.write_line("Deno.chdir('./temp-repl-lsp-dir');");
-    console.write_line("Deno.removeSync('../temp-repl-lsp-dir');");
-    console.write_line("import '../001_hello\t'");
     console.write_line("close();");
 
     let output = console.read_all_output();

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -18,7 +18,7 @@
   const { guardFromHeaders } = window.__bootstrap.headers;
   const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
-  const mimesniff = window.__bootstrap.mimesniff;
+  const { extractMimeType } = window.__bootstrap.mimesniff;
   const { blobFromObjectUrl } = window.__bootstrap.file;
   const {
     headersFromHeaderList,
@@ -26,17 +26,16 @@
     fillHeaders,
     getDecodeSplitHeader,
   } = window.__bootstrap.headers;
-  const { HttpClient } = window.__bootstrap.fetch;
+  const { HttpClientPrototype } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     ArrayPrototypeMap,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    MapPrototypeHas,
-    MapPrototypeGet,
-    MapPrototypeSet,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
@@ -100,7 +99,9 @@
    */
   function cloneInnerRequest(request) {
     const headerList = [
-      ...ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+      ),
     ];
     let body = null;
     if (request.body !== null) {
@@ -170,41 +171,11 @@
     /** @type {AbortSignal} */
     [_signal];
     get [_mimeType]() {
-      let charset = null;
-      let essence = null;
-      let mimeType = null;
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
         "Content-Type",
       );
-      if (values === null) return null;
-      for (const value of values) {
-        const temporaryMimeType = mimesniff.parseMimeType(value);
-        if (
-          temporaryMimeType === null ||
-          mimesniff.essence(temporaryMimeType) == "*/*"
-        ) {
-          continue;
-        }
-        mimeType = temporaryMimeType;
-        if (mimesniff.essence(mimeType) !== essence) {
-          charset = null;
-          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
-          if (newCharset !== undefined) {
-            charset = newCharset;
-          }
-          essence = mimesniff.essence(mimeType);
-        } else {
-          if (
-            MapPrototypeHas(mimeType.parameters, "charset") === null &&
-            charset !== null
-          ) {
-            MapPrototypeSet(mimeType.parameters, "charset", charset);
-          }
-        }
-      }
-      if (mimeType === null) return null;
-      return mimeType;
+      return extractMimeType(values);
     }
     get [_body]() {
       return this[_request].body;
@@ -241,7 +212,9 @@
         const parsedURL = new URL(input, baseURL);
         request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
-        if (!(input instanceof Request)) throw new TypeError("Unreachable");
+        if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
+          throw new TypeError("Unreachable");
+        }
         request = input[_request];
         signal = input[_signal];
       }
@@ -268,7 +241,10 @@
 
       // NOTE: non standard extension. This handles Deno.HttpClient parameter
       if (init.client !== undefined) {
-        if (init.client !== null && !(init.client instanceof HttpClient)) {
+        if (
+          init.client !== null &&
+          !ObjectPrototypeIsPrototypeOf(HttpClientPrototype, init.client)
+        ) {
           throw webidl.makeException(
             TypeError,
             "`client` must be a Deno.HttpClient",
@@ -312,7 +288,7 @@
 
       // 33.
       let inputBody = null;
-      if (input instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
         inputBody = input[_body];
       }
 
@@ -356,32 +332,32 @@
     }
 
     get method() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].method;
     }
 
     get url() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].url();
     }
 
     get headers() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_headers];
     }
 
     get redirect() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].redirectMode;
     }
 
     get signal() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_signal];
     }
 
     clone() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -398,7 +374,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Request,
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
         keys: [
           "bodyUsed",
           "headers",
@@ -410,22 +386,22 @@
     }
   }
 
-  mixinBody(Request, _body, _mimeType);
-
   webidl.configurePrototype(Request);
+  const RequestPrototype = Request.prototype;
+  mixinBody(RequestPrototype, _body, _mimeType);
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    Request,
+    RequestPrototype,
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
-      if (V instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
         return webidl.converters["Request"](V, opts);
       }
     }
-    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    // Passed to new URL(...) which implicitly converts DOMString -> USVString
     return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(

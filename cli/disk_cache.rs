@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
@@ -91,7 +91,7 @@ impl DiskCache {
               | Prefix::VerbatimUNC(server, share) => {
                 out.push("UNC");
                 let host = Host::parse(server.to_str().unwrap()).unwrap();
-                let host = host.to_string().replace(":", "_");
+                let host = host.to_string().replace(':', "_");
                 out.push(host);
                 out.push(share);
               }
@@ -150,11 +150,11 @@ impl DiskCache {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn test_create_cache_if_dir_exits() {
-    let cache_location = TempDir::new().unwrap();
+    let cache_location = TempDir::new();
     let mut cache_path = cache_location.path().to_owned();
     cache_path.push("foo");
     let cache = DiskCache::new(&cache_path);
@@ -166,7 +166,7 @@ mod tests {
 
   #[test]
   fn test_create_cache_if_dir_not_exits() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let mut cache_location = temp_dir.path().to_owned();
     assert!(fs::remove_dir(&cache_location).is_ok());
     cache_location.push("foo");

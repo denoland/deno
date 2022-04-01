@@ -1,8 +1,8 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::resolve_import;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
 use import_map::ImportMap;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// This is done to avoid having `import_map` be a direct dependency of
 /// `deno_graph`.
 #[derive(Debug, Clone)]
-pub(crate) struct ImportMapResolver(Arc<ImportMap>);
+pub struct ImportMapResolver(Arc<ImportMap>);
 
 impl ImportMapResolver {
   pub fn new(import_map: Arc<ImportMap>) -> Self {
@@ -28,16 +28,16 @@ impl Resolver for ImportMapResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    self
-      .0
-      .resolve(specifier, referrer.as_str())
-      .map_err(|err| err.into())
+  ) -> ResolveResponse {
+    match self.0.resolve(specifier, referrer) {
+      Ok(specifier) => ResolveResponse::Specifier(specifier),
+      Err(err) => ResolveResponse::Err(err.into()),
+    }
   }
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct JsxResolver {
+pub struct JsxResolver {
   jsx_import_source_module: String,
   maybe_import_map_resolver: Option<ImportMapResolver>,
 }
@@ -67,9 +67,12 @@ impl Resolver for JsxResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> ResolveResponse {
     self.maybe_import_map_resolver.as_ref().map_or_else(
-      || resolve_import(specifier, referrer.as_str()).map_err(|err| err.into()),
+      || match resolve_import(specifier, referrer.as_str()) {
+        Ok(specifier) => ResolveResponse::Specifier(specifier),
+        Err(err) => ResolveResponse::Err(err.into()),
+      },
       |r| r.resolve(specifier, referrer),
     )
   }

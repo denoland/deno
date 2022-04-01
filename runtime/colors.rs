@@ -1,5 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use atty;
+use once_cell::sync::Lazy;
 use std::fmt;
 use std::io::Write;
 use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
@@ -8,8 +10,13 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 #[cfg(windows)]
 use termcolor::{BufferWriter, ColorChoice};
 
-lazy_static::lazy_static! {
-  static ref NO_COLOR: bool = std::env::var_os("NO_COLOR").is_some();
+static NO_COLOR: Lazy<bool> =
+  Lazy::new(|| std::env::var_os("NO_COLOR").is_some());
+
+static IS_TTY: Lazy<bool> = Lazy::new(|| atty::is(atty::Stream::Stdout));
+
+pub fn is_tty() -> bool {
+  *IS_TTY
 }
 
 pub fn use_color() -> bool {

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
-  declare namespace core {
+  namespace core {
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
@@ -104,16 +104,16 @@ declare namespace Deno {
     ): void;
 
     /** Check if there's a scheduled "next tick". */
-    function hasNextTickScheduled(): bool;
+    function hasNextTickScheduled(): boolean;
 
     /** Set a value telling the runtime if there are "next ticks" scheduled */
-    function setHasNextTickScheduled(value: bool): void;
+    function setHasNextTickScheduled(value: boolean): void;
 
     /**
      * Set a callback that will be called after resolving ops and "next ticks".
      */
     function setMacrotaskCallback(
-      cb: () => bool,
+      cb: () => boolean,
     ): void;
 
     /**
@@ -126,7 +126,7 @@ declare namespace Deno {
 
     export type PromiseRejectCallback = (
       type: number,
-      promise: Promise,
+      promise: Promise<unknown>,
       reason: any,
     ) => void;
 
@@ -141,5 +141,28 @@ declare namespace Deno {
     ): undefined | UncaughtExceptionCallback;
 
     export type UncaughtExceptionCallback = (err: any) => void;
+
+    /**
+     * Enables collection of stack traces of all async ops. This allows for
+     * debugging of where a given async op was started. Deno CLI uses this for
+     * improving error message in op sanitizer errors for `deno test`.
+     *
+     * **NOTE:** enabling tracing has a significant negative performance impact.
+     * To get high level metrics on async ops with no added performance cost,
+     * use `Deno.core.metrics()`.
+     */
+    function enableOpCallTracing(): void;
+
+    export interface OpCallTrace {
+      opName: string;
+      stack: string;
+    }
+
+    /**
+     * A map containing traces for all ongoing async ops. The key is the op id.
+     * Tracing only occurs when `Deno.core.enableOpCallTracing()` was previously
+     * enabled.
+     */
+    const opCallTraces: Map<number, OpCallTrace>;
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -18,7 +18,7 @@
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
-  const mimesniff = window.__bootstrap.mimesniff;
+  const { extractMimeType } = window.__bootstrap.mimesniff;
   const { URL } = window.__bootstrap.url;
   const {
     getDecodeSplitHeader,
@@ -30,12 +30,11 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
-    MapPrototypeHas,
-    MapPrototypeGet,
-    MapPrototypeSet,
+    ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
@@ -44,7 +43,11 @@
   const VCHAR = ["\x21-\x7E"];
   const OBS_TEXT = ["\x80-\xFF"];
 
-  const REASON_PHRASE = [...HTTP_TAB_OR_SPACE, ...VCHAR, ...OBS_TEXT];
+  const REASON_PHRASE = [
+    ...new SafeArrayIterator(HTTP_TAB_OR_SPACE),
+    ...new SafeArrayIterator(VCHAR),
+    ...new SafeArrayIterator(OBS_TEXT),
+  ];
   const REASON_PHRASE_MATCHER = regexMatcher(REASON_PHRASE);
   const REASON_PHRASE_RE = new RegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
 
@@ -89,9 +92,11 @@
    * @returns {InnerResponse}
    */
   function cloneInnerResponse(response) {
-    const urlList = [...response.urlList];
+    const urlList = [...new SafeArrayIterator(response.urlList)];
     const headerList = [
-      ...ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
+      ),
     ];
     let body = null;
     if (response.body !== null) {
@@ -154,41 +159,11 @@
 
   class Response {
     get [_mimeType]() {
-      let charset = null;
-      let essence = null;
-      let mimeType = null;
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
         "Content-Type",
       );
-      if (values === null) return null;
-      for (const value of values) {
-        const temporaryMimeType = mimesniff.parseMimeType(value);
-        if (
-          temporaryMimeType === null ||
-          mimesniff.essence(temporaryMimeType) == "*/*"
-        ) {
-          continue;
-        }
-        mimeType = temporaryMimeType;
-        if (mimesniff.essence(mimeType) !== essence) {
-          charset = null;
-          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
-          if (newCharset !== undefined) {
-            charset = newCharset;
-          }
-          essence = mimesniff.essence(mimeType);
-        } else {
-          if (
-            MapPrototypeHas(mimeType.parameters, "charset") === null &&
-            charset !== null
-          ) {
-            MapPrototypeSet(mimeType.parameters, "charset", charset);
-          }
-        }
-      }
-      if (mimeType === null) return null;
-      return mimeType;
+      return extractMimeType(values);
     }
     get [_body]() {
       return this[_response].body;
@@ -257,9 +232,9 @@
         context: "Argument 2",
       });
 
-      if (init.status < 200 || init.status > 599) {
+      if ((init.status < 200 || init.status > 599) && init.status != 101) {
         throw new RangeError(
-          `The status provided (${init.status}) is outside the range [200, 599].`,
+          `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
         );
       }
 
@@ -297,7 +272,7 @@
      * @returns {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"}
      */
     get type() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].type;
     }
 
@@ -305,7 +280,7 @@
      * @returns {string}
      */
     get url() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       const url = this[_response].url();
       if (url === null) return "";
       const newUrl = new URL(url);
@@ -317,7 +292,7 @@
      * @returns {boolean}
      */
     get redirected() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].urlList.length > 1;
     }
 
@@ -325,7 +300,7 @@
      * @returns {number}
      */
     get status() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].status;
     }
 
@@ -333,7 +308,7 @@
      * @returns {boolean}
      */
     get ok() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       const status = this[_response].status;
       return status >= 200 && status <= 299;
     }
@@ -342,7 +317,7 @@
      * @returns {string}
      */
     get statusText() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_response].statusMessage;
     }
 
@@ -350,7 +325,7 @@
      * @returns {Headers}
      */
     get headers() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       return this[_headers];
     }
 
@@ -358,7 +333,7 @@
      * @returns {Response}
      */
     clone() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, ResponsePrototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -375,7 +350,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Response,
+        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
         keys: [
           "body",
           "bodyUsed",
@@ -390,13 +365,13 @@
     }
   }
 
-  mixinBody(Response, _body, _mimeType);
-
   webidl.configurePrototype(Response);
+  const ResponsePrototype = Response.prototype;
+  mixinBody(ResponsePrototype, _body, _mimeType);
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
-    Response,
+    ResponsePrototype,
   );
   webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
     "ResponseInit",
@@ -457,6 +432,7 @@
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Response = Response;
+  window.__bootstrap.fetch.ResponsePrototype = ResponsePrototype;
   window.__bootstrap.fetch.newInnerResponse = newInnerResponse;
   window.__bootstrap.fetch.toInnerResponse = toInnerResponse;
   window.__bootstrap.fetch.fromInnerResponse = fromInnerResponse;

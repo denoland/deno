@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -65,7 +65,9 @@
 
   function listenTls({
     port,
+    cert,
     certFile,
+    key,
     keyFile,
     hostname = "0.0.0.0",
     transport = "tcp",
@@ -73,7 +75,9 @@
   }) {
     const res = opListenTls({
       port,
+      cert,
       certFile,
+      key,
       keyFile,
       hostname,
       transport,

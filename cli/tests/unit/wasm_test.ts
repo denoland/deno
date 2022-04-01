@@ -45,11 +45,11 @@ Deno.test(
 
 Deno.test(
   async function wasmInstantiateStreamingNoContentType() {
+    const response = new Response(simpleWasm);
+    // Rejects, not throws.
+    const wasmPromise = WebAssembly.instantiateStreaming(response);
     await assertRejects(
-      async () => {
-        const response = Promise.resolve(new Response(simpleWasm));
-        await WebAssembly.instantiateStreaming(response);
-      },
+      () => wasmPromise,
       TypeError,
       "Invalid WebAssembly content type.",
     );

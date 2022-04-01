@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub use rustls;
 pub use rustls_native_certs;
@@ -87,11 +87,6 @@ pub struct Proxy {
 pub struct BasicAuth {
   pub username: String,
   pub password: String,
-}
-
-lazy_static::lazy_static! {
-  static ref CLIENT_SESSION_MEMORY_CACHE: Arc<ClientSessionMemoryCache> =
-    Arc::new(ClientSessionMemoryCache::default());
 }
 
 #[derive(Default)]

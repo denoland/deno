@@ -1,0 +1,21 @@
+Check [WILDCARD]/test/resource_sanitizer.ts
+running 1 test from [WILDCARD]/test/resource_sanitizer.ts
+test leak ... FAILED ([WILDCARD])
+
+failures:
+
+leak
+AssertionError: Test case is leaking 2 resources:
+
+ - The stdin pipe (rid 0) was opened before the test started, but was closed during the test. Do not close resources in a test that were not created during that test.
+ - A file (rid 3) was opened during the test, but not closed during the test. Close the file handle by calling `file.close()`.
+
+    at [WILDCARD]
+
+failures:
+
+	leak
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

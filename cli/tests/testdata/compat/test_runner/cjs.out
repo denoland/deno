@@ -1,0 +1,25 @@
+running 2 tests from [WILDCARD]
+test Correct assertion ... ok ([WILDCARD])
+test Failed assertion ... FAILED ([WILDCARD])
+
+failures:
+
+Failed assertion
+AssertionError [ERR_ASSERTION]: Values are not strictly equal:
+
+
+    [Diff] Actual / Expected
+
+
+-   10
++   20
+
+[WILDCARD]
+
+failures:
+
+[WILDCARD]Failed assertion
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

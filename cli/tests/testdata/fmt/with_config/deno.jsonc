@@ -1,0 +1,19 @@
+{
+	"fmt": {
+		"files": {
+			"include": [
+				"./subdir/"
+			],
+			"exclude": [
+				"./subdir/b.ts"
+			]
+		},
+		"options": {
+			"useTabs": true,
+			"lineWidth": 40,
+			"indentWidth": 8,
+			"singleQuote": true,
+			"proseWrap": "always"
+		}
+	}
+}

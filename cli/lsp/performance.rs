@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
@@ -8,7 +8,6 @@ use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -72,18 +71,18 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Performance {
-  counts: Arc<Mutex<HashMap<String, u32>>>,
+  counts: Mutex<HashMap<String, u32>>,
   max_size: usize,
-  measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
+  measures: Mutex<VecDeque<PerformanceMeasure>>,
 }
 
 impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
-      max_size: 1_000,
+      max_size: 3_000,
       measures: Default::default(),
     }
   }

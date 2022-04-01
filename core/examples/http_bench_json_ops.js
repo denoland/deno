@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
@@ -11,12 +11,12 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.opSync("listen");
+  return Deno.core.opSync("op_listen");
 }
 
 /** Accepts a connection, returns rid. */
 function accept(serverRid) {
-  return Deno.core.opAsync("accept", serverRid);
+  return Deno.core.opAsync("op_accept", serverRid);
 }
 
 async function serve(rid) {

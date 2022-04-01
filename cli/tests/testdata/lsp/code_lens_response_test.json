@@ -15,7 +15,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test a"
+        "test a",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 5
+      },
+      "end": {
+        "line": 4,
+        "character": 9
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test a",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -35,7 +61,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test b"
+        "test b",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 5
+      },
+      "end": {
+        "line": 5,
+        "character": 9
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test b",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -55,7 +107,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test c"
+        "test c",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 0
+      },
+      "end": {
+        "line": 9,
+        "character": 4
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test c",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -75,7 +153,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test d"
+        "test d",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 13,
+        "character": 0
+      },
+      "end": {
+        "line": 13,
+        "character": 4
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test d",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -95,7 +199,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test e"
+        "test e",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 14,
+        "character": 0
+      },
+      "end": {
+        "line": 14,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test e",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -115,7 +245,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test f"
+        "test f",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 18,
+        "character": 0
+      },
+      "end": {
+        "line": 18,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test f",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -135,7 +291,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test g"
+        "test g",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 19,
+        "character": 0
+      },
+      "end": {
+        "line": 19,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test g",
+        {
+          "inspect": true
+        }
       ]
     }
   },
@@ -155,7 +337,33 @@
       "command": "deno.test",
       "arguments": [
         "file:///a/file.ts",
-        "test h"
+        "test h",
+        {
+          "inspect": false
+        }
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 23,
+        "character": 0
+      },
+      "end": {
+        "line": 23,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "Debug",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test h",
+        {
+          "inspect": true
+        }
       ]
     }
   }

@@ -1,9 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
 use super::config;
+use super::documents::AssetOrDocument;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::performance::Performance;
 use super::refactor::RefactorCodeActionData;
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
@@ -13,6 +15,7 @@ use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text;
 use super::text::LineIndex;
+use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
@@ -24,7 +27,8 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op_sync;
+use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -33,15 +37,18 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_core::OpFn;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
+use log::error;
 use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
@@ -55,17 +62,27 @@ use text_size::TextRange;
 use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
-lazy_static::lazy_static! {
-  static ref BRACKET_ACCESSOR_RE: Regex = Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap();
-  static ref CAPTION_RE: Regex = Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-  static ref CODEBLOCK_RE: Regex = Regex::new(r"^\s*[~`]{3}").unwrap();
-  static ref EMAIL_MATCH_RE: Regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-  static ref JSDOC_LINKS_RE: Regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
-  static ref PART_KIND_MODIFIER_RE: Regex = Regex::new(r",|\s+").unwrap();
-  static ref PART_RE: Regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
-  static ref SCOPE_RE: Regex = Regex::new(r"scope_(\d)").unwrap();
-}
+static BRACKET_ACCESSOR_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
+static CAPTION_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap()
+});
+static CODEBLOCK_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
+static EMAIL_MATCH_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
+static HTTP_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
+static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
+});
+static PART_KIND_MODIFIER_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r",|\s+").unwrap());
+static PART_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"^(\S+)\s*-?\s*").unwrap());
+static SCOPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"scope_(\d)").unwrap());
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
@@ -74,28 +91,29 @@ type Request = (
   RequestMethod,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<Value, AnyError>>,
+  CancellationToken,
 );
 
 #[derive(Clone, Debug)]
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new() -> Self {
+  pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = load().expect("could not load tsc");
+      let mut ts_runtime = js_runtime(performance);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
         let mut started = false;
-        while let Some((req, state_snapshot, tx)) = rx.recv().await {
+        while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
             // TODO(@kitsonk) need to reflect the debug state of the lsp here
             start(&mut ts_runtime, false, &state_snapshot)
               .expect("could not start tsc");
             started = true;
           }
-          let value = request(&mut ts_runtime, state_snapshot, req);
+          let value = request(&mut ts_runtime, state_snapshot, req, token);
           if tx.send(value).is_err() {
             warn!("Unable to send result to client.");
           }
@@ -106,7 +124,7 @@ impl TsServer {
     Self(tx)
   }
 
-  pub(crate) async fn request<R>(
+  pub async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -114,8 +132,22 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    self
+      .request_with_cancellation(snapshot, req, Default::default())
+      .await
+  }
+
+  pub async fn request_with_cancellation<R>(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    req: RequestMethod,
+    token: CancellationToken,
+  ) -> Result<R, AnyError>
+  where
+    R: de::DeserializeOwned,
+  {
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
-    if self.0.send((req, snapshot, tx)).is_err() {
+    if self.0.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
@@ -124,6 +156,7 @@ impl TsServer {
 
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
+  specifier: ModuleSpecifier,
   text: Arc<String>,
   length: usize,
   line_index: Arc<LineIndex>,
@@ -136,14 +169,19 @@ struct AssetDocumentInner {
 pub struct AssetDocument(Arc<AssetDocumentInner>);
 
 impl AssetDocument {
-  pub fn new(text: impl AsRef<str>) -> Self {
+  pub fn new(specifier: ModuleSpecifier, text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
     Self(Arc::new(AssetDocumentInner {
+      specifier,
       text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.0.specifier
   }
 
   pub fn with_navigation_tree(
@@ -177,48 +215,110 @@ impl AssetDocument {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct Assets(HashMap<ModuleSpecifier, Option<AssetDocument>>);
+type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
 
-impl Default for Assets {
+fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
+  let assets = tsc::STATIC_ASSETS
+    .iter()
+    .map(|(k, v)| {
+      let url_str = format!("asset:///{}", k);
+      let specifier = resolve_url(&url_str).unwrap();
+      let asset = AssetDocument::new(specifier.clone(), v);
+      (specifier, Some(asset))
+    })
+    .collect();
+  Arc::new(Mutex::new(assets))
+}
+
+/// Snapshot of Assets.
+#[derive(Debug, Clone)]
+pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
+
+impl Default for AssetsSnapshot {
   fn default() -> Self {
-    let assets = tsc::STATIC_ASSETS
-      .iter()
-      .map(|(k, v)| {
-        let url_str = format!("asset:///{}", k);
-        let specifier = resolve_url(&url_str).unwrap();
-        let asset = AssetDocument::new(v);
-        (specifier, Some(asset))
-      })
-      .collect();
-    Self(assets)
+    Self(new_assets_map())
   }
 }
 
-impl Assets {
+impl AssetsSnapshot {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.0.contains_key(k)
+    self.0.lock().contains_key(k)
   }
 
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<&Option<AssetDocument>> {
-    self.0.get(k)
-  }
-
-  pub fn insert(
-    &mut self,
-    k: ModuleSpecifier,
-    v: Option<AssetDocument>,
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
   ) -> Option<Option<AssetDocument>> {
-    self.0.insert(k, v)
+    self.0.lock().get(k).cloned()
+  }
+}
+
+/// Assets are never updated and so we can safely use this struct across
+/// multiple threads without needing to worry about race conditions.
+#[derive(Debug, Clone)]
+pub struct Assets {
+  ts_server: Arc<TsServer>,
+  assets: Arc<Mutex<AssetsMap>>,
+}
+
+impl Assets {
+  pub fn new(ts_server: Arc<TsServer>) -> Self {
+    Self {
+      ts_server,
+      assets: new_assets_map(),
+    }
+  }
+
+  pub fn snapshot(&self) -> AssetsSnapshot {
+    // it's ok to not make a complete copy for snapshotting purposes
+    // because assets are static
+    AssetsSnapshot(self.assets.clone())
+  }
+
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
+  ) -> Option<Option<AssetDocument>> {
+    self.assets.lock().get(k).cloned()
+  }
+
+  pub async fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+    // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
+    // a constructor dependency
+    get_snapshot: impl Fn() -> Arc<StateSnapshot>,
+  ) -> LspResult<Option<AssetDocument>> {
+    // Race conditions are ok to happen here since the assets are static
+    if let Some(maybe_asset) = self.get_cached(specifier) {
+      Ok(maybe_asset)
+    } else {
+      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot())
+        .await
+        .map_err(|err| {
+          error!("Error getting asset {}: {}", specifier, err);
+          LspError::internal_error()
+        })?;
+      // if another thread has inserted into the cache, return the asset
+      // that already exists in the cache so that we don't store duplicate
+      // assets in memory anywhere
+      let mut assets = self.assets.lock();
+      if let Some(maybe_asset) = assets.get(specifier) {
+        Ok(maybe_asset.clone())
+      } else {
+        assets.insert(specifier.clone(), maybe_asset.clone());
+        Ok(maybe_asset)
+      }
+    }
   }
 
   pub fn cache_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
-    let maybe_doc = self
-      .0
+    let mut assets = self.assets.lock();
+    let maybe_doc = assets
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
     let doc = maybe_doc
@@ -232,38 +332,34 @@ impl Assets {
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
-pub(crate) async fn get_asset(
+async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument::new(text));
+    let maybe_asset = Some(AssetDocument::new(specifier.clone(), text));
     Ok(maybe_asset)
   } else {
     let res = ts_server
       .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
       .await?;
     let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset = maybe_text.map(AssetDocument::new);
+    let maybe_asset =
+      maybe_text.map(|text| AssetDocument::new(specifier.clone(), text));
     Ok(maybe_asset)
   }
 }
 
-fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
-  parts
-    .iter()
-    .map(|p| p.text.to_string())
-    .collect::<Vec<String>>()
-    .join("")
-}
-
-fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
+fn get_tag_body_text(
+  tag: &JsDocTagInfo,
+  language_server: &language_server::Inner,
+) -> Option<String> {
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = display_parts_to_string(display_parts);
+    let text = display_parts_to_string(display_parts, language_server);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -285,13 +381,16 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
   })
 }
 
-fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
+fn get_tag_documentation(
+  tag: &JsDocTagInfo,
+  language_server: &language_server::Inner,
+) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text = display_parts_to_string(display_parts);
+        let text = display_parts_to_string(display_parts, language_server);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -311,7 +410,7 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
     _ => (),
   }
   let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag);
+  let maybe_text = get_tag_body_text(tag, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
       format!("{}  \n{}", label, text)
@@ -332,9 +431,9 @@ fn make_codeblock(text: &str) -> String {
 }
 
 /// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
-fn replace_links(text: &str) -> String {
+fn replace_links<S: AsRef<str>>(text: S) -> String {
   JSDOC_LINKS_RE
-    .replace_all(text, |c: &Captures| match &c[1] {
+    .replace_all(text.as_ref(), |c: &Captures| match &c[1] {
       "linkcode" => format!(
         "[`{}`]({})",
         if c.get(3).is_none() {
@@ -561,6 +660,10 @@ impl TextSpan {
 pub struct SymbolDisplayPart {
   text: String,
   kind: String,
+  // This is only on `JSDocLinkDisplayPart` which extends `SymbolDisplayPart`
+  // but is only used as an upcast of a `SymbolDisplayPart` and not explicitly
+  // returned by any API, so it is safe to add it as an optional value.
+  target: Option<DocumentSpan>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -570,26 +673,119 @@ pub struct JsDocTagInfo {
   text: Option<Vec<SymbolDisplayPart>>,
 }
 
+// Note: the tsc protocol contains fields that are part of the protocol but
+// not currently used.  They are commented out in the structures so it is clear
+// that they exist.
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickInfo {
-  kind: ScriptElementKind,
-  kind_modifiers: String,
+  // kind: ScriptElementKind,
+  // kind_modifiers: String,
   text_span: TextSpan,
   display_parts: Option<Vec<SymbolDisplayPart>>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
 }
 
+#[derive(Default)]
+struct Link {
+  name: Option<String>,
+  target: Option<DocumentSpan>,
+  text: Option<String>,
+  linkcode: bool,
+}
+
+/// Takes `SymbolDisplayPart` items and converts them into a string, handling
+/// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
+/// to the their source location.
+fn display_parts_to_string(
+  parts: &[SymbolDisplayPart],
+  language_server: &language_server::Inner,
+) -> String {
+  let mut out = Vec::<String>::new();
+
+  let mut current_link: Option<Link> = None;
+  for part in parts {
+    match part.kind.as_str() {
+      "link" => {
+        if let Some(link) = current_link.as_mut() {
+          if let Some(target) = &link.target {
+            if let Some(specifier) = target.to_target(language_server) {
+              let link_text = link.text.clone().unwrap_or_else(|| {
+                link
+                  .name
+                  .clone()
+                  .map(|ref n| n.replace('`', "\\`"))
+                  .unwrap_or_else(|| "".to_string())
+              });
+              let link_str = if link.linkcode {
+                format!("[`{}`]({})", link_text, specifier)
+              } else {
+                format!("[{}]({})", link_text, specifier)
+              };
+              out.push(link_str);
+            }
+          } else {
+            let maybe_text = link.text.clone().or_else(|| link.name.clone());
+            if let Some(text) = maybe_text {
+              if HTTP_RE.is_match(&text) {
+                let parts: Vec<&str> = text.split(' ').collect();
+                if parts.len() == 1 {
+                  out.push(parts[0].to_string());
+                } else {
+                  let link_text = parts[1..].join(" ").replace('`', "\\`");
+                  let link_str = if link.linkcode {
+                    format!("[`{}`]({})", link_text, parts[0])
+                  } else {
+                    format!("[{}]({})", link_text, parts[0])
+                  };
+                  out.push(link_str);
+                }
+              } else {
+                out.push(text.replace('`', "\\`"));
+              }
+            }
+          }
+          current_link = None;
+        } else {
+          current_link = Some(Link {
+            linkcode: part.text.as_str() == "{@linkcode ",
+            ..Default::default()
+          });
+        }
+      }
+      "linkName" => {
+        if let Some(link) = current_link.as_mut() {
+          link.name = Some(part.text.clone());
+          link.target = part.target.clone();
+        }
+      }
+      "linkText" => {
+        if let Some(link) = current_link.as_mut() {
+          link.name = Some(part.text.clone());
+        }
+      }
+      _ => out.push(part.text.clone()),
+    }
+  }
+
+  replace_links(out.join(""))
+}
+
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: Arc<LineIndex>) -> lsp::Hover {
-    let mut contents = Vec::<lsp::MarkedString>::new();
+  pub fn to_hover(
+    &self,
+    line_index: Arc<LineIndex>,
+    language_server: &language_server::Inner,
+  ) -> lsp::Hover {
+    let mut parts = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| display_parts_to_string(&p))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
-      contents.push(lsp::MarkedString::from_language_code(
+      parts.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
@@ -597,46 +793,46 @@ impl QuickInfo {
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| display_parts_to_string(&p))
+      .map(|p| display_parts_to_string(&p, language_server))
     {
-      contents.push(lsp::MarkedString::from_markdown(documentation));
+      parts.push(lsp::MarkedString::from_markdown(documentation));
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
-        .map(get_tag_documentation)
+        .map(|tag_info| get_tag_documentation(tag_info, language_server))
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        contents.push(lsp::MarkedString::from_markdown(format!(
+        parts.push(lsp::MarkedString::from_markdown(format!(
           "\n\n{}",
           tags_preview
         )));
       }
     }
     lsp::Hover {
-      contents: lsp::HoverContents::Array(contents),
+      contents: lsp::HoverContents::Array(parts),
       range: Some(self.text_span.to_range(line_index)),
     }
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
   pub file_name: String,
   original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
+  // original_file_name: Option<String>,
   context_span: Option<TextSpan>,
   original_context_span: Option<TextSpan>,
 }
 
 impl DocumentSpan {
-  pub(crate) async fn to_link(
+  pub async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
     let target_asset_or_doc = language_server
@@ -677,6 +873,31 @@ impl DocumentSpan {
     };
     Some(link)
   }
+
+  /// Convert the `DocumentSpan` into a specifier that can be sent to the client
+  /// to link to the target document span. Used for converting JSDoc symbol
+  /// links to markdown links.
+  fn to_target(
+    &self,
+    language_server: &language_server::Inner,
+  ) -> Option<ModuleSpecifier> {
+    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let asset_or_doc =
+      language_server.get_maybe_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = self.text_span.to_range(line_index);
+    let mut target = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .ok()?;
+    target.set_fragment(Some(&format!(
+      "L{},{}",
+      range.start.line + 1,
+      range.start.character + 1
+    )));
+
+    Some(target)
+  }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -697,16 +918,16 @@ pub struct NavigateToItem {
   name: String,
   kind: ScriptElementKind,
   kind_modifiers: String,
-  match_kind: MatchKind,
-  is_case_sensitive: bool,
+  // match_kind: MatchKind,
+  // is_case_sensitive: bool,
   file_name: String,
   text_span: TextSpan,
   container_name: Option<String>,
-  container_kind: ScriptElementKind,
+  // container_kind: ScriptElementKind,
 }
 
 impl NavigateToItem {
-  pub(crate) async fn to_symbol_information(
+  pub async fn to_symbol_information(
     &self,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
@@ -905,15 +1126,15 @@ pub struct ImplementationLocation {
   #[serde(flatten)]
   pub document_span: DocumentSpan,
   // ImplementationLocation props
-  kind: ScriptElementKind,
-  display_parts: Vec<SymbolDisplayPart>,
+  // kind: ScriptElementKind,
+  // display_parts: Vec<SymbolDisplayPart>,
 }
 
 impl ImplementationLocation {
-  pub(crate) fn to_location(
+  pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
@@ -927,10 +1148,10 @@ impl ImplementationLocation {
     }
   }
 
-  pub(crate) async fn to_link(
+  pub async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     self
       .document_span
@@ -945,8 +1166,8 @@ pub struct RenameLocation {
   #[serde(flatten)]
   document_span: DocumentSpan,
   // RenameLocation props
-  prefix_text: Option<String>,
-  suffix_text: Option<String>,
+  // prefix_text: Option<String>,
+  // suffix_text: Option<String>,
 }
 
 pub struct RenameLocations {
@@ -954,10 +1175,10 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub(crate) async fn into_workspace_edit(
+  pub async fn into_workspace_edit(
     self,
     new_name: &str,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
@@ -1018,21 +1239,20 @@ pub enum HighlightSpanKind {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HighlightSpan {
-  file_name: Option<String>,
-  is_in_string: Option<bool>,
+  // file_name: Option<String>,
+  // is_in_string: Option<bool>,
   text_span: TextSpan,
-  context_span: Option<TextSpan>,
+  // context_span: Option<TextSpan>,
   kind: HighlightSpanKind,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfo {
-  kind: ScriptElementKind,
-  name: String,
-  container_kind: Option<ScriptElementKind>,
-  container_name: Option<String>,
-
+  // kind: ScriptElementKind,
+  // name: String,
+  // container_kind: Option<ScriptElementKind>,
+  // container_name: Option<String>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
 }
@@ -1041,14 +1261,14 @@ pub struct DefinitionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfoAndBoundSpan {
   pub definitions: Option<Vec<DefinitionInfo>>,
-  text_span: TextSpan,
+  // text_span: TextSpan,
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub(crate) async fn to_definition(
+  pub async fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
@@ -1071,7 +1291,7 @@ impl DefinitionInfoAndBoundSpan {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentHighlights {
-  file_name: String,
+  // file_name: String,
   highlight_spans: Vec<HighlightSpan>,
 }
 
@@ -1125,9 +1345,9 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub(crate) async fn to_text_document_edit(
+  pub async fn to_text_document_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
     let asset_or_doc =
@@ -1146,9 +1366,9 @@ impl FileTextChanges {
     })
   }
 
-  pub(crate) async fn to_text_document_change_ops(
+  pub async fn to_text_document_change_ops(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
@@ -1185,9 +1405,7 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: maybe_asset_or_document
-          .map(|d| d.document_lsp_version())
-          .flatten(),
+        version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
     }));
@@ -1205,6 +1423,7 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
+    asset_or_doc: &AssetOrDocument,
     line_index: Arc<LineIndex>,
   ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
@@ -1237,7 +1456,9 @@ impl Classifications {
         );
       } else {
         log::error!(
-          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          "unexpected positions\nspecifier: {}\nopen: {}\nstart_pos: {:?}\nend_pos: {:?}",
+          asset_or_doc.specifier(),
+          asset_or_doc.is_open(),
           start_pos,
           end_pos
         );
@@ -1320,9 +1541,9 @@ impl RefactorActionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ApplicableRefactorInfo {
   name: String,
-  description: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  inlineable: Option<bool>,
+  // description: String,
+  // #[serde(skip_serializing_if = "Option::is_none")]
+  // inlineable: Option<bool>,
   actions: Vec<RefactorActionInfo>,
 }
 
@@ -1382,9 +1603,9 @@ pub struct RefactorEditInfo {
 }
 
 impl RefactorEditInfo {
-  pub(crate) async fn to_workspace_edit(
+  pub async fn to_workspace_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
@@ -1402,10 +1623,10 @@ impl RefactorEditInfo {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
-  description: String,
-  changes: Vec<FileTextChanges>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  commands: Option<Vec<Value>>,
+  // description: String,
+// changes: Vec<FileTextChanges>,
+// #[serde(skip_serializing_if = "Option::is_none")]
+// commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1439,23 +1660,22 @@ pub struct CombinedCodeActions {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
-  is_write_access: bool,
+  // is_write_access: bool,
   pub is_definition: bool,
-  is_in_string: Option<bool>,
+  // is_in_string: Option<bool>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
 }
 
 impl ReferenceEntry {
-  pub(crate) fn to_location(
+  pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    url_map: &LspUrlMap,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let uri = language_server
-      .url_map
+    let uri = url_map
       .normalize_specifier(&specifier)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     lsp::Location {
@@ -1480,9 +1700,9 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
-  pub(crate) async fn try_resolve_call_hierarchy_item(
+  pub async fn try_resolve_call_hierarchy_item(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
@@ -1498,10 +1718,10 @@ impl CallHierarchyItem {
     ))
   }
 
-  pub(crate) fn to_call_hierarchy_item(
+  pub fn to_call_hierarchy_item(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
     let target_specifier = normalize_specifier(&self.file)
@@ -1581,9 +1801,9 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
-  pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
+  pub async fn try_resolve_call_hierarchy_incoming_call(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
@@ -1615,10 +1835,10 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
-  pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
+  pub async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
@@ -1645,34 +1865,38 @@ impl CallHierarchyOutgoingCall {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
-  name: String,
-  kind: ScriptElementKind,
-  kind_modifiers: String,
+  // name: String,
+  // kind: ScriptElementKind,
+  // kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
-  code_actions: Option<Vec<CodeAction>>,
-  source: Option<Vec<SymbolDisplayPart>>,
+  // code_actions: Option<Vec<CodeAction>>,
+  // source: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
   pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
+    language_server: &language_server::Inner,
   ) -> lsp::CompletionItem {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(&self.display_parts)))
+      Some(replace_links(&display_parts_to_string(
+        &self.display_parts,
+        language_server,
+      )))
     } else {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
-      let mut value = display_parts_to_string(parts);
+      let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
         let tag_documentation = tags
           .iter()
-          .map(get_tag_documentation)
+          .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
           .join("");
         value = format!("{}\n\n{}", value, tag_documentation);
@@ -1844,7 +2068,7 @@ impl CompletionEntry {
           return Some(insert_text.clone());
         }
       } else {
-        return Some(self.name.replace("#", ""));
+        return Some(self.name.replace('#', ""));
       }
     }
 
@@ -1981,9 +2205,9 @@ pub enum OutliningSpanKind {
 #[serde(rename_all = "camelCase")]
 pub struct OutliningSpan {
   text_span: TextSpan,
-  hint_span: TextSpan,
-  banner_text: String,
-  auto_collapse: bool,
+  // hint_span: TextSpan,
+  // banner_text: String,
+  // auto_collapse: bool,
   kind: OutliningSpanKind,
 }
 
@@ -2054,19 +2278,22 @@ impl OutliningSpan {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItems {
   items: Vec<SignatureHelpItem>,
-  applicable_span: TextSpan,
+  // applicable_span: TextSpan,
   selected_item_index: u32,
   argument_index: u32,
-  argument_count: u32,
+  // argument_count: u32,
 }
 
 impl SignatureHelpItems {
-  pub fn into_signature_help(self) -> lsp::SignatureHelp {
+  pub fn into_signature_help(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::SignatureHelp {
     lsp::SignatureHelp {
       signatures: self
         .items
         .into_iter()
-        .map(|item| item.into_signature_information())
+        .map(|item| item.into_signature_information(language_server))
         .collect(),
       active_parameter: Some(self.argument_index),
       active_signature: Some(self.selected_item_index),
@@ -2077,26 +2304,34 @@ impl SignatureHelpItems {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItem {
-  is_variadic: bool,
+  // is_variadic: bool,
   prefix_display_parts: Vec<SymbolDisplayPart>,
   suffix_display_parts: Vec<SymbolDisplayPart>,
-  separator_display_parts: Vec<SymbolDisplayPart>,
+  // separator_display_parts: Vec<SymbolDisplayPart>,
   parameters: Vec<SignatureHelpParameter>,
   documentation: Vec<SymbolDisplayPart>,
-  tags: Vec<JsDocTagInfo>,
+  // tags: Vec<JsDocTagInfo>,
 }
 
 impl SignatureHelpItem {
-  pub fn into_signature_information(self) -> lsp::SignatureInformation {
-    let prefix_text = display_parts_to_string(&self.prefix_display_parts);
+  pub fn into_signature_information(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::SignatureInformation {
+    let prefix_text =
+      display_parts_to_string(&self.prefix_display_parts, language_server);
     let params_text = self
       .parameters
       .iter()
-      .map(|param| display_parts_to_string(&param.display_parts))
+      .map(|param| {
+        display_parts_to_string(&param.display_parts, language_server)
+      })
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text = display_parts_to_string(&self.suffix_display_parts);
-    let documentation = display_parts_to_string(&self.documentation);
+    let suffix_text =
+      display_parts_to_string(&self.suffix_display_parts, language_server);
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -2109,7 +2344,7 @@ impl SignatureHelpItem {
         self
           .parameters
           .into_iter()
-          .map(|param| param.into_parameter_information())
+          .map(|param| param.into_parameter_information(language_server))
           .collect(),
       ),
       active_parameter: None,
@@ -2120,18 +2355,23 @@ impl SignatureHelpItem {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpParameter {
-  name: String,
+  // name: String,
   documentation: Vec<SymbolDisplayPart>,
   display_parts: Vec<SymbolDisplayPart>,
-  is_optional: bool,
+  // is_optional: bool,
 }
 
 impl SignatureHelpParameter {
-  pub fn into_parameter_information(self) -> lsp::ParameterInformation {
-    let documentation = display_parts_to_string(&self.documentation);
+  pub fn into_parameter_information(
+    self,
+    language_server: &language_server::Inner,
+  ) -> lsp::ParameterInformation {
+    let documentation =
+      display_parts_to_string(&self.documentation, language_server);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
+        language_server,
       )),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {
@@ -2167,26 +2407,33 @@ impl SelectionRange {
 
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
-  id: usize,
+  // id: usize,
   data: Value,
 }
 
 struct State<'a> {
   last_id: usize,
+  performance: Arc<Performance>,
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
+  token: CancellationToken,
 }
 
 impl<'a> State<'a> {
-  fn new(state_snapshot: Arc<StateSnapshot>) -> Self {
+  fn new(
+    state_snapshot: Arc<StateSnapshot>,
+    performance: Arc<Performance>,
+  ) -> Self {
     Self {
       last_id: 1,
+      performance,
       response: None,
       state_snapshot,
       snapshots: HashMap::default(),
       specifiers: HashMap::default(),
+      token: Default::default(),
     }
   }
 
@@ -2250,19 +2497,6 @@ fn normalize_specifier<S: AsRef<str>>(
     .map_err(|err| err.into())
 }
 
-// buffer-less json_sync ops
-fn op<F, V, R>(op_fn: F) -> Box<OpFn>
-where
-  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
-  V: de::DeserializeOwned,
-  R: Serialize + 'static,
-{
-  op_sync(move |s, args, _: ()| {
-    let state = s.borrow_mut::<State>();
-    op_fn(state, args)
-  })
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
@@ -2272,17 +2506,16 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
+#[op]
 fn op_dispose(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_dispose", Some(&args));
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("op_dispose", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(true)
 }
 
@@ -2292,17 +2525,25 @@ struct SpecifierArgs {
   specifier: String,
 }
 
-fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_exists", Some(&args));
-  let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state
-    .state_snapshot
-    .documents
-    .contains_specifier(&specifier);
-  state.state_snapshot.performance.measure(mark);
+#[op]
+fn op_exists(
+  state: &mut OpState,
+  args: SpecifierArgs,
+) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
+  // we don't measure the performance of op_exists anymore because as of TS 4.5
+  // it is noisy with all the checking for custom libs, that we can't see the
+  // forrest for the trees as well as it compounds any lsp performance
+  // challenges, opening a single document in the editor causes some 3k worth
+  // of op_exists requests... :omg:
+  let specifier = match state.normalize_specifier(&args.specifier) {
+    Ok(url) => url,
+    // sometimes tsc tries to query invalid specifiers, especially when
+    // something else isn't quite right, so instead of bubbling up the error
+    // back to tsc, we simply swallow it and say the file doesn't exist
+    Err(_) => return Ok(false),
+  };
+  let result = state.state_snapshot.documents.exists(&specifier);
   Ok(result)
 }
 
@@ -2317,14 +2558,13 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source has changed.
+#[op]
 fn op_get_change_range(
-  state: &mut State,
+  state: &mut OpState,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_change_range", Some(&args));
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("op_get_change_range", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
   let r = if let Some(current) = state
@@ -2360,20 +2600,20 @@ fn op_get_change_range(
     ))
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
+#[op]
 fn op_get_length(
-  state: &mut State,
+  state: &mut OpState,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_length", Some(&args));
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
+  let r = if let Some(Some(asset)) =
+    state.state_snapshot.assets.get_cached(&specifier)
   {
     Ok(asset.length())
   } else {
@@ -2384,7 +2624,7 @@ fn op_get_length(
       .unwrap();
     Ok(content.encode_utf16().count())
   };
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
@@ -2397,51 +2637,54 @@ struct GetTextArgs {
   end: usize,
 }
 
+#[op]
 fn op_get_text(
-  state: &mut State,
+  state: &mut OpState,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_text", Some(&args));
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let content =
-    if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text_str()
-    } else {
-      cache_snapshot(state, &specifier, args.version.clone())?;
-      state
-        .snapshots
-        .get(&(specifier, args.version.into()))
-        .unwrap()
-    };
-  state.state_snapshot.performance.measure(mark);
+  let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
+  let content = if let Some(Some(content)) = &maybe_asset {
+    content.text_str()
+  } else {
+    cache_snapshot(state, &specifier, args.version.clone())?;
+    state
+      .snapshots
+      .get(&(specifier, args.version.into()))
+      .unwrap()
+  };
+  state.performance.measure(mark);
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
+#[op]
+fn op_is_cancelled(state: &mut OpState) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
+  Ok(state.token.is_cancelled())
+}
+
+#[op]
 fn op_load(
-  state: &mut State,
+  state: &mut OpState,
   args: SpecifierArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_load", Some(&args));
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let document = state.state_snapshot.documents.get(&specifier);
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(document.map(|d| d.content().to_string()))
 }
 
+#[op]
 fn op_resolve(
-  state: &mut State,
+  state: &mut OpState,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_resolve", Some(&args));
+  let state = state.borrow_mut::<State>();
+  let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
   let result = if let Some(resolved) = state
@@ -2467,19 +2710,23 @@ fn op_resolve(
     ))
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   result
 }
 
-fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+#[op]
+fn op_respond(state: &mut OpState, args: Response) -> Result<bool, AnyError> {
+  let state = state.borrow_mut::<State>();
   state.response = Some(args);
   Ok(true)
 }
 
+#[op]
 fn op_script_names(
-  state: &mut State,
+  state: &mut OpState,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  let state = state.borrow_mut::<State>();
   Ok(
     state
       .state_snapshot
@@ -2497,16 +2744,16 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
+#[op]
 fn op_script_version(
-  state: &mut State,
+  state: &mut OpState,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_script_version", Some(&args));
+  let state = state.borrow_mut::<State>();
+  // this op is very "noisy" and measuring its performance is not useful, so we
+  // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if specifier.scheme() == "asset" {
+  if specifier.scheme() == "asset" {
     if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(Some("1".to_string()))
     } else {
@@ -2519,40 +2766,43 @@ fn op_script_version(
       .get(&specifier)
       .map(|d| d.script_version());
     Ok(script_version)
-  };
-
-  state.state_snapshot.performance.measure(mark);
-  r
+  }
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn load() -> Result<JsRuntime, AnyError> {
-  let mut runtime = JsRuntime::new(RuntimeOptions {
+fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
+  JsRuntime::new(RuntimeOptions {
+    extensions: vec![init_extension(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
-  });
+  })
+}
 
-  {
-    let op_state = runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(Arc::new(StateSnapshot::default())));
-  }
-
-  runtime.register_op("op_dispose", op(op_dispose));
-  runtime.register_op("op_exists", op(op_exists));
-  runtime.register_op("op_get_change_range", op(op_get_change_range));
-  runtime.register_op("op_get_length", op(op_get_length));
-  runtime.register_op("op_get_text", op(op_get_text));
-  runtime.register_op("op_load", op(op_load));
-  runtime.register_op("op_resolve", op(op_resolve));
-  runtime.register_op("op_respond", op(op_respond));
-  runtime.register_op("op_script_names", op(op_script_names));
-  runtime.register_op("op_script_version", op(op_script_version));
-  runtime.sync_ops_cache();
-
-  Ok(runtime)
+fn init_extension(performance: Arc<Performance>) -> Extension {
+  Extension::builder()
+    .ops(vec![
+      op_dispose::decl(),
+      op_exists::decl(),
+      op_get_change_range::decl(),
+      op_get_length::decl(),
+      op_get_text::decl(),
+      op_is_cancelled::decl(),
+      op_load::decl(),
+      op_resolve::decl(),
+      op_respond::decl(),
+      op_script_names::decl(),
+      op_script_version::decl(),
+    ])
+    .state(move |state| {
+      state.put(State::new(
+        Arc::new(StateSnapshot::default()),
+        performance.clone(),
+      ));
+      Ok(())
+    })
+    .build()
 }
 
 /// Instruct a language server runtime to start the language server and provide
@@ -2563,7 +2813,6 @@ fn start(
   state_snapshot: &StateSnapshot,
 ) -> Result<(), AnyError> {
   let root_uri = state_snapshot
-    .config
     .root_uri
     .clone()
     .unwrap_or_else(|| Url::parse("cache:///").unwrap());
@@ -3003,20 +3252,21 @@ impl RequestMethod {
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
-pub(crate) fn request(
+pub fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
+  token: CancellationToken,
 ) -> Result<Value, AnyError> {
-  let performance = state_snapshot.performance.clone();
-  let request_params = {
+  let (performance, request_params) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
     state.state_snapshot = state_snapshot;
+    state.token = token;
     state.last_id += 1;
     let id = state.last_id;
-    method.to_value(state, id)
+    (state.performance.clone(), method.to_value(state, id))
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
@@ -3048,7 +3298,7 @@ mod tests {
   use crate::lsp::text::LineIndex;
   use std::path::Path;
   use std::path::PathBuf;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
@@ -3072,14 +3322,14 @@ mod tests {
   }
 
   fn setup(
+    temp_dir: &TempDir,
     debug: bool,
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = load().expect("could not start server");
+    let mut runtime = js_runtime(Default::default());
     start(&mut runtime, debug, &state_snapshot)
       .expect("could not start server");
     let ts_config = TsConfig::new(config);
@@ -3087,7 +3337,8 @@ mod tests {
       request(
         &mut runtime,
         state_snapshot.clone(),
-        RequestMethod::Configure(ts_config)
+        RequestMethod::Configure(ts_config),
+        Default::default(),
       )
       .expect("failed request"),
       json!(true)
@@ -3112,7 +3363,9 @@ mod tests {
 
   #[test]
   fn test_project_configure() {
+    let temp_dir = TempDir::new();
     setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3125,7 +3378,9 @@ mod tests {
 
   #[test]
   fn test_project_reconfigure() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3144,6 +3399,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::Configure(ts_config),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3152,7 +3408,9 @@ mod tests {
 
   #[test]
   fn test_get_diagnostics() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3171,6 +3429,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3200,7 +3459,9 @@ mod tests {
 
   #[test]
   fn test_get_diagnostics_lib() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3221,6 +3482,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3229,7 +3491,9 @@ mod tests {
 
   #[test]
   fn test_module_resolution() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3255,6 +3519,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3263,7 +3528,9 @@ mod tests {
 
   #[test]
   fn test_bad_module_specifiers() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3285,6 +3552,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3313,7 +3581,9 @@ mod tests {
 
   #[test]
   fn test_remote_modules() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3339,6 +3609,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3347,7 +3618,9 @@ mod tests {
 
   #[test]
   fn test_partial_modules() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3376,6 +3649,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3418,7 +3692,9 @@ mod tests {
 
   #[test]
   fn test_no_debug_failure() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3438,6 +3714,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3467,7 +3744,9 @@ mod tests {
 
   #[test]
   fn test_request_asset() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3483,6 +3762,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetAsset(specifier),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response: Option<String> =
@@ -3492,7 +3772,9 @@ mod tests {
 
   #[test]
   fn test_modify_sources() {
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, location) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3527,6 +3809,7 @@ mod tests {
       &mut runtime,
       state_snapshot.clone(),
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3564,6 +3847,7 @@ mod tests {
       &mut runtime,
       state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -3573,6 +3857,36 @@ mod tests {
         "file:///a.ts": []
       })
     );
+  }
+
+  #[test]
+  fn test_op_exists() {
+    let temp_dir = TempDir::new();
+    let (mut rt, state_snapshot, _) = setup(
+      &temp_dir,
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[],
+    );
+    let performance = Arc::new(Performance::default());
+    let state = State::new(state_snapshot, performance);
+    let op_state = rt.op_state();
+    let mut op_state = op_state.borrow_mut();
+    op_state.put(state);
+    let actual = op_exists::call(
+      &mut op_state,
+      SpecifierArgs {
+        specifier: "/error/unknown:something/index.d.ts".to_string(),
+      },
+    );
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert!(!actual);
   }
 
   #[test]
@@ -3620,7 +3934,9 @@ mod tests {
         character: 16,
       })
       .unwrap();
+    let temp_dir = TempDir::new();
     let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
       false,
       json!({
         "target": "esnext",
@@ -3635,6 +3951,7 @@ mod tests {
       &mut runtime,
       state_snapshot.clone(),
       RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+      Default::default(),
     );
     assert!(result.is_ok());
     let result = request(
@@ -3651,6 +3968,7 @@ mod tests {
           trigger_character: Some(".".to_string()),
         },
       )),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response: CompletionInfo =
@@ -3666,6 +3984,7 @@ mod tests {
         source: None,
         data: None,
       }),
+      Default::default(),
     );
     assert!(result.is_ok());
     let response = result.unwrap();

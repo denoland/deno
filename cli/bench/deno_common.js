@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // Run with: deno run -A ./cli/bench/deno_common.js
 function benchSync(name, n, innerLoop) {
   const t1 = Date.now();
@@ -37,9 +37,29 @@ function benchStats(name, n, t1, t2) {
     `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`;
 }
 
+function benchB64RtLong() {
+  const input = "long-string".repeat(99999);
+  benchSync("b64_rt_long", 100, () => {
+    atob(btoa(input));
+  });
+}
+
+function benchB64RtShort() {
+  benchSync("b64_rt_short", 1e6, () => {
+    atob(btoa("123"));
+  });
+}
+
 function benchUrlParse() {
   benchSync("url_parse", 5e4, (i) => {
     new URL(`http://www.google.com/${i}`);
+  });
+}
+
+function benchLargeBlobText() {
+  const input = "long-string".repeat(999_999);
+  benchSync("blob_text_large", 100, () => {
+    new Blob([input]).text();
   });
 }
 
@@ -78,7 +98,7 @@ function benchRead128k() {
   return benchAsync(
     "read_128k",
     5e4,
-    () => Deno.readFile("./cli/bench/fixtures/128k.bin"),
+    () => Deno.readFile("./cli/bench/testdata/128k.bin"),
   );
 }
 
@@ -110,6 +130,9 @@ async function main() {
   // A common "language feature", that should be fast
   // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
+  benchLargeBlobText();
+  benchB64RtLong();
+  benchB64RtShort();
   // IO ops
   benchReadZero();
   benchWriteNull();

@@ -1,30 +1,32 @@
 # project root files (README, Releases, LICENCE, etc)
-/*              @bartlomieju @bnoordhuis
+/*              @bartlomieju
 
 # CI files
 .github         @bartlomieju @kt3k @piscisaureus  
 
 .devcontainer/  @kitsonk
 
-bench_util/     @AaronO
+bench_util/     @AaronO @littledivy
 cli/            @bartlomieju
 cli/ast/        @dsherret @kitsonk
 cli/dts/        @kitsonk
 cli/lsp/        @dsherret @kitsonk
 cli/schemas/    @kitsonk
 cli/tsc/        @kitsonk
-core/           @bartlomieju @bnoordhuis
+core/           @AaronO @bartlomieju
 docs/           @ry
-ext/            @bartlomieju @crowlKats @lucacasonato
-ext/tls/        @bnoordhuis @piscisaureus
+ext/            @bartlomieju @crowlKats @lucacasonato @littledivy
+ext/tls/        @piscisaureus
 ext/console/    @kt3k
-ext/crypto/     @bnoordhuis @lucacasonato
+ext/crypto/     @lucacasonato @littledivy
 ext/web/        @crowlKats @lucacasonato
 ext/webidl/     @lucacasonato
 ext/webgpu/     @crowlKats @lucacasonato
+ext/ffi/        @littledivy @piscisaureus
+ops/            @littledivy @AaronO
 runtime/        @bartlomieju
 serde_v8/       @AaronO
-test_ffi/       @bartlomieju
+test_ffi/       @bartlomieju @littledivy
 test_util/      @bartlomieju
 test_util/wpt/  @lucacasonato
 test_util/      @bartlomieju

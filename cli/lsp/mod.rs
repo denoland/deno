@@ -1,7 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-// FIXME(bartlomieju): remove this attribute
-#![allow(unused)]
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use lspower::LspService;
@@ -19,7 +16,7 @@ mod completions;
 mod config;
 mod diagnostics;
 mod documents;
-pub(crate) mod language_server;
+pub mod language_server;
 mod logging;
 mod lsp_custom;
 mod parent_process_checker;
@@ -29,6 +26,7 @@ mod refactor;
 mod registries;
 mod repl;
 mod semantic_tokens;
+mod testing;
 mod text;
 mod tsc;
 mod urls;

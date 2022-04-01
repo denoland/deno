@@ -1,5 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::os::raw::c_void;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -101,3 +102,24 @@ pub extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
   let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
   assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
+
+#[no_mangle]
+pub extern "C" fn get_add_u32_ptr() -> *const c_void {
+  add_u32 as *const c_void
+}
+
+#[no_mangle]
+pub extern "C" fn get_sleep_blocking_ptr() -> *const c_void {
+  sleep_blocking as *const c_void
+}
+
+#[no_mangle]
+pub static static_u32: u32 = 42;
+
+#[repr(C)]
+pub struct Structure {
+  _data: u32,
+}
+
+#[no_mangle]
+pub static static_ptr: Structure = Structure { _data: 42 };

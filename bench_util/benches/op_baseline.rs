@@ -3,11 +3,9 @@ use deno_bench_util::bencher::{benchmark_group, Bencher};
 use deno_bench_util::{bench_js_async, bench_js_sync};
 
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
-use deno_core::serialize_op_result;
+use deno_core::op;
+
 use deno_core::Extension;
-use deno_core::Op;
 use deno_core::OpState;
 
 use std::cell::RefCell;
@@ -16,35 +14,39 @@ use std::rc::Rc;
 fn setup() -> Vec<Extension> {
   vec![Extension::builder()
     .ops(vec![
-      ("pi_json", op_sync(|_, _: (), _: ()| Ok(314159))),
-      ("pi_async", op_async(op_pi_async)),
-      (
-        "nop",
-        Box::new(|state, _| Op::Sync(serialize_op_result(Ok(9), state))),
-      ),
+      op_pi_json::decl(),
+      op_pi_async::decl(),
+      op_nop::decl(),
     ])
     .build()]
 }
 
+#[op]
+fn op_nop() -> Result<(), AnyError> {
+  Ok(())
+}
+
+#[op]
+fn op_pi_json() -> Result<i64, AnyError> {
+  Ok(314159)
+}
+
 // this is a function since async closures aren't stable
-async fn op_pi_async(
-  _: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<i64, AnyError> {
+#[op]
+async fn op_pi_async(_: Rc<RefCell<OpState>>) -> Result<i64, AnyError> {
   Ok(314159)
 }
 
 fn bench_op_pi_json(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.opSync("pi_json", null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.opSync("op_pi_json", null);"#, setup);
 }
 
 fn bench_op_nop(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.opSync("nop", null, null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.opSync("op_nop", null, null, null);"#, setup);
 }
 
 fn bench_op_async(b: &mut Bencher) {
-  bench_js_async(b, r#"Deno.core.opAsync("pi_async", null);"#, setup);
+  bench_js_async(b, r#"Deno.core.opAsync("op_pi_async", null);"#, setup);
 }
 
 fn bench_is_proxy(b: &mut Bencher) {
@@ -58,4 +60,5 @@ benchmark_group!(
   bench_op_async,
   bench_is_proxy
 );
+
 bench_or_profile!(benches);

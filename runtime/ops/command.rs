@@ -5,11 +5,10 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_core::op;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -28,13 +27,13 @@ use std::os::unix::prelude::ExitStatusExt;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_create_command", op_sync(op_create_command)),
-      ("op_command_spawn", op_sync(op_command_spawn)),
-      ("op_command_status", op_async(op_command_status)),
-      ("op_command_output", op_async(op_command_output)),
-      ("op_command_child_wait", op_async(op_command_child_wait)),
-      ("op_command_child_output", op_async(op_command_child_output)),
-      ("op_command_child_status", op_sync(op_command_child_status)),
+      op_create_command::decl(),
+      op_command_spawn::decl(),
+      op_command_status::decl(),
+      op_command_output::decl(),
+      op_command_child_wait::decl(),
+      op_command_child_output::decl(),
+      op_command_child_status::decl(),
     ])
     .build()
 }
@@ -110,11 +109,8 @@ pub struct CommandArgs {
   uid: Option<u32>,
 }
 
-fn op_create_command(
-  state: &mut OpState,
-  args: CommandArgs,
-  _: (),
-) -> Result<ResourceId, AnyError> {
+#[op]
+fn op_create_command(state: &mut OpState, args: CommandArgs) -> Result<ResourceId, AnyError> {
   super::check_unstable(state, "Deno.Command");
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
@@ -191,6 +187,7 @@ impl From<std::process::ExitStatus> for CommandStatus {
   }
 }
 
+#[op]
 async fn op_command_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -213,11 +210,8 @@ pub struct CommandOutput {
   stderr: Option<ZeroCopyBuf>,
 }
 
-async fn op_command_output(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
-) -> Result<CommandOutput, AnyError> {
+#[op]
+async fn op_command_output(state: Rc<RefCell<OpState>>, rid: ResourceId) -> Result<CommandOutput, AnyError> {
   let command_resource = state
     .borrow_mut()
     .resource_table
@@ -242,11 +236,8 @@ struct Child {
   stderr_rid: Option<ResourceId>,
 }
 
-fn op_command_spawn(
-  state: &mut OpState,
-  rid: ResourceId,
-  args: CommandIoArgs,
-) -> Result<Child, AnyError> {
+#[op]
+fn op_command_spawn(state: &mut OpState, rid: ResourceId, args: CommandIoArgs) -> Result<Child, AnyError> {
   let command_resource = state.resource_table.take::<CommandResource>(rid)?;
   let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
   handle_io_args(&mut command, args)?;
@@ -282,16 +273,17 @@ fn op_command_spawn(
   })
 }
 
+#[op]
 fn op_command_child_status(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<Option<CommandStatus>, AnyError> {
   let resource = state.resource_table.get::<ChildResource>(rid)?;
   let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
   Ok(child.try_wait()?.map(|status| status.into()))
 }
 
+#[op]
 async fn op_command_child_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -320,6 +312,7 @@ struct ChildStdio {
   stderr_rid: Option<ResourceId>,
 }
 
+#[op]
 async fn op_command_child_output(
   state: Rc<RefCell<OpState>>,
   args: ChildStdio,

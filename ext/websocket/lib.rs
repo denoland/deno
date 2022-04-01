@@ -1,16 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -20,6 +22,8 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
+use http::header::HeaderName;
+use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
@@ -187,6 +191,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
+#[op]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   url: String,
@@ -215,6 +220,7 @@ pub struct CreateArgs {
   url: String,
   protocols: String,
   cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 }
 
 #[derive(Serialize)]
@@ -225,10 +231,10 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+#[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
-  _: (),
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -265,6 +271,30 @@ where
 
   if !args.protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  }
+
+  if let Some(headers) = args.headers {
+    for (key, value) in headers {
+      let name = HeaderName::from_bytes(&key)
+        .map_err(|err| type_error(err.to_string()))?;
+      let v = HeaderValue::from_bytes(&value)
+        .map_err(|err| type_error(err.to_string()))?;
+
+      let is_disallowed_header = matches!(
+        name,
+        http::header::HOST
+          | http::header::SEC_WEBSOCKET_ACCEPT
+          | http::header::SEC_WEBSOCKET_EXTENSIONS
+          | http::header::SEC_WEBSOCKET_KEY
+          | http::header::SEC_WEBSOCKET_PROTOCOL
+          | http::header::SEC_WEBSOCKET_VERSION
+          | http::header::UPGRADE
+          | http::header::CONNECTION
+      );
+      if !is_disallowed_header {
+        request = request.header(name, v);
+      }
+    }
   }
 
   let request = request.body(())?;
@@ -305,7 +335,7 @@ where
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
-        err.to_string()
+        err
       ))
     })?;
 
@@ -347,8 +377,10 @@ pub enum SendValue {
   Text(String),
   Binary(ZeroCopyBuf),
   Pong,
+  Ping,
 }
 
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -358,6 +390,7 @@ pub async fn op_ws_send(
     SendValue::Text(text) => Message::Text(text),
     SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
     SendValue::Pong => Message::Pong(vec![]),
+    SendValue::Ping => Message::Ping(vec![]),
   };
 
   let resource = state
@@ -376,10 +409,10 @@ pub struct CloseArgs {
   reason: Option<String>,
 }
 
+#[op]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
-  _: (),
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
@@ -410,10 +443,10 @@ pub enum NextEventResponse {
   Closed,
 }
 
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()
@@ -456,14 +489,11 @@ pub fn init<P: WebSocketPermissions + 'static>(
       "02_websocketstream.js",
     ))
     .ops(vec![
-      (
-        "op_ws_check_permission_and_cancel_handle",
-        op_sync(op_ws_check_permission_and_cancel_handle::<P>),
-      ),
-      ("op_ws_create", op_async(op_ws_create::<P>)),
-      ("op_ws_send", op_async(op_ws_send)),
-      ("op_ws_close", op_async(op_ws_close)),
-      ("op_ws_next_event", op_async(op_ws_next_event)),
+      op_ws_check_permission_and_cancel_handle::decl::<P>(),
+      op_ws_create::decl::<P>(),
+      op_ws_send::decl(),
+      op_ws_close::decl(),
+      op_ws_next_event::decl(),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));

@@ -1,8 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use serde::Deserialize;
 
 use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::ByteString;
 use serde_v8::Error;
+use serde_v8::{Buffer, U16String};
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -192,6 +194,29 @@ fn de_string_or_buffer() {
   );
 }
 
+#[test]
+fn de_buffers() {
+  // ArrayBufferView
+  dedo("new Uint8Array([97])", |scope, v| {
+    let buf: Buffer = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(&*buf, &[97]);
+  });
+
+  // ArrayBuffer
+  dedo("(new Uint8Array([97])).buffer", |scope, v| {
+    let buf: Buffer = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(&*buf, &[97]);
+  });
+
+  dedo(
+    "(Uint8Array.from([0x68, 0x65, 0x6C, 0x6C, 0x6F]))",
+    |scope, v| {
+      let buf: Buffer = serde_v8::from_v8(scope, v).unwrap();
+      assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+    },
+  );
+}
+
 ////
 // JSON tests: serde_json::Value compatibility
 ////
@@ -271,3 +296,36 @@ detest!(de_bigint_i64, i64, "BigInt(-(2**59))", -(1 << 59));
 
 defail!(defail_struct, MathOp, "123", |e| e
   == Err(Error::ExpectedObject));
+
+#[derive(PartialEq, Debug, Deserialize)]
+pub struct SomeThing {
+  pub a: String,
+  #[serde(default)]
+  pub b: String,
+}
+detest!(
+  de_struct_defaults,
+  SomeThing,
+  "({ a: 'hello' })",
+  SomeThing {
+    a: "hello".into(),
+    b: "".into()
+  }
+);
+
+detest!(de_bstr, ByteString, "'hello'", ByteString("hello".into()));
+defail!(defail_bstr, ByteString, "'👋bye'", |e| e
+  == Err(Error::ExpectedLatin1));
+
+detest!(
+  de_u16str,
+  U16String,
+  "'hello'",
+  U16String("hello".encode_utf16().collect())
+);
+detest!(
+  de_u16str_non_latin1,
+  U16String,
+  "'👋bye'",
+  U16String("👋bye".encode_utf16().collect())
+);

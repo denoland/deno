@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // This code has been ported almost directly from Go's src/bytes/buffer.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
@@ -6,7 +6,7 @@
 "use strict";
 
 ((window) => {
-  const { assert } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
 use std::{collections::HashMap, path::Path, process::Command, time::Duration};
@@ -12,7 +12,7 @@ pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 
 const DURATION: &str = "20s";
 
-pub(crate) fn benchmark(
+pub fn benchmark(
   target_path: &Path,
 ) -> Result<HashMap<String, HttpBenchmarkResult>> {
   let deno_exe = test_util::deno_exe_path();
