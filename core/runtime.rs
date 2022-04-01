@@ -3111,6 +3111,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap();
   }
+
+  #[test]
   fn test_op_unstable_disabling() {
     #[op]
     fn op_foo() -> Result<i64, anyhow::Error> {
