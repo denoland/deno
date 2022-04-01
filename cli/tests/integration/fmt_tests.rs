@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn fmt_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
     util::testdata_path().join("badly_formatted.mjs");
@@ -135,7 +135,8 @@ fn fmt_auto_ignore_git() {
     let mut bad_json_file = File::create(bad_json_path).unwrap();
     writeln!(bad_json_file, "bad json").unwrap();
   }
-  let t = TempDir::new().unwrap().path().join("target");
+  let temp_dir = TempDir::new();
+  let t = temp_dir.path().join("target");
   let nest_git = t.join("nest").join(".git");
   let git_dir = t.join(".git");
   create_dir_all(&nest_git).unwrap();

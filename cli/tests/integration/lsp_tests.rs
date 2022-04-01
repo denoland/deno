@@ -12,11 +12,11 @@ use lspower::lsp;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 use std::fs;
-use tempfile::TempDir;
 use test_util::deno_exe_path;
 use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
+use test_util::TempDir;
 
 fn load_fixture(path: &str) -> Value {
   load_fixture_as(path)
@@ -233,7 +233,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 fn lsp_init_tsconfig() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let tsconfig =
@@ -276,7 +276,7 @@ fn lsp_init_tsconfig() {
 fn lsp_tsconfig_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let tsconfig =
     serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
   fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
@@ -341,9 +341,9 @@ fn lsp_tsconfig_bad_config_path() {
 
 #[test]
 fn lsp_triple_slash_types() {
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().unwrap();
   let a_dts = load_fixture_str("a.d.ts");
   fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
 
@@ -377,7 +377,7 @@ fn lsp_triple_slash_types() {
 
 #[test]
 fn lsp_import_map() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -488,7 +488,7 @@ fn lsp_import_map_data_url() {
 
 #[test]
 fn lsp_import_map_config_file() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
 
@@ -581,7 +581,7 @@ fn lsp_import_map_config_file() {
 
 #[test]
 fn lsp_deno_task() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let workspace_root = temp_dir.path().canonicalize().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
@@ -704,7 +704,7 @@ fn lsp_import_assertions() {
 
 #[test]
 fn lsp_import_map_import_completions() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -1073,7 +1073,7 @@ fn lsp_workspace_enable_paths() {
   // we aren't actually writing anything to the tempdir in this test, but we
   // just need a legitimate file path on the host system so that logic that
   // tries to convert to and from the fs paths works on all env
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
 
   let root_specifier =
     ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
@@ -1458,7 +1458,8 @@ fn lsp_hover_change_mbc() {
 
 #[test]
 fn lsp_hover_closed_document() {
-  let temp_dir = TempDir::new().unwrap().into_path();
+  let temp_dir_guard = TempDir::new();
+  let temp_dir = temp_dir_guard.path();
   let a_path = temp_dir.join("a.ts");
   fs::write(a_path, r#"export const a = "a";"#).unwrap();
   let b_path = temp_dir.join("b.ts");
@@ -3669,7 +3670,7 @@ fn lsp_auto_discover_registry() {
 #[test]
 fn lsp_cache_location() {
   let _g = http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_registry.json"))
       .unwrap();
@@ -4395,7 +4396,7 @@ fn lsp_format_mbc() {
 
 #[test]
 fn lsp_format_exclude_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -4450,7 +4451,7 @@ fn lsp_format_exclude_with_config() {
 
 #[test]
 fn lsp_format_exclude_default_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let workspace_root = temp_dir.path().canonicalize().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
@@ -4675,7 +4676,7 @@ fn lsp_format_markdown() {
 
 #[test]
 fn lsp_format_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -5154,7 +5155,7 @@ console.log(snake_case);
 
 #[test]
 fn lsp_lint_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =
@@ -5186,7 +5187,7 @@ fn lsp_lint_with_config() {
 
 #[test]
 fn lsp_lint_exclude_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =
@@ -5346,7 +5347,7 @@ struct TestRunResponseParams {
 fn lsp_testing_api() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
 
   let root_specifier =
     ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());

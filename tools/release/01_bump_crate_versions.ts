@@ -78,17 +78,22 @@ async function getReleasesMdText() {
 }
 
 async function getGitLog() {
-  const lastVersion = semver.parse(originalCliVersion)!;
-  const lastVersionTag = `v${originalCliVersion}`;
+  const originalVersion = semver.parse(originalCliVersion)!;
+  const originalVersionTag = `v${originalCliVersion}`;
   // fetch the upstream tags
   await repo.gitFetchTags("upstream");
 
+  // make the repo unshallow so we can fetch the latest tag
+  if (await repo.gitIsShallow()) {
+    await repo.gitFetchUnshallow("origin");
+  }
+
   // this means we're on the patch release
   const latestTag = await repo.gitLatestTag();
-  if (latestTag === lastVersionTag) {
+  if (latestTag === originalVersionTag) {
     return await repo.getGitLogFromTags(
       "upstream",
-      lastVersionTag,
+      originalVersionTag,
       undefined,
     );
   } else {
@@ -96,8 +101,8 @@ async function getGitLog() {
     await repo.gitFetchHistory("upstream");
     const lastMinorHistory = await repo.getGitLogFromTags(
       "upstream",
-      `v${lastVersion.major}.${lastVersion.minor}.0`,
-      lastVersionTag,
+      `v${originalVersion.major}.${originalVersion.minor}.0`,
+      originalVersionTag,
     );
     const currentHistory = await repo.getGitLogFromTags(
       "upstream",
