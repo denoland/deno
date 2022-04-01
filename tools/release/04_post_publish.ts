@@ -11,7 +11,11 @@ console.log("Creating release tag...");
 await createReleaseTag();
 
 console.log("Forwarding release commit to main...");
-await forwardReleaseCommitToMain();
+try {
+  await forwardReleaseCommitToMain();
+} catch (err) {
+  console.error("Failed. Please manually open a PR.", err);
+}
 
 async function createReleaseTag() {
   await repo.gitFetchTags("origin");
