@@ -189,7 +189,7 @@ fn standalone_load_datauri() {
 // https://github.com/denoland/deno/issues/13704
 #[test]
 fn standalone_follow_redirects() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("follow_redirects.exe")
   } else {
