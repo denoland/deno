@@ -13,7 +13,8 @@ use crate::fs_util::specifier_to_file_path;
 use crate::http_cache::HttpCache;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::{http_cache, text_encoding};
+use crate::http_cache;
+use crate::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::SourceTextInfo;
