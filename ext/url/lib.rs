@@ -123,23 +123,21 @@ pub fn op_url_reparse(
   Ok(url_result(url))
 }
 
-fn url_result(
-  url: Url,
-) -> UrlParts {
+fn url_result(url: Url) -> UrlParts {
   [
     quirks::href(&url),
     quirks::hash(&url),
-      quirks::host(&url),
-      quirks::hostname(&url),
-      &quirks::origin(&url),
-      quirks::password(&url),
-      quirks::pathname(&url),
-      quirks::port(&url),
-      quirks::protocol(&url),
-      quirks::search(&url),
-      quirks::username(&url),
-    ]
-    .join("\n")
+    quirks::host(&url),
+    quirks::hostname(&url),
+    &quirks::origin(&url),
+    quirks::password(&url),
+    quirks::pathname(&url),
+    quirks::port(&url),
+    quirks::protocol(&url),
+    quirks::search(&url),
+    quirks::username(&url),
+  ]
+  .join("\n")
 }
 
 #[op]
