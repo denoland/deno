@@ -3709,6 +3709,7 @@ name = "serde_v8"
 version = "0.38.0"
 dependencies = [
  "bencher",
+ "derive_more",
  "serde",
  "serde_bytes",
  "serde_json",

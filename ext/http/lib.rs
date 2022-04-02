@@ -470,15 +470,12 @@ fn req_headers(
     } else {
       let name: &[u8] = name.as_ref();
       let value = value.as_bytes();
-      headers.push((ByteString(name.to_owned()), ByteString(value.to_owned())));
+      headers.push((name.into(), value.into()));
     }
   }
 
   if !cookies.is_empty() {
-    headers.push((
-      ByteString("cookie".as_bytes().to_owned()),
-      ByteString(cookies.join(cookie_sep)),
-    ));
+    headers.push(("cookie".into(), cookies.join(cookie_sep).into()));
   }
 
   headers
@@ -548,7 +545,7 @@ async fn op_http_write_headers(
       vary_header = Some(value);
       continue;
     }
-    builder = builder.header(key.as_ref(), value.as_ref());
+    builder = builder.header(key.as_slice(), value.as_slice());
   }
 
   if headers_allow_compression {
@@ -566,7 +563,7 @@ async fn op_http_write_headers(
       // data to make sure cache services do not serve uncompressed data to
       // clients that support compression.
       let vary_value = if let Some(value) = vary_header {
-        if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+        if let Ok(value_str) = std::str::from_utf8(value.as_slice()) {
           if !value_str.to_lowercase().contains("accept-encoding") {
             format!("Accept-Encoding, {}", value_str)
           } else {
@@ -598,14 +595,14 @@ async fn op_http_write_headers(
         // If user provided a ETag header for uncompressed data, we need to
         // ensure it is a Weak Etag header ("W/").
         if let Some(value) = etag_header {
-          if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+          if let Ok(value_str) = std::str::from_utf8(value.as_slice()) {
             if !value_str.starts_with("W/") {
               builder = builder.header("etag", format!("W/{}", value_str));
             } else {
-              builder = builder.header("etag", value.as_ref());
+              builder = builder.header("etag", value.as_slice());
             }
           } else {
-            builder = builder.header("etag", value.as_ref());
+            builder = builder.header("etag", value.as_slice());
           }
         }
 
@@ -636,7 +633,7 @@ async fn op_http_write_headers(
         }
       } else {
         if let Some(value) = etag_header {
-          builder = builder.header("etag", value.as_ref());
+          builder = builder.header("etag", value.as_slice());
         }
         // If a buffer was passed, but isn't compressible, we use it to
         // construct a response body.
@@ -651,10 +648,10 @@ async fn op_http_write_headers(
 
       // Set the user provided ETag & Vary headers for a streaming response
       if let Some(value) = etag_header {
-        builder = builder.header("etag", value.as_ref());
+        builder = builder.header("etag", value.as_slice());
       }
       if let Some(value) = vary_header {
-        builder = builder.header("vary", value.as_ref());
+        builder = builder.header("vary", value.as_slice());
       }
 
       let (body_tx, body_rx) = Body::channel();

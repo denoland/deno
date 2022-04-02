@@ -646,15 +646,13 @@ mod tests {
 
   #[test]
   fn non_compressible_content_type() {
-    assert!(!is_content_compressible(Some(&ByteString(
-      b"application/vnd.deno+json".to_vec()
-    ))));
+    assert!(!is_content_compressible(Some(
+      &"application/vnd.deno+json".into()
+    )));
   }
 
   #[test]
   fn ncompressible_content_type() {
-    assert!(is_content_compressible(Some(&ByteString(
-      b"application/json".to_vec()
-    ))));
+    assert!(is_content_compressible(Some(&"application/json".into())));
   }
 }
