@@ -376,6 +376,9 @@ impl TestRun {
 
               reporter.report_plan(&plan);
             }
+            test::TestEvent::PlanEnd(_) => {
+              reporter.report_plan_end();
+            }
             test::TestEvent::Wait(description) => {
               reporter.report_wait(&description);
             }
