@@ -287,7 +287,13 @@ impl PrettyTestReporter {
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
-    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+    println!(
+      "{}",
+      colors::gray(format!(
+        "running {} {} from {}",
+        plan.total, inflection, plan.origin
+      ))
+    );
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
