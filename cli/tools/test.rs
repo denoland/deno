@@ -293,7 +293,7 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_plan_end(&mut self) {
-    println!("");
+    println!();
   }
 
   fn report_wait(&mut self, description: &TestDescription) {

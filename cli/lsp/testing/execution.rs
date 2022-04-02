@@ -733,6 +733,10 @@ impl test::TestReporter for LspTestReporter {
     // there is nothing to do on report_plan
   }
 
+  fn report_plan_end(&mut self) {
+    // there is nothing to do on report_plan_end
+  }
+
   fn report_wait(&mut self, desc: &test::TestDescription) {
     if !self.includes_test(desc) {
       self.add_test(desc);
