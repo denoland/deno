@@ -145,7 +145,7 @@ fn magic_byte_string() {
     let rust_reflex: serde_v8::ByteString =
       serde_v8::from_v8(scope, v8_string).unwrap();
     assert_eq!(
-      rust_reflex.as_ref(),
+      rust_reflex.as_slice(),
       b"test \0\t\n\r\x7F\x80\xE1\xFE\xC6\xF1"
     );
 
@@ -164,7 +164,7 @@ fn magic_byte_string() {
     // ByteString to JS string
     let expected = "a\x00sf:~\x7Fá\u{009C}þ\u{008A}";
     let buf: Vec<u8> = b"a\x00sf:~\x7F\xE1\x9C\xFE\x8A".as_ref().into();
-    let zbuf = serde_v8::ByteString(buf);
+    let zbuf = serde_v8::ByteString::from(buf);
     let v8_value = serde_v8::to_v8(scope, zbuf).unwrap();
     let key = serde_v8::to_v8(scope, "actual").unwrap();
     global.set(scope, key, v8_value);

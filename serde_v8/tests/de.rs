@@ -313,7 +313,7 @@ detest!(
   }
 );
 
-detest!(de_bstr, ByteString, "'hello'", ByteString("hello".into()));
+detest!(de_bstr, ByteString, "'hello'", "hello".into());
 defail!(defail_bstr, ByteString, "'👋bye'", |e| e
   == Err(Error::ExpectedLatin1));
 
@@ -321,11 +321,11 @@ detest!(
   de_u16str,
   U16String,
   "'hello'",
-  U16String("hello".encode_utf16().collect())
+  "hello".encode_utf16().collect::<Vec<_>>().into()
 );
 detest!(
   de_u16str_non_latin1,
   U16String,
   "'👋bye'",
-  U16String("👋bye".encode_utf16().collect())
+  "👋bye".encode_utf16().collect::<Vec<_>>().into()
 );
