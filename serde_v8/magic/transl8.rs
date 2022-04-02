@@ -163,11 +163,3 @@ macro_rules! impl_wrapper {
   };
 }
 pub(crate) use impl_wrapper;
-
-// macro_rules! magic_wrapper {
-//   (pub struct $t1:ident($t2:tt)) => {
-//     crate::magic::transl8::impl_wrapper!(pub struct $t1($t2););
-//     crate::magic::transl8::impl_magic!($t1);
-//   };
-// }
-// pub(crate) use magic_wrapper;
