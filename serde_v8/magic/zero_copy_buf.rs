@@ -19,8 +19,8 @@ use super::transl8::FromV8;
 /// `let copy = Vec::from(&*zero_copy_buf);`
 #[derive(Clone)]
 pub struct ZeroCopyBuf {
-  store: v8::SharedRef<v8::BackingStore>,
-  range: Range<usize>,
+  pub(crate) store: v8::SharedRef<v8::BackingStore>,
+  pub(crate) range: Range<usize>,
 }
 
 unsafe impl Send for ZeroCopyBuf {}
@@ -40,17 +40,6 @@ impl ZeroCopyBuf {
     Ok(Self { store, range })
   }
 
-  pub fn from_view(
-    scope: &mut v8::HandleScope,
-    view: v8::Local<v8::ArrayBufferView>,
-  ) -> Result<Self, v8::DataError> {
-    let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
-      expected: "view to have a buffer",
-    })?;
-    let (offset, len) = (view.byte_offset(), view.byte_length());
-    Self::from_buffer(buffer, offset..offset + len)
-  }
-
   fn as_slice(&self) -> &[u8] {
     unsafe { &*(&self.store[self.range.clone()] as *const _ as *const [u8]) }
   }
@@ -61,21 +50,32 @@ impl ZeroCopyBuf {
   }
 }
 
+pub(crate) fn to_ranged_buffer<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  value: v8::Local<v8::Value>,
+) -> Result<(v8::Local<'s, v8::ArrayBuffer>, Range<usize>), v8::DataError> {
+  if value.is_array_buffer_view() {
+    let view: v8::Local<v8::ArrayBufferView> = value.try_into()?;
+    let (offset, len) = (view.byte_offset(), view.byte_length());
+    let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
+      expected: "view to have a buffer",
+    })?;
+    let buffer = v8::Local::new(scope, buffer); // recreate handle to avoid lifetime issues
+    return Ok((buffer, offset..offset + len));
+  }
+  let b: v8::Local<v8::ArrayBuffer> = value.try_into()?;
+  let b = v8::Local::new(scope, b); // recreate handle to avoid lifetime issues
+  Ok((b, 0..b.byte_length()))
+}
+
 impl FromV8 for ZeroCopyBuf {
   fn from_v8(
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    if value.is_array_buffer() {
-      value
-        .try_into()
-        .and_then(|b| Self::from_buffer(b, 0..b.byte_length()))
-    } else {
-      value
-        .try_into()
-        .and_then(|view| Self::from_view(scope, view))
-    }
-    .map_err(|_| crate::Error::ExpectedBuffer)
+    to_ranged_buffer(scope, value)
+      .and_then(|(b, r)| Self::from_buffer(b, r))
+      .map_err(|_| crate::Error::ExpectedBuffer)
   }
 }
 
