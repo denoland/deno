@@ -5,9 +5,11 @@
   const core = window.Deno.core;
   const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
-  const { assert, pathFromURL } = window.__bootstrap.util;
+  const { pathFromURL } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
+    ArrayPrototypeSlice,
     TypeError,
     isNaN,
     ObjectEntries,
@@ -109,7 +111,7 @@
     stdin = "inherit",
   }) {
     if (cmd[0] != null) {
-      cmd[0] = pathFromURL(cmd[0]);
+      cmd = [pathFromURL(cmd[0]), ...ArrayPrototypeSlice(cmd, 1)];
     }
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),

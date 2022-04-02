@@ -6,7 +6,7 @@
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
-  const { assert } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     AggregateErrorPrototype,
     ArrayPrototypeFilter,
@@ -82,7 +82,7 @@
     "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
     "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
-    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"], 
+    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"],
     "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
     "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
     "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
@@ -173,13 +173,16 @@
           preOp.opsCompletedAsync;
 
         if (dispatchedDiff > completedDiff) {
-          const [name, hint] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = dispatchedDiff - completedDiff;
           let message = `${count} async operation${
             count === 1 ? "" : "s"
           } to ${name} ${
             count === 1 ? "was" : "were"
-          } started in this test, but never completed. This is often caused by not ${hint}.`;
+          } started in this test, but never completed.`;
+          if (hint) {
+            message += ` This is often caused by not ${hint}.`;
+          }
           const traces = [];
           for (const [id, { opName, stack }] of postTraces) {
             if (opName !== key) continue;
@@ -636,6 +639,7 @@
     optionsOrFn,
     maybeFn,
   ) {
+    core.opSync("op_bench_check_unstable");
     let benchDef;
     const defaults = {
       ignore: false,
@@ -746,23 +750,37 @@
     return inspectArgs([error]);
   }
 
+  /**
+   * @param {string | { include?: string[], exclude?: string[] }} filter
+   * @returns {(def: { name: string }) => boolean}
+   */
   function createTestFilter(filter) {
+    if (!filter) {
+      return () => true;
+    }
+
+    const regex =
+      typeof filter === "string" && StringPrototypeStartsWith(filter, "/") &&
+        StringPrototypeEndsWith(filter, "/")
+        ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
+        : undefined;
+
+    const filterIsObject = filter != null && typeof filter === "object";
+
     return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
-        }
-
-        return StringPrototypeIncludes(def.name, filter);
+      if (regex) {
+        return RegExpPrototypeTest(regex, def.name);
       }
-
-      return true;
+      if (filterIsObject) {
+        if (filter.include && !filter.include.includes(def.name)) {
+          return false;
+        } else if (filter.exclude && filter.exclude.includes(def.name)) {
+          return false;
+        } else {
+          return true;
+        }
+      }
+      return StringPrototypeIncludes(def.name, filter);
     };
   }
 

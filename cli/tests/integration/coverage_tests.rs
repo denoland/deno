@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::fs;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn branch() {
@@ -20,11 +20,11 @@ fn final_blankline() {
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let tempdir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
+  let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let status = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
@@ -34,11 +34,11 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
-    .expect("failed to spawn test runner");
+    .unwrap();
 
   assert!(status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--unstable")
@@ -46,7 +46,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   // Verify there's no "Check" being printed
   assert!(output.stderr.is_empty());
@@ -68,7 +68,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   assert!(output.status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
@@ -78,7 +78,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   let actual =
     util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
@@ -100,11 +100,11 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
 #[test]
 fn multifile_coverage() {
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let tempdir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
+  let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let status = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
@@ -114,11 +114,11 @@ fn multifile_coverage() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
-    .expect("failed to spawn test runner");
+    .unwrap();
 
   assert!(status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--unstable")
@@ -126,7 +126,7 @@ fn multifile_coverage() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   // Verify there's no "Check" being printed
   assert!(output.stderr.is_empty());
@@ -148,7 +148,7 @@ fn multifile_coverage() {
 
   assert!(output.status.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
@@ -158,7 +158,7 @@ fn multifile_coverage() {
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .output()
-    .expect("failed to spawn coverage reporter");
+    .unwrap();
 
   let actual =
     util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())

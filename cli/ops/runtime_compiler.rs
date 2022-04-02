@@ -16,7 +16,8 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
+
+use deno_core::op;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -35,9 +36,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![("op_emit", op_async(op_emit))])
-    .build()
+  Extension::builder().ops(vec![op_emit::decl()]).build()
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,10 +140,10 @@ fn to_maybe_jsx_import_source_module(
   }
 }
 
+#[op]
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: EmitArgs,
-  _: (),
 ) -> Result<EmitResult, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let root_specifier = args.root_specifier;
@@ -246,7 +245,7 @@ async fn op_emit(
       Arc::new(RwLock::new(graph.as_ref().into())),
       cache.as_mut_cacher(),
       emit::CheckOptions {
-        check: flags::CheckFlag::All,
+        typecheck_mode: flags::TypecheckMode::All,
         debug,
         emit_with_diagnostics: true,
         maybe_config_specifier: None,
@@ -269,7 +268,7 @@ async fn op_emit(
         Arc::new(RwLock::new(graph.as_ref().into())),
         cache.as_mut_cacher(),
         emit::CheckOptions {
-          check: flags::CheckFlag::All,
+          typecheck_mode: flags::TypecheckMode::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,

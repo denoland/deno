@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -32,10 +33,10 @@ pub struct CreateSamplerArgs {
   max_anisotropy: u8,
 }
 
+#[op]
 pub fn op_webgpu_create_sampler(
   state: &mut OpState,
   args: CreateSamplerArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

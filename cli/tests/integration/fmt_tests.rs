@@ -1,35 +1,32 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn fmt_test() {
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
     util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted_js = t.path().join("badly_formatted.js");
   let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_formatted_original_js, &badly_formatted_js).unwrap();
 
   let fixed_md = util::testdata_path().join("badly_formatted_fixed.md");
   let badly_formatted_original_md =
     util::testdata_path().join("badly_formatted.md");
   let badly_formatted_md = t.path().join("badly_formatted.md");
   let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_formatted_original_md, &badly_formatted_md).unwrap();
 
   let fixed_json = util::testdata_path().join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
     util::testdata_path().join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original_json, &badly_formatted_json)
-    .expect("Failed to copy file");
+  std::fs::copy(&badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -43,9 +40,9 @@ fn fmt_test() {
     .arg(badly_formatted_md_str)
     .arg(badly_formatted_json_str)
     .spawn()
-    .expect("Failed to spawn script")
+    .unwrap()
     .wait()
-    .expect("Failed to wait for child process");
+    .unwrap();
   // No target files found
   assert!(!status.success());
 
@@ -58,9 +55,9 @@ fn fmt_test() {
     .arg(badly_formatted_md_str)
     .arg(badly_formatted_json_str)
     .spawn()
-    .expect("Failed to spawn script")
+    .unwrap()
     .wait()
-    .expect("Failed to wait for child process");
+    .unwrap();
   assert!(!status.success());
 
   // Format the source file.
@@ -71,9 +68,9 @@ fn fmt_test() {
     .arg(badly_formatted_md_str)
     .arg(badly_formatted_json_str)
     .spawn()
-    .expect("Failed to spawn script")
+    .unwrap()
     .wait()
-    .expect("Failed to wait for child process");
+    .unwrap();
   assert!(status.success());
   let expected_js = std::fs::read_to_string(fixed_js).unwrap();
   let expected_md = std::fs::read_to_string(fixed_md).unwrap();
@@ -116,6 +113,40 @@ fn fmt_ignore_unexplicit_files() {
     .arg("fmt")
     .arg("--check")
     .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr),
+    "error: No target files found.\n"
+  );
+}
+
+#[test]
+fn fmt_auto_ignore_git() {
+  use std::fs::{create_dir_all, File};
+  use std::io::Write;
+  use std::path::PathBuf;
+  fn create_bad_json(t: PathBuf) {
+    let bad_json_path = t.join("bad.json");
+    let mut bad_json_file = File::create(bad_json_path).unwrap();
+    writeln!(bad_json_file, "bad json").unwrap();
+  }
+  let temp_dir = TempDir::new();
+  let t = temp_dir.path().join("target");
+  let nest_git = t.join("nest").join(".git");
+  let git_dir = t.join(".git");
+  create_dir_all(&nest_git).unwrap();
+  create_dir_all(&git_dir).unwrap();
+  create_bad_json(nest_git);
+  create_bad_json(git_dir);
+  let output = util::deno_cmd()
+    .current_dir(t)
+    .env("NO_COLOR", "1")
+    .arg("fmt")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()

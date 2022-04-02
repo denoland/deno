@@ -25,7 +25,7 @@ itest!(task_boolean_logic {
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
-itest!(task_exit_code_1 {
+itest!(task_exit_code_5 {
   args: "task --config task/deno.json exit_code_5",
   output: "task/task_exit_code_5.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],

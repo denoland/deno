@@ -90,7 +90,7 @@ fn ser_struct_v8_manual(b: &mut Bencher) {
 
 fn ser_bstr_12_b(b: &mut Bencher) {
   serdo(|scope| {
-    let bstr = ByteString("hello world\n".to_owned().into_bytes());
+    let bstr = ByteString::from("hello world\n");
     b.iter(|| {
       let _ = serde_v8::to_v8(scope, &bstr).unwrap();
     });
@@ -101,7 +101,7 @@ fn ser_bstr_1024_b(b: &mut Bencher) {
   serdo(|scope| {
     let mut s = "hello world\n".repeat(100);
     s.truncate(1024);
-    let bstr = ByteString(s.into_bytes());
+    let bstr = ByteString::from(s);
     b.iter(|| {
       let _ = serde_v8::to_v8(scope, &bstr).unwrap();
     });

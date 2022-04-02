@@ -1073,13 +1073,11 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ops::OpCall;
-  use crate::serialize_op_result;
+  use crate::error::AnyError;
   use crate::Extension;
   use crate::JsRuntime;
-  use crate::Op;
-  use crate::OpPayload;
   use crate::RuntimeOptions;
+  use deno_ops::op;
   use futures::future::FutureExt;
   use parking_lot::Mutex;
   use std::fmt;
@@ -1088,6 +1086,10 @@ mod tests {
   use std::path::PathBuf;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
+  // deno_ops macros generate code assuming deno_core in scope.
+  mod deno_core {
+    pub use crate::*;
+  }
 
   // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
   // even though we are only using poll() in these tests and not Tokio, we must
@@ -1401,20 +1403,16 @@ import "/a.js";
     let loader = Rc::new(ModsLoader::default());
 
     let resolve_count = loader.count.clone();
-    let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let dispatch_count_ = dispatch_count.clone();
+    static DISPATCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    let op_test = move |state, payload: OpPayload| -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      let (control, _): (u8, ()) = payload.deserialize().unwrap();
+    #[op]
+    fn op_test(_: &mut OpState, control: u8) -> Result<u8, AnyError> {
+      DISPATCH_COUNT.fetch_add(1, Ordering::Relaxed);
       assert_eq!(control, 42);
-      let resp = (0, 1, serialize_op_result(Ok(43), state));
-      Op::Async(OpCall::ready(resp))
-    };
+      Ok(43)
+    }
 
-    let ext = Extension::builder()
-      .ops(vec![("op_test", Box::new(op_test))])
-      .build();
+    let ext = Extension::builder().ops(vec![op_test::decl()]).build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
@@ -1435,7 +1433,7 @@ import "/a.js";
       )
       .unwrap();
 
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
     let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
 
@@ -1452,12 +1450,12 @@ import "/a.js";
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
-          Deno.core.opAsync("op_test", control);
+          Deno.core.opSync("op_test", control);
         "#,
         )
         .unwrap();
 
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+      assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
       let imports = module_map.get_requested_modules(mod_a);
       assert_eq!(
         imports,
@@ -1481,14 +1479,14 @@ import "/a.js";
     };
 
     runtime.instantiate_module(mod_b).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     runtime.instantiate_module(mod_a).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
     let _ = runtime.mod_evaluate(mod_a);
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
   }
 
   #[test]
@@ -1766,7 +1764,6 @@ import "/a.js";
         module_loader: Some(loader),
         ..Default::default()
       });
-      runtime.sync_ops_cache();
       runtime
         .execute_script(
           "file:///dyn_import3.js",

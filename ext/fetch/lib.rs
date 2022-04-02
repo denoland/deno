@@ -9,8 +9,8 @@ use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -45,6 +45,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
@@ -100,12 +101,9 @@ where
       "26_fetch.js",
     ))
     .ops(vec![
-      ("op_fetch", op_sync(op_fetch::<FP>)),
-      ("op_fetch_send", op_async(op_fetch_send)),
-      (
-        "op_fetch_custom_client",
-        op_sync(op_fetch_custom_client::<FP>),
-      ),
+      op_fetch::decl::<FP>(),
+      op_fetch_send::decl(),
+      op_fetch_custom_client::decl::<FP>(),
     ])
     .state(move |state| {
       state.put::<Options>(options.clone());
@@ -173,6 +171,10 @@ pub trait FetchPermissions {
   fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
@@ -192,6 +194,7 @@ pub struct FetchReturn {
   cancel_handle_rid: Option<ResourceId>,
 }
 
+#[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
   args: FetchArgs,
@@ -367,10 +370,10 @@ pub struct FetchResponse {
   response_rid: ResourceId,
 }
 
+#[op]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -392,11 +395,7 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_bytes: &[u8] = key.as_ref();
-    res_headers.push((
-      ByteString(key_bytes.to_owned()),
-      ByteString(val.as_bytes().to_owned()),
-    ));
+    res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -525,10 +524,10 @@ pub struct CreateHttpClientOptions {
   private_key: Option<String>,
 }
 
+#[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,

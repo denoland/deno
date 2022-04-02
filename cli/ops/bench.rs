@@ -1,7 +1,7 @@
 use crate::tools::bench::BenchEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -12,35 +12,51 @@ use std::time;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: UnboundedSender<BenchEvent>) -> Extension {
+pub fn init(sender: UnboundedSender<BenchEvent>, unstable: bool) -> Extension {
   Extension::builder()
     .ops(vec![
-      (
-        "op_pledge_test_permissions",
-        op_sync(op_pledge_test_permissions),
-      ),
-      (
-        "op_restore_test_permissions",
-        op_sync(op_restore_test_permissions),
-      ),
-      ("op_get_bench_origin", op_sync(op_get_bench_origin)),
-      ("op_dispatch_bench_event", op_sync(op_dispatch_bench_event)),
-      ("op_bench_now", op_sync(op_bench_now)),
+      op_pledge_test_permissions::decl(),
+      op_restore_test_permissions::decl(),
+      op_get_bench_origin::decl(),
+      op_dispatch_bench_event::decl(),
+      op_bench_now::decl(),
+      op_bench_check_unstable::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
+      state.put(Unstable(unstable));
       Ok(())
     })
     .build()
 }
 
+pub struct Unstable(pub bool);
+
+fn check_unstable(state: &OpState, api_name: &str) {
+  let unstable = state.borrow::<Unstable>();
+
+  if !unstable.0 {
+    eprintln!(
+      "Unstable API '{}'. The --unstable flag must be provided.",
+      api_name
+    );
+    std::process::exit(70);
+  }
+}
+
+#[op]
+fn op_bench_check_unstable(state: &mut OpState) -> Result<(), AnyError> {
+  check_unstable(state, "Deno.bench");
+  Ok(())
+}
+
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, Permissions);
 
+#[op]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: ChildPermissionsArg,
-  _: (),
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<Permissions>();
@@ -55,10 +71,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
-  _: (),
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -73,18 +89,15 @@ pub fn op_restore_test_permissions(
   }
 }
 
-fn op_get_bench_origin(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_get_bench_origin(state: &mut OpState) -> Result<String, AnyError> {
   Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
+#[op]
 fn op_dispatch_bench_event(
   state: &mut OpState,
   event: BenchEvent,
-  _: (),
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(event).ok();
@@ -92,7 +105,8 @@ fn op_dispatch_bench_event(
   Ok(())
 }
 
-fn op_bench_now(state: &mut OpState, _: (), _: ()) -> Result<u64, AnyError> {
+#[op]
+fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
   let ns_u64 = u64::try_from(ns)?;
   Ok(ns_u64)
