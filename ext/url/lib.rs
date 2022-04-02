@@ -69,7 +69,7 @@ pub fn op_url_parse(
     .parse(&href)
     .map_err(|_| type_error("Invalid URL"))?;
 
-  Ok(url_result(url))
+  Ok(url_parts(url))
 }
 
 #[derive(PartialEq, Debug)]
@@ -120,10 +120,10 @@ pub fn op_url_reparse(
       .map_err(|_| uri_error("Invalid username"))?,
   }
 
-  Ok(url_result(url))
+  Ok(url_parts(url))
 }
 
-fn url_result(url: Url) -> UrlParts {
+fn url_parts(url: Url) -> UrlParts {
   [
     quirks::href(&url),
     quirks::hash(&url),
