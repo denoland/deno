@@ -395,11 +395,7 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_bytes: &[u8] = key.as_ref();
-    res_headers.push((
-      ByteString(key_bytes.to_owned()),
-      ByteString(val.as_bytes().to_owned()),
-    ));
+    res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
