@@ -251,7 +251,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
-  pub(crate) async fn prepare_module_load(
+  pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
@@ -304,12 +304,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.check == flags::CheckFlag::None
+      if self.flags.typecheck_mode == flags::TypecheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.check != flags::CheckFlag::None,
+          self.flags.typecheck_mode != flags::TypecheckMode::None,
           false,
         ) {
           return result;
@@ -417,11 +417,16 @@ impl ProcState {
         .map(|cf| cf.get_check_js())
         .unwrap_or(false);
       graph_data
-        .check(&roots, self.flags.check != flags::CheckFlag::None, check_js)
+        .check(
+          &roots,
+          self.flags.typecheck_mode != flags::TypecheckMode::None,
+          check_js,
+        )
         .unwrap()?;
     }
 
-    let config_type = if self.flags.check == flags::CheckFlag::None {
+    let config_type = if self.flags.typecheck_mode == flags::TypecheckMode::None
+    {
       emit::ConfigType::Emit
     } else {
       emit::ConfigType::Check {
@@ -437,7 +442,7 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.check == flags::CheckFlag::None {
+    if self.flags.typecheck_mode == flags::TypecheckMode::None {
       let options = emit::EmitOptions {
         ts_config,
         reload: self.flags.reload,
@@ -451,7 +456,7 @@ impl ProcState {
         .as_ref()
         .map(|cf| cf.specifier.clone());
       let options = emit::CheckOptions {
-        check: self.flags.check.clone(),
+        typecheck_mode: self.flags.typecheck_mode.clone(),
         debug: self.flags.log_level == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -472,7 +477,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.check != flags::CheckFlag::None {
+    if self.flags.typecheck_mode != flags::TypecheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, &lib);
     }
@@ -486,7 +491,7 @@ impl ProcState {
     Ok(())
   }
 
-  pub(crate) fn resolve(
+  pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,

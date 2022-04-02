@@ -15,7 +15,7 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -50,7 +50,7 @@ use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
     op_net_accept::decl(),
     op_net_connect::decl::<P>(),
@@ -162,7 +162,6 @@ async fn accept_tcp(
 async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _: (),
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, ()).await,
@@ -306,7 +305,6 @@ pub struct ConnectArgs {
 pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -482,7 +480,6 @@ fn listen_udp(
 fn op_net_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -622,7 +619,6 @@ pub struct NameServer {
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _: (),
 ) -> Result<Vec<DnsReturnRecord>, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -942,7 +938,7 @@ mod tests {
     };
 
     let connect_fut =
-      op_net_connect::call::<TestPermission>(conn_state, connect_args, ());
+      op_net_connect::call::<TestPermission>(conn_state, connect_args);
     let conn = connect_fut.await.unwrap();
 
     let rid = conn.rid;

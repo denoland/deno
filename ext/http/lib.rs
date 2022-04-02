@@ -289,9 +289,9 @@ impl HttpAcceptor {
 }
 
 /// A resource representing a single HTTP request/response stream.
-struct HttpStreamResource {
+pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
-  rd: AsyncRefCell<HttpRequestReader>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
@@ -324,7 +324,7 @@ impl Resource for HttpStreamResource {
 }
 
 /// The read half of an HTTP stream.
-enum HttpRequestReader {
+pub enum HttpRequestReader {
   Headers(Request<Body>),
   Body(Peekable<Body>),
   Closed,
@@ -369,7 +369,6 @@ struct NextRequestResponse(
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
@@ -471,15 +470,12 @@ fn req_headers(
     } else {
       let name: &[u8] = name.as_ref();
       let value = value.as_bytes();
-      headers.push((ByteString(name.to_owned()), ByteString(value.to_owned())));
+      headers.push((name.into(), value.into()));
     }
   }
 
   if !cookies.is_empty() {
-    headers.push((
-      ByteString("cookie".as_bytes().to_owned()),
-      ByteString(cookies.join(cookie_sep)),
-    ));
+    headers.push(("cookie".into(), cookies.join(cookie_sep).into()));
   }
 
   headers
@@ -518,52 +514,38 @@ async fn op_http_write_headers(
 
   builder.headers_mut().unwrap().reserve(headers.len());
   for (key, value) in &headers {
-    match &*key.to_ascii_lowercase() {
-      b"cache-control" => {
-        if let Ok(value) = std::str::from_utf8(value) {
-          if let Some(cache_control) = CacheControl::from_value(value) {
-            // We skip compression if the cache-control header value is set to
-            // "no-transform"
-            if cache_control.no_transform {
-              headers_allow_compression = false;
-            }
+    if key.eq_ignore_ascii_case(b"cache-control") {
+      if let Ok(value) = std::str::from_utf8(value) {
+        if let Some(cache_control) = CacheControl::from_value(value) {
+          // We skip compression if the cache-control header value is set to
+          // "no-transform"
+          if cache_control.no_transform {
+            headers_allow_compression = false;
           }
-        } else {
-          headers_allow_compression = false;
         }
-      }
-      b"content-range" => {
-        // we skip compression if the `content-range` header value is set, as it
-        // indicates the contents of the body were negotiated based directly
-        // with the user code and we can't compress the response
+      } else {
         headers_allow_compression = false;
       }
-      b"content-type" => {
-        if !value.is_empty() {
-          content_type_header = Some(value);
-        }
-      }
-      b"content-encoding" => {
-        // we don't compress if a content-encoding header was provided
-        headers_allow_compression = false;
-      }
+    } else if key.eq_ignore_ascii_case(b"content-range") {
+      // we skip compression if the `content-range` header value is set, as it
+      // indicates the contents of the body were negotiated based directly
+      // with the user code and we can't compress the response
+      headers_allow_compression = false;
+    } else if key.eq_ignore_ascii_case(b"content-type") && !value.is_empty() {
+      content_type_header = Some(value);
+    } else if key.eq_ignore_ascii_case(b"content-encoding") {
+      // we don't compress if a content-encoding header was provided
+      headers_allow_compression = false;
+    } else if key.eq_ignore_ascii_case(b"etag") && !value.is_empty() {
       // we store the values of ETag and Vary and skip adding them for now, as
       // we may need to modify or change.
-      b"etag" => {
-        if !value.is_empty() {
-          etag_header = Some(value);
-          continue;
-        }
-      }
-      b"vary" => {
-        if !value.is_empty() {
-          vary_header = Some(value);
-          continue;
-        }
-      }
-      _ => {}
+      etag_header = Some(value);
+      continue;
+    } else if key.eq_ignore_ascii_case(b"vary") && !value.is_empty() {
+      vary_header = Some(value);
+      continue;
     }
-    builder = builder.header(key.as_ref(), value.as_ref());
+    builder = builder.header(key.as_slice(), value.as_slice());
   }
 
   if headers_allow_compression {
@@ -581,7 +563,7 @@ async fn op_http_write_headers(
       // data to make sure cache services do not serve uncompressed data to
       // clients that support compression.
       let vary_value = if let Some(value) = vary_header {
-        if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+        if let Ok(value_str) = std::str::from_utf8(value.as_slice()) {
           if !value_str.to_lowercase().contains("accept-encoding") {
             format!("Accept-Encoding, {}", value_str)
           } else {
@@ -613,14 +595,14 @@ async fn op_http_write_headers(
         // If user provided a ETag header for uncompressed data, we need to
         // ensure it is a Weak Etag header ("W/").
         if let Some(value) = etag_header {
-          if let Ok(value_str) = std::str::from_utf8(value.as_ref()) {
+          if let Ok(value_str) = std::str::from_utf8(value.as_slice()) {
             if !value_str.starts_with("W/") {
               builder = builder.header("etag", format!("W/{}", value_str));
             } else {
-              builder = builder.header("etag", value.as_ref());
+              builder = builder.header("etag", value.as_slice());
             }
           } else {
-            builder = builder.header("etag", value.as_ref());
+            builder = builder.header("etag", value.as_slice());
           }
         }
 
@@ -651,7 +633,7 @@ async fn op_http_write_headers(
         }
       } else {
         if let Some(value) = etag_header {
-          builder = builder.header("etag", value.as_ref());
+          builder = builder.header("etag", value.as_slice());
         }
         // If a buffer was passed, but isn't compressible, we use it to
         // construct a response body.
@@ -666,10 +648,10 @@ async fn op_http_write_headers(
 
       // Set the user provided ETag & Vary headers for a streaming response
       if let Some(value) = etag_header {
-        builder = builder.header("etag", value.as_ref());
+        builder = builder.header("etag", value.as_slice());
       }
       if let Some(value) = vary_header {
-        builder = builder.header("vary", value.as_ref());
+        builder = builder.header("vary", value.as_slice());
       }
 
       let (body_tx, body_rx) = Body::channel();
@@ -738,7 +720,6 @@ async fn op_http_write(
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
@@ -799,11 +780,7 @@ async fn op_http_read(
 }
 
 #[op]
-fn op_http_websocket_accept_header(
-  _: &mut OpState,
-  key: String,
-  _: (),
-) -> Result<String, AnyError> {
+fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),
@@ -815,7 +792,6 @@ fn op_http_websocket_accept_header(
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let stream = state
     .borrow_mut()

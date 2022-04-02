@@ -182,7 +182,6 @@ pub struct CreateBindGroupLayoutArgs {
 pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
   args: CreateBindGroupLayoutArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -226,7 +225,6 @@ pub struct CreatePipelineLayoutArgs {
 pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
   args: CreatePipelineLayoutArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -278,7 +276,6 @@ pub struct CreateBindGroupArgs {
 pub fn op_webgpu_create_bind_group(
   state: &mut OpState,
   args: CreateBindGroupArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

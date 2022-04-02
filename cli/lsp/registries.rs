@@ -341,7 +341,7 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub(crate) struct RegistryConfigurationVariable {
+pub struct RegistryConfigurationVariable {
   /// The name of the variable.
   key: String,
   /// An optional URL/API endpoint that can provide optional documentation for a
@@ -353,7 +353,7 @@ pub(crate) struct RegistryConfigurationVariable {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub(crate) struct RegistryConfiguration {
+pub struct RegistryConfiguration {
   /// A Express-like path which describes how URLs are composed for a registry.
   schema: String,
   /// The variables denoted in the `schema` should have a variable entry.
@@ -407,7 +407,7 @@ enum VariableItems {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ModuleRegistryOptions {
+pub struct ModuleRegistryOptions {
   pub maybe_root_path: Option<PathBuf>,
   pub maybe_ca_stores: Option<Vec<String>>,
   pub maybe_ca_file: Option<String>,
@@ -418,7 +418,7 @@ pub(crate) struct ModuleRegistryOptions {
 /// registries and can provide completion information for URLs that match
 /// one of the enabled registries.
 #[derive(Debug, Clone)]
-pub(crate) struct ModuleRegistry {
+pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   file_fetcher: FileFetcher,
 }
@@ -506,10 +506,7 @@ impl ModuleRegistry {
   }
 
   /// Check to see if the given origin has a registry configuration.
-  pub(crate) async fn check_origin(
-    &self,
-    origin: &str,
-  ) -> Result<(), AnyError> {
+  pub async fn check_origin(&self, origin: &str) -> Result<(), AnyError> {
     let origin_url = Url::parse(origin)?;
     let specifier = origin_url.join(CONFIG_PATH)?;
     self.fetch_config(&specifier).await?;
@@ -592,10 +589,7 @@ impl ModuleRegistry {
     Ok(())
   }
 
-  pub(crate) async fn get_hover(
-    &self,
-    dependency: &Dependency,
-  ) -> Option<String> {
+  pub async fn get_hover(&self, dependency: &Dependency) -> Option<String> {
     let maybe_code = dependency.get_code();
     let maybe_type = dependency.get_type();
     let specifier = match (maybe_code, maybe_type) {
@@ -647,7 +641,7 @@ impl ModuleRegistry {
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
-  pub(crate) async fn get_completions(
+  pub async fn get_completions(
     &self,
     current_specifier: &str,
     offset: usize,
@@ -938,7 +932,7 @@ impl ModuleRegistry {
     self.get_origin_completions(current_specifier, range)
   }
 
-  pub(crate) async fn get_documentation(
+  pub async fn get_documentation(
     &self,
     url: &str,
   ) -> Option<lsp::Documentation> {
@@ -1056,7 +1050,7 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn test_validate_registry_configuration() {
@@ -1211,7 +1205,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1272,7 +1266,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1495,7 +1489,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions_key_first() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1565,7 +1559,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions_complex() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1616,7 +1610,7 @@ mod tests {
   #[tokio::test]
   async fn test_check_origin_supported() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1627,7 +1621,7 @@ mod tests {
   #[tokio::test]
   async fn test_check_origin_not_supported() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();

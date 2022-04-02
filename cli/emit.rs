@@ -70,7 +70,7 @@ const IGNORE_DIRECTIVES: &[&str] = &[
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub(crate) enum TypeLib {
+pub enum TypeLib {
   DenoWindow,
   DenoWorker,
   UnstableDenoWindow,
@@ -104,7 +104,7 @@ impl Serialize for TypeLib {
 
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct Stats(pub Vec<(String, u32)>);
+pub struct Stats(pub Vec<(String, u32)>);
 
 impl<'de> Deserialize<'de> for Stats {
   fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
@@ -137,7 +137,7 @@ impl fmt::Display for Stats {
 }
 
 /// An enum that represents the base tsc configuration to return.
-pub(crate) enum ConfigType {
+pub enum ConfigType {
   /// Return a configuration for bundling, using swc to emit the bundle. This is
   /// independent of type checking.
   Bundle,
@@ -153,7 +153,7 @@ pub(crate) enum ConfigType {
 /// For a given configuration type and optionally a configuration file, return a
 /// tuple of the resulting `TsConfig` struct and optionally any user
 /// configuration options that were ignored.
-pub(crate) fn get_ts_config(
+pub fn get_ts_config(
   config_type: ConfigType,
   maybe_config_file: Option<&ConfigFile>,
   maybe_user_config: Option<&HashMap<String, Value>>,
@@ -315,7 +315,7 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
 }
 
 /// Determine if a given module kind and media type is emittable or not.
-pub(crate) fn is_emittable(
+pub fn is_emittable(
   kind: &ModuleKind,
   media_type: &MediaType,
   include_js: bool,
@@ -336,10 +336,10 @@ pub(crate) fn is_emittable(
 
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
-pub(crate) struct CheckOptions {
+pub struct CheckOptions {
   /// The check flag from the option which can effect the filtering of
   /// diagnostics in the emit result.
-  pub check: flags::CheckFlag,
+  pub typecheck_mode: flags::TypecheckMode,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -361,7 +361,7 @@ pub(crate) struct CheckOptions {
 /// The result of a check or emit of a module graph. Note that the actual
 /// emitted sources are stored in the cache and are not returned in the result.
 #[derive(Debug, Default)]
-pub(crate) struct CheckEmitResult {
+pub struct CheckEmitResult {
   pub diagnostics: Diagnostics,
   pub stats: Stats,
 }
@@ -373,7 +373,7 @@ pub(crate) struct CheckEmitResult {
 ///
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
-pub(crate) fn check_and_maybe_emit(
+pub fn check_and_maybe_emit(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
   cache: &mut dyn Cacher,
@@ -430,7 +430,7 @@ pub(crate) fn check_and_maybe_emit(
     root_names,
   })?;
 
-  let diagnostics = if options.check == flags::CheckFlag::Local {
+  let diagnostics = if options.typecheck_mode == flags::TypecheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
@@ -512,7 +512,7 @@ pub(crate) fn check_and_maybe_emit(
   })
 }
 
-pub(crate) enum BundleType {
+pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
   Module,
@@ -531,7 +531,7 @@ impl From<BundleType> for swc::bundler::ModuleType {
   }
 }
 
-pub(crate) struct BundleOptions {
+pub struct BundleOptions {
   pub bundle_type: BundleType,
   pub ts_config: TsConfig,
   pub emit_ignore_directives: bool,
@@ -686,7 +686,7 @@ impl swc::bundler::Resolve for BundleResolver<'_> {
 /// optionally its source map. Unlike emitting with `check_and_maybe_emit` and
 /// `emit`, which store the emitted modules in the cache, this function simply
 /// returns the output.
-pub(crate) fn bundle(
+pub fn bundle(
   graph: &ModuleGraph,
   options: BundleOptions,
 ) -> Result<(String, Option<String>), AnyError> {
@@ -743,9 +743,8 @@ pub(crate) fn bundle(
       if options.emit_ignore_directives {
         // write leading comments in bundled file
         use swc::codegen::text_writer::WriteJs;
-        use swc::common::source_map::DUMMY_SP;
         let cmt = IGNORE_DIRECTIVES.join("\n") + "\n";
-        wr.write_comment(DUMMY_SP, &cmt)?;
+        wr.write_comment(&cmt)?;
       }
 
       let mut emitter = swc::codegen::Emitter {
@@ -780,7 +779,7 @@ pub(crate) fn bundle(
   })
 }
 
-pub(crate) struct EmitOptions {
+pub struct EmitOptions {
   pub ts_config: TsConfig,
   pub reload: bool,
   pub reload_exclusions: HashSet<ModuleSpecifier>,
@@ -789,7 +788,7 @@ pub(crate) struct EmitOptions {
 /// Given a module graph, emit any appropriate modules and cache them.
 // TODO(nayeemrmn): This would ideally take `GraphData` like
 // `check_and_maybe_emit()`, but the AST isn't stored in that. Cleanup.
-pub(crate) fn emit(
+pub fn emit(
   graph: &ModuleGraph,
   cache: &mut dyn Cacher,
   options: EmitOptions,
@@ -900,7 +899,7 @@ fn valid_emit(
 /// An adapter struct to make a deno_graph::ModuleGraphError display as expected
 /// in the Deno CLI.
 #[derive(Debug)]
-pub(crate) struct GraphError(pub ModuleGraphError);
+pub struct GraphError(pub ModuleGraphError);
 
 impl std::error::Error for GraphError {}
 
@@ -931,7 +930,7 @@ impl fmt::Display for GraphError {
 
 /// Convert a module graph to a map of "files", which are used by the runtime
 /// emit to be passed back to the caller.
-pub(crate) fn to_file_map(
+pub fn to_file_map(
   graph: &ModuleGraph,
   cache: &dyn Cacher,
 ) -> HashMap<String, String> {

@@ -36,6 +36,7 @@ use lspower::LanguageServer;
 use super::client::Client;
 use super::config::CompletionSettings;
 use super::config::ImportCompletionSettings;
+use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
 #[derive(Debug)]
@@ -273,6 +274,7 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: true,
+    enable_paths: Vec::new(),
     config: None,
     certificate_stores: None,
     cache: None,
@@ -292,6 +294,10 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         auto_discover: false,
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
+    },
+    testing: TestingSettings {
+      args: vec![],
+      enable: false,
     },
   }
 }

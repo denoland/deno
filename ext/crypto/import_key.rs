@@ -1,6 +1,5 @@
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
@@ -90,7 +89,6 @@ pub enum ImportKeyResult {
 
 #[op]
 pub fn op_crypto_import_key(
-  _state: &mut OpState,
   opts: ImportKeyOptions,
   key_data: KeyData,
 ) -> Result<ImportKeyResult, AnyError> {

@@ -20,19 +20,38 @@ impl SourceLoader {
 
 pub type SourcePair = (&'static str, SourceLoader);
 pub type OpFnRef = v8::FunctionCallback;
-pub type OpPair = (&'static str, OpFnRef);
-pub type OpMiddlewareFn = dyn Fn(&'static str, OpFnRef) -> OpFnRef;
+pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
+
+#[derive(Clone, Copy)]
+pub struct OpDecl {
+  pub name: &'static str,
+  pub v8_fn_ptr: OpFnRef,
+  pub enabled: bool,
+  pub is_async: bool, // TODO(@AaronO): enum sync/async/fast ?
+  pub is_unstable: bool,
+}
+
+impl OpDecl {
+  pub fn enabled(self, enabled: bool) -> Self {
+    Self { enabled, ..self }
+  }
+
+  pub fn disable(self) -> Self {
+    self.enabled(false)
+  }
+}
 
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops: Option<Vec<OpPair>>,
+  ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
+  enabled: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -52,14 +71,18 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(&mut self) -> Option<Vec<OpPair>> {
+  pub fn init_ops(&mut self) -> Option<Vec<OpDecl>> {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
     }
     self.initialized = true;
 
-    self.ops.take()
+    let mut ops = self.ops.take()?;
+    for op in ops.iter_mut() {
+      op.enabled = self.enabled && op.enabled;
+    }
+    Some(ops)
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
@@ -90,13 +113,21 @@ impl Extension {
       .map(|f| f(op_state, cx))
       .unwrap_or(false)
   }
+
+  pub fn enabled(self, enabled: bool) -> Self {
+    Self { enabled, ..self }
+  }
+
+  pub fn disable(self) -> Self {
+    self.enabled(false)
+  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
 #[derive(Default)]
 pub struct ExtensionBuilder {
   js: Vec<SourcePair>,
-  ops: Vec<OpPair>,
+  ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
@@ -108,7 +139,7 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
+  pub fn ops(&mut self, ops: Vec<OpDecl>) -> &mut Self {
     self.ops.extend(ops);
     self
   }
@@ -123,7 +154,7 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, OpFnRef) -> OpFnRef + 'static,
+    F: Fn(OpDecl) -> OpDecl + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
     self
@@ -147,6 +178,7 @@ impl ExtensionBuilder {
       middleware_fn: self.middleware.take(),
       event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
+      enabled: true,
     }
   }
 }

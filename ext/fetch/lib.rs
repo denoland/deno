@@ -45,6 +45,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
@@ -168,6 +169,10 @@ impl FetchHandler for DefaultFileFetchHandler {
 pub trait FetchPermissions {
   fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
   fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
 
 #[derive(Deserialize)]
@@ -369,7 +374,6 @@ pub struct FetchResponse {
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -391,11 +395,7 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_bytes: &[u8] = key.as_ref();
-    res_headers.push((
-      ByteString(key_bytes.to_owned()),
-      ByteString(val.as_bytes().to_owned()),
-    ));
+    res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -528,7 +528,6 @@ pub struct CreateHttpClientOptions {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,

@@ -37,7 +37,6 @@ pub struct RenderPassSetViewportArgs {
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
   args: RenderPassSetViewportArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -70,7 +69,6 @@ pub struct RenderPassSetScissorRectArgs {
 pub fn op_webgpu_render_pass_set_scissor_rect(
   state: &mut OpState,
   args: RenderPassSetScissorRectArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -98,7 +96,6 @@ pub struct RenderPassSetBlendConstantArgs {
 pub fn op_webgpu_render_pass_set_blend_constant(
   state: &mut OpState,
   args: RenderPassSetBlendConstantArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -123,7 +120,6 @@ pub struct RenderPassSetStencilReferenceArgs {
 pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
   args: RenderPassSetStencilReferenceArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -149,7 +145,6 @@ pub struct RenderPassBeginPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassBeginPipelineStatisticsQueryArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -177,7 +172,6 @@ pub struct RenderPassEndPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassEndPipelineStatisticsQueryArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -202,7 +196,6 @@ pub struct RenderPassWriteTimestampArgs {
 pub fn op_webgpu_render_pass_write_timestamp(
   state: &mut OpState,
   args: RenderPassWriteTimestampArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -231,7 +224,6 @@ pub struct RenderPassExecuteBundlesArgs {
 pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
   args: RenderPassExecuteBundlesArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let mut render_bundle_ids = vec![];
 
@@ -271,7 +263,6 @@ pub struct RenderPassEndPassArgs {
 pub fn op_webgpu_render_pass_end_pass(
   state: &mut OpState,
   args: RenderPassEndPassArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -303,7 +294,6 @@ pub struct RenderPassSetBindGroupArgs {
 pub fn op_webgpu_render_pass_set_bind_group(
   state: &mut OpState,
   args: RenderPassSetBindGroupArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let bind_group_resource =
     state
@@ -357,7 +347,6 @@ pub struct RenderPassPushDebugGroupArgs {
 pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
   args: RenderPassPushDebugGroupArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -387,7 +376,6 @@ pub struct RenderPassPopDebugGroupArgs {
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
   args: RenderPassPopDebugGroupArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -411,7 +399,6 @@ pub struct RenderPassInsertDebugMarkerArgs {
 pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
   args: RenderPassInsertDebugMarkerArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -442,7 +429,6 @@ pub struct RenderPassSetPipelineArgs {
 pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
   args: RenderPassSetPipelineArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pipeline_resource =
     state
@@ -474,7 +460,6 @@ pub struct RenderPassSetIndexBufferArgs {
 pub fn op_webgpu_render_pass_set_index_buffer(
   state: &mut OpState,
   args: RenderPassSetIndexBufferArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -516,7 +501,6 @@ pub struct RenderPassSetVertexBufferArgs {
 pub fn op_webgpu_render_pass_set_vertex_buffer(
   state: &mut OpState,
   args: RenderPassSetVertexBufferArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -559,7 +543,6 @@ pub struct RenderPassDrawArgs {
 pub fn op_webgpu_render_pass_draw(
   state: &mut OpState,
   args: RenderPassDrawArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -591,7 +574,6 @@ pub struct RenderPassDrawIndexedArgs {
 pub fn op_webgpu_render_pass_draw_indexed(
   state: &mut OpState,
   args: RenderPassDrawIndexedArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -621,7 +603,6 @@ pub struct RenderPassDrawIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndirectArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -651,7 +632,6 @@ pub struct RenderPassDrawIndexedIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indexed_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndexedIndirectArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table

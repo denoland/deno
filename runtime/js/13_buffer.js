@@ -6,7 +6,7 @@
 "use strict";
 
 ((window) => {
-  const { assert } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,

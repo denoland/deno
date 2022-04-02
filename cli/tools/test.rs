@@ -10,9 +10,9 @@ use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
+use crate::flags::TypecheckMode;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -58,7 +58,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
-enum TestMode {
+pub enum TestMode {
   /// Test as documentation, type-checking fenced code blocks.
   Documentation,
   /// Test as an executable module, loading the module into the isolate and running each test it
@@ -163,7 +163,7 @@ struct TestSpecifierOptions {
 }
 
 impl TestSummary {
-  fn new() -> TestSummary {
+  pub fn new() -> TestSummary {
     TestSummary {
       total: 0,
       passed: 0,
@@ -188,7 +188,7 @@ impl TestSummary {
   }
 }
 
-trait TestReporter {
+pub trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
   fn report_output(&mut self, output: &TestOutput);
@@ -718,7 +718,7 @@ async fn fetch_inline_files(
 }
 
 /// Type check a collection of module and document specifiers.
-async fn check_specifiers(
+pub async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
@@ -1075,7 +1075,7 @@ pub async fn run_tests_with_watch(
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.check == CheckFlag::None;
+  let no_check = ps.flags.typecheck_mode == TypecheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(

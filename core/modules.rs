@@ -1406,7 +1406,7 @@ import "/a.js";
     static DISPATCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_test(_: &mut OpState, control: u8, _: ()) -> Result<u8, AnyError> {
+    fn op_test(_: &mut OpState, control: u8) -> Result<u8, AnyError> {
       DISPATCH_COUNT.fetch_add(1, Ordering::Relaxed);
       assert_eq!(control, 42);
       Ok(43)

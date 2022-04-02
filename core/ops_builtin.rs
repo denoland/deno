@@ -26,7 +26,6 @@ pub(crate) fn init_builtins() -> Extension {
       op_print::decl(),
       op_resources::decl(),
       op_wasm_streaming_feed::decl(),
-      op_wasm_streaming_abort::decl(),
       op_wasm_streaming_set_url::decl(),
       op_void_sync::decl(),
       op_void_async::decl(),
@@ -39,26 +38,11 @@ pub(crate) fn init_builtins() -> Extension {
     .build()
 }
 
-#[op]
-pub fn void_op_sync(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
-  Ok(())
-}
-
-pub async fn void_op_async(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), Error> {
-  Ok(())
-}
-
 /// Return map of resources with id as key
 /// and string representation as value.
 #[op]
 pub fn op_resources(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<Vec<(ResourceId, String)>, Error> {
   let serialized_resources = state
     .resource_table
@@ -69,16 +53,12 @@ pub fn op_resources(
 }
 
 #[op]
-pub fn op_void_sync(_state: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+pub fn op_void_sync() -> Result<(), Error> {
   Ok(())
 }
 
 #[op]
-pub async fn op_void_async(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), Error> {
+pub async fn op_void_async() -> Result<(), Error> {
   Ok(())
 }
 
@@ -87,7 +67,6 @@ pub async fn op_void_async(
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
-  _: (),
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8
@@ -102,7 +81,6 @@ pub fn op_close(
 pub fn op_try_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
-  _: (),
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8.
@@ -114,8 +92,6 @@ pub fn op_try_close(
 #[op]
 pub fn op_metrics(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
   let aggregate = state.tracker.aggregate();
   let per_op = state.tracker.per_op();
@@ -124,11 +100,7 @@ pub fn op_metrics(
 
 /// Builtin utility to print to stdout/stderr
 #[op]
-pub fn op_print(
-  _state: &mut OpState,
-  msg: String,
-  is_err: bool,
-) -> Result<(), Error> {
+pub fn op_print(msg: String, is_err: bool) -> Result<(), Error> {
   if is_err {
     stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
@@ -165,28 +137,6 @@ pub fn op_wasm_streaming_feed(
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
   wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
-
-  Ok(())
-}
-
-/// Abort a WasmStreamingResource.
-#[op]
-pub fn op_wasm_streaming_abort(
-  state: &mut OpState,
-  rid: ResourceId,
-  exception: serde_v8::Value,
-) -> Result<(), Error> {
-  let wasm_streaming =
-    state.resource_table.take::<WasmStreamingResource>(rid)?;
-
-  // At this point there are no clones of Rc<WasmStreamingResource> on the
-  // resource table, and no one should own a reference because we're never
-  // cloning them. So we can be sure `wasm_streaming` is the only reference.
-  if let Ok(wsr) = Rc::try_unwrap(wasm_streaming) {
-    wsr.0.into_inner().abort(Some(exception.v8_value));
-  } else {
-    panic!("Couldn't consume WasmStreamingResource.");
-  }
 
   Ok(())
 }
@@ -229,7 +179,6 @@ async fn op_write(
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   resource.shutdown().await

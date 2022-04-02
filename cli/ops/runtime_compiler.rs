@@ -144,7 +144,6 @@ fn to_maybe_jsx_import_source_module(
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: EmitArgs,
-  _: (),
 ) -> Result<EmitResult, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let root_specifier = args.root_specifier;
@@ -246,7 +245,7 @@ async fn op_emit(
       Arc::new(RwLock::new(graph.as_ref().into())),
       cache.as_mut_cacher(),
       emit::CheckOptions {
-        check: flags::CheckFlag::All,
+        typecheck_mode: flags::TypecheckMode::All,
         debug,
         emit_with_diagnostics: true,
         maybe_config_specifier: None,
@@ -269,7 +268,7 @@ async fn op_emit(
         Arc::new(RwLock::new(graph.as_ref().into())),
         cache.as_mut_cacher(),
         emit::CheckOptions {
-          check: flags::CheckFlag::All,
+          typecheck_mode: flags::TypecheckMode::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,

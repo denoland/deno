@@ -183,7 +183,7 @@
     const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
     return (V, opts = {}) => {
-      let x = toNumber(V, opts);
+      let x = toNumber(V);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
@@ -236,7 +236,7 @@
     const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
     return (V, opts = {}) => {
-      let x = toNumber(V, opts);
+      let x = toNumber(V);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
@@ -300,7 +300,7 @@
   });
 
   converters.float = (V, opts) => {
-    const x = toNumber(V, opts);
+    const x = toNumber(V);
 
     if (!NumberIsFinite(x)) {
       throw makeException(
@@ -327,8 +327,8 @@
     return y;
   };
 
-  converters["unrestricted float"] = (V, opts) => {
-    const x = toNumber(V, opts);
+  converters["unrestricted float"] = (V, _opts) => {
+    const x = toNumber(V);
 
     if (isNaN(x)) {
       return x;
@@ -342,7 +342,7 @@
   };
 
   converters.double = (V, opts) => {
-    const x = toNumber(V, opts);
+    const x = toNumber(V);
 
     if (!NumberIsFinite(x)) {
       throw makeException(
@@ -355,8 +355,8 @@
     return x;
   };
 
-  converters["unrestricted double"] = (V, opts) => {
-    const x = toNumber(V, opts);
+  converters["unrestricted double"] = (V, _opts) => {
+    const x = toNumber(V);
 
     return x;
   };
@@ -714,7 +714,7 @@
           throw makeException(
             TypeError,
             `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-            { ...opts },
+            opts,
           );
         }
       }

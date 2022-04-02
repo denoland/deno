@@ -33,7 +33,6 @@ pub fn init() -> Extension {
 fn op_worker_post_message(
   state: &mut OpState,
   data: JsMessageData,
-  _: (),
 ) -> Result<(), AnyError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   handle.port.send(state, data)?;
@@ -43,8 +42,6 @@ fn op_worker_post_message(
 #[op]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
 ) -> Result<Option<JsMessageData>, AnyError> {
   let handle = {
     let state = state.borrow();
@@ -58,7 +55,7 @@ async fn op_worker_recv_message(
 }
 
 #[op]
-fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+fn op_worker_close(state: &mut OpState) -> Result<(), AnyError> {
   // Notify parent that we're finished
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
 
@@ -67,11 +64,7 @@ fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
 }
 
 #[op]
-fn op_worker_get_type(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<WebWorkerType, AnyError> {
+fn op_worker_get_type(state: &mut OpState) -> Result<WebWorkerType, AnyError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   Ok(handle.worker_type)
 }
