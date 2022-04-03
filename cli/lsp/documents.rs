@@ -25,7 +25,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_graph::Resolved;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -36,6 +35,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([(

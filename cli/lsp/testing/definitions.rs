@@ -8,8 +8,8 @@ use crate::lsp::client::TestingNotification;
 use deno_ast::swc::common::Span;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use std::collections::HashMap;
+use tower_lsp::lsp_types as lsp;
 
 fn span_to_range(
   span: &Span,
