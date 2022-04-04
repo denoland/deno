@@ -838,6 +838,7 @@ impl JsRuntime {
   ///
   /// If `wait_for_inspector` is set to true event loop
   /// will return `Poll::Pending` if there are active inspector sessions.
+  #[inline]
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
@@ -879,7 +880,6 @@ impl JsRuntime {
 
       self.check_promise_exceptions(state, &global_context)?;
     }
-
     let mut state = state_rc.borrow_mut();
     // Event loop middlewares
     let mut maybe_scheduling = false;
@@ -893,7 +893,7 @@ impl JsRuntime {
     }
 
     // Top level module
-    self.evaluate_pending_module(&mut state);
+    self.evaluate_pending_module(&mut state, &global_context);
 
     let module_map = module_map_rc.borrow();
 
@@ -1424,7 +1424,7 @@ impl JsRuntime {
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
   #[inline]
-  fn evaluate_pending_module(&mut self, state: &mut JsRuntimeState) {
+  fn evaluate_pending_module(&mut self, state: &mut JsRuntimeState, global_context: &v8::Global<v8::Context>) {
     let maybe_module_evaluation = state.pending_mod_evaluate.take();
 
     if maybe_module_evaluation.is_none() {
@@ -1432,7 +1432,7 @@ impl JsRuntime {
     }
 
     let module_evaluation = maybe_module_evaluation.unwrap();
-    let scope = &mut self.handle_scope();
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), global_context.clone());
 
     let promise = module_evaluation.promise.open(scope);
     let promise_state = promise.state();
@@ -1625,7 +1625,7 @@ impl JsRuntime {
     state_rc: Rc<RefCell<JsRuntimeState>>,
     global_context: v8::Global<v8::Context>,
   ) -> Result<(), Error> {
-    let state = &mut state_rc.borrow_mut();
+    let mut state = state_rc.borrow_mut();
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
     // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
@@ -1652,8 +1652,8 @@ impl JsRuntime {
     if args.is_empty() {
       return Ok(());
     }
-
     let js_recv_cb_handle = state.js_recv_cb.clone().unwrap();
+    drop(state);
     let tc_scope = &mut v8::TryCatch::new(scope);
     let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
