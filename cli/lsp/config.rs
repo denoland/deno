@@ -9,10 +9,10 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
 

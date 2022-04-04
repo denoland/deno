@@ -18,14 +18,14 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_runtime::tokio_util::create_basic_runtime;
-use lspower::jsonrpc::Error as LspError;
-use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types as lsp;
 
 fn as_delete_notification(uri: ModuleSpecifier) -> TestingNotification {
   TestingNotification::DeleteModule(

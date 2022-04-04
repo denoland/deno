@@ -156,11 +156,7 @@ impl TlsStream {
   }
 
   fn get_alpn_protocol(&mut self) -> Option<ByteString> {
-    self
-      .inner_mut()
-      .tls
-      .alpn_protocol()
-      .map(|s| ByteString(s.to_owned()))
+    self.inner_mut().tls.alpn_protocol().map(|s| s.into())
   }
 }
 
