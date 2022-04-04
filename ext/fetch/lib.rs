@@ -39,6 +39,7 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::RequestBuilder;
 use reqwest::Response;
+use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -511,29 +512,37 @@ impl HttpClientResource {
   }
 }
 
-#[op]
-pub fn op_fetch_custom_client<FP>(
-  state: &mut OpState,
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateHttpClientOptions {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
+}
+
+#[op]
+pub fn op_fetch_custom_client<FP>(
+  state: &mut OpState,
+  args: CreateHttpClientOptions,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(proxy) = proxy.clone() {
+  if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
     permissions.check_net_url(&url)?;
   }
 
   let client_cert_chain_and_key = {
-    if cert_chain.is_some() || private_key.is_some() {
-      let cert_chain = cert_chain
+    if args.cert_chain.is_some() || args.private_key.is_some() {
+      let cert_chain = args
+        .cert_chain
         .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key =
-        private_key.ok_or_else(|| type_error("No private key provided"))?;
+      let private_key = args
+        .private_key
+        .ok_or_else(|| type_error("No private key provided"))?;
 
       Some((cert_chain, private_key))
     } else {
@@ -542,7 +551,8 @@ where
   };
 
   let options = state.borrow::<Options>();
-  let ca_certs = ca_certs
+  let ca_certs = args
+    .ca_certs
     .into_iter()
     .map(|cert| cert.into_bytes())
     .collect::<Vec<_>>();
@@ -551,7 +561,7 @@ where
     options.user_agent.clone(),
     options.root_cert_store.clone(),
     ca_certs,
-    proxy,
+    args.proxy,
     options.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
   )?;
