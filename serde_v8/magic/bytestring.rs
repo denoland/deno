@@ -3,7 +3,7 @@ use super::transl8::{FromV8, ToV8};
 use crate::magic::transl8::{impl_magic, impl_wrapper};
 use crate::Error;
 
-impl_wrapper! { pub struct ByteString(Vec<u8>); }
+impl_wrapper! { pub struct ByteString(smallvec::SmallVec<[u8; 16]>); }
 impl_magic!(ByteString);
 
 impl ToV8 for ByteString {
@@ -29,7 +29,7 @@ impl FromV8 for ByteString {
       return Err(Error::ExpectedLatin1);
     }
     let len = v8str.length();
-    let mut buffer = Vec::with_capacity(len);
+    let mut buffer = smallvec::SmallVec::with_capacity(len);
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
     #[allow(clippy::uninit_vec)]

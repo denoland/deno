@@ -16,6 +16,7 @@ path = "lib.rs"
 derive_more = "0.99.17"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_bytes = "0.11"
+smallvec = { version = "1.8", features = ["union"] }
 v8 = "0.41.0"
 
 [dev-dependencies]

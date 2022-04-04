@@ -3667,6 +3667,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "smallvec",
  "v8",
 ]
 
