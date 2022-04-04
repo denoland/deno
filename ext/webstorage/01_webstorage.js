@@ -55,10 +55,7 @@
         context: "Argument 2",
       });
 
-      core.opSync("op_webstorage_set", {
-        keyName: key,
-        keyValue: value,
-      }, this[_persistent]);
+      core.opSync("op_webstorage_set", key, value, this[_persistent]);
     }
 
     getItem(key) {
