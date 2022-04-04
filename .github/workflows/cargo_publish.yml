@@ -36,7 +36,11 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: ./tools/release/03_publish_crates.ts --real
 
-      - name: Create release tag
+      - name: Create release tag and check forward commit to main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./tools/release/04_create_release_tag.ts
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          ./tools/release/04_post_publish.ts
