@@ -239,7 +239,9 @@
         try {
           await core.opAsync(
             "op_http_write_headers",
-            [streamRid, innerResp.status ?? 200, innerResp.headerList],
+            streamRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
             isStreamingResponseBody ? null : respBody,
           );
         } catch (error) {
