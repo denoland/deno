@@ -145,21 +145,20 @@
         };
         options.signal?.[add](abort);
         PromisePrototypeThen(
-          core.opAsync("op_ws_create", {
-            url: this[_url],
-            protocols: options.protocols
+          core.opAsync(
+            "op_ws_create",
+            this[_url],
+            options.protocols
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
-            cancelHandle: cancelRid,
-            headers: headerListFromHeaders(headers),
-          }),
+            cancelRid,
+            headerListFromHeaders(headers),
+          ),
           (create) => {
             options.signal?.[remove](abort);
             if (this[_earlyClose]) {
               PromisePrototypeThen(
-                core.opAsync("op_ws_close", {
-                  rid: create.rid,
-                }),
+                core.opAsync("op_ws_close", create.rid),
                 () => {
                   PromisePrototypeThen(
                     (async () => {
@@ -369,11 +368,7 @@
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
         PromisePrototypeCatch(
-          core.opAsync("op_ws_close", {
-            rid: this[_rid],
-            code,
-            reason: closeInfo.reason,
-          }),
+          core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);

@@ -27,7 +27,6 @@ use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -214,15 +213,6 @@ where
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateArgs {
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
@@ -234,7 +224,10 @@ pub struct CreateResponse {
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  args: CreateArgs,
+  url: String,
+  protocols: String,
+  cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -401,18 +394,12 @@ pub async fn op_ws_send(
   Ok(())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CloseArgs {
-  rid: ResourceId,
-  code: Option<u16>,
-  reason: Option<String>,
-}
-
 #[op]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  args: CloseArgs,
+  rid: ResourceId,
+  code: Option<u16>,
+  reason: Option<String>,
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
