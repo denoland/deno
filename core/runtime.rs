@@ -759,8 +759,10 @@ impl JsRuntime {
     }
   }
 
-  fn pump_v8_message_loop(&mut self) {
-    let scope = &mut self.handle_scope();
+  #[inline]
+  fn pump_v8_message_loop(&mut self, global_context: v8::Global<v8::Context>) {
+    let scope =
+      &mut v8::HandleScope::with_context(self.v8_isolate(), global_context);
     while v8::Platform::pump_message_loop(
       &v8::V8::get_current_platform(),
       scope,
@@ -846,38 +848,42 @@ impl JsRuntime {
 
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
-    {
+    let global_context = {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
-    }
+      state.global_context.clone().unwrap()
+    };
 
-    self.pump_v8_message_loop();
+    self.pump_v8_message_loop(global_context.clone());
 
     // Ops
     {
-      self.resolve_async_ops(state_rc.clone(), cx)?;
-      self.drain_nexttick()?;
-      self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
+      self.resolve_async_ops(cx, state_rc.clone(), global_context.clone())?;
+      self.drain_nexttick(state_rc.clone(), &global_context)?;
+      self.drain_macrotasks(state_rc.clone(), &global_context)?;
     }
 
-    // Dynamic module loading - ie. modules loaded using "import()"
     {
-      let poll_imports = self.prepare_dyn_imports(cx)?;
+      let state = &mut state_rc.borrow_mut();
+      self.check_promise_exceptions(state, &global_context)?;
+
+      // Dynamic module loading - ie. modules loaded using "import()"
+      let module_map = &mut module_map_rc.borrow_mut();
+      let poll_imports = self.prepare_dyn_imports(cx, module_map)?;
       assert!(poll_imports.is_ready());
 
-      let poll_imports = self.poll_dyn_imports(cx)?;
+      let poll_imports = self.poll_dyn_imports(cx, module_map)?;
       assert!(poll_imports.is_ready());
 
-      self.evaluate_dyn_imports();
+      self.evaluate_dyn_imports(state, &global_context);
 
-      self.check_promise_exceptions()?;
+      self.check_promise_exceptions(state, &global_context)?;
     }
 
+    let mut state = state_rc.borrow_mut();
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
-      let state = state_rc.borrow();
       let op_state = state.op_state.clone();
       for f in &self.event_loop_middlewares {
         if f(&mut op_state.borrow_mut(), cx) {
@@ -887,9 +893,8 @@ impl JsRuntime {
     }
 
     // Top level module
-    self.evaluate_pending_module();
+    self.evaluate_pending_module(&mut state);
 
-    let mut state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
     let has_pending_refed_ops =
@@ -1308,18 +1313,15 @@ impl JsRuntime {
   fn prepare_dyn_imports(
     &mut self,
     cx: &mut Context,
+    module_map: &mut ModuleMap,
   ) -> Poll<Result<(), Error>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-
-    if module_map_rc.borrow().preparing_dynamic_imports.is_empty() {
+    if module_map.preparing_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = module_map_rc
-        .borrow_mut()
-        .preparing_dynamic_imports
-        .poll_next_unpin(cx);
+      let poll_result =
+        module_map.preparing_dynamic_imports.poll_next_unpin(cx);
 
       if let Poll::Ready(Some(prepare_poll)) = poll_result {
         let dyn_import_id = prepare_poll.0;
@@ -1327,10 +1329,7 @@ impl JsRuntime {
 
         match prepare_result {
           Ok(load) => {
-            module_map_rc
-              .borrow_mut()
-              .pending_dynamic_imports
-              .push(load.into_future());
+            module_map.pending_dynamic_imports.push(load.into_future());
           }
           Err(err) => {
             self.dynamic_import_reject(dyn_import_id, err);
@@ -1345,18 +1344,18 @@ impl JsRuntime {
     }
   }
 
-  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-
-    if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
+  #[inline]
+  fn poll_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+    module_map: &mut ModuleMap,
+  ) -> Poll<Result<(), Error>> {
+    if module_map.pending_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = module_map_rc
-        .borrow_mut()
-        .pending_dynamic_imports
-        .poll_next_unpin(cx);
+      let poll_result = module_map.pending_dynamic_imports.poll_next_unpin(cx);
 
       if let Poll::Ready(Some(load_stream_poll)) = poll_result {
         let maybe_result = load_stream_poll.0;
@@ -1378,10 +1377,7 @@ impl JsRuntime {
               match register_result {
                 Ok(()) => {
                   // Keep importing until it's fully drained
-                  module_map_rc
-                    .borrow_mut()
-                    .pending_dynamic_imports
-                    .push(load.into_future());
+                  module_map.pending_dynamic_imports.push(load.into_future());
                 }
                 Err(err) => self.dynamic_import_reject(dyn_import_id, err),
               }
@@ -1427,11 +1423,9 @@ impl JsRuntime {
   /// Thus during turn of event loop we need to check if V8 has
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
-  fn evaluate_pending_module(&mut self) {
-    let state_rc = Self::state(self.v8_isolate());
-
-    let maybe_module_evaluation =
-      state_rc.borrow_mut().pending_mod_evaluate.take();
+  #[inline]
+  fn evaluate_pending_module(&mut self, state: &mut JsRuntimeState) {
+    let maybe_module_evaluation = state.pending_mod_evaluate.take();
 
     if maybe_module_evaluation.is_none() {
       return;
@@ -1447,7 +1441,7 @@ impl JsRuntime {
       v8::PromiseState::Pending => {
         // NOTE: `poll_event_loop` will decide if
         // runtime would be woken soon
-        state_rc.borrow_mut().pending_mod_evaluate = Some(module_evaluation);
+        state.pending_mod_evaluate = Some(module_evaluation);
       }
       v8::PromiseState::Fulfilled => {
         scope.perform_microtask_checkpoint();
@@ -1466,15 +1460,24 @@ impl JsRuntime {
     }
   }
 
-  fn evaluate_dyn_imports(&mut self) {
-    let state_rc = Self::state(self.v8_isolate());
+  #[inline]
+  fn evaluate_dyn_imports(
+    &mut self,
+    state: &mut JsRuntimeState,
+    global_context: &v8::Global<v8::Context>,
+  ) {
+    if state.pending_dyn_mod_evaluate.is_empty() {
+      return;
+    }
+
     let mut still_pending = vec![];
-    let pending =
-      std::mem::take(&mut state_rc.borrow_mut().pending_dyn_mod_evaluate);
+    let pending = std::mem::take(&mut state.pending_dyn_mod_evaluate);
     for pending_dyn_evaluate in pending {
       let maybe_result = {
-        let scope = &mut self.handle_scope();
-
+        let scope = &mut v8::HandleScope::with_context(
+          self.v8_isolate(),
+          global_context.clone(),
+        );
         let module_id = pending_dyn_evaluate.module_id;
         let promise = pending_dyn_evaluate.promise.open(scope);
         let _module = pending_dyn_evaluate.module.open(scope);
@@ -1509,7 +1512,7 @@ impl JsRuntime {
         }
       }
     }
-    state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
+    state.pending_dyn_mod_evaluate = still_pending;
   }
 
   /// Asynchronously load specified module and all of its dependencies.
@@ -1586,10 +1589,12 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
-    let state_rc = Self::state(self.v8_isolate());
-    let mut state = state_rc.borrow_mut();
-
+  #[inline]
+  fn check_promise_exceptions(
+    &mut self,
+    state: &mut JsRuntimeState,
+    global_context: &v8::Global<v8::Context>,
+  ) -> Result<(), Error> {
     if state.pending_promise_exceptions.is_empty() {
       return Ok(());
     }
@@ -1603,19 +1608,24 @@ impl JsRuntime {
         .clone()
     };
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
-    drop(state);
 
-    let scope = &mut self.handle_scope();
+    let scope = &mut v8::HandleScope::with_context(
+      self.v8_isolate(),
+      global_context.clone(),
+    );
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
   }
 
   // Send finished responses to JS
   #[inline]
-  fn resolve_async_ops(&mut self, state_rc: Rc<RefCell<JsRuntimeState>>, cx: &mut Context) -> Result<(), Error> {
-    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
-    let scope = &mut self.handle_scope();
-
+  fn resolve_async_ops(
+    &mut self,
+    cx: &mut Context,
+    state_rc: Rc<RefCell<JsRuntimeState>>,
+    global_context: v8::Global<v8::Context>,
+  ) -> Result<(), Error> {
+    let state = &mut state_rc.borrow_mut();
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
     // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
@@ -1623,13 +1633,12 @@ impl JsRuntime {
     // which contains a value OR an error, encoded as a tuple.
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+    let mut args: Vec<v8::Local<v8::Value>> = Vec::with_capacity(state.pending_ops.len() * 2);
 
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), global_context);
     // Now handle actual ops.
     {
-      let mut state = state_rc.borrow_mut();
       state.have_unpolled_ops = false;
-
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (promise_id, op_id, resp) = item;
@@ -1644,6 +1653,7 @@ impl JsRuntime {
       return Ok(());
     }
 
+    let js_recv_cb_handle = state.js_recv_cb.clone().unwrap();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
@@ -1655,15 +1665,23 @@ impl JsRuntime {
     }
   }
 
-  fn drain_macrotasks(&mut self) -> Result<(), Error> {
-    let state = Self::state(self.v8_isolate());
-
-    if state.borrow().js_macrotask_cbs.is_empty() {
-      return Ok(());
-    }
-
-    let js_macrotask_cb_handles = state.borrow().js_macrotask_cbs.clone();
-    let scope = &mut self.handle_scope();
+  #[inline]
+  fn drain_macrotasks(
+    &mut self,
+    state: Rc<RefCell<JsRuntimeState>>,
+    global_context: &v8::Global<v8::Context>,
+  ) -> Result<(), Error> {
+    let js_macrotask_cb_handles = {
+      let state = state.borrow();
+      if state.js_macrotask_cbs.is_empty() {
+        return Ok(());
+      }
+      state.js_macrotask_cbs.clone()
+    };
+    let scope = &mut v8::HandleScope::with_context(
+      self.v8_isolate(),
+      global_context.clone(),
+    );
 
     for js_macrotask_cb_handle in js_macrotask_cb_handles {
       let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
@@ -1694,26 +1712,33 @@ impl JsRuntime {
     Ok(())
   }
 
-  fn drain_nexttick(&mut self) -> Result<(), Error> {
-    let state = Self::state(self.v8_isolate());
+  #[inline]
+  fn drain_nexttick(
+    &mut self,
+    state: Rc<RefCell<JsRuntimeState>>,
+    ctx: &v8::Global<v8::Context>,
+  ) -> Result<(), Error> {
+    let js_nexttick_cb_handles = {
+      let state = state.borrow();
+      if state.js_nexttick_cbs.is_empty() {
+        return Ok(());
+      }
 
-    if state.borrow().js_nexttick_cbs.is_empty() {
-      return Ok(());
-    }
+      if !state.has_tick_scheduled {
+        let scope = &mut self.handle_scope();
+        scope.perform_microtask_checkpoint();
+      }
 
-    if !state.borrow().has_tick_scheduled {
-      let scope = &mut self.handle_scope();
-      scope.perform_microtask_checkpoint();
-    }
+      // TODO(bartlomieju): Node also checks for absence of "rejection_to_warn"
+      if !state.has_tick_scheduled {
+        return Ok(());
+      }
 
-    // TODO(bartlomieju): Node also checks for absence of "rejection_to_warn"
-    if !state.borrow().has_tick_scheduled {
-      return Ok(());
-    }
+      state.js_nexttick_cbs.clone()
+    };
 
-    let js_nexttick_cb_handles = state.borrow().js_nexttick_cbs.clone();
-    let scope = &mut self.handle_scope();
-
+    let scope =
+      &mut v8::HandleScope::with_context(self.v8_isolate(), ctx.clone());
     for js_nexttick_cb_handle in js_nexttick_cb_handles {
       let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
 
