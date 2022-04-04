@@ -328,7 +328,7 @@
           httpConn.close();
 
           if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", { rid: wsRid });
+            await core.opAsync("op_ws_close", wsRid);
 
             ws[_readyState] = WebSocket.CLOSED;
 
