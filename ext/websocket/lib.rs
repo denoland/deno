@@ -27,6 +27,7 @@ use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
+use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -235,13 +236,13 @@ where
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&args.url)?)
+      .check_net_url(&url::Url::parse(&url)?)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
   }
 
-  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+  let cancel_resource = if let Some(cancel_rid) = cancel_handle {
     let r = state
       .borrow_mut()
       .resource_table
@@ -257,16 +258,16 @@ where
     .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
-  let uri: Uri = args.url.parse()?;
+  let uri: Uri = url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
   request = request.header("User-Agent", user_agent);
 
-  if !args.protocols.is_empty() {
-    request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  if !protocols.is_empty() {
+    request = request.header("Sec-WebSocket-Protocol", protocols);
   }
 
-  if let Some(headers) = args.headers {
+  if let Some(headers) = headers {
     for (key, value) in headers {
       let name = HeaderName::from_bytes(&key)
         .map_err(|err| type_error(err.to_string()))?;
@@ -332,7 +333,7 @@ where
       ))
     })?;
 
-  if let Some(cancel_rid) = args.cancel_handle {
+  if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
@@ -401,10 +402,10 @@ pub async fn op_ws_close(
   code: Option<u16>,
   reason: Option<String>,
 ) -> Result<(), AnyError> {
-  let rid = args.rid;
-  let msg = Message::Close(args.code.map(|c| CloseFrame {
+  let rid = rid;
+  let msg = Message::Close(code.map(|c| CloseFrame {
     code: CloseCode::from(c),
-    reason: match args.reason {
+    reason: match reason {
       Some(reason) => Cow::from(reason),
       None => Default::default(),
     },
