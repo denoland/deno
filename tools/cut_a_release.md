@@ -112,8 +112,9 @@ verify on GitHub that everything looks correct.
    been updated to reflect Web API changes in this release. Usually done ahead
    of time by @lucacasonato.
 
-9. **If you are cutting a patch release**: open a PR that forwards all commits
-   created in the release process to the `main` branch.
+9. **If you are cutting a patch release**: a PR should have been automatically
+   opened that forwards the release commit back to main. If so, merge it. If not
+   and it failed, please manually create one.
 
 ## Updating `doc.deno.land`
 
