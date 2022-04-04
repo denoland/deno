@@ -39,7 +39,6 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::RequestBuilder;
 use reqwest::Response;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -174,18 +173,6 @@ pub trait FetchPermissions {
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchArgs {
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
-  has_body: bool,
-  body_length: Option<u64>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -197,13 +184,18 @@ pub struct FetchReturn {
 #[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  args: FetchArgs,
+  method: ByteString,
+  url: String,
+  headers: Vec<(ByteString, ByteString)>,
+  client_rid: Option<u32>,
+  has_body: bool,
+  body_length: Option<u64>,
   data: Option<ZeroCopyBuf>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  let client = if let Some(rid) = args.client_rid {
+  let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
@@ -211,8 +203,8 @@ where
     client.clone()
   };
 
-  let method = Method::from_bytes(&args.method)?;
-  let url = Url::parse(&args.url)?;
+  let method = Method::from_bytes(&method)?;
+  let url = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
@@ -251,7 +243,7 @@ where
 
       let mut request = client.request(method.clone(), url);
 
-      let request_body_rid = if args.has_body {
+      let request_body_rid = if has_body {
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
@@ -259,7 +251,7 @@ where
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
-            if let Some(body_size) = args.body_length {
+            if let Some(body_size) = body_length {
               request =
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
@@ -289,7 +281,7 @@ where
         None
       };
 
-      for (key, value) in args.headers {
+      for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)
           .map_err(|err| type_error(err.to_string()))?;
         let v = HeaderValue::from_bytes(&value)
@@ -519,37 +511,29 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateHttpClientOptions {
+#[op]
+pub fn op_fetch_custom_client<FP>(
+  state: &mut OpState,
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
-}
-
-#[op]
-pub fn op_fetch_custom_client<FP>(
-  state: &mut OpState,
-  args: CreateHttpClientOptions,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(proxy) = args.proxy.clone() {
+  if let Some(proxy) = proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
     permissions.check_net_url(&url)?;
   }
 
   let client_cert_chain_and_key = {
-    if args.cert_chain.is_some() || args.private_key.is_some() {
-      let cert_chain = args
-        .cert_chain
+    if cert_chain.is_some() || private_key.is_some() {
+      let cert_chain = cert_chain
         .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key = args
-        .private_key
-        .ok_or_else(|| type_error("No private key provided"))?;
+      let private_key =
+        private_key.ok_or_else(|| type_error("No private key provided"))?;
 
       Some((cert_chain, private_key))
     } else {
@@ -558,8 +542,7 @@ where
   };
 
   let options = state.borrow::<Options>();
-  let ca_certs = args
-    .ca_certs
+  let ca_certs = ca_certs
     .into_iter()
     .map(|cert| cert.into_bytes())
     .collect::<Vec<_>>();
@@ -568,7 +551,7 @@ where
     options.user_agent.clone(),
     options.root_cert_store.clone(),
     ca_certs,
-    args.proxy,
+    proxy,
     options.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
   )?;

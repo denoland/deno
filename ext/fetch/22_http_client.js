@@ -20,7 +20,15 @@
    */
   function createHttpClient(options) {
     options.caCerts ??= [];
-    return new HttpClient(core.opSync("op_fetch_custom_client", options));
+    return new HttpClient(
+      core.opSync(
+        "op_fetch_custom_client",
+        options.caCerts,
+        options.proxy,
+        options.certChain,
+        options.privateKey,
+      ),
+    );
   }
 
   class HttpClient {
