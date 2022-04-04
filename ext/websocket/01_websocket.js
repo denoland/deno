@@ -223,10 +223,11 @@
       }
 
       PromisePrototypeThen(
-        core.opAsync("op_ws_create", {
-          url: wsURL.href,
-          protocols: ArrayPrototypeJoin(protocols, ", "),
-        }),
+        core.opAsync(
+          "op_ws_create",
+          wsURL.href,
+          ArrayPrototypeJoin(protocols, ", "),
+        ),
         (create) => {
           this[_rid] = create.rid;
           this[_extensions] = create.extensions;
@@ -234,9 +235,7 @@
 
           if (this[_readyState] === CLOSING) {
             PromisePrototypeThen(
-              core.opAsync("op_ws_close", {
-                rid: this[_rid],
-              }),
+              core.opAsync("op_ws_close", this[_rid]),
               () => {
                 this[_readyState] = CLOSED;
 
@@ -369,11 +368,7 @@
         this[_readyState] = CLOSING;
 
         PromisePrototypeThen(
-          core.opAsync("op_ws_close", {
-            rid: this[_rid],
-            code,
-            reason,
-          }),
+          core.opAsync("op_ws_close", this[_rid], code, reason),
           () => {
             this[_readyState] = CLOSED;
             const event = new CloseEvent("close", {
@@ -473,11 +468,7 @@
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             this[_readyState] = CLOSING;
             const reason = "No response from ping frame.";
-            await core.opAsync("op_ws_close", {
-              rid: this[_rid],
-              code: 1001,
-              reason,
-            });
+            await core.opAsync("op_ws_close", this[_rid], 1001, reason);
             this[_readyState] = CLOSED;
 
             const errEvent = new ErrorEvent("error", {
