@@ -855,7 +855,7 @@ impl JsRuntime {
 
     // Ops
     {
-      self.resolve_async_ops(cx)?;
+      self.resolve_async_ops(state_rc.clone(), cx)?;
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
@@ -1611,9 +1611,8 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
-    let state_rc = Self::state(self.v8_isolate());
-
+  #[inline]
+  fn resolve_async_ops(&mut self, state_rc: Rc<RefCell<JsRuntimeState>>, cx: &mut Context) -> Result<(), Error> {
     let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
     let scope = &mut self.handle_scope();
 
