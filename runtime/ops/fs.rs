@@ -1520,7 +1520,7 @@ async fn op_read_link_async(
 #[serde(rename_all = "camelCase")]
 pub struct FtruncateArgs {
   rid: ResourceId,
-  len: i32,
+  len: u64,
 }
 
 #[op]
@@ -1529,7 +1529,7 @@ fn op_ftruncate_sync(
   args: FtruncateArgs,
 ) -> Result<(), AnyError> {
   let rid = args.rid;
-  let len = args.len as u64;
+  let len = args.len;
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
     Err(_) => Err(type_error("cannot truncate this type of resource")),
@@ -1543,7 +1543,7 @@ async fn op_ftruncate_async(
   args: FtruncateArgs,
 ) -> Result<(), AnyError> {
   let rid = args.rid;
-  let len = args.len as u64;
+  let len = args.len;
 
   let resource = state
     .borrow_mut()
