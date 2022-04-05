@@ -1387,49 +1387,25 @@ declare namespace Deno {
     uid?: number;
     /** Similar to `uid`, but sets the group ID of the child process. */
     gid?: number;
-  }
 
-  export interface ProcessIoOptions {
     stdin?: "piped" | "inherit" | "null";
     stdout?: "piped" | "inherit" | "null";
     stderr?: "piped" | "inherit" | "null";
   }
 
-  /** **UNSTABLE** New API, yet to be vetted.
+  /**
+   * Spawns a child process.
    *
-   * Spawns new subprocess.
+   * stdin defaults to null.
+   * stdout defaults to inherit.
+   * stderr defaults to inherit.
    */
-  export class Command {
-    /**
-     * @param command The path to the binary to run.
-     * @param options Options for the Command.
-     */
-    constructor(command: string | URL, options?: CommandOptions);
+  export function spawn<T extends CommandOptions = CommandOptions>(command: string | URL, options?: T): Child<T>;
 
-    /**
-     * Starts the command as a child process.
-     * By default, the io options are all set to `inherit`.
-     */
-    spawn<T extends ProcessIoOptions = ProcessIoOptions>(options?: T): Child<T>;
-    /**
-     * Executes the command as a child process, waiting for it to finish and collecting its exit status.
-     * By default, `stdout` and `stderr` are set to `inherit`.
-     */
-    status(options?: {
-      stdout?: "inherit" | "null";
-      stderr?: "inherit" | "null";
-    }): Promise<ProcessStatus>;
-    /** Executes the command as a child process, waiting for it to finish and collecting all of its output. */
-    output(): Promise<CommandOutput<{ stdin: "piped"; stderr: "piped" }>>;
-  }
-
-  export class Child<T extends ProcessIoOptions = ProcessIoOptions> {
-    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
-      : null;
-    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
-      : null;
-    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array>
-      : null;
+  export class Child<T extends CommandOptions> {
+    readonly stdin: T["stdin"] extends "inherit" | "null" ? null : WritableStream<Uint8Array>;
+    readonly stdout: T["stdout"] extends "inherit" | "null" ? null : ReadableStream<Uint8Array>;
+    readonly stderr: T["stderr"] extends "inherit" | "null" ? null : ReadableStream<Uint8Array>;
 
     readonly pid: number;
     /** Get the current status. */
@@ -1438,16 +1414,32 @@ declare namespace Deno {
     /** Waits for the child to exit completely, returning the status that it exited with. */
     wait(): Promise<ProcessStatus>;
     /** Waits for the child to exit completely, returning all its output and status. */
-    output(): Promise<CommandOutput>;
+    output(): Promise<CommandOutput<T>>;
     kill(signo: Signal): void;
   }
 
-  export interface CommandOutput<
-    T extends ProcessIoOptions = ProcessIoOptions,
-  > {
+  /**
+   * Executes a subprocess as a child process, waiting for it to finish and collecting all of its output.
+   *
+   * stdin defaults to null.
+   * stdout defaults to piped.
+   * stderr defaults to piped.
+   */
+  export function command<T extends CommandOptions = CommandOptions>(command: string | URL, options?: T): Promise<CommandOutput<T>>;
+
+  /**
+   * Synchronously executes a subprocess as a child process, waiting for it to finish and collecting all of its output.
+   *
+   * stdin defaults to null.
+   * stdout defaults to piped.
+   * stderr defaults to piped.
+   */
+  export function commandSync<T extends CommandOptions = CommandOptions>(command: string | URL, options?: T): CommandOutput<T>;
+
+  export interface CommandOutput<T extends CommandOptions> {
     status: ProcessStatus;
-    stdout: T["stdin"] extends "piped" ? Uint8Array : null;
-    stderr: T["stderr"] extends "piped" ? Uint8Array : null;
+    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
+    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
   }
 }
 

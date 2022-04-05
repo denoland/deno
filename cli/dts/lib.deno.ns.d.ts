@@ -2254,6 +2254,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
+  /** @deprecated Use `Deno.command` or `Deno.spawn`. */
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
@@ -2395,6 +2396,7 @@ declare namespace Deno {
       signal?: number;
     };
 
+  /** @deprecated Use `Deno.command` or `Deno.spawn`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
@@ -2408,7 +2410,8 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
+  /** @deprecated Use `Deno.command` or `Deno.spawn`.
+   * Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts

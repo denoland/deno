@@ -27,13 +27,10 @@ use std::os::unix::prelude::ExitStatusExt;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_create_command::decl(),
       op_command_spawn::decl(),
       op_command_status::decl(),
+      op_command_wait::decl(),
       op_command_output::decl(),
-      op_command_child_wait::decl(),
-      op_command_child_output::decl(),
-      op_command_child_status::decl(),
     ])
     .build()
 }
@@ -46,22 +43,6 @@ impl Resource for ChildResource {
   }
 }
 
-struct CommandResource(tokio::process::Command);
-
-impl Resource for CommandResource {
-  fn name(&self) -> Cow<str> {
-    "command".into()
-  }
-}
-
-fn subprocess_stdio_map(s: &Stdio) -> Result<std::process::Stdio, AnyError> {
-  match s {
-    Stdio::Inherit => Ok(std::process::Stdio::inherit()),
-    Stdio::Piped => Ok(std::process::Stdio::piped()),
-    Stdio::Null => Ok(std::process::Stdio::null()),
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stdio {
@@ -70,29 +51,12 @@ pub enum Stdio {
   Null,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommandIoArgs {
-  stdin: Option<Stdio>,
-  stdout: Option<Stdio>,
-  stderr: Option<Stdio>,
-}
-
-fn handle_io_args(
-  command: &mut tokio::process::Command,
-  args: CommandIoArgs,
-) -> Result<(), AnyError> {
-  if let Some(stdin) = &args.stdin {
-    command.stdin(subprocess_stdio_map(stdin)?);
+fn subprocess_stdio_map(s: &Stdio) -> Result<std::process::Stdio, AnyError> {
+  match s {
+    Stdio::Inherit => Ok(std::process::Stdio::inherit()),
+    Stdio::Piped => Ok(std::process::Stdio::piped()),
+    Stdio::Null => Ok(std::process::Stdio::null()),
   }
-  if let Some(stdout) = &args.stdout {
-    command.stdout(subprocess_stdio_map(stdout)?);
-  }
-  if let Some(stderr) = &args.stderr {
-    command.stderr(subprocess_stdio_map(stderr)?);
-  }
-
-  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -107,15 +71,94 @@ pub struct CommandArgs {
   gid: Option<u32>,
   #[cfg(unix)]
   uid: Option<u32>,
+
+  #[serde(flatten)]
+  stdio: CommandStdio,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandStdio {
+  stdin: Option<Stdio>,
+  stdout: Option<Stdio>,
+  stderr: Option<Stdio>,
+}
+
+fn handle_io_args(
+  command: &mut tokio::process::Command,
+  args: CommandStdio,
+) -> Result<(), AnyError> {
+  if let Some(stdin) = &args.stdin {
+    command.stdin(subprocess_stdio_map(stdin)?);
+  }
+  if let Some(stdout) = &args.stdout {
+    command.stdout(subprocess_stdio_map(stdout)?);
+  }
+  if let Some(stderr) = &args.stderr {
+    command.stderr(subprocess_stdio_map(stderr)?);
+  }
+
+  Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandStatus {
+  success: bool,
+  code: i32,
+  signal: Option<i32>,
+}
+
+impl From<std::process::ExitStatus> for CommandStatus {
+  fn from(status: ExitStatus) -> Self {
+    let code = status.code();
+    #[cfg(unix)]
+      let signal = status.signal();
+    #[cfg(not(unix))]
+      let signal = None;
+
+    if let Some(signal) = signal {
+      CommandStatus {
+        success: false,
+        code: 128 + signal,
+        signal: Some(signal),
+      }
+    } else {
+      let code = code.expect("Should have either an exit code or a signal.");
+
+      CommandStatus {
+        success: code == 0,
+        code,
+        signal: None,
+      }
+    }
+  }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandOutput {
+  status: CommandStatus,
+  stdout: Option<ZeroCopyBuf>,
+  stderr: Option<ZeroCopyBuf>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Child {
+  rid: ResourceId,
+  pid: u32,
+  stdin_rid: Option<ResourceId>,
+  stdout_rid: Option<ResourceId>,
+  stderr_rid: Option<ResourceId>,
 }
 
 #[op]
-fn op_create_command(state: &mut OpState, args: CommandArgs) -> Result<ResourceId, AnyError> {
-  super::check_unstable(state, "Deno.Command");
+fn op_command_spawn(state: &mut OpState, args: CommandArgs) -> Result<Child, AnyError> {
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
-  let mut command = Command::new(&args.cmd);
-  command.args(&args.args);
+  let mut command = Command::new(args.cmd);
+  command.args(args.args);
 
   if let Some(cwd) = args.cwd {
     command.current_dir(cwd);
@@ -149,98 +192,7 @@ fn op_create_command(state: &mut OpState, args: CommandArgs) -> Result<ResourceI
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let rid = state.resource_table.add(CommandResource(command));
-  Ok(rid)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommandStatus {
-  success: bool,
-  code: i32,
-  signal: Option<i32>,
-}
-
-impl From<std::process::ExitStatus> for CommandStatus {
-  fn from(status: ExitStatus) -> Self {
-    let code = status.code();
-    #[cfg(unix)]
-    let signal = status.signal();
-    #[cfg(not(unix))]
-    let signal = None;
-
-    if let Some(signal) = signal {
-      CommandStatus {
-        success: false,
-        code: 128 + signal,
-        signal: Some(signal),
-      }
-    } else {
-      let code = code.expect("Should have either an exit code or a signal.");
-
-      CommandStatus {
-        success: code == 0,
-        code,
-        signal: None,
-      }
-    }
-  }
-}
-
-#[op]
-async fn op_command_status(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  args: CommandIoArgs,
-) -> Result<CommandStatus, AnyError> {
-  let command_resource = state
-    .borrow_mut()
-    .resource_table
-    .take::<CommandResource>(rid)?;
-  let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
-  handle_io_args(&mut command, args)?;
-  Ok(command.status().await?.into())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommandOutput {
-  status: CommandStatus,
-  stdout: Option<ZeroCopyBuf>,
-  stderr: Option<ZeroCopyBuf>,
-}
-
-#[op]
-async fn op_command_output(state: Rc<RefCell<OpState>>, rid: ResourceId) -> Result<CommandOutput, AnyError> {
-  let command_resource = state
-    .borrow_mut()
-    .resource_table
-    .take::<CommandResource>(rid)?;
-  let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
-  let output = command.output().await?;
-
-  Ok(CommandOutput {
-    status: output.status.into(),
-    stdout: Some(output.stdout.into()),
-    stderr: Some(output.stderr.into()),
-  })
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Child {
-  rid: ResourceId,
-  pid: u32,
-  stdin_rid: Option<ResourceId>,
-  stdout_rid: Option<ResourceId>,
-  stderr_rid: Option<ResourceId>,
-}
-
-#[op]
-fn op_command_spawn(state: &mut OpState, rid: ResourceId, args: CommandIoArgs) -> Result<Child, AnyError> {
-  let command_resource = state.resource_table.take::<CommandResource>(rid)?;
-  let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
-  handle_io_args(&mut command, args)?;
+  handle_io_args(&mut command, args.stdio)?;
 
   let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");
@@ -274,7 +226,7 @@ fn op_command_spawn(state: &mut OpState, rid: ResourceId, args: CommandIoArgs) -
 }
 
 #[op]
-fn op_command_child_status(
+fn op_command_status(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<Option<CommandStatus>, AnyError> {
@@ -284,7 +236,7 @@ fn op_command_child_status(
 }
 
 #[op]
-async fn op_command_child_wait(
+async fn op_command_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   stdin_rid: Option<ResourceId>,
@@ -313,7 +265,7 @@ struct ChildStdio {
 }
 
 #[op]
-async fn op_command_child_output(
+async fn op_command_output(
   state: Rc<RefCell<OpState>>,
   args: ChildStdio,
   _: (),

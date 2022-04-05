@@ -113,6 +113,9 @@
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
+    spawn: __bootstrap.command.spawn,
+    Child: __bootstrap.command.Child,
+    command: __bootstrap.command.command,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -151,7 +154,5 @@
     funlockSync: __bootstrap.fs.funlockSync,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
-    Command: __bootstrap.command.Command,
-    Child: __bootstrap.command.Child,
   };
 })(this);

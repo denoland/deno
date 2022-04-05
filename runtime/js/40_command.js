@@ -4,101 +4,36 @@
 ((window) => {
   const core = window.Deno.core;
   const { pathFromURL } = window.__bootstrap.util;
-  const { read, write } = window.__bootstrap.io;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const { ArrayPrototypeMap, ObjectEntries, String, TypeError } =
     window.__bootstrap.primordials;
+  const { readableStreamForRid, writableStreamForRid } =
+    window.__bootstrap.streamUtils;
 
-  function createWritableIOStream(rid) {
-    return new WritableStream({
-      async write(chunk) {
-        let nwritten = 0;
-        while (nwritten < chunk.byteLength) {
-          nwritten += await write(rid, chunk.subarray(nwritten));
-        }
-      },
-      abort() {
-        core.tryClose(rid);
-      },
+  function spawn(command, {
+    args = [],
+    cwd = undefined,
+    clearEnv = false,
+    env = {},
+    uid = undefined,
+    gid = undefined,
+    stdin = "null",
+    stdout = "inherit",
+    stderr = "inherit",
+  } = {}) {
+    const child = core.opSync("op_command_spawn", {
+      cmd: pathFromURL(command),
+      args: ArrayPrototypeMap(args, String),
+      cwd: pathFromURL(cwd),
+      clearEnv,
+      env: ObjectEntries(env),
+      uid,
+      gid,
+      stdin,
+      stdout,
+      stderr,
     });
-  }
-
-  function createReadableIOStream(rid) {
-    return new ReadableStream({
-      async pull(controller) {
-        const view = controller.byobRequest.view;
-        const res = await read(rid, view);
-        if (res === null) {
-          core.close(rid);
-          controller.close();
-        } else {
-          controller.byobRequest.respond(res);
-        }
-      },
-      cancel() {
-        core.close(rid);
-      },
-      type: "bytes",
-      autoAllocateChunkSize: 16384,
-    });
-  }
-
-  class Command {
-    #rid;
-
-    constructor(command, {
-      args = [],
-      cwd = undefined,
-      clearEnv = false,
-      env = {},
-      uid = undefined,
-      gid = undefined,
-    } = {}) {
-      this.#rid = core.opSync("op_create_command", {
-        cmd: pathFromURL(command),
-        args: ArrayPrototypeMap(args, String),
-        cwd: pathFromURL(cwd),
-        clearEnv,
-        env: ObjectEntries(env),
-        uid,
-        gid,
-      });
-    }
-
-    spawn(options = {}) {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
-      }
-      const child = core.opSync("op_command_spawn", this.#rid, options);
-      this.#rid = null;
-      return new Child(illegalConstructorKey, child);
-    }
-
-    async status(options = {}) {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
-      }
-      const status = await core.opAsync(
-        "op_command_status",
-        this.#rid,
-        options,
-      );
-      this.#rid = null;
-      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
-      status.signal ??= undefined;
-      return status;
-    }
-
-    async output() {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
-      }
-      const res = await core.opAsync("op_command_output", this.#rid);
-      this.#rid = null;
-      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
-      res.status.signal ??= undefined;
-      return res;
-    }
+    return new Child(illegalConstructorKey, child);
   }
 
   class Child {
@@ -143,27 +78,30 @@
 
       if (stdinRid !== null) {
         this.#stdinRid = stdinRid;
-        this.#stdin = createWritableIOStream(stdinRid);
+        this.#stdin = writableStreamForRid(stdinRid);
       }
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        this.#stdout = createReadableIOStream(stdoutRid);
+        this.#stdout = readableStreamForRid(stdoutRid);
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        this.#stderr = createReadableIOStream(stderrRid);
+        this.#stderr = readableStreamForRid(stderrRid);
       }
     }
 
+    #status;
     get status() {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
+      if (this.#status) {
+        return this.#status;
       }
-      const status = core.opSync("op_command_child_status", this.#rid);
+      const status = core.opSync("op_command_status", this.#rid);
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
-      status.signal ??= undefined;
+      if (status) {
+        status.signal ??= undefined;
+      }
       return status;
     }
 
@@ -172,7 +110,7 @@
         throw new TypeError("Child process has already terminated.");
       }
       const status = await core.opAsync(
-        "op_command_child_wait",
+        "op_command_wait",
         this.#rid,
         this.#stdinRid,
       );
@@ -180,6 +118,7 @@
       this.#rid = null;
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       status.signal ??= undefined;
+      this.#status = status;
       return status;
     }
 
@@ -187,7 +126,7 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      const res = await core.opAsync("op_command_child_output", {
+      const res = await core.opAsync("op_command_output", {
         rid: this.#rid,
         stdoutRid: this.#stdoutRid,
         stderrRid: this.#stderrRid,
@@ -196,6 +135,7 @@
       this.#rid = null;
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       res.status.signal ??= undefined;
+      this.#status = res.status;
       return res;
     }
 
@@ -207,8 +147,24 @@
     }
   }
 
+  function command(command, {
+    stdin = "null",
+    stdout = "piped",
+    stderr = "piped",
+    ...options
+  } = {}) { // TODO: more options (like input)?
+    const child = spawn(command, {
+      stdin,
+      stdout,
+      stderr,
+      ...options,
+    });
+    return child.output();
+  }
+
   window.__bootstrap.command = {
-    Command,
+    spawn,
     Child,
+    command,
   };
 })(this);
