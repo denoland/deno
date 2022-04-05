@@ -45,9 +45,6 @@ use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use log::warn;
-use lspower::jsonrpc::Error as LspError;
-use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -63,6 +60,9 @@ use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types as lsp;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());

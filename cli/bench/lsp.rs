@@ -6,12 +6,12 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspResponseError;
+use tower_lsp::lsp_types as lsp;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
 static FIXTURE_DB_TS: &str = include_str!("testdata/db.ts");

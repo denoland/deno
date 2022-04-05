@@ -27,7 +27,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
@@ -35,6 +34,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types as lsp;
 
 pub type SnapshotForDiagnostics =
   (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);

@@ -8,7 +8,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 use std::fs;
@@ -17,6 +16,7 @@ use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TempDir;
+use tower_lsp::lsp_types as lsp;
 
 fn load_fixture(path: &str) -> Value {
   load_fixture_as(path)
@@ -605,7 +605,7 @@ fn lsp_deno_task() {
     .unwrap();
 
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>("deno/task", json!({}))
+    .write_request::<_, _, Value>("deno/task", json!(null))
     .unwrap();
 
   assert!(maybe_err.is_none());
@@ -4280,7 +4280,7 @@ fn lsp_performance() {
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, PerformanceAverages>("deno/performance", json!({}))
+    .write_request::<_, _, PerformanceAverages>("deno/performance", json!(null))
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {

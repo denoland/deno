@@ -27,5 +27,5 @@ mime = "0.3.16"
 percent-encoding = "2.1.0"
 ring = "0.16.20"
 serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.10.1", features = ["full"] }
-tokio-util = { version = "0.6.7", features = ["io"] }
+tokio = { version = "1.17", features = ["full"] }
+tokio-util = { version = "0.7.0", features = ["io"] }

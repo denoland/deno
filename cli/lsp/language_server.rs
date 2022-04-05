@@ -11,15 +11,15 @@ use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
-use lspower::jsonrpc::Error as LspError;
-use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp::request::*;
-use lspower::lsp::*;
 use serde_json::from_value;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types::request::*;
+use tower_lsp::lsp_types::*;
 
 use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
@@ -131,6 +131,85 @@ pub struct Inner {
 impl LanguageServer {
   pub fn new(client: Client) -> Self {
     Self(Arc::new(tokio::sync::Mutex::new(Inner::new(client))))
+  }
+
+  pub async fn cache_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => self.0.lock().await.cache(params).await,
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
+  }
+
+  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
+    Ok(Some(self.0.lock().await.get_performance()))
+  }
+
+  pub async fn reload_import_registries_request(
+    &self,
+  ) -> LspResult<Option<Value>> {
+    self.0.lock().await.reload_import_registries().await
+  }
+
+  pub async fn task_request(&self) -> LspResult<Option<Value>> {
+    self.0.lock().await.get_tasks()
+  }
+
+  pub async fn test_run_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    let inner = self.0.lock().await;
+    if let Some(testing_server) = &inner.maybe_testing_server {
+      match params.map(serde_json::from_value) {
+        Some(Ok(params)) => testing_server
+          .run_request(params, inner.config.get_workspace_settings()),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
+      }
+    } else {
+      Err(LspError::invalid_request())
+    }
+  }
+
+  pub async fn test_run_cancel_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    if let Some(testing_server) = &self.0.lock().await.maybe_testing_server {
+      match params.map(serde_json::from_value) {
+        Some(Ok(params)) => testing_server.run_cancel_request(params),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
+      }
+    } else {
+      Err(LspError::invalid_request())
+    }
+  }
+
+  pub async fn virtual_text_document(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => Ok(Some(
+        serde_json::to_value(
+          self.0.lock().await.virtual_text_document(params).await?,
+        )
+        .map_err(|err| {
+          error!(
+            "Failed to serialize virtual_text_document response: {}",
+            err
+          );
+          LspError::internal_error()
+        })?,
+      )),
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
   }
 }
 
@@ -2144,68 +2223,6 @@ impl Inner {
     }
   }
 
-  async fn request_else(
-    &mut self,
-    method: &str,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    match method {
-      lsp_custom::CACHE_REQUEST => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => self.cache(params).await,
-        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-        None => Err(LspError::invalid_params("Missing parameters")),
-      },
-      lsp_custom::PERFORMANCE_REQUEST => Ok(Some(self.get_performance())),
-      lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST => {
-        self.reload_import_registries().await
-      }
-      lsp_custom::TASK_REQUEST => self.get_tasks(),
-      testing::TEST_RUN_REQUEST => {
-        if let Some(testing_server) = &self.maybe_testing_server {
-          match params.map(serde_json::from_value) {
-            Some(Ok(params)) => testing_server
-              .run_request(params, self.config.get_workspace_settings()),
-            Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-            None => Err(LspError::invalid_params("Missing parameters")),
-          }
-        } else {
-          Err(LspError::invalid_request())
-        }
-      }
-      testing::TEST_RUN_CANCEL_REQUEST => {
-        if let Some(testing_server) = &self.maybe_testing_server {
-          match params.map(serde_json::from_value) {
-            Some(Ok(params)) => testing_server.run_cancel_request(params),
-            Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-            None => Err(LspError::invalid_params("Missing parameters")),
-          }
-        } else {
-          Err(LspError::invalid_request())
-        }
-      }
-      lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
-        match params.map(serde_json::from_value) {
-          Some(Ok(params)) => Ok(Some(
-            serde_json::to_value(self.virtual_text_document(params).await?)
-              .map_err(|err| {
-                error!(
-                  "Failed to serialize virtual_text_document response: {}",
-                  err
-                );
-                LspError::internal_error()
-              })?,
-          )),
-          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-          None => Err(LspError::invalid_params("Missing parameters")),
-        }
-      }
-      _ => {
-        error!("Got a {} request, but no handler is defined", method);
-        Err(LspError::method_not_found())
-      }
-    }
-  }
-
   async fn selection_range(
     &mut self,
     params: SelectionRangeParams,
@@ -2441,8 +2458,8 @@ impl Inner {
   }
 }
 
-#[lspower::async_trait]
-impl lspower::LanguageServer for LanguageServer {
+#[tower_lsp::async_trait]
+impl tower_lsp::LanguageServer for LanguageServer {
   async fn initialize(
     &self,
     params: InitializeParams,
@@ -2778,14 +2795,6 @@ impl lspower::LanguageServer for LanguageServer {
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
     self.0.lock().await.rename(params).await
-  }
-
-  async fn request_else(
-    &self,
-    method: &str,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    self.0.lock().await.request_else(method, params).await
   }
 
   async fn selection_range(
