@@ -2614,6 +2614,11 @@ itest!(unstable_ffi_15 {
   exit_code: 70,
 });
 
+itest!(no_prompt_flag {
+  args: "run --quiet --unstable --no-prompt no_prompt.ts",
+  output_str: Some(""),
+});
+
 #[test]
 fn deno_no_prompt_environment_variable() {
   let output = util::deno_cmd()
