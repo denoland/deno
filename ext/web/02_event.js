@@ -791,6 +791,9 @@
     try {
       innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
     } catch (error) {
+      // We can't store `__bootstrap.reportError` ahead of time because there
+      // is a dependency cycle between this and `**_report_error.js` and one
+      // will not be available for the other at bootstrap time.
       __bootstrap.reportError.reportException(error);
     }
   }
