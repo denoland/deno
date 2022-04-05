@@ -9,6 +9,7 @@ const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
 
 // update the std version used in the code
+console.log("Updating std version...");
 await updateStdVersion();
 
 // increment the cli version
@@ -32,6 +33,7 @@ await workspace.getCliCrate().cargoUpdate("--workspace");
 
 // try to update the Releases.md markdown text
 try {
+  console.log("Updating Releases.md...");
   await updateReleasesMd();
 } catch (err) {
   console.error(err);
@@ -43,38 +45,14 @@ try {
 }
 
 async function updateReleasesMd() {
-  const filePath = path.join(DenoWorkspace.rootDirPath, "Releases.md");
-  const oldFileText = await Deno.readTextFile(filePath);
-  const insertText = await getReleasesMdText();
-
-  await Deno.writeTextFile(
-    filePath,
-    oldFileText.replace(/^### /m, insertText + "\n\n### "),
-  );
+  const gitLog = await getGitLog();
+  const releasesMdFile = workspace.getReleasesMdFile();
+  releasesMdFile.updateWithGitLog({
+    version: cliCrate.version,
+    gitLog,
+  });
 
   await workspace.runFormatter();
-  console.log(
-    "Updated Release.md -- Please review the output to ensure it's correct.",
-  );
-}
-
-async function getReleasesMdText() {
-  const gitLog = await getGitLog();
-  const formattedGitLog = gitLog.formatForReleaseMarkdown();
-  const formattedDate = getFormattedDate(new Date());
-
-  return `### ${cliCrate.version} / ${formattedDate}\n\n` +
-    `${formattedGitLog}`;
-
-  function getFormattedDate(date: Date) {
-    const formattedMonth = padTwoDigit(date.getMonth() + 1);
-    const formattedDay = padTwoDigit(date.getDate());
-    return `${date.getFullYear()}.${formattedMonth}.${formattedDay}`;
-
-    function padTwoDigit(val: number) {
-      return val.toString().padStart(2, "0");
-    }
-  }
 }
 
 async function getGitLog() {

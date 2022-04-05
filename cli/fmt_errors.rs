@@ -48,9 +48,8 @@ pub fn format_location(frame: &JsStackFrame) -> String {
     return cyan("native").to_string();
   }
   let mut result = String::new();
-  let file_name = frame.file_name.clone().unwrap_or_default();
-  if !file_name.is_empty() {
-    result += &cyan(&format_file_name(&file_name)).to_string();
+  if let Some(file_name) = &frame.file_name {
+    result += &cyan(&format_file_name(file_name)).to_string();
   } else {
     if frame.is_eval {
       result +=
