@@ -13,6 +13,9 @@
 
   let printException = undefined;
 
+  /** Set a function `(e: Error) => void` to print an uncaught exception. It is
+  invoked when an error event is dispatched by the runtime and
+  `Event.prototype.preventDefault()` isn't called. */
   function setPrintException(fn) {
     printException = fn;
   }
