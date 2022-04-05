@@ -75,14 +75,19 @@ macro_rules! deserialize_signed {
     where
       V: Visitor<'de>,
     {
-      let value: $t = match self.input.is_big_int() {
-        true => {
-          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
-          bigint.unwrap().i64_value().0 as $t
-        }
-        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
-      };
-      visitor.$vmethod(value)
+      visitor.$vmethod(
+        if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+          x.value() as $t
+        } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+          x.i64_value().0 as $t
+        } else if let Some(x) = self.input.number_value(self.scope) {
+          x as $t
+        } else if let Some(x) = self.input.to_big_int(self.scope) {
+          x.i64_value().0 as $t
+        } else {
+          return Err(Error::ExpectedInteger);
+        },
+      )
     }
   };
 }
@@ -93,14 +98,19 @@ macro_rules! deserialize_unsigned {
     where
       V: Visitor<'de>,
     {
-      let value: $t = match self.input.is_big_int() {
-        true => {
-          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
-          bigint.unwrap().u64_value().0 as $t
-        }
-        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
-      };
-      visitor.$vmethod(value)
+      visitor.$vmethod(
+        if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+          x.value() as $t
+        } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+          x.u64_value().0 as $t
+        } else if let Some(x) = self.input.number_value(self.scope) {
+          x as $t
+        } else if let Some(x) = self.input.to_big_int(self.scope) {
+          x.u64_value().0 as $t
+        } else {
+          return Err(Error::ExpectedInteger);
+        },
+      )
     }
   };
 }
@@ -157,20 +167,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   deserialize_unsigned!(deserialize_u16, visit_u16, u16);
   deserialize_unsigned!(deserialize_u32, visit_u32, u32);
   deserialize_unsigned!(deserialize_u64, visit_u64, u64);
-
-  fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
-  where
-    V: Visitor<'de>,
-  {
-    visitor.visit_f32(self.input.number_value(self.scope).unwrap() as f32)
-  }
-
-  fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
-  where
-    V: Visitor<'de>,
-  {
-    visitor.visit_f64(self.input.number_value(self.scope).unwrap())
-  }
+  // floats
+  deserialize_signed!(deserialize_f32, visit_f32, f32);
+  deserialize_signed!(deserialize_f64, visit_f64, f64);
 
   wip!(deserialize_char);
 
