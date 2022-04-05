@@ -2613,3 +2613,18 @@ itest!(unstable_ffi_15 {
   output: "unstable_ffi_15.js.out",
   exit_code: 70,
 });
+
+#[test]
+fn deno_no_prompt_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("no_prompt.ts")
+    .env("DENO_NO_PROMPT", "1")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
