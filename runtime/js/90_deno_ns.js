@@ -116,6 +116,7 @@
     spawn: __bootstrap.command.spawn,
     Child: __bootstrap.command.Child,
     command: __bootstrap.command.command,
+    commandSync: __bootstrap.command.commandSync,
   };
 
   __bootstrap.denoNsUnstable = {
