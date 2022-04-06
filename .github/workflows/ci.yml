@@ -236,7 +236,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 5-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 6-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
