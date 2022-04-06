@@ -104,6 +104,7 @@ impl MainWorker {
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
+      deno_css::init(),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
         user_agent: options.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),

@@ -63,6 +63,7 @@ delete Object.prototype.__proto__;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
+  const css = window.__bootstrap.css;
   const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
@@ -450,6 +451,11 @@ delete Object.prototype.__proto__;
   const unstableWindowOrWorkerGlobalScope = {
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
+
+    CSSRule: util.nonEnumerable(css.CSSRule),
+    CSSRuleList: util.nonEnumerable(css.CSSRuleList),
+    CSSStyleSheet: util.nonEnumerable(css.CSSStyleSheet),
+    StyleSheet: util.nonEnumerable(css.StyleSheet),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),

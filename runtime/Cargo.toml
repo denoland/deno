@@ -26,6 +26,7 @@ deno_broadcast_channel = { version = "0.39.0", path = "../ext/broadcast_channel"
 deno_console = { version = "0.45.0", path = "../ext/console" }
 deno_core = { version = "0.127.0", path = "../core" }
 deno_crypto = { version = "0.59.0", path = "../ext/crypto" }
+deno_css = { version = "0.1.0", path = "../ext/css" }
 deno_fetch = { version = "0.68.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.32.0", path = "../ext/ffi" }
 deno_http = { version = "0.39.0", path = "../ext/http" }
@@ -38,6 +39,7 @@ deno_webidl = { version = "0.45.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.50.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.40.0", path = "../ext/webstorage" }
 
+
 lzzzz = '=0.8.0'
 
 [target.'cfg(windows)'.build-dependencies]
@@ -49,6 +51,7 @@ deno_broadcast_channel = { version = "0.39.0", path = "../ext/broadcast_channel"
 deno_console = { version = "0.45.0", path = "../ext/console" }
 deno_core = { version = "0.127.0", path = "../core" }
 deno_crypto = { version = "0.59.0", path = "../ext/crypto" }
+deno_css = { version = "0.1.0", path = "../ext/css" }
 deno_fetch = { version = "0.68.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.32.0", path = "../ext/ffi" }
 deno_http = { version = "0.39.0", path = "../ext/http" }

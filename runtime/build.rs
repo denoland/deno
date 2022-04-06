@@ -149,6 +149,7 @@ mod not_docs {
         deno_web::BlobStore::default(),
         Default::default(),
       ),
+      deno_css::init(),
       deno_fetch::init::<Permissions>(Default::default()),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),

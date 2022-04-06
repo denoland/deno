@@ -27,6 +27,10 @@ members = [
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
+# replace cssparser with git version from https://github.com/servo/rust-cssparser/pull/298
+[patch.crates-io]
+cssparser = { git = "https://github.com/lucacasonato/rust-cssparser", rev = "1e723638e76893439cb5dc2735d2986844fd9b47" }
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
