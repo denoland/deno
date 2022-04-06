@@ -6,6 +6,22 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.20.4 / 2022.03.31
+
+- fix(compile): follow redirects when resolving (#14161)
+- fix(ext/fetch): extend deprecated fetch() overload with `string | Request`
+  (#14134)
+- fix(lsp): watch .jsonc files (#14135)
+- fix(runtime/ops/signal.rs): Add Solaris signals (#13931)
+- fix(task): handle `PATHEXT` with trailing semi-colon (#14140)
+- perf: micro-optimize core.encode (#14120)
+
+### 1.20.3 / 2022.03.25
+
+- fix(ext/fetch): deprecate URL as the first arg in types (#14113)
+- fix(ext/ffi): enforce unstable check on ops (#14115)
+- fix(runtime): do not modify user provided `cmd` array in `Deno.run` (#14109)
+
 ### 1.20.2 / 2022.03.24
 
 - feat(lsp): support deno.enablePaths setting (#13978)

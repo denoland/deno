@@ -2,8 +2,8 @@
 
 use deno_core::url;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 itest!(stdout_write_all {
   args: "run --quiet stdout_write_all.ts",
@@ -253,7 +253,7 @@ itest!(webstorage_serialization {
 fn webstorage_location_shares_origin() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -268,7 +268,7 @@ fn webstorage_location_shares_origin() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -290,7 +290,7 @@ fn webstorage_location_shares_origin() {
 fn webstorage_config_file() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -305,7 +305,7 @@ fn webstorage_config_file() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -320,7 +320,7 @@ fn webstorage_config_file() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -342,7 +342,7 @@ fn webstorage_config_file() {
 fn webstorage_location_precedes_config() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -359,7 +359,7 @@ fn webstorage_location_precedes_config() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -383,7 +383,7 @@ fn webstorage_location_precedes_config() {
 fn webstorage_main_module() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -396,7 +396,7 @@ fn webstorage_main_module() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -409,7 +409,7 @@ fn webstorage_main_module() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -466,7 +466,7 @@ itest!(_082_prepare_stack_trace_throw {
 #[test]
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
-  let deno_dir = TempDir::new().unwrap();
+  let deno_dir = TempDir::new();
   let module_url =
     url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
       .unwrap();
@@ -1804,7 +1804,7 @@ fn rust_log() {
 fn dont_cache_on_check_fail() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1818,7 +1818,7 @@ fn dont_cache_on_check_fail() {
   assert!(!output.status.success());
   assert!(!output.stderr.is_empty());
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2368,7 +2368,7 @@ itest!(eval_context_throw_dom_exception {
 fn issue12453() {
   let _g = util::http_server();
   let deno_dir = util::new_deno_dir();
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2385,7 +2385,7 @@ fn issue12453() {
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
-  let mod_dir = TempDir::new().unwrap();
+  let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2419,7 +2419,7 @@ fn issue12740() {
 /// Regression test for https://github.com/denoland/deno/issues/12807.
 #[test]
 fn issue12807() {
-  let mod_dir = TempDir::new().unwrap();
+  let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2522,4 +2522,94 @@ itest!(fetch_async_error_stack {
   args: "run --quiet -A fetch_async_error_stack.ts",
   output: "fetch_async_error_stack.ts.out",
   exit_code: 1,
+});
+
+itest!(unstable_ffi_1 {
+  args: "run unstable_ffi_1.js",
+  output: "unstable_ffi_1.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_2 {
+  args: "run unstable_ffi_2.js",
+  output: "unstable_ffi_2.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_3 {
+  args: "run unstable_ffi_3.js",
+  output: "unstable_ffi_3.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_4 {
+  args: "run unstable_ffi_4.js",
+  output: "unstable_ffi_4.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_5 {
+  args: "run unstable_ffi_5.js",
+  output: "unstable_ffi_5.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_6 {
+  args: "run unstable_ffi_6.js",
+  output: "unstable_ffi_6.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_7 {
+  args: "run unstable_ffi_7.js",
+  output: "unstable_ffi_7.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_8 {
+  args: "run unstable_ffi_8.js",
+  output: "unstable_ffi_8.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_9 {
+  args: "run unstable_ffi_9.js",
+  output: "unstable_ffi_9.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_10 {
+  args: "run unstable_ffi_10.js",
+  output: "unstable_ffi_10.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_11 {
+  args: "run unstable_ffi_11.js",
+  output: "unstable_ffi_11.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_12 {
+  args: "run unstable_ffi_12.js",
+  output: "unstable_ffi_12.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_13 {
+  args: "run unstable_ffi_13.js",
+  output: "unstable_ffi_13.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_14 {
+  args: "run unstable_ffi_14.js",
+  output: "unstable_ffi_14.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_15 {
+  args: "run unstable_ffi_15.js",
+  output: "unstable_ffi_15.js.out",
+  exit_code: 70,
 });

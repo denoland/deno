@@ -129,8 +129,7 @@ fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
 }
 
 #[op]
-fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
-  let mut s = s.0;
+fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
   s.retain(|c| !c.is_ascii_whitespace());
 
   // If padding is expected, fail if not 4-byte aligned
@@ -140,7 +139,7 @@ fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
     );
   }
 
-  Ok(ByteString(b64_decode(&s)?))
+  Ok(b64_decode(&s)?.into())
 }
 
 fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
@@ -185,7 +184,7 @@ fn op_base64_encode(s: ZeroCopyBuf) -> Result<String, AnyError> {
 
 #[op]
 fn op_base64_btoa(s: ByteString) -> Result<String, AnyError> {
-  Ok(b64_encode(&s))
+  Ok(b64_encode(s))
 }
 
 fn b64_encode(s: impl AsRef<[u8]>) -> String {
@@ -270,7 +269,7 @@ fn op_encoding_decode(
     .max_utf16_buffer_length(data.len())
     .ok_or_else(|| range_error("Value too large to decode."))?;
 
-  let mut output = U16String::with_zeroes(max_buffer_length);
+  let mut output = vec![0; max_buffer_length];
 
   if fatal {
     let (result, _, written) =
@@ -278,7 +277,7 @@ fn op_encoding_decode(
     match result {
       DecoderResult::InputEmpty => {
         output.truncate(written);
-        Ok(output)
+        Ok(output.into())
       }
       DecoderResult::OutputFull => {
         Err(range_error("Provided buffer too small."))
@@ -293,7 +292,7 @@ fn op_encoding_decode(
     match result {
       CoderResult::InputEmpty => {
         output.truncate(written);
-        Ok(output)
+        Ok(output.into())
       }
       CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
     }

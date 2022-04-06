@@ -750,23 +750,37 @@
     return inspectArgs([error]);
   }
 
+  /**
+   * @param {string | { include?: string[], exclude?: string[] }} filter
+   * @returns {(def: { name: string }) => boolean}
+   */
   function createTestFilter(filter) {
+    if (!filter) {
+      return () => true;
+    }
+
+    const regex =
+      typeof filter === "string" && StringPrototypeStartsWith(filter, "/") &&
+        StringPrototypeEndsWith(filter, "/")
+        ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
+        : undefined;
+
+    const filterIsObject = filter != null && typeof filter === "object";
+
     return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
-        }
-
-        return StringPrototypeIncludes(def.name, filter);
+      if (regex) {
+        return RegExpPrototypeTest(regex, def.name);
       }
-
-      return true;
+      if (filterIsObject) {
+        if (filter.include && !filter.include.includes(def.name)) {
+          return false;
+        } else if (filter.exclude && filter.exclude.includes(def.name)) {
+          return false;
+        } else {
+          return true;
+        }
+      }
+      return StringPrototypeIncludes(def.name, filter);
     };
   }
 

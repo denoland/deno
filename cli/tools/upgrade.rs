@@ -16,7 +16,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use tempfile::TempDir;
 
 static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -230,7 +229,7 @@ pub fn unpack(
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
-  let temp_dir = TempDir::new()?.into_path();
+  let temp_dir = secure_tempfile::TempDir::new()?.into_path();
   let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
   let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);
