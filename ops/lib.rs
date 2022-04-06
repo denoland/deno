@@ -34,8 +34,33 @@ fn core_import() -> TokenStream2 {
   }
 }
 
+#[derive(Debug)]
+struct MacroArgs {
+  is_unstable: bool,
+}
+
+impl syn::parse::Parse for MacroArgs {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let vars =
+      syn::punctuated::Punctuated::<Ident, syn::Token![,]>::parse_terminated(
+        input,
+      )?;
+    let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
+    let vars: Vec<_> = vars.iter().map(String::as_str).collect();
+    match vars[..] {
+      ["unstable"] => Ok(Self { is_unstable: true }),
+      [] => Ok(Self { is_unstable: false }),
+      _ => Err(syn::Error::new(
+        input.span(),
+        "Ops expect #[op] or #[op(unstable)]",
+      )),
+    }
+  }
+}
+
 #[proc_macro_attribute]
-pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
+  let MacroArgs { is_unstable } = syn::parse_macro_input!(attr as MacroArgs);
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
@@ -85,6 +110,7 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
           enabled: true,
           is_async: #is_async,
+          is_unstable: #is_unstable,
         }
       }
 

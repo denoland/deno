@@ -31,12 +31,12 @@ use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::error;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
