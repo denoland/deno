@@ -133,7 +133,7 @@
         input = new Uint8Array(input);
       }
       
-      if (!options.stream) {
+      if (!options.stream && this.#rid === null) {
         return core.opSync("op_encoding_decode_single", input, {
           label: this.#encoding,
           fatal: this.#fatal,
@@ -150,7 +150,7 @@
       }  
       return core.opSync("op_encoding_decode", input, {
         rid: this.#rid,
-        stream: true, //options.stream,
+        stream: options.stream,
       });
       /*} finally {
         if (!options.stream) {
