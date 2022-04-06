@@ -9,6 +9,7 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::ZeroCopyBuf;
 
 use deno_core::Extension;
 use deno_core::OpState;
@@ -23,6 +24,7 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
+use std::io::Write;
 use std::io::{Error, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -157,6 +159,44 @@ fn open_helper(
   Ok((path, open_options))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileArgs {
+  path: String,
+  mode: Option<u32>,
+  append: bool,
+  create: bool,
+  data: ZeroCopyBuf,
+}
+
+#[op]
+fn op_write_file_sync(
+  state: &mut OpState,
+  args: WriteFileArgs,
+) -> Result<(), AnyError> {
+  let (path, open_options) = open_helper(
+    state,
+    OpenArgs {
+      path: args.path,
+      mode: args.mode,
+      options: OpenOptions {
+        read: false,
+        write: true,
+        create: args.create,
+        truncate: !args.append,
+        append: args.append,
+        create_new: false,
+      },
+    },
+  )?;
+  let mut std_file = open_options.open(&path).map_err(|err| {
+    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+  })?;
+  std_file.write_all(&args.data)?;
+
+  Ok(())
+}
+
 #[op]
 fn op_open_sync(
   state: &mut OpState,
@@ -184,6 +224,7 @@ async fn op_open_async(
     .map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })?;
+
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.borrow_mut().resource_table.add(resource);
   Ok(rid)
