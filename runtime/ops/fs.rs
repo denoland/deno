@@ -239,6 +239,27 @@ fn op_write_file_sync(
       _ => return Err(io::Error::from_raw_os_error(err_no).into()),
     }
   }
+  #[cfg(target_os = "windows")]
+  unsafe {
+    use std::os::windows::prelude::AsRawHandle;
+    use winapi::shared::minwindef::DWORD;
+    use winapi::shared::minwindef::TRUE;
+    use winapi::um::fileapi;
+    use winapi::um::minwinbase::FileAllocationInfo;
+
+    let mut info: fileapi::FILE_ALLOCATION_INFO = std::mem::zeroed();
+    *info.AllocationSize.QuadPart_mut() = args.data.len() as i64;
+
+    let success = fileapi::SetFileInformationByHandle(
+      std_file.as_raw_handle(),
+      FileAllocationInfo,
+      &mut info as *mut _ as *mut _,
+      std::mem::size_of_val(&info) as DWORD,
+    );
+    if success != TRUE {
+      return Err(std::io::Error::last_os_error().into());
+    }
+  }
 
   std_file.write_all(&args.data)?;
   Ok(())
