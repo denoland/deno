@@ -119,7 +119,19 @@ function benchOpVoidAsync() {
   );
 }
 
+function benchWriteFile() {
+  const input = new TextEncoder().encode("long-string".repeat(999_999));
+  const tempDir = Deno.makeTempDirSync();
+  let i = 0;
+  benchSync("write_file_large", 100, () => {
+    Deno.writeFileSync(`${tempDir}/${i}.txt`, input);
+  });
+  Deno.removeSync(tempDir, { recursive: true });
+}
+
 async function main() {
+  benchWriteFile();
+  return;
   // v8 builtin that's close to the upper bound non-NOPs
   benchDateNow();
   // Void ops measure op-overhead
