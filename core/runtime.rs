@@ -44,7 +44,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
+type PendingOpFuture = OpCall<(PromiseId, OpName, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -291,7 +291,7 @@ impl JsRuntime {
       .insert(0, crate::ops_builtin::init_builtins());
 
     let ops = Self::collect_ops(&mut options.extensions);
-    let mut op_state = OpState::new(ops.len());
+    let mut op_state = OpState::new(ops.iter().map(|decl| decl.name));
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
@@ -1734,7 +1734,7 @@ impl JsRuntime {
 #[inline]
 pub fn queue_async_op(
   scope: &v8::Isolate,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+  op: impl Future<Output = (PromiseId, OpName, OpResult)> + 'static,
 ) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();

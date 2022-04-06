@@ -3,12 +3,14 @@ use crate::include_js_files;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
 use crate::Extension;
+use crate::OpName;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
 
@@ -92,7 +94,7 @@ pub fn op_try_close(
 #[op]
 pub fn op_metrics(
   state: &mut OpState,
-) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+) -> Result<(OpMetrics, HashMap<OpName, OpMetrics>), Error> {
   let aggregate = state.tracker.aggregate();
   let per_op = state.tracker.per_op();
   Ok((aggregate, per_op))

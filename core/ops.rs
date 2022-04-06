@@ -12,7 +12,6 @@ use futures::ready;
 use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
-use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
@@ -81,6 +80,7 @@ pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn =
   fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
 pub type OpId = usize;
+pub type OpName = &'static str;
 
 pub enum Op {
   Sync(OpResult),
@@ -143,14 +143,12 @@ pub struct OpState {
 }
 
 impl OpState {
-  pub fn new(ops_count: usize) -> OpState {
+  pub fn new(op_names: impl IntoIterator<Item = OpName>) -> OpState {
     OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
-      tracker: OpsTracker {
-        ops: UnsafeCell::new(vec![Default::default(); ops_count]),
-      },
+      tracker: OpsTracker::new(op_names),
     }
   }
 }

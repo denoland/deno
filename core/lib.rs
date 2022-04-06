@@ -75,6 +75,7 @@ pub use crate::ops::OpCall;
 pub use crate::ops::OpError;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
+pub use crate::ops::OpName;
 pub use crate::ops::OpResult;
 pub use crate::ops::OpState;
 pub use crate::ops::PromiseId;

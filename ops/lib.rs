@@ -130,6 +130,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Generate the body of a v8 func for an async op
 fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
+  let op_name = &f.sig.ident;
   let arg0 = f.sig.inputs.first();
   let uses_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
@@ -138,17 +139,12 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     quote! {}
   };
   let rust_i0 = if uses_opstate { 1 } else { 0 };
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 2);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let type_params = &f.sig.generics.params;
 
   quote! {
     use #core::futures::FutureExt;
-    // SAFETY: Called from Deno.core.opAsync. Which retrieves the index using opId table.
-    let op_id = unsafe {
-      #core::v8::Local::<#core::v8::Integer>::cast(args.get(0))
-    }.value() as usize;
-
-    let promise_id = args.get(1);
+    let promise_id = args.get(0);
     let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
       .map(|l| l.value() as #core::PromiseId)
       .map_err(#core::anyhow::Error::from);
@@ -178,19 +174,20 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     // Track async call & get copy of get_error_class_fn
     let get_class = {
       let state = state.borrow();
-      state.tracker.track_async(op_id);
+      state.tracker.track_async(stringify!(#op_name));
       state.get_error_class_fn
     };
 
     #core::_ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(#args_head #args_tail).await;
-      (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+      (promise_id, stringify!(#op_name), #core::_ops::to_op_result(get_class, result))
     });
   }
 }
 
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
+  let op_name = &f.sig.ident;
   let arg0 = f.sig.inputs.first();
   let uses_opstate = arg0.map(is_mut_ref_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
@@ -199,16 +196,11 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     quote! {}
   };
   let rust_i0 = if uses_opstate { 1 } else { 0 };
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
 
   quote! {
-    // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
-    let op_id = unsafe {
-      #core::v8::Local::<#core::v8::Integer>::cast(args.get(0)).value()
-    } as usize;
-
     #arg_decls
 
     // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
@@ -222,7 +214,7 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     let op_state = &mut state.borrow_mut();
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    op_state.tracker.track_sync(op_id);
+    op_state.tracker.track_sync(stringify!(#op_name));
 
     #ret
   }

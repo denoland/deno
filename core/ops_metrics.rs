@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::serde::Serialize;
-use crate::OpId;
+use crate::OpName;
 use std::cell::UnsafeCell;
+use std::collections::HashMap;
 
 // TODO(@AaronO): split into AggregateMetrics & PerOpMetrics
 #[derive(Clone, Default, Debug, Serialize)]
@@ -23,20 +24,30 @@ pub struct OpMetrics {
 }
 
 // TODO(@AaronO): track errors
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct OpsTracker {
-  pub ops: UnsafeCell<Vec<OpMetrics>>,
+  pub ops: UnsafeCell<HashMap<OpName, OpMetrics>>,
 }
 
 impl OpsTracker {
-  pub fn per_op(&self) -> Vec<OpMetrics> {
+  pub fn new(op_names: impl IntoIterator<Item = OpName>) -> Self {
+    let map = op_names
+      .into_iter()
+      .map(|name| (name, OpMetrics::default()))
+      .collect();
+    Self {
+      ops: UnsafeCell::new(map),
+    }
+  }
+
+  pub fn per_op(&self) -> HashMap<OpName, OpMetrics> {
     self.ops_mut().clone()
   }
 
   pub fn aggregate(&self) -> OpMetrics {
     let mut sum = OpMetrics::default();
 
-    for metrics in self.ops_mut().iter() {
+    for metrics in self.ops_mut().values() {
       sum.ops_dispatched += metrics.ops_dispatched;
       sum.ops_dispatched_sync += metrics.ops_dispatched_sync;
       sum.ops_dispatched_async += metrics.ops_dispatched_async;
@@ -55,19 +66,19 @@ impl OpsTracker {
 
   #[allow(clippy::mut_from_ref)]
   #[inline]
-  fn ops_mut(&self) -> &mut Vec<OpMetrics> {
+  fn ops_mut(&self) -> &mut HashMap<&'static str, OpMetrics> {
     unsafe { &mut *self.ops.get() }
   }
 
   #[allow(clippy::mut_from_ref)]
   #[inline]
-  fn metrics_mut(&self, id: OpId) -> &mut OpMetrics {
-    unsafe { self.ops_mut().get_unchecked_mut(id) }
+  fn metrics_mut(&self, op_name: OpName) -> &mut OpMetrics {
+    self.ops_mut().get_mut(op_name).unwrap()
   }
 
   #[inline]
-  pub fn track_sync(&self, id: OpId) {
-    let metrics = self.metrics_mut(id);
+  pub fn track_sync(&self, op_name: OpName) {
+    let metrics = self.metrics_mut(op_name);
     metrics.ops_dispatched += 1;
     metrics.ops_completed += 1;
     metrics.ops_dispatched_sync += 1;
@@ -75,15 +86,15 @@ impl OpsTracker {
   }
 
   #[inline]
-  pub fn track_async(&self, id: OpId) {
-    let metrics = self.metrics_mut(id);
+  pub fn track_async(&self, op_name: OpName) {
+    let metrics = self.metrics_mut(op_name);
     metrics.ops_dispatched += 1;
     metrics.ops_dispatched_async += 1;
   }
 
   #[inline]
-  pub fn track_async_completed(&self, id: OpId) {
-    let metrics = self.metrics_mut(id);
+  pub fn track_async_completed(&self, op_name: OpName) {
+    let metrics = self.metrics_mut(op_name);
     metrics.ops_completed += 1;
     metrics.ops_completed_async += 1;
   }
