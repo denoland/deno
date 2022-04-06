@@ -79,11 +79,6 @@
     return core.opAsync("op_fetch_send", rid);
   }
 
-  // A finalization registry to clean up underlying fetch resources that are GC'ed.
-  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
-    core.tryClose(rid);
-  });
-
   /**
    * @param {number} responseBodyRid
    * @param {AbortSignal} [terminator]
@@ -94,7 +89,6 @@
       if (readable) {
         errorReadableStream(readable, terminator.reason);
       }
-      core.tryClose(responseBodyRid);
     }
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
@@ -106,7 +100,8 @@
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
           // TODO(@AaronO): switch to handle nulls if that's moved to core
-          const read = await core.read(
+          const read = await core.opAsync(
+            "op_body_read",
             responseBodyRid,
             chunk,
           );
@@ -114,13 +109,10 @@
             // We read some data. Enqueue it onto the stream.
             controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
-            RESOURCE_REGISTRY.unregister(readable);
             // We have reached the end of the body, so we close the stream.
             controller.close();
-            core.tryClose(responseBodyRid);
           }
         } catch (err) {
-          RESOURCE_REGISTRY.unregister(readable);
           if (terminator.aborted) {
             controller.error(terminator.reason);
           } else {
@@ -128,7 +120,6 @@
             // error.
             controller.error(err);
           }
-          core.tryClose(responseBodyRid);
         }
       },
       cancel() {
@@ -137,7 +128,6 @@
         }
       },
     });
-    RESOURCE_REGISTRY.register(readable, responseBodyRid, readable);
     return readable;
   }
 
@@ -222,13 +212,10 @@
         ? reqBody
         : null,
     );
-
     function onAbort() {
       if (cancelHandleRid !== null) {
-        core.tryClose(cancelHandleRid);
       }
       if (requestBodyRid !== null) {
-        core.tryClose(requestBodyRid);
       }
     }
     terminator[abortSignal.add](onAbort);
@@ -258,7 +245,8 @@
           }
           try {
             await PromisePrototypeCatch(
-              core.write(requestBodyRid, value),
+              // core.write(requestBodyRid, value),
+              Deno.core.opAsync("op_body_write", requestBodyRid, value),
               (err) => {
                 if (terminator.aborted) return;
                 throw err;
@@ -271,7 +259,6 @@
           }
         }
         WeakMapPrototypeDelete(requestBodyReaders, req);
-        core.tryClose(requestBodyRid);
       })();
     }
 
@@ -283,7 +270,6 @@
       });
     } finally {
       if (cancelHandleRid !== null) {
-        core.tryClose(cancelHandleRid);
       }
     }
     if (terminator.aborted) return abortedNetworkError();
@@ -304,12 +290,10 @@
     if (redirectStatus(resp.status)) {
       switch (req.redirectMode) {
         case "error":
-          core.close(resp.responseRid);
           return networkError(
             "Encountered redirect while redirect mode is set to 'error'",
           );
         case "follow":
-          core.close(resp.responseRid);
           return httpRedirectFetch(req, response, terminator);
         case "manual":
           break;
@@ -317,11 +301,9 @@
     }
 
     if (nullBodyStatus(response.status)) {
-      core.close(resp.responseRid);
     } else {
       if (req.method === "HEAD" || req.method === "CONNECT") {
         response.body = null;
-        core.close(resp.responseRid);
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
@@ -564,13 +546,13 @@
           }
         })().then(
           // 2.7
-          () => core.close(rid),
+          // () => core.close(rid),
           // 2.8
           (err) => core.abortWasmStreaming(rid, err),
         );
       } else {
         // 2.7
-        core.close(rid);
+        // core.close(rid);
       }
     } catch (err) {
       // 2.8

@@ -340,6 +340,10 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       magic::Value::MAGIC_NAME => {
         visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
       }
+      magic::resource::Resource::<V::Value>::MAGIC_NAME => visit_magic(
+        visitor,
+        magic::resource::Resource::<V::Value>::from_v8(self.scope, self.input)?,
+      ),
       _ => {
         // Regular struct
         let obj = self.input.try_into().or(Err(Error::ExpectedObject))?;

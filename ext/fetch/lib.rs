@@ -11,6 +11,7 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
 
+use deno_core::serde_v8::Resource;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -22,8 +23,6 @@ use deno_core::Canceled;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
-use deno_core::Resource;
-use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -104,6 +103,8 @@ where
       op_fetch::decl::<FP>(),
       op_fetch_send::decl(),
       op_fetch_custom_client::decl::<FP>(),
+      op_body_read::decl(),
+      op_body_write::decl(),
     ])
     .state(move |state| {
       state.put::<Options>(options.clone());
@@ -181,7 +182,7 @@ pub struct FetchArgs {
   method: ByteString,
   url: String,
   headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
+  client_rid: Option<Resource<HttpClientResource>>,
   has_body: bool,
   body_length: Option<u64>,
 }
@@ -189,9 +190,9 @@ pub struct FetchArgs {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
-  request_rid: ResourceId,
-  request_body_rid: Option<ResourceId>,
-  cancel_handle_rid: Option<ResourceId>,
+  request_rid: Resource<FetchRequestResource>,
+  request_body_rid: Option<Resource<FetchRequestBodyResource>>,
+  cancel_handle_rid: Option<Resource<FetchCancelHandle>>,
 }
 
 #[op]
@@ -204,8 +205,7 @@ where
   FP: FetchPermissions + 'static,
 {
   let client = if let Some(rid) = args.client_rid {
-    let r = state.resource_table.get::<HttpClientResource>(rid)?;
-    r.client.clone()
+    rid.borrow().client.clone()
   } else {
     let client = state.borrow::<reqwest::Client>();
     client.clone()
@@ -237,11 +237,11 @@ where
       let file_fetch_handler = file_fetch_handler.clone();
       let (request, maybe_request_body, maybe_cancel_handle) =
         file_fetch_handler.fetch_file(state, url);
-      let request_rid = state.resource_table.add(FetchRequestResource(request));
+      let request_rid = Resource::new_boxed(FetchRequestResource(request));
       let maybe_request_body_rid =
-        maybe_request_body.map(|r| state.resource_table.add(r));
+        maybe_request_body.map(|r| Resource::new_boxed(r));
       let maybe_cancel_handle_rid = maybe_cancel_handle
-        .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
+        .map(|ch| Resource::new_boxed(FetchCancelHandle(ch)));
 
       (request_rid, maybe_request_body_rid, maybe_cancel_handle_rid)
     }
@@ -267,7 +267,7 @@ where
             request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
 
             let request_body_rid =
-              state.resource_table.add(FetchRequestBodyResource {
+              Resource::new_boxed(FetchRequestBodyResource {
                 body: AsyncRefCell::new(tx),
                 cancel: CancelHandle::default(),
               });
@@ -315,12 +315,10 @@ where
           .map(|res| res.map_err(|err| type_error(err.to_string())))
       };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
-
+      let request_rid =
+        Resource::new_boxed(FetchRequestResource(Box::pin(fut)));
       let cancel_handle_rid =
-        state.resource_table.add(FetchCancelHandle(cancel_handle));
+        Resource::new_boxed(FetchCancelHandle(cancel_handle));
 
       (request_rid, request_body_rid, Some(cancel_handle_rid))
     }
@@ -339,9 +337,8 @@ where
 
       let fut = async move { Ok(Ok(Response::from(response))) };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid =
+        Resource::new_boxed(FetchRequestResource(Box::pin(fut)));
 
       (request_rid, None, None)
     }
@@ -360,6 +357,34 @@ where
   })
 }
 
+#[op]
+async fn op_body_write(
+  state: Rc<RefCell<OpState>>,
+  body: Resource<FetchRequestBodyResource>,
+  buf: ZeroCopyBuf,
+) -> Result<u32, AnyError> {
+  use deno_core::Resource;
+  dbg!("op_body_write");
+  let resource = body.borrow();
+  let r = resource.write(buf).await.map(|n| n as u32);
+  dbg!("op_body_write END");
+  r
+}
+
+#[op]
+async fn op_body_read(
+  state: Rc<RefCell<OpState>>,
+  body: Resource<FetchResponseBodyResource>,
+  buf: ZeroCopyBuf,
+) -> Result<u32, AnyError> {
+  use deno_core::Resource;
+  dbg!("op_body_read");
+  let resource = body.borrow();
+  let r = resource.read(buf).await.map(|n| n as u32);
+  dbg!("op_body_read END");
+  r
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponse {
@@ -367,24 +392,17 @@ pub struct FetchResponse {
   status_text: String,
   headers: Vec<(ByteString, ByteString)>,
   url: String,
-  response_rid: ResourceId,
+  response_rid: Resource<FetchResponseBodyResource>,
 }
 
 #[op]
 pub async fn op_fetch_send(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  rid: Resource<FetchRequestResource>,
 ) -> Result<FetchResponse, AnyError> {
-  let request = state
-    .borrow_mut()
-    .resource_table
-    .take::<FetchRequestResource>(rid)?;
-
-  let request = Rc::try_unwrap(request)
-    .ok()
-    .expect("multiple op_fetch_send ongoing");
-
-  let res = match request.0.await {
+  let resource = rid.borrow();
+  let resource = Rc::try_unwrap(resource)
+    .map_err(|_| type_error("FetchRequestResource is already used."))?;
+  let res = match resource.0.await {
     Ok(Ok(res)) => res,
     Ok(Err(err)) => return Err(type_error(err.to_string())),
     Err(_) => return Err(type_error("request was cancelled")),
@@ -402,13 +420,10 @@ pub async fn op_fetch_send(
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
   }));
   let stream_reader = StreamReader::new(stream);
-  let rid = state
-    .borrow_mut()
-    .resource_table
-    .add(FetchResponseBodyResource {
-      reader: AsyncRefCell::new(stream_reader),
-      cancel: CancelHandle::default(),
-    });
+  let rid = Resource::new_boxed(FetchResponseBodyResource {
+    reader: AsyncRefCell::new(stream_reader),
+    cancel: CancelHandle::default(),
+  });
 
   Ok(FetchResponse {
     status: status.as_u16(),
@@ -421,11 +436,11 @@ pub async fn op_fetch_send(
 
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
-struct FetchRequestResource(
+pub struct FetchRequestResource(
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
 );
 
-impl Resource for FetchRequestResource {
+impl deno_core::Resource for FetchRequestResource {
   fn name(&self) -> Cow<str> {
     "fetchRequest".into()
   }
@@ -433,7 +448,7 @@ impl Resource for FetchRequestResource {
 
 struct FetchCancelHandle(Rc<CancelHandle>);
 
-impl Resource for FetchCancelHandle {
+impl deno_core::Resource for FetchCancelHandle {
   fn name(&self) -> Cow<str> {
     "fetchCancelHandle".into()
   }
@@ -448,7 +463,7 @@ pub struct FetchRequestBodyResource {
   cancel: CancelHandle,
 }
 
-impl Resource for FetchRequestBodyResource {
+impl deno_core::Resource for FetchRequestBodyResource {
   fn name(&self) -> Cow<str> {
     "fetchRequestBody".into()
   }
@@ -480,7 +495,7 @@ struct FetchResponseBodyResource {
   cancel: CancelHandle,
 }
 
-impl Resource for FetchResponseBodyResource {
+impl deno_core::Resource for FetchResponseBodyResource {
   fn name(&self) -> Cow<str> {
     "fetchResponseBody".into()
   }
@@ -499,11 +514,11 @@ impl Resource for FetchResponseBodyResource {
   }
 }
 
-struct HttpClientResource {
+pub struct HttpClientResource {
   client: Client,
 }
 
-impl Resource for HttpClientResource {
+impl deno_core::Resource for HttpClientResource {
   fn name(&self) -> Cow<str> {
     "httpClient".into()
   }
@@ -528,7 +543,7 @@ pub struct CreateHttpClientOptions {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-) -> Result<ResourceId, AnyError>
+) -> Result<Resource<HttpClientResource>, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
@@ -569,7 +584,7 @@ where
     client_cert_chain_and_key,
   )?;
 
-  let rid = state.resource_table.add(HttpClientResource::new(client));
+  let rid = Resource::new_boxed(HttpClientResource::new(client));
   Ok(rid)
 }
 
