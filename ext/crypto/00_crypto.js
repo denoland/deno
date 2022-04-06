@@ -978,6 +978,13 @@
         context: "Argument 2",
       });
 
+      if (!key.extractable) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
       const handle = key[_handle];
       // 2.
       const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
