@@ -242,7 +242,7 @@ fn op_encoding_decode_single(
     .max_utf16_buffer_length(data.len())
     .ok_or_else(|| range_error("Value too large to decode."))?;
 
-   let mut output = vec![0; max_buffer_length];
+  let mut output = vec![0; max_buffer_length];
 
   if fatal {
     let (result, _, written) =

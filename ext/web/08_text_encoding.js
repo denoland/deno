@@ -132,7 +132,7 @@
         // with a TypedArray argument copies the data.
         input = new Uint8Array(input);
       }
-      
+
       if (!options.stream && this.#rid === null) {
         return core.opSync("op_encoding_decode_single", input, {
           label: this.#encoding,
@@ -140,14 +140,14 @@
           ignoreBom: this.#ignoreBOM,
         });
       }
-      
+
       if (this.#rid === null) {
         this.#rid = core.opSync("op_encoding_new_decoder", {
           label: this.#encoding,
           fatal: this.#fatal,
           ignoreBom: this.#ignoreBOM,
         });
-      }  
+      }
       return core.opSync("op_encoding_decode", input, {
         rid: this.#rid,
         stream: options.stream,
