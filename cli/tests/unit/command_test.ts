@@ -50,9 +50,7 @@ tryExit();
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function spawnStdinPiped(): Promise<
-    void
-  > {
+  async function spawnStdinPiped() {
     const child = Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -79,9 +77,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function spawnStdoutPiped(): Promise<
-    void
-  > {
+  async function spawnStdoutPiped() {
     const child = Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -114,9 +110,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function spawnStderrPiped(): Promise<
-    void
-  > {
+  async function spawnStderrPiped() {
     const child = Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -431,9 +425,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandStderrOutput(): Promise<
-    void
-  > {
+  async function commandStderrOutput() {
     const { stderr } = await Deno.command(Deno.execPath(), {
       args: [
         "eval",
@@ -448,9 +440,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncStderrOutput(): Promise<
-    void
-  > {
+  function commandSyncStderrOutput() {
     const { stderr } = Deno.commandSync(Deno.execPath(), {
       args: [
         "eval",
@@ -501,7 +491,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
-  async function commandClearEnv(): Promise<void> {
+  async function commandClearEnv() {
     const { stdout } = await Deno.command(Deno.execPath(), {
       args: [
         "eval",
@@ -526,7 +516,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
-  function commandSyncClearEnv(): Promise<void> {
+  function commandSyncClearEnv() {
     const { stdout } = Deno.commandSync(Deno.execPath(), {
       args: [
         "eval",
@@ -554,7 +544,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  async function commandUid(): Promise<void> {
+  async function commandUid() {
     const { stdout } = await Deno.command("id", {
       args: ["-u"],
     });
@@ -577,7 +567,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  function commandSyncUid(): Promise<void> {
+  function commandSyncUid() {
     const { stdout } = Deno.commandSync("id", {
       args: ["-u"],
     });
@@ -600,7 +590,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  async function commandGid(): Promise<void> {
+  async function commandGid() {
     const { stdout } = await Deno.command("id", {
       args: ["-g"],
     });
@@ -623,7 +613,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  function commandSyncGid(): Promise<void> {
+  function commandSyncGid() {
     const { stdout } = Deno.commandSync("id", {
       args: ["-g"],
     });
