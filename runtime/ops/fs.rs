@@ -31,6 +31,7 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
@@ -43,6 +44,7 @@ pub fn init() -> Extension {
       op_open_sync::decl(),
       op_open_async::decl(),
       op_write_file_sync::decl(),
+      op_write_file_async::decl(),
       op_seek_sync::decl(),
       op_seek_async::decl(),
       op_fdatasync_sync::decl(),
@@ -226,14 +228,56 @@ fn op_write_file_sync(
   let mut std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
+  preallocate(&std_file, args.data.len())?;
+  std_file.write_all(&args.data)?;
+  Ok(())
+}
 
+#[op]
+async fn op_write_file_async(
+  state: Rc<RefCell<OpState>>,
+  args: WriteFileArgs,
+) -> Result<(), AnyError> {
+  let (path, open_options) = open_helper(
+    &mut *state.borrow_mut(),
+    OpenArgs {
+      path: args.path,
+      mode: args.mode,
+      options: OpenOptions {
+        read: false,
+        write: true,
+        create: args.create,
+        truncate: !args.append,
+        append: args.append,
+        create_new: false,
+      },
+    },
+  )?;
+  let tokio_file = tokio::fs::OpenOptions::from(open_options)
+    .open(&path)
+    .await
+    .map_err(|err| {
+      Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+    })?;
+  let std_file = tokio_file.into_std().await;
+  let size = args.data.len();
+  let std_file = tokio::task::spawn_blocking(move || {
+    preallocate(&std_file, size)?;
+    Ok::<_, AnyError>(std_file)
+  })
+  .await??;
+  let mut tokio_file = tokio::fs::File::from_std(std_file);
+  tokio_file.write_all(&args.data).await?;
+  Ok(())
+}
+
+fn preallocate(file: &std::fs::File, size: usize) -> Result<(), AnyError> {
   #[cfg(target_os = "linux")]
   {
     // Preallocate disk space using fallocate
     use std::os::unix::prelude::AsRawFd;
-    let fd = std_file.as_raw_fd();
-    let err_no =
-      unsafe { libc::posix_fallocate(fd, 0, args.data.len() as libc::off_t) };
+    let fd = file.as_raw_fd();
+    let err_no = unsafe { libc::posix_fallocate(fd, 0, size as libc::off_t) };
     match err_no {
       0 | libc::ENODEV | libc::EOPNOTSUPP => {} // Ignore these error codes, as they may be false positives.
       _ => return Err(io::Error::from_raw_os_error(err_no).into()),
@@ -242,12 +286,12 @@ fn op_write_file_sync(
   #[cfg(target_os = "macos")]
   {
     use std::os::unix::prelude::AsRawFd;
-    let fd = std_file.as_raw_fd();
+    let fd = file.as_raw_fd();
     let opts = libc::fstore_t {
       fst_flags: libc::F_ALLOCATEALL,
       fst_posmode: libc::F_PEOFPOSMODE,
       fst_offset: 0,
-      fst_length: args.data.len() as i64,
+      fst_length: size as i64,
       fst_bytesalloc: 0,
     };
     let res = unsafe { libc::fcntl(fd, libc::F_PREALLOCATE, &opts) };
@@ -265,10 +309,10 @@ fn op_write_file_sync(
     use winapi::um::minwinbase::FileAllocationInfo;
 
     let mut info: fileapi::FILE_ALLOCATION_INFO = std::mem::zeroed();
-    *info.AllocationSize.QuadPart_mut() = args.data.len() as i64;
+    *info.AllocationSize.QuadPart_mut() = size as i64;
 
     let success = fileapi::SetFileInformationByHandle(
-      std_file.as_raw_handle(),
+      file.as_raw_handle(),
       FileAllocationInfo,
       &mut info as *mut _ as *mut _,
       std::mem::size_of_val(&info) as DWORD,
@@ -277,8 +321,6 @@ fn op_write_file_sync(
       return Err(std::io::Error::last_os_error().into());
     }
   }
-
-  std_file.write_all(&args.data)?;
   Ok(())
 }
 
