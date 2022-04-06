@@ -231,7 +231,7 @@ impl PrettyTestReporter {
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
-    print!("test {} ...", description.name);
+    print!("{} ...", description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
@@ -391,18 +391,30 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
+    fn format_error(error: &str) -> String {
+      let lines: Vec<&str> = error.split("\n").collect();
+      let mut output = vec![colors::red(lines[0]).to_string()];
+      for line in &lines[1..] {
+        if line.contains("(deno:") {
+          continue;
+        }
+        output.push(colors::gray(line).to_string());
+      }
+      output.join("\n")
+    }
+
     if !summary.failures.is_empty() {
-      println!("\nfailures:\n");
+      println!("\n{}\n", colors::yellow("failures:"));
       for (description, error) in &summary.failures {
-        println!("{}", description.name);
-        println!("{}", error);
+        println!("{} > {}", &description.origin, description.name);
+        println!("{}", format_error(error));
         println!();
       }
 
-      println!("failures:\n");
-      for (description, _) in &summary.failures {
-        println!("\t{}", description.name);
-      }
+      // println!("failures:\n");
+      // for (description, _) in &summary.failures {
+      //   println!("\t{}", description.name);
+      // }
     }
 
     let status = if summary.has_failed() || summary.has_pending() {
@@ -420,20 +432,48 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
+    println!();
+    println!("{} {}", colors::gray("test result:"), status);
     println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
+      "     {} {}{}",
+      colors::gray("passed:"),
       summary.passed,
-      get_steps_text(summary.passed_steps),
-      summary.failed,
-      get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+      get_steps_text(summary.passed_steps)
     );
+    println!(
+      "     {} {}{}",
+      colors::gray("failed:"),
+      summary.failed,
+      get_steps_text(summary.failed_steps)
+    );
+    println!(
+      "    {} {}{}",
+      colors::gray("ignored:"),
+      summary.ignored,
+      get_steps_text(summary.ignored_steps)
+    );
+    println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
+    println!(
+      "       {} {}",
+      colors::gray("time:"),
+      display::human_elapsed(elapsed.as_millis())
+    );
+    println!();
+
+    // println!(
+    //   "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
+    //   status,
+    //   summary.passed,
+    //   get_steps_text(summary.passed_steps),
+    //   summary.failed,
+    //   get_steps_text(summary.failed_steps + summary.pending_steps),
+    //   summary.ignored,
+    //   get_steps_text(summary.ignored_steps),
+    //   summary.measured,
+    //   summary.filtered_out,
+    //   colors::gray(
+    //     format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    // );
   }
 }
 
