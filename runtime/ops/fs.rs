@@ -239,6 +239,23 @@ fn op_write_file_sync(
       _ => return Err(io::Error::from_raw_os_error(err_no).into()),
     }
   }
+  #[cfg(target_os = "macos")]
+  {
+    use std::os::unix::prelude::AsRawFd;
+    let fd = std_file.as_raw_fd();
+    let opts = libc::fstore_t {
+      fst_flags: libc::F_ALLOCATEALL,
+      fst_posmode: libc::F_PEOFPOSMODE,
+      fst_offset: 0,
+      fst_length: args.data.len() as i64,
+      fst_bytesalloc: 0,
+    };
+    let res = unsafe { libc::fcntl(fd, libc::F_PREALLOCATE, &opts) };
+    match res {
+      -1 => return Err(std::io::Error::last_os_error().into()),
+      _ => {}
+    }
+  }
   #[cfg(target_os = "windows")]
   unsafe {
     use std::os::windows::prelude::AsRawHandle;
