@@ -978,41 +978,49 @@
         context: "Argument 2",
       });
 
-      if (!key.extractable) {
-        throw new DOMException(
-          "Key is not extractable",
-          "InvalidAccessError",
-        );
-      }
-
       const handle = key[_handle];
       // 2.
       const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       const algorithmName = key[_algorithm].name;
 
+      let result;
+
       switch (algorithmName) {
         case "HMAC": {
-          return exportKeyHMAC(format, key, innerKey);
+          result = exportKeyHMAC(format, key, innerKey);
+          break;
         }
         case "RSASSA-PKCS1-v1_5":
         case "RSA-PSS":
         case "RSA-OAEP": {
-          return exportKeyRSA(format, key, innerKey);
+          result = exportKeyRSA(format, key, innerKey);
+          break;
         }
         case "ECDH":
         case "ECDSA": {
-          return exportKeyEC(format, key, innerKey);
+          result = exportKeyEC(format, key, innerKey);
+          break;
         }
         case "AES-CTR":
         case "AES-CBC":
         case "AES-GCM":
         case "AES-KW": {
-          return exportKeyAES(format, key, innerKey);
+          result = exportKeyAES(format, key, innerKey);
+          break;
         }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
+
+      if (key.extractable === false) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
+      return result;
     }
 
     /**
