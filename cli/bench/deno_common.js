@@ -124,7 +124,7 @@ function benchWriteFile() {
   const tempDir = Deno.makeTempDirSync();
   let i = 0;
   benchSync("write_file_large", 100, () => {
-    Deno.writeFileSync(`${tempDir}/${i}.txt`, input);
+    Deno.writeFileSync(`${tempDir}/${i++}.txt`, input);
   });
   Deno.removeSync(tempDir, { recursive: true });
 }
