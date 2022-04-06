@@ -22,6 +22,8 @@ use std::rc::Rc;
 
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -30,6 +32,7 @@ pub fn init() -> Extension {
       op_command_status::decl(),
       op_command_wait::decl(),
       op_command_output::decl(),
+      op_command_sync::decl(),
     ])
     .build()
 }
@@ -128,10 +131,10 @@ pub struct CommandOutput {
 fn create_command(
   state: &mut OpState,
   args: CommandArgs,
-) -> Result<tokio::process::Command, AnyError> {
+) -> Result<std::process::Command, AnyError> {
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
-  let mut command = tokio::process::Command::new(args.cmd);
+  let mut command = std::process::Command::new(args.cmd);
   command.args(args.args);
 
   if let Some(cwd) = args.cwd {
@@ -161,11 +164,6 @@ fn create_command(
     });
   }
 
-  // TODO(@crowlkats): allow detaching processes.
-  //  currently deno will orphan a process when exiting with an error or Deno.exit()
-  // We want to kill child when it's closed
-  command.kill_on_drop(true);
-
   command.stdin(subprocess_stdio_map(&args.stdio.stdin)?);
   command.stdout(subprocess_stdio_map(&args.stdio.stdout)?);
   command.stderr(subprocess_stdio_map(&args.stdio.stderr)?);
@@ -188,7 +186,13 @@ fn op_command_spawn(
   state: &mut OpState,
   args: CommandArgs,
 ) -> Result<Child, AnyError> {
-  let mut child = create_command(state, args)?.spawn()?;
+  let mut command = tokio::process::Command::from(create_command(state, args)?);
+  // TODO(@crowlkats): allow detaching processes.
+  //  currently deno will orphan a process when exiting with an error or Deno.exit()
+  // We want to kill child when it's closed
+  command.kill_on_drop(true);
+
+  let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -296,21 +300,22 @@ async fn op_command_output(
 }
 
 #[op]
-fn op_command_exec_sync(
+fn op_command_sync(
   state: &mut OpState,
   args: CommandArgs,
 ) -> Result<CommandOutput, AnyError> {
-  let command = create_command(state, args)?;
-  let output = command.as_std().output()?;
+  let stdout = matches!(args.stdio.stdout, Stdio::Piped);
+  let stderr = matches!(args.stdio.stderr, Stdio::Piped);
+  let output = create_command(state, args)?.output()?;
 
   Ok(CommandOutput {
     status: output.status.into(),
-    stdout: if matches!(args.stdio.stdout, Stdio::Piped) {
+    stdout: if stdout {
       Some(output.stdout.into())
     } else {
       None
     },
-    stderr: if matches!(args.stdio.stderr, Stdio::Piped) {
+    stderr: if stderr {
       Some(output.stderr.into())
     } else {
       None
