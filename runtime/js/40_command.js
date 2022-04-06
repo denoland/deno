@@ -152,7 +152,7 @@
     stdout = "piped",
     stderr = "piped",
     ...options
-  } = {}) { // TODO: more options (like input)?
+  } = {}) { // TODO(@crowlKats): more options (like input)?
     const child = spawn(command, {
       stdin,
       stdout,
@@ -162,9 +162,35 @@
     return child.output();
   }
 
+  function commandSync(command, {
+    args = [],
+    cwd = undefined,
+    clearEnv = false,
+    env = {},
+    uid = undefined,
+    gid = undefined,
+    stdin = "null",
+    stdout = "piped",
+    stderr = "piped",
+  } = {}) { // TODO(@crowlKats): more options (like input)?
+    return core.opSync("op_command_exec_sync", {
+      cmd: pathFromURL(command),
+      args: ArrayPrototypeMap(args, String),
+      cwd: pathFromURL(cwd),
+      clearEnv,
+      env: ObjectEntries(env),
+      uid,
+      gid,
+      stdin,
+      stdout,
+      stderr,
+    });
+  }
+
   window.__bootstrap.command = {
     spawn,
     Child,
     command,
+    commandSync,
   };
 })(this);

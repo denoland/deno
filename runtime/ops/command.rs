@@ -5,10 +5,10 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::op;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -19,7 +19,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::process::ExitStatus;
 use std::rc::Rc;
-use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
@@ -79,26 +78,9 @@ pub struct CommandArgs {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandStdio {
-  stdin: Option<Stdio>,
-  stdout: Option<Stdio>,
-  stderr: Option<Stdio>,
-}
-
-fn handle_io_args(
-  command: &mut tokio::process::Command,
-  args: CommandStdio,
-) -> Result<(), AnyError> {
-  if let Some(stdin) = &args.stdin {
-    command.stdin(subprocess_stdio_map(stdin)?);
-  }
-  if let Some(stdout) = &args.stdout {
-    command.stdout(subprocess_stdio_map(stdout)?);
-  }
-  if let Some(stderr) = &args.stderr {
-    command.stderr(subprocess_stdio_map(stderr)?);
-  }
-
-  Ok(())
+  stdin: Stdio,
+  stdout: Stdio,
+  stderr: Stdio,
 }
 
 #[derive(Serialize)]
@@ -113,9 +95,9 @@ impl From<std::process::ExitStatus> for CommandStatus {
   fn from(status: ExitStatus) -> Self {
     let code = status.code();
     #[cfg(unix)]
-      let signal = status.signal();
+    let signal = status.signal();
     #[cfg(not(unix))]
-      let signal = None;
+    let signal = None;
 
     if let Some(signal) = signal {
       CommandStatus {
@@ -143,21 +125,13 @@ pub struct CommandOutput {
   stderr: Option<ZeroCopyBuf>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Child {
-  rid: ResourceId,
-  pid: u32,
-  stdin_rid: Option<ResourceId>,
-  stdout_rid: Option<ResourceId>,
-  stderr_rid: Option<ResourceId>,
-}
-
-#[op]
-fn op_command_spawn(state: &mut OpState, args: CommandArgs) -> Result<Child, AnyError> {
+fn create_command(
+  state: &mut OpState,
+  args: CommandArgs,
+) -> Result<tokio::process::Command, AnyError> {
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
-  let mut command = Command::new(args.cmd);
+  let mut command = tokio::process::Command::new(args.cmd);
   command.args(args.args);
 
   if let Some(cwd) = args.cwd {
@@ -192,9 +166,29 @@ fn op_command_spawn(state: &mut OpState, args: CommandArgs) -> Result<Child, Any
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  handle_io_args(&mut command, args.stdio)?;
+  command.stdin(subprocess_stdio_map(&args.stdio.stdin)?);
+  command.stdout(subprocess_stdio_map(&args.stdio.stdout)?);
+  command.stderr(subprocess_stdio_map(&args.stdio.stderr)?);
 
-  let mut child = command.spawn()?;
+  Ok(command)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Child {
+  rid: ResourceId,
+  pid: u32,
+  stdin_rid: Option<ResourceId>,
+  stdout_rid: Option<ResourceId>,
+  stderr_rid: Option<ResourceId>,
+}
+
+#[op]
+fn op_command_spawn(
+  state: &mut OpState,
+  args: CommandArgs,
+) -> Result<Child, AnyError> {
+  let mut child = create_command(state, args)?.spawn()?;
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -298,5 +292,28 @@ async fn op_command_output(
     status: output.status.into(),
     stdout: args.stdout_rid.map(|_| output.stdout.into()),
     stderr: args.stderr_rid.map(|_| output.stderr.into()),
+  })
+}
+
+#[op]
+fn op_command_exec_sync(
+  state: &mut OpState,
+  args: CommandArgs,
+) -> Result<CommandOutput, AnyError> {
+  let command = create_command(state, args)?;
+  let output = command.as_std().output()?;
+
+  Ok(CommandOutput {
+    status: output.status.into(),
+    stdout: if matches!(args.stdio.stdout, Stdio::Piped) {
+      Some(output.stdout.into())
+    } else {
+      None
+    },
+    stderr: if matches!(args.stdio.stderr, Stdio::Piped) {
+      Some(output.stderr.into())
+    } else {
+      None
+    },
   })
 }
