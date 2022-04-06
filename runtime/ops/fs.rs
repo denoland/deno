@@ -42,6 +42,7 @@ pub fn init() -> Extension {
     .ops(vec![
       op_open_sync::decl(),
       op_open_async::decl(),
+      op_write_file_sync::decl(),
       op_seek_sync::decl(),
       op_seek_async::decl(),
       op_fdatasync_sync::decl(),
@@ -159,6 +160,39 @@ fn open_helper(
   Ok((path, open_options))
 }
 
+#[op]
+fn op_open_sync(
+  state: &mut OpState,
+  args: OpenArgs,
+) -> Result<ResourceId, AnyError> {
+  let (path, open_options) = open_helper(state, args)?;
+  let std_file = open_options.open(&path).map_err(|err| {
+    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+  })?;
+  let tokio_file = tokio::fs::File::from_std(std_file);
+  let resource = StdFileResource::fs_file(tokio_file);
+  let rid = state.resource_table.add(resource);
+  Ok(rid)
+}
+
+#[op]
+async fn op_open_async(
+  state: Rc<RefCell<OpState>>,
+  args: OpenArgs,
+) -> Result<ResourceId, AnyError> {
+  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
+  let tokio_file = tokio::fs::OpenOptions::from(open_options)
+    .open(&path)
+    .await
+    .map_err(|err| {
+      Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+    })?;
+
+  let resource = StdFileResource::fs_file(tokio_file);
+  let rid = state.borrow_mut().resource_table.add(resource);
+  Ok(rid)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WriteFileArgs {
@@ -192,42 +226,22 @@ fn op_write_file_sync(
   let mut std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
+
+  #[cfg(target_os = "linux")]
+  {
+    // Preallocate disk space using fallocate
+    use std::os::unix::prelude::AsRawFd;
+    let fd = std_file.as_raw_fd();
+    let err_no =
+      unsafe { libc::posix_fallocate(fd, 0, args.data.len() as libc::off_t) };
+    match err_no {
+      0 | libc::ENODEV | libc::EOPNOTSUPP => {} // Ignore these error codes, as they may be false positives.
+      _ => return Err(io::Error::from_raw_os_error(err_no).into()),
+    }
+  }
+
   std_file.write_all(&args.data)?;
-
   Ok(())
-}
-
-#[op]
-fn op_open_sync(
-  state: &mut OpState,
-  args: OpenArgs,
-) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(state, args)?;
-  let std_file = open_options.open(&path).map_err(|err| {
-    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-  })?;
-  let tokio_file = tokio::fs::File::from_std(std_file);
-  let resource = StdFileResource::fs_file(tokio_file);
-  let rid = state.resource_table.add(resource);
-  Ok(rid)
-}
-
-#[op]
-async fn op_open_async(
-  state: Rc<RefCell<OpState>>,
-  args: OpenArgs,
-) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(&path)
-    .await
-    .map_err(|err| {
-      Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-    })?;
-
-  let resource = StdFileResource::fs_file(tokio_file);
-  let rid = state.borrow_mut().resource_table.add(resource);
-  Ok(rid)
 }
 
 #[derive(Deserialize)]

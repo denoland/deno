@@ -1,8 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 ((window) => {
-  const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
-  const { open, openSync } = window.__bootstrap.files;
+  const core = window.__bootstrap.core;
+  const { stat, chmod } = window.__bootstrap.fs;
+  const { open } = window.__bootstrap.files;
   const { build } = window.__bootstrap.build;
   const {
     TypedArrayPrototypeSubarray,
@@ -14,33 +15,13 @@
     options = {},
   ) {
     options.signal?.throwIfAborted();
-    if (options.create !== undefined) {
-      const create = !!options.create;
-      if (!create) {
-        // verify that file exists
-        statSync(path);
-      }
-    }
-
-    const openOptions = options.append
-      ? { write: true, create: true, append: true }
-      : { write: true, create: true, truncate: true };
-    const file = openSync(path, openOptions);
-
-    if (
-      options.mode !== undefined &&
-      options.mode !== null &&
-      build.os !== "windows"
-    ) {
-      chmodSync(path, options.mode);
-    }
-
-    let nwritten = 0;
-    while (nwritten < data.length) {
-      nwritten += file.writeSync(TypedArrayPrototypeSubarray(data, nwritten));
-    }
-
-    file.close();
+    core.opSync("op_write_file_sync", {
+      path,
+      data,
+      mode: options.mode,
+      append: options.append ?? false,
+      create: options.create ?? true,
+    });
   }
 
   async function writeFile(
