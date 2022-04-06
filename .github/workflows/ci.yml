@@ -252,7 +252,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            6-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -268,7 +268,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            6-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
