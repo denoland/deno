@@ -50,7 +50,5 @@
     reportExceptionStackedCalls--;
   }
 
-  defineEventHandler(window, "error");
-
   window.__bootstrap.reportError = { reportException };
 })(this);
