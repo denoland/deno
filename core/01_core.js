@@ -15,7 +15,6 @@
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
-    ObjectEntries,
     ObjectFromEntries,
     MapPrototypeGet,
     MapPrototypeDelete,
