@@ -27,10 +27,6 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-  const opIds = Object.keys(ops).reduce((a, v, i) => {
-    a[v] = i;
-    return a;
-  }, {});
 
   // Available on start due to bindings.
   const { refOp_, unrefOp_ } = window.Deno.core;
@@ -154,7 +150,7 @@
 
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](opIds[opName], promiseId, ...args);
+    const maybeError = ops[opName](promiseId, ...args);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
@@ -174,7 +170,7 @@
   }
 
   function opSync(opName, ...args) {
-    return unwrapOpResult(ops[opName](opIds[opName], ...args));
+    return unwrapOpResult(ops[opName](...args));
   }
 
   function refOp(promiseId) {
