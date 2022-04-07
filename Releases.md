@@ -8,13 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.20.5 / 2022.04.07
 
-- experiment(serde_v8): derive_more enabled opaque wrappers (#14096)
-- feat(core): Add JsRuntime::get_module_namespace to access the namespace object of a module (#14026)
-- feat(core): disableable extensions & ops (#14063)
-- feat(lsp): add experimental testing API (#13798)
-- feat(lsp): support API for config file (#14139)
-- feat(ops): #[op(unstable)] (#14124)
-- feat(serde_v8): DetachedBuffer (#14102)
+- feat(lsp/unstable): add experimental testing API (#13798)
+- feat(lsp/unstable): support tasks in the config file (#14139)
 - feat(unstable): add ref/unref to Listener (#13961)
 - fix(cli/install): preserve compat flag (#14223)
 - fix(ext/crypto): check extractable in exportKey (#14222)
