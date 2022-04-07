@@ -55,6 +55,7 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+use deno_core::url::Url;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -284,6 +285,16 @@ impl PrettyTestReporter {
   }
 }
 
+fn to_relative(path: &str) -> String {
+  let url = Url::parse(path).unwrap();
+  let cwd = Url::from_directory_path(std::env::current_dir().unwrap()).unwrap();
+  if url.scheme() == "file" {
+    cwd.make_relative(&url).unwrap()
+  } else {
+    path.to_string()
+  }
+}
+
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
@@ -293,7 +304,7 @@ impl TestReporter for PrettyTestReporter {
       // or remote URL
       colors::gray(format!(
         "running {} {} from {}",
-        plan.total, inflection, plan.origin
+        plan.total, inflection, to_relative(&plan.origin)
       ))
     );
   }
@@ -410,7 +421,7 @@ impl TestReporter for PrettyTestReporter {
       for (description, error) in &summary.failures {
         // TODO(bartlomieju): description.origin should be formatted as a relative
         // path or remote URL
-        println!("{} > {}", &description.origin, description.name);
+        println!("{} > {}", to_relative(&description.origin), description.name);
         println!("{}", format_error(error));
         println!();
       }
