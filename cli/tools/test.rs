@@ -289,6 +289,8 @@ impl TestReporter for PrettyTestReporter {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
     println!(
       "{}",
+      // TODO(bartlomieju): plan.origin should be formatted as a relative path
+      // or remote URL
       colors::gray(format!(
         "running {} {} from {}",
         plan.total, inflection, plan.origin
@@ -404,8 +406,10 @@ impl TestReporter for PrettyTestReporter {
     }
 
     if !summary.failures.is_empty() {
-      println!("\n{}\n", colors::yellow("failures:"));
+      println!("\nfailures:\n");
       for (description, error) in &summary.failures {
+        // TODO(bartlomieju): description.origin should be formatted as a relative
+        // path or remote URL
         println!("{} > {}", &description.origin, description.name);
         println!("{}", format_error(error));
         println!();
@@ -446,13 +450,17 @@ impl TestReporter for PrettyTestReporter {
       summary.failed,
       get_steps_text(summary.failed_steps)
     );
-    println!(
-      "    {} {}{}",
-      colors::gray("ignored:"),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps)
-    );
-    println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
+    if summary.ignored > 0 {
+      println!(
+        "    {} {}{}",
+        colors::gray("ignored:"),
+        summary.ignored,
+        get_steps_text(summary.ignored_steps)
+      );
+    }
+    if summary.filtered_out > 0 {
+      println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
+    }
     println!(
       "       {} {}",
       colors::gray("time:"),
