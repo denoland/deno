@@ -124,8 +124,7 @@ queries the GitHub API to determine what it needs to change and update.
 
 2. Checkout a new branch (e.g. `git checkout -b deno_1.17.0`).
 
-3. Execute `./build.ts` (or
-   `deno run --config deno.jsonc --import-map import-map.json --allow-read=. --allow-write=./static --allow-net build.ts`).
+3. Execute `deno task build`
 
 4. Commit changes and raise a PR on `denoland/docland`.
 
