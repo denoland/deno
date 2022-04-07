@@ -1,5 +1,5 @@
-// const p = await fetch("http://localhost:8000/sample.txt");
-const p = await fetch("https://deno.land");
-const a = p.text()
-gc()
-console.log(await a)
+// const p = await fetch("http://localhost:8000/README.md");
+// Download a large file from the internet
+for (let i = 0; i < 1e4; i++) await fetch("http://localhost:8000/README.md");
+
+gc();

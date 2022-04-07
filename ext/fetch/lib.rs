@@ -364,11 +364,8 @@ async fn op_body_write(
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
   use deno_core::Resource;
-  dbg!("op_body_write");
   let resource = body.borrow();
-  let r = resource.write(buf).await.map(|n| n as u32);
-  dbg!("op_body_write END");
-  r
+  resource.write(buf).await.map(|n| n as u32)
 }
 
 #[op]
@@ -378,11 +375,8 @@ async fn op_body_read(
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
   use deno_core::Resource;
-  dbg!("op_body_read");
   let resource = body.borrow();
-  let r = resource.read(buf).await.map(|n| n as u32);
-  dbg!("op_body_read END");
-  r
+  resource.read(buf).await.map(|n| n as u32)
 }
 
 #[derive(Serialize)]
@@ -399,16 +393,15 @@ pub struct FetchResponse {
 pub async fn op_fetch_send(
   rid: Resource<FetchRequestResource>,
 ) -> Result<FetchResponse, AnyError> {
-  let resource = rid.borrow();
-  let resource = Rc::try_unwrap(resource)
-    .map_err(|_| type_error("FetchRequestResource is already used."))?;
+  let resource = rid
+    .into_inner()
+    .ok_or_else(|| type_error("FetchRequestResource is already used."))?;
+
   let res = match resource.0.await {
     Ok(Ok(res)) => res,
     Ok(Err(err)) => return Err(type_error(err.to_string())),
     Err(_) => return Err(type_error("request was cancelled")),
   };
-
-  //debug!("Fetch response {}", url);
   let status = res.status();
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
