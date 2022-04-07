@@ -3,5 +3,3 @@ error: Uncaught Error: foo
         ^
     at [WILDCARD]/set_timeout_error.ts:2:9
     at [WILDCARD]
-error: Uncaught (in promise) Error: Unhandled error event.
-    at deno:ext/web/16_report_error.js:[WILDCARD]

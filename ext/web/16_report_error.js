@@ -5,21 +5,7 @@
   const core = window.Deno.core;
   const { ErrorEvent } = window;
   const { defineEventHandler } = window.__bootstrap.event;
-  const {
-    Error,
-    PromiseResolve,
-    PromisePrototypeThen,
-    StringPrototypeStartsWith,
-  } = window.__bootstrap.primordials;
-
-  let printException = undefined;
-
-  /** Set a function `(e: Error) => void` to print an uncaught exception. It is
-  invoked when an error event is dispatched by the runtime and
-  `Event.prototype.preventDefault()` isn't called. */
-  function setPrintException(fn) {
-    printException = fn;
-  }
+  const { Error, StringPrototypeStartsWith } = window.__bootstrap.primordials;
 
   let reportExceptionStackedCalls = 0;
 
@@ -59,21 +45,12 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      printException?.(jsError);
-      // TODO(nayeemrmn): Use `queueMicrotask()` instead once it's fixed
-      // (https://github.com/denoland/deno/issues/14158). Largely because the
-      // `(in promise)` isn't desired.
-      PromisePrototypeThen(PromiseResolve(), () => {
-        throw new Error(`Unhandled error event.`);
-      });
+      core.terminate(error);
     }
     reportExceptionStackedCalls--;
   }
 
   defineEventHandler(window, "error");
 
-  window.__bootstrap.reportError = {
-    reportException,
-    setPrintException,
-  };
+  window.__bootstrap.reportError = { reportException };
 })(this);

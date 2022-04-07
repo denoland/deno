@@ -1,22 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::fmt_errors::format_file_name;
-use crate::fmt_errors::PrettyJsError;
 use crate::proc_state::ProcState;
-use crate::source_maps::apply_source_map;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_runtime::web_worker::WebWorkerInternalHandle;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -27,7 +22,6 @@ pub fn init() -> Extension {
       op_apply_source_map::decl(),
       op_format_diagnostic::decl(),
       op_format_file_name::decl(),
-      op_print_exception::decl(),
     ])
     .build()
 }
@@ -81,24 +75,4 @@ fn op_format_diagnostic(args: Value) -> Result<Value, AnyError> {
 #[op]
 fn op_format_file_name(file_name: String) -> Result<String, AnyError> {
   Ok(format_file_name(&file_name))
-}
-
-#[op]
-fn op_print_exception(
-  state: &mut OpState,
-  js_error: JsError,
-) -> Result<(), AnyError> {
-  let ps = state.borrow::<ProcState>();
-  let source_mapped_error = apply_source_map(&js_error, ps.clone());
-  let pretty_js_error = PrettyJsError::create(source_mapped_error);
-  let mut error_string = pretty_js_error.to_string();
-  if let Some(handle) = state.try_borrow::<WebWorkerInternalHandle>() {
-    error_string = format!(
-      "Uncaught (in worker \"{}\") {}",
-      handle.name,
-      error_string.trim_start_matches("Uncaught ")
-    );
-  }
-  eprintln!("{}: {}", colors::red_bold("error"), error_string);
-  Ok(())
 }
