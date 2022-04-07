@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { ErrorEvent } = window;
+  const { defineEventHandler } = window.__bootstrap.event;
   const {
     Error,
     PromiseResolve,
@@ -68,6 +69,8 @@
     }
     reportExceptionStackedCalls--;
   }
+
+  defineEventHandler(window, "error");
 
   window.__bootstrap.reportError = {
     reportException,
