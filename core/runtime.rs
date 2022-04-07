@@ -166,7 +166,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub(crate) explicit_terminate_error: Option<v8::Global<v8::Value>>,
+  pub(crate) explicit_terminate_error: Option<JsError>,
   waker: AtomicWaker,
 }
 
@@ -1013,15 +1013,10 @@ pub(crate) fn exception_to_err_result<'s, T>(
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  // TODO(nayeemrmn): It's not intuitive to substitute the error passed to this
-  // function, but this is the only convenient point to intercept all errors.
-  // Maybe clean up.
   let explicit_terminate_error = state.explicit_terminate_error.take();
-  let exception = if let Some(error) = explicit_terminate_error {
-    v8::Local::new(scope, error)
-  } else {
-    exception
-  };
+  if let Some(js_error) = explicit_terminate_error {
+    return Err((state.js_error_create_fn)(js_error));
+  }
 
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
@@ -1247,14 +1242,15 @@ impl JsRuntime {
       });
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-      let explicit_terminate_error =
-        state_rc.borrow_mut().explicit_terminate_error.take();
-      if let Some(error) = explicit_terminate_error {
-        let error = v8::Local::new(tc_scope, error);
-        #[allow(unused_must_use)]
-        {
-          sender.send(exception_to_err_result(tc_scope, error, false));
-        }
+      let has_explicit_terminate_error =
+        state_rc.borrow().explicit_terminate_error.is_some();
+      if has_explicit_terminate_error {
+        let undefined = v8::undefined(tc_scope);
+        // Pass `undefined`, it will be substituted with
+        // `explicit_terminate_error` within `exception_to_err_result()`.
+        sender
+          .send(exception_to_err_result(tc_scope, undefined.into(), false))
+          .expect("Failed to send module evaluation error.");
       } else {
         sender.send(Err(
           generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
