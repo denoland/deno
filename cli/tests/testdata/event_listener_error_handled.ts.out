@@ -3,11 +3,15 @@
   cancelable: true,
   message: "Uncaught Error: bar",
   filename: "[WILDCARD]/event_listener_error_handled.ts",
-  lineno: 14,
+  lineno: 18,
   colno: 9,
   error: Error: bar
-    at [WILDCARD]/event_listener_error_handled.ts:14:9
+    at [WILDCARD]/event_listener_error_handled.ts:18:9
     at [WILDCARD]
-    at [WILDCARD]/event_listener_error_handled.ts:18:1
+    at [WILDCARD]/event_listener_error_handled.ts:22:1
 }
+onerror() called Error: bar
+    at [WILDCARD]/event_listener_error_handled.ts:18:9
+    at [WILDCARD]
+    at [WILDCARD]/event_listener_error_handled.ts:22:1
 2

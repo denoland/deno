@@ -560,6 +560,7 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
+    defineEventHandler(window, "error");
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
 
@@ -590,10 +591,6 @@ delete Object.prototype.__proto__;
     }
     numCpus = cpuCount;
     registerErrors();
-
-    reportError.setPrintException((jsError) =>
-      core.opSync("op_print_exception", jsError)
-    );
 
     const internalSymbol = Symbol("Deno.internal");
 
@@ -684,10 +681,6 @@ delete Object.prototype.__proto__;
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();
-
-    reportError.setPrintException((jsError) =>
-      core.opSync("op_print_exception", jsError)
-    );
 
     globalThis.pollForMessages = pollForMessages;
 

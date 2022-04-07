@@ -3,6 +3,3 @@ error: Uncaught Error: foo
 reportError(new Error("foo"));
             ^
     at [WILDCARD]/report_error.ts:2:13
-2
-error: Uncaught (in promise) Error: Unhandled error event.
-    at deno:ext/web/16_report_error.js:[WILDCARD]

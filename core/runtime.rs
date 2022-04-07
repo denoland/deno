@@ -166,6 +166,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub(crate) explicit_terminate_error: Option<v8::Global<v8::Value>>,
   waker: AtomicWaker,
 }
 
@@ -375,6 +376,7 @@ impl JsRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
+      explicit_terminate_error: None,
       waker: AtomicWaker::new(),
     })));
 
@@ -1008,6 +1010,19 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  // TODO(nayeemrmn): It's not intuitive to substitute the error passed to this
+  // function, but this is the only convenient point to intercept all errors.
+  // Maybe clean up.
+  let explicit_terminate_error = state.explicit_terminate_error.take();
+  let exception = if let Some(error) = explicit_terminate_error {
+    v8::Local::new(scope, error)
+  } else {
+    exception
+  };
+
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
@@ -1030,9 +1045,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
       js_error.message.trim_start_matches("Uncaught ")
     );
   }
-
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
   let js_error = (state.js_error_create_fn)(js_error);
 
   if is_terminating_exception {
@@ -1235,9 +1247,19 @@ impl JsRuntime {
       });
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-      sender.send(Err(
-        generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
-      )).expect("Failed to send module evaluation error.");
+      let explicit_terminate_error =
+        state_rc.borrow_mut().explicit_terminate_error.take();
+      if let Some(error) = explicit_terminate_error {
+        let error = v8::Local::new(tc_scope, error);
+        #[allow(unused_must_use)]
+        {
+          sender.send(exception_to_err_result(tc_scope, error, false));
+        }
+      } else {
+        sender.send(Err(
+          generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
+        )).expect("Failed to send module evaluation error.");
+      }
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
@@ -3084,8 +3106,8 @@ assertEquals(1, notify_return_value);
         const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
         const a2b = a2.subarray(0, 3);
-        
-        
+
+
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
@@ -3107,7 +3129,7 @@ assertEquals(1, notify_return_value);
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
-        
+
         const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
         const w32 = new Uint32Array(wmem.buffer);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;

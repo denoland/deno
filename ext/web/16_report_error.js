@@ -4,20 +4,9 @@
 ((window) => {
   const core = window.Deno.core;
   const { ErrorEvent } = window;
-  const {
-    Error,
-    PromisePrototypeThen,
-    PromiseResolve,
-    StringPrototypeStartsWith,
-    TypeError,
-  } = window.__bootstrap.primordials;
+  const { Error, StringPrototypeStartsWith, TypeError } =
+    window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
-
-  let printException = undefined;
-
-  function setPrintException(fn) {
-    printException = fn;
-  }
 
   let reportExceptionStackedCalls = 0;
 
@@ -57,13 +46,7 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      printException?.(jsError);
-      // TODO(nayeemrmn): Use `queueMicrotask()` instead once it's fixed
-      // (https://github.com/denoland/deno/issues/14158). Largely because the
-      // `(in promise)` isn't desired.
-      PromisePrototypeThen(PromiseResolve(), () => {
-        throw new Error(`Unhandled error event.`);
-      });
+      core.terminate(error);
     }
     reportExceptionStackedCalls--;
   }
@@ -85,6 +68,5 @@
   window.__bootstrap.reportError = {
     reportError,
     reportException,
-    setPrintException,
   };
 })(this);
