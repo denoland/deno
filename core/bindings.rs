@@ -162,14 +162,13 @@ pub fn initialize_context<'s>(
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
-    // Grab Deno.core.ops object
+    // Grab the Deno.core & Deno.core.ops objects
+    let core_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core")
+      .expect("Deno.core to exist");
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-
-    for ctx in op_ctxs {
-      let ctx_ptr = ctx as *const OpCtx as *const c_void;
-      set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
-    }
+    initialize_ops(scope, ops_obj, op_ctxs);
+    initialize_op_names(scope, core_obj, op_ctxs);
     return scope.escape(context);
   }
 
@@ -234,11 +233,31 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  initialize_ops(scope, ops_obj, op_ctxs);
+  initialize_op_names(scope, core_val, op_ctxs);
+  scope.escape(context)
+}
+
+fn initialize_ops(
+  scope: &mut v8::HandleScope,
+  ops_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
     set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
   }
-  scope.escape(context)
+}
+
+fn initialize_op_names(
+  scope: &mut v8::HandleScope,
+  core_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
+  let names: Vec<&str> = op_ctxs.iter().map(|o| o.decl.name).collect();
+  let k = v8::String::new(scope, "op_names").unwrap().into();
+  let v = serde_v8::to_v8(scope, names).unwrap();
+  core_obj.set(scope, k, v);
 }
 
 pub fn set_func(
