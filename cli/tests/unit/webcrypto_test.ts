@@ -1750,3 +1750,23 @@ Deno.test(async function importJwkWithUse() {
 
   assert(key instanceof CryptoKey);
 });
+
+// https://github.com/denoland/deno/issues/14215
+Deno.test(async function exportKeyNotExtractable() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-512",
+    },
+    false,
+    ["sign", "verify"],
+  );
+
+  assert(key);
+  assertEquals(key.extractable, false);
+
+  await assertRejects(async () => {
+    // Should fail
+    await crypto.subtle.exportKey("raw", key);
+  }, DOMException);
+});
