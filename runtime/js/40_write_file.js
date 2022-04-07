@@ -2,6 +2,7 @@
 "use strict";
 ((window) => {
   const core = window.__bootstrap.core;
+  const { pathFromURL } = window.__bootstrap.util;
 
   function writeFileSync(
     path,
@@ -10,7 +11,7 @@
   ) {
     options.signal?.throwIfAborted();
     core.opSync("op_write_file_sync", {
-      path,
+      path: pathFromURL(path),
       data,
       mode: options.mode,
       append: options.append ?? false,
@@ -23,15 +24,31 @@
     data,
     options = {},
   ) {
-    options.signal?.throwIfAborted();
-    // TODO(lucacasonato): support options.signal again
-    await core.opAsync("op_write_file_async", {
-      path,
-      data,
-      mode: options.mode,
-      append: options.append ?? false,
-      create: options.create ?? true,
-    });
+    let cancelRid;
+    let abortHandler;
+    if (options.signal) {
+      options.signal.throwIfAborted();
+      cancelRid = core.opSync("op_cancel_handle");
+      abortHandler = options.signal
+        .addEventListener("abort", () => core.tryClose(cancelRid));
+    }
+    try {
+      await core.opAsync("op_write_file_async", {
+        path: pathFromURL(path),
+        data,
+        mode: options.mode,
+        append: options.append ?? false,
+        create: options.create ?? true,
+        cancelRid,
+      });
+    } finally {
+      if (options.signal) {
+        options.signal.removeEventListener("abort", abortHandler);
+
+        // always throw the abort error when aborted
+        options.signal.throwIfAborted();
+      }
+    }
   }
 
   function writeTextFileSync(

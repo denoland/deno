@@ -9,6 +9,8 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::ZeroCopyBuf;
 
 use deno_core::Extension;
@@ -203,6 +205,7 @@ pub struct WriteFileArgs {
   append: bool,
   create: bool,
   data: ZeroCopyBuf,
+  cancel_rid: Option<ResourceId>,
 }
 
 impl WriteFileArgs {
@@ -244,6 +247,14 @@ async fn op_write_file_async(
   state: Rc<RefCell<OpState>>,
   args: WriteFileArgs,
 ) -> Result<(), AnyError> {
+  let cancel_handle = match args.cancel_rid {
+    Some(cancel_rid) => state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid)
+      .ok(),
+    None => None,
+  };
   let (open_args, data) = args.into_open_args_and_data();
   let (path, open_options) = open_helper(&mut *state.borrow_mut(), open_args)?;
   let mut tokio_file = tokio::fs::OpenOptions::from(open_options)
@@ -252,7 +263,12 @@ async fn op_write_file_async(
     .map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })?;
-  tokio_file.write_all(&data).await?;
+  let write_future = tokio_file.write_all(&data);
+  if let Some(cancel_handle) = cancel_handle {
+    write_future.or_cancel(cancel_handle).await??;
+  } else {
+    write_future.await?;
+  }
   Ok(())
 }
 
