@@ -11,7 +11,9 @@ use std::marker::PhantomData;
 use std::mem::forget;
 use std::mem::transmute;
 use std::mem::ManuallyDrop;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -106,21 +108,26 @@ impl<T> ToV8 for Resource<T> {
     let field = v8::External::new(scope, ptr);
     let wrap = tpl.new_instance(scope).unwrap();
     assert!(wrap.set_internal_field(Self::INTERNAL_FIELD_INDEX, field.into()));
+
+    let mut raw_weak = MaybeUninit::uninit();
     let weak = v8::Weak::with_finalizer(
       scope,
       wrap,
       // finalizer
-      Box::new(move || {
+      Box::new(move |isolate| {
         // SAFETY: We own this object, no other resource can hold the pointer
         // to it. Here, we say bye-bye to the object.
         dbg!("Gc called!");
         unsafe {
+          let _weak = v8::Weak::from_raw(isolate, Some(raw_weak.assume_init()));
           let _ = Rc::from_raw(ptr as *const T);
         }
       }),
     );
     let value = weak.to_local(scope).unwrap().into();
-    forget(weak);
+    let weak_raw = weak.into_raw().unwrap();
+    raw_weak.write(weak_raw);
+
     Ok(value)
   }
 }
