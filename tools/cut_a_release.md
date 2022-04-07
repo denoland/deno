@@ -29,7 +29,7 @@ Before starting the process write a message in company's #general channel:
 ## Updating `deno_std`
 
 1. Go to the "version_bump" workflow in the deno_std repo's actions:
-   https://github.com/denoland/deno/actions/workflows/version_bump.yml
+   https://github.com/denoland/deno_std/actions/workflows/version_bump.yml
 
 2. Click on the "Run workflow" button.
    1. For the kind of release, select "minor".
@@ -51,9 +51,11 @@ relevant minor branch, so if you are cutting a `v1.17.3` release you need to
 sync `v1.17` branch.
 
 To do that, you need to cherry-pick commits from the main branch to the `v1.17`
-branch. For patch releases we want to cherry-pick all commits that are not
-`feat` commits. Check what was the last commit on `v1.17` branch before the
-previous release and start cherry-picking newer commits from the `main`.
+branch. For patch releases we want to cherry-pick all commits that do not add
+features to the CLI. This generally means to filter out `feat` commits but not
+necessarily (ex. `feat(core): ...`). Check what was the last commit on `v1.17`
+branch before the previous release and start cherry-picking newer commits from
+the `main`.
 
 Once all relevant commits are cherry-picked, push the branch to the upstream and
 verify on GitHub that everything looks correct.
