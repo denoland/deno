@@ -14,9 +14,6 @@
       [`denoland/manual`](https://github.com/denoland/manual/)
 - [ ] Ensure that external dependencies are up-to date in `denoland/deno` (e.g.
       `rusty_v8`, `serde_v8`, `deno_doc`, `deno_lint`).
-- [ ] Ownership access on crates.io for the 19 (🙀) crates that you will be
-      publishing. (Don't worry too much though as the main script publishing 18
-      of the crates allows recovery)
 - [ ] Lot's of ☕
 
 **During this process `main` branch (or any other branch that you're creating
