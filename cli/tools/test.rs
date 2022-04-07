@@ -35,6 +35,7 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
@@ -55,7 +56,6 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
-use deno_core::url::Url;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -304,7 +304,9 @@ impl TestReporter for PrettyTestReporter {
       // or remote URL
       colors::gray(format!(
         "running {} {} from {}",
-        plan.total, inflection, to_relative(&plan.origin)
+        plan.total,
+        inflection,
+        to_relative(&plan.origin)
       ))
     );
   }
@@ -421,7 +423,11 @@ impl TestReporter for PrettyTestReporter {
       for (description, error) in &summary.failures {
         // TODO(bartlomieju): description.origin should be formatted as a relative
         // path or remote URL
-        println!("{} > {}", to_relative(&description.origin), description.name);
+        println!(
+          "{} > {}",
+          to_relative(&description.origin),
+          description.name
+        );
         println!("{}", format_error(error));
         println!();
       }
