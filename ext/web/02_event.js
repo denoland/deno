@@ -7,7 +7,7 @@
 "use strict";
 
 ((window) => {
-  const __bootstrap = window.__bootstrap;
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const consoleInternal = window.__bootstrap.console;
@@ -33,6 +33,7 @@
     ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
     SafeArrayIterator,
+    StringPrototypeStartsWith,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -791,10 +792,7 @@
     try {
       innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
     } catch (error) {
-      // We can't store `__bootstrap.reportError` ahead of time because there
-      // is a dependency cycle between this and `**_report_error.js` and one
-      // will not be available for the other at bootstrap time.
-      __bootstrap.reportError.reportException(error);
+      reportException(error);
     }
   }
 
@@ -1325,6 +1323,49 @@
     });
   }
 
+  let reportExceptionStackedCalls = 0;
+
+  // https://html.spec.whatwg.org/#report-the-exception
+  function reportException(error) {
+    reportExceptionStackedCalls++;
+    const jsError = core.destructureError(error);
+    const message = jsError.message;
+    let filename = "";
+    let lineno = 0;
+    let colno = 0;
+    if (jsError.frames.length > 0) {
+      filename = jsError.frames[0].fileName;
+      lineno = jsError.frames[0].lineNumber;
+      colno = jsError.frames[0].columnNumber;
+    } else {
+      const jsError = core.destructureError(new Error());
+      for (const frame of jsError.frames) {
+        if (
+          typeof frame.fileName == "string" &&
+          !StringPrototypeStartsWith(frame.fileName, "deno:")
+        ) {
+          filename = frame.fileName;
+          lineno = frame.lineNumber;
+          colno = frame.columnNumber;
+          break;
+        }
+      }
+    }
+    const event = new ErrorEvent("error", {
+      cancelable: true,
+      message,
+      filename,
+      lineno,
+      colno,
+      error,
+    });
+    // Avoid recursing `reportException()` via error handlers more than once.
+    if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
+      core.terminate(error);
+    }
+    reportExceptionStackedCalls--;
+  }
+
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
@@ -1341,6 +1382,7 @@
     listenerCount,
   };
   window.__bootstrap.event = {
+    reportException,
     setIsTrusted,
     setTarget,
     defineEventHandler,

@@ -22,6 +22,7 @@
     TypeError,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
+  const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
   function opNow() {
@@ -148,10 +149,7 @@
               ...new SafeArrayIterator(args),
             );
           } catch (error) {
-            // We can't store `__bootstrap.reportError` ahead of time because
-            // there is a dependency cycle between this and `**_report_error.js`
-            // and one will not be available for the other at bootstrap time.
-            __bootstrap.reportError.reportException(error);
+            reportException(error);
           }
         } else {
           // TODO(@andreubotella): eval doesn't seem to have a primordial, but
