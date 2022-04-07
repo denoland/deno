@@ -166,7 +166,10 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub(crate) explicit_terminate_error: Option<JsError>,
+  /// The exception that was passed to an explicit `Deno.core.terminate` call.
+  /// It will be retrieved by `exception_to_err_result` and used as an error
+  /// instead of any other exceptions.
+  pub(crate) explicit_terminate_exception: Option<v8::Global<v8::Value>>,
   waker: AtomicWaker,
 }
 
@@ -376,7 +379,7 @@ impl JsRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
-      explicit_terminate_error: None,
+      explicit_terminate_exception: None,
       waker: AtomicWaker::new(),
     })));
 
@@ -1013,24 +1016,30 @@ pub(crate) fn exception_to_err_result<'s, T>(
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let explicit_terminate_error = state.explicit_terminate_error.take();
-  if let Some(js_error) = explicit_terminate_error {
-    return Err((state.js_error_create_fn)(js_error));
-  }
-
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
   if is_terminating_exception {
-    // TerminateExecution was called. Cancel exception termination so that the
-    // exception can be created..
+    // TerminateExecution was called. Cancel isolate termination so that the
+    // exception can be created.
     scope.cancel_terminate_execution();
 
-    // Maybe make a new exception object.
-    if exception.is_null_or_undefined() {
-      let message = v8::String::new(scope, "execution terminated").unwrap();
-      exception = v8::Exception::error(scope, message);
-    }
+    // If the termination is the result of a `Deno.core.terminate` call, we want
+    // to use the exception that was passed to it rather than the exception that
+    // was passed to this function.
+    exception = state
+      .explicit_terminate_exception
+      .take()
+      .map(|exception| v8::Local::new(scope, exception))
+      .unwrap_or_else(|| {
+        // Maybe make a new exception object.
+        if exception.is_null_or_undefined() {
+          let message = v8::String::new(scope, "execution terminated").unwrap();
+          v8::Exception::error(scope, message)
+        } else {
+          exception
+        }
+      });
   }
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
@@ -1243,7 +1252,7 @@ impl JsRuntime {
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       let has_explicit_terminate_error =
-        state_rc.borrow().explicit_terminate_error.is_some();
+        state_rc.borrow().explicit_terminate_exception.is_some();
       if has_explicit_terminate_error {
         let undefined = v8::undefined(tc_scope);
         // Pass `undefined`, it will be substituted with

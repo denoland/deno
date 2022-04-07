@@ -1303,8 +1303,8 @@ fn terminate(
 ) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  let js_error = JsError::from_v8_exception(scope, args.get(0));
-  state.explicit_terminate_error = Some(js_error);
+  state.explicit_terminate_exception =
+    Some(v8::Global::new(scope, args.get(0)));
   scope.terminate_execution();
 }
 
