@@ -205,30 +205,37 @@ pub struct WriteFileArgs {
   data: ZeroCopyBuf,
 }
 
+impl WriteFileArgs {
+  fn into_open_args_and_data(self) -> (OpenArgs, ZeroCopyBuf) {
+    (
+      OpenArgs {
+        path: self.path,
+        mode: self.mode,
+        options: OpenOptions {
+          read: false,
+          write: true,
+          create: self.create,
+          truncate: !self.append,
+          append: self.append,
+          create_new: false,
+        },
+      },
+      self.data,
+    )
+  }
+}
+
 #[op]
 fn op_write_file_sync(
   state: &mut OpState,
   args: WriteFileArgs,
 ) -> Result<(), AnyError> {
-  let (path, open_options) = open_helper(
-    state,
-    OpenArgs {
-      path: args.path,
-      mode: args.mode,
-      options: OpenOptions {
-        read: false,
-        write: true,
-        create: args.create,
-        truncate: !args.append,
-        append: args.append,
-        create_new: false,
-      },
-    },
-  )?;
+  let (open_args, data) = args.into_open_args_and_data();
+  let (path, open_options) = open_helper(state, open_args)?;
   let mut std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
-  std_file.write_all(&args.data)?;
+  std_file.write_all(&data)?;
   Ok(())
 }
 
@@ -237,28 +244,15 @@ async fn op_write_file_async(
   state: Rc<RefCell<OpState>>,
   args: WriteFileArgs,
 ) -> Result<(), AnyError> {
-  let (path, open_options) = open_helper(
-    &mut *state.borrow_mut(),
-    OpenArgs {
-      path: args.path,
-      mode: args.mode,
-      options: OpenOptions {
-        read: false,
-        write: true,
-        create: args.create,
-        truncate: !args.append,
-        append: args.append,
-        create_new: false,
-      },
-    },
-  )?;
+  let (open_args, data) = args.into_open_args_and_data();
+  let (path, open_options) = open_helper(&mut *state.borrow_mut(), open_args)?;
   let mut tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(&path)
     .await
     .map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })?;
-  tokio_file.write_all(&args.data).await?;
+  tokio_file.write_all(&data).await?;
   Ok(())
 }
 
