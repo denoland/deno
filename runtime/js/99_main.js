@@ -63,7 +63,6 @@ delete Object.prototype.__proto__;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
-  const reportError = window.__bootstrap.reportError;
   const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
@@ -446,7 +445,6 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
     structuredClone: util.writable(messagePort.structuredClone),
-    reportError: util.writable(reportError.reportError),
   };
 
   const unstableWindowOrWorkerGlobalScope = {
