@@ -2,7 +2,7 @@ addEventListener("error", (event) => {
   console.log({
     cancelable: event.cancelable,
     message: event.message,
-    filename: event.filename,
+    filename: event.filename?.slice?.(-100),
     lineno: event.lineno,
     colno: event.colno,
     error: event.error,
