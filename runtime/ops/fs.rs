@@ -228,7 +228,6 @@ fn op_write_file_sync(
   let mut std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
-  preallocate(&std_file, args.data.len())?;
   std_file.write_all(&args.data)?;
   Ok(())
 }
@@ -253,74 +252,13 @@ async fn op_write_file_async(
       },
     },
   )?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options)
+  let mut tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(&path)
     .await
     .map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })?;
-  let std_file = tokio_file.into_std().await;
-  let size = args.data.len();
-  let std_file = tokio::task::spawn_blocking(move || {
-    preallocate(&std_file, size)?;
-    Ok::<_, AnyError>(std_file)
-  })
-  .await??;
-  let mut tokio_file = tokio::fs::File::from_std(std_file);
   tokio_file.write_all(&args.data).await?;
-  Ok(())
-}
-
-fn preallocate(file: &std::fs::File, size: usize) -> Result<(), AnyError> {
-  #[cfg(target_os = "linux")]
-  {
-    // Preallocate disk space using fallocate
-    use std::os::unix::prelude::AsRawFd;
-    let fd = file.as_raw_fd();
-    let err_no = unsafe { libc::posix_fallocate(fd, 0, size as libc::off_t) };
-    match err_no {
-      0 | libc::ENODEV | libc::EOPNOTSUPP => {} // Ignore these error codes, as they may be false positives.
-      _ => return Err(io::Error::from_raw_os_error(err_no).into()),
-    }
-  }
-  #[cfg(target_os = "macos")]
-  {
-    use std::os::unix::prelude::AsRawFd;
-    let fd = file.as_raw_fd();
-    let opts = libc::fstore_t {
-      fst_flags: libc::F_ALLOCATEALL,
-      fst_posmode: libc::F_PEOFPOSMODE,
-      fst_offset: 0,
-      fst_length: size as i64,
-      fst_bytesalloc: 0,
-    };
-    let res = unsafe { libc::fcntl(fd, libc::F_PREALLOCATE, &opts) };
-    match res {
-      -1 => return Err(std::io::Error::last_os_error().into()),
-      _ => {}
-    }
-  }
-  #[cfg(target_os = "windows")]
-  unsafe {
-    use std::os::windows::prelude::AsRawHandle;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::shared::minwindef::TRUE;
-    use winapi::um::fileapi;
-    use winapi::um::minwinbase::FileAllocationInfo;
-
-    let mut info: fileapi::FILE_ALLOCATION_INFO = std::mem::zeroed();
-    *info.AllocationSize.QuadPart_mut() = size as i64;
-
-    let success = fileapi::SetFileInformationByHandle(
-      file.as_raw_handle(),
-      FileAllocationInfo,
-      &mut info as *mut _ as *mut _,
-      std::mem::size_of_val(&info) as DWORD,
-    );
-    if success != TRUE {
-      return Err(std::io::Error::last_os_error().into());
-    }
-  }
   Ok(())
 }
 
