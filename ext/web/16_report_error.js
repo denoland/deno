@@ -4,7 +4,6 @@
 ((window) => {
   const core = window.Deno.core;
   const { ErrorEvent } = window;
-  const { defineEventHandler } = window.__bootstrap.event;
   const { Error, StringPrototypeStartsWith } = window.__bootstrap.primordials;
 
   let reportExceptionStackedCalls = 0;
