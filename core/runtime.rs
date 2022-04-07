@@ -166,6 +166,9 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  /// The error that was passed to an explicit `Deno.core.terminate` call.
+  /// It will be retrieved by `exception_to_err_result` and used as an error
+  /// instead of any other exceptions.
   pub(crate) explicit_terminate_error: Option<JsError>,
   waker: AtomicWaker,
 }
@@ -1013,6 +1016,9 @@ pub(crate) fn exception_to_err_result<'s, T>(
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
+  // If the termination is the result of a `Deno.core.terminate` call, we want
+  // to use the exception that was passed to it rather than the exception that
+  // was passed to this function.
   let explicit_terminate_error = state.explicit_terminate_error.take();
   if let Some(js_error) = explicit_terminate_error {
     return Err((state.js_error_create_fn)(js_error));
@@ -1022,7 +1028,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
   let mut exception = exception;
 
   if is_terminating_exception {
-    // TerminateExecution was called. Cancel exception termination so that the
+    // TerminateExecution was called. Cancel isolate termination so that the
     // exception can be created..
     scope.cancel_terminate_execution();
 
