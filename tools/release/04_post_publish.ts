@@ -26,7 +26,7 @@ async function createReleaseTag() {
     console.log(`Tag ${tagName} already exists.`);
   } else {
     await repo.gitTag(tagName);
-    await repo.gitPush(tagName);
+    await repo.gitPush("origin", tagName);
   }
 }
 
