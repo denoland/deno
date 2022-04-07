@@ -237,11 +237,10 @@ where
       let file_fetch_handler = file_fetch_handler.clone();
       let (request, maybe_request_body, maybe_cancel_handle) =
         file_fetch_handler.fetch_file(state, url);
-      let request_rid = Resource::new_boxed(FetchRequestResource(request));
-      let maybe_request_body_rid =
-        maybe_request_body.map(|r| Resource::new_boxed(r));
-      let maybe_cancel_handle_rid = maybe_cancel_handle
-        .map(|ch| Resource::new_boxed(FetchCancelHandle(ch)));
+      let request_rid = Resource::new(FetchRequestResource(request));
+      let maybe_request_body_rid = maybe_request_body.map(|r| Resource::new(r));
+      let maybe_cancel_handle_rid =
+        maybe_cancel_handle.map(|ch| Resource::new(FetchCancelHandle(ch)));
 
       (request_rid, maybe_request_body_rid, maybe_cancel_handle_rid)
     }
@@ -266,11 +265,10 @@ where
 
             request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
 
-            let request_body_rid =
-              Resource::new_boxed(FetchRequestBodyResource {
-                body: AsyncRefCell::new(tx),
-                cancel: CancelHandle::default(),
-              });
+            let request_body_rid = Resource::new(FetchRequestBodyResource {
+              body: AsyncRefCell::new(tx),
+              cancel: CancelHandle::default(),
+            });
 
             Some(request_body_rid)
           }
@@ -315,10 +313,8 @@ where
           .map(|res| res.map_err(|err| type_error(err.to_string())))
       };
 
-      let request_rid =
-        Resource::new_boxed(FetchRequestResource(Box::pin(fut)));
-      let cancel_handle_rid =
-        Resource::new_boxed(FetchCancelHandle(cancel_handle));
+      let request_rid = Resource::new(FetchRequestResource(Box::pin(fut)));
+      let cancel_handle_rid = Resource::new(FetchCancelHandle(cancel_handle));
 
       (request_rid, request_body_rid, Some(cancel_handle_rid))
     }
@@ -337,8 +333,7 @@ where
 
       let fut = async move { Ok(Ok(Response::from(response))) };
 
-      let request_rid =
-        Resource::new_boxed(FetchRequestResource(Box::pin(fut)));
+      let request_rid = Resource::new(FetchRequestResource(Box::pin(fut)));
 
       (request_rid, None, None)
     }
@@ -413,7 +408,7 @@ pub async fn op_fetch_send(
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
   }));
   let stream_reader = StreamReader::new(stream);
-  let rid = Resource::new_boxed(FetchResponseBodyResource {
+  let rid = Resource::new(FetchResponseBodyResource {
     reader: AsyncRefCell::new(stream_reader),
     cancel: CancelHandle::default(),
   });
@@ -577,7 +572,7 @@ where
     client_cert_chain_and_key,
   )?;
 
-  let rid = Resource::new_boxed(HttpClientResource::new(client));
+  let rid = Resource::new(HttpClientResource::new(client));
   Ok(rid)
 }
 
