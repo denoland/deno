@@ -2341,6 +2341,8 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  // Use no-check by default for the REPL
+  flags.typecheck_mode = TypecheckMode::None;
   runtime_args_parse(flags, matches, false, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   handle_repl_flags(
@@ -3789,6 +3791,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        typecheck_mode: TypecheckMode::None,
         ..Flags::default()
       }
     );
@@ -4437,6 +4440,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        typecheck_mode: TypecheckMode::None,
         ..Flags::default()
       }
     );
@@ -4515,6 +4519,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        typecheck_mode: TypecheckMode::None,
         ..Flags::default()
       }
     );
