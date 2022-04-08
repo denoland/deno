@@ -20,7 +20,7 @@ indexmap = "1.7.0"
 libc = "0.2.121"
 log = "0.4.14"
 once_cell = "1.10.0"
-parking_lot = "0.11.1"
+parking_lot = "0.12.0"
 pin-project = "1.0.7"
 serde = { version = "1.0.129", features = ["derive"] }
 serde_json = { version = "1.0.66", features = ["preserve_order"] }
@@ -34,5 +34,5 @@ path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
-deno_ast = { version = "0.13.0", features = ["transpiling"] }
+deno_ast = { version = "0.14.0", features = ["transpiling"] }
 tokio = { version = "1.17", features = ["full"] }
