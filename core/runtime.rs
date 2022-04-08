@@ -1242,6 +1242,7 @@ impl JsRuntime {
       let undefined = v8::undefined(tc_scope);
       // Pass `undefined`, it will be substituted with
       // `explicit_terminate_error` within `exception_to_err_result()`.
+      // TODO(nayeemrmn): Clean up, it would be nice to pass it here explicitly.
       sender
         .send(exception_to_err_result(tc_scope, undefined.into(), false))
         .expect("Failed to send module evaluation error.");
