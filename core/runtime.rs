@@ -1226,7 +1226,17 @@ impl JsRuntime {
     // Update status after evaluating.
     status = module.get_status();
 
-    if let Some(value) = maybe_value {
+    let has_explicit_terminate_error =
+      state_rc.borrow().explicit_terminate_error.is_some();
+
+    if has_explicit_terminate_error {
+      let undefined = v8::undefined(tc_scope);
+      // Pass `undefined`, it will be substituted with
+      // `explicit_terminate_error` within `exception_to_err_result()`.
+      sender
+        .send(exception_to_err_result(tc_scope, undefined.into(), false))
+        .expect("Failed to send module evaluation error.");
+    } else if let Some(value) = maybe_value {
       assert!(
         status == v8::ModuleStatus::Evaluated
           || status == v8::ModuleStatus::Errored
@@ -1248,20 +1258,9 @@ impl JsRuntime {
       });
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-      let has_explicit_terminate_error =
-        state_rc.borrow().explicit_terminate_error.is_some();
-      if has_explicit_terminate_error {
-        let undefined = v8::undefined(tc_scope);
-        // Pass `undefined`, it will be substituted with
-        // `explicit_terminate_error` within `exception_to_err_result()`.
-        sender
-          .send(exception_to_err_result(tc_scope, undefined.into(), false))
-          .expect("Failed to send module evaluation error.");
-      } else {
-        sender.send(Err(
-          generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
-        )).expect("Failed to send module evaluation error.");
-      }
+      sender.send(Err(
+        generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
+      )).expect("Failed to send module evaluation error.");
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
