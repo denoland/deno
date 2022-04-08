@@ -22,6 +22,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
         with:
+          token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
@@ -38,9 +39,11 @@ jobs:
 
       - name: Create release tag and check forward commit to main
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # the default secrets.GITHUB_TOKEN won't trigger a workflow run
+          # when tagging, but it will if we provide a custom PAT
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: |
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git config user.name "${{ github.actor }}"
+          git config user.email "propelml@gmail.com"
+          git config user.name "denobot"
           ./tools/release/04_post_publish.ts
