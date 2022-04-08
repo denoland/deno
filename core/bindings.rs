@@ -1,16 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::extensions::OpDecl;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::ops::OpCtx;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
-use crate::OpState;
 use crate::PromiseId;
 use crate::ResourceId;
 use crate::ZeroCopyBuf;
@@ -23,7 +22,6 @@ use serde_v8::to_v8;
 use std::cell::RefCell;
 use std::option::Option;
 use std::os::raw::c_void;
-use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -147,9 +145,8 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
-  ops: &[OpDecl],
+  op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
-  op_state: Rc<RefCell<OpState>>,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -165,14 +162,13 @@ pub fn initialize_context<'s>(
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
-    // Grab Deno.core.ops object
+    // Grab the Deno.core & Deno.core.ops objects
+    let core_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core")
+      .expect("Deno.core to exist");
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-
-    let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-    for op in ops {
-      set_func_raw(scope, ops_obj, op.name, op.v8_fn_ptr, raw_op_state);
-    }
+    initialize_ops(scope, ops_obj, op_ctxs);
+    initialize_op_names(scope, core_obj, op_ctxs);
     return scope.escape(context);
   }
 
@@ -236,12 +232,32 @@ pub fn initialize_context<'s>(
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
   // Bind functions to Deno.core.ops.*
-  let ops_val = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
-  let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-  for op in ops {
-    set_func_raw(scope, ops_val, op.name, op.v8_fn_ptr, raw_op_state);
-  }
+  let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  initialize_ops(scope, ops_obj, op_ctxs);
+  initialize_op_names(scope, core_val, op_ctxs);
   scope.escape(context)
+}
+
+fn initialize_ops(
+  scope: &mut v8::HandleScope,
+  ops_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
+  for ctx in op_ctxs {
+    let ctx_ptr = ctx as *const OpCtx as *const c_void;
+    set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
+  }
+}
+
+fn initialize_op_names(
+  scope: &mut v8::HandleScope,
+  core_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
+  let names: Vec<&str> = op_ctxs.iter().map(|o| o.decl.name).collect();
+  let k = v8::String::new(scope, "op_names").unwrap().into();
+  let v = serde_v8::to_v8(scope, names).unwrap();
+  core_obj.set(scope, k, v);
 }
 
 pub fn set_func(

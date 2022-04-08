@@ -5,7 +5,6 @@
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
-use deno_core::OpState;
 use deno_core::RuntimeOptions;
 
 // This is a hack to make the `#[op]` macro work with
