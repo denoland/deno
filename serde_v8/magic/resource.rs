@@ -162,7 +162,7 @@ impl<T> ToV8 for Resource<T> {
           let _weak = v8::Weak::from_raw(isolate, Some(raw_weak));
         }
         if cancel_finalization.get() {
-          // Rust tells us to prevent dropping the Rc. 
+          // Rust tells us to prevent dropping the Rc.
           // It decrements the strong count and is the sole owner of the resource data.
           return;
         }
@@ -187,11 +187,7 @@ impl<T> FromV8 for Resource<T> {
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
     let obj = v8::Local::<v8::Object>::try_from(value).unwrap();
-    assert_eq!(
-      obj.internal_field_count(),
-      2,
-      "internal_field_count() != 2"
-    );
+    assert_eq!(obj.internal_field_count(), 2, "internal_field_count() != 2");
     let external = obj
       .get_internal_field(scope, Self::INTERNAL_FIELD_INDEX)
       .unwrap();
