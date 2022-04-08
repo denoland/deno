@@ -21,7 +21,7 @@ itest!(check_random_extension {
 });
 
 itest!(check_all {
-  args: "check --quiet --all check_all.ts",
+  args: "check --quiet --remote check_all.ts",
   output: "check_all.out",
   http_server: true,
   exit_code: 1,

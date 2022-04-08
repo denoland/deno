@@ -55,7 +55,7 @@ pub struct CacheFlags {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct CheckFlags {
   pub files: Vec<String>,
-  pub all: bool,
+  pub remote: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -728,8 +728,8 @@ Future runs of this module will trigger no downloads or compilation unless
 fn check_subcommand<'a>() -> Command<'a> {
   compile_args_without_no_check(Command::new("check"))
   .arg(
-    Arg::new("all")
-      .long("all")
+    Arg::new("remote")
+      .long("remote")
       .help("Type-check all modules, including remote")
     )
     .arg(
@@ -2151,8 +2151,8 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  let all = matches.is_present("all");
-  flags.subcommand = DenoSubcommand::Check(CheckFlags { files, all });
+  let remote = matches.is_present("remote");
+  flags.subcommand = DenoSubcommand::Check(CheckFlags { files, remote });
 }
 
 fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -3633,19 +3633,19 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
-          all: false,
+          remote: false,
         }),
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "check", "--all", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "check", "--remote", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
           files: svec!["script.ts"],
-          all: true,
+          remote: true,
         }),
         ..Flags::default()
       }

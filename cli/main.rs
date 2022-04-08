@@ -596,8 +596,8 @@ async fn check_command(
   let mut flags = flags.clone();
 
   // In `deno check` the default mode is to check only
-  // local modules, with `--all` we check remote modules too.
-  flags.type_check_mode = if check_flags.all {
+  // local modules, with `--remote` we check remote modules too.
+  flags.type_check_mode = if check_flags.remote {
     TypeCheckMode::All
   } else {
     TypeCheckMode::Local
