@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { path, Repo } from "./deps.ts";
+import { path, ReleasesMdFile, Repo } from "./deps.ts";
 
 export class DenoWorkspace {
   #repo: Repo;
@@ -12,7 +12,10 @@ export class DenoWorkspace {
 
   static async load(): Promise<DenoWorkspace> {
     return new DenoWorkspace(
-      await Repo.load("deno", DenoWorkspace.rootDirPath),
+      await Repo.load({
+        name: "deno",
+        path: DenoWorkspace.rootDirPath,
+      }),
     );
   }
 
@@ -41,6 +44,12 @@ export class DenoWorkspace {
 
   getCrate(name: string) {
     return this.#repo.getCrate(name);
+  }
+
+  getReleasesMdFile() {
+    return new ReleasesMdFile(
+      path.join(DenoWorkspace.rootDirPath, "Releases.md"),
+    );
   }
 
   runFormatter() {

@@ -334,6 +334,10 @@ fn resolve_shim_data(
     executable_args.push("--no-prompt".to_string());
   }
 
+  if flags.compat {
+    executable_args.push("--compat".to_string());
+  }
+
   if !flags.v8_flags.is_empty() {
     executable_args.push(format!("--v8-flags={}", flags.v8_flags.join(",")));
   }
@@ -401,8 +405,8 @@ mod tests {
   use super::*;
 
   use std::process::Command;
-  use tempfile::TempDir;
   use test_util::testdata_path;
+  use test_util::TempDir;
 
   #[test]
   fn install_infer_name_from_url() {
@@ -479,7 +483,7 @@ mod tests {
 
   #[test]
   fn install_unstable() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -588,6 +592,7 @@ mod tests {
         allow_read: Some(vec![]),
         type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
+        compat: true,
         ..Flags::default()
       },
       &InstallFlags {
@@ -609,6 +614,7 @@ mod tests {
         "--allow-net",
         "--quiet",
         "--no-check",
+        "--compat",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]
@@ -663,7 +669,7 @@ mod tests {
 
   #[test]
   fn install_local_module() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let local_module = env::current_dir().unwrap().join("echo_server.ts");
@@ -694,7 +700,7 @@ mod tests {
 
   #[test]
   fn install_force() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -755,7 +761,7 @@ mod tests {
 
   #[test]
   fn install_with_config() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let config_file_path = temp_dir.path().join("test_tsconfig.json");
     let config = "{}";
@@ -791,7 +797,7 @@ mod tests {
   #[cfg(not(windows))]
   #[test]
   fn install_shell_escaping() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -826,7 +832,7 @@ mod tests {
 
   #[test]
   fn install_unicode() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let unicode_dir = temp_dir.path().join("Magnús");
@@ -866,7 +872,7 @@ mod tests {
 
   #[test]
   fn install_with_import_map() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let import_map_path = temp_dir.path().join("import_map.json");
     let import_map_url = Url::from_file_path(&import_map_path).unwrap();
@@ -914,7 +920,7 @@ mod tests {
   // Regression test for https://github.com/denoland/deno/issues/10556.
   #[test]
   fn install_file_url() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
     let file_module_string =
@@ -950,7 +956,7 @@ mod tests {
 
   #[test]
   fn uninstall_basic() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 

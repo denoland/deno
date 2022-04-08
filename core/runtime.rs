@@ -164,6 +164,9 @@ pub(crate) struct JsRuntimeState {
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
+  #[allow(dead_code)]
+  // We don't explicitly re-read this prop but need the slice to live alongside the isolate
+  pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
@@ -298,6 +301,16 @@ impl JsRuntime {
     }
 
     let op_state = Rc::new(RefCell::new(op_state));
+    let op_ctxs = ops
+      .into_iter()
+      .enumerate()
+      .map(|(id, decl)| OpCtx {
+        id,
+        state: op_state.clone(),
+        decl,
+      })
+      .collect::<Vec<_>>()
+      .into_boxed_slice();
 
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
@@ -309,8 +322,7 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &ops, false, op_state.clone());
+        let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -336,12 +348,8 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &ops,
-          snapshot_loaded,
-          op_state.clone(),
-        );
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -374,6 +382,7 @@ impl JsRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
+      op_ctxs,
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
     })));
@@ -3049,5 +3058,116 @@ assertEquals(1, notify_return_value);
       .unwrap();
     let scope = &mut runtime.handle_scope();
     assert!(r.open(scope).is_undefined());
+  }
+
+  #[test]
+  fn test_op_detached_buffer() {
+    use serde_v8::DetachedBuffer;
+
+    #[op]
+    fn op_sum_take(b: DetachedBuffer) -> Result<u64, anyhow::Error> {
+      Ok(b.as_ref().iter().clone().map(|x| *x as u64).sum())
+    }
+
+    #[op]
+    fn op_boomerang(
+      b: DetachedBuffer,
+    ) -> Result<DetachedBuffer, anyhow::Error> {
+      Ok(b)
+    }
+
+    let ext = Extension::builder()
+      .ops(vec![op_sum_take::decl(), op_boomerang::decl()])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "test.js",
+        r#"
+        const a1 = new Uint8Array([1,2,3]);
+        const a1b = a1.subarray(0, 3);
+        const a2 = new Uint8Array([5,10,15]);
+        const a2b = a2.subarray(0, 3);
+        
+        
+        if (!(a1.length > 0 && a1b.length > 0)) {
+          throw new Error("a1 & a1b should have a length");
+        }
+        let sum = Deno.core.opSync('op_sum_take', a1b);
+        if (sum !== 6) {
+          throw new Error(`Bad sum: ${sum}`);
+        }
+        if (a1.length > 0 || a1b.length > 0) {
+          throw new Error("expecting a1 & a1b to be detached");
+        }
+
+        const a3 = Deno.core.opSync('op_boomerang', a2b);
+        if (a3.byteLength != 3) {
+          throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
+        }
+        if (a3[0] !== 5 || a3[1] !== 10) {
+          throw new Error(`Invalid a3: ${a3[0]}, ${a3[1]}`);
+        }
+        if (a2.byteLength > 0 || a2b.byteLength > 0) {
+          throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
+        }
+        
+        const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
+        const w32 = new Uint32Array(wmem.buffer);
+        w32[0] = 1; w32[1] = 2; w32[2] = 3;
+        const assertWasmThrow = (() => {
+          try {
+            let sum = Deno.core.opSync('op_sum_take', w32.subarray(0, 2));
+            return false;
+          } catch(e) {
+            return e.message.includes('ExpectedDetachable');
+          }
+        });
+        if (!assertWasmThrow()) {
+          throw new Error("expected wasm mem to not be detachable");
+        }
+      "#,
+      )
+      .unwrap();
+  }
+
+  #[test]
+  fn test_op_unstable_disabling() {
+    #[op]
+    fn op_foo() -> Result<i64, anyhow::Error> {
+      Ok(42)
+    }
+
+    #[op(unstable)]
+    fn op_bar() -> Result<i64, anyhow::Error> {
+      Ok(42)
+    }
+
+    let ext = Extension::builder()
+      .ops(vec![op_foo::decl(), op_bar::decl()])
+      .middleware(|op| if op.is_unstable { op.disable() } else { op })
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    runtime
+      .execute_script(
+        "test.js",
+        r#"
+        if (Deno.core.opSync('op_foo') !== 42) {
+          throw new Error("Exptected op_foo() === 42");
+        }
+        if (Deno.core.opSync('op_bar') !== undefined) {
+          throw new Error("Expected op_bar to be disabled")
+        }
+      "#,
+      )
+      .unwrap();
   }
 }

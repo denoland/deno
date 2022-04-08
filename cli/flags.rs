@@ -503,7 +503,11 @@ To evaluate code in the shell:
 ";
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
+pub fn flags_from_vec<I, T>(args: I) -> clap::Result<Flags>
+where
+  I: IntoIterator<Item = T>,
+  T: Into<std::ffi::OsString> + Clone,
+{
   let version = crate::version::deno();
   let app = clap_root(&version);
   let matches = app.clone().try_get_matches_from(args)?;
@@ -3946,8 +3950,9 @@ mod tests {
 
   #[test]
   fn allow_read_allowlist() {
-    use tempfile::TempDir;
-    let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
+    use test_util::TempDir;
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().to_path_buf();
 
     let r = flags_from_vec(svec![
       "deno",
@@ -3969,8 +3974,9 @@ mod tests {
 
   #[test]
   fn allow_write_allowlist() {
-    use tempfile::TempDir;
-    let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
+    use test_util::TempDir;
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().to_path_buf();
 
     let r = flags_from_vec(svec![
       "deno",
