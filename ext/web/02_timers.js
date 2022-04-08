@@ -2,7 +2,6 @@
 "use strict";
 
 ((window) => {
-  const __bootstrap = window.__bootstrap;
   const core = window.Deno.core;
   const {
     ArrayPrototypePush,
