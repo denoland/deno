@@ -41,7 +41,6 @@ use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
 use std::path::PathBuf;
@@ -354,7 +353,6 @@ where
 
 #[op]
 async fn op_body_write(
-  state: Rc<RefCell<OpState>>,
   body: Resource<FetchRequestBodyResource>,
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
@@ -365,7 +363,6 @@ async fn op_body_write(
 
 #[op]
 async fn op_body_read(
-  state: Rc<RefCell<OpState>>,
   body: Resource<FetchResponseBodyResource>,
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
