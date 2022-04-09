@@ -230,6 +230,12 @@ interface ObjectConstructor {
      * Prevents the modification of existing property attributes and values, and prevents the addition of new properties.
      * @param o Object on which to lock the attributes.
      */
+    freeze<T extends {[idx: string]: U | null | undefined | object}, U extends string | bigint | number | boolean | symbol>(o: T): Readonly<T>;
+
+    /**
+     * Prevents the modification of existing property attributes and values, and prevents the addition of new properties.
+     * @param o Object on which to lock the attributes.
+     */
     freeze<T>(o: T): Readonly<T>;
 
     /**
@@ -320,7 +326,7 @@ declare var Function: FunctionConstructor;
 /**
  * Extracts the type of the 'this' parameter of a function type, or 'unknown' if the function type has no 'this' parameter.
  */
-type ThisParameterType<T> = T extends (this: infer U, ...args: any[]) => any ? U : unknown;
+type ThisParameterType<T> = T extends (this: infer U, ...args: never) => any ? U : unknown;
 
 /**
  * Removes the 'this' parameter from a function type.
@@ -4405,6 +4411,7 @@ declare namespace Intl {
         new(locales?: string | string[], options?: NumberFormatOptions): NumberFormat;
         (locales?: string | string[], options?: NumberFormatOptions): NumberFormat;
         supportedLocalesOf(locales: string | string[], options?: NumberFormatOptions): string[];
+        readonly prototype: NumberFormat;
     };
 
     interface DateTimeFormatOptions {
@@ -4417,7 +4424,7 @@ declare namespace Intl {
         hour?: "numeric" | "2-digit" | undefined;
         minute?: "numeric" | "2-digit" | undefined;
         second?: "numeric" | "2-digit" | undefined;
-        timeZoneName?: "long" | "short" | undefined;
+        timeZoneName?: "short" | "long" | "shortOffset" | "longOffset" | "shortGeneric" | "longGeneric" | undefined;
         formatMatcher?: "best fit" | "basic" | undefined;
         hour12?: boolean | undefined;
         timeZone?: string | undefined;
@@ -4448,6 +4455,7 @@ declare namespace Intl {
         new(locales?: string | string[], options?: DateTimeFormatOptions): DateTimeFormat;
         (locales?: string | string[], options?: DateTimeFormatOptions): DateTimeFormat;
         supportedLocalesOf(locales: string | string[], options?: DateTimeFormatOptions): string[];
+        readonly prototype: DateTimeFormat;
     };
 }
 
