@@ -467,9 +467,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate stores
-                         (system, mozilla)
-                         (defaults to mozilla)
+    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate
+                         stores. Possible values: "system", "mozilla".
+                         Defaults to "mozilla".
     DENO_CERT            Load certificate authority from PEM encoded file
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
@@ -573,8 +573,7 @@ fn clap_root(version: &str) -> Command {
   clap::Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
-    // Disable clap's auto-detection of terminal width
-    .term_width(0)
+    .max_term_width(80)
     .version(version)
     .long_version(LONG_VERSION.as_str())
     .arg(
@@ -588,6 +587,7 @@ fn clap_root(version: &str) -> Command {
         .short('L')
         .long("log-level")
         .help("Set log level")
+        .hide(true)
         .takes_value(true)
         .possible_values(&["debug", "info"])
         .global(true),
@@ -597,11 +597,6 @@ fn clap_root(version: &str) -> Command {
         .short('q')
         .long("quiet")
         .help("Suppress diagnostic output")
-        .long_help(
-          "Suppress diagnostic output
-By default, subcommands print human-readable diagnostic messages to stderr.
-If the flag is set, restrict these messages to errors.",
-        )
         .global(true),
     )
     .subcommand(bench_subcommand())
@@ -662,13 +657,13 @@ fn bench_subcommand<'a>() -> Command<'a> {
     .long_about(
       "Run benchmarks using Deno's built-in bench tool.
 
-Evaluate the given modules, run all benches declared with 'Deno.bench()' and
-report results to standard output:
+Evaluate the given modules, run all benches declared with 'Deno.bench()' \
+and report results to standard output:
 
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
-Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
+Directory arguments are expanded to all contained files matching the \
+glob {*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
 
   deno bench src/",
     )
@@ -715,12 +710,12 @@ fn cache_subcommand<'a>() -> Command<'a> {
     .long_about(
       "Cache and compile remote dependencies recursively.
 
-Download and compile a module with all of its static dependencies and save them
-in the local cache, without running any code:
+Download and compile a module with all of its static dependencies and save \
+them in the local cache, without running any code:
 
   deno cache https://deno.land/std/http/file_server.ts
 
-Future runs of this module will trigger no downloads or compilation unless
+Future runs of this module will trigger no downloads or compilation unless \
 --reload is specified.",
     )
 }
@@ -752,46 +747,48 @@ Unless --reload is specified, this command will not re-download already cached d
 fn compile_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("compile"), true, false)
     .trailing_var_arg(true)
-    .arg(
-      script_arg().required(true),
-    )
+    .arg(script_arg().required(true))
     .arg(
       Arg::new("output")
         .long("output")
         .short('o')
         .help("Output file (defaults to $PWD/<inferred-name>)")
         .takes_value(true)
-        .value_hint(ValueHint::FilePath)
+        .value_hint(ValueHint::FilePath),
     )
     .arg(
       Arg::new("target")
         .long("target")
         .help("Target OS architecture")
         .takes_value(true)
-        .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"])
+        .possible_values(&[
+          "x86_64-unknown-linux-gnu",
+          "x86_64-pc-windows-msvc",
+          "x86_64-apple-darwin",
+          "aarch64-apple-darwin",
+        ]),
     )
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
       "UNSTABLE: Compiles the given script into a self contained executable.
 
   deno compile -A https://deno.land/std/http/file_server.ts
-  deno compile --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
+  deno compile --output color_util https://deno.land/std/examples/colors.ts
 
-Any flags passed which affect runtime behavior, such as '--unstable',
-'--allow-*', '--v8-flags', etc. are encoded into the output executable and used
-at runtime as if they were passed to a similar 'deno run' command.
+Any flags passed which affect runtime behavior, such as '--unstable', \
+'--allow-*', '--v8-flags', etc. are encoded into the output executable and \
+used at runtime as if they were passed to a similar 'deno run' command.
 
-The executable name is inferred by default:
-  - Attempt to take the file stem of the URL path. The above example would
-    become 'file_server'.
-  - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
-    and the path has no parent, take the file name of the parent path. Otherwise
-    settle with the generic name.
-  - If the resulting name has an '@...' suffix, strip it.
+The executable name is inferred by default: Attempt to take the file stem of \
+the URL path. The above example would become 'file_server'. If the file stem \
+is something generic like 'main', 'mod', 'index' or 'cli', and the path has no \
+parent, take the file name of the parent path. Otherwise settle with the \
+generic name. If the resulting name has an '@...' suffix, strip it.
 
-This commands supports cross-compiling to different target architectures using `--target` flag.
-On the first invocation with deno will download proper binary and cache it in $DENO_DIR. The
-aarch64-apple-darwin target is not supported in canary.
+Cross-compiling to different target architectures is supported using the \
+`--target` flag. On the first invocation with deno will download proper \
+binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not \
+supported in canary.
 ",
     )
 }
@@ -835,8 +832,9 @@ Exclude urls ending with test.ts and test.js:
 
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
-Include urls that start with the file schema and exclude files ending with test.ts and test.js, for
-an url to match it must match the include pattern and not match the exclude pattern:
+Include urls that start with the file schema and exclude files ending with \
+test.ts and test.js, for an url to match it must match the include pattern and \
+not match the exclude pattern:
 
   deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
 
@@ -886,19 +884,20 @@ Generate html reports from lcov:
         .help("Output coverage report in lcov format")
         .takes_value(false),
     )
-    .arg(Arg::new("output")
-    .requires("lcov")
-    .long("output")
-    .help("Output file (defaults to stdout) for lcov")
-    .long_help("Exports the coverage report in lcov format to the given file.
-Filename should be passed along with '='
-For example '--output=foo.lcov'
-If no --output arg is specified then the report is written to stdout."
-  )
-    .takes_value(true)
-    .require_equals(true)
-    .value_hint(ValueHint::FilePath)
-  )
+    .arg(
+      Arg::new("output")
+        .requires("lcov")
+        .long("output")
+        .help("Output file (defaults to stdout) for lcov")
+        .long_help(
+          "Exports the coverage report in lcov format to the given file. \
+    Filename should be passed along with '=' For example '--output=foo.lcov' \
+    If no --output arg is specified then the report is written to stdout.",
+        )
+        .takes_value(true)
+        .require_equals(true)
+        .value_hint(ValueHint::FilePath),
+    )
     .arg(
       Arg::new("files")
         .takes_value(true)
@@ -1398,7 +1397,7 @@ Grant permission to read allow-listed files from disk:
 
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
 
-Deno allows specifying the filename '-' to read the file from stdin.
+Specifying the filename '-' to read the file from stdin.
 
   curl https://deno.land/std/examples/welcome.ts | deno run -",
     )
@@ -1759,7 +1758,7 @@ fn permission_args(app: Command) -> Command {
         .long("allow-all")
         .help("Allow all permissions"),
     )
-    .arg(Arg::new("prompt").long("prompt").help(
+    .arg(Arg::new("prompt").long("prompt").hide(true).help(
       "deprecated: Fallback to prompt if required permission wasn't passed",
     ))
     .arg(
@@ -1910,14 +1909,15 @@ fn v8_flags_arg<'a>() -> Arg<'a> {
     .takes_value(true)
     .use_value_delimiter(true)
     .require_equals(true)
-    .help("Set V8 command line options (for help: --v8-flags=--help)")
+    .help("Set V8 command line options")
+    .long_help("To see a list of all available flags use --v8-flags=--help.")
 }
 
 fn seed_arg<'a>() -> Arg<'a> {
   Arg::new("seed")
     .long("seed")
     .value_name("NUMBER")
-    .help("Seed Math.random()")
+    .help("Set the random number generator seed")
     .takes_value(true)
     .validator(|val| match val.parse::<u64>() {
       Ok(_) => Ok(()),
@@ -1929,13 +1929,14 @@ fn compat_arg<'a>() -> Arg<'a> {
   Arg::new("compat")
     .long("compat")
     .requires("unstable")
-    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
+    .help("UNSTABLE: Node compatibility mode.")
+    .long_help("See https://deno.land/manual/node/compatibility_mode")
 }
 
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
   let arg = Arg::new("watch")
     .long("watch")
-    .help("UNSTABLE: Watch for file changes and restart process automatically");
+    .help("UNSTABLE: Watch for file changes and restart automatically");
 
   if takes_files {
     arg
@@ -1952,8 +1953,8 @@ Additional paths might be watched by passing them as arguments to this flag.",
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.long_help(
-      "UNSTABLE: Watch for file changes and restart process automatically.
-Only local files from entry point module graph are watched.",
+      "UNSTABLE: Watch for file changes and restart process automatically. \
+      Only local files from entry point module graph are watched.",
     )
   }
 }
@@ -1974,9 +1975,8 @@ fn no_check_arg<'a>() -> Arg<'a> {
     .long("no-check")
     .help("Skip type checking modules")
     .long_help(
-      "Skip type checking of modules.
-If the value of '--no-check=remote' is supplied, diagnostic errors from remote
-modules will be ignored.",
+      "Skip type-checking. If the value of '--no-check=remote' is supplied, \
+      diagnostic errors from remote modules will be ignored.",
     )
 }
 
@@ -2036,16 +2036,13 @@ fn config_arg<'a>() -> Arg<'a> {
     .short('c')
     .long("config")
     .value_name("FILE")
-    .help("Load configuration file")
+    .help("Specify the configuration file")
     .long_help(
-      "Load configuration file.
-Before 1.14 Deno only supported loading tsconfig.json that allowed
-to customise TypeScript compiler settings.
-
-Starting with 1.14 configuration file can be used to configure different
-subcommands like `deno lint` or `deno fmt`.
-
-It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
+      "The configuration file can be used to configure different aspects of \
+      deno including TypeScript, linting, and code formatting. Typically the \
+      configuration file will be called `deno.json` or `deno.jsonc` and \
+      automatically detected; in that case this flag is not necessary. \
+      See https://deno.land/manual/getting_started/configuration_file",
     )
     .takes_value(true)
     .value_hint(ValueHint::FilePath)
