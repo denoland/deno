@@ -11,7 +11,7 @@
 ((window) => {
   const core = window.Deno.core;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayBufferIsView,
     ArrayPrototypeForEach,
     ArrayPrototypePush,
@@ -20,7 +20,6 @@
     BigInt,
     BigIntAsIntN,
     BigIntAsUintN,
-    DataView,
     Float32Array,
     Float64Array,
     FunctionPrototypeBind,
@@ -50,6 +49,7 @@
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -183,7 +183,7 @@
     const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
     return (V, opts = {}) => {
-      let x = toNumber(V, opts);
+      let x = toNumber(V);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
@@ -236,7 +236,7 @@
     const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
     return (V, opts = {}) => {
-      let x = toNumber(V, opts);
+      let x = toNumber(V);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
@@ -300,7 +300,7 @@
   });
 
   converters.float = (V, opts) => {
-    const x = toNumber(V, opts);
+    const x = toNumber(V);
 
     if (!NumberIsFinite(x)) {
       throw makeException(
@@ -327,8 +327,8 @@
     return y;
   };
 
-  converters["unrestricted float"] = (V, opts) => {
-    const x = toNumber(V, opts);
+  converters["unrestricted float"] = (V, _opts) => {
+    const x = toNumber(V);
 
     if (isNaN(x)) {
       return x;
@@ -342,7 +342,7 @@
   };
 
   converters.double = (V, opts) => {
-    const x = toNumber(V, opts);
+    const x = toNumber(V);
 
     if (!NumberIsFinite(x)) {
       throw makeException(
@@ -355,8 +355,8 @@
     return x;
   };
 
-  converters["unrestricted double"] = (V, opts) => {
-    const x = toNumber(V, opts);
+  converters["unrestricted double"] = (V, _opts) => {
+    const x = toNumber(V);
 
     return x;
   };
@@ -434,11 +434,11 @@
   }
 
   function isNonSharedArrayBuffer(V) {
-    return V instanceof ArrayBuffer;
+    return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
   }
 
   function isSharedArrayBuffer(V) {
-    return V instanceof SharedArrayBuffer;
+    return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
   }
 
   converters.ArrayBuffer = (V, opts = {}) => {
@@ -457,7 +457,7 @@
   };
 
   converters.DataView = (V, opts = {}) => {
-    if (!(V instanceof DataView)) {
+    if (!(ObjectPrototypeIsPrototypeOf(DataViewPrototype, V))) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -714,7 +714,7 @@
           throw makeException(
             TypeError,
             `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-            { ...opts },
+            opts,
           );
         }
       }
@@ -862,7 +862,7 @@
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!(V instanceof prototype) || V[brand] !== brand) {
+      if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -877,7 +877,9 @@
   }
 
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || self[brand] !== brand) {
+    if (
+      !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
+    ) {
       throw new TypeError("Illegal invocation");
     }
   }
@@ -944,7 +946,7 @@
     }
 
     function entries() {
-      assertBranded(this, prototype);
+      assertBranded(this, prototype.prototype);
       return createDefaultIterator(this, "key+value");
     }
 
@@ -963,7 +965,7 @@
       },
       keys: {
         value: function keys() {
-          assertBranded(this, prototype);
+          assertBranded(this, prototype.prototype);
           return createDefaultIterator(this, "key");
         },
         writable: true,
@@ -972,7 +974,7 @@
       },
       values: {
         value: function values() {
-          assertBranded(this, prototype);
+          assertBranded(this, prototype.prototype);
           return createDefaultIterator(this, "value");
         },
         writable: true,
@@ -981,7 +983,7 @@
       },
       forEach: {
         value: function forEach(idlCallback, thisArg = undefined) {
-          assertBranded(this, prototype);
+          assertBranded(this, prototype.prototype);
           const prefix = `Failed to execute 'forEach' on '${name}'`;
           requiredArguments(arguments.length, 1, { prefix });
           idlCallback = converters["Function"](idlCallback, {

@@ -10,12 +10,12 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
 use semver_parser::version::parse as semver_parse;
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use tempfile::TempDir;
 
 static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -23,10 +23,18 @@ static ARCHIVE_NAME: Lazy<String> =
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
+  let old_exe_path = std::env::current_exe()?;
+  let permissions = fs::metadata(&old_exe_path)?.permissions();
+
+  if permissions.readonly() {
+    bail!("You do not have write permission to {:?}", old_exe_path);
+  }
+
   let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
-  if let Some(ca_file) = upgrade_flags.ca_file {
+  let ca_file = upgrade_flags.ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
     client_builder = client_builder.add_root_certificate(cert);
@@ -114,9 +122,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
 
   println!("Deno is upgrading to version {}", &install_version);
 
-  let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data, cfg!(windows))?;
-  let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
@@ -146,7 +152,7 @@ async fn get_latest_release_version(
     .await?;
   let version = res.url().path_segments().unwrap().last().unwrap();
 
-  Ok(version.replace("v", ""))
+  Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(
@@ -223,7 +229,7 @@ pub fn unpack(
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
-  let temp_dir = TempDir::new()?.into_path();
+  let temp_dir = secure_tempfile::TempDir::new()?.into_path();
   let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
   let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);

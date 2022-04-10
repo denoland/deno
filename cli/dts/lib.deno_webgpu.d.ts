@@ -596,9 +596,9 @@ declare class GPUColorWrite {
 }
 
 declare interface GPUBlendComponent {
-  operation: GPUBlendOperation;
-  srcFactor: GPUBlendFactor;
-  dstFactor: GPUBlendFactor;
+  operation?: GPUBlendOperation;
+  srcFactor?: GPUBlendFactor;
+  dstFactor?: GPUBlendFactor;
 }
 
 declare type GPUBlendFactor =

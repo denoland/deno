@@ -3,6 +3,7 @@
 use crate::proc_state::ProcState;
 use deno_core::Extension;
 
+pub mod bench;
 mod errors;
 mod runtime_compiler;
 pub mod testing;

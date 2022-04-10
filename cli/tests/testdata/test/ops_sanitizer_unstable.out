@@ -6,24 +6,12 @@ test leak interval ... FAILED ([WILDCARD])
 failures:
 
 leak interval
-AssertionError: Test case is leaking async ops.
-Before:
-  - dispatched: 1
-  - completed: 1
-After:
-  - dispatched: [WILDCARD]
-  - completed: [WILDCARD]
-Ops:
-  op_sleep:
-    Before:
-      - dispatched: 1
-      - completed: 1
-    After:
-      - dispatched: [WILDCARD]
-      - completed: [WILDCARD]
+Test case is leaking async ops.
 
-Make sure to await all promises returned from Deno APIs before
-finishing test case.
+- 1 async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
+    at [WILDCARD]
+    at setInterval ([WILDCARD])
+    at [WILDCARD]/testdata/test/ops_sanitizer_unstable.ts:3:3
     at [WILDCARD]
 
 failures:

@@ -1,0 +1,35 @@
+Check [WILDCARD]/bench/exit_sanitizer.ts
+running 3 benches from [WILDCARD]/bench/exit_sanitizer.ts
+bench exit(0) ... 1000 iterations FAILED ([WILDCARD])
+bench exit(1) ... 1000 iterations FAILED ([WILDCARD])
+bench exit(2) ... 1000 iterations FAILED ([WILDCARD])
+
+failures:
+
+exit(0)
+AssertionError: Bench attempted to exit with exit code: 0
+    at [WILDCARD]
+    at [WILDCARD]/bench/exit_sanitizer.ts:2:8
+    at [WILDCARD]
+
+exit(1)
+AssertionError: Bench attempted to exit with exit code: 1
+    at [WILDCARD]
+    at [WILDCARD]/bench/exit_sanitizer.ts:6:8
+    at [WILDCARD]
+
+exit(2)
+AssertionError: Bench attempted to exit with exit code: 2
+    at [WILDCARD]
+    at [WILDCARD]/bench/exit_sanitizer.ts:10:8
+    at [WILDCARD]
+
+failures:
+
+	exit(0)
+	exit(1)
+	exit(2)
+
+bench result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Bench failed

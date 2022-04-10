@@ -21,7 +21,7 @@ use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -35,10 +35,11 @@ use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
+use secure_tempfile::TempDir;
 use std::collections::HashMap;
 use std::env::current_exe;
+use std::sync::Arc;
 use std::time::Duration;
-use tempfile::TempDir;
 use tokio::join;
 use tokio::time::sleep;
 use zeromq::prelude::*;
@@ -120,10 +121,10 @@ enum WorkerCommMsg {
 
 fn jupyter_extension(sender: WorkerCommSender) -> Extension {
   Extension::builder()
-    .ops(vec![("op_jupyter_display", op_sync(op_jupyter_display))])
-    .middleware(|name, opfn| match name {
-      "op_print" => op_sync(op_print),
-      _ => opfn,
+    .ops(vec![op_jupyter_display::decl()])
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
     })
     .state(move |state| {
       state.put(sender.clone());
@@ -140,6 +141,7 @@ pub struct DisplayArgs {
   metadata: Option<Value>,
 }
 
+#[op]
 pub fn op_jupyter_display(
   state: &mut OpState,
   args: DisplayArgs,
@@ -161,6 +163,7 @@ pub fn op_jupyter_display(
   Ok(())
 }
 
+#[op]
 pub fn op_print(
   state: &mut OpState,
   msg: String,
@@ -223,7 +226,7 @@ impl Kernel {
     let main_module = resolve_url_or_path("./$deno$jupyter.ts").unwrap();
     // TODO(bartlomieju): should we run with all permissions?
     let permissions = Permissions::allow_all();
-    let ps = ProcState::build(flags.clone()).await?;
+    let ps = ProcState::build(Arc::new(flags.clone())).await?;
     let mut worker = create_main_worker(
       &ps,
       main_module.clone(),
@@ -505,24 +508,35 @@ impl Kernel {
       .evaluate_line_with_object_wrapping(&exec_request_content.code)
       .await?;
 
-    let result = if output.value["exceptionDetails"].is_object() {
-      let stack_trace: Vec<String> = output.value["exceptionDetails"]
-        ["exception"]["description"]
-        .as_str()
+    let result = if let Some(ex_details) = &output.value.exception_details {
+      let stack_trace: Vec<String> = ex_details
+        .exception
+        .as_ref()
+        .unwrap()
+        .description
+        .as_ref()
         .unwrap()
         .split('\n')
         .map(|s| s.to_string())
         .collect();
       ExecResult::Error(ExecError {
         // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
-        err_name: output.value["exceptionDetails"]["exception"]["className"]
-          .to_string(),
+        err_name: output
+          .value
+          .exception_details
+          .unwrap()
+          .exception
+          .unwrap()
+          .class_name
+          .unwrap(),
         err_value: stack_trace.first().unwrap().to_string(),
         // output.value["exceptionDetails"]["stackTrace"]["callFrames"]
         stack_trace,
       })
     } else {
-      ExecResult::Ok(output.value["result"].clone())
+      // TODO(bartlomieju): fix this
+      // ExecResult::Ok(output.value.result.clone())
+      ExecResult::Ok(output.value.result.value.as_ref().unwrap().clone())
     };
 
     match result {

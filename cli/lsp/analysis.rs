@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::diagnostics::DenoDiagnostic;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
@@ -13,16 +14,15 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
-use lspower::lsp::Position;
-use lspower::lsp::Range;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
@@ -59,18 +59,6 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
-
-static DENO_TYPES_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#).unwrap()
-});
-
-static TRIPLE_SLASH_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap());
-
-static PATH_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap());
-static TYPES_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap());
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
@@ -185,7 +173,7 @@ fn check_specifier(
 
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
-pub(crate) fn fix_ts_import_changes(
+pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
   documents: &Documents,
@@ -335,7 +323,7 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub(crate) async fn ts_changes_to_edit(
+pub async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
@@ -359,12 +347,6 @@ pub struct CodeActionData {
   pub fix_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DenoFixData {
-  pub specifier: ModuleSpecifier,
-}
-
 #[derive(Debug, Clone)]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
@@ -384,58 +366,17 @@ pub struct CodeActionCollection {
 }
 
 impl CodeActionCollection {
-  pub(crate) fn add_deno_fix_action(
+  pub fn add_deno_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
-      if code == "no-assert-type" {
-        let code_action = lsp::CodeAction {
-          title: "Insert import assertion.".to_string(),
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          edit: Some(lsp::WorkspaceEdit {
-            changes: Some(HashMap::from([(
-              specifier.clone(),
-              vec![lsp::TextEdit {
-                new_text: " assert { type: \"json\" }".to_string(),
-                range: lsp::Range {
-                  start: diagnostic.range.end,
-                  end: diagnostic.range.end,
-                },
-              }],
-            )])),
-            ..Default::default()
-          }),
-          ..Default::default()
-        };
-        self.actions.push(CodeActionKind::Deno(code_action));
-      } else if let Some(data) = diagnostic.data.clone() {
-        let fix_data: DenoFixData = serde_json::from_value(data)?;
-        let title = if code == "no-cache-data" {
-          "Cache the data URL and its dependencies.".to_string()
-        } else {
-          format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-        };
-        let code_action = lsp::CodeAction {
-          title,
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![json!([fix_data.specifier])]),
-          }),
-          ..Default::default()
-        };
-        self.actions.push(CodeActionKind::Deno(code_action));
-      }
-    }
+    let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
+    self.actions.push(CodeActionKind::Deno(code_action));
     Ok(())
   }
 
-  pub(crate) fn add_deno_lint_ignore_action(
+  pub fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -598,7 +539,7 @@ impl CodeActionCollection {
   }
 
   /// Add a TypeScript code fix action to the code actions collection.
-  pub(crate) async fn add_ts_fix_action(
+  pub async fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,

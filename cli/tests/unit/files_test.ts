@@ -671,3 +671,123 @@ Deno.test({ permissions: { read: true } }, async function seekMode() {
   assertEquals(new TextDecoder().decode(buf), "H");
   file.close();
 });
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fileTruncateSyncSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fileTruncateSync.txt";
+    const file = Deno.openSync(filename, {
+      create: true,
+      read: true,
+      write: true,
+    });
+
+    file.truncateSync(20);
+    assertEquals(Deno.readFileSync(filename).byteLength, 20);
+    file.truncateSync(5);
+    assertEquals(Deno.readFileSync(filename).byteLength, 5);
+    file.truncateSync(-5);
+    assertEquals(Deno.readFileSync(filename).byteLength, 0);
+
+    file.close();
+    Deno.removeSync(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fileTruncateSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fileTruncate.txt";
+    const file = await Deno.open(filename, {
+      create: true,
+      read: true,
+      write: true,
+    });
+
+    await file.truncate(20);
+    assertEquals((await Deno.readFile(filename)).byteLength, 20);
+    await file.truncate(5);
+    assertEquals((await Deno.readFile(filename)).byteLength, 5);
+    await file.truncate(-5);
+    assertEquals((await Deno.readFile(filename)).byteLength, 0);
+
+    file.close();
+    await Deno.remove(filename);
+  },
+);
+
+Deno.test({ permissions: { read: true } }, function fileStatSyncSuccess() {
+  const file = Deno.openSync("README.md");
+  const fileInfo = file.statSync();
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
+
+  file.close();
+});
+
+Deno.test(async function fileStatSuccess() {
+  const file = await Deno.open("README.md");
+  const fileInfo = await file.stat();
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
+
+  file.close();
+});
+
+Deno.test({ permissions: { read: true } }, async function readableStream() {
+  const filename = "cli/tests/testdata/hello.txt";
+  const file = await Deno.open(filename);
+  assert(file.readable instanceof ReadableStream);
+  const chunks = [];
+  for await (const chunk of file.readable) {
+    chunks.push(chunk);
+  }
+  assertEquals(chunks.length, 1);
+  assertEquals(chunks[0].byteLength, 12);
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readableStreamTextEncoderPipe() {
+    const filename = "cli/tests/testdata/hello.txt";
+    const file = await Deno.open(filename);
+    const readable = file.readable.pipeThrough(new TextDecoderStream());
+    const chunks = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+    }
+    assertEquals(chunks.length, 1);
+    assertEquals(chunks[0].length, 12);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writableStream() {
+    const path = await Deno.makeTempFile();
+    const file = await Deno.open(path, { write: true });
+    assert(file.writable instanceof WritableStream);
+    const readable = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("hello "));
+        controller.enqueue(new TextEncoder().encode("world!"));
+        controller.close();
+      },
+    });
+    await readable.pipeTo(file.writable);
+    const res = await Deno.readTextFile(path);
+    assertEquals(res, "hello world!");
+  },
+);

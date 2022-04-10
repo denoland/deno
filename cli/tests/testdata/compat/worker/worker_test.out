@@ -1,0 +1,2 @@
+hello from worker
+process.pid from worker: [WILDCARD]

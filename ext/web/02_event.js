@@ -29,7 +29,9 @@
     ObjectCreate,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
+    ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -174,7 +176,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Event,
+        evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
         keys: EVENT_PROPS,
       }));
     }
@@ -866,6 +868,10 @@
     return target?.[eventTargetData]?.mode ?? null;
   }
 
+  function listenerCount(target, type) {
+    return getListeners(target)?.[type]?.length ?? 0;
+  }
+
   function getDefaultTargetData() {
     return {
       assignedSlot: false,
@@ -1058,9 +1064,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ErrorEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "message",
           "filename",
           "lineno",
@@ -1119,9 +1125,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CloseEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "wasClean",
           "code",
           "reason",
@@ -1151,9 +1157,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof MessageEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "data",
           "origin",
           "lastEventId",
@@ -1184,9 +1190,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CustomEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "detail",
         ],
       }));
@@ -1214,9 +1220,9 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ProgressEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
         keys: [
-          ...EVENT_PROPS,
+          ...new SafeArrayIterator(EVENT_PROPS),
           "lengthComputable",
           "loaded",
           "total",
@@ -1238,7 +1244,8 @@
 
       if (
         isSpecialErrorEventHandler &&
-        evt instanceof ErrorEvent && evt.type === "error"
+        ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+        evt.type === "error"
       ) {
         const ret = FunctionPrototypeCall(
           wrappedHandler.handler,
@@ -1323,6 +1330,7 @@
   window.__bootstrap.eventTarget = {
     EventTarget,
     setEventTargetData,
+    listenerCount,
   };
   window.__bootstrap.event = {
     setIsTrusted,

@@ -23,13 +23,13 @@ Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
 Shell (Mac, Linux):
 
 ```sh
-curl -fsSL https://deno.land/x/install/install.sh | sh
+curl -fsSL https://deno.land/install.sh | sh
 ```
 
 PowerShell (Windows):
 
 ```powershell
-iwr https://deno.land/x/install/install.ps1 -useb | iex
+iwr https://deno.land/install.ps1 -useb | iex
 ```
 
 [Homebrew](https://formulae.brew.sh/formula/deno) (Mac):

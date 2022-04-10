@@ -112,3 +112,14 @@ pub extern "C" fn get_add_u32_ptr() -> *const c_void {
 pub extern "C" fn get_sleep_blocking_ptr() -> *const c_void {
   sleep_blocking as *const c_void
 }
+
+#[no_mangle]
+pub static static_u32: u32 = 42;
+
+#[repr(C)]
+pub struct Structure {
+  _data: u32,
+}
+
+#[no_mangle]
+pub static static_ptr: Structure = Structure { _data: 42 };

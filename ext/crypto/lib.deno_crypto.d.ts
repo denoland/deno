@@ -82,7 +82,7 @@ interface EcKeyGenParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
-interface EcImportParams extends Algorithm {
+interface EcKeyImportParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
@@ -210,7 +210,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -221,7 +221,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -309,7 +309,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;

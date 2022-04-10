@@ -1,0 +1,6 @@
+Check [WILDCARD]/bench/load_unload.ts
+running 1 bench from [WILDCARD]/bench/load_unload.ts
+bench bench ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+
+bench result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

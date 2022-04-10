@@ -34,8 +34,10 @@
       core.close(this.rid);
     }
   }
+  const HttpClientPrototype = HttpClient.prototype;
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.createHttpClient = createHttpClient;
   window.__bootstrap.fetch.HttpClient = HttpClient;
+  window.__bootstrap.fetch.HttpClientPrototype = HttpClientPrototype;
 })(globalThis);

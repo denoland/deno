@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     Error,
+    ObjectPrototypeIsPrototypeOf,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -16,8 +17,11 @@
   const { serializePermissions } = window.__bootstrap.permissions;
   const { log } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.event;
-  const { deserializeJsMessageData, serializeJsMessageData } =
-    window.__bootstrap.messagePort;
+  const {
+    deserializeJsMessageData,
+    serializeJsMessageData,
+    MessagePortPrototype,
+  } = window.__bootstrap.messagePort;
 
   function createWorker(
     specifier,
@@ -199,7 +203,9 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transferables.filter((t) => t instanceof MessagePort),
+          ports: transferables.filter((t) =>
+            ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+          ),
         });
         this.dispatchEvent(event);
       }

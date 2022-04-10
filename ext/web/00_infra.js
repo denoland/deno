@@ -11,6 +11,7 @@
 ((window) => {
   const core = Deno.core;
   const {
+    Error,
     RegExp,
     ArrayPrototypeMap,
     StringPrototypeCharCodeAt,
@@ -18,6 +19,7 @@
     StringPrototypePadStart,
     TypeError,
     ArrayPrototypeJoin,
+    SafeArrayIterator,
     StringPrototypeCharAt,
     StringPrototypeMatch,
     StringPrototypeSlice,
@@ -31,11 +33,21 @@
   const ASCII_DIGIT = ["\u0030-\u0039"];
   const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
   const ASCII_LOWER_ALPHA = ["\u0061-\u007A"];
-  const ASCII_ALPHA = [...ASCII_UPPER_ALPHA, ...ASCII_LOWER_ALPHA];
-  const ASCII_ALPHANUMERIC = [...ASCII_DIGIT, ...ASCII_ALPHA];
+  const ASCII_ALPHA = [
+    ...new SafeArrayIterator(ASCII_UPPER_ALPHA),
+    ...new SafeArrayIterator(ASCII_LOWER_ALPHA),
+  ];
+  const ASCII_ALPHANUMERIC = [
+    ...new SafeArrayIterator(ASCII_DIGIT),
+    ...new SafeArrayIterator(ASCII_ALPHA),
+  ];
 
   const HTTP_TAB_OR_SPACE = ["\u0009", "\u0020"];
-  const HTTP_WHITESPACE = ["\u000A", "\u000D", ...HTTP_TAB_OR_SPACE];
+  const HTTP_WHITESPACE = [
+    "\u000A",
+    "\u000D",
+    ...new SafeArrayIterator(HTTP_TAB_OR_SPACE),
+  ];
 
   const HTTP_TOKEN_CODE_POINT = [
     "\u0021",
@@ -53,7 +65,7 @@
     "\u0060",
     "\u007C",
     "\u007E",
-    ...ASCII_ALPHANUMERIC,
+    ...new SafeArrayIterator(ASCII_ALPHANUMERIC),
   ];
   const HTTP_TOKEN_CODE_POINT_RE = new RegExp(
     `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
@@ -264,6 +276,24 @@
     return StringPrototypeMatch(s, HTTP_BETWEEN_WHITESPACE)?.[1] ?? "";
   }
 
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  /**
+   * @param {unknown} cond
+   * @param {string=} msg
+   * @returns {asserts cond}
+   */
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -288,5 +318,7 @@
     collectHttpQuotedString,
     forgivingBase64Encode,
     forgivingBase64Decode,
+    AssertionError,
+    assert,
   };
 })(globalThis);
