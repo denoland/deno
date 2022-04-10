@@ -1,0 +1,31 @@
+{
+  "imports": {
+    "https://cdn.skypack.dev/": "./cdn.skypack.dev/",
+    "https://cdn.skypack.dev/@octokit/core@3?dts": "./cdn.skypack.dev/@octokit/core@3.js",
+    "https://deno.land/": "./deno.land/",
+    "https://raw.githubusercontent.com/": "./raw.githubusercontent.com/"
+  },
+  "scopes": {
+    "./cdn.skypack.dev/": {
+      "/-/@octokit/auth-token@v2.5.0-63e6RmuUEnR1eflFvHL4/dist=es2019,mode=imports/optimized/@octokit/auth-token.js": "./cdn.skypack.dev/-/@octokit/auth-token@v2.5.0-63e6RmuUEnR1eflFvHL4/dist=es2019,mode=imports/optimized/@octokit/auth-token.js",
+      "/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js": "./cdn.skypack.dev/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js",
+      "/-/@octokit/endpoint@v6.0.12-uRrGy3NGbXOw4pbkNPpd/dist=es2019,mode=imports/optimized/@octokit/endpoint.js": "./cdn.skypack.dev/-/@octokit/endpoint@v6.0.12-uRrGy3NGbXOw4pbkNPpd/dist=es2019,mode=imports/optimized/@octokit/endpoint.js",
+      "/-/@octokit/graphql@v4.8.0-EbMgAhtBEVS5THey9fbY/dist=es2019,mode=imports/optimized/@octokit/graphql.js": "./cdn.skypack.dev/-/@octokit/graphql@v4.8.0-EbMgAhtBEVS5THey9fbY/dist=es2019,mode=imports/optimized/@octokit/graphql.js",
+      "/-/@octokit/graphql@v4.8.0-EbMgAhtBEVS5THey9fbY/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/@octokit/graphql@v4.8.0-EbMgAhtBEVS5THey9fbY/dist=es2019,mode=types/dist-types/index.d.ts",
+      "/-/@octokit/openapi-types@v11.2.0-gu1h7aCgAJhI0Ck7YfZg/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/@octokit/openapi-types@v11.2.0-gu1h7aCgAJhI0Ck7YfZg/dist=es2019,mode=types/types.d.ts",
+      "/-/@octokit/request-error@v2.1.0-eEdMdUdHjpMHPFvA4aCp/dist=es2019,mode=imports/optimized/@octokit/request-error.js": "./cdn.skypack.dev/-/@octokit/request-error@v2.1.0-eEdMdUdHjpMHPFvA4aCp/dist=es2019,mode=imports/optimized/@octokit/request-error.js",
+      "/-/@octokit/request-error@v2.1.0-eEdMdUdHjpMHPFvA4aCp/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/@octokit/request-error@v2.1.0-eEdMdUdHjpMHPFvA4aCp/dist=es2019,mode=types/dist-types/index.d.ts",
+      "/-/@octokit/request@v5.6.3-8MiyZSoy8B73C1K9nYC8/dist=es2019,mode=imports/optimized/@octokit/request.js": "./cdn.skypack.dev/-/@octokit/request@v5.6.3-8MiyZSoy8B73C1K9nYC8/dist=es2019,mode=imports/optimized/@octokit/request.js",
+      "/-/@octokit/request@v5.6.3-8MiyZSoy8B73C1K9nYC8/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/@octokit/request@v5.6.3-8MiyZSoy8B73C1K9nYC8/dist=es2019,mode=types/dist-types/index.d.ts",
+      "/-/@octokit/types@v6.33.0-CLItWMbWROrzbdY30nuK/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/@octokit/types@v6.33.0-CLItWMbWROrzbdY30nuK/dist=es2019,mode=types/dist-types/index.d.ts",
+      "/-/@octokit/types@v6.34.0-YyJmQq3Ajv0ACapsoOVh/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/@octokit/types@v6.34.0-YyJmQq3Ajv0ACapsoOVh/dist=es2019,mode=types/dist-types/index.d.ts",
+      "/-/before-after-hook@v2.2.2-pi5OVaqfPuA5i8u2q0Od/dist=es2019,mode=imports/optimized/before-after-hook.js": "./cdn.skypack.dev/-/before-after-hook@v2.2.2-pi5OVaqfPuA5i8u2q0Od/dist=es2019,mode=imports/optimized/before-after-hook.js",
+      "/-/before-after-hook@v2.2.2-pi5OVaqfPuA5i8u2q0Od/dist=es2019,mode=types/index.d.ts": "./cdn.skypack.dev/-/before-after-hook@v2.2.2-pi5OVaqfPuA5i8u2q0Od/dist=es2019,mode=types/index.d.ts",
+      "/-/deprecation@v2.3.1-uvOjAQiALAZPHmrlznlP/dist=es2019,mode=imports/optimized/deprecation.js": "./cdn.skypack.dev/-/deprecation@v2.3.1-uvOjAQiALAZPHmrlznlP/dist=es2019,mode=imports/optimized/deprecation.js",
+      "/-/is-plain-object@v5.0.0-8mrVMp9y5RYdpZYGe1Tt/dist=es2019,mode=imports/optimized/is-plain-object.js": "./cdn.skypack.dev/-/is-plain-object@v5.0.0-8mrVMp9y5RYdpZYGe1Tt/dist=es2019,mode=imports/optimized/is-plain-object.js",
+      "/-/once@v1.4.0-dZva3nt1fLBY6vpXF5Hj/dist=es2019,mode=imports/optimized/once.js": "./cdn.skypack.dev/-/once@v1.4.0-dZva3nt1fLBY6vpXF5Hj/dist=es2019,mode=imports/optimized/once.js",
+      "/-/universal-user-agent@v6.0.0-fUAPE3UH5QP7qG0fd0dH/dist=es2019,mode=imports/optimized/universal-user-agent.js": "./cdn.skypack.dev/-/universal-user-agent@v6.0.0-fUAPE3UH5QP7qG0fd0dH/dist=es2019,mode=imports/optimized/universal-user-agent.js",
+      "/-/wrappy@v1.0.2-e8nLh7Qms0NRhbAbUpJP/dist=es2019,mode=imports/optimized/wrappy.js": "./cdn.skypack.dev/-/wrappy@v1.0.2-e8nLh7Qms0NRhbAbUpJP/dist=es2019,mode=imports/optimized/wrappy.js"
+    }
+  }
+}
