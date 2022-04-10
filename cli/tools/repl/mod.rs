@@ -60,9 +60,7 @@ async fn read_line_and_poll(
   }
 }
 
-fn read_script(
-  script_path: String,
-) -> Result<String, AnyError> {
+fn read_script(script_path: String) -> Result<String, AnyError> {
   let mut file = File::open(script_path)?;
   let mut data = Vec::new();
   file.read_to_end(&mut data)?;
@@ -89,12 +87,14 @@ pub async fn run(
   if let Some(script) = maybe_script {
     match read_script(script) {
       Ok(script_source) => {
-        let output = repl_session.evaluate_line_and_get_output(&script_source).await?;
+        let output = repl_session
+          .evaluate_line_and_get_output(&script_source)
+          .await?;
         // only output errors
         if let EvaluationOutput::Error(error_text) = output {
           println!("error in --script flag. {}", error_text);
         }
-      },
+      }
       Err(e) => {
         println!("error in --script flag. {}", e);
       }

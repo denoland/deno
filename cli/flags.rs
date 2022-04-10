@@ -209,7 +209,10 @@ pub enum DenoSubcommand {
 
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
-    DenoSubcommand::Repl(ReplFlags { script: None, eval: None })
+    DenoSubcommand::Repl(ReplFlags {
+      script: None,
+      eval: None,
+    })
   }
 }
 
@@ -520,7 +523,13 @@ where
     Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
     Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
     Some(("vendor", m)) => vendor_parse(&mut flags, m),
-    _ => handle_repl_flags(&mut flags, ReplFlags { script: None, eval: None }),
+    _ => handle_repl_flags(
+      &mut flags,
+      ReplFlags {
+        script: None,
+        eval: None,
+      },
+    ),
   }
 
   Ok(flags)
@@ -3733,7 +3742,10 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl(ReplFlags { script: None, eval: None }),
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          script: None,
+          eval: None
+        }),
         allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: None,
         allow_env: Some(vec![]),
@@ -3755,7 +3767,10 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl(ReplFlags { script: None, eval: None }),
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          script: None,
+          eval: None
+        }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -4514,7 +4529,10 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl(ReplFlags { script: None, eval: None }),
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          script: None,
+          eval: None
+        }),
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
