@@ -40,6 +40,7 @@ async function forwardReleaseCommitToMain() {
     return;
   }
 
+  await repo.runCommandWithOutput(["git", "fetch", "origin", "main"]);
   const releaseCommitHash =
     (await repo.runCommand(["git", "rev-parse", "HEAD"])).trim();
   const newBranchName = `forward_v${cliCrate.version}`;

@@ -986,8 +986,7 @@ impl Hook for BundleHook {
         value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
           span,
           value: module_record.file_name.to_string().into(),
-          kind: ast::StrKind::Synthesized,
-          has_escape: false,
+          raw: None,
         }))),
       },
       ast::KeyValueProp {
