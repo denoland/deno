@@ -1,5 +1,5 @@
-import { request as request2 } from "/-/@octokit/request@v5.6.3-8MiyZSoy8B73C1K9nYC8/dist=es2019,mode=imports/optimized/@octokit/request.js";
-import { getUserAgent } from "/-/universal-user-agent@v6.0.0-fUAPE3UH5QP7qG0fd0dH/dist=es2019,mode=imports/optimized/universal-user-agent.js";
+import {request as request2} from "/-/@octokit/request@v5.6.3-8MiyZSoy8B73C1K9nYC8/dist=es2019,mode=imports/optimized/@octokit/request.js";
+import {getUserAgent} from "/-/universal-user-agent@v6.0.0-fUAPE3UH5QP7qG0fd0dH/dist=es2019,mode=imports/optimized/universal-user-agent.js";
 const VERSION = "4.8.0";
 function _buildMessageForResponseErrors(data) {
   return `Request failed due to following response errors:
@@ -26,31 +26,22 @@ const NON_VARIABLE_OPTIONS = [
   "headers",
   "request",
   "query",
-  "mediaType",
+  "mediaType"
 ];
 const FORBIDDEN_VARIABLE_OPTIONS = ["query", "method", "url"];
 const GHES_V3_SUFFIX_REGEX = /\/api\/v3\/?$/;
 function graphql(request3, query, options) {
   if (options) {
     if (typeof query === "string" && "query" in options) {
-      return Promise.reject(
-        new Error(`[@octokit/graphql] "query" cannot be used as variable name`),
-      );
+      return Promise.reject(new Error(`[@octokit/graphql] "query" cannot be used as variable name`));
     }
     for (const key in options) {
-      if (!FORBIDDEN_VARIABLE_OPTIONS.includes(key)) {
+      if (!FORBIDDEN_VARIABLE_OPTIONS.includes(key))
         continue;
-      }
-      return Promise.reject(
-        new Error(
-          `[@octokit/graphql] "${key}" cannot be used as variable name`,
-        ),
-      );
+      return Promise.reject(new Error(`[@octokit/graphql] "${key}" cannot be used as variable name`));
     }
   }
-  const parsedOptions = typeof query === "string"
-    ? Object.assign({ query }, options)
-    : query;
+  const parsedOptions = typeof query === "string" ? Object.assign({query}, options) : query;
   const requestOptions = Object.keys(parsedOptions).reduce((result, key) => {
     if (NON_VARIABLE_OPTIONS.includes(key)) {
       result[key] = parsedOptions[key];
@@ -84,21 +75,21 @@ function withDefaults(request$1, newDefaults) {
   };
   return Object.assign(newApi, {
     defaults: withDefaults.bind(null, newRequest),
-    endpoint: request2.endpoint,
+    endpoint: request2.endpoint
   });
 }
 const graphql$1 = withDefaults(request2, {
   headers: {
-    "user-agent": `octokit-graphql.js/${VERSION} ${getUserAgent()}`,
+    "user-agent": `octokit-graphql.js/${VERSION} ${getUserAgent()}`
   },
   method: "POST",
-  url: "/graphql",
+  url: "/graphql"
 });
 function withCustomRequest(customRequest) {
   return withDefaults(customRequest, {
     method: "POST",
-    url: "/graphql",
+    url: "/graphql"
   });
 }
-export { graphql$1 as graphql, GraphqlResponseError, withCustomRequest };
+export {GraphqlResponseError, graphql$1 as graphql, withCustomRequest};
 export default null;

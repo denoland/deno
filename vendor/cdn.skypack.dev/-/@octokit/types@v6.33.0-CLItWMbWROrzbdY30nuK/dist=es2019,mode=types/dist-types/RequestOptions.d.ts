@@ -6,9 +6,9 @@ import { Url } from "./Url.d.ts";
  * Generic request options as they are returned by the `endpoint()` method
  */
 export declare type RequestOptions = {
-  method: RequestMethod;
-  url: Url;
-  headers: RequestHeaders;
-  body?: any;
-  request?: RequestRequestOptions;
+    method: RequestMethod;
+    url: Url;
+    headers: RequestHeaders;
+    body?: any;
+    request?: RequestRequestOptions;
 };

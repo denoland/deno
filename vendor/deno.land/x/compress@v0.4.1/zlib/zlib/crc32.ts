@@ -6,7 +6,7 @@ export function makeTable() {
   for (let n = 0; n < 256; n++) {
     c = n;
     for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (m ^ (c >>> 1)) : (c >>> 1);
+      c = ((c & 1) ? (m ^ (c >>> 1)) : (c >>> 1));
     }
     table[n] = c;
   }

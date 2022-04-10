@@ -1,12 +1,10 @@
 var wrappy_1 = wrappy;
 function wrappy(fn, cb) {
-  if (fn && cb) {
+  if (fn && cb)
     return wrappy(fn)(cb);
-  }
-  if (typeof fn !== "function") {
+  if (typeof fn !== "function")
     throw new TypeError("need wrapper function");
-  }
-  Object.keys(fn).forEach(function (k) {
+  Object.keys(fn).forEach(function(k) {
     wrapper[k] = fn[k];
   });
   return wrapper;
@@ -18,7 +16,7 @@ function wrappy(fn, cb) {
     var ret = fn.apply(this, args);
     var cb2 = args[args.length - 1];
     if (typeof ret === "function" && ret !== cb2) {
-      Object.keys(cb2).forEach(function (k) {
+      Object.keys(cb2).forEach(function(k) {
         ret[k] = cb2[k];
       });
     }

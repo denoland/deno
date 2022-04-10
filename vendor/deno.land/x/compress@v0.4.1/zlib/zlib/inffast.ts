@@ -321,8 +321,8 @@ export default function inflate_fast(strm: any, start: number) {
   /* update state and return */
   strm.next_in = _in;
   strm.next_out = _out;
-  strm.avail_in = _in < last ? 5 + (last - _in) : 5 - (_in - last);
-  strm.avail_out = _out < end ? 257 + (end - _out) : 257 - (_out - end);
+  strm.avail_in = (_in < last ? 5 + (last - _in) : 5 - (_in - last));
+  strm.avail_out = (_out < end ? 257 + (end - _out) : 257 - (_out - end));
   state.hold = hold;
   state.bits = bits;
   return;

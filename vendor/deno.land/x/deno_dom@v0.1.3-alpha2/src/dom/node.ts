@@ -1,10 +1,6 @@
 import { getLock, setLock } from "../constructor-lock.ts";
 import { NodeList, NodeListMutator, nodeListMutatorSym } from "./node-list.ts";
-import {
-  HTMLCollection,
-  HTMLCollectionMutator,
-  HTMLCollectionMutatorSym,
-} from "./html-collection.ts";
+import { HTMLCollection, HTMLCollectionMutator, HTMLCollectionMutatorSym } from "./html-collection.ts";
 import type { Element } from "./element.ts";
 import type { Document } from "./document.ts";
 
@@ -38,7 +34,7 @@ export enum NodeType {
 }
 
 const nodesAndTextNodes = (nodes: (Node | any)[], parentNode: Node) => {
-  return nodes.map((n) => {
+  return nodes.map(n => {
     let node = n;
 
     if (!(n instanceof Node)) {
@@ -48,7 +44,7 @@ const nodesAndTextNodes = (nodes: (Node | any)[], parentNode: Node) => {
     node.parentNode = node.parentElement = parentNode;
     return node;
   });
-};
+}
 
 export class Node extends EventTarget {
   public nodeValue: string | null;
@@ -317,3 +313,4 @@ export class Comment extends CharacterData {
     return <string> this.nodeValue;
   }
 }
+

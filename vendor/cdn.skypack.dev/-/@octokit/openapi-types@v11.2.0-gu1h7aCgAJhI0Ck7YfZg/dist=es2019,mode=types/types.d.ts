@@ -189,10 +189,7 @@ export interface paths {
      *
      * If you have two-factor authentication setup, Basic Authentication for this endpoint requires that you use a one-time password (OTP) and your username and password instead of tokens. For more information, see "[Working with two-factor authentication](https://docs.github.com/rest/overview/other-authentication-methods#working-with-two-factor-authentication)."
      */
-    put:
-      operations[
-        "oauth-authorizations/get-or-create-authorization-for-app-and-fingerprint"
-      ];
+    put: operations["oauth-authorizations/get-or-create-authorization-for-app-and-fingerprint"];
   };
   "/authorizations/{authorization_id}": {
     /** **Deprecation Notice:** GitHub will discontinue the [OAuth Authorizations API](https://docs.github.com/rest/reference/oauth-authorizations), which is used by integrations to create personal access tokens and OAuth tokens, and you must now create these tokens using our [web application flow](https://docs.github.com/apps/building-oauth-apps/authorizing-oauth-apps/#web-application-flow). The [OAuth Authorizations API](https://docs.github.com/rest/reference/oauth-authorizations) will be removed on November, 13, 2020. For more information, including scheduled brownouts, see the [blog post](https://developer.github.com/changes/2020-02-14-deprecating-oauth-auth-endpoint/). */
@@ -224,15 +221,13 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
      */
-    get:
-      operations["enterprise-admin/get-github-actions-permissions-enterprise"];
+    get: operations["enterprise-admin/get-github-actions-permissions-enterprise"];
     /**
      * Sets the GitHub Actions permissions policy for organizations and allowed actions in an enterprise.
      *
      * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
      */
-    put:
-      operations["enterprise-admin/set-github-actions-permissions-enterprise"];
+    put: operations["enterprise-admin/set-github-actions-permissions-enterprise"];
   };
   "/enterprises/{enterprise}/actions/permissions/organizations": {
     /**
@@ -240,19 +235,13 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
      */
-    get:
-      operations[
-        "enterprise-admin/list-selected-organizations-enabled-github-actions-enterprise"
-      ];
+    get: operations["enterprise-admin/list-selected-organizations-enabled-github-actions-enterprise"];
     /**
      * Replaces the list of selected organizations that are enabled for GitHub Actions in an enterprise. To use this endpoint, the enterprise permission policy for `enabled_organizations` must be configured to `selected`. For more information, see "[Set GitHub Actions permissions for an enterprise](#set-github-actions-permissions-for-an-enterprise)."
      *
      * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
      */
-    put:
-      operations[
-        "enterprise-admin/set-selected-organizations-enabled-github-actions-enterprise"
-      ];
+    put: operations["enterprise-admin/set-selected-organizations-enabled-github-actions-enterprise"];
   };
   "/enterprises/{enterprise}/actions/permissions/organizations/{org_id}": {
     /**
@@ -260,19 +249,13 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
      */
-    put:
-      operations[
-        "enterprise-admin/enable-selected-organization-github-actions-enterprise"
-      ];
+    put: operations["enterprise-admin/enable-selected-organization-github-actions-enterprise"];
     /**
      * Removes an organization from the list of selected organizations that are enabled for GitHub Actions in an enterprise. To use this endpoint, the enterprise permission policy for `enabled_organizations` must be configured to `selected`. For more information, see "[Set GitHub Actions permissions for an enterprise](#set-github-actions-permissions-for-an-enterprise)."
      *
      * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
      */
-    delete:
-      operations[
-        "enterprise-admin/disable-selected-organization-github-actions-enterprise"
-      ];
+    delete: operations["enterprise-admin/disable-selected-organization-github-actions-enterprise"];
   };
   "/enterprises/{enterprise}/actions/permissions/selected-actions": {
     /**
@@ -294,19 +277,13 @@ export interface paths {
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    get:
-      operations[
-        "enterprise-admin/list-self-hosted-runner-groups-for-enterprise"
-      ];
+    get: operations["enterprise-admin/list-self-hosted-runner-groups-for-enterprise"];
     /**
      * Creates a new self-hosted runner group for an enterprise.
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    post:
-      operations[
-        "enterprise-admin/create-self-hosted-runner-group-for-enterprise"
-      ];
+    post: operations["enterprise-admin/create-self-hosted-runner-group-for-enterprise"];
   };
   "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}": {
     /**
@@ -314,113 +291,77 @@ export interface paths {
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    get:
-      operations[
-        "enterprise-admin/get-self-hosted-runner-group-for-enterprise"
-      ];
+    get: operations["enterprise-admin/get-self-hosted-runner-group-for-enterprise"];
     /**
      * Deletes a self-hosted runner group for an enterprise.
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    delete:
-      operations[
-        "enterprise-admin/delete-self-hosted-runner-group-from-enterprise"
-      ];
+    delete: operations["enterprise-admin/delete-self-hosted-runner-group-from-enterprise"];
     /**
      * Updates the `name` and `visibility` of a self-hosted runner group in an enterprise.
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    patch:
-      operations[
-        "enterprise-admin/update-self-hosted-runner-group-for-enterprise"
-      ];
+    patch: operations["enterprise-admin/update-self-hosted-runner-group-for-enterprise"];
   };
-  "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/organizations":
-    {
-      /**
-       * Lists the organizations with access to a self-hosted runner group.
-       *
-       * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
-       */
-      get:
-        operations[
-          "enterprise-admin/list-org-access-to-self-hosted-runner-group-in-enterprise"
-        ];
-      /**
-       * Replaces the list of organizations that have access to a self-hosted runner configured in an enterprise.
-       *
-       * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
-       */
-      put:
-        operations[
-          "enterprise-admin/set-org-access-to-self-hosted-runner-group-in-enterprise"
-        ];
-    };
-  "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/organizations/{org_id}":
-    {
-      /**
-       * Adds an organization to the list of selected organizations that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an enterprise](#create-a-self-hosted-runner-group-for-an-enterprise)."
-       *
-       * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
-       */
-      put:
-        operations[
-          "enterprise-admin/add-org-access-to-self-hosted-runner-group-in-enterprise"
-        ];
-      /**
-       * Removes an organization from the list of selected organizations that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an enterprise](#create-a-self-hosted-runner-group-for-an-enterprise)."
-       *
-       * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
-       */
-      delete:
-        operations[
-          "enterprise-admin/remove-org-access-to-self-hosted-runner-group-in-enterprise"
-        ];
-    };
+  "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/organizations": {
+    /**
+     * Lists the organizations with access to a self-hosted runner group.
+     *
+     * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
+     */
+    get: operations["enterprise-admin/list-org-access-to-self-hosted-runner-group-in-enterprise"];
+    /**
+     * Replaces the list of organizations that have access to a self-hosted runner configured in an enterprise.
+     *
+     * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
+     */
+    put: operations["enterprise-admin/set-org-access-to-self-hosted-runner-group-in-enterprise"];
+  };
+  "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/organizations/{org_id}": {
+    /**
+     * Adds an organization to the list of selected organizations that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an enterprise](#create-a-self-hosted-runner-group-for-an-enterprise)."
+     *
+     * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
+     */
+    put: operations["enterprise-admin/add-org-access-to-self-hosted-runner-group-in-enterprise"];
+    /**
+     * Removes an organization from the list of selected organizations that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an enterprise](#create-a-self-hosted-runner-group-for-an-enterprise)."
+     *
+     * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
+     */
+    delete: operations["enterprise-admin/remove-org-access-to-self-hosted-runner-group-in-enterprise"];
+  };
   "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/runners": {
     /**
      * Lists the self-hosted runners that are in a specific enterprise group.
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    get:
-      operations[
-        "enterprise-admin/list-self-hosted-runners-in-group-for-enterprise"
-      ];
+    get: operations["enterprise-admin/list-self-hosted-runners-in-group-for-enterprise"];
     /**
      * Replaces the list of self-hosted runners that are part of an enterprise runner group.
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    put:
-      operations[
-        "enterprise-admin/set-self-hosted-runners-in-group-for-enterprise"
-      ];
+    put: operations["enterprise-admin/set-self-hosted-runners-in-group-for-enterprise"];
   };
-  "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/runners/{runner_id}":
-    {
-      /**
-       * Adds a self-hosted runner to a runner group configured in an enterprise.
-       *
-       * You must authenticate using an access token with the `manage_runners:enterprise`
-       * scope to use this endpoint.
-       */
-      put:
-        operations[
-          "enterprise-admin/add-self-hosted-runner-to-group-for-enterprise"
-        ];
-      /**
-       * Removes a self-hosted runner from a group configured in an enterprise. The runner is then returned to the default group.
-       *
-       * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
-       */
-      delete:
-        operations[
-          "enterprise-admin/remove-self-hosted-runner-from-group-for-enterprise"
-        ];
-    };
+  "/enterprises/{enterprise}/actions/runner-groups/{runner_group_id}/runners/{runner_id}": {
+    /**
+     * Adds a self-hosted runner to a runner group configured in an enterprise.
+     *
+     * You must authenticate using an access token with the `manage_runners:enterprise`
+     * scope to use this endpoint.
+     */
+    put: operations["enterprise-admin/add-self-hosted-runner-to-group-for-enterprise"];
+    /**
+     * Removes a self-hosted runner from a group configured in an enterprise. The runner is then returned to the default group.
+     *
+     * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
+     */
+    delete: operations["enterprise-admin/remove-self-hosted-runner-from-group-for-enterprise"];
+  };
   "/enterprises/{enterprise}/actions/runners": {
     /**
      * Lists all self-hosted runners configured for an enterprise.
@@ -451,8 +392,7 @@ export interface paths {
      * ./config.sh --url https://github.com/enterprises/octo-enterprise --token TOKEN
      * ```
      */
-    post:
-      operations["enterprise-admin/create-registration-token-for-enterprise"];
+    post: operations["enterprise-admin/create-registration-token-for-enterprise"];
   };
   "/enterprises/{enterprise}/actions/runners/remove-token": {
     /**
@@ -483,8 +423,7 @@ export interface paths {
      *
      * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
      */
-    delete:
-      operations["enterprise-admin/delete-self-hosted-runner-from-enterprise"];
+    delete: operations["enterprise-admin/delete-self-hosted-runner-from-enterprise"];
   };
   "/enterprises/{enterprise}/audit-log": {
     /** Gets the audit log for an enterprise. To use this endpoint, you must be an enterprise admin, and you must use an access token with the `admin:enterprise` scope. */
@@ -628,6 +567,7 @@ export interface paths {
      * List issues assigned to the authenticated user across all visible repositories including owned repositories, member
      * repositories, and organization repositories. You can use the `filter` query parameter to fetch issues that are not
      * necessarily assigned to you.
+     *
      *
      * **Note**: GitHub's REST API v3 considers every pull request an issue, but not every issue is a pull request. For this
      * reason, "Issues" endpoints may return both issues and pull requests in the response. You can identify pull requests by
@@ -784,19 +724,13 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:org` scope to use this endpoint. GitHub Apps must have the `administration` organization permission to use this API.
      */
-    get:
-      operations[
-        "actions/list-selected-repositories-enabled-github-actions-organization"
-      ];
+    get: operations["actions/list-selected-repositories-enabled-github-actions-organization"];
     /**
      * Replaces the list of selected repositories that are enabled for GitHub Actions in an organization. To use this endpoint, the organization permission policy for `enabled_repositories` must be configured to `selected`. For more information, see "[Set GitHub Actions permissions for an organization](#set-github-actions-permissions-for-an-organization)."
      *
      * You must authenticate using an access token with the `admin:org` scope to use this endpoint. GitHub Apps must have the `administration` organization permission to use this API.
      */
-    put:
-      operations[
-        "actions/set-selected-repositories-enabled-github-actions-organization"
-      ];
+    put: operations["actions/set-selected-repositories-enabled-github-actions-organization"];
   };
   "/orgs/{org}/actions/permissions/repositories/{repository_id}": {
     /**
@@ -804,19 +738,13 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:org` scope to use this endpoint. GitHub Apps must have the `administration` organization permission to use this API.
      */
-    put:
-      operations[
-        "actions/enable-selected-repository-github-actions-organization"
-      ];
+    put: operations["actions/enable-selected-repository-github-actions-organization"];
     /**
      * Removes a repository from the list of selected repositories that are enabled for GitHub Actions in an organization. To use this endpoint, the organization permission policy for `enabled_repositories` must be configured to `selected`. For more information, see "[Set GitHub Actions permissions for an organization](#set-github-actions-permissions-for-an-organization)."
      *
      * You must authenticate using an access token with the `admin:org` scope to use this endpoint. GitHub Apps must have the `administration` organization permission to use this API.
      */
-    delete:
-      operations[
-        "actions/disable-selected-repository-github-actions-organization"
-      ];
+    delete: operations["actions/disable-selected-repository-github-actions-organization"];
   };
   "/orgs/{org}/actions/permissions/selected-actions": {
     /**
@@ -888,8 +816,7 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:org` scope to use this endpoint.
      */
-    get:
-      operations["actions/list-repo-access-to-self-hosted-runner-group-in-org"];
+    get: operations["actions/list-repo-access-to-self-hosted-runner-group-in-org"];
     /**
      * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
      *
@@ -897,35 +824,29 @@ export interface paths {
      *
      * You must authenticate using an access token with the `admin:org` scope to use this endpoint.
      */
-    put:
-      operations["actions/set-repo-access-to-self-hosted-runner-group-in-org"];
+    put: operations["actions/set-repo-access-to-self-hosted-runner-group-in-org"];
   };
-  "/orgs/{org}/actions/runner-groups/{runner_group_id}/repositories/{repository_id}":
-    {
-      /**
-       * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
-       *
-       * Adds a repository to the list of selected repositories that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an organization](#create-a-self-hosted-runner-group-for-an-organization)."
-       *
-       * You must authenticate using an access token with the `admin:org`
-       * scope to use this endpoint.
-       */
-      put:
-        operations[
-          "actions/add-repo-access-to-self-hosted-runner-group-in-org"
-        ];
-      /**
-       * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
-       *
-       * Removes a repository from the list of selected repositories that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an organization](#create-a-self-hosted-runner-group-for-an-organization)."
-       *
-       * You must authenticate using an access token with the `admin:org` scope to use this endpoint.
-       */
-      delete:
-        operations[
-          "actions/remove-repo-access-to-self-hosted-runner-group-in-org"
-        ];
-    };
+  "/orgs/{org}/actions/runner-groups/{runner_group_id}/repositories/{repository_id}": {
+    /**
+     * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
+     *
+     *
+     * Adds a repository to the list of selected repositories that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an organization](#create-a-self-hosted-runner-group-for-an-organization)."
+     *
+     * You must authenticate using an access token with the `admin:org`
+     * scope to use this endpoint.
+     */
+    put: operations["actions/add-repo-access-to-self-hosted-runner-group-in-org"];
+    /**
+     * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
+     *
+     *
+     * Removes a repository from the list of selected repositories that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an organization](#create-a-self-hosted-runner-group-for-an-organization)."
+     *
+     * You must authenticate using an access token with the `admin:org` scope to use this endpoint.
+     */
+    delete: operations["actions/remove-repo-access-to-self-hosted-runner-group-in-org"];
+  };
   "/orgs/{org}/actions/runner-groups/{runner_group_id}/runners": {
     /**
      * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
@@ -948,6 +869,7 @@ export interface paths {
     /**
      * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
      *
+     *
      * Adds a self-hosted runner to a runner group configured in an organization.
      *
      * You must authenticate using an access token with the `admin:org`
@@ -956,6 +878,7 @@ export interface paths {
     put: operations["actions/add-self-hosted-runner-to-group-for-org"];
     /**
      * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
+     *
      *
      * Removes a self-hosted runner from a group configured in an organization. The runner is then returned to the default group.
      *
@@ -1065,6 +988,7 @@ export interface paths {
      *
      * console.log(encrypted);
      * ```
+     *
      *
      * #### Example encrypting a secret using Python
      *
@@ -1386,42 +1310,39 @@ export interface paths {
      * To use this endpoint, you must authenticate using an access token with the `packages:read` scope.
      * If `package_type` is not `container`, your token must also include the `repo` scope.
      */
-    get:
-      operations["packages/get-all-package-versions-for-package-owned-by-org"];
+    get: operations["packages/get-all-package-versions-for-package-owned-by-org"];
   };
-  "/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}":
-    {
-      /**
-       * Gets a specific package version in an organization.
-       *
-       * You must authenticate using an access token with the `packages:read` scope.
-       * If `package_type` is not `container`, your token must also include the `repo` scope.
-       */
-      get: operations["packages/get-package-version-for-organization"];
-      /**
-       * Deletes a specific package version in an organization. If the package is public and the package version has more than 5,000 downloads, you cannot delete the package version. In this scenario, contact GitHub support for further assistance.
-       *
-       * To use this endpoint, you must have admin permissions in the organization and authenticate using an access token with the `packages:read` and `packages:delete` scopes. In addition:
-       * - If `package_type` is not `container`, your token must also include the `repo` scope.
-       * - If `package_type` is `container`, you must also have admin permissions to the container you want to delete.
-       */
-      delete: operations["packages/delete-package-version-for-org"];
-    };
-  "/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}/restore":
-    {
-      /**
-       * Restores a specific package version in an organization.
-       *
-       * You can restore a deleted package under the following conditions:
-       *   - The package was deleted within the last 30 days.
-       *   - The same package namespace and version is still available and not reused for a new package. If the same package namespace is not available, you will not be able to restore your package. In this scenario, to restore the deleted package, you must delete the new package that uses the deleted package's namespace first.
-       *
-       * To use this endpoint, you must have admin permissions in the organization and authenticate using an access token with the `packages:read` and `packages:write` scopes. In addition:
-       * - If `package_type` is not `container`, your token must also include the `repo` scope.
-       * - If `package_type` is `container`, you must also have admin permissions to the container that you want to restore.
-       */
-      post: operations["packages/restore-package-version-for-org"];
-    };
+  "/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}": {
+    /**
+     * Gets a specific package version in an organization.
+     *
+     * You must authenticate using an access token with the `packages:read` scope.
+     * If `package_type` is not `container`, your token must also include the `repo` scope.
+     */
+    get: operations["packages/get-package-version-for-organization"];
+    /**
+     * Deletes a specific package version in an organization. If the package is public and the package version has more than 5,000 downloads, you cannot delete the package version. In this scenario, contact GitHub support for further assistance.
+     *
+     * To use this endpoint, you must have admin permissions in the organization and authenticate using an access token with the `packages:read` and `packages:delete` scopes. In addition:
+     * - If `package_type` is not `container`, your token must also include the `repo` scope.
+     * - If `package_type` is `container`, you must also have admin permissions to the container you want to delete.
+     */
+    delete: operations["packages/delete-package-version-for-org"];
+  };
+  "/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}/restore": {
+    /**
+     * Restores a specific package version in an organization.
+     *
+     * You can restore a deleted package under the following conditions:
+     *   - The package was deleted within the last 30 days.
+     *   - The same package namespace and version is still available and not reused for a new package. If the same package namespace is not available, you will not be able to restore your package. In this scenario, to restore the deleted package, you must delete the new package that uses the deleted package's namespace first.
+     *
+     * To use this endpoint, you must have admin permissions in the organization and authenticate using an access token with the `packages:read` and `packages:write` scopes. In addition:
+     * - If `package_type` is not `container`, your token must also include the `repo` scope.
+     * - If `package_type` is `container`, you must also have admin permissions to the container that you want to restore.
+     */
+    post: operations["packages/restore-package-version-for-org"];
+  };
   "/orgs/{org}/projects": {
     /** Lists the projects in an organization. Returns a `404 Not Found` status if projects are disabled in the organization. If you do not have sufficient privileges to perform this action, a `401 Unauthorized` or `410 Gone` status is returned. */
     get: operations["projects/list-for-org"];
@@ -1588,51 +1509,48 @@ export interface paths {
      */
     post: operations["teams/create-discussion-comment-in-org"];
   };
-  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/comments/{comment_number}":
-    {
-      /**
-       * Get a specific comment on a team discussion. OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       *
-       * **Note:** You can also specify a team by `org_id` and `team_id` using the route `GET /organizations/{org_id}/team/{team_id}/discussions/{discussion_number}/comments/{comment_number}`.
-       */
-      get: operations["teams/get-discussion-comment-in-org"];
-      /**
-       * Deletes a comment on a team discussion. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       *
-       * **Note:** You can also specify a team by `org_id` and `team_id` using the route `DELETE /organizations/{org_id}/team/{team_id}/discussions/{discussion_number}/comments/{comment_number}`.
-       */
-      delete: operations["teams/delete-discussion-comment-in-org"];
-      /**
-       * Edits the body text of a discussion comment. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       *
-       * **Note:** You can also specify a team by `org_id` and `team_id` using the route `PATCH /organizations/{org_id}/team/{team_id}/discussions/{discussion_number}/comments/{comment_number}`.
-       */
-      patch: operations["teams/update-discussion-comment-in-org"];
-    };
-  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/comments/{comment_number}/reactions":
-    {
-      /**
-       * List the reactions to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments/). OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       *
-       * **Note:** You can also specify a team by `org_id` and `team_id` using the route `GET /organizations/:org_id/team/:team_id/discussions/:discussion_number/comments/:comment_number/reactions`.
-       */
-      get: operations["reactions/list-for-team-discussion-comment-in-org"];
-      /**
-       * Create a reaction to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/). A response with an HTTP `200` status means that you already added the reaction type to this team discussion comment.
-       *
-       * **Note:** You can also specify a team by `org_id` and `team_id` using the route `POST /organizations/:org_id/team/:team_id/discussions/:discussion_number/comments/:comment_number/reactions`.
-       */
-      post: operations["reactions/create-for-team-discussion-comment-in-org"];
-    };
-  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/comments/{comment_number}/reactions/{reaction_id}":
-    {
-      /**
-       * **Note:** You can also specify a team or organization with `team_id` and `org_id` using the route `DELETE /organizations/:org_id/team/:team_id/discussions/:discussion_number/comments/:comment_number/reactions/:reaction_id`.
-       *
-       * Delete a reaction to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       */
-      delete: operations["reactions/delete-for-team-discussion-comment"];
-    };
+  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/comments/{comment_number}": {
+    /**
+     * Get a specific comment on a team discussion. OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     *
+     * **Note:** You can also specify a team by `org_id` and `team_id` using the route `GET /organizations/{org_id}/team/{team_id}/discussions/{discussion_number}/comments/{comment_number}`.
+     */
+    get: operations["teams/get-discussion-comment-in-org"];
+    /**
+     * Deletes a comment on a team discussion. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     *
+     * **Note:** You can also specify a team by `org_id` and `team_id` using the route `DELETE /organizations/{org_id}/team/{team_id}/discussions/{discussion_number}/comments/{comment_number}`.
+     */
+    delete: operations["teams/delete-discussion-comment-in-org"];
+    /**
+     * Edits the body text of a discussion comment. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     *
+     * **Note:** You can also specify a team by `org_id` and `team_id` using the route `PATCH /organizations/{org_id}/team/{team_id}/discussions/{discussion_number}/comments/{comment_number}`.
+     */
+    patch: operations["teams/update-discussion-comment-in-org"];
+  };
+  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/comments/{comment_number}/reactions": {
+    /**
+     * List the reactions to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments/). OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     *
+     * **Note:** You can also specify a team by `org_id` and `team_id` using the route `GET /organizations/:org_id/team/:team_id/discussions/:discussion_number/comments/:comment_number/reactions`.
+     */
+    get: operations["reactions/list-for-team-discussion-comment-in-org"];
+    /**
+     * Create a reaction to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/). A response with an HTTP `200` status means that you already added the reaction type to this team discussion comment.
+     *
+     * **Note:** You can also specify a team by `org_id` and `team_id` using the route `POST /organizations/:org_id/team/:team_id/discussions/:discussion_number/comments/:comment_number/reactions`.
+     */
+    post: operations["reactions/create-for-team-discussion-comment-in-org"];
+  };
+  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/comments/{comment_number}/reactions/{reaction_id}": {
+    /**
+     * **Note:** You can also specify a team or organization with `team_id` and `org_id` using the route `DELETE /organizations/:org_id/team/:team_id/discussions/:discussion_number/comments/:comment_number/reactions/:reaction_id`.
+     *
+     * Delete a reaction to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     */
+    delete: operations["reactions/delete-for-team-discussion-comment"];
+  };
   "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/reactions": {
     /**
      * List the reactions to a [team discussion](https://docs.github.com/rest/reference/teams#discussions). OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
@@ -1647,15 +1565,14 @@ export interface paths {
      */
     post: operations["reactions/create-for-team-discussion-in-org"];
   };
-  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/reactions/{reaction_id}":
-    {
-      /**
-       * **Note:** You can also specify a team or organization with `team_id` and `org_id` using the route `DELETE /organizations/:org_id/team/:team_id/discussions/:discussion_number/reactions/:reaction_id`.
-       *
-       * Delete a reaction to a [team discussion](https://docs.github.com/rest/reference/teams#discussions). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       */
-      delete: operations["reactions/delete-for-team-discussion"];
-    };
+  "/orgs/{org}/teams/{team_slug}/discussions/{discussion_number}/reactions/{reaction_id}": {
+    /**
+     * **Note:** You can also specify a team or organization with `team_id` and `org_id` using the route `DELETE /organizations/:org_id/team/:team_id/discussions/:discussion_number/reactions/:reaction_id`.
+     *
+     * Delete a reaction to a [team discussion](https://docs.github.com/rest/reference/teams#discussions). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     */
+    delete: operations["reactions/delete-for-team-discussion"];
+  };
   "/orgs/{org}/teams/{team_slug}/invitations": {
     /**
      * The return hash contains a `role` field which refers to the Organization Invitation role and will be one of the following values: `direct_member`, `admin`, `billing_manager`, `hiring_manager`, or `reinstate`. If the invitee is not a GitHub member, the `login` field in the return hash will be `null`.
@@ -2042,21 +1959,19 @@ export interface paths {
      */
     get: operations["actions/get-workflow-run-attempt"];
   };
-  "/repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/jobs":
-    {
-      /** Lists jobs for a specific workflow run attempt. Anyone with read access to the repository can use this endpoint. If the repository is private you must use an access token with the `repo` scope. GitHub Apps must have the `actions:read` permission to use this endpoint. You can use parameters to narrow the list of results. For more information about using parameters, see [Parameters](https://docs.github.com/rest/overview/resources-in-the-rest-api#parameters). */
-      get: operations["actions/list-jobs-for-workflow-run-attempt"];
-    };
-  "/repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/logs":
-    {
-      /**
-       * Gets a redirect URL to download an archive of log files for a specific workflow run attempt. This link expires after
-       * 1 minute. Look for `Location:` in the response header to find the URL for the download. Anyone with read access to
-       * the repository can use this endpoint. If the repository is private you must use an access token with the `repo` scope.
-       * GitHub Apps must have the `actions:read` permission to use this endpoint.
-       */
-      get: operations["actions/download-workflow-run-attempt-logs"];
-    };
+  "/repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/jobs": {
+    /** Lists jobs for a specific workflow run attempt. Anyone with read access to the repository can use this endpoint. If the repository is private you must use an access token with the `repo` scope. GitHub Apps must have the `actions:read` permission to use this endpoint. You can use parameters to narrow the list of results. For more information about using parameters, see [Parameters](https://docs.github.com/rest/overview/resources-in-the-rest-api#parameters). */
+    get: operations["actions/list-jobs-for-workflow-run-attempt"];
+  };
+  "/repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/logs": {
+    /**
+     * Gets a redirect URL to download an archive of log files for a specific workflow run attempt. This link expires after
+     * 1 minute. Look for `Location:` in the response header to find the URL for the download. Anyone with read access to
+     * the repository can use this endpoint. If the repository is private you must use an access token with the `repo` scope.
+     * GitHub Apps must have the `actions:read` permission to use this endpoint.
+     */
+    get: operations["actions/download-workflow-run-attempt-logs"];
+  };
   "/repos/{owner}/{repo}/actions/runs/{run_id}/cancel": {
     /** Cancels a workflow run using its `id`. You must authenticate using an access token with the `repo` scope to use this endpoint. GitHub Apps must have the `actions:write` permission to use this endpoint. */
     post: operations["actions/cancel-workflow-run"];
@@ -2141,6 +2056,7 @@ export interface paths {
      *
      * console.log(encrypted);
      * ```
+     *
      *
      * #### Example encrypting a secret using Python
      *
@@ -2325,21 +2241,20 @@ export interface paths {
      */
     delete: operations["repos/delete-admin-branch-protection"];
   };
-  "/repos/{owner}/{repo}/branches/{branch}/protection/required_pull_request_reviews":
-    {
-      /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
-      get: operations["repos/get-pull-request-review-protection"];
-      /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
-      delete: operations["repos/delete-pull-request-review-protection"];
-      /**
-       * Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation.
-       *
-       * Updating pull request review enforcement requires admin or owner permissions to the repository and branch protection to be enabled.
-       *
-       * **Note**: Passing new arrays of `users` and `teams` replaces their previous values.
-       */
-      patch: operations["repos/update-pull-request-review-protection"];
-    };
+  "/repos/{owner}/{repo}/branches/{branch}/protection/required_pull_request_reviews": {
+    /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
+    get: operations["repos/get-pull-request-review-protection"];
+    /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
+    delete: operations["repos/delete-pull-request-review-protection"];
+    /**
+     * Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation.
+     *
+     * Updating pull request review enforcement requires admin or owner permissions to the repository and branch protection to be enabled.
+     *
+     * **Note**: Passing new arrays of `users` and `teams` replaces their previous values.
+     */
+    patch: operations["repos/update-pull-request-review-protection"];
+  };
   "/repos/{owner}/{repo}/branches/{branch}/protection/required_signatures": {
     /**
      * Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation.
@@ -2374,17 +2289,16 @@ export interface paths {
      */
     patch: operations["repos/update-status-check-protection"];
   };
-  "/repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks/contexts":
-    {
-      /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
-      get: operations["repos/get-all-status-check-contexts"];
-      /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
-      put: operations["repos/set-status-check-contexts"];
-      /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
-      post: operations["repos/add-status-check-contexts"];
-      /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
-      delete: operations["repos/remove-status-check-contexts"];
-    };
+  "/repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks/contexts": {
+    /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
+    get: operations["repos/get-all-status-check-contexts"];
+    /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
+    put: operations["repos/set-status-check-contexts"];
+    /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
+    post: operations["repos/add-status-check-contexts"];
+    /** Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation. */
+    delete: operations["repos/remove-status-check-contexts"];
+  };
   "/repos/{owner}/{repo}/branches/{branch}/protection/restrictions": {
     /**
      * Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub Enterprise Server. For more information, see [GitHub's products](https://help.github.com/github/getting-started-with-github/githubs-products) in the GitHub Help documentation.
@@ -3031,17 +2945,16 @@ export interface paths {
      */
     get: operations["repos/compare-commits-with-basehead"];
   };
-  "/repos/{owner}/{repo}/content_references/{content_reference_id}/attachments":
-    {
-      /**
-       * Creates an attachment under a content reference URL in the body or comment of an issue or pull request. Use the `id` and `repository` `full_name` of the content reference from the [`content_reference` event](https://docs.github.com/webhooks/event-payloads/#content_reference) to create an attachment.
-       *
-       * The app must create a content attachment within six hours of the content reference URL being posted. See "[Using content attachments](https://docs.github.com/apps/using-content-attachments/)" for details about content attachments.
-       *
-       * You must use an [installation access token](https://docs.github.com/apps/building-github-apps/authenticating-with-github-apps/#authenticating-as-an-installation) to access this endpoint.
-       */
-      post: operations["apps/create-content-attachment-for-repo"];
-    };
+  "/repos/{owner}/{repo}/content_references/{content_reference_id}/attachments": {
+    /**
+     * Creates an attachment under a content reference URL in the body or comment of an issue or pull request. Use the `id` and `repository` `full_name` of the content reference from the [`content_reference` event](https://docs.github.com/webhooks/event-payloads/#content_reference) to create an attachment.
+     *
+     * The app must create a content attachment within six hours of the content reference URL being posted. See "[Using content attachments](https://docs.github.com/apps/using-content-attachments/)" for details about content attachments.
+     *
+     * You must use an [installation access token](https://docs.github.com/apps/building-github-apps/authenticating-with-github-apps/#authenticating-as-an-installation) to access this endpoint.
+     */
+    post: operations["apps/create-content-attachment-for-repo"];
+  };
   "/repos/{owner}/{repo}/contents/{path}": {
     /**
      * Gets the contents of a file or directory in a repository. Specify the file path or directory in `:path`. If you omit
@@ -3600,15 +3513,14 @@ export interface paths {
     /** Create a reaction to an [issue comment](https://docs.github.com/rest/reference/issues#comments). A response with an HTTP `200` status means that you already added the reaction type to this issue comment. */
     post: operations["reactions/create-for-issue-comment"];
   };
-  "/repos/{owner}/{repo}/issues/comments/{comment_id}/reactions/{reaction_id}":
-    {
-      /**
-       * **Note:** You can also specify a repository by `repository_id` using the route `DELETE delete /repositories/:repository_id/issues/comments/:comment_id/reactions/:reaction_id`.
-       *
-       * Delete a reaction to an [issue comment](https://docs.github.com/rest/reference/issues#comments).
-       */
-      delete: operations["reactions/delete-for-issue-comment"];
-    };
+  "/repos/{owner}/{repo}/issues/comments/{comment_id}/reactions/{reaction_id}": {
+    /**
+     * **Note:** You can also specify a repository by `repository_id` using the route `DELETE delete /repositories/:repository_id/issues/comments/:comment_id/reactions/:reaction_id`.
+     *
+     * Delete a reaction to an [issue comment](https://docs.github.com/rest/reference/issues#comments).
+     */
+    delete: operations["reactions/delete-for-issue-comment"];
+  };
   "/repos/{owner}/{repo}/issues/events": {
     get: operations["issues/list-events-for-repo"];
   };
@@ -4193,95 +4105,94 @@ export interface paths {
     /** Lists all secrets available in an environment without revealing their encrypted values. You must authenticate using an access token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
     get: operations["actions/list-environment-secrets"];
   };
-  "/repositories/{repository_id}/environments/{environment_name}/secrets/public-key":
-    {
-      /** Get the public key for an environment, which you need to encrypt environment secrets. You need to encrypt a secret before you can create or update secrets. Anyone with read access to the repository can use this endpoint. If the repository is private you must use an access token with the `repo` scope. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
-      get: operations["actions/get-environment-public-key"];
-    };
-  "/repositories/{repository_id}/environments/{environment_name}/secrets/{secret_name}":
-    {
-      /** Gets a single environment secret without revealing its encrypted value. You must authenticate using an access token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
-      get: operations["actions/get-environment-secret"];
-      /**
-       * Creates or updates an environment secret with an encrypted value. Encrypt your secret using
-       * [LibSodium](https://libsodium.gitbook.io/doc/bindings_for_other_languages). You must authenticate using an access
-       * token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use
-       * this endpoint.
-       *
-       * #### Example encrypting a secret using Node.js
-       *
-       * Encrypt your secret using the [tweetsodium](https://github.com/github/tweetsodium) library.
-       *
-       * ```
-       * const sodium = require('/error/unknown:tweetsodium?from=@octokit/openapi-types');
-       *
-       * const key = "base64-encoded-public-key";
-       * const value = "plain-text-secret";
-       *
-       * // Convert the message and key to Uint8Array's (Buffer implements that interface)
-       * const messageBytes = Buffer.from(value);
-       * const keyBytes = Buffer.from(key, 'base64');
-       *
-       * // Encrypt using LibSodium.
-       * const encryptedBytes = sodium.seal(messageBytes, keyBytes);
-       *
-       * // Base64 the encrypted secret
-       * const encrypted = Buffer.from(encryptedBytes).toString('base64');
-       *
-       * console.log(encrypted);
-       * ```
-       *
-       * #### Example encrypting a secret using Python
-       *
-       * Encrypt your secret using [pynacl](https://pynacl.readthedocs.io/en/stable/public/#nacl-public-sealedbox) with Python 3.
-       *
-       * ```
-       * from base64 import b64encode
-       * from nacl import encoding, public
-       *
-       * def encrypt(public_key: str, secret_value: str) -> str:
-       *   """Encrypt a Unicode string using the public key."""
-       *   public_key = public.PublicKey(public_key.encode("utf-8"), encoding.Base64Encoder())
-       *   sealed_box = public.SealedBox(public_key)
-       *   encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
-       *   return b64encode(encrypted).decode("utf-8")
-       * ```
-       *
-       * #### Example encrypting a secret using C#
-       *
-       * Encrypt your secret using the [Sodium.Core](https://www.nuget.org/packages/Sodium.Core/) package.
-       *
-       * ```
-       * var secretValue = System.Text.Encoding.UTF8.GetBytes("mySecret");
-       * var publicKey = Convert.FromBase64String("2Sg8iYjAxxmI2LvUXpJjkYrMxURPc8r+dB7TJyvvcCU=");
-       *
-       * var sealedPublicKeyBox = Sodium.SealedPublicKeyBox.Create(secretValue, publicKey);
-       *
-       * Console.WriteLine(Convert.ToBase64String(sealedPublicKeyBox));
-       * ```
-       *
-       * #### Example encrypting a secret using Ruby
-       *
-       * Encrypt your secret using the [rbnacl](https://github.com/RubyCrypto/rbnacl) gem.
-       *
-       * ```ruby
-       * require "rbnacl"
-       * require "base64"
-       *
-       * key = Base64.decode64("+ZYvJDZMHUfBkJdyq5Zm9SKqeuBQ4sj+6sfjlH4CgG0=")
-       * public_key = RbNaCl::PublicKey.new(key)
-       *
-       * box = RbNaCl::Boxes::Sealed.from_public_key(public_key)
-       * encrypted_secret = box.encrypt("my_secret")
-       *
-       * # Print the base64 encoded secret
-       * puts Base64.strict_encode64(encrypted_secret)
-       * ```
-       */
-      put: operations["actions/create-or-update-environment-secret"];
-      /** Deletes a secret in an environment using the secret name. You must authenticate using an access token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
-      delete: operations["actions/delete-environment-secret"];
-    };
+  "/repositories/{repository_id}/environments/{environment_name}/secrets/public-key": {
+    /** Get the public key for an environment, which you need to encrypt environment secrets. You need to encrypt a secret before you can create or update secrets. Anyone with read access to the repository can use this endpoint. If the repository is private you must use an access token with the `repo` scope. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
+    get: operations["actions/get-environment-public-key"];
+  };
+  "/repositories/{repository_id}/environments/{environment_name}/secrets/{secret_name}": {
+    /** Gets a single environment secret without revealing its encrypted value. You must authenticate using an access token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
+    get: operations["actions/get-environment-secret"];
+    /**
+     * Creates or updates an environment secret with an encrypted value. Encrypt your secret using
+     * [LibSodium](https://libsodium.gitbook.io/doc/bindings_for_other_languages). You must authenticate using an access
+     * token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use
+     * this endpoint.
+     *
+     * #### Example encrypting a secret using Node.js
+     *
+     * Encrypt your secret using the [tweetsodium](https://github.com/github/tweetsodium) library.
+     *
+     * ```
+     * const sodium = require('/error/unknown:tweetsodium?from=@octokit/openapi-types');
+     *
+     * const key = "base64-encoded-public-key";
+     * const value = "plain-text-secret";
+     *
+     * // Convert the message and key to Uint8Array's (Buffer implements that interface)
+     * const messageBytes = Buffer.from(value);
+     * const keyBytes = Buffer.from(key, 'base64');
+     *
+     * // Encrypt using LibSodium.
+     * const encryptedBytes = sodium.seal(messageBytes, keyBytes);
+     *
+     * // Base64 the encrypted secret
+     * const encrypted = Buffer.from(encryptedBytes).toString('base64');
+     *
+     * console.log(encrypted);
+     * ```
+     *
+     *
+     * #### Example encrypting a secret using Python
+     *
+     * Encrypt your secret using [pynacl](https://pynacl.readthedocs.io/en/stable/public/#nacl-public-sealedbox) with Python 3.
+     *
+     * ```
+     * from base64 import b64encode
+     * from nacl import encoding, public
+     *
+     * def encrypt(public_key: str, secret_value: str) -> str:
+     *   """Encrypt a Unicode string using the public key."""
+     *   public_key = public.PublicKey(public_key.encode("utf-8"), encoding.Base64Encoder())
+     *   sealed_box = public.SealedBox(public_key)
+     *   encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
+     *   return b64encode(encrypted).decode("utf-8")
+     * ```
+     *
+     * #### Example encrypting a secret using C#
+     *
+     * Encrypt your secret using the [Sodium.Core](https://www.nuget.org/packages/Sodium.Core/) package.
+     *
+     * ```
+     * var secretValue = System.Text.Encoding.UTF8.GetBytes("mySecret");
+     * var publicKey = Convert.FromBase64String("2Sg8iYjAxxmI2LvUXpJjkYrMxURPc8r+dB7TJyvvcCU=");
+     *
+     * var sealedPublicKeyBox = Sodium.SealedPublicKeyBox.Create(secretValue, publicKey);
+     *
+     * Console.WriteLine(Convert.ToBase64String(sealedPublicKeyBox));
+     * ```
+     *
+     * #### Example encrypting a secret using Ruby
+     *
+     * Encrypt your secret using the [rbnacl](https://github.com/RubyCrypto/rbnacl) gem.
+     *
+     * ```ruby
+     * require "rbnacl"
+     * require "base64"
+     *
+     * key = Base64.decode64("+ZYvJDZMHUfBkJdyq5Zm9SKqeuBQ4sj+6sfjlH4CgG0=")
+     * public_key = RbNaCl::PublicKey.new(key)
+     *
+     * box = RbNaCl::Boxes::Sealed.from_public_key(public_key)
+     * encrypted_secret = box.encrypt("my_secret")
+     *
+     * # Print the base64 encoded secret
+     * puts Base64.strict_encode64(encrypted_secret)
+     * ```
+     */
+    put: operations["actions/create-or-update-environment-secret"];
+    /** Deletes a secret in an environment using the secret name. You must authenticate using an access token with the `repo` scope to use this endpoint. GitHub Apps must have the `secrets` repository permission to use this endpoint. */
+    delete: operations["actions/delete-environment-secret"];
+  };
   "/scim/v2/enterprises/{enterprise}/Groups": {
     /** **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change. */
     get: operations["enterprise-admin/list-provisioned-groups-enterprise"];
@@ -4294,19 +4205,13 @@ export interface paths {
   };
   "/scim/v2/enterprises/{enterprise}/Groups/{scim_group_id}": {
     /** **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change. */
-    get:
-      operations[
-        "enterprise-admin/get-provisioning-information-for-enterprise-group"
-      ];
+    get: operations["enterprise-admin/get-provisioning-information-for-enterprise-group"];
     /**
      * **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change.
      *
      * Replaces an existing provisioned group’s information. You must provide all the information required for the group as if you were provisioning it for the first time. Any existing group information that you don't provide will be removed, including group membership. If you want to only update a specific attribute, use the [Update an attribute for a SCIM enterprise group](#update-an-attribute-for-a-scim-enterprise-group) endpoint instead.
      */
-    put:
-      operations[
-        "enterprise-admin/set-information-for-provisioned-enterprise-group"
-      ];
+    put: operations["enterprise-admin/set-information-for-provisioned-enterprise-group"];
     /** **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change. */
     delete: operations["enterprise-admin/delete-scim-group-from-enterprise"];
     /**
@@ -4349,10 +4254,7 @@ export interface paths {
   };
   "/scim/v2/enterprises/{enterprise}/Users/{scim_user_id}": {
     /** **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change. */
-    get:
-      operations[
-        "enterprise-admin/get-provisioning-information-for-enterprise-user"
-      ];
+    get: operations["enterprise-admin/get-provisioning-information-for-enterprise-user"];
     /**
      * **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change.
      *
@@ -4362,10 +4264,7 @@ export interface paths {
      *
      * **Warning:** Setting `active: false` removes the user from the enterprise, deletes the external identity, and deletes the associated `{scim_user_id}`.
      */
-    put:
-      operations[
-        "enterprise-admin/set-information-for-provisioned-enterprise-user"
-      ];
+    put: operations["enterprise-admin/set-information-for-provisioned-enterprise-user"];
     /** **Note:** The SCIM API endpoints for enterprise accounts are currently in beta and are subject to change. */
     delete: operations["enterprise-admin/delete-user-from-enterprise"];
     /**
@@ -4629,42 +4528,40 @@ export interface paths {
      */
     post: operations["teams/create-discussion-comment-legacy"];
   };
-  "/teams/{team_id}/discussions/{discussion_number}/comments/{comment_number}":
-    {
-      /**
-       * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [Get a discussion comment](https://docs.github.com/rest/reference/teams#get-a-discussion-comment) endpoint.
-       *
-       * Get a specific comment on a team discussion. OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       */
-      get: operations["teams/get-discussion-comment-legacy"];
-      /**
-       * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [Delete a discussion comment](https://docs.github.com/rest/reference/teams#delete-a-discussion-comment) endpoint.
-       *
-       * Deletes a comment on a team discussion. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       */
-      delete: operations["teams/delete-discussion-comment-legacy"];
-      /**
-       * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [Update a discussion comment](https://docs.github.com/rest/reference/teams#update-a-discussion-comment) endpoint.
-       *
-       * Edits the body text of a discussion comment. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       */
-      patch: operations["teams/update-discussion-comment-legacy"];
-    };
-  "/teams/{team_id}/discussions/{discussion_number}/comments/{comment_number}/reactions":
-    {
-      /**
-       * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [`List reactions for a team discussion comment`](https://docs.github.com/rest/reference/reactions#list-reactions-for-a-team-discussion-comment) endpoint.
-       *
-       * List the reactions to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
-       */
-      get: operations["reactions/list-for-team-discussion-comment-legacy"];
-      /**
-       * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new "[Create reaction for a team discussion comment](https://docs.github.com/rest/reference/reactions#create-reaction-for-a-team-discussion-comment)" endpoint.
-       *
-       * Create a reaction to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/). A response with an HTTP `200` status means that you already added the reaction type to this team discussion comment.
-       */
-      post: operations["reactions/create-for-team-discussion-comment-legacy"];
-    };
+  "/teams/{team_id}/discussions/{discussion_number}/comments/{comment_number}": {
+    /**
+     * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [Get a discussion comment](https://docs.github.com/rest/reference/teams#get-a-discussion-comment) endpoint.
+     *
+     * Get a specific comment on a team discussion. OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     */
+    get: operations["teams/get-discussion-comment-legacy"];
+    /**
+     * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [Delete a discussion comment](https://docs.github.com/rest/reference/teams#delete-a-discussion-comment) endpoint.
+     *
+     * Deletes a comment on a team discussion. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     */
+    delete: operations["teams/delete-discussion-comment-legacy"];
+    /**
+     * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [Update a discussion comment](https://docs.github.com/rest/reference/teams#update-a-discussion-comment) endpoint.
+     *
+     * Edits the body text of a discussion comment. OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     */
+    patch: operations["teams/update-discussion-comment-legacy"];
+  };
+  "/teams/{team_id}/discussions/{discussion_number}/comments/{comment_number}/reactions": {
+    /**
+     * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [`List reactions for a team discussion comment`](https://docs.github.com/rest/reference/reactions#list-reactions-for-a-team-discussion-comment) endpoint.
+     *
+     * List the reactions to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `read:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/).
+     */
+    get: operations["reactions/list-for-team-discussion-comment-legacy"];
+    /**
+     * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new "[Create reaction for a team discussion comment](https://docs.github.com/rest/reference/reactions#create-reaction-for-a-team-discussion-comment)" endpoint.
+     *
+     * Create a reaction to a [team discussion comment](https://docs.github.com/rest/reference/teams#discussion-comments). OAuth access tokens require the `write:discussion` [scope](https://docs.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/). A response with an HTTP `200` status means that you already added the reaction type to this team discussion comment.
+     */
+    post: operations["reactions/create-for-team-discussion-comment-legacy"];
+  };
   "/teams/{team_id}/discussions/{discussion_number}/reactions": {
     /**
      * **Deprecation Notice:** This endpoint route is deprecated and will be removed from the Teams API. We recommend migrating your existing code to use the new [`List reactions for a team discussion`](https://docs.github.com/rest/reference/reactions#list-reactions-for-a-team-discussion) endpoint.
@@ -4869,8 +4766,7 @@ export interface paths {
   };
   "/user/email/visibility": {
     /** Sets the visibility for your primary email addresses. */
-    patch:
-      operations["users/set-primary-email-visibility-for-authenticated-user"];
+    patch: operations["users/set-primary-email-visibility-for-authenticated-user"];
   };
   "/user/emails": {
     /** Lists all of your email addresses, and specifies which one is visible to the public. This endpoint is accessible with the `user:email` scope. */
@@ -4947,8 +4843,7 @@ export interface paths {
      *
      * You must use a personal access token (which you can create via the [command line](https://docs.github.com/github/authenticating-to-github/creating-a-personal-access-token) or [Basic Authentication](https://docs.github.com/rest/overview/other-authentication-methods#basic-authentication)) to access this endpoint.
      */
-    delete:
-      operations["apps/remove-repo-from-installation-for-authenticated-user"];
+    delete: operations["apps/remove-repo-from-installation-for-authenticated-user"];
   };
   "/user/interaction-limits": {
     /** Shows which type of GitHub user can interact with your public repositories and when the restriction expires. */
@@ -4956,8 +4851,7 @@ export interface paths {
     /** Temporarily restricts which type of GitHub user can interact with your public repositories. Setting the interaction limit at the user level will overwrite any interaction limits that are set for individual repositories owned by the user. */
     put: operations["interactions/set-restrictions-for-authenticated-user"];
     /** Removes any interaction restrictions from your public repositories. */
-    delete:
-      operations["interactions/remove-restrictions-for-authenticated-user"];
+    delete: operations["interactions/remove-restrictions-for-authenticated-user"];
   };
   "/user/issues": {
     /**
@@ -5106,43 +5000,36 @@ export interface paths {
      * To use this endpoint, you must authenticate using an access token with the `packages:read` scope.
      * If `package_type` is not `container`, your token must also include the `repo` scope.
      */
-    get:
-      operations[
-        "packages/get-all-package-versions-for-package-owned-by-authenticated-user"
-      ];
+    get: operations["packages/get-all-package-versions-for-package-owned-by-authenticated-user"];
   };
-  "/user/packages/{package_type}/{package_name}/versions/{package_version_id}":
-    {
-      /**
-       * Gets a specific package version for a package owned by the authenticated user.
-       *
-       * To use this endpoint, you must authenticate using an access token with the `packages:read` scope.
-       * If `package_type` is not `container`, your token must also include the `repo` scope.
-       */
-      get: operations["packages/get-package-version-for-authenticated-user"];
-      /**
-       * Deletes a specific package version for a package owned by the authenticated user.  If the package is public and the package version has more than 5,000 downloads, you cannot delete the package version. In this scenario, contact GitHub support for further assistance.
-       *
-       * To use this endpoint, you must have admin permissions in the organization and authenticate using an access token with the `packages:read` and `packages:delete` scopes.
-       * If `package_type` is not `container`, your token must also include the `repo` scope.
-       */
-      delete:
-        operations["packages/delete-package-version-for-authenticated-user"];
-    };
-  "/user/packages/{package_type}/{package_name}/versions/{package_version_id}/restore":
-    {
-      /**
-       * Restores a package version owned by the authenticated user.
-       *
-       * You can restore a deleted package version under the following conditions:
-       *   - The package was deleted within the last 30 days.
-       *   - The same package namespace and version is still available and not reused for a new package. If the same package namespace is not available, you will not be able to restore your package. In this scenario, to restore the deleted package, you must delete the new package that uses the deleted package's namespace first.
-       *
-       * To use this endpoint, you must authenticate using an access token with the `packages:read` and `packages:write` scopes. If `package_type` is not `container`, your token must also include the `repo` scope.
-       */
-      post:
-        operations["packages/restore-package-version-for-authenticated-user"];
-    };
+  "/user/packages/{package_type}/{package_name}/versions/{package_version_id}": {
+    /**
+     * Gets a specific package version for a package owned by the authenticated user.
+     *
+     * To use this endpoint, you must authenticate using an access token with the `packages:read` scope.
+     * If `package_type` is not `container`, your token must also include the `repo` scope.
+     */
+    get: operations["packages/get-package-version-for-authenticated-user"];
+    /**
+     * Deletes a specific package version for a package owned by the authenticated user.  If the package is public and the package version has more than 5,000 downloads, you cannot delete the package version. In this scenario, contact GitHub support for further assistance.
+     *
+     * To use this endpoint, you must have admin permissions in the organization and authenticate using an access token with the `packages:read` and `packages:delete` scopes.
+     * If `package_type` is not `container`, your token must also include the `repo` scope.
+     */
+    delete: operations["packages/delete-package-version-for-authenticated-user"];
+  };
+  "/user/packages/{package_type}/{package_name}/versions/{package_version_id}/restore": {
+    /**
+     * Restores a package version owned by the authenticated user.
+     *
+     * You can restore a deleted package version under the following conditions:
+     *   - The package was deleted within the last 30 days.
+     *   - The same package namespace and version is still available and not reused for a new package. If the same package namespace is not available, you will not be able to restore your package. In this scenario, to restore the deleted package, you must delete the new package that uses the deleted package's namespace first.
+     *
+     * To use this endpoint, you must authenticate using an access token with the `packages:read` and `packages:write` scopes. If `package_type` is not `container`, your token must also include the `repo` scope.
+     */
+    post: operations["packages/restore-package-version-for-authenticated-user"];
+  };
   "/user/projects": {
     post: operations["projects/create-for-authenticated-user"];
   };
@@ -5329,42 +5216,39 @@ export interface paths {
      * To use this endpoint, you must authenticate using an access token with the `packages:read` scope.
      * If `package_type` is not `container`, your token must also include the `repo` scope.
      */
-    get:
-      operations["packages/get-all-package-versions-for-package-owned-by-user"];
+    get: operations["packages/get-all-package-versions-for-package-owned-by-user"];
   };
-  "/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}":
-    {
-      /**
-       * Gets a specific package version for a public package owned by a specified user.
-       *
-       * At this time, to use this endpoint, you must authenticate using an access token with the `packages:read` scope.
-       * If `package_type` is not `container`, your token must also include the `repo` scope.
-       */
-      get: operations["packages/get-package-version-for-user"];
-      /**
-       * Deletes a specific package version for a user. If the package is public and the package version has more than 5,000 downloads, you cannot delete the package version. In this scenario, contact GitHub support for further assistance.
-       *
-       * To use this endpoint, you must authenticate using an access token with the `packages:read` and `packages:delete` scopes. In addition:
-       * - If `package_type` is not `container`, your token must also include the `repo` scope.
-       * - If `package_type` is `container`, you must also have admin permissions to the container you want to delete.
-       */
-      delete: operations["packages/delete-package-version-for-user"];
-    };
-  "/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}/restore":
-    {
-      /**
-       * Restores a specific package version for a user.
-       *
-       * You can restore a deleted package under the following conditions:
-       *   - The package was deleted within the last 30 days.
-       *   - The same package namespace and version is still available and not reused for a new package. If the same package namespace is not available, you will not be able to restore your package. In this scenario, to restore the deleted package, you must delete the new package that uses the deleted package's namespace first.
-       *
-       * To use this endpoint, you must authenticate using an access token with the `packages:read` and `packages:write` scopes. In addition:
-       * - If `package_type` is not `container`, your token must also include the `repo` scope.
-       * - If `package_type` is `container`, you must also have admin permissions to the container that you want to restore.
-       */
-      post: operations["packages/restore-package-version-for-user"];
-    };
+  "/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}": {
+    /**
+     * Gets a specific package version for a public package owned by a specified user.
+     *
+     * At this time, to use this endpoint, you must authenticate using an access token with the `packages:read` scope.
+     * If `package_type` is not `container`, your token must also include the `repo` scope.
+     */
+    get: operations["packages/get-package-version-for-user"];
+    /**
+     * Deletes a specific package version for a user. If the package is public and the package version has more than 5,000 downloads, you cannot delete the package version. In this scenario, contact GitHub support for further assistance.
+     *
+     * To use this endpoint, you must authenticate using an access token with the `packages:read` and `packages:delete` scopes. In addition:
+     * - If `package_type` is not `container`, your token must also include the `repo` scope.
+     * - If `package_type` is `container`, you must also have admin permissions to the container you want to delete.
+     */
+    delete: operations["packages/delete-package-version-for-user"];
+  };
+  "/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}/restore": {
+    /**
+     * Restores a specific package version for a user.
+     *
+     * You can restore a deleted package under the following conditions:
+     *   - The package was deleted within the last 30 days.
+     *   - The same package namespace and version is still available and not reused for a new package. If the same package namespace is not available, you will not be able to restore your package. In this scenario, to restore the deleted package, you must delete the new package that uses the deleted package's namespace first.
+     *
+     * To use this endpoint, you must authenticate using an access token with the `packages:read` and `packages:write` scopes. In addition:
+     * - If `package_type` is not `container`, your token must also include the `repo` scope.
+     * - If `package_type` is `container`, you must also have admin permissions to the container that you want to restore.
+     */
+    post: operations["packages/restore-package-version-for-user"];
+  };
   "/users/{username}/projects": {
     get: operations["projects/list-for-user"];
   };
@@ -5773,10 +5657,8 @@ export interface components {
       /** The ID of the installation. */
       id: number;
       account:
-        | (
-          & Partial<components["schemas"]["simple-user"]>
-          & Partial<components["schemas"]["enterprise"]>
-        )
+        | (Partial<components["schemas"]["simple-user"]> &
+            Partial<components["schemas"]["enterprise"]>)
         | null;
       /** Describe whether all repositories have been selected or there's a selection involved */
       repository_selection: "all" | "selected";
@@ -6384,14 +6266,14 @@ export interface components {
       labels: (
         | string
         | {
-          id?: number;
-          node_id?: string;
-          url?: string;
-          name?: string;
-          description?: string | null;
-          color?: string | null;
-          default?: boolean;
-        }
+            id?: number;
+            node_id?: string;
+            url?: string;
+            name?: string;
+            description?: string | null;
+            color?: string | null;
+            default?: boolean;
+          }
       )[];
       assignee: components["schemas"]["nullable-simple-user"];
       assignees?: components["schemas"]["simple-user"][] | null;
@@ -6585,12 +6467,12 @@ export interface components {
     "gist-simple": {
       forks?:
         | {
-          id?: string;
-          url?: string;
-          user?: components["schemas"]["public-user"];
-          created_at?: string;
-          updated_at?: string;
-        }[]
+            id?: string;
+            url?: string;
+            user?: components["schemas"]["public-user"];
+            created_at?: string;
+            updated_at?: string;
+          }[]
         | null;
       history?: components["schemas"]["gist-history"][] | null;
       /** Gist */
@@ -8220,9 +8102,8 @@ export interface components {
       /** The people or teams that may approve jobs that reference the environment. You can list up to six users or teams as reviewers. The reviewers must have at least read access to the repository. Only one of the required reviewers needs to approve the job for it to proceed. */
       reviewers: {
         type?: components["schemas"]["deployment-reviewer-type"];
-        reviewer?:
-          & Partial<components["schemas"]["simple-user"]>
-          & Partial<components["schemas"]["team"]>;
+        reviewer?: Partial<components["schemas"]["simple-user"]> &
+          Partial<components["schemas"]["team"]>;
       }[];
     };
     /** A request for a specific ref(branch,sha,tag) to be deployed */
@@ -8447,8 +8328,7 @@ export interface components {
         strict?: boolean;
       };
       enforce_admins?: components["schemas"]["protected-branch-admin-enforced"];
-      required_pull_request_reviews?:
-        components["schemas"]["protected-branch-pull-request-review"];
+      required_pull_request_reviews?: components["schemas"]["protected-branch-pull-request-review"];
       restrictions?: components["schemas"]["branch-restriction-policy"];
       required_linear_history?: {
         enabled?: boolean;
@@ -8634,14 +8514,14 @@ export interface components {
       status: "queued" | "in_progress" | "completed";
       conclusion:
         | (
-          | "success"
-          | "failure"
-          | "neutral"
-          | "cancelled"
-          | "skipped"
-          | "timed_out"
-          | "action_required"
-        )
+            | "success"
+            | "failure"
+            | "neutral"
+            | "cancelled"
+            | "skipped"
+            | "timed_out"
+            | "action_required"
+          )
         | null;
       started_at: string | null;
       completed_at: string | null;
@@ -8699,14 +8579,14 @@ export interface components {
       status: ("queued" | "in_progress" | "completed") | null;
       conclusion:
         | (
-          | "success"
-          | "failure"
-          | "neutral"
-          | "cancelled"
-          | "skipped"
-          | "timed_out"
-          | "action_required"
-        )
+            | "success"
+            | "failure"
+            | "neutral"
+            | "cancelled"
+            | "skipped"
+            | "timed_out"
+            | "action_required"
+          )
         | null;
       url: string | null;
       before: string | null;
@@ -8786,8 +8666,7 @@ export interface components {
       | null;
     "code-scanning-alert-instance": {
       ref?: components["schemas"]["code-scanning-ref"];
-      analysis_key?:
-        components["schemas"]["code-scanning-analysis-analysis-key"];
+      analysis_key?: components["schemas"]["code-scanning-analysis-analysis-key"];
       environment?: components["schemas"]["code-scanning-alert-environment"];
       category?: components["schemas"]["code-scanning-analysis-category"];
       state?: components["schemas"]["code-scanning-alert-state"];
@@ -8801,8 +8680,7 @@ export interface components {
        * Classifications that have been applied to the file that triggered the alert.
        * For example identifying it as documentation, or a generated file.
        */
-      classifications?:
-        components["schemas"]["code-scanning-alert-classification"][];
+      classifications?: components["schemas"]["code-scanning-alert-classification"][];
     };
     "code-scanning-alert-items": {
       number: components["schemas"]["alert-number"];
@@ -8813,12 +8691,10 @@ export interface components {
       state: components["schemas"]["code-scanning-alert-state"];
       dismissed_by: components["schemas"]["nullable-simple-user"];
       dismissed_at: components["schemas"]["code-scanning-alert-dismissed-at"];
-      dismissed_reason:
-        components["schemas"]["code-scanning-alert-dismissed-reason"];
+      dismissed_reason: components["schemas"]["code-scanning-alert-dismissed-reason"];
       rule: components["schemas"]["code-scanning-alert-rule-summary"];
       tool: components["schemas"]["code-scanning-analysis-tool"];
-      most_recent_instance:
-        components["schemas"]["code-scanning-alert-instance"];
+      most_recent_instance: components["schemas"]["code-scanning-alert-instance"];
     };
     "code-scanning-alert-rule": {
       /** A unique identifier for the rule used to detect the alert. */
@@ -8847,12 +8723,10 @@ export interface components {
       state: components["schemas"]["code-scanning-alert-state"];
       dismissed_by: components["schemas"]["nullable-simple-user"];
       dismissed_at: components["schemas"]["code-scanning-alert-dismissed-at"];
-      dismissed_reason:
-        components["schemas"]["code-scanning-alert-dismissed-reason"];
+      dismissed_reason: components["schemas"]["code-scanning-alert-dismissed-reason"];
       rule: components["schemas"]["code-scanning-alert-rule"];
       tool: components["schemas"]["code-scanning-analysis-tool"];
-      most_recent_instance:
-        components["schemas"]["code-scanning-alert-instance"];
+      most_recent_instance: components["schemas"]["code-scanning-alert-instance"];
     };
     /** Sets the state of the code scanning alert. Can be one of `open` or `dismissed`. You must provide `dismissed_reason` when you set the state to `dismissed`. */
     "code-scanning-alert-set-state": "open" | "dismissed";
@@ -8869,8 +8743,7 @@ export interface components {
     "code-scanning-analysis": {
       ref: components["schemas"]["code-scanning-ref"];
       commit_sha: components["schemas"]["code-scanning-analysis-commit-sha"];
-      analysis_key:
-        components["schemas"]["code-scanning-analysis-analysis-key"];
+      analysis_key: components["schemas"]["code-scanning-analysis-analysis-key"];
       environment: components["schemas"]["code-scanning-analysis-environment"];
       category?: components["schemas"]["code-scanning-analysis-category"];
       error: string;
@@ -9118,16 +8991,13 @@ export interface components {
       description: string | null;
       documentation: string | null;
       files: {
-        code_of_conduct:
-          components["schemas"]["nullable-code-of-conduct-simple"];
-        code_of_conduct_file:
-          components["schemas"]["nullable-community-health-file"];
+        code_of_conduct: components["schemas"]["nullable-code-of-conduct-simple"];
+        code_of_conduct_file: components["schemas"]["nullable-community-health-file"];
         license: components["schemas"]["nullable-license-simple"];
         contributing: components["schemas"]["nullable-community-health-file"];
         readme: components["schemas"]["nullable-community-health-file"];
         issue_template: components["schemas"]["nullable-community-health-file"];
-        pull_request_template:
-          components["schemas"]["nullable-community-health-file"];
+        pull_request_template: components["schemas"]["nullable-community-health-file"];
       };
       updated_at: string | null;
       content_reports_enabled?: boolean;
@@ -9420,33 +9290,29 @@ export interface components {
       created_at: string;
       /** The time that the environment was last updated, in ISO 8601 format. */
       updated_at: string;
-      protection_rules?: (
-        & Partial<{
-          id: number;
-          node_id: string;
-          type: string;
-          wait_timer?: components["schemas"]["wait-timer"];
-        }>
-        & Partial<{
+      protection_rules?: (Partial<{
+        id: number;
+        node_id: string;
+        type: string;
+        wait_timer?: components["schemas"]["wait-timer"];
+      }> &
+        Partial<{
           id: number;
           node_id: string;
           type: string;
           /** The people or teams that may approve jobs that reference the environment. You can list up to six users or teams as reviewers. The reviewers must have at least read access to the repository. Only one of the required reviewers needs to approve the job for it to proceed. */
           reviewers?: {
             type?: components["schemas"]["deployment-reviewer-type"];
-            reviewer?:
-              & Partial<components["schemas"]["simple-user"]>
-              & Partial<components["schemas"]["team"]>;
+            reviewer?: Partial<components["schemas"]["simple-user"]> &
+              Partial<components["schemas"]["team"]>;
           }[];
-        }>
-        & Partial<{
+        }> &
+        Partial<{
           id: number;
           node_id: string;
           type: string;
-        }>
-      )[];
-      deployment_branch_policy?:
-        components["schemas"]["deployment_branch_policy"];
+        }>)[];
+      deployment_branch_policy?: components["schemas"]["deployment_branch_policy"];
     };
     /** Short Blob */
     "short-blob": {
@@ -9959,24 +9825,23 @@ export interface components {
       };
     };
     /** Issue Event for Issue */
-    "issue-event-for-issue":
-      & Partial<
-        components["schemas"]["labeled-issue-event"]
-      >
-      & Partial<components["schemas"]["unlabeled-issue-event"]>
-      & Partial<components["schemas"]["assigned-issue-event"]>
-      & Partial<components["schemas"]["unassigned-issue-event"]>
-      & Partial<components["schemas"]["milestoned-issue-event"]>
-      & Partial<components["schemas"]["demilestoned-issue-event"]>
-      & Partial<components["schemas"]["renamed-issue-event"]>
-      & Partial<components["schemas"]["review-requested-issue-event"]>
-      & Partial<components["schemas"]["review-request-removed-issue-event"]>
-      & Partial<components["schemas"]["review-dismissed-issue-event"]>
-      & Partial<components["schemas"]["locked-issue-event"]>
-      & Partial<components["schemas"]["added-to-project-issue-event"]>
-      & Partial<components["schemas"]["moved-column-in-project-issue-event"]>
-      & Partial<components["schemas"]["removed-from-project-issue-event"]>
-      & Partial<components["schemas"]["converted-note-to-issue-issue-event"]>;
+    "issue-event-for-issue": Partial<
+      components["schemas"]["labeled-issue-event"]
+    > &
+      Partial<components["schemas"]["unlabeled-issue-event"]> &
+      Partial<components["schemas"]["assigned-issue-event"]> &
+      Partial<components["schemas"]["unassigned-issue-event"]> &
+      Partial<components["schemas"]["milestoned-issue-event"]> &
+      Partial<components["schemas"]["demilestoned-issue-event"]> &
+      Partial<components["schemas"]["renamed-issue-event"]> &
+      Partial<components["schemas"]["review-requested-issue-event"]> &
+      Partial<components["schemas"]["review-request-removed-issue-event"]> &
+      Partial<components["schemas"]["review-dismissed-issue-event"]> &
+      Partial<components["schemas"]["locked-issue-event"]> &
+      Partial<components["schemas"]["added-to-project-issue-event"]> &
+      Partial<components["schemas"]["moved-column-in-project-issue-event"]> &
+      Partial<components["schemas"]["removed-from-project-issue-event"]> &
+      Partial<components["schemas"]["converted-note-to-issue-issue-event"]>;
     /** Color-coded labels help you categorize and filter your issues (just like labels in Gmail). */
     label: {
       id: number;
@@ -10197,30 +10062,29 @@ export interface components {
       assignee: components["schemas"]["simple-user"];
     };
     /** Timeline Event */
-    "timeline-issue-events":
-      & Partial<
-        components["schemas"]["labeled-issue-event"]
-      >
-      & Partial<components["schemas"]["unlabeled-issue-event"]>
-      & Partial<components["schemas"]["milestoned-issue-event"]>
-      & Partial<components["schemas"]["demilestoned-issue-event"]>
-      & Partial<components["schemas"]["renamed-issue-event"]>
-      & Partial<components["schemas"]["review-requested-issue-event"]>
-      & Partial<components["schemas"]["review-request-removed-issue-event"]>
-      & Partial<components["schemas"]["review-dismissed-issue-event"]>
-      & Partial<components["schemas"]["locked-issue-event"]>
-      & Partial<components["schemas"]["added-to-project-issue-event"]>
-      & Partial<components["schemas"]["moved-column-in-project-issue-event"]>
-      & Partial<components["schemas"]["removed-from-project-issue-event"]>
-      & Partial<components["schemas"]["converted-note-to-issue-issue-event"]>
-      & Partial<components["schemas"]["timeline-comment-event"]>
-      & Partial<components["schemas"]["timeline-cross-referenced-event"]>
-      & Partial<components["schemas"]["timeline-committed-event"]>
-      & Partial<components["schemas"]["timeline-reviewed-event"]>
-      & Partial<components["schemas"]["timeline-line-commented-event"]>
-      & Partial<components["schemas"]["timeline-commit-commented-event"]>
-      & Partial<components["schemas"]["timeline-assigned-issue-event"]>
-      & Partial<components["schemas"]["timeline-unassigned-issue-event"]>;
+    "timeline-issue-events": Partial<
+      components["schemas"]["labeled-issue-event"]
+    > &
+      Partial<components["schemas"]["unlabeled-issue-event"]> &
+      Partial<components["schemas"]["milestoned-issue-event"]> &
+      Partial<components["schemas"]["demilestoned-issue-event"]> &
+      Partial<components["schemas"]["renamed-issue-event"]> &
+      Partial<components["schemas"]["review-requested-issue-event"]> &
+      Partial<components["schemas"]["review-request-removed-issue-event"]> &
+      Partial<components["schemas"]["review-dismissed-issue-event"]> &
+      Partial<components["schemas"]["locked-issue-event"]> &
+      Partial<components["schemas"]["added-to-project-issue-event"]> &
+      Partial<components["schemas"]["moved-column-in-project-issue-event"]> &
+      Partial<components["schemas"]["removed-from-project-issue-event"]> &
+      Partial<components["schemas"]["converted-note-to-issue-issue-event"]> &
+      Partial<components["schemas"]["timeline-comment-event"]> &
+      Partial<components["schemas"]["timeline-cross-referenced-event"]> &
+      Partial<components["schemas"]["timeline-committed-event"]> &
+      Partial<components["schemas"]["timeline-reviewed-event"]> &
+      Partial<components["schemas"]["timeline-line-commented-event"]> &
+      Partial<components["schemas"]["timeline-commit-commented-event"]> &
+      Partial<components["schemas"]["timeline-assigned-issue-event"]> &
+      Partial<components["schemas"]["timeline-unassigned-issue-event"]>;
     /** An SSH key granting access to a single repository. */
     "deploy-key": {
       id: number;
@@ -11402,23 +11266,23 @@ export interface components {
       text_matches?: components["schemas"]["search-result-text-matches"];
       related?:
         | {
-          topic_relation?: {
-            id?: number;
-            name?: string;
-            topic_id?: number;
-            relation_type?: string;
-          };
-        }[]
+            topic_relation?: {
+              id?: number;
+              name?: string;
+              topic_id?: number;
+              relation_type?: string;
+            };
+          }[]
         | null;
       aliases?:
         | {
-          topic_relation?: {
-            id?: number;
-            name?: string;
-            topic_id?: number;
-            relation_type?: string;
-          };
-        }[]
+            topic_relation?: {
+              id?: number;
+              name?: string;
+              topic_id?: number;
+              relation_type?: string;
+            };
+          }[]
         | null;
     };
     /** User Search Result Item */
@@ -12045,9 +11909,8 @@ export interface operations {
       /** Response */
       201: {
         content: {
-          "application/json":
-            & components["schemas"]["integration"]
-            & ({
+          "application/json": components["schemas"]["integration"] &
+            ({
               client_id: string;
               client_secret: string;
               webhook_secret: string | null;
@@ -12864,8 +12727,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["actions-enterprise-permissions"];
+          "application/json": components["schemas"]["actions-enterprise-permissions"];
         };
       };
     };
@@ -12900,58 +12762,56 @@ export interface operations {
    *
    * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
    */
-  "enterprise-admin/list-selected-organizations-enabled-github-actions-enterprise":
-    {
-      parameters: {
-        path: {
-          /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
-          enterprise: components["parameters"]["enterprise"];
-        };
-        query: {
-          /** Results per page (max 100) */
-          per_page?: components["parameters"]["per-page"];
-          /** Page number of the results to fetch. */
-          page?: components["parameters"]["page"];
-        };
+  "enterprise-admin/list-selected-organizations-enabled-github-actions-enterprise": {
+    parameters: {
+      path: {
+        /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
+        enterprise: components["parameters"]["enterprise"];
       };
-      responses: {
-        /** Response */
-        200: {
-          content: {
-            "application/json": {
-              total_count: number;
-              organizations: components["schemas"]["organization-simple"][];
-            };
+      query: {
+        /** Results per page (max 100) */
+        per_page?: components["parameters"]["per-page"];
+        /** Page number of the results to fetch. */
+        page?: components["parameters"]["page"];
+      };
+    };
+    responses: {
+      /** Response */
+      200: {
+        content: {
+          "application/json": {
+            total_count: number;
+            organizations: components["schemas"]["organization-simple"][];
           };
         };
       };
     };
+  };
   /**
    * Replaces the list of selected organizations that are enabled for GitHub Actions in an enterprise. To use this endpoint, the enterprise permission policy for `enabled_organizations` must be configured to `selected`. For more information, see "[Set GitHub Actions permissions for an enterprise](#set-github-actions-permissions-for-an-enterprise)."
    *
    * You must authenticate using an access token with the `admin:enterprise` scope to use this endpoint.
    */
-  "enterprise-admin/set-selected-organizations-enabled-github-actions-enterprise":
-    {
-      parameters: {
-        path: {
-          /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
-          enterprise: components["parameters"]["enterprise"];
-        };
+  "enterprise-admin/set-selected-organizations-enabled-github-actions-enterprise": {
+    parameters: {
+      path: {
+        /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
+        enterprise: components["parameters"]["enterprise"];
       };
-      responses: {
-        /** Response */
-        204: never;
-      };
-      requestBody: {
-        content: {
-          "application/json": {
-            /** List of organization IDs to enable for GitHub Actions. */
-            selected_organization_ids: number[];
-          };
+    };
+    responses: {
+      /** Response */
+      204: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** List of organization IDs to enable for GitHub Actions. */
+          selected_organization_ids: number[];
         };
       };
     };
+  };
   /**
    * Adds an organization to the list of selected organizations that are enabled for GitHub Actions in an enterprise. To use this endpoint, the enterprise permission policy for `enabled_organizations` must be configured to `selected`. For more information, see "[Set GitHub Actions permissions for an enterprise](#set-github-actions-permissions-for-an-enterprise)."
    *
@@ -13178,34 +13038,33 @@ export interface operations {
    *
    * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
    */
-  "enterprise-admin/list-org-access-to-self-hosted-runner-group-in-enterprise":
-    {
-      parameters: {
-        path: {
-          /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
-          enterprise: components["parameters"]["enterprise"];
-          /** Unique identifier of the self-hosted runner group. */
-          runner_group_id: components["parameters"]["runner-group-id"];
-        };
-        query: {
-          /** Results per page (max 100) */
-          per_page?: components["parameters"]["per-page"];
-          /** Page number of the results to fetch. */
-          page?: components["parameters"]["page"];
-        };
+  "enterprise-admin/list-org-access-to-self-hosted-runner-group-in-enterprise": {
+    parameters: {
+      path: {
+        /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
+        enterprise: components["parameters"]["enterprise"];
+        /** Unique identifier of the self-hosted runner group. */
+        runner_group_id: components["parameters"]["runner-group-id"];
       };
-      responses: {
-        /** Response */
-        200: {
-          content: {
-            "application/json": {
-              total_count: number;
-              organizations: components["schemas"]["organization-simple"][];
-            };
+      query: {
+        /** Results per page (max 100) */
+        per_page?: components["parameters"]["per-page"];
+        /** Page number of the results to fetch. */
+        page?: components["parameters"]["page"];
+      };
+    };
+    responses: {
+      /** Response */
+      200: {
+        content: {
+          "application/json": {
+            total_count: number;
+            organizations: components["schemas"]["organization-simple"][];
           };
         };
       };
     };
+  };
   /**
    * Replaces the list of organizations that have access to a self-hosted runner configured in an enterprise.
    *
@@ -13259,23 +13118,22 @@ export interface operations {
    *
    * You must authenticate using an access token with the `manage_runners:enterprise` scope to use this endpoint.
    */
-  "enterprise-admin/remove-org-access-to-self-hosted-runner-group-in-enterprise":
-    {
-      parameters: {
-        path: {
-          /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
-          enterprise: components["parameters"]["enterprise"];
-          /** Unique identifier of the self-hosted runner group. */
-          runner_group_id: components["parameters"]["runner-group-id"];
-          /** Unique identifier of an organization. */
-          org_id: components["parameters"]["org-id"];
-        };
-      };
-      responses: {
-        /** Response */
-        204: never;
+  "enterprise-admin/remove-org-access-to-self-hosted-runner-group-in-enterprise": {
+    parameters: {
+      path: {
+        /** The slug version of the enterprise name. You can also substitute this value with the enterprise id. */
+        enterprise: components["parameters"]["enterprise"];
+        /** Unique identifier of the self-hosted runner group. */
+        runner_group_id: components["parameters"]["runner-group-id"];
+        /** Unique identifier of an organization. */
+        org_id: components["parameters"]["org-id"];
       };
     };
+    responses: {
+      /** Response */
+      204: never;
+    };
+  };
   /**
    * Lists the self-hosted runners that are in a specific enterprise group.
    *
@@ -14225,6 +14083,7 @@ export interface operations {
    * repositories, and organization repositories. You can use the `filter` query parameter to fetch issues that are not
    * necessarily assigned to you.
    *
+   *
    * **Note**: GitHub's REST API v3 considers every pull request an issue, but not every issue is a pull request. For this
    * reason, "Issues" endpoints may return both issues and pull requests in the response. You can identify pull requests by
    * the `pull_request` key. Be aware that the `id` of a pull request returned from "Issues" endpoints will be an _issue id_. To find out the pull
@@ -14413,8 +14272,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["marketplace-listing-plan"][];
+          "application/json": components["schemas"]["marketplace-listing-plan"][];
         };
       };
       401: components["responses"]["requires_authentication"];
@@ -14499,8 +14357,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["marketplace-listing-plan"][];
+          "application/json": components["schemas"]["marketplace-listing-plan"][];
         };
       };
       401: components["responses"]["requires_authentication"];
@@ -14947,8 +14804,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["actions-organization-permissions"];
+          "application/json": components["schemas"]["actions-organization-permissions"];
         };
       };
     };
@@ -15320,6 +15176,7 @@ export interface operations {
   /**
    * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
    *
+   *
    * Adds a repository to the list of selected repositories that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an organization](#create-a-self-hosted-runner-group-for-an-organization)."
    *
    * You must authenticate using an access token with the `admin:org`
@@ -15341,6 +15198,7 @@ export interface operations {
   };
   /**
    * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
+   *
    *
    * Removes a repository from the list of selected repositories that can access a self-hosted runner group. The runner group must have `visibility` set to `selected`. For more information, see "[Create a self-hosted runner group for an organization](#create-a-self-hosted-runner-group-for-an-organization)."
    *
@@ -15425,6 +15283,7 @@ export interface operations {
   /**
    * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
    *
+   *
    * Adds a self-hosted runner to a runner group configured in an organization.
    *
    * You must authenticate using an access token with the `admin:org`
@@ -15447,6 +15306,7 @@ export interface operations {
   };
   /**
    * The self-hosted runner groups REST API is available with GitHub Enterprise Cloud. For more information, see "[GitHub's products](https://docs.github.com/github/getting-started-with-github/githubs-products)."
+   *
    *
    * Removes a self-hosted runner from a group configured in an organization. The runner is then returned to the default group.
    *
@@ -15669,8 +15529,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["organization-actions-secret"];
+          "application/json": components["schemas"]["organization-actions-secret"];
         };
       };
     };
@@ -15703,6 +15562,7 @@ export interface operations {
    *
    * console.log(encrypted);
    * ```
+   *
    *
    * #### Example encrypting a secret using Python
    *
@@ -16009,8 +15869,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["credential-authorization"][];
+          "application/json": components["schemas"]["credential-authorization"][];
         };
       };
     };
@@ -16072,8 +15931,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["organization-invitation"][];
+          "application/json": components["schemas"]["organization-invitation"][];
         };
       };
       404: components["responses"]["not_found"];
@@ -16395,11 +16253,10 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            & Partial<
-              components["schemas"]["interaction-limit-response"]
-            >
-            & Partial<{ [key: string]: unknown }>;
+          "application/json": Partial<
+            components["schemas"]["interaction-limit-response"]
+          > &
+            Partial<{ [key: string]: unknown }>;
         };
       };
     };
@@ -16415,8 +16272,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["interaction-limit-response"];
+          "application/json": components["schemas"]["interaction-limit-response"];
         };
       };
       422: components["responses"]["validation_failed"];
@@ -16457,8 +16313,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["organization-invitation"][];
+          "application/json": components["schemas"]["organization-invitation"][];
         };
       };
       404: components["responses"]["not_found"];
@@ -17499,8 +17354,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["organization-secret-scanning-alert"][];
+          "application/json": components["schemas"]["organization-secret-scanning-alert"][];
         };
       };
       404: components["responses"]["not_found"];
@@ -17946,8 +17800,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["team-discussion-comment"][];
+          "application/json": components["schemas"]["team-discussion-comment"][];
         };
       };
     };
@@ -18298,8 +18151,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["organization-invitation"][];
+          "application/json": components["schemas"]["organization-invitation"][];
         };
       };
     };
@@ -19039,15 +18891,15 @@ export interface operations {
       content: {
         "application/json":
           | {
-            /** The project card's note */
-            note: string | null;
-          }
+              /** The project card's note */
+              note: string | null;
+            }
           | {
-            /** The unique identifier of the content associated with the card */
-            content_id: number;
-            /** The piece of content associated with the card */
-            content_type: string;
-          };
+              /** The unique identifier of the content associated with the card */
+              content_id: number;
+              /** The piece of content associated with the card */
+              content_type: string;
+            };
       };
     };
   };
@@ -19263,8 +19115,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["repository-collaborator-permission"];
+          "application/json": components["schemas"]["repository-collaborator-permission"];
         };
       };
       304: components["responses"]["not_modified"];
@@ -19629,8 +19480,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["actions-repository-permissions"];
+          "application/json": components["schemas"]["actions-repository-permissions"];
         };
       };
     };
@@ -19883,8 +19733,7 @@ export interface operations {
         page?: components["parameters"]["page"];
         created?: components["parameters"]["created"];
         /** If `true` pull requests are omitted from the response (empty array). */
-        exclude_pull_requests?:
-          components["parameters"]["exclude-pull-requests"];
+        exclude_pull_requests?: components["parameters"]["exclude-pull-requests"];
       };
     };
     responses: {
@@ -19911,8 +19760,7 @@ export interface operations {
       };
       query: {
         /** If `true` pull requests are omitted from the response (empty array). */
-        exclude_pull_requests?:
-          components["parameters"]["exclude-pull-requests"];
+        exclude_pull_requests?: components["parameters"]["exclude-pull-requests"];
       };
     };
     responses: {
@@ -20034,8 +19882,7 @@ export interface operations {
       };
       query: {
         /** If `true` pull requests are omitted from the response (empty array). */
-        exclude_pull_requests?:
-          components["parameters"]["exclude-pull-requests"];
+        exclude_pull_requests?: components["parameters"]["exclude-pull-requests"];
       };
     };
     responses: {
@@ -20382,6 +20229,7 @@ export interface operations {
    * console.log(encrypted);
    * ```
    *
+   *
    * #### Example encrypting a secret using Python
    *
    * Encrypt your secret using [pynacl](https://pynacl.readthedocs.io/en/stable/public/#nacl-public-sealedbox) with Python 3.
@@ -20617,8 +20465,7 @@ export interface operations {
         page?: components["parameters"]["page"];
         created?: components["parameters"]["created"];
         /** If `true` pull requests are omitted from the response (empty array). */
-        exclude_pull_requests?:
-          components["parameters"]["exclude-pull-requests"];
+        exclude_pull_requests?: components["parameters"]["exclude-pull-requests"];
       };
     };
     responses: {
@@ -21009,8 +20856,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["protected-branch-admin-enforced"];
+          "application/json": components["schemas"]["protected-branch-admin-enforced"];
         };
       };
     };
@@ -21033,8 +20879,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["protected-branch-admin-enforced"];
+          "application/json": components["schemas"]["protected-branch-admin-enforced"];
         };
       };
     };
@@ -21073,8 +20918,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["protected-branch-pull-request-review"];
+          "application/json": components["schemas"]["protected-branch-pull-request-review"];
         };
       };
     };
@@ -21115,8 +20959,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["protected-branch-pull-request-review"];
+          "application/json": components["schemas"]["protected-branch-pull-request-review"];
         };
       };
       422: components["responses"]["validation_failed"];
@@ -21161,8 +21004,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["protected-branch-admin-enforced"];
+          "application/json": components["schemas"]["protected-branch-admin-enforced"];
         };
       };
       404: components["responses"]["not_found"];
@@ -21186,8 +21028,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["protected-branch-admin-enforced"];
+          "application/json": components["schemas"]["protected-branch-admin-enforced"];
         };
       };
       404: components["responses"]["not_found"];
@@ -21411,8 +21252,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["branch-restriction-policy"];
+          "application/json": components["schemas"]["branch-restriction-policy"];
         };
       };
       404: components["responses"]["not_found"];
@@ -21903,94 +21743,92 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json":
-          & (
-            | ({
+        "application/json": (
+          | ({
               status: "completed";
             } & {
               conclusion: unknown;
             } & { [key: string]: unknown })
-            | ({
+          | ({
               status?: "queued" | "in_progress";
             } & { [key: string]: unknown })
-          )
-          & {
-            /** The name of the check. For example, "code-coverage". */
-            name: string;
-            /** The SHA of the commit. */
-            head_sha: string;
-            /** The URL of the integrator's site that has the full details of the check. If the integrator does not provide this, then the homepage of the GitHub app is used. */
-            details_url?: string;
-            /** A reference for the run on the integrator's system. */
-            external_id?: string;
-            /** The current status. Can be one of `queued`, `in_progress`, or `completed`. */
-            status?: "queued" | "in_progress" | "completed";
-            /** The time that the check run began. This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
-            started_at?: string;
-            /**
-             * **Required if you provide `completed_at` or a `status` of `completed`**. The final conclusion of the check. Can be one of `action_required`, `cancelled`, `failure`, `neutral`, `success`, `skipped`, `stale`, or `timed_out`. When the conclusion is `action_required`, additional details should be provided on the site specified by `details_url`.
-             * **Note:** Providing `conclusion` will automatically set the `status` parameter to `completed`. You cannot change a check run conclusion to `stale`, only GitHub can set this.
-             */
-            conclusion?:
-              | "action_required"
-              | "cancelled"
-              | "failure"
-              | "neutral"
-              | "success"
-              | "skipped"
-              | "stale"
-              | "timed_out";
-            /** The time the check completed. This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
-            completed_at?: string;
-            /** Check runs can accept a variety of data in the `output` object, including a `title` and `summary` and can optionally provide descriptive details about the run. See the [`output` object](https://docs.github.com/rest/reference/checks#output-object) description. */
-            output?: {
-              /** The title of the check run. */
-              title: string;
-              /** The summary of the check run. This parameter supports Markdown. */
-              summary: string;
-              /** The details of the check run. This parameter supports Markdown. */
-              text?: string;
-              /** Adds information from your analysis to specific lines of code. Annotations are visible on GitHub in the **Checks** and **Files changed** tab of the pull request. The Checks API limits the number of annotations to a maximum of 50 per API request. To create more than 50 annotations, you have to make multiple requests to the [Update a check run](https://docs.github.com/rest/reference/checks#update-a-check-run) endpoint. Each time you update the check run, annotations are appended to the list of annotations that already exist for the check run. For details about how you can view annotations on GitHub, see "[About status checks](https://help.github.com/articles/about-status-checks#checks)". See the [`annotations` object](https://docs.github.com/rest/reference/checks#annotations-object) description for details about how to use this parameter. */
-              annotations?: {
-                /** The path of the file to add an annotation to. For example, `assets/css/main.css`. */
-                path: string;
-                /** The start line of the annotation. */
-                start_line: number;
-                /** The end line of the annotation. */
-                end_line: number;
-                /** The start column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
-                start_column?: number;
-                /** The end column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
-                end_column?: number;
-                /** The level of the annotation. Can be one of `notice`, `warning`, or `failure`. */
-                annotation_level: "notice" | "warning" | "failure";
-                /** A short description of the feedback for these lines of code. The maximum size is 64 KB. */
-                message: string;
-                /** The title that represents the annotation. The maximum size is 255 characters. */
-                title?: string;
-                /** Details about this annotation. The maximum size is 64 KB. */
-                raw_details?: string;
-              }[];
-              /** Adds images to the output displayed in the GitHub pull request UI. See the [`images` object](https://docs.github.com/rest/reference/checks#images-object) description for details. */
-              images?: {
-                /** The alternative text for the image. */
-                alt: string;
-                /** The full URL of the image. */
-                image_url: string;
-                /** A short image description. */
-                caption?: string;
-              }[];
-            };
-            /** Displays a button on GitHub that can be clicked to alert your app to do additional tasks. For example, a code linting app can display a button that automatically fixes detected errors. The button created in this object is displayed after the check run completes. When a user clicks the button, GitHub sends the [`check_run.requested_action` webhook](https://docs.github.com/webhooks/event-payloads/#check_run) to your app. Each action includes a `label`, `identifier` and `description`. A maximum of three actions are accepted. See the [`actions` object](https://docs.github.com/rest/reference/checks#actions-object) description. To learn more about check runs and requested actions, see "[Check runs and requested actions](https://docs.github.com/rest/reference/checks#check-runs-and-requested-actions)." To learn more about check runs and requested actions, see "[Check runs and requested actions](https://docs.github.com/rest/reference/checks#check-runs-and-requested-actions)." */
-            actions?: {
-              /** The text to be displayed on a button in the web UI. The maximum size is 20 characters. */
-              label: string;
-              /** A short explanation of what this action would do. The maximum size is 40 characters. */
-              description: string;
-              /** A reference for the action on the integrator's system. The maximum size is 20 characters. */
-              identifier: string;
+        ) & {
+          /** The name of the check. For example, "code-coverage". */
+          name: string;
+          /** The SHA of the commit. */
+          head_sha: string;
+          /** The URL of the integrator's site that has the full details of the check. If the integrator does not provide this, then the homepage of the GitHub app is used. */
+          details_url?: string;
+          /** A reference for the run on the integrator's system. */
+          external_id?: string;
+          /** The current status. Can be one of `queued`, `in_progress`, or `completed`. */
+          status?: "queued" | "in_progress" | "completed";
+          /** The time that the check run began. This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
+          started_at?: string;
+          /**
+           * **Required if you provide `completed_at` or a `status` of `completed`**. The final conclusion of the check. Can be one of `action_required`, `cancelled`, `failure`, `neutral`, `success`, `skipped`, `stale`, or `timed_out`. When the conclusion is `action_required`, additional details should be provided on the site specified by `details_url`.
+           * **Note:** Providing `conclusion` will automatically set the `status` parameter to `completed`. You cannot change a check run conclusion to `stale`, only GitHub can set this.
+           */
+          conclusion?:
+            | "action_required"
+            | "cancelled"
+            | "failure"
+            | "neutral"
+            | "success"
+            | "skipped"
+            | "stale"
+            | "timed_out";
+          /** The time the check completed. This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
+          completed_at?: string;
+          /** Check runs can accept a variety of data in the `output` object, including a `title` and `summary` and can optionally provide descriptive details about the run. See the [`output` object](https://docs.github.com/rest/reference/checks#output-object) description. */
+          output?: {
+            /** The title of the check run. */
+            title: string;
+            /** The summary of the check run. This parameter supports Markdown. */
+            summary: string;
+            /** The details of the check run. This parameter supports Markdown. */
+            text?: string;
+            /** Adds information from your analysis to specific lines of code. Annotations are visible on GitHub in the **Checks** and **Files changed** tab of the pull request. The Checks API limits the number of annotations to a maximum of 50 per API request. To create more than 50 annotations, you have to make multiple requests to the [Update a check run](https://docs.github.com/rest/reference/checks#update-a-check-run) endpoint. Each time you update the check run, annotations are appended to the list of annotations that already exist for the check run. For details about how you can view annotations on GitHub, see "[About status checks](https://help.github.com/articles/about-status-checks#checks)". See the [`annotations` object](https://docs.github.com/rest/reference/checks#annotations-object) description for details about how to use this parameter. */
+            annotations?: {
+              /** The path of the file to add an annotation to. For example, `assets/css/main.css`. */
+              path: string;
+              /** The start line of the annotation. */
+              start_line: number;
+              /** The end line of the annotation. */
+              end_line: number;
+              /** The start column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
+              start_column?: number;
+              /** The end column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
+              end_column?: number;
+              /** The level of the annotation. Can be one of `notice`, `warning`, or `failure`. */
+              annotation_level: "notice" | "warning" | "failure";
+              /** A short description of the feedback for these lines of code. The maximum size is 64 KB. */
+              message: string;
+              /** The title that represents the annotation. The maximum size is 255 characters. */
+              title?: string;
+              /** Details about this annotation. The maximum size is 64 KB. */
+              raw_details?: string;
+            }[];
+            /** Adds images to the output displayed in the GitHub pull request UI. See the [`images` object](https://docs.github.com/rest/reference/checks#images-object) description for details. */
+            images?: {
+              /** The alternative text for the image. */
+              alt: string;
+              /** The full URL of the image. */
+              image_url: string;
+              /** A short image description. */
+              caption?: string;
             }[];
           };
+          /** Displays a button on GitHub that can be clicked to alert your app to do additional tasks. For example, a code linting app can display a button that automatically fixes detected errors. The button created in this object is displayed after the check run completes. When a user clicks the button, GitHub sends the [`check_run.requested_action` webhook](https://docs.github.com/webhooks/event-payloads/#check_run) to your app. Each action includes a `label`, `identifier` and `description`. A maximum of three actions are accepted. See the [`actions` object](https://docs.github.com/rest/reference/checks#actions-object) description. To learn more about check runs and requested actions, see "[Check runs and requested actions](https://docs.github.com/rest/reference/checks#check-runs-and-requested-actions)." To learn more about check runs and requested actions, see "[Check runs and requested actions](https://docs.github.com/rest/reference/checks#check-runs-and-requested-actions)." */
+          actions?: {
+            /** The text to be displayed on a button in the web UI. The maximum size is 20 characters. */
+            label: string;
+            /** A short explanation of what this action would do. The maximum size is 40 characters. */
+            description: string;
+            /** A reference for the action on the integrator's system. The maximum size is 20 characters. */
+            identifier: string;
+          }[];
+        };
       };
     };
   };
@@ -22041,96 +21879,92 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json":
-          & (
-            & Partial<
-              {
-                status?: "completed";
-              } & {
-                conclusion: unknown;
-              } & { [key: string]: unknown }
-            >
-            & Partial<
-              {
-                status?: "queued" | "in_progress";
-              } & { [key: string]: unknown }
-            >
-          )
-          & {
-            /** The name of the check. For example, "code-coverage". */
-            name?: string;
-            /** The URL of the integrator's site that has the full details of the check. */
-            details_url?: string;
-            /** A reference for the run on the integrator's system. */
-            external_id?: string;
-            /** This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
-            started_at?: string;
-            /** The current status. Can be one of `queued`, `in_progress`, or `completed`. */
-            status?: "queued" | "in_progress" | "completed";
-            /**
-             * **Required if you provide `completed_at` or a `status` of `completed`**. The final conclusion of the check. Can be one of `action_required`, `cancelled`, `failure`, `neutral`, `success`, `skipped`, `stale`, or `timed_out`.
-             * **Note:** Providing `conclusion` will automatically set the `status` parameter to `completed`. You cannot change a check run conclusion to `stale`, only GitHub can set this.
-             */
-            conclusion?:
-              | "action_required"
-              | "cancelled"
-              | "failure"
-              | "neutral"
-              | "success"
-              | "skipped"
-              | "stale"
-              | "timed_out";
-            /** The time the check completed. This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
-            completed_at?: string;
-            /** Check runs can accept a variety of data in the `output` object, including a `title` and `summary` and can optionally provide descriptive details about the run. See the [`output` object](https://docs.github.com/rest/reference/checks#output-object-1) description. */
-            output?: {
-              /** **Required**. */
+        "application/json": (Partial<
+          {
+            status?: "completed";
+          } & {
+            conclusion: unknown;
+          } & { [key: string]: unknown }
+        > &
+          Partial<
+            {
+              status?: "queued" | "in_progress";
+            } & { [key: string]: unknown }
+          >) & {
+          /** The name of the check. For example, "code-coverage". */
+          name?: string;
+          /** The URL of the integrator's site that has the full details of the check. */
+          details_url?: string;
+          /** A reference for the run on the integrator's system. */
+          external_id?: string;
+          /** This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
+          started_at?: string;
+          /** The current status. Can be one of `queued`, `in_progress`, or `completed`. */
+          status?: "queued" | "in_progress" | "completed";
+          /**
+           * **Required if you provide `completed_at` or a `status` of `completed`**. The final conclusion of the check. Can be one of `action_required`, `cancelled`, `failure`, `neutral`, `success`, `skipped`, `stale`, or `timed_out`.
+           * **Note:** Providing `conclusion` will automatically set the `status` parameter to `completed`. You cannot change a check run conclusion to `stale`, only GitHub can set this.
+           */
+          conclusion?:
+            | "action_required"
+            | "cancelled"
+            | "failure"
+            | "neutral"
+            | "success"
+            | "skipped"
+            | "stale"
+            | "timed_out";
+          /** The time the check completed. This is a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ`. */
+          completed_at?: string;
+          /** Check runs can accept a variety of data in the `output` object, including a `title` and `summary` and can optionally provide descriptive details about the run. See the [`output` object](https://docs.github.com/rest/reference/checks#output-object-1) description. */
+          output?: {
+            /** **Required**. */
+            title?: string;
+            /** Can contain Markdown. */
+            summary: string;
+            /** Can contain Markdown. */
+            text?: string;
+            /** Adds information from your analysis to specific lines of code. Annotations are visible in GitHub's pull request UI. Annotations are visible in GitHub's pull request UI. The Checks API limits the number of annotations to a maximum of 50 per API request. To create more than 50 annotations, you have to make multiple requests to the [Update a check run](https://docs.github.com/rest/reference/checks#update-a-check-run) endpoint. Each time you update the check run, annotations are appended to the list of annotations that already exist for the check run. For details about annotations in the UI, see "[About status checks](https://help.github.com/articles/about-status-checks#checks)". See the [`annotations` object](https://docs.github.com/rest/reference/checks#annotations-object-1) description for details. */
+            annotations?: {
+              /** The path of the file to add an annotation to. For example, `assets/css/main.css`. */
+              path: string;
+              /** The start line of the annotation. */
+              start_line: number;
+              /** The end line of the annotation. */
+              end_line: number;
+              /** The start column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
+              start_column?: number;
+              /** The end column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
+              end_column?: number;
+              /** The level of the annotation. Can be one of `notice`, `warning`, or `failure`. */
+              annotation_level: "notice" | "warning" | "failure";
+              /** A short description of the feedback for these lines of code. The maximum size is 64 KB. */
+              message: string;
+              /** The title that represents the annotation. The maximum size is 255 characters. */
               title?: string;
-              /** Can contain Markdown. */
-              summary: string;
-              /** Can contain Markdown. */
-              text?: string;
-              /** Adds information from your analysis to specific lines of code. Annotations are visible in GitHub's pull request UI. Annotations are visible in GitHub's pull request UI. The Checks API limits the number of annotations to a maximum of 50 per API request. To create more than 50 annotations, you have to make multiple requests to the [Update a check run](https://docs.github.com/rest/reference/checks#update-a-check-run) endpoint. Each time you update the check run, annotations are appended to the list of annotations that already exist for the check run. For details about annotations in the UI, see "[About status checks](https://help.github.com/articles/about-status-checks#checks)". See the [`annotations` object](https://docs.github.com/rest/reference/checks#annotations-object-1) description for details. */
-              annotations?: {
-                /** The path of the file to add an annotation to. For example, `assets/css/main.css`. */
-                path: string;
-                /** The start line of the annotation. */
-                start_line: number;
-                /** The end line of the annotation. */
-                end_line: number;
-                /** The start column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
-                start_column?: number;
-                /** The end column of the annotation. Annotations only support `start_column` and `end_column` on the same line. Omit this parameter if `start_line` and `end_line` have different values. */
-                end_column?: number;
-                /** The level of the annotation. Can be one of `notice`, `warning`, or `failure`. */
-                annotation_level: "notice" | "warning" | "failure";
-                /** A short description of the feedback for these lines of code. The maximum size is 64 KB. */
-                message: string;
-                /** The title that represents the annotation. The maximum size is 255 characters. */
-                title?: string;
-                /** Details about this annotation. The maximum size is 64 KB. */
-                raw_details?: string;
-              }[];
-              /** Adds images to the output displayed in the GitHub pull request UI. See the [`images` object](https://docs.github.com/rest/reference/checks#annotations-object-1) description for details. */
-              images?: {
-                /** The alternative text for the image. */
-                alt: string;
-                /** The full URL of the image. */
-                image_url: string;
-                /** A short image description. */
-                caption?: string;
-              }[];
-            };
-            /** Possible further actions the integrator can perform, which a user may trigger. Each action includes a `label`, `identifier` and `description`. A maximum of three actions are accepted. See the [`actions` object](https://docs.github.com/rest/reference/checks#actions-object) description. To learn more about check runs and requested actions, see "[Check runs and requested actions](https://docs.github.com/rest/reference/checks#check-runs-and-requested-actions)." */
-            actions?: {
-              /** The text to be displayed on a button in the web UI. The maximum size is 20 characters. */
-              label: string;
-              /** A short explanation of what this action would do. The maximum size is 40 characters. */
-              description: string;
-              /** A reference for the action on the integrator's system. The maximum size is 20 characters. */
-              identifier: string;
+              /** Details about this annotation. The maximum size is 64 KB. */
+              raw_details?: string;
+            }[];
+            /** Adds images to the output displayed in the GitHub pull request UI. See the [`images` object](https://docs.github.com/rest/reference/checks#annotations-object-1) description for details. */
+            images?: {
+              /** The alternative text for the image. */
+              alt: string;
+              /** The full URL of the image. */
+              image_url: string;
+              /** A short image description. */
+              caption?: string;
             }[];
           };
+          /** Possible further actions the integrator can perform, which a user may trigger. Each action includes a `label`, `identifier` and `description`. A maximum of three actions are accepted. See the [`actions` object](https://docs.github.com/rest/reference/checks#actions-object) description. To learn more about check runs and requested actions, see "[Check runs and requested actions](https://docs.github.com/rest/reference/checks#check-runs-and-requested-actions)." */
+          actions?: {
+            /** The text to be displayed on a button in the web UI. The maximum size is 20 characters. */
+            label: string;
+            /** A short explanation of what this action would do. The maximum size is 40 characters. */
+            description: string;
+            /** A reference for the action on the integrator's system. The maximum size is 20 characters. */
+            identifier: string;
+          }[];
+        };
       };
     };
   };
@@ -22382,8 +22216,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["code-scanning-alert-items"][];
+          "application/json": components["schemas"]["code-scanning-alert-items"][];
         };
       };
       403: components["responses"]["code_scanning_forbidden_read"];
@@ -22443,8 +22276,7 @@ export interface operations {
       content: {
         "application/json": {
           state: components["schemas"]["code-scanning-alert-set-state"];
-          dismissed_reason?:
-            components["schemas"]["code-scanning-alert-dismissed-reason"];
+          dismissed_reason?: components["schemas"]["code-scanning-alert-dismissed-reason"];
         };
       };
     };
@@ -22471,8 +22303,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["code-scanning-alert-instance"][];
+          "application/json": components["schemas"]["code-scanning-alert-instance"][];
         };
       };
       403: components["responses"]["code_scanning_forbidden_read"];
@@ -22656,8 +22487,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["code-scanning-analysis-deletion"];
+          "application/json": components["schemas"]["code-scanning-analysis-deletion"];
         };
       };
       400: components["responses"]["bad_request"];
@@ -22696,8 +22526,7 @@ export interface operations {
       /** Response */
       202: {
         content: {
-          "application/json":
-            components["schemas"]["code-scanning-sarifs-receipt"];
+          "application/json": components["schemas"]["code-scanning-sarifs-receipt"];
         };
       };
       /** Bad Request if the sarif field is invalid */
@@ -22711,8 +22540,7 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": {
-          commit_sha:
-            components["schemas"]["code-scanning-analysis-commit-sha"];
+          commit_sha: components["schemas"]["code-scanning-analysis-commit-sha"];
           ref: components["schemas"]["code-scanning-ref"];
           sarif: components["schemas"]["code-scanning-analysis-sarif-file"];
           /**
@@ -22742,8 +22570,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["code-scanning-sarifs-status"];
+          "application/json": components["schemas"]["code-scanning-sarifs-status"];
         };
       };
       403: components["responses"]["code_scanning_forbidden_read"];
@@ -22885,8 +22712,7 @@ export interface operations {
       /** if user has admin permissions */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["repository-collaborator-permission"];
+          "application/json": components["schemas"]["repository-collaborator-permission"];
         };
       };
       404: components["responses"]["not_found"];
@@ -23595,8 +23421,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["content-reference-attachment"];
+          "application/json": components["schemas"]["content-reference-attachment"];
         };
       };
       304: components["responses"]["not_modified"];
@@ -23668,8 +23493,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/vnd.github.v3.object":
-            components["schemas"]["content-tree"];
+          "application/vnd.github.v3.object": components["schemas"]["content-tree"];
           "application/json":
             | components["schemas"]["content-directory"]
             | components["schemas"]["content-file"]
@@ -24225,13 +24049,12 @@ export interface operations {
           /** The people or teams that may review jobs that reference the environment. You can list up to six users or teams as reviewers. The reviewers must have at least read access to the repository. Only one of the required reviewers needs to approve the job for it to proceed. */
           reviewers?:
             | {
-              type?: components["schemas"]["deployment-reviewer-type"];
-              /** The id of the user or team who can review the deployment */
-              id?: number;
-            }[]
+                type?: components["schemas"]["deployment-reviewer-type"];
+                /** The id of the user or team who can review the deployment */
+                id?: number;
+              }[]
             | null;
-          deployment_branch_policy?:
-            components["schemas"]["deployment_branch_policy"];
+          deployment_branch_policy?: components["schemas"]["deployment_branch_policy"];
         } | null;
       };
     };
@@ -25438,11 +25261,10 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            & Partial<
-              components["schemas"]["interaction-limit-response"]
-            >
-            & Partial<{ [key: string]: unknown }>;
+          "application/json": Partial<
+            components["schemas"]["interaction-limit-response"]
+          > &
+            Partial<{ [key: string]: unknown }>;
         };
       };
     };
@@ -25459,8 +25281,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["interaction-limit-response"];
+          "application/json": components["schemas"]["interaction-limit-response"];
         };
       };
       /** Response */
@@ -25645,11 +25466,11 @@ export interface operations {
           labels?: (
             | string
             | {
-              id?: number;
-              name?: string;
-              description?: string | null;
-              color?: string | null;
-            }
+                id?: number;
+                name?: string;
+                description?: string | null;
+                color?: string | null;
+              }
           )[];
           /** Logins for Users to assign to this issue. _NOTE: Only users with push access can set assignees for new issues. Assignees are silently dropped otherwise._ */
           assignees?: string[];
@@ -25967,11 +25788,11 @@ export interface operations {
           labels?: (
             | string
             | {
-              id?: number;
-              name?: string;
-              description?: string | null;
-              color?: string | null;
-            }
+                id?: number;
+                name?: string;
+                description?: string | null;
+                color?: string | null;
+              }
           )[];
           /** Logins for Users to assign to this issue. Pass one or more user logins to _replace_ the set of assignees on this Issue. Send an empty array (`[]`) to clear all assignees from the Issue. _NOTE: Only users with push access can set assignees for new issues. Assignees are silently dropped otherwise._ */
           assignees?: string[];
@@ -26173,14 +25994,14 @@ export interface operations {
       content: {
         "application/json":
           | {
-            /** The names of the labels to add to the issue. You can pass an empty array to remove all labels. **Note:** Alternatively, you can pass a single label as a `string` or an `array` of labels directly, but GitHub recommends passing an object with the `labels` key. */
-            labels?: string[];
-          }
+              /** The names of the labels to add to the issue. You can pass an empty array to remove all labels. **Note:** Alternatively, you can pass a single label as a `string` or an `array` of labels directly, but GitHub recommends passing an object with the `labels` key. */
+              labels?: string[];
+            }
           | {
-            labels?: {
-              name: string;
-            }[];
-          };
+              labels?: {
+                name: string;
+              }[];
+            };
       };
     };
   };
@@ -26207,14 +26028,14 @@ export interface operations {
       content: {
         "application/json":
           | {
-            /** The names of the labels to add to the issue. You can pass an empty array to remove all labels. **Note:** Alternatively, you can pass a single label as a `string` or an `array` of labels directly, but GitHub recommends passing an object with the `labels` key. */
-            labels?: string[];
-          }
+              /** The names of the labels to add to the issue. You can pass an empty array to remove all labels. **Note:** Alternatively, you can pass a single label as a `string` or an `array` of labels directly, but GitHub recommends passing an object with the `labels` key. */
+              labels?: string[];
+            }
           | {
-            labels?: {
-              name: string;
-            }[];
-          };
+              labels?: {
+                name: string;
+              }[];
+            };
       };
     };
   };
@@ -27045,9 +26866,8 @@ export interface operations {
           https_enforced?: boolean;
           /** Configures access controls for the GitHub Pages site. If public is set to `true`, the site is accessible to anyone on the internet. If set to `false`, the site will only be accessible to users who have at least `read` access to the repository that published the site. This includes anyone in your Enterprise if the repository is set to `internal` visibility. This feature is only available to repositories in an organization on an Enterprise plan. */
           public?: boolean;
-          source?:
-            & Partial<"gh-pages" | "master" | "master /docs">
-            & Partial<{
+          source?: Partial<"gh-pages" | "master" | "master /docs"> &
+            Partial<{
               /** The repository branch used to publish your site's source files. */
               branch: string;
               /** The repository directory that includes the source files for the Pages site. Allowed paths are `/` or `/docs`. */
@@ -27386,8 +27206,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-comment"][];
+          "application/json": components["schemas"]["pull-request-review-comment"][];
         };
       };
     };
@@ -27406,8 +27225,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-comment"];
+          "application/json": components["schemas"]["pull-request-review-comment"];
         };
       };
       404: components["responses"]["not_found"];
@@ -27443,8 +27261,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-comment"];
+          "application/json": components["schemas"]["pull-request-review-comment"];
         };
       };
     };
@@ -27659,8 +27476,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-comment"][];
+          "application/json": components["schemas"]["pull-request-review-comment"][];
         };
       };
     };
@@ -27689,8 +27505,7 @@ export interface operations {
           Location?: string;
         };
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-comment"];
+          "application/json": components["schemas"]["pull-request-review-comment"];
         };
       };
       403: components["responses"]["forbidden"];
@@ -27742,8 +27557,7 @@ export interface operations {
           Location?: string;
         };
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-comment"];
+          "application/json": components["schemas"]["pull-request-review-comment"];
         };
       };
       404: components["responses"]["not_found"];
@@ -27837,8 +27651,7 @@ export interface operations {
       /** if merge was successful */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["pull-request-merge-result"];
+          "application/json": components["schemas"]["pull-request-merge-result"];
         };
       };
       403: components["responses"]["forbidden"];
@@ -27897,8 +27710,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["pull-request-review-request"];
+          "application/json": components["schemas"]["pull-request-review-request"];
         };
       };
     };
@@ -28791,8 +28603,7 @@ export interface operations {
       content: {
         "application/json": {
           state: components["schemas"]["secret-scanning-alert-state"];
-          resolution?:
-            components["schemas"]["secret-scanning-alert-resolution"];
+          resolution?: components["schemas"]["secret-scanning-alert-resolution"];
         };
       };
     };
@@ -28820,9 +28631,8 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            & Partial<components["schemas"]["simple-user"][]>
-            & Partial<components["schemas"]["stargazer"][]>;
+          "application/json": Partial<components["schemas"]["simple-user"][]> &
+            Partial<components["schemas"]["stargazer"][]>;
         };
       };
       422: components["responses"]["validation_failed"];
@@ -29522,6 +29332,7 @@ export interface operations {
    * console.log(encrypted);
    * ```
    *
+   *
    * #### Example encrypting a secret using Python
    *
    * Encrypt your secret using [pynacl](https://pynacl.readthedocs.io/en/stable/public/#nacl-public-sealedbox) with Python 3.
@@ -29638,8 +29449,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["scim-group-list-enterprise"];
+          "application/json": components["schemas"]["scim-group-list-enterprise"];
         };
       };
     };
@@ -29830,8 +29640,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["scim-user-list-enterprise"];
+          "application/json": components["schemas"]["scim-user-list-enterprise"];
         };
       };
     };
@@ -30268,16 +30077,16 @@ export interface operations {
             path?: string;
             value?:
               | {
-                active?: boolean | null;
-                userName?: string | null;
-                externalId?: string | null;
-                givenName?: string | null;
-                familyName?: string | null;
-              }
+                  active?: boolean | null;
+                  userName?: string | null;
+                  externalId?: string | null;
+                  givenName?: string | null;
+                  familyName?: string | null;
+                }
               | {
-                value?: string;
-                primary?: boolean;
-              }[]
+                  value?: string;
+                  primary?: boolean;
+                }[]
               | string;
           }[];
         };
@@ -30855,8 +30664,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["team-discussion-comment"][];
+          "application/json": components["schemas"]["team-discussion-comment"][];
         };
       };
     };
@@ -31136,8 +30944,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["organization-invitation"][];
+          "application/json": components["schemas"]["organization-invitation"][];
         };
       };
     };
@@ -32199,11 +32006,10 @@ export interface operations {
       /** Default response */
       200: {
         content: {
-          "application/json":
-            & Partial<
-              components["schemas"]["interaction-limit-response"]
-            >
-            & Partial<{ [key: string]: unknown }>;
+          "application/json": Partial<
+            components["schemas"]["interaction-limit-response"]
+          > &
+            Partial<{ [key: string]: unknown }>;
         };
       };
       /** Response when there are no restrictions */
@@ -32216,8 +32022,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["interaction-limit-response"];
+          "application/json": components["schemas"]["interaction-limit-response"];
         };
       };
       422: components["responses"]["validation_failed"];
@@ -32393,8 +32198,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["user-marketplace-purchase"][];
+          "application/json": components["schemas"]["user-marketplace-purchase"][];
         };
       };
       304: components["responses"]["not_modified"];
@@ -32417,8 +32221,7 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            components["schemas"]["user-marketplace-purchase"][];
+          "application/json": components["schemas"]["user-marketplace-purchase"][];
         };
       };
       304: components["responses"]["not_modified"];
@@ -33183,8 +32986,7 @@ export interface operations {
         headers: {};
         content: {
           "application/json": components["schemas"]["repository"][];
-          "application/vnd.github.v3.star+json":
-            components["schemas"]["starred-repository"][];
+          "application/vnd.github.v3.star+json": components["schemas"]["starred-repository"][];
         };
       };
       304: components["responses"]["not_modified"];
@@ -34045,11 +33847,10 @@ export interface operations {
       200: {
         headers: {};
         content: {
-          "application/json":
-            & Partial<
-              components["schemas"]["starred-repository"][]
-            >
-            & Partial<components["schemas"]["repository"][]>;
+          "application/json": Partial<
+            components["schemas"]["starred-repository"][]
+          > &
+            Partial<components["schemas"]["repository"][]>;
         };
       };
     };
@@ -34173,8 +33974,7 @@ export interface operations {
       /** Response */
       200: {
         content: {
-          "application/json":
-            components["schemas"]["content-reference-attachment"];
+          "application/json": components["schemas"]["content-reference-attachment"];
         };
       };
       304: components["responses"]["not_modified"];

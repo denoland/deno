@@ -7,15 +7,15 @@ import { Url } from "./Url.d.ts";
  * as well as the method property.
  */
 export declare type EndpointDefaults = RequestParameters & {
-  baseUrl: Url;
-  method: RequestMethod;
-  url?: Url;
-  headers: RequestHeaders & {
-    accept: string;
-    "user-agent": string;
-  };
-  mediaType: {
-    format: string;
-    previews: string[];
-  };
+    baseUrl: Url;
+    method: RequestMethod;
+    url?: Url;
+    headers: RequestHeaders & {
+        accept: string;
+        "user-agent": string;
+    };
+    mediaType: {
+        format: string;
+        previews: string[];
+    };
 };

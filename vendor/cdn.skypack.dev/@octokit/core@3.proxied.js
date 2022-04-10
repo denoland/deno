@@ -12,5 +12,5 @@
  */
 
 // Browser-Optimized Imports (Don't directly import the URLs below in your application!)
-export * from "/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js";
-export { default } from "/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js";
+export * from '/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js';
+export {default} from '/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js';

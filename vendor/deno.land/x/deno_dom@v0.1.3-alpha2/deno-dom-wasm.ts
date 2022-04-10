@@ -5,3 +5,4 @@ await init();
 register(parse, parse_frag);
 
 export * from "./src/api.ts";
+

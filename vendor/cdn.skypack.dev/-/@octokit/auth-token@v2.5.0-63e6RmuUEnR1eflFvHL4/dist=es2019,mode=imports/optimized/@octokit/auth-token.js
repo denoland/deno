@@ -3,20 +3,13 @@ const REGEX_IS_INSTALLATION = /^ghs_/;
 const REGEX_IS_USER_TO_SERVER = /^ghu_/;
 async function auth(token) {
   const isApp = token.split(/\./).length === 3;
-  const isInstallation = REGEX_IS_INSTALLATION_LEGACY.test(token) ||
-    REGEX_IS_INSTALLATION.test(token);
+  const isInstallation = REGEX_IS_INSTALLATION_LEGACY.test(token) || REGEX_IS_INSTALLATION.test(token);
   const isUserToServer = REGEX_IS_USER_TO_SERVER.test(token);
-  const tokenType = isApp
-    ? "app"
-    : isInstallation
-    ? "installation"
-    : isUserToServer
-    ? "user-to-server"
-    : "oauth";
+  const tokenType = isApp ? "app" : isInstallation ? "installation" : isUserToServer ? "user-to-server" : "oauth";
   return {
     type: "token",
     token,
-    tokenType,
+    tokenType
   };
 }
 function withAuthorizationPrefix(token) {
@@ -35,14 +28,12 @@ const createTokenAuth = function createTokenAuth2(token) {
     throw new Error("[@octokit/auth-token] No token passed to createTokenAuth");
   }
   if (typeof token !== "string") {
-    throw new Error(
-      "[@octokit/auth-token] Token passed to createTokenAuth is not a string",
-    );
+    throw new Error("[@octokit/auth-token] Token passed to createTokenAuth is not a string");
   }
   token = token.replace(/^(token|bearer) +/i, "");
   return Object.assign(auth.bind(null, token), {
-    hook: hook.bind(null, token),
+    hook: hook.bind(null, token)
   });
 };
-export { createTokenAuth };
+export {createTokenAuth};
 export default null;

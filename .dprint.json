@@ -42,7 +42,8 @@
     "test_util/wpt",
     "third_party",
     "tools/wpt/expectation.json",
-    "tools/wpt/manifest.json"
+    "tools/wpt/manifest.json",
+    "vendor/"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.67.0.wasm",

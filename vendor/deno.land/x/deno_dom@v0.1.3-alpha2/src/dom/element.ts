@@ -28,9 +28,7 @@ export class Attr {
   }
 
   get value() {
-    return (<{ [attribute: string]: string }> <unknown> this.#namedNodeMap)[
-      this.#name
-    ];
+    return (<{[attribute: string]: string}> <unknown> this.#namedNodeMap)[this.#name];
   }
 }
 
@@ -47,8 +45,7 @@ export class NamedNodeMap {
   }
 
   getNamedItem(attribute: string) {
-    return this.#attrObjCache[attribute] ??
-      (this.#attrObjCache[attribute] = this.newAttr(attribute));
+    return this.#attrObjCache[attribute] ?? (this.#attrObjCache[attribute] = this.newAttr(attribute));
   }
 
   setNamedItem(...args: any) {
@@ -58,8 +55,7 @@ export class NamedNodeMap {
 
 export class Element extends Node {
   public classList = new DOMTokenList();
-  public attributes: NamedNodeMap & { [attribute: string]: string } =
-    <any> new NamedNodeMap();
+  public attributes: NamedNodeMap & {[attribute: string]: string} = <any> new NamedNodeMap();
 
   #currentId = "";
 
@@ -108,15 +104,15 @@ export class Element extends Node {
     let out = "<" + tagName;
 
     for (const attribute of Object.getOwnPropertyNames(attributes)) {
-      out += ` ${attribute.toLowerCase()}`;
+      out += ` ${ attribute.toLowerCase() }`;
 
       if (attributes[attribute] != null) {
         out += `="${
           attributes[attribute]
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
         }"`;
       }
     }
@@ -141,7 +137,7 @@ export class Element extends Node {
         break;
 
       default:
-        out += ">" + this.innerHTML + `</${tagName}>`;
+        out += ">" + this.innerHTML + `</${ tagName }>`;
         break;
     }
 
@@ -282,7 +278,7 @@ export class Element extends Node {
 
     const nodeList = new NodeList();
     const mutator = nodeList[nodeListMutatorSym]();
-    mutator.push(...this.ownerDocument!._nwapi.select(selectors, this));
+    mutator.push(...this.ownerDocument!._nwapi.select(selectors, this))
 
     return nodeList;
   }
@@ -357,3 +353,4 @@ export class Element extends Node {
     return search;
   }
 }
+

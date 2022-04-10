@@ -24,9 +24,7 @@ function runTimeout(fun) {
   if (cachedSetTimeout === setTimeout) {
     return setTimeout(fun, 0);
   }
-  if (
-    (cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout
-  ) {
+  if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
     cachedSetTimeout = setTimeout;
     return setTimeout(fun, 0);
   }
@@ -44,10 +42,7 @@ function runClearTimeout(marker) {
   if (cachedClearTimeout === clearTimeout) {
     return clearTimeout(marker);
   }
-  if (
-    (cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) &&
-    clearTimeout
-  ) {
+  if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
     cachedClearTimeout = clearTimeout;
     return clearTimeout(marker);
   }
@@ -117,7 +112,7 @@ function Item(fun, array) {
   this.fun = fun;
   this.array = array;
 }
-Item.prototype.run = function () {
+Item.prototype.run = function() {
   this.fun.apply(null, this.array);
 };
 var title = "browser";
@@ -150,11 +145,9 @@ function umask() {
   return 0;
 }
 var performance = globalContext.performance || {};
-var performanceNow = performance.now || performance.mozNow ||
-  performance.msNow || performance.oNow || performance.webkitNow ||
-  function () {
-    return new Date().getTime();
-  };
+var performanceNow = performance.now || performance.mozNow || performance.msNow || performance.oNow || performance.webkitNow || function() {
+  return new Date().getTime();
+};
 function hrtime(previousTimestamp) {
   var clocktime = performanceNow.call(performance) * 1e-3;
   var seconds = Math.floor(clocktime);
@@ -179,7 +172,7 @@ var process = {
   nextTick,
   title,
   browser,
-  env: { NODE_ENV: "production" },
+  env: {NODE_ENV: "production"},
   argv,
   version,
   versions,
@@ -198,18 +191,16 @@ var process = {
   platform,
   release,
   config,
-  uptime,
+  uptime
 };
 function getUserAgent() {
   if (typeof navigator === "object" && "userAgent" in navigator) {
     return navigator.userAgent;
   }
   if (typeof process === "object" && "version" in process) {
-    return `Node.js/${
-      process.version.substr(1)
-    } (${process.platform}; ${process.arch})`;
+    return `Node.js/${process.version.substr(1)} (${process.platform}; ${process.arch})`;
   }
   return "<environment undetectable>";
 }
-export { getUserAgent };
+export {getUserAgent};
 export default null;

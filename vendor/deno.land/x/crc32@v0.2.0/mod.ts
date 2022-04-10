@@ -10,7 +10,7 @@ export function crc32(arr: Uint8Array | string): string {
       if ((temp & 1) === 1) {
         temp = (temp >>> 1) ^ poly;
       } else {
-        temp = temp >>> 1;
+        temp = (temp >>> 1);
       }
     }
     crc = (crc >>> 8) ^ temp;

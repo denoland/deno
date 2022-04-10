@@ -9,7 +9,7 @@ const HTMLCollectionFakeClass: any = (() => {
     static [Symbol.hasInstance](value: any) {
       return value.constructor === HTMLCollectionClass;
     }
-  };
+  }
 })();
 
 export const HTMLCollectionMutatorSym = Symbol();
@@ -22,8 +22,8 @@ const HTMLCollectionClass: any = (() => {
   class HTMLCollection extends Array<Element> {
     // @ts-ignore
     forEach(
-      cb: (node: Element, index: number, nodeList: Element[]) => void,
-      thisArg: HTMLCollection | undefined = undefined,
+      cb: (node: Element, index: number, nodeList: Element[]) => void, 
+      thisArg: HTMLCollection | undefined = undefined
     ) {
       super.forEach(cb, thisArg);
     }
@@ -39,64 +39,60 @@ const HTMLCollectionClass: any = (() => {
         splice: Array.prototype.splice.bind(this),
 
         indexOf: Array.prototype.indexOf.bind(this),
-      };
+      }
     }
   }
 
   return HTMLCollection;
 })();
 
-for (
-  const staticMethod of [
-    "from",
-    "isArray",
-    "of",
-  ]
-) {
+for (const staticMethod of [
+  "from",
+  "isArray",
+  "of",
+]) {
   HTMLCollectionClass[staticMethod] = undefined;
 }
 
-for (
-  const instanceMethod of [
-    "concat",
-    "copyWithin",
-    "every",
-    "fill",
-    "filter",
-    "find",
-    "findIndex",
-    "flat",
-    "flatMap",
-    "includes",
-    "indexOf",
-    "join",
-    "lastIndexOf",
-    "map",
-    "pop",
-    "push",
-    "reduce",
-    "reduceRight",
-    "reverse",
-    "shift",
-    "slice",
-    "some",
-    "sort",
-    "splice",
-    "toLocaleString",
-    "unshift",
+for (const instanceMethod of [
+  "concat",
+  "copyWithin",
+  "every",
+  "fill",
+  "filter",
+  "find",
+  "findIndex",
+  "flat",
+  "flatMap",
+  "includes",
+  "indexOf",
+  "join",
+  "lastIndexOf",
+  "map",
+  "pop",
+  "push",
+  "reduce",
+  "reduceRight",
+  "reverse",
+  "shift",
+  "slice",
+  "some",
+  "sort",
+  "splice",
+  "toLocaleString",
+  "unshift",
 
-    // Unlike NodeList, HTMLCollection also doesn't implement these
-    "entries",
-    "forEach",
-    "keys",
-    "values",
-  ]
-) {
+  // Unlike NodeList, HTMLCollection also doesn't implement these
+  "entries",
+  "forEach",
+  "keys",
+  "values",
+]) {
   HTMLCollectionClass.prototype[instanceMethod] = undefined;
 }
 
 export interface HTMLCollection {
-  new (): HTMLCollection;
+  new(): HTMLCollection;
   readonly [index: number]: Element;
   readonly length: number;
   [Symbol.iterator](): Generator<Element>;
@@ -116,5 +112,5 @@ export interface HTMLCollectionMutator {
 }
 
 export const HTMLCollection = <HTMLCollection> HTMLCollectionClass;
-export const HTMLCollectionPublic =
-  <HTMLCollectionPublic> HTMLCollectionFakeClass;
+export const HTMLCollectionPublic = <HTMLCollectionPublic> HTMLCollectionFakeClass;
+

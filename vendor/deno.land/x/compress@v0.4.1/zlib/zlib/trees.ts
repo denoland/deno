@@ -762,7 +762,7 @@ function build_tree(s: any, desc: any) {
    * two codes of non zero frequency.
    */
   while (s.heap_len < 2) {
-    node = s.heap[++s.heap_len] = max_code < 2 ? ++max_code : 0;
+    node = s.heap[++s.heap_len] = (max_code < 2 ? ++max_code : 0);
     tree[node * 2] /*.Freq*/ = 1;
     s.depth[node] = 0;
     s.opt_len--;

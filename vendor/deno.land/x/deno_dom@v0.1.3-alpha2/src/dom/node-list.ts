@@ -9,7 +9,7 @@ const NodeListFakeClass: any = (() => {
     static [Symbol.hasInstance](value: any) {
       return value.constructor === NodeListClass;
     }
-  };
+  }
 })();
 
 export const nodeListMutatorSym = Symbol();
@@ -22,8 +22,8 @@ const NodeListClass: any = (() => {
   class NodeList extends Array<Node> {
     // @ts-ignore
     forEach(
-      cb: (node: Node, index: number, nodeList: Node[]) => void,
-      thisArg: NodeList | undefined = undefined,
+      cb: (node: Node, index: number, nodeList: Node[]) => void, 
+      thisArg: NodeList | undefined = undefined
     ) {
       super.forEach(cb, thisArg);
     }
@@ -39,58 +39,54 @@ const NodeListClass: any = (() => {
         splice: Array.prototype.splice.bind(this),
 
         indexOf: Array.prototype.indexOf.bind(this),
-      };
+      }
     }
   }
 
   return NodeList;
 })();
 
-for (
-  const staticMethod of [
-    "from",
-    "isArray",
-    "of",
-  ]
-) {
+for (const staticMethod of [
+  "from",
+  "isArray",
+  "of",
+]) {
   NodeListClass[staticMethod] = undefined;
 }
 
-for (
-  const instanceMethod of [
-    "concat",
-    "copyWithin",
-    "every",
-    "fill",
-    "filter",
-    "find",
-    "findIndex",
-    "flat",
-    "flatMap",
-    "includes",
-    "indexOf",
-    "join",
-    "lastIndexOf",
-    "map",
-    "pop",
-    "push",
-    "reduce",
-    "reduceRight",
-    "reverse",
-    "shift",
-    "slice",
-    "some",
-    "sort",
-    "splice",
-    "toLocaleString",
-    "unshift",
-  ]
-) {
+for (const instanceMethod of [
+  "concat",
+  "copyWithin",
+  "every",
+  "fill",
+  "filter",
+  "find",
+  "findIndex",
+  "flat",
+  "flatMap",
+  "includes",
+  "indexOf",
+  "join",
+  "lastIndexOf",
+  "map",
+  "pop",
+  "push",
+  "reduce",
+  "reduceRight",
+  "reverse",
+  "shift",
+  "slice",
+  "some",
+  "sort",
+  "splice",
+  "toLocaleString",
+  "unshift",
+]) {
   NodeListClass.prototype[instanceMethod] = undefined;
 }
 
 export interface NodeList {
-  new (): NodeList;
+  new(): NodeList;
   readonly [index: number]: Node;
   readonly length: number;
   [Symbol.iterator](): Generator<Node>;
@@ -111,3 +107,4 @@ export interface NodeListMutator {
 
 export const NodeList = <NodeList> NodeListClass;
 export const NodeListPublic = <NodeListPublic> NodeListFakeClass;
+

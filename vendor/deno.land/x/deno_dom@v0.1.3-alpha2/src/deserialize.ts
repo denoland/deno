@@ -1,6 +1,6 @@
 import { parse, parseFrag } from "./parser.ts";
 import { setLock } from "./constructor-lock.ts";
-import { Comment, Node, NodeType, Text } from "./dom/node.ts";
+import { Node, NodeType, Text, Comment } from "./dom/node.ts";
 import { Element } from "./dom/element.ts";
 
 export function nodesFromString(html: string): Node {
@@ -52,3 +52,4 @@ function nodeFromArray(data: any, parentNode: Node | null): Node {
 
   return elm;
 }
+

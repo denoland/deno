@@ -496,7 +496,7 @@ export function inflate(strm: ZStream, flush: any) {
           break;
         }
         if (state.head) {
-          state.head.text = (hold >> 8) & 1;
+          state.head.text = ((hold >> 8) & 1);
         }
         if (state.flags & 0x0200) {
           //=== CRC2(state.check, hold);
@@ -548,8 +548,8 @@ export function inflate(strm: ZStream, flush: any) {
         }
         //===//
         if (state.head) {
-          state.head.xflags = hold & 0xff;
-          state.head.os = hold >> 8;
+          state.head.xflags = (hold & 0xff);
+          state.head.os = (hold >> 8);
         }
         if (state.flags & 0x0200) {
           //=== CRC2(state.check, hold);
@@ -699,7 +699,7 @@ export function inflate(strm: ZStream, flush: any) {
           //===//
         }
         if (state.head) {
-          state.head.hcrc = (state.flags >> 9) & 1;
+          state.head.hcrc = ((state.flags >> 9) & 1);
           state.head.done = true;
         }
         strm.adler = state.check = 0;
@@ -756,7 +756,7 @@ export function inflate(strm: ZStream, flush: any) {
           bits += 8;
         }
         //===//
-        state.last = hold & 0x01 /*BITS(1)*/;
+        state.last = (hold & 0x01) /*BITS(1)*/;
         //--- DROPBITS(1) ---//
         hold >>>= 1;
         bits -= 1;
@@ -890,7 +890,7 @@ export function inflate(strm: ZStream, flush: any) {
             bits += 8;
           }
           //===//
-          state.lens[order[state.have++]] = hold & 0x07; //BITS(3);
+          state.lens[order[state.have++]] = (hold & 0x07); //BITS(3);
           //--- DROPBITS(3) ---//
           hold >>>= 3;
           bits -= 3;
@@ -1385,9 +1385,9 @@ export function inflate(strm: ZStream, flush: any) {
           if (_out) {
             strm.adler = state.check =
               /*UPDATE(state.check, put - _out, _out);*/
-              state.flags
+              (state.flags
                 ? crc32(state.check, output, _out, put - _out)
-                : adler32(state.check, output, _out, put - _out);
+                : adler32(state.check, output, _out, put - _out));
           }
           _out = left;
           // NB: crc32 stored as signed 32-bit int, zswap32 returns signed too
@@ -1477,9 +1477,9 @@ export function inflate(strm: ZStream, flush: any) {
   if (state.wrap && _out) {
     strm.adler = state
       .check = /*UPDATE(state.check, strm.next_out - _out, _out);*/
-      state.flags
+      (state.flags
         ? crc32(state.check, output, _out, strm.next_out - _out)
-        : adler32(state.check, output, _out, strm.next_out - _out);
+        : adler32(state.check, output, _out, strm.next_out - _out));
   }
   strm.data_type = state.bits + (state.last ? 64 : 0) +
     (state.mode === TYPE ? 128 : 0) +

@@ -1,5 +1,5 @@
-import { getLock, setLock } from "../constructor-lock.ts";
-import { Comment, Node, NodeType, Text } from "./node.ts";
+import { setLock, getLock } from "../constructor-lock.ts";
+import { Node, NodeType, Text, Comment } from "./node.ts";
 import { NodeList, nodeListMutatorSym } from "./node-list.ts";
 import { Element } from "./element.ts";
 import { DOM as NWAPI } from "./nwsapi-types.ts";
@@ -43,11 +43,7 @@ export class DOMImplementation {
     return doc;
   }
 
-  createDocumentType(
-    qualifiedName: string,
-    publicId: string,
-    systemId: string,
-  ): DocumentType {
+  createDocumentType(qualifiedName: string, publicId: string, systemId: string): DocumentType {
     setLock(false);
     const doctype = new DocumentType(qualifiedName, publicId, systemId);
     setLock(true);
@@ -67,9 +63,9 @@ export class DocumentType extends Node {
     systemId: string,
   ) {
     super(
-      "html",
-      NodeType.DOCUMENT_TYPE_NODE,
-      null,
+      "html", 
+      NodeType.DOCUMENT_TYPE_NODE, 
+      null
     );
 
     this.#qualifiedName = name;
@@ -192,7 +188,7 @@ export class Document extends Node {
   querySelectorAll(selectors: string): NodeList {
     const nodeList = new NodeList();
     const mutator = nodeList[nodeListMutatorSym]();
-    mutator.push(...this.#nwapi.select(selectors, this));
+    mutator.push(...this.#nwapi.select(selectors, this))
 
     return nodeList;
   }
@@ -218,10 +214,7 @@ export class Document extends Node {
   getElementsByTagName(tagName: string): Element[] {
     if (tagName === "*") {
       return this.documentElement
-        ? <Element[]> this._getElementsByTagNameWildcard(
-          this.documentElement,
-          [],
-        )
+        ? <Element[]> this._getElementsByTagNameWildcard(this.documentElement, [])
         : [];
     } else {
       return <Element[]> this._getElementsByTagName(tagName.toUpperCase(), []);
@@ -292,3 +285,4 @@ export class HTMLDocument extends Document {
     setLock(false);
   }
 }
+

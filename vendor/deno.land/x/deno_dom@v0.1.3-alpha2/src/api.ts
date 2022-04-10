@@ -36,3 +36,4 @@ Object.defineProperty(Array, "isArray", {
     }
   },
 });
+

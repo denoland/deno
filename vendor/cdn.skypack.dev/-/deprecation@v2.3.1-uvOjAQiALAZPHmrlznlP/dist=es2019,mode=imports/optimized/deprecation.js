@@ -7,5 +7,5 @@ class Deprecation extends Error {
     this.name = "Deprecation";
   }
 }
-export { Deprecation };
+export {Deprecation};
 export default null;
