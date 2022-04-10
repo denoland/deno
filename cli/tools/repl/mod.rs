@@ -17,6 +17,8 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 use session::EvaluationOutput;
 use session::ReplSession;
+use std::fs::File;
+use std::io::Read;
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
@@ -58,9 +60,19 @@ async fn read_line_and_poll(
   }
 }
 
+fn read_script(
+  script_path: String,
+) -> Result<String, AnyError> {
+  let mut file = File::open(script_path)?;
+  let mut data = Vec::new();
+  file.read_to_end(&mut data)?;
+  Ok(String::from_utf8(data)?)
+}
+
 pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
+  maybe_script: Option<String>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
@@ -73,6 +85,21 @@ pub async fn run(
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
+
+  if let Some(script) = maybe_script {
+    match read_script(script) {
+      Ok(script_source) => {
+        let output = repl_session.evaluate_line_and_get_output(&script_source).await?;
+        // only output errors
+        if let EvaluationOutput::Error(error_text) = output {
+          println!("error in --script flag. {}", error_text);
+        }
+      },
+      Err(e) => {
+        println!("error in --script flag. {}", e);
+      }
+    }
+  }
 
   if let Some(eval) = maybe_eval {
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;

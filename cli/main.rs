@@ -919,7 +919,7 @@ async fn repl_command(
   }
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&ps, worker, repl_flags.eval).await
+  tools::repl::run(&ps, worker, repl_flags.script, repl_flags.eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
