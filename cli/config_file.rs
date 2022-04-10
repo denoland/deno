@@ -649,6 +649,25 @@ impl ConfigFile {
     }
   }
 
+  /// Return any tasks that are defined in the configuration file as a sequence
+  /// of JSON objects providing the name of the task and the arguments of the
+  /// task in a detail field.
+  pub fn to_lsp_tasks(&self) -> Option<Value> {
+    let value = self.json.tasks.clone()?;
+    let tasks: BTreeMap<String, String> = serde_json::from_value(value).ok()?;
+    Some(
+      tasks
+        .into_iter()
+        .map(|(key, value)| {
+          json!({
+            "name": key,
+            "detail": value,
+          })
+        })
+        .collect(),
+    )
+  }
+
   pub fn to_tasks_config(
     &self,
   ) -> Result<Option<BTreeMap<String, String>>, AnyError> {

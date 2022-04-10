@@ -68,7 +68,6 @@ where
 pub fn op_broadcast_unsubscribe<BC>(
   state: &mut OpState,
   rid: ResourceId,
-  _buf: (),
 ) -> Result<(), AnyError>
 where
   BC: BroadcastChannel + 'static,
@@ -81,7 +80,8 @@ where
 #[op]
 pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
-  (rid, name): (ResourceId, String),
+  rid: ResourceId,
+  name: String,
   buf: ZeroCopyBuf,
 ) -> Result<(), AnyError>
 where

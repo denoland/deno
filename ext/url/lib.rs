@@ -2,7 +2,6 @@
 
 mod urlpattern;
 
-use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -13,7 +12,6 @@ use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
-use std::panic::catch_unwind;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -71,37 +69,39 @@ pub fn op_url_parse(
     .parse(&href)
     .map_err(|_| type_error("Invalid URL"))?;
 
-  url_result(url, href, base_href)
+  Ok(url_parts(url))
 }
 
-#[derive(
-  serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Debug,
-)]
+#[derive(PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {
-  Hash = 1,
-  Host = 2,
-  Hostname = 3,
-  Password = 4,
-  Pathname = 5,
-  Port = 6,
-  Protocol = 7,
-  Search = 8,
-  Username = 9,
+  Hash = 0,
+  Host = 1,
+  Hostname = 2,
+  Password = 3,
+  Pathname = 4,
+  Port = 5,
+  Protocol = 6,
+  Search = 7,
+  Username = 8,
 }
 
 #[op]
 pub fn op_url_reparse(
   href: String,
-  setter_opts: (UrlSetter, String),
+  setter_opts: (u8, String),
 ) -> Result<UrlParts, AnyError> {
   let mut url = Url::options()
     .parse(&href)
     .map_err(|_| type_error("Invalid URL"))?;
 
   let (setter, setter_value) = setter_opts;
+  if setter > 8 {
+    return Err(type_error("Invalid URL setter"));
+  }
+  // SAFETY: checked to be less than 9.
+  let setter = unsafe { std::mem::transmute::<u8, UrlSetter>(setter) };
   let value = setter_value.as_ref();
-
   match setter {
     UrlSetter::Hash => quirks::set_hash(&mut url, value),
     UrlSetter::Host => quirks::set_host(&mut url, value)
@@ -120,43 +120,24 @@ pub fn op_url_reparse(
       .map_err(|_| uri_error("Invalid username"))?,
   }
 
-  url_result(url, href, None)
+  Ok(url_parts(url))
 }
 
-fn url_result(
-  url: Url,
-  href: String,
-  base_href: Option<String>,
-) -> Result<UrlParts, AnyError> {
-  // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
-  // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
-  let username = catch_unwind(|| quirks::username(&url)).map_err(|_| {
-    generic_error(format!(
-      "Internal error while parsing \"{}\"{}, \
-       see https://github.com/servo/rust-url/issues/670",
-      href,
-      base_href
-        .map(|b| format!(" against \"{}\"", b))
-        .unwrap_or_default()
-    ))
-  })?;
-
-  Ok(
-    [
-      quirks::href(&url),
-      quirks::hash(&url),
-      quirks::host(&url),
-      quirks::hostname(&url),
-      &quirks::origin(&url),
-      quirks::password(&url),
-      quirks::pathname(&url),
-      quirks::port(&url),
-      quirks::protocol(&url),
-      quirks::search(&url),
-      username,
-    ]
-    .join("\n"),
-  )
+fn url_parts(url: Url) -> UrlParts {
+  [
+    quirks::href(&url),
+    quirks::hash(&url),
+    quirks::host(&url),
+    quirks::hostname(&url),
+    &quirks::origin(&url),
+    quirks::password(&url),
+    quirks::pathname(&url),
+    quirks::port(&url),
+    quirks::protocol(&url),
+    quirks::search(&url),
+    quirks::username(&url),
+  ]
+  .join("\n")
 }
 
 #[op]

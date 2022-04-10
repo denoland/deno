@@ -2,12 +2,12 @@
 
 use std::fs::File;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn compile() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("welcome.exe")
   } else {
@@ -36,39 +36,9 @@ fn compile() {
   assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
 }
 
-// this is ignored, because when building on a release build, the test attempts
-// to download a binary of a yet to be published version.
-// TODO(@kitsonk) https://github.com/denoland/deno/issues/14103
-#[ignore]
-#[test]
-#[cfg(windows)]
-// https://github.com/denoland/deno/issues/9667
-fn compile_windows_ext() {
-  let dir = TempDir::new().unwrap();
-  let exe = dir.path().join("welcome_9667");
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("--target")
-    .arg("x86_64-unknown-linux-gnu")
-    .arg("./test_util/std/examples/welcome.ts")
-    // TODO(kt3k): Prints command output to the test log for debugging purpose.
-    // Uncomment this line when this test become stable.
-    //.stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert!(std::path::Path::new(&exe).exists());
-}
-
 #[test]
 fn standalone_args() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -104,7 +74,7 @@ fn standalone_args() {
 
 #[test]
 fn standalone_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -146,7 +116,7 @@ fn standalone_error() {
 
 #[test]
 fn standalone_error_module_with_imports() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -186,7 +156,7 @@ fn standalone_error_module_with_imports() {
 
 #[test]
 fn standalone_load_datauri() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("load_datauri.exe")
   } else {
@@ -216,9 +186,42 @@ fn standalone_load_datauri() {
   assert_eq!(output.stdout, b"Hello Deno!\n");
 }
 
+// https://github.com/denoland/deno/issues/13704
+#[test]
+fn standalone_follow_redirects() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("follow_redirects.exe")
+  } else {
+    dir.path().join("follow_redirects")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./standalone_follow_redirects.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Hello\n");
+}
+
 #[test]
 fn standalone_compiler_ops() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("standalone_compiler_ops.exe")
   } else {
@@ -250,7 +253,7 @@ fn standalone_compiler_ops() {
 
 #[test]
 fn compile_with_directory_output_flag() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\random\")
   } else {
@@ -288,7 +291,7 @@ fn compile_with_directory_output_flag() {
 
 #[test]
 fn compile_with_file_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\")
   } else {
@@ -323,7 +326,7 @@ fn compile_with_file_exists_error() {
 
 #[test]
 fn compile_with_directory_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -357,7 +360,7 @@ fn compile_with_directory_exists_error() {
 
 #[test]
 fn compile_with_conflict_file_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -395,7 +398,7 @@ fn compile_with_conflict_file_exists_error() {
 
 #[test]
 fn compile_and_overwrite_file() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -433,7 +436,7 @@ fn compile_and_overwrite_file() {
 
 #[test]
 fn standalone_runtime_flags() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("flags.exe")
   } else {
@@ -472,7 +475,7 @@ fn standalone_runtime_flags() {
 
 #[test]
 fn standalone_import_map() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("import_map.exe")
   } else {
@@ -507,7 +510,7 @@ fn standalone_import_map() {
 #[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("hello_world.exe")
   } else {

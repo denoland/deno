@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn fmt_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
     util::testdata_path().join("badly_formatted.mjs");
@@ -113,6 +113,40 @@ fn fmt_ignore_unexplicit_files() {
     .arg("fmt")
     .arg("--check")
     .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr),
+    "error: No target files found.\n"
+  );
+}
+
+#[test]
+fn fmt_auto_ignore_git() {
+  use std::fs::{create_dir_all, File};
+  use std::io::Write;
+  use std::path::PathBuf;
+  fn create_bad_json(t: PathBuf) {
+    let bad_json_path = t.join("bad.json");
+    let mut bad_json_file = File::create(bad_json_path).unwrap();
+    writeln!(bad_json_file, "bad json").unwrap();
+  }
+  let temp_dir = TempDir::new();
+  let t = temp_dir.path().join("target");
+  let nest_git = t.join("nest").join(".git");
+  let git_dir = t.join(".git");
+  create_dir_all(&nest_git).unwrap();
+  create_dir_all(&git_dir).unwrap();
+  create_bad_json(nest_git);
+  create_bad_json(git_dir);
+  let output = util::deno_cmd()
+    .current_dir(t)
+    .env("NO_COLOR", "1")
+    .arg("fmt")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
