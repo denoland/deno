@@ -253,11 +253,7 @@ impl PrettyTestReporter {
     if self.last_wait_output_level < description.level {
       println!();
     }
-    print!(
-      "{}test {} ...",
-      "  ".repeat(description.level),
-      description.name
-    );
+    print!("{}{} ...", "  ".repeat(description.level), description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = description.level;
