@@ -46,6 +46,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -416,8 +417,8 @@ impl TestReporter for PrettyTestReporter {
         println!();
       }
 
-      let mut grouped_by_origin: HashMap<String, Vec<String>> =
-        HashMap::default();
+      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
+        BTreeMap::default();
       for (description, _) in &summary.failures {
         let test_names = grouped_by_origin
           .entry(description.origin.clone())
