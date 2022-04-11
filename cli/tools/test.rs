@@ -409,12 +409,35 @@ impl TestReporter for PrettyTestReporter {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
         println!(
-          "{} > {}",
-          self.to_relative_path_or_remote_url(&description.origin),
+          "{} {} {}",
+          colors::gray(
+            self.to_relative_path_or_remote_url(&description.origin)
+          ),
+          colors::gray(">"),
           description.name
         );
         println!("{}", error);
         println!();
+      }
+
+      let mut grouped_by_origin: HashMap<String, Vec<String>> =
+        HashMap::default();
+      for (description, _) in &summary.failures {
+        let test_names = grouped_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        test_names.push(description.name.clone());
+      }
+
+      println!("failures:\n");
+      for (origin, test_names) in &grouped_by_origin {
+        println!(
+          "\t{}",
+          colors::gray(self.to_relative_path_or_remote_url(origin))
+        );
+        for test_name in test_names {
+          println!("\t{}", test_name);
+        }
       }
     }
 
