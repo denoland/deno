@@ -1683,7 +1683,7 @@ fn compile_args_without_no_check(app: Command) -> Command {
 }
 
 fn permission_args(app: Command) -> Command {
-  app
+  let app = app
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
@@ -1764,12 +1764,13 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(Arg::new("prompt").long("prompt").help(
       "deprecated: Fallback to prompt if required permission wasn't passed",
-    ))
-    .arg(
-      Arg::new("no-prompt")
-        .long("no-prompt")
-        .help("Always throw if required permission wasn't passed"),
-    )
+    ));
+  let no_prompt_arg = Arg::new("no-prompt")
+    .long("no-prompt")
+    .help("Always throw if required permission wasn't passed");
+  #[cfg(not(test))]
+  let no_prompt_arg = no_prompt_arg.env("DENO_NO_PROMPT");
+  app.arg(no_prompt_arg)
 }
 
 fn runtime_args(
@@ -2709,7 +2710,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  if env::var("DENO_NO_PROMPT").is_ok() || matches.is_present("no-prompt") {
+  if matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }
