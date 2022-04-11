@@ -219,6 +219,7 @@ struct PrettyTestReporter {
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
   last_wait_output_level: usize,
+  cwd: Url,
 }
 
 impl PrettyTestReporter {
@@ -228,6 +229,7 @@ impl PrettyTestReporter {
       echo_output,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
+      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
     }
   }
 
@@ -236,6 +238,15 @@ impl PrettyTestReporter {
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
+  }
+
+  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
+    let url = Url::parse(path_or_url).unwrap();
+    if url.scheme() == "file" {
+      self.cwd.make_relative(&url).unwrap()
+    } else {
+      path_or_url.to_string()
+    }
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
@@ -285,28 +296,16 @@ impl PrettyTestReporter {
   }
 }
 
-fn to_relative(path: &str) -> String {
-  let url = Url::parse(path).unwrap();
-  let cwd = Url::from_directory_path(std::env::current_dir().unwrap()).unwrap();
-  if url.scheme() == "file" {
-    cwd.make_relative(&url).unwrap()
-  } else {
-    path.to_string()
-  }
-}
-
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
     println!(
       "{}",
-      // TODO(bartlomieju): plan.origin should be formatted as a relative path
-      // or remote URL
       colors::gray(format!(
         "running {} {} from {}",
         plan.total,
         inflection,
-        to_relative(&plan.origin)
+        self.to_relative_path_or_remote_url(&plan.origin)
       ))
     );
   }
@@ -406,36 +405,17 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
-    fn format_error(error: &str) -> String {
-      let lines: Vec<&str> = error.split("\n").collect();
-      let mut output = vec![colors::red(lines[0]).to_string()];
-      for line in &lines[1..] {
-        if line.contains("(deno:") {
-          continue;
-        }
-        output.push(colors::gray(line).to_string());
-      }
-      output.join("\n")
-    }
-
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
-        // TODO(bartlomieju): description.origin should be formatted as a relative
-        // path or remote URL
         println!(
           "{} > {}",
-          to_relative(&description.origin),
+          self.to_relative_path_or_remote_url(&description.origin),
           description.name
         );
-        println!("{}", format_error(error));
+        println!("{}", error);
         println!();
       }
-
-      // println!("failures:\n");
-      // for (description, _) in &summary.failures {
-      //   println!("\t{}", description.name);
-      // }
     }
 
     let status = if summary.has_failed() || summary.has_pending() {
@@ -453,52 +433,20 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
-    println!();
-    println!("{} {}", colors::gray("test result:"), status);
     println!(
-      "     {} {}{}",
-      colors::gray("passed:"),
+      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
+      status,
       summary.passed,
-      get_steps_text(summary.passed_steps)
-    );
-    println!(
-      "     {} {}{}",
-      colors::gray("failed:"),
+      get_steps_text(summary.passed_steps),
       summary.failed,
-      get_steps_text(summary.failed_steps)
+      get_steps_text(summary.failed_steps + summary.pending_steps),
+      summary.ignored,
+      get_steps_text(summary.ignored_steps),
+      summary.measured,
+      summary.filtered_out,
+      colors::gray(
+        format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
-    if summary.ignored > 0 {
-      println!(
-        "    {} {}{}",
-        colors::gray("ignored:"),
-        summary.ignored,
-        get_steps_text(summary.ignored_steps)
-      );
-    }
-    if summary.filtered_out > 0 {
-      println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
-    }
-    println!(
-      "       {} {}",
-      colors::gray("time:"),
-      display::human_elapsed(elapsed.as_millis())
-    );
-    println!();
-
-    // println!(
-    //   "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-    //   status,
-    //   summary.passed,
-    //   get_steps_text(summary.passed_steps),
-    //   summary.failed,
-    //   get_steps_text(summary.failed_steps + summary.pending_steps),
-    //   summary.ignored,
-    //   get_steps_text(summary.ignored_steps),
-    //   summary.measured,
-    //   summary.filtered_out,
-    //   colors::gray(
-    //     format!("({})", display::human_elapsed(elapsed.as_millis()))),
-    // );
   }
 }
 
