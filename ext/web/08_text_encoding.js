@@ -105,59 +105,59 @@
         });
       }*/
 
-      //try {
       try {
-        if (ArrayBufferIsView(input)) {
-          input = new Uint8Array(
+        try {
+          if (ArrayBufferIsView(input)) {
+            input = new Uint8Array(
+              input.buffer,
+              input.byteOffset,
+              input.byteLength,
+            );
+          } else {
+            input = new Uint8Array(input);
+          }
+        } catch {
+          // If the buffer is detached, just create a new empty Uint8Array.
+          input = new Uint8Array();
+        }
+        if (
+          ObjectPrototypeIsPrototypeOf(
+            SharedArrayBuffer.prototype,
             input.buffer,
-            input.byteOffset,
-            input.byteLength,
-          );
-        } else {
+          )
+        ) {
+          // We clone the data into a non-shared ArrayBuffer so we can pass it
+          // to Rust.
+          // `input` is now a Uint8Array, and calling the TypedArray constructor
+          // with a TypedArray argument copies the data.
           input = new Uint8Array(input);
         }
-      } catch {
-        // If the buffer is detached, just create a new empty Uint8Array.
-        input = new Uint8Array();
-      }
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          SharedArrayBuffer.prototype,
-          input.buffer,
-        )
-      ) {
-        // We clone the data into a non-shared ArrayBuffer so we can pass it
-        // to Rust.
-        // `input` is now a Uint8Array, and calling the TypedArray constructor
-        // with a TypedArray argument copies the data.
-        input = new Uint8Array(input);
-      }
 
-      if (!options.stream && this.#rid === null) {
-        return core.opSync("op_encoding_decode_single", input, {
-          label: this.#encoding,
-          fatal: this.#fatal,
-          ignoreBom: this.#ignoreBOM,
-        });
-      }
+        if (!options.stream && this.#rid === null) {
+          return core.opSync("op_encoding_decode_single", input, {
+            label: this.#encoding,
+            fatal: this.#fatal,
+            ignoreBom: this.#ignoreBOM,
+          });
+        }
 
-      if (this.#rid === null) {
-        this.#rid = core.opSync("op_encoding_new_decoder", {
-          label: this.#encoding,
-          fatal: this.#fatal,
-          ignoreBom: this.#ignoreBOM,
+        if (this.#rid === null) {
+          this.#rid = core.opSync("op_encoding_new_decoder", {
+            label: this.#encoding,
+            fatal: this.#fatal,
+            ignoreBom: this.#ignoreBOM,
+          });
+        }
+        return core.opSync("op_encoding_decode", input, {
+          rid: this.#rid,
+          stream: options.stream,
         });
-      }
-      return core.opSync("op_encoding_decode", input, {
-        rid: this.#rid,
-        stream: options.stream,
-      });
-      /*} finally {
+      } finally {
         if (!options.stream) {
-          core.close(this.#rid);
+          //core.close(this.#rid);
           this.#rid = null;
         }
-      }*/
+      }
     }
   }
 
