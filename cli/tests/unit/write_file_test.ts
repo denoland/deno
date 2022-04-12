@@ -17,7 +17,7 @@ Deno.test(
     const dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
   },
 );
 
@@ -34,7 +34,7 @@ Deno.test(
     const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
 
     Deno.removeSync(tempDir, { recursive: true });
   },
@@ -92,7 +92,7 @@ Deno.test(
     const dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
   },
 );
 
@@ -107,17 +107,17 @@ Deno.test(
     let dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     let actual = dec.decode(dataRead);
-    assertEquals("HelloHello", actual);
+    assertEquals(actual, "HelloHello");
     // Now attempt overwrite
     Deno.writeFileSync(filename, data, { append: false });
     dataRead = Deno.readFileSync(filename);
     actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
     // append not set should also overwrite
     Deno.writeFileSync(filename, data);
     dataRead = Deno.readFileSync(filename);
     actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
   },
 );
 
@@ -131,7 +131,7 @@ Deno.test(
     const dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
   },
 );
 
@@ -148,7 +148,7 @@ Deno.test(
     const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
 
     Deno.removeSync(tempDir, { recursive: true });
   },
@@ -212,7 +212,7 @@ Deno.test(
     const dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
   },
 );
 
@@ -227,17 +227,17 @@ Deno.test(
     let dataRead = Deno.readFileSync(filename);
     const dec = new TextDecoder("utf-8");
     let actual = dec.decode(dataRead);
-    assertEquals("HelloHello", actual);
+    assertEquals(actual, "HelloHello");
     // Now attempt overwrite
     await Deno.writeFile(filename, data, { append: false });
     dataRead = Deno.readFileSync(filename);
     actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
     // append not set should also overwrite
     await Deno.writeFile(filename, data);
     dataRead = Deno.readFileSync(filename);
     actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+    assertEquals(actual, "Hello");
   },
 );
 
