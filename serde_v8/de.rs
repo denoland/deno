@@ -167,9 +167,32 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   deserialize_unsigned!(deserialize_u16, visit_u16, u16);
   deserialize_unsigned!(deserialize_u32, visit_u32, u32);
   deserialize_unsigned!(deserialize_u64, visit_u64, u64);
-  // floats
-  deserialize_signed!(deserialize_f32, visit_f32, f32);
-  deserialize_signed!(deserialize_f64, visit_f64, f64);
+
+  fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: Visitor<'de>,
+  {
+    self.deserialize_f64(visitor)
+  }
+
+  fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: Visitor<'de>,
+  {
+    visitor.visit_f64(
+      if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+        x.value() as f64
+      } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+        bigint_to_f64(x)
+      } else if let Some(x) = self.input.number_value(self.scope) {
+        x as f64
+      } else if let Some(x) = self.input.to_big_int(self.scope) {
+        bigint_to_f64(x)
+      } else {
+        return Err(Error::ExpectedNumber);
+      },
+    )
+  }
 
   wip!(deserialize_char);
 
@@ -613,4 +636,17 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
     let mut d = Deserializer::new(self.scope, self.value, None);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
   }
+}
+
+fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
+  // log2(1.7976931348623157e+308) == 1024
+  let mut words: [u64; 16] = [0; 16]; // 1024/64 => 16 64bit words
+  let (neg, words) = b.to_words_array(&mut words);
+  let sign = if neg { -1.0 } else { 1.0 };
+  let x: f64 = words
+    .iter()
+    .enumerate()
+    .map(|(i, w)| (*w as f64) * 2.0f64.powi(64 * i as i32))
+    .sum();
+  sign * x
 }

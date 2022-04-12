@@ -399,3 +399,31 @@ detest!(de_valof_bigint_f64, f64, "({ valueOf: () => 123n })", 123.0);
 // bool
 detest!(de_num_true, u8, "true", 1);
 detest!(de_num_false, u8, "false", 0);
+
+// BigInt to f32/f64 max/min
+detest!(
+  de_bigint_f64_max,
+  f64,
+  "BigInt(1.7976931348623157e+308)",
+  f64::MAX
+);
+detest!(
+  de_bigint_f64_min,
+  f64,
+  "BigInt(-1.7976931348623157e+308)",
+  f64::MIN
+);
+detest!(de_bigint_f32_max, f32, "BigInt(3.40282347e38)", f32::MAX);
+detest!(de_bigint_f32_min, f32, "BigInt(-3.40282347e38)", f32::MIN);
+detest!(
+  de_bigint_f32_inf,
+  f32,
+  "BigInt(1.7976931348623157e+308)",
+  f32::INFINITY
+);
+detest!(
+  de_bigint_f32_neg_inf,
+  f32,
+  "BigInt(-1.7976931348623157e+308)",
+  f32::NEG_INFINITY
+);
