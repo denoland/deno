@@ -106,9 +106,6 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: destructure_error.map_fn_to(),
       },
-      v8::ExternalReference {
-        function: terminate.map_fn_to(),
-      },
     ])
   });
 
@@ -236,7 +233,6 @@ pub fn initialize_context<'s>(
   );
   set_func(scope, core_val, "abortWasmStreaming", abort_wasm_streaming);
   set_func(scope, core_val, "destructureError", destructure_error);
-  set_func(scope, core_val, "terminate", terminate);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -1310,18 +1306,6 @@ fn destructure_error(
   let js_error = JsError::from_v8_exception(scope, args.get(0));
   let object = serde_v8::to_v8(scope, js_error).unwrap();
   rv.set(object);
-}
-
-fn terminate(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-  let js_error = JsError::from_v8_exception(scope, args.get(0));
-  state.explicit_terminate_error = Some(js_error);
-  scope.terminate_execution();
 }
 
 fn create_host_object(

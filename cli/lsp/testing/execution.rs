@@ -789,7 +789,8 @@ impl test::TestReporter for LspTestReporter {
       test::TestResult::Failed(message) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages: as_test_messages(message, false),
+          // TODO(bartlomieju): pretty print error
+          messages: as_test_messages(message.to_string(), false),
           duration: Some(elapsed as u32),
         })
       }

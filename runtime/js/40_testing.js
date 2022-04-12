@@ -803,7 +803,7 @@
       await test.fn(step);
       const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
-        "failed": formatError(
+        "failed": core.destructureError(
           new Error(
             `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
           ),
@@ -811,7 +811,7 @@
       };
     } catch (error) {
       return {
-        "failed": formatError(error),
+        "failed": core.destructureError(error),
       };
     } finally {
       step.finalized = true;

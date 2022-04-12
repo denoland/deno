@@ -30,6 +30,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
@@ -89,7 +90,7 @@ pub enum TestOutput {
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(String),
+  Failed(JsError),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -151,7 +152,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, String)>,
+  pub failures: Vec<(TestDescription, JsError)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -413,7 +414,7 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        println!("{}", error);
+        println!("{}", error.to_string());
         println!();
       }
 
