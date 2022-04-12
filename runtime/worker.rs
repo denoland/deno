@@ -217,6 +217,10 @@ impl MainWorker {
   async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      // Not using biased mode leads to non-determinism for relatively simple
+      // programs.
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")

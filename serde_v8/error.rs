@@ -11,6 +11,7 @@ pub enum Error {
 
   ExpectedBoolean,
   ExpectedInteger,
+  ExpectedNumber,
   ExpectedString,
   ExpectedArray,
   ExpectedMap,

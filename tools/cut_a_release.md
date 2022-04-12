@@ -14,9 +14,6 @@
       [`denoland/manual`](https://github.com/denoland/manual/)
 - [ ] Ensure that external dependencies are up-to date in `denoland/deno` (e.g.
       `rusty_v8`, `serde_v8`, `deno_doc`, `deno_lint`).
-- [ ] Ownership access on crates.io for the 19 (🙀) crates that you will be
-      publishing. (Don't worry too much though as the main script publishing 18
-      of the crates allows recovery)
 - [ ] Lot's of ☕
 
 **During this process `main` branch (or any other branch that you're creating
@@ -29,7 +26,7 @@ Before starting the process write a message in company's #general channel:
 ## Updating `deno_std`
 
 1. Go to the "version_bump" workflow in the deno_std repo's actions:
-   https://github.com/denoland/deno/actions/workflows/version_bump.yml
+   https://github.com/denoland/deno_std/actions/workflows/version_bump.yml
 
 2. Click on the "Run workflow" button.
    1. For the kind of release, select "minor".
@@ -51,9 +48,11 @@ relevant minor branch, so if you are cutting a `v1.17.3` release you need to
 sync `v1.17` branch.
 
 To do that, you need to cherry-pick commits from the main branch to the `v1.17`
-branch. For patch releases we want to cherry-pick all commits that are not
-`feat` commits. Check what was the last commit on `v1.17` branch before the
-previous release and start cherry-picking newer commits from the `main`.
+branch. For patch releases we want to cherry-pick all commits that do not add
+features to the CLI. This generally means to filter out `feat` commits but not
+necessarily (ex. `feat(core): ...`). Check what was the last commit on `v1.17`
+branch before the previous release and start cherry-picking newer commits from
+the `main`.
 
 Once all relevant commits are cherry-picked, push the branch to the upstream and
 verify on GitHub that everything looks correct.
@@ -125,8 +124,7 @@ queries the GitHub API to determine what it needs to change and update.
 
 2. Checkout a new branch (e.g. `git checkout -b deno_1.17.0`).
 
-3. Execute `./build.ts` (or
-   `deno run --config deno.jsonc --import-map import-map.json --allow-read=. --allow-write=./static --allow-net build.ts`).
+3. Execute `deno task build`
 
 4. Commit changes and raise a PR on `denoland/docland`.
 
