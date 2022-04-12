@@ -1,3 +1,5 @@
+// deno-lint-ignore-file
+
 window.onunhandledrejection = (e) => {
   console.log("unhandled rejection", e.reason, e.promise);
 
