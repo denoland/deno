@@ -1947,7 +1947,7 @@ fn op_readfile_sync(
 ) -> Result<ZeroCopyBuf, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = Path::new(&path);
-  permissions.read.check(&path)?;
+  permissions.read.check(path)?;
   Ok(std::fs::read(path)?.into())
 }
 
@@ -1958,7 +1958,7 @@ fn op_readfile_text_sync(
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = Path::new(&path);
-  permissions.read.check(&path)?;
+  permissions.read.check(path)?;
   Ok(std::fs::read_to_string(path)?)
 }
 
@@ -1967,10 +1967,11 @@ async fn op_readfile_async(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let mut state = state.borrow_mut();
-  let permissions = state.borrow_mut::<Permissions>();
   let path = Path::new(&path);
-  permissions.read.check(&path)?;
+  {
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
   Ok(tokio::fs::read(path).await?.into())
 }
 
@@ -1979,9 +1980,10 @@ async fn op_readfile_text_async(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<String, AnyError> {
-  let mut state = state.borrow_mut();
-  let permissions = state.borrow_mut::<Permissions>();
   let path = Path::new(&path);
-  permissions.read.check(&path)?;
+  {
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
   Ok(String::from_utf8(tokio::fs::read(path).await?)?)
 }
