@@ -256,8 +256,8 @@ Deno.test(
       assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
     }
-    const stat = Deno.statSync(filename);
-    assertEquals(stat.size, 0);
+    // it's racy to check the file length, so just check that the file exists
+    assertExists(filename);
   },
 );
 
@@ -276,8 +276,7 @@ Deno.test(
     } catch (e) {
       assertEquals(e, abortReason);
     }
-    const stat = Deno.statSync(filename);
-    assertEquals(stat.size, 0);
+    assertExists(filename);
   },
 );
 
@@ -295,8 +294,7 @@ Deno.test(
     } catch (e) {
       assertEquals(e, "Some string");
     }
-    const stat = Deno.statSync(filename);
-    assertEquals(stat.size, 0);
+    assertExists(filename);
   },
 );
 
@@ -357,6 +355,12 @@ Deno.test(
     assertNotExists(filename);
   },
 );
+
+function assertExists(filename: string | URL) {
+  if (!pathExists(filename)) {
+    throw new Error(`The file ${filename} did not exist.`);
+  }
+}
 
 function assertNotExists(filename: string | URL) {
   if (pathExists(filename)) {
