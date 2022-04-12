@@ -102,6 +102,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: abort_wasm_streaming.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: unsafe_buffer.map_fn_to(),
+      },
     ])
   });
 
@@ -228,6 +231,7 @@ pub fn initialize_context<'s>(
     set_wasm_streaming_callback,
   );
   set_func(scope, core_val, "abortWasmStreaming", abort_wasm_streaming);
+  set_func(scope, core_val, "unsafeBuffer", unsafe_buffer);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -1445,6 +1449,27 @@ pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
+}
+
+fn unsafe_buffer(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let len =
+    v8::Local::<v8::Integer>::try_from(args.get(0)).map_or(0, |x| x.value());
+  let len = len as usize;
+  let mut bytes = Vec::with_capacity(len);
+  unsafe {
+    bytes.set_len(len);
+  }
+  let bytes = bytes.into_boxed_slice();
+  let len = bytes.len();
+  let backing_store =
+    v8::ArrayBuffer::new_backing_store_from_boxed_slice(bytes).make_shared();
+  let buffer = v8::ArrayBuffer::with_backing_store(scope, &backing_store);
+  let u8array = v8::Uint8Array::new(scope, buffer, 0, len).unwrap();
+  rv.set(u8array.into())
 }
 
 fn memory_usage(

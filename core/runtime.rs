@@ -3170,4 +3170,46 @@ assertEquals(1, notify_return_value);
       )
       .unwrap();
   }
+
+  #[test]
+  fn test_binding_unsafe_buffer() {
+    #[op]
+    fn op_fake_read(mut buf: ZeroCopyBuf) -> Result<usize, anyhow::Error> {
+      for (i, b) in buf.as_mut().iter_mut().enumerate() {
+        *b = i as u8
+      }
+      Ok(buf.len())
+    }
+
+    let ext = Extension::builder().ops(vec![op_fake_read::decl()]).build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+    runtime
+      .execute_script(
+        "test.js",
+        r#"
+        function fakeRead(n) {
+          const buf = Deno.core.unsafeBuffer(n);
+          const read = Deno.core.opSync("op_fake_read", buf);
+          return new Uint8Array(buf, 0, read);
+        }
+        function assertArrayEquals(a1, a2) {
+          if (a1.length !== a2.length) throw Error("assert");
+        
+          for (const index in a1) {
+            if (a1[index] !== a2[index]) {
+              throw Error(`assert: (index ${index}) ${a1[index]} !== ${a2[index]}`);
+            }
+          }
+        }
+        assertArrayEquals(fakeRead(0), []);
+        assertArrayEquals(fakeRead(1), [0]);
+        assertArrayEquals(fakeRead(3), [0, 1, 2]);
+        assertArrayEquals(fakeRead(5), [0, 1, 2, 3, 4]);
+      "#,
+      )
+      .unwrap();
+  }
 }
