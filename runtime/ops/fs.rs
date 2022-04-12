@@ -124,7 +124,7 @@ pub struct OpenOptions {
 
 fn open_helper(
   state: &mut OpState,
-  args: OpenArgs,
+  args: &OpenArgs,
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
 
@@ -143,7 +143,7 @@ fn open_helper(
   }
 
   let permissions = state.borrow_mut::<Permissions>();
-  let options = args.options;
+  let options = &args.options;
 
   if options.read {
     permissions.read.check(&path)?;
@@ -169,7 +169,7 @@ fn op_open_sync(
   state: &mut OpState,
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(state, args)?;
+  let (path, open_options) = open_helper(state, &args)?;
   let std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
@@ -184,7 +184,7 @@ async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
+  let (path, open_options) = open_helper(&mut state.borrow_mut(), &args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(&path)
     .await
@@ -234,10 +234,17 @@ fn op_write_file_sync(
   args: WriteFileArgs,
 ) -> Result<(), AnyError> {
   let (open_args, data) = args.into_open_args_and_data();
-  let (path, open_options) = open_helper(state, open_args)?;
+  let (path, open_options) = open_helper(state, &open_args)?;
   let mut std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
+
+  // need to chmod the file if it already exists and a mode is specified
+  #[cfg(unix)]
+  if let Some(mode) = &open_args.mode {
+    raw_chmod(&path, mode & 0o777)?;
+  }
+
   std_file.write_all(&data)?;
   Ok(())
 }
@@ -256,13 +263,22 @@ async fn op_write_file_async(
     None => None,
   };
   let (open_args, data) = args.into_open_args_and_data();
-  let (path, open_options) = open_helper(&mut *state.borrow_mut(), open_args)?;
+  let (path, open_options) = open_helper(&mut *state.borrow_mut(), &open_args)?;
   let mut tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(&path)
     .await
     .map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })?;
+
+  // need to chmod the file if it already exists and a mode is specified
+  #[cfg(unix)]
+  if let Some(mode) = open_args.mode {
+    let path = path.clone();
+    tokio::task::spawn_blocking(move || raw_chmod(&path, mode & 0o777))
+      .await??;
+  }
+
   let write_future = tokio_file.write_all(&data);
   if let Some(cancel_handle) = cancel_handle {
     write_future.or_cancel(cancel_handle).await??;
@@ -654,28 +670,12 @@ pub struct ChmodArgs {
 
 #[op]
 fn op_chmod_sync(state: &mut OpState, args: ChmodArgs) -> Result<(), AnyError> {
-  let path = Path::new(&args.path).to_path_buf();
+  let path = Path::new(&args.path);
   let mode = args.mode & 0o777;
-  let err_mapper = |err: Error| {
-    Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
-  };
 
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    let permissions = PermissionsExt::from_mode(mode);
-    std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
-    Ok(())
-  }
-  // TODO Implement chmod for Windows (#4357)
-  #[cfg(not(unix))]
-  {
-    // Still check file/dir exists on Windows
-    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
-    Err(generic_error("Not implemented"))
-  }
+  raw_chmod(path, mode)
 }
 
 #[op]
@@ -693,26 +693,30 @@ async fn op_chmod_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_chmod_async {} {:o}", path.display(), mode);
-    let err_mapper = |err: Error| {
-      Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
-    };
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::PermissionsExt;
-      let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
-      Ok(())
-    }
-    // TODO Implement chmod for Windows (#4357)
-    #[cfg(not(unix))]
-    {
-      // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
-      Err(not_supported())
-    }
+    raw_chmod(&path, mode)
   })
   .await
   .unwrap()
+}
+
+fn raw_chmod(path: &Path, raw_mode: u32) -> Result<(), AnyError> {
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
+  };
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = PermissionsExt::from_mode(raw_mode);
+    std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
+    Ok(())
+  }
+  // TODO Implement chmod for Windows (#4357)
+  #[cfg(not(unix))]
+  {
+    // Still check file/dir exists on Windows
+    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
+    Err(not_supported())
+  }
 }
 
 #[derive(Deserialize)]
