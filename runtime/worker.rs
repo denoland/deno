@@ -274,7 +274,9 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub async fn create_inspector_session<N: serde::de::DeserializeOwned>(
+    &mut self,
+  ) -> LocalInspectorSession<N> {
     let inspector = self.js_runtime.inspector();
     inspector.create_local_session()
   }

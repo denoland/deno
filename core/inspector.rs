@@ -19,10 +19,9 @@ use crate::futures::task;
 use crate::futures::task::Context;
 use crate::futures::task::Poll;
 use crate::serde_json;
-use crate::serde_json::json;
-use crate::serde_json::Value;
 use anyhow::Error;
 use parking_lot::Mutex;
+use serde::de::DeserializeOwned;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -346,7 +345,9 @@ impl JsRuntimeInspector {
 
   /// Create a local inspector session that can be used on
   /// the same thread as the isolate.
-  pub fn create_local_session(&self) -> LocalInspectorSession {
+  pub fn create_local_session<N: DeserializeOwned>(
+    &self,
+  ) -> LocalInspectorSession<N> {
     // The 'outbound' channel carries messages sent to the session.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
@@ -369,7 +370,7 @@ impl JsRuntimeInspector {
       .push(inspector_session);
     take(&mut self.flags.borrow_mut().waiting_for_session);
 
-    LocalInspectorSession::new(inbound_tx, outbound_rx)
+    LocalInspectorSession::<N>::new(inbound_tx, outbound_rx)
   }
 }
 
@@ -616,17 +617,41 @@ impl Stream for InspectorSession {
   }
 }
 
-/// A local inspector session that can be used to send and receive protocol messages directly on
-/// the same thread as an isolate.
-pub struct LocalInspectorSession {
-  v8_session_tx: UnboundedSender<String>,
-  v8_session_rx: UnboundedReceiver<InspectorMsg>,
-  response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
-  next_message_id: i32,
-  notification_queue: Vec<Value>,
+#[derive(serde::Serialize)]
+struct CdpRequest<'a, T> {
+  id: i32,
+  method: &'a str,
+  params: T,
 }
 
-impl LocalInspectorSession {
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CdpResponse<T> {
+  #[serde(flatten)]
+  inner: CdpResponseInner<T>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum CdpResponseInner<T> {
+  Result(T),
+  Error(String),
+}
+
+/// A local inspector session that can be used to send and receive protocol
+/// messages directly on the same thread as an isolate.
+///
+/// The function parameter is the type to deserialize notification messages
+/// into.
+pub struct LocalInspectorSession<N> {
+  v8_session_tx: UnboundedSender<String>,
+  v8_session_rx: UnboundedReceiver<InspectorMsg>,
+  response_tx_map: HashMap<i32, oneshot::Sender<String>>,
+  next_request_id: i32,
+  notification_queue: Vec<Result<N, Error>>,
+}
+
+impl<N: DeserializeOwned> LocalInspectorSession<N> {
   pub fn new(
     v8_session_tx: UnboundedSender<String>,
     v8_session_rx: UnboundedReceiver<InspectorMsg>,
@@ -640,48 +665,43 @@ impl LocalInspectorSession {
       v8_session_tx,
       v8_session_rx,
       response_tx_map,
-      next_message_id,
+      next_request_id: next_message_id,
       notification_queue,
     }
   }
 
-  pub fn notifications(&mut self) -> Vec<Value> {
+  pub fn take_notifications(&mut self) -> Vec<Result<N, Error>> {
     self.notification_queue.split_off(0)
   }
 
-  pub async fn post_message<T: serde::Serialize>(
+  pub async fn post_message<P: serde::Serialize, R: DeserializeOwned>(
     &mut self,
     method: &str,
-    params: Option<T>,
-  ) -> Result<serde_json::Value, Error> {
-    let id = self.next_message_id;
-    self.next_message_id += 1;
+    params: P,
+  ) -> Result<R, Error> {
+    let id = self.next_request_id;
+    self.next_request_id += 1;
 
-    let (response_tx, mut response_rx) =
-      oneshot::channel::<serde_json::Value>();
+    let (response_tx, mut response_rx) = oneshot::channel::<String>();
     self.response_tx_map.insert(id, response_tx);
 
-    let message = json!({
-        "id": id,
-        "method": method,
-        "params": params,
-    });
-
-    let stringified_msg = serde_json::to_string(&message).unwrap();
-    self.v8_session_tx.unbounded_send(stringified_msg).unwrap();
+    let request = CdpRequest { id, method, params };
+    let request_str = serde_json::to_string(&request)?;
+    self.v8_session_tx.unbounded_send(request_str).unwrap();
 
     loop {
       let receive_fut = self.receive_from_v8_session().boxed_local();
       match select(receive_fut, &mut response_rx).await {
         Either::Left(_) => continue,
         Either::Right((result, _)) => {
-          let response = result?;
-          if let Some(error) = response.get("error") {
-            return Err(generic_error(error.to_string()));
-          }
+          let response_str = result?;
 
-          let result = response.get("result").unwrap().clone();
-          return Ok(result);
+          let response: CdpResponse<R> = serde_json::from_str(&response_str)?;
+
+          return match response.inner {
+            CdpResponseInner::Result(result) => Ok(result),
+            CdpResponseInner::Error(msg) => Err(generic_error(msg)),
+          };
         }
       }
     }
@@ -690,39 +710,17 @@ impl LocalInspectorSession {
   async fn receive_from_v8_session(&mut self) {
     let inspector_msg = self.v8_session_rx.next().await.unwrap();
     if let InspectorMsgKind::Message(msg_id) = inspector_msg.kind {
-      let message: serde_json::Value =
-        match serde_json::from_str(&inspector_msg.content) {
-          Ok(v) => v,
-          Err(error) => match error.classify() {
-            serde_json::error::Category::Syntax => json!({
-              "id": msg_id,
-              "result": {
-                "result": {
-                  "type": "error",
-                  "description": "Unterminated string literal",
-                  "value": "Unterminated string literal",
-                },
-                "exceptionDetails": {
-                  "exceptionId": 0,
-                  "text": "Unterminated string literal",
-                  "lineNumber": 0,
-                  "columnNumber": 0
-                },
-              },
-            }),
-            _ => panic!("Could not parse inspector message"),
-          },
-        };
-
       self
         .response_tx_map
         .remove(&msg_id)
         .unwrap()
-        .send(message)
+        .send(inspector_msg.content)
         .unwrap();
     } else {
-      let message = serde_json::from_str(&inspector_msg.content).unwrap();
-      self.notification_queue.push(message);
+      let notification = serde_json::from_str(&inspector_msg.content);
+      self
+        .notification_queue
+        .push(notification.map_err(Into::into));
     }
   }
 }

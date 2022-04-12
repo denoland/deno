@@ -34,11 +34,23 @@ async fn read_line_and_poll(
       }
       result = message_handler.recv() => {
         match result {
-          Some(RustylineSyncMessage::PostMessage { method, params }) => {
+          Some(RustylineSyncMessage::RuntimeGlobalLexicalScopeNames(args)) => {
             let result = repl_session
-              .post_message_with_event_loop(&method, params)
+              .post_message_with_event_loop("Runtime.globalLexicalScopeNames", args)
               .await;
-            message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
+            message_handler.send(RustylineSyncResponse::RuntimeGlobalLexicalScopeNames(result)).unwrap();
+          },
+          Some(RustylineSyncMessage::RuntimeGetProperties(args)) => {
+            let result = repl_session
+              .post_message_with_event_loop("Runtime.getProperties", args)
+              .await;
+            message_handler.send(RustylineSyncResponse::RuntimeGetProperties(result)).unwrap();
+          },
+          Some(RustylineSyncMessage::RuntimeEvaluate(args)) => {
+            let result = repl_session
+              .post_message_with_event_loop("Runtime.evaluate", args)
+              .await;
+            message_handler.send(RustylineSyncResponse::RuntimeEvaluate(result)).unwrap();
           },
           Some(RustylineSyncMessage::LspCompletions {
             line_text,

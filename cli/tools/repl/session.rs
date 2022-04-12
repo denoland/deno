@@ -7,10 +7,9 @@ use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
+use serde::de::IgnoredAny;
 
 static PRELUDE: &str = r#"
 Object.defineProperty(globalThis, "_", {
@@ -66,7 +65,7 @@ struct TsEvaluateResponse {
 
 pub struct ReplSession {
   pub worker: MainWorker,
-  session: LocalInspectorSession,
+  session: LocalInspectorSession<cdp::Event>,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
 }
@@ -79,7 +78,7 @@ impl ReplSession {
     worker
       .with_event_loop(
         session
-          .post_message::<()>("Runtime.enable", None)
+          .post_message::<_, IgnoredAny>("Runtime.enable", ())
           .boxed_local(),
       )
       .await?;
@@ -87,21 +86,17 @@ impl ReplSession {
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
     // context the inspector knows about so we grab the execution context from that since
     // our inspector does not support a default context (0 is an invalid context id).
-    let mut context_id: u64 = 0;
-    for notification in session.notifications() {
-      let method = notification.get("method").unwrap().as_str().unwrap();
-      let params = notification.get("params").unwrap();
-
-      if method == "Runtime.executionContextCreated" {
-        context_id = params
-          .get("context")
-          .unwrap()
-          .get("id")
-          .unwrap()
-          .as_u64()
-          .unwrap();
+    let mut context_id: Option<u64> = None;
+    for notification in session.take_notifications() {
+      if let cdp::Event::Runtime(cdp::RuntimeEvent::ExecutionContextCreated(
+        params,
+      )) = notification?
+      {
+        context_id = Some(params.context.id)
       }
     }
+
+    let context_id = context_id.unwrap();
 
     let mut repl_session = ReplSession {
       worker,
@@ -129,11 +124,14 @@ impl ReplSession {
     Ok(closed)
   }
 
-  pub async fn post_message_with_event_loop<T: serde::Serialize>(
+  pub async fn post_message_with_event_loop<
+    P: serde::Serialize,
+    R: serde::de::DeserializeOwned,
+  >(
     &mut self,
     method: &str,
-    params: Option<T>,
-  ) -> Result<Value, AnyError> {
+    params: P,
+  ) -> Result<R, AnyError> {
     self
       .worker
       .with_event_loop(self.session.post_message(method, params).boxed_local())
@@ -242,9 +240,9 @@ impl ReplSession {
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
-    self.post_message_with_event_loop(
+    self.post_message_with_event_loop::<_, IgnoredAny>(
       "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
+      cdp::CallFunctionOnArgs {
         function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
         object_id: None,
         arguments: Some(vec![error.into()]),
@@ -256,7 +254,7 @@ impl ReplSession {
         execution_context_id: Some(self.context_id),
         object_group: None,
         throw_on_side_effect: None
-      }),
+      },
     ).await?;
     Ok(())
   }
@@ -266,9 +264,9 @@ impl ReplSession {
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
     self
-      .post_message_with_event_loop(
+      .post_message_with_event_loop::<_, IgnoredAny>(
         "Runtime.callFunctionOn",
-        Some(cdp::CallFunctionOnArgs {
+        cdp::CallFunctionOnArgs {
           function_declaration:
             "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
               .to_string(),
@@ -282,7 +280,7 @@ impl ReplSession {
           execution_context_id: Some(self.context_id),
           object_group: None,
           throw_on_side_effect: None,
-        }),
+        },
       )
       .await?;
     Ok(())
@@ -295,9 +293,9 @@ impl ReplSession {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
-    let inspect_response = self.post_message_with_event_loop(
+    let response: cdp::CallFunctionOnResponse = self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
+      cdp::CallFunctionOnArgs {
         function_declaration: r#"function (object) {
           try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
@@ -315,11 +313,9 @@ impl ReplSession {
         execution_context_id: Some(self.context_id),
         object_group: None,
         throw_on_side_effect: None
-      }),
+      },
     ).await?;
 
-    let response: cdp::CallFunctionOnResponse =
-      serde_json::from_value(inspect_response)?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
 
@@ -377,7 +373,7 @@ impl ReplSession {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
-        Some(cdp::EvaluateArgs {
+        cdp::EvaluateArgs {
           expression: expression.to_string(),
           object_group: None,
           include_command_line_api: None,
@@ -393,9 +389,8 @@ impl ReplSession {
           repl_mode: Some(true),
           allow_unsafe_eval_blocked_by_csp: None,
           unique_context_id: None,
-        }),
+        },
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
   }
 }

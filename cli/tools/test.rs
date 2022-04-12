@@ -673,7 +673,7 @@ async fn test_specifier(
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
   {
-    let session = worker.create_inspector_session().await;
+    let session = worker.create_inspector_session::<()>().await;
     let coverage_dir = PathBuf::from(coverage_dir);
     let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
     worker

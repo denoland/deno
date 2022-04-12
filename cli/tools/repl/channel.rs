@@ -2,8 +2,6 @@
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
@@ -12,6 +10,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::cdp;
 use crate::lsp::ReplCompletionItem;
 
 /// Rustyline uses synchronous methods in its interfaces, but we need to call
@@ -35,18 +34,18 @@ pub fn rustyline_channel(
 }
 
 pub enum RustylineSyncMessage {
-  PostMessage {
-    method: String,
-    params: Option<Value>,
-  },
-  LspCompletions {
-    line_text: String,
-    position: usize,
-  },
+  RuntimeGlobalLexicalScopeNames(cdp::GlobalLexicalScopeNamesArgs),
+  RuntimeGetProperties(cdp::GetPropertiesArgs),
+  RuntimeEvaluate(cdp::EvaluateArgs),
+  LspCompletions { line_text: String, position: usize },
 }
 
 pub enum RustylineSyncResponse {
-  PostMessage(Result<Value, AnyError>),
+  RuntimeGlobalLexicalScopeNames(
+    Result<Box<cdp::GlobalLexicalScopeNamesResponse>, AnyError>,
+  ),
+  RuntimeGetProperties(Result<Box<cdp::GetPropertiesResponse>, AnyError>),
+  RuntimeEvaluate(Result<Box<cdp::EvaluateResponse>, AnyError>),
   LspCompletions(Vec<ReplCompletionItem>),
 }
 
@@ -55,30 +54,45 @@ pub struct RustylineSyncMessageSender {
   response_rx: RefCell<UnboundedReceiver<RustylineSyncResponse>>,
 }
 
-impl RustylineSyncMessageSender {
-  pub fn post_message<T: serde::Serialize>(
-    &self,
-    method: &str,
-    params: Option<T>,
-  ) -> Result<Value, AnyError> {
-    if let Err(err) =
-      self
+macro_rules! post_message {
+  ($name:ident, $id:ident, $args:ty, $res:ty) => {
+    pub fn $name(&self, args: $args) -> Result<$res, AnyError> {
+      let res = self
         .message_tx
-        .blocking_send(RustylineSyncMessage::PostMessage {
-          method: method.to_string(),
-          params: params
-            .map(|params| serde_json::to_value(params))
-            .transpose()?,
-        })
-    {
-      Err(anyhow!("{}", err))
-    } else {
-      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
-        RustylineSyncResponse::PostMessage(result) => result,
-        RustylineSyncResponse::LspCompletions(_) => unreachable!(),
+        .blocking_send(RustylineSyncMessage::$id(args));
+      if let Err(err) = res {
+        Err(anyhow!("{}", err))
+      } else {
+        match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+          RustylineSyncResponse::$id(result) => result.map(|r| *r),
+          _ => unreachable!(),
+        }
       }
     }
-  }
+  };
+}
+
+impl RustylineSyncMessageSender {
+  post_message!(
+    runtime_global_lexical_scope_names,
+    RuntimeGlobalLexicalScopeNames,
+    cdp::GlobalLexicalScopeNamesArgs,
+    cdp::GlobalLexicalScopeNamesResponse
+  );
+
+  post_message!(
+    runtime_get_properties,
+    RuntimeGetProperties,
+    cdp::GetPropertiesArgs,
+    cdp::GetPropertiesResponse
+  );
+
+  post_message!(
+    runtime_evaluate,
+    RuntimeEvaluate,
+    cdp::EvaluateArgs,
+    cdp::EvaluateResponse
+  );
 
   pub fn lsp_completions(
     &self,
@@ -97,7 +111,7 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::LspCompletions(result) => result,
-        RustylineSyncResponse::PostMessage(_) => unreachable!(),
+        _ => unreachable!(),
       }
     }
   }

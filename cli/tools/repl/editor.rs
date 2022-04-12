@@ -7,7 +7,6 @@ use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -35,17 +34,12 @@ pub struct EditorHelper {
 
 impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
-    let evaluate_response = self
+    let evaluate_response: cdp::GlobalLexicalScopeNamesResponse = self
       .sync_sender
-      .post_message(
-        "Runtime.globalLexicalScopeNames",
-        Some(cdp::GlobalLexicalScopeNamesArgs {
-          execution_context_id: Some(self.context_id),
-        }),
-      )
+      .runtime_global_lexical_scope_names(cdp::GlobalLexicalScopeNamesArgs {
+        execution_context_id: Some(self.context_id),
+      })
       .unwrap();
-    let evaluate_response: cdp::GlobalLexicalScopeNamesResponse =
-      serde_json::from_value(evaluate_response).unwrap();
     evaluate_response.names
   }
 
@@ -84,21 +78,16 @@ impl EditorHelper {
     let evaluate_result = self.evaluate_expression(object_expr)?;
     let object_id = evaluate_result.result.object_id?;
 
-    let get_properties_response = self
+    let get_properties_response: cdp::GetPropertiesResponse = self
       .sync_sender
-      .post_message(
-        "Runtime.getProperties",
-        Some(cdp::GetPropertiesArgs {
-          object_id,
-          own_properties: None,
-          accessor_properties_only: None,
-          generate_preview: None,
-          non_indexed_properties_only: None,
-        }),
-      )
+      .runtime_get_properties(cdp::GetPropertiesArgs {
+        object_id,
+        own_properties: None,
+        accessor_properties_only: None,
+        generate_preview: None,
+        non_indexed_properties_only: None,
+      })
       .ok()?;
-    let get_properties_response: cdp::GetPropertiesResponse =
-      serde_json::from_value(get_properties_response).ok()?;
     Some(
       get_properties_response
         .result
@@ -109,32 +98,26 @@ impl EditorHelper {
   }
 
   fn evaluate_expression(&self, expr: &str) -> Option<cdp::EvaluateResponse> {
-    let evaluate_response = self
+    let evaluate_response: cdp::EvaluateResponse = self
       .sync_sender
-      .post_message(
-        "Runtime.evaluate",
-        Some(cdp::EvaluateArgs {
-          expression: expr.to_string(),
-          object_group: None,
-          include_command_line_api: None,
-          silent: None,
-          context_id: Some(self.context_id),
-          return_by_value: None,
-          generate_preview: None,
-          user_gesture: None,
-          await_promise: None,
-          throw_on_side_effect: Some(true),
-          timeout: Some(200),
-          disable_breaks: None,
-          repl_mode: None,
-          allow_unsafe_eval_blocked_by_csp: None,
-          unique_context_id: None,
-        }),
-      )
+      .runtime_evaluate(cdp::EvaluateArgs {
+        expression: expr.to_string(),
+        object_group: None,
+        include_command_line_api: None,
+        silent: None,
+        context_id: Some(self.context_id),
+        return_by_value: None,
+        generate_preview: None,
+        user_gesture: None,
+        await_promise: None,
+        throw_on_side_effect: Some(true),
+        timeout: Some(200),
+        disable_breaks: None,
+        repl_mode: None,
+        allow_unsafe_eval_blocked_by_csp: None,
+        unique_context_id: None,
+      })
       .ok()?;
-    let evaluate_response: cdp::EvaluateResponse =
-      serde_json::from_value(evaluate_response).ok()?;
-
     if evaluate_response.exception_details.is_some() {
       None
     } else {

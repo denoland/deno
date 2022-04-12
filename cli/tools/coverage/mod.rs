@@ -18,10 +18,13 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::SourceMapGetter;
 use regex::Regex;
+use serde::de::IgnoredAny;
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::BufWriter;
-use std::io::{self, Error, Write};
+use std::io::Error;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use text_lines::TextLines;
@@ -35,18 +38,18 @@ use json_types::*;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
-  session: LocalInspectorSession,
+  session: LocalInspectorSession<()>,
 }
 
 impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
+  pub fn new(dir: PathBuf, session: LocalInspectorSession<()>) -> Self {
     Self { dir, session }
   }
 
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .post_message::<()>("Debugger.enable", None)
+      .post_message::<(), IgnoredAny>("Debugger.enable", ())
       .await?;
     Ok(())
   }
@@ -54,7 +57,7 @@ impl CoverageCollector {
   async fn enable_profiler(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .post_message::<()>("Profiler.enable", None)
+      .post_message::<(), IgnoredAny>("Profiler.enable", ())
       .await?;
     Ok(())
   }
@@ -62,7 +65,7 @@ impl CoverageCollector {
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .post_message::<()>("Debugger.disable", None)
+      .post_message::<(), IgnoredAny>("Debugger.disable", ())
       .await?;
     Ok(())
   }
@@ -70,7 +73,7 @@ impl CoverageCollector {
   async fn disable_profiler(&mut self) -> Result<(), AnyError> {
     self
       .session
-      .post_message::<()>("Profiler.disable", None)
+      .post_message::<(), IgnoredAny>("Profiler.disable", ())
       .await?;
     Ok(())
   }
@@ -79,27 +82,19 @@ impl CoverageCollector {
     &mut self,
     parameters: StartPreciseCoverageParameters,
   ) -> Result<StartPreciseCoverageReturnObject, AnyError> {
-    let return_value = self
+    self
       .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters))
-      .await?;
-
-    let return_object = serde_json::from_value(return_value)?;
-
-    Ok(return_object)
+      .post_message("Profiler.startPreciseCoverage", parameters)
+      .await
   }
 
   async fn take_precise_coverage(
     &mut self,
   ) -> Result<TakePreciseCoverageReturnObject, AnyError> {
-    let return_value = self
+    self
       .session
-      .post_message::<()>("Profiler.takePreciseCoverage", None)
-      .await?;
-
-    let return_object = serde_json::from_value(return_value)?;
-
-    Ok(return_object)
+      .post_message("Profiler.takePreciseCoverage", ())
+      .await
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
