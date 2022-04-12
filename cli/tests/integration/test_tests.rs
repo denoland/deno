@@ -13,9 +13,9 @@ fn no_color() {
     false,
   );
   // ANSI escape codes should be stripped.
-  assert!(out.contains("test success ... ok"));
-  assert!(out.contains("test fail ... FAILED"));
-  assert!(out.contains("test ignored ... ignored"));
+  assert!(out.contains("success ... ok"));
+  assert!(out.contains("fail ... FAILED"));
+  assert!(out.contains("ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 

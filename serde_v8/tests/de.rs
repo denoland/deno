@@ -44,18 +44,24 @@ fn dedo(
   })
 }
 
-macro_rules! detest {
-  ($fn_name:ident, $t:ty, $src:expr, $rust:expr) => {
+macro_rules! decheck {
+  ($fn_name:ident, $t:ty, $src:expr, $x:ident, $check:expr) => {
     #[test]
     fn $fn_name() {
       #[allow(clippy::bool_assert_comparison)]
       dedo($src, |scope, v| {
         let rt = serde_v8::from_v8(scope, v);
         assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
-        let t: $t = rt.unwrap();
-        assert_eq!(t, $rust);
+        let $x: $t = rt.unwrap();
+        $check
       });
     }
+  };
+}
+
+macro_rules! detest {
+  ($fn_name:ident, $t:ty, $src:expr, $rust:expr) => {
+    decheck!($fn_name, $t, $src, t, assert_eq!(t, $rust));
   };
 }
 
@@ -328,4 +334,110 @@ detest!(
   U16String,
   "'👋bye'",
   "👋bye".encode_utf16().collect::<Vec<_>>().into()
+);
+
+// NaN
+detest!(de_nan_u8, u8, "NaN", 0);
+detest!(de_nan_u16, u16, "NaN", 0);
+detest!(de_nan_u32, u32, "NaN", 0);
+detest!(de_nan_u64, u64, "NaN", 0);
+detest!(de_nan_i8, i8, "NaN", 0);
+detest!(de_nan_i16, i16, "NaN", 0);
+detest!(de_nan_i32, i32, "NaN", 0);
+detest!(de_nan_i64, i64, "NaN", 0);
+decheck!(de_nan_f32, f32, "NaN", t, assert!(t.is_nan()));
+decheck!(de_nan_f64, f64, "NaN", t, assert!(t.is_nan()));
+
+// Infinity
+detest!(de_inf_u8, u8, "Infinity", u8::MAX);
+detest!(de_inf_u16, u16, "Infinity", u16::MAX);
+detest!(de_inf_u32, u32, "Infinity", u32::MAX);
+detest!(de_inf_u64, u64, "Infinity", u64::MAX);
+detest!(de_inf_i8, i8, "Infinity", i8::MAX);
+detest!(de_inf_i16, i16, "Infinity", i16::MAX);
+detest!(de_inf_i32, i32, "Infinity", i32::MAX);
+detest!(de_inf_i64, i64, "Infinity", i64::MAX);
+detest!(de_inf_f32, f32, "Infinity", f32::INFINITY);
+detest!(de_inf_f64, f64, "Infinity", f64::INFINITY);
+
+// -Infinity
+detest!(de_neg_inf_u8, u8, "-Infinity", u8::MIN);
+detest!(de_neg_inf_u16, u16, "-Infinity", u16::MIN);
+detest!(de_neg_inf_u32, u32, "-Infinity", u32::MIN);
+detest!(de_neg_inf_u64, u64, "-Infinity", u64::MIN);
+detest!(de_neg_inf_i8, i8, "-Infinity", i8::MIN);
+detest!(de_neg_inf_i16, i16, "-Infinity", i16::MIN);
+detest!(de_neg_inf_i32, i32, "-Infinity", i32::MIN);
+detest!(de_neg_inf_i64, i64, "-Infinity", i64::MIN);
+detest!(de_neg_inf_f32, f32, "-Infinity", f32::NEG_INFINITY);
+detest!(de_neg_inf_f64, f64, "-Infinity", f64::NEG_INFINITY);
+
+// valueOf Number
+detest!(de_valof_u8, u8, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_u16, u16, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_u32, u32, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_u64, u64, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_i8, i8, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_i16, i16, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_i32, i32, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_i64, i64, "({ valueOf: () => 123 })", 123);
+detest!(de_valof_f32, f32, "({ valueOf: () => 123 })", 123.0);
+detest!(de_valof_f64, f64, "({ valueOf: () => 123 })", 123.0);
+
+// valueOf BigInt
+detest!(de_valof_bigint_u8, u8, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_u16, u16, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_u32, u32, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_u64, u64, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_i8, i8, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_i16, i16, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_i32, i32, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_i64, i64, "({ valueOf: () => 123n })", 123);
+detest!(de_valof_bigint_f32, f32, "({ valueOf: () => 123n })", 123.0);
+detest!(de_valof_bigint_f64, f64, "({ valueOf: () => 123n })", 123.0);
+
+// bool
+detest!(de_num_true, u8, "true", 1);
+detest!(de_num_false, u8, "false", 0);
+
+// BigInt to f32/f64 max/min
+detest!(
+  de_bigint_f64_max,
+  f64,
+  "BigInt(1.7976931348623157e+308)",
+  f64::MAX
+);
+detest!(
+  de_bigint_f64_min,
+  f64,
+  "BigInt(-1.7976931348623157e+308)",
+  f64::MIN
+);
+detest!(de_bigint_f32_max, f32, "BigInt(3.40282347e38)", f32::MAX);
+detest!(de_bigint_f32_min, f32, "BigInt(-3.40282347e38)", f32::MIN);
+// BigInt to f32/f64 saturating to inf
+detest!(
+  de_bigint_f64_inf,
+  f64,
+  "(BigInt(1.7976931348623157e+308)*BigInt(100))",
+  f64::INFINITY
+);
+detest!(
+  de_bigint_f64_neg_inf,
+  f64,
+  "(BigInt(-1.7976931348623157e+308)*BigInt(100))",
+  f64::NEG_INFINITY
+);
+
+detest!(
+  de_bigint_f32_inf,
+  f32,
+  "BigInt(1.7976931348623157e+308)",
+  f32::INFINITY
+);
+detest!(
+  de_bigint_f32_neg_inf,
+  f32,
+  "BigInt(-1.7976931348623157e+308)",
+  f32::NEG_INFINITY
 );
