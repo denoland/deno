@@ -210,6 +210,14 @@
     opSync("op_try_close", rid);
   }
 
+  function close2(rid) {
+    opSync("op_close_2", rid);
+  }
+
+  function tryClose2(rid) {
+    opSync("op_try_close_2", rid);
+  }
+
   function print(str, isErr = false) {
     opSync("op_print", str, isErr);
   }
@@ -248,6 +256,8 @@
     opSync,
     close,
     tryClose,
+    close2,
+    tryClose2,
     read,
     write,
     shutdown,

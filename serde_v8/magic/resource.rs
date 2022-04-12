@@ -18,18 +18,18 @@ use std::rc::Rc;
 ///
 /// The underlying Rc<T> will always have a strong count >= 1 until either
 /// the JavaScript object is garbage collected OR `into_inner` is called.
-pub struct Resource<T> {
+pub struct Resource<T: ?Sized> {
   inner: Option<Rc<T>>,
   cancel_finalization: Rc<Cell<bool>>,
   _marker: PhantomData<T>,
 }
 
-impl<T> MagicType for Resource<T> {
+impl<T: ?Sized> MagicType for Resource<T> {
   const NAME: &'static str = "Resource";
   const MAGIC_NAME: &'static str = "$__v8_magic_Resource";
 }
 
-impl<T> serde::Serialize for Resource<T> {
+impl<T: ?Sized> serde::Serialize for Resource<T> {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: serde::Serializer,
@@ -38,7 +38,7 @@ impl<T> serde::Serialize for Resource<T> {
   }
 }
 
-impl<'de, T> serde::Deserialize<'de> for Resource<T> {
+impl<'de, T: ?Sized> serde::Deserialize<'de> for Resource<T> {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: serde::Deserializer<'de>,
@@ -47,11 +47,28 @@ impl<'de, T> serde::Deserialize<'de> for Resource<T> {
   }
 }
 
-impl<T> Resource<T> {
-  // TODO(@littledivy): Merge both fields into one v8::External.
+impl<T: ?Sized> Resource<T> {
+  /// TODO(@littledivy): Merge both fields into one v8::External.
   const INTERNAL_FIELD_INDEX: usize = 0;
   const CANCEL_FINALIZATION_FIELD_INDEX: usize = 1;
 
+  pub fn borrow(mut self) -> Rc<T> {
+    let rc = self.inner.take().unwrap();
+    let ptr = Rc::into_raw(rc);
+    // SAFETY: Rc is immediately constructed from it's raw pointer.
+    let rc = unsafe { Rc::from_raw(ptr) };
+    if Rc::strong_count(&rc) == 1 {
+      // SAFETY: We cannot let the Rc<T> drop.
+      // TODO(@littledivy): Verify this doesn't cause any side effects!
+      unsafe {
+        Rc::increment_strong_count(ptr);
+      }
+    }
+    rc
+  }
+}
+
+impl<T> Resource<T> {
   /// Create a new Resource.
   pub fn new(value: T) -> Self {
     let rc = Rc::new(value);
@@ -62,7 +79,7 @@ impl<T> Resource<T> {
     }
   }
 
-  /// Returns the underlying owned value held by the Resource.
+  // Returns the underlying owned value held by the Resource.
   /// This will return None if the Resource is already in use.
   pub fn into_inner(mut self) -> Option<T> {
     let rc = self.inner.take()?;
@@ -95,21 +112,16 @@ impl<T> Resource<T> {
       Err(_) => None,
     }
   }
+}
 
-  pub fn borrow(mut self) -> Rc<T> {
-    let rc = self.inner.take().unwrap();
-    let ptr = Rc::into_raw(rc);
-    // SAFETY: Rc is immediately constructed from it's raw pointer.
-    let rc = unsafe { Rc::from_raw(ptr) };
-    if Rc::strong_count(&rc) == 1 {
-      // SAFETY: We cannot let the Rc<T> drop.
-      // TODO(@littledivy): Verify this doesn't cause any side effects!
-      unsafe {
-        Rc::increment_strong_count(ptr);
-      }
-    }
-    rc
-  }
+fn try_close_callback<'a, 's, T>(
+  scope: &mut v8::HandleScope<'a>,
+  args: v8::FunctionCallbackArguments<'a>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let resource = args.get(0);
+  let resource = Resource::<T>::from_v8(scope, resource).unwrap();
+  let _ = resource.into_inner();
 }
 
 impl<T> ToV8 for Resource<T> {
@@ -122,6 +134,11 @@ impl<T> ToV8 for Resource<T> {
       tpl.set_internal_field_count(2),
       "set_internal_field_count(2) failed"
     );
+    let func_name = v8::String::new(scope, "close").unwrap();
+    let func =
+      v8::FunctionBuilder::<'_, v8::Function>::new(try_close_callback::<T>)
+        .build(scope)
+        .unwrap();
 
     let rc = self.inner.clone().unwrap();
     let ptr = Rc::into_raw(rc) as *mut c_void;
@@ -143,6 +160,7 @@ impl<T> ToV8 for Resource<T> {
       ),
       "set_internal_field(1) failed"
     );
+    wrap.set(scope, func_name.into(), func.into()).unwrap();
 
     let raw_weak: Rc<Cell<NonNull<_>>> =
       Rc::new(Cell::new(NonNull::dangling()));
