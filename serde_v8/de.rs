@@ -639,9 +639,15 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
 }
 
 fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
-  // log2(1.7976931348623157e+308) == 1024
+  // log2(f64::MAX) == log2(1.7976931348623157e+308) == 1024
   let mut words: [u64; 16] = [0; 16]; // 1024/64 => 16 64bit words
   let (neg, words) = b.to_words_array(&mut words);
+  if b.word_count() > 16 {
+    return match neg {
+      true => f64::NEG_INFINITY,
+      false => f64::INFINITY,
+    };
+  }
   let sign = if neg { -1.0 } else { 1.0 };
   let x: f64 = words
     .iter()

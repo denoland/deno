@@ -415,6 +415,20 @@ detest!(
 );
 detest!(de_bigint_f32_max, f32, "BigInt(3.40282347e38)", f32::MAX);
 detest!(de_bigint_f32_min, f32, "BigInt(-3.40282347e38)", f32::MIN);
+// BigInt to f32/f64 saturating to inf
+detest!(
+  de_bigint_f64_inf,
+  f64,
+  "(BigInt(1.7976931348623157e+308)*BigInt(100))",
+  f64::INFINITY
+);
+detest!(
+  de_bigint_f64_neg_inf,
+  f64,
+  "(BigInt(-1.7976931348623157e+308)*BigInt(100))",
+  f64::NEG_INFINITY
+);
+
 detest!(
   de_bigint_f32_inf,
   f32,
