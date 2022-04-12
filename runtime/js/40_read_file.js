@@ -3,44 +3,21 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { open, openSync } = window.__bootstrap.files;
-  const { readAllSync, readAll, readAllSyncSized, readAllInnerSized } =
-    window.__bootstrap.io;
 
   function readFileSync(path) {
-    const file = openSync(path);
-    try {
-      const { size } = file.statSync();
-      if (size === 0) {
-        return readAllSync(file);
-      } else {
-        return readAllSyncSized(file, size);
-      }
-    } finally {
-      file.close();
-    }
+    return core.opSync("op_readfile_sync", path);
   }
 
-  async function readFile(path, options) {
-    const file = await open(path);
-    try {
-      const { size } = await file.stat();
-      if (size === 0) {
-        return await readAll(file);
-      } else {
-        return await readAllInnerSized(file, size, options);
-      }
-    } finally {
-      file.close();
-    }
+  function readFile(path, _options) {
+    return core.opAsync("op_readfile_async", path);
   }
 
   function readTextFileSync(path) {
-    return core.decode(readFileSync(path));
+    return core.opSync("op_readfile_text_sync", path);
   }
 
-  async function readTextFile(path, options) {
-    return core.decode(await readFile(path, options));
+  function readTextFile(path, _options) {
+    return core.opAsync("op_readfile_text_async", path);
   }
 
   window.__bootstrap.readFile = {

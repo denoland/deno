@@ -14,6 +14,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
 use log::debug;
@@ -91,6 +92,10 @@ pub fn init() -> Extension {
       op_futime_async::decl(),
       op_utime_sync::decl(),
       op_utime_async::decl(),
+      op_readfile_sync::decl(),
+      op_readfile_text_sync::decl(),
+      op_readfile_async::decl(),
+      op_readfile_text_async::decl(),
     ])
     .build()
 }
@@ -1933,4 +1938,50 @@ fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
     .check_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
+}
+
+#[op]
+fn op_readfile_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(&path)?;
+  Ok(std::fs::read(path)?.into())
+}
+
+#[op]
+fn op_readfile_text_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<String, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(&path)?;
+  Ok(std::fs::read_to_string(path)?)
+}
+
+#[op]
+async fn op_readfile_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let mut state = state.borrow_mut();
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(&path)?;
+  Ok(tokio::fs::read(path).await?.into())
+}
+
+#[op]
+async fn op_readfile_text_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+) -> Result<String, AnyError> {
+  let mut state = state.borrow_mut();
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(&path)?;
+  Ok(String::from_utf8(tokio::fs::read(path).await?)?)
 }
