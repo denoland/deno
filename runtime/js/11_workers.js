@@ -142,6 +142,9 @@
 
       this.dispatchEvent(event);
       // Don't bubble error event to window for loader errors (`!e.fileName`).
+      // TODO(nayeemrmn): Currently these are never bubbled because worker
+      // error event fields aren't populated correctly and `e.fileName` is
+      // always empty.
       if (e.fileName && !event.defaultPrevented) {
         window.dispatchEvent(event);
       }
