@@ -96,14 +96,6 @@
       });
 
       // TODO(lucacasonato): add fast path for non-streaming decoder & decode
-      /*
-      if (this.#rid === null) {
-        this.#rid = core.opSync("op_encoding_new_decoder", {
-          label: this.#encoding,
-          fatal: this.#fatal,
-          ignoreBom: this.#ignoreBOM,
-        });
-      }*/
 
       try {
         try {
@@ -153,8 +145,8 @@
           stream: options.stream,
         });
       } finally {
-        if (!options.stream) {
-          //core.close(this.#rid);
+        if (!options.stream && this.#rid) {
+          core.close(this.#rid);
           this.#rid = null;
         }
       }
