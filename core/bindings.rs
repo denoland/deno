@@ -1460,6 +1460,8 @@ fn unsafe_buffer(
     v8::Local::<v8::Integer>::try_from(args.get(0)).map_or(0, |x| x.value());
   let len = len as usize;
   let mut bytes = Vec::with_capacity(len);
+  // SAFETY: caveat emptor
+  #[allow(clippy::uninit_vec)]
   unsafe {
     bytes.set_len(len);
   }
