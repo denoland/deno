@@ -227,8 +227,7 @@ impl Resource for ChildStderrResource {
 
 #[derive(Debug, Default)]
 pub struct StdFileResource {
-  pub fs_file:
-    Option<AsyncRefCell<(Option<tokio::fs::File>, Option<FileMetadata>)>>,
+  pub fs_file: Option<AsyncRefCell<(Option<StdFile>, Option<FileMetadata>)>>,
   cancel: CancelHandle,
   name: String,
 }
@@ -237,7 +236,7 @@ impl StdFileResource {
   pub fn stdio(std_file: &StdFile, name: &str) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
-        std_file.try_clone().map(tokio::fs::File::from_std).ok(),
+        std_file.try_clone().ok(),
         Some(FileMetadata::default()),
       ))),
       name: name.to_string(),
@@ -245,7 +244,7 @@ impl StdFileResource {
     }
   }
 
-  pub fn fs_file(fs_file: tokio::fs::File) -> Self {
+  pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
         Some(fs_file),
@@ -264,8 +263,12 @@ impl StdFileResource {
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().read(&mut buf).await?;
-      Ok(nwritten)
+      let std_file = fs_file.0.as_mut().unwrap();
+      let std_file: &'static mut StdFile =
+        unsafe { std::mem::transmute(std_file) };
+      tokio::task::spawn_blocking(move || std_file.read(&mut buf))
+        .await?
+        .map_err(AnyError::from)
     } else {
       Err(resource_unavailable())
     }
@@ -276,9 +279,12 @@ impl StdFileResource {
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().write(&buf).await?;
-      fs_file.0.as_mut().unwrap().flush().await?;
-      Ok(nwritten)
+      let std_file = fs_file.0.as_mut().unwrap();
+      let std_file: &'static mut StdFile =
+        unsafe { std::mem::transmute(std_file) };
+      tokio::task::spawn_blocking(move || std_file.write(&buf))
+        .await?
+        .map_err(AnyError::from)
     } else {
       Err(resource_unavailable())
     }
@@ -292,44 +298,67 @@ impl StdFileResource {
   where
     F: FnMut(Result<&mut std::fs::File, ()>) -> Result<R, AnyError>,
   {
-    // First we look up the rid in the resource table.
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
-
+    // TODO(@AaronO): does this make sense ?
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.
     if resource.fs_file.is_none() {
       return f(Err(()));
     }
 
-    // The object in the resource table is a tokio::fs::File - but in
-    // order to do a blocking write on it, we must turn it into a
-    // std::fs::File. Hopefully this code compiles down to nothing.
-    let fs_file_resource =
+    let r =
       RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
-
-    if let Some(mut fs_file) = fs_file_resource {
-      let tokio_file = fs_file.0.take().unwrap();
-      match tokio_file.try_into_std() {
-        Ok(mut std_file) => {
-          let result = f(Ok(&mut std_file));
-          // Turn the std_file handle back into a tokio file, put it back
-          // in the resource table.
-          let tokio_file = tokio::fs::File::from_std(std_file);
-          fs_file.0 = Some(tokio_file);
-          // return the result.
-          result
-        }
-        Err(tokio_file) => {
-          // This function will return an error containing the file if
-          // some operation is in-flight.
-          fs_file.0 = Some(tokio_file);
-          Err(resource_unavailable())
-        }
-      }
-    } else {
-      Err(resource_unavailable())
+    match r {
+      Some(mut r) => f(Ok(r.0.as_mut().unwrap())),
+      None => Err(resource_unavailable()),
     }
   }
+  // pub fn with<F, R>(
+  //   state: &mut OpState,
+  //   rid: ResourceId,
+  //   mut f: F,
+  // ) -> Result<R, AnyError>
+  // where
+  //   F: FnMut(Result<&mut std::fs::File, ()>) -> Result<R, AnyError>,
+  // {
+  //   // First we look up the rid in the resource table.
+  //   let resource = state.resource_table.get::<StdFileResource>(rid)?;
+
+  //   // Sync write only works for FsFile. It doesn't make sense to do this
+  //   // for non-blocking sockets. So we error out if not FsFile.
+  //   if resource.fs_file.is_none() {
+  //     return f(Err(()));
+  //   }
+
+  //   // The object in the resource table is a tokio::fs::File - but in
+  //   // order to do a blocking write on it, we must turn it into a
+  //   // std::fs::File. Hopefully this code compiles down to nothing.
+  //   let fs_file_resource =
+  //     RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
+
+  //   if let Some(mut fs_file) = fs_file_resource {
+  //     let tokio_file = fs_file.0.take().unwrap();
+  //     match tokio_file.try_into_std() {
+  //       Ok(mut std_file) => {
+  //         let result = f(Ok(&mut std_file));
+  //         // Turn the std_file handle back into a tokio file, put it back
+  //         // in the resource table.
+  //         let tokio_file = tokio::fs::File::from_std(std_file);
+  //         fs_file.0 = Some(tokio_file);
+  //         // return the result.
+  //         result
+  //       }
+  //       Err(tokio_file) => {
+  //         // This function will return an error containing the file if
+  //         // some operation is in-flight.
+  //         fs_file.0 = Some(tokio_file);
+  //         Err(resource_unavailable())
+  //       }
+  //     }
+  //   } else {
+  //     Err(resource_unavailable())
+  //   }
+  // }
 }
 
 impl Resource for StdFileResource {

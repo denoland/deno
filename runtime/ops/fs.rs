@@ -22,13 +22,14 @@ use serde::Serialize;
 use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
+use std::fs::File as StdFile;
 use std::io;
 use std::io::{Error, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use tokio::io::AsyncSeekExt;
+// use tokio::io::AsyncSeekExt;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
@@ -166,8 +167,7 @@ fn op_open_sync(
   let std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
-  let tokio_file = tokio::fs::File::from_std(std_file);
-  let resource = StdFileResource::fs_file(tokio_file);
+  let resource = StdFileResource::fs_file(std_file);
   let rid = state.resource_table.add(resource);
   Ok(rid)
 }
@@ -178,13 +178,13 @@ async fn op_open_async(
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(&path)
-    .await
-    .map_err(|err| {
+  let std_file = tokio::task::spawn_blocking(move || {
+    open_options.open(path.clone()).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-    })?;
-  let resource = StdFileResource::fs_file(tokio_file);
+    })
+  })
+  .await?;
+  let resource = StdFileResource::fs_file(std_file?);
   let rid = state.borrow_mut().resource_table.add(resource);
   Ok(rid)
 }
@@ -246,8 +246,11 @@ async fn op_seek_async(
     .borrow_mut()
     .await;
 
-  let pos = (*fs_file).0.as_mut().unwrap().seek(seek_from).await?;
-  Ok(pos)
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
+  tokio::task::spawn_blocking(move || std_file.seek(seek_from))
+    .await?
+    .map_err(AnyError::from)
 }
 
 #[op]
@@ -280,8 +283,11 @@ async fn op_fdatasync_async(
     .borrow_mut()
     .await;
 
-  (*fs_file).0.as_mut().unwrap().sync_data().await?;
-  Ok(())
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
+  tokio::task::spawn_blocking(|| std_file.sync_data())
+    .await?
+    .map_err(AnyError::from)
 }
 
 #[op]
@@ -310,9 +316,11 @@ async fn op_fsync_async(
   let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
-
-  (*fs_file).0.as_mut().unwrap().sync_all().await?;
-  Ok(())
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
+  tokio::task::spawn_blocking(|| std_file.sync_all())
+    .await?
+    .map_err(AnyError::from)
 }
 
 #[op]
@@ -345,7 +353,11 @@ async fn op_fstat_async(
     .borrow_mut()
     .await;
 
-  let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
+  let metadata = tokio::task::spawn_blocking(|| std_file.metadata())
+    .await?
+    .map_err(AnyError::from)?;
   Ok(get_stat(metadata))
 }
 
@@ -393,14 +405,8 @@ async fn op_flock_async(
     .borrow_mut()
     .await;
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
     if exclusive {
       std_file.lock_exclusive()?;
@@ -450,14 +456,8 @@ async fn op_funlock_async(
     .borrow_mut()
     .await;
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
     std_file.unlock()?;
     Ok(())
@@ -1557,9 +1557,14 @@ async fn op_ftruncate_async(
   let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
+  tokio::task::spawn_blocking(move || std_file.set_len(len))
+    .await?
+    .map_err(AnyError::from)
 
-  (*fs_file).0.as_mut().unwrap().set_len(len).await?;
-  Ok(())
+  // (*fs_file).0.as_mut().unwrap().set_len(len).await?;
+  // Ok(())
 }
 
 #[derive(Deserialize)]
@@ -1857,14 +1862,8 @@ async fn op_futime_async(
     .borrow_mut()
     .await;
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
+  let std_file = fs_file.0.as_mut().unwrap();
+  let std_file: &'static mut StdFile = unsafe { std::mem::transmute(std_file) };
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
