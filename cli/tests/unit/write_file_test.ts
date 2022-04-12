@@ -359,10 +359,16 @@ Deno.test(
 );
 
 function assertNotExists(filename: string | URL) {
-  try {
-    Deno.statSync(filename);
+  if (pathExists(filename)) {
     throw new Error(`The file ${filename} exists.`);
+  }
+}
+
+function pathExists(path: string | URL) {
+  try {
+    Deno.statSync(path);
+    return true;
   } catch {
-    // ignore
+    return false;
   }
 }

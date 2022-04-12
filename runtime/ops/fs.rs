@@ -699,14 +699,14 @@ async fn op_chmod_async(
   .unwrap()
 }
 
-fn raw_chmod(path: &Path, raw_mode: u32) -> Result<(), AnyError> {
+fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
   let err_mapper = |err: Error| {
     Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
   };
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
-    let permissions = PermissionsExt::from_mode(raw_mode);
+    let permissions = PermissionsExt::from_mode(_raw_mode);
     std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
     Ok(())
   }
