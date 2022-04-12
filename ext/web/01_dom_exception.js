@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -16,6 +16,7 @@
     ErrorPrototype,
     ObjectDefineProperty,
     ObjectEntries,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     SymbolFor,
   } = window.__bootstrap.primordials;
@@ -126,7 +127,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      if (this instanceof DOMException) {
+      if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
         return `DOMException: ${this.#message}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({
@@ -145,6 +146,7 @@
   ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
   webidl.configurePrototype(DOMException);
+  const DOMExceptionPrototype = DOMException.prototype;
 
   for (
     const [key, value] of ObjectEntries({

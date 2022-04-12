@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -656,7 +656,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyString() {
-    const addr = "127.0.0.1:4502";
+    const addr = "127.0.0.1:4511";
     const bufPromise = bufferServer(addr);
     const body = "hello world";
     const response = await fetch(`http://${addr}/blah`, {
@@ -970,7 +970,7 @@ Deno.test(function fetchResponseConstructorNullBody() {
 });
 
 Deno.test(function fetchResponseConstructorInvalidStatus() {
-  const invalidStatus = [101, 600, 199, null, "", NaN];
+  const invalidStatus = [100, 600, 199, null, "", NaN];
 
   for (const status of invalidStatus) {
     try {
@@ -980,7 +980,11 @@ Deno.test(function fetchResponseConstructorInvalidStatus() {
       fail(`Invalid status: ${status}`);
     } catch (e) {
       assert(e instanceof RangeError);
-      assert(e.message.endsWith("is outside the range [200, 599]."));
+      assert(
+        e.message.endsWith(
+          "is not equal to 101 and outside the range [200, 599].",
+        ),
+      );
     }
   }
 });
@@ -1039,7 +1043,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyReadableStream() {
-    const addr = "127.0.0.1:4502";
+    const addr = "127.0.0.1:4511";
     const bufPromise = bufferServer(addr);
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -1126,7 +1130,7 @@ Deno.test(
   async function fetchFilterOutCustomHostHeader(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4502";
+    const addr = "127.0.0.1:4511";
     const listener = returnHostHeaderServer(addr);
     const response = await fetch(`http://${addr}/`, {
       headers: { "Host": "example.com" },
@@ -1272,7 +1276,60 @@ Deno.test(
     } catch (error) {
       assert(error instanceof DOMException);
       assertEquals(error.name, "AbortError");
-      assertEquals(error.message, "Ongoing fetch was aborted.");
+      assertEquals(error.message, "The signal has been aborted");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchAbortWhileUploadStreamingWithReason(): Promise<void> {
+    const abortController = new AbortController();
+    const abortReason = new Error();
+    try {
+      await fetch(
+        "http://localhost:5552/echo_server",
+        {
+          method: "POST",
+          body: new ReadableStream({
+            pull(controller) {
+              abortController.abort(abortReason);
+              controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+            },
+          }),
+          signal: abortController.signal,
+        },
+      );
+      fail("Fetch didn't reject.");
+    } catch (error) {
+      assertEquals(error, abortReason);
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchAbortWhileUploadStreamingWithPrimitiveReason(): Promise<
+    void
+  > {
+    const abortController = new AbortController();
+    try {
+      await fetch(
+        "http://localhost:5552/echo_server",
+        {
+          method: "POST",
+          body: new ReadableStream({
+            pull(controller) {
+              abortController.abort("Abort reason");
+              controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+            },
+          }),
+          signal: abortController.signal,
+        },
+      );
+      fail("Fetch didn't reject.");
+    } catch (error) {
+      assertEquals(error, "Abort reason");
     }
   },
 );

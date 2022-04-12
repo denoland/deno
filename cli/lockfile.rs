@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -11,6 +11,8 @@ use std::io::Result;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
@@ -42,13 +44,18 @@ impl Lockfile {
     }
     let j = json!(&self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
+
+    let format_s = format_json(&s, &Default::default())
+      .ok()
+      .flatten()
+      .unwrap_or(s);
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
       .truncate(true)
       .open(&self.filename)?;
     use std::io::Write;
-    f.write_all(s.as_bytes())?;
+    f.write_all(format_s.as_bytes())?;
     debug!("lockfile write {}", self.filename.display());
     Ok(())
   }
@@ -87,7 +94,7 @@ impl Lockfile {
 }
 
 #[derive(Debug)]
-pub(crate) struct Locker(Option<Arc<Mutex<Lockfile>>>);
+pub struct Locker(Option<Arc<Mutex<Lockfile>>>);
 
 impl deno_graph::source::Locker for Locker {
   fn check_or_insert(
@@ -113,7 +120,7 @@ impl deno_graph::source::Locker for Locker {
   }
 }
 
-pub(crate) fn as_maybe_locker(
+pub fn as_maybe_locker(
   lockfile: Option<Arc<Mutex<Lockfile>>>,
 ) -> Option<Rc<RefCell<Box<dyn deno_graph::source::Locker>>>> {
   lockfile.as_ref().map(|lf| {
@@ -131,11 +138,9 @@ mod tests {
   use std::fs::File;
   use std::io::prelude::*;
   use std::io::Write;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
-  fn setup() -> (TempDir, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
-
+  fn setup(temp_dir: &TempDir) -> PathBuf {
     let file_path = temp_dir.path().join("valid_lockfile.json");
     let mut file = File::create(file_path).expect("write file fail");
 
@@ -146,13 +151,7 @@ mod tests {
 
     file.write_all(value.to_string().as_bytes()).unwrap();
 
-    let file_path = temp_dir.path().join("valid_lockfile.json");
-
-    (temp_dir, file_path)
-  }
-
-  fn teardown(temp_dir: TempDir) {
-    temp_dir.close().expect("file close error");
+    temp_dir.path().join("valid_lockfile.json")
   }
 
   #[test]
@@ -163,7 +162,8 @@ mod tests {
 
   #[test]
   fn new_valid_lockfile() {
-    let (temp_dir, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let result = Lockfile::new(file_path, false).unwrap();
 
@@ -175,13 +175,12 @@ mod tests {
 
     assert_eq!(keys.len(), 2);
     assert_eq!(keys, expected_keys);
-
-    teardown(temp_dir);
   }
 
   #[test]
   fn new_lockfile_from_file_and_insert() {
-    let (temp_dir, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 
@@ -198,13 +197,12 @@ mod tests {
     ];
     assert_eq!(keys.len(), 3);
     assert_eq!(keys, expected_keys);
-
-    teardown(temp_dir);
   }
 
   #[test]
   fn new_lockfile_and_write() {
-    let (temp_dir, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let mut lockfile = Lockfile::new(file_path, true).unwrap();
 
@@ -257,13 +255,12 @@ mod tests {
       Some("https://deno.land/std@0.71.0/textproto/mod.ts")
     );
     assert!(keys.next().is_none());
-
-    teardown(temp_dir);
   }
 
   #[test]
   fn check_or_insert_lockfile_false() {
-    let (temp_dir, file_path) = setup();
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 
@@ -283,7 +280,5 @@ mod tests {
       "This is new Source code",
     );
     assert!(!check_false);
-
-    teardown(temp_dir);
   }
 }

@@ -1,19 +1,19 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // The logic of this module is heavily influenced by
 // https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts
 // and https://github.com/microsoft/vscode/blob/main/src/vs/workbench/api/common/extHostTypes.ts
 // for the SemanticTokensBuilder implementation.
 
-use lspower::lsp::SemanticToken;
-use lspower::lsp::SemanticTokenModifier;
-use lspower::lsp::SemanticTokenType;
-use lspower::lsp::SemanticTokens;
-use lspower::lsp::SemanticTokensLegend;
 use std::ops::{Index, IndexMut};
+use tower_lsp::lsp_types::SemanticToken;
+use tower_lsp::lsp_types::SemanticTokenModifier;
+use tower_lsp::lsp_types::SemanticTokenType;
+use tower_lsp::lsp_types::SemanticTokens;
+use tower_lsp::lsp_types::SemanticTokensLegend;
 
-pub(crate) const MODIFIER_MASK: u32 = 255;
-pub(crate) const TYPE_OFFSET: u32 = 8;
+pub const MODIFIER_MASK: u32 = 255;
+pub const TYPE_OFFSET: u32 = 8;
 
 enum TokenType {
   Class = 0,

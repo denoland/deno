@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 
@@ -34,6 +34,17 @@ fn pty_multiline() {
 }
 
 #[test]
+fn pty_null() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("null");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("null"));
+  });
+}
+
+#[test]
 fn pty_unpaired_braces() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(")");
@@ -63,12 +74,15 @@ fn pty_bad_input() {
 fn pty_syntax_error_input() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("('\\u')");
-    console.write_line("('");
+    console.write_line("'");
+    console.write_line("[{'a'}];");
     console.write_line("close();");
 
     let output = console.read_all_output();
+    assert!(output
+      .contains("Bad character escape sequence, expected 4 hex characters"));
     assert!(output.contains("Unterminated string constant"));
-    assert!(output.contains("Unexpected eof"));
+    assert!(output.contains("Expected a semicolon"));
   });
 }
 
@@ -117,6 +131,49 @@ fn pty_complete_primitives() {
     assert!(output.contains("> 5n.valueOf"));
     assert!(output.contains("> false.valueOf"));
     assert!(output.contains("> num.toString"));
+  });
+}
+
+#[test]
+fn pty_complete_expression() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_text("Deno.\t\t");
+    console.write_text("y");
+    console.write_line("");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert!(output.contains("Display all"));
+    assert!(output.contains("core"));
+    assert!(output.contains("args"));
+    assert!(output.contains("exit"));
+    assert!(output.contains("symlink"));
+    assert!(output.contains("permissions"));
+  });
+}
+
+#[test]
+fn pty_complete_imports() {
+  util::with_pty(&["repl"], |mut console| {
+    // single quotes
+    console.write_line("import './001_hel\t'");
+    // double quotes
+    console.write_line("import { output } from \"./045_out\t\"");
+    console.write_line("output('testing output');");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
+    assert!(output.contains("testing output\u{1b}"));
+  });
+
+  // ensure when the directory changes that the suggestions come from the cwd
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Deno.chdir('./subdir');");
+    console.write_line("import '../001_hel\t'");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
   });
 }
 
@@ -267,7 +324,11 @@ fn typescript_declarations() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n0\n2\nundefined\nundefined\n"));
+  let expected_end_text = "undefined\n0\n2\nundefined\nundefined\n";
+  assert_eq!(
+    &out[out.len() - expected_end_text.len()..],
+    expected_end_text
+  );
   assert!(err.is_empty());
 }
 

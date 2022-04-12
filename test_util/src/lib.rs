@@ -1,6 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
+use anyhow::anyhow;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -14,7 +15,10 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use os_pipe::pipe;
+use pretty_assertions::assert_eq;
 use regex::Regex;
+use rustls::Certificate;
+use rustls::PrivateKey;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -24,6 +28,8 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -36,16 +42,18 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
-use tempfile::TempDir;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls::{self, Session};
+use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
 pub mod lsp;
 pub mod pty;
+mod temp_dir;
+
+pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -321,21 +329,25 @@ async fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
   let ca_file = std::fs::File::open(ca_path)?;
 
-  let mut cert_reader = io::BufReader::new(cert_file);
-  let cert = rustls::internal::pemfile::certs(&mut cert_reader)
-    .expect("Cannot load certificate");
+  let certs: Vec<Certificate> = {
+    let mut cert_reader = io::BufReader::new(cert_file);
+    rustls_pemfile::certs(&mut cert_reader)
+      .unwrap()
+      .into_iter()
+      .map(Certificate)
+      .collect()
+  };
 
   let mut ca_cert_reader = io::BufReader::new(ca_file);
-  let ca_cert = rustls::internal::pemfile::certs(&mut ca_cert_reader)
+  let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
     .expect("Cannot load CA certificate")
     .remove(0);
 
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
-    let pkcs8_key =
-      rustls::internal::pemfile::pkcs8_private_keys(&mut key_reader)
-        .expect("Cannot load key file");
-    let rsa_key = rustls::internal::pemfile::rsa_private_keys(&mut key_reader)
+    let pkcs8_key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+      .expect("Cannot load key file");
+    let rsa_key = rustls_pemfile::rsa_private_keys(&mut key_reader)
       .expect("Cannot load key file");
     if !pkcs8_key.is_empty() {
       Some(pkcs8_key[0].clone())
@@ -349,26 +361,30 @@ async fn get_tls_config(
   match key {
     Some(key) => {
       let mut root_cert_store = rustls::RootCertStore::empty();
-      root_cert_store.add(&ca_cert).unwrap();
+      root_cert_store.add(&rustls::Certificate(ca_cert)).unwrap();
+
       // Allow (but do not require) client authentication.
-      let allow_client_auth =
-        rustls::AllowAnyAnonymousOrAuthenticatedClient::new(root_cert_store);
-      let mut config = rustls::ServerConfig::new(allow_client_auth);
+
+      let mut config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_client_cert_verifier(
+          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
+            root_cert_store,
+          ),
+        )
+        .with_single_cert(certs, PrivateKey(key))
+        .map_err(|e| anyhow!("Error setting cert: {:?}", e))
+        .unwrap();
+
       match http_versions {
         SupportedHttpVersions::All => {
-          config.set_protocols(&["h2".into(), "http/1.1".into()]);
+          config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
         }
         SupportedHttpVersions::Http1Only => {}
         SupportedHttpVersions::Http2Only => {
-          config.set_protocols(&["h2".into()]);
+          config.alpn_protocols = vec!["h2".into()];
         }
       }
-      config
-        .set_single_cert(cert, key)
-        .map_err(|e| {
-          eprintln!("Error setting cert: {:?}", e);
-        })
-        .unwrap();
 
       Ok(Arc::new(config))
     }
@@ -466,7 +482,7 @@ async fn run_tls_client_auth_server() {
           let (_, tls_session) = tls_stream.get_mut();
           // We only need to check for the presence of client certificates
           // here. Rusttls ensures that they are valid and signed by the CA.
-          let response = match tls_session.get_peer_certificates() {
+          let response = match tls_session.peer_certificates() {
             Some(_certs) => b"PASS",
             None => b"FAIL",
           };
@@ -663,6 +679,18 @@ async fn main_server(
       *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
+    (_, "/x_deno_warning.js") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+      res
+        .headers_mut()
+        .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
+      res.headers_mut().insert(
+        "location",
+        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+      );
+      Ok(res)
+    }
     (_, "/non_ascii_redirect") => {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
@@ -827,6 +855,15 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/v1/extensionless") => {
+      let mut res =
+        Response::new(Body::from(r#"export * from "/subdir/mod1.ts";"#));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/subdir/no_js_ext@1.0.0") => {
       let mut res = Response::new(Body::from(
         r#"import { printHello } from "./mod2.ts";
@@ -880,6 +917,32 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic") => {
+      let mut res = Response::new(Body::from(
+        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      ));
+      res
+        .headers_mut()
+        .insert("cache-control", HeaderValue::from_static("no-cache"));
+      Ok(res)
+    }
+    (_, "/dynamic_cache") => {
+      let mut res = Response::new(Body::from(
+        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      ));
+      res.headers_mut().insert(
+        "cache-control",
+        HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
+    (_, "/echo_accept") => {
+      let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
+      let res = Response::new(Body::from(
+        serde_json::json!({ "accept": accept }).to_string(),
+      ));
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
@@ -917,6 +980,7 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
   }
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {
@@ -1173,7 +1237,7 @@ async fn wrap_client_auth_https_server() {
               let (_, tls_session) = tls_stream.get_mut();
               // We only need to check for the presence of client certificates
               // here. Rusttls ensures that they are valid and signed by the CA.
-              match tls_session.get_peer_certificates() {
+              match tls_session.peer_certificates() {
                 Some(_certs) => { yield Ok(tls_stream); },
                 None => { eprintln!("https_client_auth: no valid client certificate"); },
               };
@@ -1273,16 +1337,6 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/x_deno_warning.js") {
-    response.headers_mut().insert(
-      "Content-Type",
-      HeaderValue::from_static("application/javascript"),
-    );
-    response
-      .headers_mut()
-      .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
-    return response;
-  }
   if p.ends_with("/053_import_compression/brotli") {
     response
       .headers_mut()
@@ -1604,20 +1658,42 @@ pub fn run_and_collect_output_with_args(
 }
 
 pub fn new_deno_dir() -> TempDir {
-  TempDir::new().expect("tempdir fail")
+  TempDir::new()
 }
 
-pub fn deno_cmd() -> Command {
+pub struct DenoCmd {
+  // keep the deno dir directory alive for the duration of the command
+  _deno_dir: TempDir,
+  cmd: Command,
+}
+
+impl Deref for DenoCmd {
+  type Target = Command;
+  fn deref(&self) -> &Command {
+    &self.cmd
+  }
+}
+
+impl DerefMut for DenoCmd {
+  fn deref_mut(&mut self) -> &mut Command {
+    &mut self.cmd
+  }
+}
+
+pub fn deno_cmd() -> DenoCmd {
   let deno_dir = new_deno_dir();
-  deno_cmd_with_deno_dir(deno_dir.path())
+  deno_cmd_with_deno_dir(&deno_dir)
 }
 
-pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {
-  let e = deno_exe_path();
-  assert!(e.exists());
-  let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir);
-  c
+pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
+  let exe_path = deno_exe_path();
+  assert!(exe_path.exists());
+  let mut cmd = Command::new(exe_path);
+  cmd.env("DENO_DIR", deno_dir.path());
+  DenoCmd {
+    _deno_dir: deno_dir.clone(),
+    cmd,
+  }
 }
 
 pub fn run_powershell_script_file(
@@ -1654,6 +1730,7 @@ pub fn run_powershell_script_file(
 #[derive(Debug, Default)]
 pub struct CheckOutputIntegrationTest {
   pub args: &'static str,
+  pub args_vec: Vec<&'static str>,
   pub output: &'static str,
   pub input: Option<&'static str>,
   pub output_str: Option<&'static str>,
@@ -1664,7 +1741,15 @@ pub struct CheckOutputIntegrationTest {
 
 impl CheckOutputIntegrationTest {
   pub fn run(&self) {
-    let args = self.args.split_whitespace();
+    let args = if self.args_vec.is_empty() {
+      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
+    } else {
+      assert!(
+        self.args.is_empty(),
+        "Do not provide args when providing args_vec."
+      );
+      std::borrow::Cow::Borrowed(&self.args_vec)
+    };
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1676,10 +1761,11 @@ impl CheckOutputIntegrationTest {
 
     let (mut reader, writer) = pipe().unwrap();
     let testdata_dir = testdata_path();
-    let mut command = deno_cmd();
+    let deno_dir = new_deno_dir(); // keep this alive for the test
+    let mut command = deno_cmd_with_deno_dir(&deno_dir);
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
-    command.args(args);
+    command.args(args.iter());
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
@@ -1741,7 +1827,9 @@ impl CheckOutputIntegrationTest {
       std::fs::read_to_string(output_path).expect("cannot read output")
     };
 
-    if !wildcard_match(&expected, &actual) {
+    if !expected.contains("[WILDCARD]") {
+      assert_eq!(actual, expected)
+    } else if !wildcard_match(&expected, &actual) {
       println!("OUTPUT\n{}\nOUTPUT", actual);
       println!("EXPECTED\n{}\nEXPECTED", expected);
       panic!("pattern match failed");
@@ -2030,6 +2118,7 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn parse_wrk_output_1() {

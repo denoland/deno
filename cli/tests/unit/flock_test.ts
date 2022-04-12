@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
 import { readAll } from "../../../test_util/std/io/util.ts";
 

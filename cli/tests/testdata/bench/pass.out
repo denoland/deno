@@ -1,0 +1,15 @@
+Check [WILDCARD]/bench/pass.ts
+running 10 benches from [WILDCARD]/bench/pass.ts
+bench bench0 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench1 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench2 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench3 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench4 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench5 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench6 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench7 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench8 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+bench bench9 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+
+bench result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

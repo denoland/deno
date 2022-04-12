@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -15,21 +15,21 @@
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
-    ObjectEntries,
-    ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
+    PromisePrototypeFinally,
+    StringPrototypeSlice,
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
+  const ops = window.Deno.core.ops;
 
   // Available on start due to bindings.
-  const { opcallSync, opcallAsync } = window.Deno.core;
+  const { refOp_, unrefOp_ } = window.Deno.core;
 
-  let opsCache = {};
   const errorMap = {};
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -47,6 +47,17 @@
   // TODO(bartlomieju): it future use `v8::Private` so it's not visible
   // to users. Currently missing bindings.
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+
+  let opCallTracingEnabled = false;
+  const opCallTraces = new Map();
+
+  function enableOpCallTracing() {
+    opCallTracingEnabled = true;
+  }
+
+  function isOpCallTracingEnabled() {
+    return opCallTracingEnabled;
+  }
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -86,13 +97,15 @@
     return promise;
   }
 
-  function ops() {
-    return opsCache;
-  }
-
-  function syncOpsCache() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
+  function hasPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      return MapPrototypeHas(promiseMap, promiseId);
+    }
+    // Otherwise check it in ring
+    const idx = promiseId % RING_SIZE;
+    return promiseRing[idx] != NO_PROMISE;
   }
 
   function opresolve() {
@@ -134,19 +147,43 @@
     return res;
   }
 
-  function opAsync(opName, arg1 = null, arg2 = null) {
+  function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
+    const maybeError = ops[opName](promiseId, ...args);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    if (opCallTracingEnabled) {
+      // Capture a stack trace by creating a new `Error` object. We remove the
+      // first 6 characters (the `Error\n` prefix) to get just the stack trace.
+      const stack = StringPrototypeSlice(new Error().stack, 6);
+      MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
+      p = PromisePrototypeFinally(
+        p,
+        () => MapPrototypeDelete(opCallTraces, promiseId),
+      );
+    }
     // Save the id on the promise so it can later be ref'ed or unref'ed
     p[promiseIdSymbol] = promiseId;
     return p;
   }
 
-  function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
+  function opSync(opName, ...args) {
+    return unwrapOpResult(ops[opName](...args));
+  }
+
+  function refOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    refOp_(promiseId);
+  }
+
+  function unrefOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    unrefOp_(promiseId);
   }
 
   function resources() {
@@ -180,8 +217,8 @@
   function metrics() {
     const [aggregate, perOps] = opSync("op_metrics");
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      ObjectEntries(opsCache),
-      ([opName, opId]) => [opName, perOps[opId]],
+      core.op_names,
+      (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;
   }
@@ -195,6 +232,7 @@
       this.name = "BadResource";
     }
   }
+  const BadResourcePrototype = BadResource.prototype;
 
   class Interrupted extends Error {
     constructor(msg) {
@@ -202,12 +240,12 @@
       this.name = "Interrupted";
     }
   }
+  const InterruptedPrototype = Interrupted.prototype;
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
-    ops,
     close,
     tryClose,
     read,
@@ -219,9 +257,15 @@
     registerErrorBuilder,
     registerErrorClass,
     opresolve,
-    syncOpsCache,
     BadResource,
+    BadResourcePrototype,
     Interrupted,
+    InterruptedPrototype,
+    enableOpCallTracing,
+    isOpCallTracingEnabled,
+    opCallTraces,
+    refOp,
+    unrefOp,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

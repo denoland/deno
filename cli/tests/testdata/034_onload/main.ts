@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-window-prefix no-prototype-builtins
 import { assert } from "../../../../test_util/std/testing/asserts.ts";
 import "./imported.ts";
 

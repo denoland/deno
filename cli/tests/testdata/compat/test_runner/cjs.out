@@ -1,0 +1,26 @@
+running 2 tests from compat/test_runner/cjs.js
+Correct assertion ... ok ([WILDCARD])
+Failed assertion ... FAILED ([WILDCARD])
+
+failures:
+
+compat/test_runner/cjs.js > Failed assertion
+AssertionError [ERR_ASSERTION]: Values are not strictly equal:
+
+
+    [Diff] Actual / Expected
+
+
+-   10
++   20
+
+[WILDCARD]
+
+failures:
+
+	compat/test_runner/cjs.js
+	Failed assertion
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

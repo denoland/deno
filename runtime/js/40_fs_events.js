@@ -1,11 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
-  const { errors } = window.__bootstrap.errors;
+  const { BadResourcePrototype, InterruptedPrototype } = core;
   const {
     ArrayIsArray,
+    ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     SymbolAsyncIterator,
   } = window.__bootstrap.primordials;
@@ -28,9 +29,11 @@
           ? { value, done: false }
           : { value: undefined, done: true };
       } catch (error) {
-        if (error instanceof errors.BadResource) {
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
           return { value: undefined, done: true };
-        } else if (error instanceof errors.Interrupted) {
+        } else if (
+          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
+        ) {
           return { value: undefined, done: true };
         }
         throw error;

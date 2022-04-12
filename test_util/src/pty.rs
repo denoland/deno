@@ -36,7 +36,7 @@ pub fn create_pty(
       .unwrap()
       .wait()
       .unwrap();
-    unreachable!();
+    std::process::exit(0);
   }
 }
 

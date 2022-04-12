@@ -1,19 +1,19 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::webpki;
+use deno_runtime::deno_tls::rustls_pemfile;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::{Read, Write};
 use std::process::Command;
 use std::sync::Arc;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 use tokio::task::LocalSet;
 
 #[macro_export]
@@ -50,10 +50,14 @@ macro_rules! itest_flaky(
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
 
+#[path = "bench_tests.rs"]
+mod bench;
 #[path = "bundle_tests.rs"]
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "check_tests.rs"]
+mod check;
 #[path = "compat_tests.rs"]
 mod compat;
 #[path = "compile_tests.rs"]
@@ -80,10 +84,14 @@ mod lsp;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "task_tests.rs"]
+mod task;
 #[path = "test_tests.rs"]
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
+#[path = "vendor_tests.rs"]
+mod vendor;
 #[path = "watcher_tests.rs"]
 mod watcher;
 #[path = "worker_tests.rs"]
@@ -133,7 +141,7 @@ itest!(types {
 #[test]
 fn cache_test() {
   let _g = util::http_server();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let module_url =
     url::Url::parse("http://localhost:4545/006_url_imports.ts").unwrap();
   let output = Command::new(util::deno_exe_path())
@@ -178,7 +186,7 @@ fn cache_test() {
 
 #[test]
 fn cache_invalidation_test() {
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let fixture_path = deno_dir.path().join("fixture.ts");
   {
     let mut file = std::fs::File::create(fixture_path.clone())
@@ -218,7 +226,7 @@ fn cache_invalidation_test() {
 
 #[test]
 fn cache_invalidation_test_no_check() {
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let fixture_path = deno_dir.path().join("fixture.ts");
   {
     let mut file = std::fs::File::create(fixture_path.clone())
@@ -260,7 +268,7 @@ fn cache_invalidation_test_no_check() {
 
 #[test]
 fn ts_dependency_recompilation() {
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let ats = t.path().join("a.ts");
 
   std::fs::write(
@@ -287,7 +295,9 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&ats)
     .output()
     .expect("failed to spawn script");
@@ -309,7 +319,9 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&ats)
     .output()
     .expect("failed to spawn script");
@@ -332,9 +344,11 @@ fn ts_no_recheck_on_redirect() {
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
+  cmd.env("DENO_FUTURE_CHECK", "1");
   let mut initial = cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(redirect_ts.clone())
     .spawn()
     .expect("failed to span script");
@@ -344,9 +358,11 @@ fn ts_no_recheck_on_redirect() {
 
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
+  cmd.env("DENO_FUTURE_CHECK", "1");
   let output = cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(redirect_ts)
     .output()
     .expect("failed to spawn script");
@@ -359,8 +375,8 @@ fn ts_reload() {
   let hello_ts = util::testdata_path().join("002_hello.ts");
   assert!(hello_ts.is_file());
 
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let deno_dir = TempDir::new();
+  let mut initial = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("cache")
     .arg(&hello_ts)
@@ -370,7 +386,7 @@ fn ts_reload() {
     initial.wait().expect("failed to wait for child process");
   assert!(status_initial.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("cache")
     .arg("--reload")
@@ -382,13 +398,14 @@ fn ts_reload() {
 
   // check the output of the the bundle program.
   let output_path = hello_ts.canonicalize().unwrap();
-  assert!(std::str::from_utf8(&output.stderr)
-    .unwrap()
-    .trim()
-    .contains(&format!(
-      "host.getSourceFile(\"{}\", Latest)",
-      url::Url::from_file_path(&output_path).unwrap().as_str()
-    )));
+  assert!(
+    dbg!(std::str::from_utf8(&output.stderr).unwrap().trim()).contains(
+      &format!(
+        "host.getSourceFile(\"{}\", Latest)",
+        url::Url::from_file_path(&output_path).unwrap().as_str()
+      )
+    )
+  );
 }
 
 #[test]
@@ -463,6 +480,18 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+itest!(error_cause {
+  args: "run error_cause.ts",
+  output: "error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive {
+  args: "run error_cause_recursive.ts",
+  output: "error_cause_recursive.ts.out",
+  exit_code: 1,
+});
+
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
@@ -520,7 +549,7 @@ itest!(localhost_unsafe_ssl {
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let module_url =
     Url::parse("https://localhost:5545/cafile_url_imports.ts").unwrap();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
@@ -539,7 +568,7 @@ fn cafile_env_fetch() {
 fn cafile_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let module_url =
     Url::parse("http://localhost:4545/cafile_url_imports.ts").unwrap();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
@@ -560,10 +589,10 @@ fn cafile_fetch() {
 #[flaky_test::flaky_test]
 fn cafile_install_remote_module() {
   let _g = util::http_server();
-  let temp_dir = TempDir::new().expect("tempdir fail");
+  let temp_dir = TempDir::new();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
 
   let install_output = Command::new(util::deno_exe_path())
@@ -606,7 +635,7 @@ fn cafile_bundle_remote_exports() {
   // First we have to generate a bundle of some remote module that has exports.
   let mod1 = "https://localhost:5545/subdir/mod1.ts";
   let cafile = util::testdata_path().join("tls/RootCA.pem");
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -633,7 +662,9 @@ fn cafile_bundle_remote_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&test)
     .output()
     .expect("failed to spawn script");
@@ -719,6 +750,39 @@ fn websocket_server_multi_field_connection_header() {
     deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
       .is_ok()
   );
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn websocket_server_idletimeout() {
+  let script = util::testdata_path().join("websocket_server_idletimeout.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .uri("ws://localhost:4509")
+    .body(())
+    .unwrap();
+  let (_ws, _request) =
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .unwrap();
+
   assert!(child.wait().unwrap().success());
 }
 
@@ -923,7 +987,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("--allow-net")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
@@ -948,7 +1014,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
@@ -973,7 +1041,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("--allow-net=deno.land")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
@@ -995,7 +1065,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -1042,6 +1114,34 @@ fn typecheck_declarations_unstable() {
 }
 
 #[test]
+fn typecheck_core() {
+  let deno_dir = TempDir::new();
+  let test_file = deno_dir.path().join("test_deno_core_types.ts");
+  std::fs::write(
+    &test_file,
+    format!(
+      "import \"{}\";",
+      deno_core::resolve_path(
+        util::root_path()
+          .join("core/lib.deno_core.d.ts")
+          .to_str()
+          .unwrap()
+      )
+      .unwrap()
+    ),
+  )
+  .unwrap();
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .arg("run")
+    .arg(test_file.to_str().unwrap())
+    .output()
+    .unwrap();
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
+}
+
+#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
@@ -1066,6 +1166,7 @@ fn js_unit_tests() {
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
+    .arg("--no-prompt")
     .arg("-A")
     .arg(util::tests_path().join("unit"))
     .spawn()
@@ -1099,9 +1200,8 @@ fn basic_auth_tokens() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   eprintln!("{}", stderr_str);
 
-  assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
-  ));
+  assert!(stderr_str
+    .contains("Module not found \"http://127.0.0.1:4554/001_hello.js\"."));
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -1143,36 +1243,40 @@ async fn listen_tls_alpn() {
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
-      let mut cfg = rustls::ClientConfig::new();
-      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
       )));
-      cfg.root_store.add_pem_file(reader).unwrap();
-      cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+      let certs = rustls_pemfile::certs(&mut reader).unwrap();
+      let mut root_store = rustls::RootCertStore::empty();
+      root_store.add_parsable_certificates(&certs);
+      let mut cfg = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+      cfg.alpn_protocols.push(b"foobar".to_vec());
       let cfg = Arc::new(cfg);
 
-      let hostname =
-        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+      let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
       let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
         .await
         .unwrap();
       let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
+        TlsStream::new_client_side(tcp_stream, cfg, hostname);
+
       tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
 
-      let alpn = session.get_alpn_protocol().unwrap();
-      assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+      let (_, rustls_connection) = tls_stream.get_ref();
+      let alpn = rustls_connection.alpn_protocol().unwrap();
+      assert_eq!(alpn, b"foobar");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }
@@ -1190,41 +1294,45 @@ async fn listen_tls_alpn_fail() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn_fail.ts")
         .arg("4505")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
-      let mut cfg = rustls::ClientConfig::new();
-      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
       )));
-      cfg.root_store.add_pem_file(reader).unwrap();
-      cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+      let certs = rustls_pemfile::certs(&mut reader).unwrap();
+      let mut root_store = rustls::RootCertStore::empty();
+      root_store.add_parsable_certificates(&certs);
+      let mut cfg = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+      cfg.alpn_protocols.push(b"boofar".to_vec());
       let cfg = Arc::new(cfg);
 
-      let hostname =
-        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+      let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
       let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
         .await
         .unwrap();
       let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
-      tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
+        TlsStream::new_client_side(tcp_stream, cfg, hostname);
 
-      assert!(session.get_alpn_protocol().is_none());
+      tls_stream.handshake().await.unwrap_err();
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let (_, rustls_connection) = tls_stream.get_ref();
+      assert!(rustls_connection.alpn_protocol().is_none());
+
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }

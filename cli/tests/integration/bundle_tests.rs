@@ -1,15 +1,15 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::testdata_path().join("subdir/mod1.ts");
   assert!(mod1.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -17,8 +17,8 @@ fn bundle_exports() {
     .arg(mod1)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
@@ -30,14 +30,15 @@ fn bundle_exports() {
       import { printHello3 } from \"./mod1.bundle.js\";
       printHello3(); ",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the test.ts program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -51,17 +52,16 @@ fn bundle_exports_no_check() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::testdata_path().join("subdir/mod1.ts");
   assert!(mod1.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
-    .arg("--no-check")
     .arg(mod1)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
@@ -73,14 +73,15 @@ fn bundle_exports_no_check() {
       import { printHello3 } from \"./mod1.bundle.js\";
       printHello3(); ",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the test.ts program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -94,7 +95,7 @@ fn bundle_circular() {
   // First we have to generate a bundle of some module that has exports.
   let circular1 = util::testdata_path().join("subdir/circular1.ts");
   assert!(circular1.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("circular1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -102,17 +103,18 @@ fn bundle_circular() {
     .arg(circular1)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the the bundle program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -126,7 +128,7 @@ fn bundle_single_module() {
   // First we have to generate a bundle of some module that has exports.
   let single_module = util::testdata_path().join("subdir/single_module.ts");
   assert!(single_module.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("single_module.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -134,17 +136,18 @@ fn bundle_single_module() {
     .arg(single_module)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the the bundle program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -158,7 +161,7 @@ fn bundle_tla() {
   // First we have to generate a bundle of some module that has exports.
   let tla_import = util::testdata_path().join("subdir/tla.ts");
   assert!(tla_import.is_file());
-  let t = tempfile::TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("tla.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -166,8 +169,8 @@ fn bundle_tla() {
     .arg(tla_import)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
@@ -179,14 +182,15 @@ fn bundle_tla() {
       import { foo } from \"./tla.bundle.js\";
       console.log(foo); ",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the test.ts program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -200,7 +204,7 @@ fn bundle_js() {
   // First we have to generate a bundle of some module that has exports.
   let mod6 = util::testdata_path().join("subdir/mod6.js");
   assert!(mod6.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -208,17 +212,18 @@ fn bundle_js() {
     .arg(mod6)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
 }
@@ -228,7 +233,7 @@ fn bundle_dynamic_import() {
   let _g = util::http_server();
   let dynamic_import = util::testdata_path().join("bundle_dynamic_import.ts");
   assert!(dynamic_import.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -236,8 +241,8 @@ fn bundle_dynamic_import() {
     .arg(dynamic_import)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
@@ -248,7 +253,7 @@ fn bundle_dynamic_import() {
     .arg("--quiet")
     .arg(&bundle)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the test.ts program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -262,7 +267,7 @@ fn bundle_import_map() {
   let import = util::testdata_path().join("bundle_im.ts");
   let import_map_path = util::testdata_path().join("bundle_im.json");
   assert!(import.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -272,8 +277,8 @@ fn bundle_import_map() {
     .arg(import)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
@@ -285,14 +290,16 @@ fn bundle_import_map() {
       import { printHello3 } from \"./import_map.bundle.js\";
       printHello3(); ",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&test)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the test.ts program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
@@ -306,19 +313,18 @@ fn bundle_import_map_no_check() {
   let import = util::testdata_path().join("bundle_im.ts");
   let import_map_path = util::testdata_path().join("bundle_im.json");
   assert!(import.is_file());
-  let t = TempDir::new().expect("tempdir fail");
+  let t = TempDir::new();
   let bundle = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
-    .arg("--no-check")
     .arg("--import-map")
     .arg(import_map_path)
     .arg(import)
     .arg(&bundle)
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap();
+  let status = deno.wait().unwrap();
   assert!(status.success());
   assert!(bundle.is_file());
 
@@ -330,20 +336,87 @@ fn bundle_import_map_no_check() {
       import { printHello3 } from \"./import_map.bundle.js\";
       printHello3(); ",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
-    .expect("failed to spawn script");
+    .unwrap();
   // check the output of the test.ts program.
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
     .ends_with("Hello"));
   assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_json_module() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod7 = util::testdata_path().join("subdir/mod7.js");
+  assert!(mod7.is_file());
+  let t = TempDir::new();
+  let bundle = t.path().join("mod7.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bundle")
+    .arg(mod7)
+    .arg(&bundle)
+    .spawn()
+    .unwrap();
+  let status = deno.wait().unwrap();
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .unwrap();
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+  // ensure the output looks right
+  assert!(String::from_utf8(output.stdout)
+    .unwrap()
+    .contains("with space"));
+}
+
+#[test]
+fn bundle_json_module_escape_sub() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod8 = util::testdata_path().join("subdir/mod8.js");
+  assert!(mod8.is_file());
+  let t = TempDir::new();
+  let bundle = t.path().join("mod8.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bundle")
+    .arg(mod8)
+    .arg(&bundle)
+    .spawn()
+    .unwrap();
+  let status = deno.wait().unwrap();
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .unwrap();
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+  // make sure the output looks right and the escapes were effective
+  assert!(String::from_utf8(output.stdout)
+    .unwrap()
+    .contains("${globalThis}`and string literal`"));
 }
 
 itest!(lock_check_err_with_bundle {
@@ -377,4 +450,9 @@ itest!(ts_decorators_bundle {
 itest!(bundle_export_specifier_with_alias {
   args: "bundle bundle/file_tests-fixture16.ts",
   output: "bundle/fixture16.out",
+});
+
+itest!(bundle_ignore_directives {
+  args: "bundle subdir/mod1.ts",
+  output: "bundle_ignore_directives.test.out",
 });

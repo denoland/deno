@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // ** Internal Interfaces **
 
@@ -33,7 +33,7 @@ interface PullIntoDescriptor {
   elementSize: number;
   // deno-lint-ignore no-explicit-any
   viewConstructor: any;
-  readerType: "default" | "byob";
+  readerType: "default" | "byob" | "none";
 }
 
 interface ReadableByteStreamQueueEntry {

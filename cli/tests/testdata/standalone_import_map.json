@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "hello": "./001_hello.js"
+  }
+}

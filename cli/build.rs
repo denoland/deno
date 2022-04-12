@@ -1,12 +1,14 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
-use deno_core::op_sync;
+use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::serde::Deserialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::JsRuntime;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use regex::Regex;
 use std::collections::HashMap;
@@ -39,7 +41,30 @@ fn create_snapshot(
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
-  std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+  let compressed_snapshot_with_size = {
+    let mut vec = vec![];
+
+    vec.extend_from_slice(
+      &u32::try_from(snapshot.len())
+        .expect("snapshot larger than 4gb")
+        .to_le_bytes(),
+    );
+
+    vec.extend_from_slice(
+      &zstd::block::compress(snapshot_slice, 22)
+        .expect("snapshot compression failed"),
+    );
+
+    vec
+  };
+
+  println!(
+    "Snapshot compressed size: {}",
+    compressed_snapshot_with_size.len()
+  );
+
+  std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
@@ -60,7 +85,7 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
-  op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
+  op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
   op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -122,14 +147,18 @@ fn create_compiler_snapshot(
     "es2020.string",
     "es2020.symbol.wellknown",
     "es2021",
+    "es2021.intl",
     "es2021.promise",
     "es2021.string",
     "es2021.weakref",
+    "es2022",
+    "es2022.array",
+    "es2022.error",
+    "es2022.object",
+    "es2022.string",
     "esnext",
-    "esnext.error",
+    "esnext.array",
     "esnext.intl",
-    "esnext.object",
-    "esnext.string",
   ];
 
   let path_dts = cwd.join("dts");
@@ -148,74 +177,98 @@ fn create_compiler_snapshot(
     build_libs.push(op_lib.to_owned());
   }
 
-  let re_asset = Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-  let build_specifier = "asset:///bootstrap.ts";
+  #[op]
+  fn op_build_info(
+    state: &mut OpState,
+    _args: Value,
+  ) -> Result<Value, AnyError> {
+    let build_specifier = "asset:///bootstrap.ts";
+    let build_libs = state.borrow::<Vec<&str>>();
+    Ok(json!({
+      "buildSpecifier": build_specifier,
+      "libs": build_libs,
+    }))
+  }
 
-  let mut js_runtime = JsRuntime::new(RuntimeOptions {
-    will_snapshot: true,
-    ..Default::default()
-  });
-  js_runtime.register_op(
-    "op_build_info",
-    op_sync(move |_state, _args: Value, _: ()| {
-      Ok(json!({
-        "buildSpecifier": build_specifier,
-        "libs": build_libs,
-      }))
-    }),
-  );
-  js_runtime.register_op(
-    "op_cwd",
-    op_sync(move |_state, _args: Value, _: ()| Ok(json!("cache:///"))),
-  );
+  #[op]
+  fn op_cwd(_args: Value) -> Result<Value, AnyError> {
+    Ok(json!("cache:///"))
+  }
+
+  #[op]
+  fn op_exists(_args: Value) -> Result<Value, AnyError> {
+    Ok(json!(false))
+  }
+
+  #[op]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
-  js_runtime.register_op(
-    "op_load",
-    op_sync(move |_state, args, _: ()| {
-      let v: LoadArgs = serde_json::from_value(args)?;
-      // we need a basic file to send to tsc to warm it up.
-      if v.specifier == build_specifier {
+  fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
+    let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
+    let path_dts = state.borrow::<PathBuf>();
+    let re_asset =
+      Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
+    let build_specifier = "asset:///bootstrap.ts";
+
+    // we need a basic file to send to tsc to warm it up.
+    if args.specifier == build_specifier {
+      Ok(json!({
+        "data": r#"console.log("hello deno!");"#,
+        "hash": "1",
+        // this corresponds to `ts.ScriptKind.TypeScript`
+        "scriptKind": 3
+      }))
+    // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
+    // parse out just the name so we can lookup the asset.
+    } else if let Some(caps) = re_asset.captures(&args.specifier) {
+      if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
+        // if it comes from an op crate, we were supplied with the path to the
+        // file.
+        let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
+          PathBuf::from(op_crate_lib).canonicalize().unwrap()
+        // otherwise we are will generate the path ourself
+        } else {
+          path_dts.join(format!("lib.{}.d.ts", lib))
+        };
+        let data = std::fs::read_to_string(path)?;
         Ok(json!({
-          "data": r#"console.log("hello deno!");"#,
+          "data": data,
           "hash": "1",
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
         }))
-      // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
-      // parse out just the name so we can lookup the asset.
-      } else if let Some(caps) = re_asset.captures(&v.specifier) {
-        if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
-          // if it comes from an op crate, we were supplied with the path to the
-          // file.
-          let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-            op_crate_lib.clone()
-          // otherwise we are will generate the path ourself
-          } else {
-            path_dts.join(format!("lib.{}.d.ts", lib))
-          };
-          let data = std::fs::read_to_string(path)?;
-          Ok(json!({
-            "data": data,
-            "hash": "1",
-            // this corresponds to `ts.ScriptKind.TypeScript`
-            "scriptKind": 3
-          }))
-        } else {
-          Err(custom_error(
-            "InvalidSpecifier",
-            format!("An invalid specifier was requested: {}", v.specifier),
-          ))
-        }
       } else {
         Err(custom_error(
           "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", v.specifier),
+          format!("An invalid specifier was requested: {}", args.specifier),
         ))
       }
-    }),
-  );
-  js_runtime.sync_ops_cache();
+    } else {
+      Err(custom_error(
+        "InvalidSpecifier",
+        format!("An invalid specifier was requested: {}", args.specifier),
+      ))
+    }
+  }
+  let js_runtime = JsRuntime::new(RuntimeOptions {
+    will_snapshot: true,
+    extensions: vec![Extension::builder()
+      .ops(vec![
+        op_build_info::decl(),
+        op_cwd::decl(),
+        op_exists::decl(),
+        op_load::decl(),
+      ])
+      .state(move |state| {
+        state.put(op_crate_libs.clone());
+        state.put(build_libs.clone());
+        state.put(path_dts.clone());
+
+        Ok(())
+      })
+      .build()],
+    ..Default::default()
+  });
 
   create_snapshot(js_runtime, snapshot_path, files);
 }
@@ -262,6 +315,12 @@ fn main() {
     return;
   }
 
+  // Host snapshots won't work when cross compiling.
+  let target = env::var("TARGET").unwrap();
+  let host = env::var("HOST").unwrap();
+  if target != host {
+    panic!("Cross compiling with snapshot is not supported.");
+  }
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
@@ -294,7 +353,7 @@ fn main() {
   );
   println!(
     "cargo:rustc-env=DENO_WEBGPU_LIB_PATH={}",
-    deno_webgpu::get_declaration().display()
+    deno_webgpu_get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
@@ -339,6 +398,11 @@ fn main() {
     ));
     res.compile().unwrap();
   }
+}
+
+fn deno_webgpu_get_declaration() -> PathBuf {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
 }
 
 fn get_js_files(d: &str) -> Vec<PathBuf> {

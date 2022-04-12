@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
 
@@ -20,6 +20,7 @@ import {
   getExpectation,
   getExpectFailForCase,
   getManifest,
+  inspectBrk,
   json,
   ManifestFolder,
   ManifestTestOptions,
@@ -161,6 +162,7 @@ async function run() {
         test.url,
         test.options,
         createReportTestCase(test.expectation),
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -312,6 +314,7 @@ async function update() {
         test.url,
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);

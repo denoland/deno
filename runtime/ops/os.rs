@@ -1,36 +1,46 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
 use crate::permissions::Permissions;
 use deno_core::error::{type_error, AnyError};
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
 
-pub fn init() -> Extension {
+pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_exit", op_sync(op_exit)),
-      ("op_env", op_sync(op_env)),
-      ("op_exec_path", op_sync(op_exec_path)),
-      ("op_set_env", op_sync(op_set_env)),
-      ("op_get_env", op_sync(op_get_env)),
-      ("op_delete_env", op_sync(op_delete_env)),
-      ("op_hostname", op_sync(op_hostname)),
-      ("op_loadavg", op_sync(op_loadavg)),
-      ("op_os_release", op_sync(op_os_release)),
-      ("op_set_exit_code", op_sync(op_set_exit_code)),
-      ("op_system_memory_info", op_sync(op_system_memory_info)),
+      op_env::decl(),
+      op_exec_path::decl(),
+      op_exit::decl(),
+      op_delete_env::decl(),
+      op_get_env::decl(),
+      op_getuid::decl(),
+      op_hostname::decl(),
+      op_loadavg::decl(),
+      op_network_interfaces::decl(),
+      op_os_release::decl(),
+      op_set_env::decl(),
+      op_set_exit_code::decl(),
+      op_system_memory_info::decl(),
     ])
+    .state(move |state| {
+      let exit_code = maybe_exit_code.clone().unwrap_or_default();
+      state.put::<Arc<AtomicI32>>(exit_code);
+      Ok(())
+    })
     .build()
 }
 
-fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
+#[op]
+fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<Permissions>()
@@ -44,6 +54,7 @@ fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   into_string(path.into_os_string())
 }
 
+#[op]
 fn op_set_env(
   state: &mut OpState,
   key: String,
@@ -59,19 +70,16 @@ fn op_set_env(
   Ok(())
 }
 
-fn op_env(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<HashMap<String, String>, AnyError> {
+#[op]
+fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check_all()?;
   Ok(env::vars().collect())
 }
 
+#[op]
 fn op_get_env(
   state: &mut OpState,
   key: String,
-  _: (),
 ) -> Result<Option<String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
@@ -84,11 +92,8 @@ fn op_get_env(
   Ok(r)
 }
 
-fn op_delete_env(
-  state: &mut OpState,
-  key: String,
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
   state.borrow_mut::<Permissions>().env.check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
@@ -97,21 +102,20 @@ fn op_delete_env(
   Ok(())
 }
 
-fn op_set_exit_code(_: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
-  crate::EXIT_CODE.store(code, Relaxed);
+#[op]
+fn op_set_exit_code(state: &mut OpState, code: i32) -> Result<(), AnyError> {
+  state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
   Ok(())
 }
 
-fn op_exit(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
-  let code = crate::EXIT_CODE.load(Relaxed);
+#[op]
+fn op_exit(state: &mut OpState) -> Result<(), AnyError> {
+  let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
   std::process::exit(code)
 }
 
-fn op_loadavg(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(f64, f64, f64), AnyError> {
+#[op]
+fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
   state.borrow_mut::<Permissions>().env.check_all()?;
   match sys_info::loadavg() {
@@ -120,22 +124,73 @@ fn op_loadavg(
   }
 }
 
-fn op_hostname(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
+#[op]
+fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
   state.borrow_mut::<Permissions>().env.check_all()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
 
-fn op_os_release(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
   state.borrow_mut::<Permissions>().env.check_all()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
+}
+
+#[op]
+fn op_network_interfaces(
+  state: &mut OpState,
+) -> Result<Vec<NetworkInterface>, AnyError> {
+  super::check_unstable(state, "Deno.networkInterfaces");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(netif::up()?.map(NetworkInterface::from).collect())
+}
+
+#[derive(serde::Serialize)]
+struct NetworkInterface {
+  family: &'static str,
+  name: String,
+  address: String,
+  netmask: String,
+  scopeid: Option<u32>,
+  cidr: String,
+  mac: String,
+}
+
+impl From<netif::Interface> for NetworkInterface {
+  fn from(ifa: netif::Interface) -> Self {
+    let family = match ifa.address() {
+      std::net::IpAddr::V4(_) => "IPv4",
+      std::net::IpAddr::V6(_) => "IPv6",
+    };
+
+    let (address, range) = ifa.cidr();
+    let cidr = format!("{:?}/{}", address, range);
+
+    let name = ifa.name().to_owned();
+    let address = format!("{:?}", ifa.address());
+    let netmask = format!("{:?}", ifa.netmask());
+    let scopeid = ifa.scope_id();
+
+    let [b0, b1, b2, b3, b4, b5] = ifa.mac();
+    let mac = format!(
+      "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+      b0, b1, b2, b3, b4, b5
+    );
+
+    Self {
+      family,
+      name,
+      address,
+      netmask,
+      scopeid,
+      cidr,
+      mac,
+    }
+  }
 }
 
 // Copied from sys-info/lib.rs (then tweaked)
@@ -151,10 +206,9 @@ struct MemInfo {
   pub swap_free: u64,
 }
 
+#[op]
 fn op_system_memory_info(
   state: &mut OpState,
-  _: (),
-  _: (),
 ) -> Result<Option<MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
   state.borrow_mut::<Permissions>().env.check_all()?;
@@ -170,4 +224,20 @@ fn op_system_memory_info(
     })),
     Err(_) => Ok(None),
   }
+}
+
+#[cfg(not(windows))]
+#[op]
+fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getUid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  unsafe { Ok(Some(libc::getuid())) }
+}
+
+#[cfg(windows)]
+#[op]
+fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getUid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(None)
 }

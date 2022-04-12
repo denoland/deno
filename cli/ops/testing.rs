@@ -1,33 +1,38 @@
 use crate::tools::test::TestEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::JsRuntime;
+use deno_core::op;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(rt: &mut JsRuntime) {
-  super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
-  super::reg_sync(
-    rt,
-    "op_restore_test_permissions",
-    op_restore_test_permissions,
-  );
-  super::reg_sync(rt, "op_get_test_origin", op_get_test_origin);
-  super::reg_sync(rt, "op_dispatch_test_event", op_dispatch_test_event);
+pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
+  Extension::builder()
+    .ops(vec![
+      op_pledge_test_permissions::decl(),
+      op_restore_test_permissions::decl(),
+      op_get_test_origin::decl(),
+      op_dispatch_test_event::decl(),
+    ])
+    .state(move |state| {
+      state.put(sender.clone());
+      Ok(())
+    })
+    .build()
 }
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, Permissions);
 
+#[op]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: ChildPermissionsArg,
-  _: (),
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<Permissions>();
@@ -42,10 +47,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
-  _: (),
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -60,20 +65,17 @@ pub fn op_restore_test_permissions(
   }
 }
 
-fn op_get_test_origin(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_get_test_origin(state: &mut OpState) -> Result<String, AnyError> {
   Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
+#[op]
 fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
-  _: (),
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<Sender<TestEvent>>().clone();
+  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
   sender.send(event).ok();
 
   Ok(())

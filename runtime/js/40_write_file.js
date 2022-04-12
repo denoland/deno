@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 ((window) => {
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
@@ -13,9 +13,7 @@
     data,
     options = {},
   ) {
-    if (options?.signal?.aborted) {
-      throw new DOMException("The write operation was aborted.", "AbortError");
-    }
+    options.signal?.throwIfAborted();
     if (options.create !== undefined) {
       const create = !!options.create;
       if (!create) {
@@ -73,14 +71,15 @@
 
     const signal = options?.signal ?? null;
     let nwritten = 0;
-    while (!signal?.aborted && nwritten < data.length) {
-      nwritten += await file.write(TypedArrayPrototypeSubarray(data, nwritten));
-    }
-
-    file.close();
-
-    if (signal?.aborted) {
-      throw new DOMException("The write operation was aborted.", "AbortError");
+    try {
+      while (nwritten < data.length) {
+        signal?.throwIfAborted();
+        nwritten += await file.write(
+          TypedArrayPrototypeSubarray(data, nwritten),
+        );
+      }
+    } finally {
+      file.close();
     }
   }
 
