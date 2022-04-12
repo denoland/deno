@@ -33,7 +33,6 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::io::AsyncSeekExt;
-use tokio::io::AsyncWriteExt;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
@@ -235,18 +234,7 @@ fn op_write_file_sync(
 ) -> Result<(), AnyError> {
   let (open_args, data) = args.into_open_args_and_data();
   let (path, open_options) = open_helper(state, &open_args)?;
-  let mut std_file = open_options.open(&path).map_err(|err| {
-    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-  })?;
-
-  // need to chmod the file if it already exists and a mode is specified
-  #[cfg(unix)]
-  if let Some(mode) = &open_args.mode {
-    raw_chmod(&path, mode & 0o777)?;
-  }
-
-  std_file.write_all(&data)?;
-  Ok(())
+  write_file(&path, open_options, &open_args, data)
 }
 
 #[op]
@@ -264,27 +252,40 @@ async fn op_write_file_async(
   };
   let (open_args, data) = args.into_open_args_and_data();
   let (path, open_options) = open_helper(&mut *state.borrow_mut(), &open_args)?;
-  let mut tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(&path)
-    .await
-    .map_err(|err| {
-      Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-    })?;
+  let write_future = tokio::task::spawn_blocking(move || {
+    write_file(&path, open_options, &open_args, data)
+  });
+  if let Some(cancel_handle) = cancel_handle {
+    write_future.or_cancel(cancel_handle).await???;
+  } else {
+    write_future.await??;
+  }
+  Ok(())
+}
+
+fn write_file(
+  path: &Path,
+  open_options: std::fs::OpenOptions,
+  _open_args: &OpenArgs,
+  data: ZeroCopyBuf,
+) -> Result<(), AnyError> {
+  let mut std_file = open_options.open(path).map_err(|err| {
+    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+  })?;
 
   // need to chmod the file if it already exists and a mode is specified
   #[cfg(unix)]
-  if let Some(mode) = open_args.mode {
-    let path = path.clone();
-    tokio::task::spawn_blocking(move || raw_chmod(&path, mode & 0o777))
-      .await??;
+  if let Some(mode) = &_open_args.mode {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = PermissionsExt::from_mode(mode & 0o777);
+    std_file
+      .set_permissions(permissions)
+      .map_err(|err: Error| {
+        Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
+      })?;
   }
 
-  let write_future = tokio_file.write_all(&data);
-  if let Some(cancel_handle) = cancel_handle {
-    write_future.or_cancel(cancel_handle).await??;
-  } else {
-    write_future.await?;
-  }
+  std_file.write_all(&data)?;
   Ok(())
 }
 
