@@ -3087,11 +3087,11 @@ declare namespace Deno {
   ): Promise<CommandOutput<T>>;
 
   /**
-   * Synchronously executes a subprocess as a child process, waiting for it to finish and collecting all of its output.
+   * Synchronously executes a subprocess, waiting for it to finish and collecting all of its output.
    *
-   * stdin defaults to null.
-   * stdout defaults to piped.
-   * stderr defaults to piped.
+   * `CommandOptions.stdin` defaults to `"null"`.
+   * `CommandOptions.stdout` defaults to `"piped"`.
+   * `CommandOptions.stderr` defaults to `"piped"`.
    */
   export function commandSync<T extends CommandOptions = CommandOptions>(
     command: string | URL,
