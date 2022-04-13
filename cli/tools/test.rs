@@ -90,7 +90,7 @@ pub enum TestOutput {
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(JsError),
+  Failed(Box<JsError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -152,7 +152,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, JsError)>,
+  pub failures: Vec<(TestDescription, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
