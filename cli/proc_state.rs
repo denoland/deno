@@ -304,12 +304,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.typecheck_mode == flags::TypecheckMode::None
+      if self.flags.type_check_mode == flags::TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.typecheck_mode != flags::TypecheckMode::None,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -419,21 +419,21 @@ impl ProcState {
       graph_data
         .check(
           &roots,
-          self.flags.typecheck_mode != flags::TypecheckMode::None,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
           check_js,
         )
         .unwrap()?;
     }
 
-    let config_type = if self.flags.typecheck_mode == flags::TypecheckMode::None
-    {
-      emit::ConfigType::Emit
-    } else {
-      emit::ConfigType::Check {
-        tsc_emit: true,
-        lib: lib.clone(),
-      }
-    };
+    let config_type =
+      if self.flags.type_check_mode == flags::TypeCheckMode::None {
+        emit::ConfigType::Emit
+      } else {
+        emit::ConfigType::Check {
+          tsc_emit: true,
+          lib: lib.clone(),
+        }
+      };
 
     let (ts_config, maybe_ignored_options) =
       emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
@@ -442,7 +442,7 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.typecheck_mode == flags::TypecheckMode::None {
+    if self.flags.type_check_mode == flags::TypeCheckMode::None {
       let options = emit::EmitOptions {
         ts_config,
         reload: self.flags.reload,
@@ -456,7 +456,7 @@ impl ProcState {
         .as_ref()
         .map(|cf| cf.specifier.clone());
       let options = emit::CheckOptions {
-        typecheck_mode: self.flags.typecheck_mode.clone(),
+        type_check_mode: self.flags.type_check_mode.clone(),
         debug: self.flags.log_level == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -477,7 +477,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.typecheck_mode != flags::TypecheckMode::None {
+    if self.flags.type_check_mode != flags::TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, &lib);
     }
