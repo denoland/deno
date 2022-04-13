@@ -3075,11 +3075,11 @@ declare namespace Deno {
   }
 
   /**
-   * Executes a subprocess as a child process, waiting for it to finish and collecting all of its output.
+   * Executes a subprocess, waiting for it to finish and collecting all of its output.
    *
-   * stdin defaults to null.
-   * stdout defaults to piped.
-   * stderr defaults to piped.
+   * `CommandOptions.stdin` defaults to `"null"`.
+   * `CommandOptions.stdout` defaults to `"piped"`.
+   * `CommandOptions.stderr` defaults to `"piped"`.
    */
   export function command<T extends CommandOptions = CommandOptions>(
     command: string | URL,
