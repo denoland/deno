@@ -3046,9 +3046,9 @@ declare namespace Deno {
   /**
    * Spawns a child process.
    *
-   * stdin defaults to null.
-   * stdout defaults to inherit.
-   * stderr defaults to inherit.
+   * `CommandOptions.stdin` defaults to `"null"`.
+   * `CommandOptions.stdout` defaults to `"inherit"`.
+   * `CommandOptions.stderr` defaults to `"inherit"`.
    */
   export function spawn<T extends CommandOptions = CommandOptions>(
     command: string | URL,
