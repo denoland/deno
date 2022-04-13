@@ -32,6 +32,7 @@
     ObjectHasOwn,
     ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
+    ReflectHas,
     SafeArrayIterator,
     Symbol,
     SymbolFor,
@@ -103,7 +104,7 @@
   function hasRelatedTarget(
     event,
   ) {
-    return ObjectHasOwn(event, "relatedTarget");
+    return ReflectHas(event, "relatedTarget");
   }
 
   const isTrusted = ObjectGetOwnPropertyDescriptor({
@@ -449,7 +450,7 @@
   function isNode(
     eventTarget,
   ) {
-    return Boolean(eventTarget && ObjectHasOwn(eventTarget, "nodeType"));
+    return Boolean(eventTarget && ReflectHas(eventTarget, "nodeType"));
   }
 
   // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
@@ -903,7 +904,7 @@
       options = normalizeAddEventHandlerOptions(options);
       const { listeners } = (this ?? globalThis)[eventTargetData];
 
-      if (!ObjectHasOwn(listeners, type)) {
+      if (!(ObjectHasOwn(listeners, type))) {
         listeners[type] = [];
       }
 

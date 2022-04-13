@@ -42,6 +42,7 @@
     PromiseResolve,
     queueMicrotask,
     RangeError,
+    ReflectHas,
     SharedArrayBuffer,
     Symbol,
     SymbolAsyncIterator,
@@ -4343,7 +4344,7 @@
           highWaterMark,
         );
       } else {
-        assert(!(ObjectHasOwn(underlyingSourceDict, "type")));
+        assert(!(ReflectHas(underlyingSource, "type")));
         const sizeAlgorithm = extractSizeAlgorithm(strategy);
         const highWaterMark = extractHighWaterMark(strategy, 1);
         setUpReadableStreamDefaultControllerFromUnderlyingSource(

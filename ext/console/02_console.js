@@ -27,7 +27,6 @@
     ObjectGetPrototypeOf,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertySymbols,
-    ObjectHasOwn,
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectPrototypePropertyIsEnumerable,
@@ -108,6 +107,7 @@
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
+    ReflectHas,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -329,7 +329,7 @@
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     if (
-      ObjectHasOwn(value, customInspect) &&
+      ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect));
@@ -1208,7 +1208,7 @@
     proxyDetails,
   ) {
     if (
-      ObjectHasOwn(value, customInspect) &&
+      ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect));
@@ -1219,7 +1219,7 @@
     // Internal only, shouldn't be used by users.
     const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
     if (
-      ObjectHasOwn(value, privateCustomInspect) &&
+      ReflectHas(value, privateCustomInspect) &&
       typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
@@ -2055,8 +2055,8 @@
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
           for (const k of keys) {
-            if (!primitive && ObjectHasOwn(valueObj, k)) {
-              if (!ObjectHasOwn(objectValues, k)) {
+            if (!primitive && ReflectHas(valueObj, k)) {
+              if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
               }
               objectValues[k][idx] = stringifyValue(valueObj[k]);

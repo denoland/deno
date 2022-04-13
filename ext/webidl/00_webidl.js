@@ -48,7 +48,6 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
-    ObjectHasOwn,
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectIs,
@@ -58,6 +57,7 @@
     ReflectApply,
     ReflectDefineProperty,
     ReflectGetOwnPropertyDescriptor,
+    ReflectHas,
     ReflectOwnKeys,
     RegExpPrototypeTest,
     Set,
@@ -649,7 +649,7 @@
 
     const defaultValues = {};
     for (const member of allMembers) {
-      if (ObjectHasOwn(member, "defaultValue")) {
+      if (ReflectHas(member, "defaultValue")) {
         const idlMemberValue = member.defaultValue;
         const imvType = typeof idlMemberValue;
         // Copy by value types can be directly assigned, copy by reference types
@@ -1015,7 +1015,7 @@
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
       if (
-        ObjectHasOwn(descriptor, "value") &&
+        ReflectHas(descriptor, "value") &&
         typeof descriptor.value === "function"
       ) {
         ObjectDefineProperty(prototype.prototype, key, {
@@ -1023,7 +1023,7 @@
           writable: true,
           configurable: true,
         });
-      } else if (ObjectHasOwn(descriptor, "get")) {
+      } else if (ReflectHas(descriptor, "get")) {
         ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           configurable: true,

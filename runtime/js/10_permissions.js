@@ -18,10 +18,10 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
-    ObjectHasOwn,
     FunctionPrototypeCall,
     PromiseResolve,
     PromiseReject,
+    ReflectHas,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -123,7 +123,7 @@
     let { name: key } = desc;
     if (
       (desc.name === "read" || desc.name === "write") &&
-      ObjectHasOwn(desc, "path")
+      ReflectHas(desc, "path")
     ) {
       key += `-${desc.path}`;
     } else if (desc.name === "net" && desc.host) {
