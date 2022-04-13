@@ -198,7 +198,7 @@
           }
           ArrayPrototypePush(details, message);
         } else if (dispatchedDiff < completedDiff) {
-          const [name] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = completedDiff - dispatchedDiff;
           ArrayPrototypePush(
             details,
@@ -206,7 +206,8 @@
               count === 1 ? "was" : "were"
             } started before this test, but ${
               count === 1 ? "was" : "were"
-            } completed during the test. Async operations should not complete in a test if they were not started in that test.`,
+            } completed during the test. Async operations should not complete in a test if they were not started in that test.
+            ${hint ? `This is often caused by not ${hint}.` : ""}`,
           );
         }
       }

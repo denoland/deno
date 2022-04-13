@@ -93,7 +93,9 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
-  pub message: String,
+  pub name: Option<String>,
+  pub message: Option<String>,
+  pub exception_message: String,
   pub cause: Option<Box<JsError>>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
@@ -198,9 +200,9 @@ impl JsError {
       let e: NativeJsError =
         serde_v8::from_v8(scope, exception.into()).unwrap();
       // Get the message by formatting error.name and error.message.
-      let name = e.name.unwrap_or_else(|| "Error".to_string());
-      let message_prop = e.message.unwrap_or_else(|| "".to_string());
-      let message = if !name.is_empty() && !message_prop.is_empty() {
+      let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
+      let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
+      let exception_message = if !name.is_empty() && !message_prop.is_empty() {
         format!("Uncaught {}: {}", name, message_prop)
       } else if !name.is_empty() {
         format!("Uncaught {}", name)
@@ -239,7 +241,9 @@ impl JsError {
         None => vec![],
       };
       Self {
-        message,
+        name: e.name,
+        message: e.message,
+        exception_message,
         cause,
         script_resource_name: msg
           .get_script_resource_name(scope)
@@ -259,7 +263,9 @@ impl JsError {
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
       Self {
-        message: msg.get(scope).to_rust_string_lossy(scope),
+        name: None,
+        message: None,
+        exception_message: msg.get(scope).to_rust_string_lossy(scope),
         cause: None,
         script_resource_name: None,
         source_line: None,
@@ -294,7 +300,7 @@ impl Display for JsError {
       }
     }
 
-    write!(f, "{}", self.message)?;
+    write!(f, "{}", self.exception_message)?;
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
         let source_loc = format_source_loc(

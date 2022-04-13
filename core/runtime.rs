@@ -1053,9 +1053,9 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
   if in_promise {
-    js_error.message = format!(
+    js_error.exception_message = format!(
       "Uncaught (in promise) {}",
-      js_error.message.trim_start_matches("Uncaught ")
+      js_error.exception_message.trim_start_matches("Uncaught ")
     );
   }
   let js_error = (state.js_error_create_fn)(js_error);
@@ -2044,7 +2044,7 @@ pub mod tests {
         .unwrap();
       let v = runtime.poll_value(&value_global, cx);
       assert!(
-        matches!(v, Poll::Ready(Err(e)) if e.downcast_ref::<JsError>().unwrap().message == "Uncaught Error: fail")
+        matches!(v, Poll::Ready(Err(e)) if e.downcast_ref::<JsError>().unwrap().exception_message == "Uncaught Error: fail")
       );
 
       let value_global = runtime
@@ -2087,7 +2087,7 @@ pub mod tests {
     let err = runtime.resolve_value(value_global).await.unwrap_err();
     assert_eq!(
       "Uncaught Error: fail",
-      err.downcast::<JsError>().unwrap().message
+      err.downcast::<JsError>().unwrap().exception_message
     );
 
     let value_global = runtime
@@ -2377,7 +2377,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JsError>().unwrap().message
+      err.downcast::<JsError>().unwrap().exception_message
     );
     assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
   }
@@ -2430,7 +2430,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JsError>().unwrap().message
+      err.downcast::<JsError>().unwrap().exception_message
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
