@@ -12,6 +12,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
+use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -1681,7 +1682,7 @@ fn compile_args_without_no_check(app: Command) -> Command {
 }
 
 fn permission_args(app: Command) -> Command {
-  let app = app
+  app
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
@@ -1762,13 +1763,12 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(Arg::new("prompt").long("prompt").hide(true).help(
       "deprecated: Fallback to prompt if required permission wasn't passed",
-    ));
-  let no_prompt_arg = Arg::new("no-prompt")
-    .long("no-prompt")
-    .help("Always throw if required permission wasn't passed");
-  #[cfg(not(test))]
-  let no_prompt_arg = no_prompt_arg.env("DENO_NO_PROMPT");
-  app.arg(no_prompt_arg)
+    ))
+    .arg(
+      Arg::new("no-prompt")
+        .long("no-prompt")
+        .help("Always throw if required permission wasn't passed"),
+    )
 }
 
 fn runtime_args(
@@ -2706,7 +2706,11 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  if matches.is_present("no-prompt") {
+  #[cfg(not(test))]
+  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
+  #[cfg(test)]
+  let has_no_prompt_env = false;
+  if has_no_prompt_env || matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }
