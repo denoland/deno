@@ -239,7 +239,9 @@
         try {
           await core.opAsync(
             "op_http_write_headers",
-            [streamRid, innerResp.status ?? 200, innerResp.headerList],
+            streamRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
             isStreamingResponseBody ? null : respBody,
           );
         } catch (error) {
@@ -326,7 +328,7 @@
           httpConn.close();
 
           if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", { rid: wsRid });
+            await core.opAsync("op_ws_close", wsRid);
 
             ws[_readyState] = WebSocket.CLOSED;
 

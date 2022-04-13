@@ -43,7 +43,6 @@ use hyper::service::Service;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -481,24 +480,14 @@ fn req_headers(
   headers
 }
 
-// We use a tuple instead of struct to avoid serialization overhead of the keys.
-#[derive(Deserialize)]
-struct RespondArgs(
-  // rid:
-  u32,
-  // status:
-  u16,
-  // headers:
-  Vec<(ByteString, ByteString)>,
-);
-
 #[op]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
-  args: RespondArgs,
+  rid: u32,
+  status: u16,
+  headers: Vec<(ByteString, ByteString)>,
   data: Option<StringOrBuffer>,
 ) -> Result<(), AnyError> {
-  let RespondArgs(rid, status, headers) = args;
   let stream = state
     .borrow_mut()
     .resource_table

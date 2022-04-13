@@ -8,8 +8,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use lspower::lsp;
-use lspower::lsp::ConfigurationItem;
+use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::ConfigurationItem;
 
 use crate::lsp::repl::get_repl_workspace_settings;
 
@@ -35,8 +35,8 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-  pub fn from_lspower(client: lspower::Client) -> Self {
-    Self(Arc::new(LspowerClient(client)))
+  pub fn from_tower(client: tower_lsp::Client) -> Self {
+    Self(Arc::new(TowerClient(client)))
   }
 
   pub fn new_for_repl() -> Self {
@@ -148,9 +148,9 @@ trait ClientTrait: Send + Sync {
 }
 
 #[derive(Clone)]
-struct LspowerClient(lspower::Client);
+struct TowerClient(tower_lsp::Client);
 
-impl ClientTrait for LspowerClient {
+impl ClientTrait for TowerClient {
   fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -170,9 +170,7 @@ impl ClientTrait for LspowerClient {
     let client = self.0.clone();
     Box::pin(async move {
       client
-        .send_custom_notification::<lsp_custom::RegistryStateNotification>(
-          params,
-        )
+        .send_notification::<lsp_custom::RegistryStateNotification>(params)
         .await
     })
   }
@@ -183,18 +181,18 @@ impl ClientTrait for LspowerClient {
       match notification {
         TestingNotification::Module(params) => {
           client
-            .send_custom_notification::<testing_lsp_custom::TestModuleNotification>(
+            .send_notification::<testing_lsp_custom::TestModuleNotification>(
               params,
             )
             .await
         }
         TestingNotification::DeleteModule(params) => client
-          .send_custom_notification::<testing_lsp_custom::TestModuleDeleteNotification>(
+          .send_notification::<testing_lsp_custom::TestModuleDeleteNotification>(
             params,
           )
           .await,
         TestingNotification::Progress(params) => client
-          .send_custom_notification::<testing_lsp_custom::TestRunProgressNotification>(
+          .send_notification::<testing_lsp_custom::TestRunProgressNotification>(
             params,
           )
           .await,

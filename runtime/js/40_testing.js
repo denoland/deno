@@ -793,6 +793,7 @@
     const step = new TestStep({
       name: test.name,
       parent: undefined,
+      parentContext: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
@@ -1065,8 +1066,9 @@
    * }} TestStepDefinition
    *
    * @typedef {{
-   *   name: string;
+   *   name: string,
    *   parent: TestStep | undefined,
+   *   parentContext: TestContext | undefined,
    *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -1098,6 +1100,10 @@
 
     get parent() {
       return this.#params.parent;
+    }
+
+    get parentContext() {
+      return this.#params.parentContext;
     }
 
     get rootTestDescription() {
@@ -1270,6 +1276,18 @@
     return {
       [SymbolToStringTag]: "TestContext",
       /**
+       * The current test name.
+       */
+      name: parentStep.name,
+      /**
+       * Parent test context.
+       */
+      parent: parentStep.parentContext ?? undefined,
+      /**
+       * File Uri of the test code.
+       */
+      origin: parentStep.rootTestDescription.origin,
+      /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}
        */
@@ -1285,6 +1303,7 @@
         const subStep = new TestStep({
           name: definition.name,
           parent: parentStep,
+          parentContext: this,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,

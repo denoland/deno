@@ -236,7 +236,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 5-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 7-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -252,7 +252,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            7-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -268,7 +268,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            7-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -554,6 +554,17 @@ jobs:
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
           gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
+      - name: Create release notes
+        shell: bash
+        if: |
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/')
+        run: |
+          export PATH=$PATH:$(pwd)/target/release
+          ./tools/release/05_create_release_notes.ts
+
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
@@ -570,6 +581,7 @@ jobs:
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
+          body_path: target/release/release-notes.md
           draft: true
 
   publish-canary:
