@@ -137,7 +137,7 @@ pub struct LintFlags {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ReplFlags {
-  pub script: Option<String>,
+  pub eval_file: Option<String>,
   pub eval: Option<String>,
 }
 
@@ -210,7 +210,7 @@ pub enum DenoSubcommand {
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
     DenoSubcommand::Repl(ReplFlags {
-      script: None,
+      eval_file: None,
       eval: None,
     })
   }
@@ -526,7 +526,7 @@ where
     _ => handle_repl_flags(
       &mut flags,
       ReplFlags {
-        script: None,
+        eval_file: None,
         eval: None,
       },
     ),
@@ -1310,9 +1310,9 @@ fn repl_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("repl"), false, true)
     .about("Read Eval Print Loop")
     .arg(
-      Arg::new("script")
-        .long("script")
-        .help("Evaluates the provided script file when the REPL starts.")
+      Arg::new("eval-file")
+        .long("eval-file")
+        .help("Evaluates the provided code file when the REPL starts.")
         .takes_value(true)
         .value_name("path"),
     )
@@ -2365,7 +2365,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   handle_repl_flags(
     flags,
     ReplFlags {
-      script: matches.value_of("script").map(ToOwned::to_owned),
+      eval_file: matches.value_of("eval-file").map(ToOwned::to_owned),
       eval: matches.value_of("eval").map(ToOwned::to_owned),
     },
   );
@@ -3743,7 +3743,7 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          script: None,
+          eval_file: None,
           eval: None
         }),
         allow_net: Some(vec![]),
@@ -3768,7 +3768,7 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          script: None,
+          eval_file: None,
           eval: None
         }),
         import_map_path: Some("import_map.json".to_string()),
@@ -3806,7 +3806,7 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          script: None,
+          eval_file: None,
           eval: Some("console.log('hello');".to_string()),
         }),
         allow_net: Some(vec![]),
@@ -4455,7 +4455,7 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          script: None,
+          eval_file: None,
           eval: Some("console.log('hello');".to_string()),
         }),
         unsafely_ignore_certificate_errors: Some(vec![]),
@@ -4530,7 +4530,7 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          script: None,
+          eval_file: None,
           eval: None
         }),
         unsafely_ignore_certificate_errors: Some(svec![

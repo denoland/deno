@@ -60,8 +60,8 @@ async fn read_line_and_poll(
   }
 }
 
-fn read_script(script_path: String) -> Result<String, AnyError> {
-  let mut file = File::open(script_path)?;
+fn read_eval_file(eval_file_path: String) -> Result<String, AnyError> {
+  let mut file = File::open(eval_file_path)?;
   let mut data = Vec::new();
   file.read_to_end(&mut data)?;
   Ok(String::from_utf8(data)?)
@@ -70,7 +70,7 @@ fn read_script(script_path: String) -> Result<String, AnyError> {
 pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
-  maybe_script: Option<String>,
+  maybe_eval_file: Option<String>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
@@ -84,19 +84,19 @@ pub async fn run(
   let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
 
-  if let Some(script) = maybe_script {
-    match read_script(script) {
-      Ok(script_source) => {
+  if let Some(eval_file) = maybe_eval_file {
+    match read_eval_file(eval_file) {
+      Ok(eval_file_content) => {
         let output = repl_session
-          .evaluate_line_and_get_output(&script_source)
+          .evaluate_line_and_get_output(&eval_file_content)
           .await?;
         // only output errors
         if let EvaluationOutput::Error(error_text) = output {
-          println!("error in --script flag. {}", error_text);
+          println!("error in --eval-file flag. {}", error_text);
         }
       }
       Err(e) => {
-        println!("error in --script flag. {}", e);
+        println!("error in --eval-file flag. {}", e);
       }
     }
   }
