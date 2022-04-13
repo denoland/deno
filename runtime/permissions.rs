@@ -36,7 +36,6 @@ use which::which;
 use which::Result as WhichResult;
 #[cfg(windows)]
 fn which(name: &str) -> WhichResult<PathBuf> {
-  #[cfg(windows)]
   use which::which as which_;
   which_(name).map(|mut p| {
     if p.extension().and_then(std::ffi::OsStr::to_str) == Some("EXE") {
