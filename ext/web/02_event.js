@@ -29,7 +29,6 @@
     ObjectCreate,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
-    ObjectHasOwn,
     ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
     ReflectHas,
@@ -485,7 +484,7 @@
   function isSlotable(
     nodeImpl,
   ) {
-    return Boolean(isNode(nodeImpl) && ObjectHasOwn(nodeImpl, "assignedSlot"));
+    return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
   }
 
   // DOM Logic functions
@@ -904,7 +903,7 @@
       options = normalizeAddEventHandlerOptions(options);
       const { listeners } = (this ?? globalThis)[eventTargetData];
 
-      if (!(ObjectHasOwn(listeners, type))) {
+      if (!(ReflectHas(listeners, type))) {
         listeners[type] = [];
       }
 
@@ -948,7 +947,7 @@
       });
 
       const { listeners } = (this ?? globalThis)[eventTargetData];
-      if (callback !== null && ObjectHasOwn(liteners, type)) {
+      if (callback !== null && ReflectHas(liteners, type)) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
           (listener) => listener.callback !== callback,
@@ -985,7 +984,7 @@
       const self = this ?? window;
 
       const { listeners } = self[eventTargetData];
-      if (!ObjectHasOwn(listeners, event.type)) {
+      if (!ReflectHas(listeners, event.type)) {
         setTarget(event, this);
         return true;
       }

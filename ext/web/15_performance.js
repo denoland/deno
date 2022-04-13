@@ -8,7 +8,6 @@
     ArrayPrototypePush,
     ArrayPrototypeReverse,
     ArrayPrototypeSlice,
-    ObjectHasOwn,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     ReflectHas,
@@ -494,7 +493,7 @@
         endTime = convertMarkToTimestamp(endMark);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        ObjectHasOwn(startOrMeasureOptions, "end")
+        ReflectHas(startOrMeasureOptions, "end")
       ) {
         endTime = convertMarkToTimestamp(startOrMeasureOptions.end);
       } else if (

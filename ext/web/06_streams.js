@@ -31,7 +31,6 @@
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetPrototypeOf,
-    ObjectHasOwn,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
@@ -192,7 +191,7 @@
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    return ObjectHasOwn(O, isFakeDetached);
+    return ReflectHas(O, isFakeDetached);
   }
 
   /**
@@ -395,8 +394,8 @@
    */
   function dequeueValue(container) {
     assert(
-      ObjectHasOwn(container, _queue) &&
-        ObjectHasOwn(container, _queueTotalSize),
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
     );
     assert(container[_queue].length);
     const valueWithSize = ArrayPrototypeShift(container[_queue]);
@@ -416,8 +415,8 @@
    */
   function enqueueValueWithSize(container, value, size) {
     assert(
-      ObjectHasOwn(container, _queue) &&
-        ObjectHasOwn(container, _queueTotalSize),
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
     );
     if (isNonNegativeNumber(size) === false) {
       throw RangeError("chunk size isn't a positive number");
@@ -600,7 +599,7 @@
    */
   function isReadableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !ObjectHasOwn(value, _controller));
+      !ReflectHas(value, _controller));
   }
 
   /**
@@ -620,7 +619,7 @@
    */
   function isReadableStreamDefaultReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !ObjectHasOwn(value, _readRequests));
+      !ReflectHas(value, _readRequests));
   }
 
   /**
@@ -629,7 +628,7 @@
    */
   function isReadableStreamBYOBReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !ObjectHasOwn(value, _readIntoRequests));
+      !ReflectHas(value, _readIntoRequests));
   }
 
   /**
@@ -647,7 +646,7 @@
    */
   function isWritableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !ObjectHasOwn(value, _controller));
+      !ReflectHas(value, _controller));
   }
 
   /**
@@ -668,8 +667,8 @@
    */
   function peekQueueValue(container) {
     assert(
-      ObjectHasOwn(container, _queue) &&
-        ObjectHasOwn(container, _queueTotalSize),
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
     );
     assert(container[_queue].length);
     const valueWithSize = container[_queue][0];
