@@ -33,11 +33,11 @@ use which::which;
 // `which::which` is bugged on Windows, we patch it here.
 // https://github.com/harryfei/which-rs/issues/54
 #[cfg(windows)]
-use which::which as which_;
-#[cfg(windows)]
 use which::Result as WhichResult;
 #[cfg(windows)]
 fn which(name: &str) -> WhichResult<PathBuf> {
+  #[cfg(windows)]
+  use which::which as which_;
   which_(name).map(|mut p| {
     if p.extension().and_then(std::ffi::OsStr::to_str) == Some("EXE") {
       p.set_extension("exe");
