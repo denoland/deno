@@ -1222,11 +1222,11 @@
           return "ignored";
         case "pending":
           return {
-            "pending": this.error,
+            "pending": this.error && core.destructureError(this.error),
           };
         case "failed":
           return {
-            "failed": this.error,
+            "failed": this.error && core.destructureError(this.error),
           };
         default:
           throw new Error(`Unhandled status: ${this.status}`);
@@ -1346,7 +1346,7 @@
               subStep.status = "ok";
             }
           } catch (error) {
-            subStep.error = formatError(error);
+            subStep.error = error;
             subStep.status = "failed";
           }
 
