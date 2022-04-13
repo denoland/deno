@@ -111,7 +111,7 @@ pub enum TestStepResult {
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&Box<JsError>> {
+  fn error(&self) -> Option<&JsError> {
     match self {
       TestStepResult::Failed(Some(error)) => Some(error),
       TestStepResult::Pending(Some(error)) => Some(error),
