@@ -12,7 +12,6 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
-use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
