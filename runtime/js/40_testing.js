@@ -1222,11 +1222,11 @@
           return "ignored";
         case "pending":
           return {
-            "pending": this.error && formatError(this.error),
+            "pending": this.error,
           };
         case "failed":
           return {
-            "failed": this.error && formatError(this.error),
+            "failed": this.error,
           };
         default:
           throw new Error(`Unhandled status: ${this.status}`);

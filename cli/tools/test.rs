@@ -106,15 +106,15 @@ pub struct TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<String>),
-  Pending(Option<String>),
+  Failed(Option<Box<JsError>>),
+  Pending(Option<Box<JsError>>),
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&str> {
+  fn error(&self) -> Option<&Box<JsError>> {
     match self {
-      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
-      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      TestStepResult::Failed(Some(error)) => Some(error),
+      TestStepResult::Pending(Some(error)) => Some(error),
       _ => None,
     }
   }
@@ -286,8 +286,13 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
-    if let Some(error_text) = result.error() {
-      for line in error_text.lines() {
+    if let Some(js_error) = result.error() {
+      // TODO(bartlomieju): use structured data here
+      let err_string = js_error
+        .to_string()
+        .trim_start_matches("Uncaught ")
+        .to_string();
+      for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
     }
@@ -414,7 +419,12 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        println!("{}", error);
+        // TODO(bartlomieju): use structured data here
+        let err_string = error
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
+        println!("{}", err_string);
         println!();
       }
 

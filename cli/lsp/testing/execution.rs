@@ -786,11 +786,15 @@ impl test::TestReporter for LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestResult::Failed(message) => {
+      test::TestResult::Failed(js_error) => {
+        // TODO(bartlomieju): use structured data here
+        let err_string = js_error
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          // TODO(bartlomieju): pretty print error
-          messages: as_test_messages(message.to_string(), false),
+          messages: as_test_messages(err_string, false),
           duration: Some(elapsed as u32),
         })
       }
@@ -829,9 +833,14 @@ impl test::TestReporter for LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestStepResult::Failed(message) => {
-        let messages = if let Some(message) = message {
-          as_test_messages(message, false)
+      test::TestStepResult::Failed(js_error) => {
+        let messages = if let Some(js_error) = js_error {
+          // TODO(bartlomieju): use structured data here
+          let err_string = js_error
+            .to_string()
+            .trim_start_matches("Uncaught ")
+            .to_string();
+          as_test_messages(err_string, false)
         } else {
           vec![]
         };
