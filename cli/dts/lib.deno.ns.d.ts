@@ -3065,10 +3065,10 @@ declare namespace Deno {
 
     readonly pid: number;
     /** Get the current status. */
-    readonly status: ProcessStatus | null;
+    readonly status: CommandStatus | null;
 
     /** Waits for the child to exit completely, returning the status that it exited with. */
-    wait(): Promise<ProcessStatus>;
+    wait(): Promise<CommandStatus>;
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<CommandOutput<T>>;
     kill(signo: Signal): void;
@@ -3098,8 +3098,20 @@ declare namespace Deno {
     options?: T,
   ): CommandOutput<T>;
 
+  export type CommandStatus =
+    | {
+        success: true;
+        code: 0;
+        signal: null;
+      }
+    | {
+        success: false;
+        code: number;
+        signal: number | null;
+      };
+
   export interface CommandOutput<T extends CommandOptions> {
-    status: ProcessStatus;
+    status: CommandStatus;
     stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
     stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
   }

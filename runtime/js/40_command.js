@@ -97,12 +97,7 @@
       if (this.#status) {
         return this.#status;
       }
-      const status = core.opSync("op_command_status", this.#rid);
-      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
-      if (status) {
-        status.signal ??= undefined;
-      }
-      return status;
+      return core.opSync("op_command_status", this.#rid);
     }
 
     async wait() {
@@ -116,8 +111,6 @@
       );
       await this.stdin?.abort();
       this.#rid = null;
-      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
-      status.signal ??= undefined;
       this.#status = status;
       return status;
     }
@@ -133,8 +126,6 @@
       });
       await this.stdin?.abort();
       this.#rid = null;
-      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
-      res.status.signal ??= undefined;
       this.#status = res.status;
       return res;
     }
