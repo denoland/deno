@@ -83,6 +83,8 @@ pub enum TestOutput {
   // TODO(caspervonb): add stdout and stderr redirection.
   PrintStdout(String),
   PrintStderr(String),
+  Stdout(Vec<u8>),
+  Stderr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -329,6 +331,12 @@ impl TestReporter for PrettyTestReporter {
     match output {
       TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
         print!("{}", line)
+      }
+      TestOutput::Stdout(bytes) => {
+        std::io::stdout().write_all(bytes).unwrap();
+      }
+      TestOutput::Stderr(bytes) => {
+        std::io::stderr().write_all(bytes).unwrap();
       }
     }
   }

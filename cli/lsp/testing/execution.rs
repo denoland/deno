@@ -762,6 +762,9 @@ impl test::TestReporter for LspTestReporter {
           location: None,
         })
       }
+      test::TestOutput::Stdout(_) | test::TestOutput::Stderr(_) => {
+        // todo(@dsherret): handle
+      }
     }
   }
 

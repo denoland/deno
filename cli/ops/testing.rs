@@ -1,3 +1,6 @@
+use std::io::Read;
+use std::os::windows::prelude::FromRawHandle;
+
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestOutput;
 use deno_core::error::generic_error;
@@ -6,6 +9,7 @@ use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::ops::io::StdFileResource;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
@@ -13,6 +17,16 @@ use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
+  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
+  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+
+  start_output_redirect_thread(stdout_reader, sender.clone(), |bytes| {
+    TestOutput::Stdout(bytes)
+  });
+  start_output_redirect_thread(stderr_reader, sender.clone(), |bytes| {
+    TestOutput::Stderr(bytes)
+  });
+
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
@@ -25,10 +39,51 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
       _ => op,
     })
     .state(move |state| {
+      state.resource_table.replace(
+        1,
+        StdFileResource::stdio(&pipe_writer_to_file(&stdout_writer), "stdout"),
+      );
+      state.resource_table.replace(
+        2,
+        StdFileResource::stdio(&pipe_writer_to_file(&stderr_writer), "stderr"),
+      );
       state.put(sender.clone());
       Ok(())
     })
     .build()
+}
+
+fn start_output_redirect_thread(
+  mut pipe_reader: os_pipe::PipeReader,
+  sender: UnboundedSender<TestEvent>,
+  map_test_output: impl Fn(Vec<u8>) -> TestOutput + Send + 'static,
+) {
+  tokio::task::spawn_blocking(move || loop {
+    let mut buffer = [0; 512];
+    let size = match pipe_reader.read(&mut buffer) {
+      Ok(0) | Err(_) => break,
+      Ok(size) => size,
+    };
+    if sender
+      .send(TestEvent::Output(map_test_output(buffer[0..size].to_vec())))
+      .is_err()
+    {
+      break;
+    }
+  });
+}
+
+fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
+  #[cfg(windows)]
+  unsafe {
+    use std::os::windows::prelude::AsRawHandle;
+    std::fs::File::from_raw_handle(writer.as_raw_handle())
+  }
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::AsRawFd;
+    writer.as_raw_fd().into()
+  }
 }
 
 #[derive(Clone)]
