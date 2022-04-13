@@ -2613,3 +2613,32 @@ itest!(unstable_ffi_15 {
   output: "unstable_ffi_15.js.out",
   exit_code: 70,
 });
+
+itest!(event_listener_error {
+  args: "run --quiet event_listener_error.ts",
+  output: "event_listener_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(event_listener_error_handled {
+  args: "run --quiet event_listener_error_handled.ts",
+  output: "event_listener_error_handled.ts.out",
+});
+
+// https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
+itest!(event_listener_error_immediate_exit {
+  args: "run --quiet event_listener_error_immediate_exit.ts",
+  output: "event_listener_error_immediate_exit.ts.out",
+  exit_code: 1,
+});
+
+itest!(set_timeout_error {
+  args: "run --quiet set_timeout_error.ts",
+  output: "set_timeout_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(set_timeout_error_handled {
+  args: "run --quiet set_timeout_error_handled.ts",
+  output: "set_timeout_error_handled.ts.out",
+});
