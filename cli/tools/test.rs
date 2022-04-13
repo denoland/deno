@@ -414,7 +414,7 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        println!("{}", error.to_string());
+        println!("{}", error);
         println!();
       }
 
