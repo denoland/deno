@@ -947,7 +947,7 @@
       });
 
       const { listeners } = (this ?? globalThis)[eventTargetData];
-      if (callback !== null && ReflectHas(liteners, type)) {
+      if (callback !== null && ReflectHas(listeners, type)) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
           (listener) => listener.callback !== callback,
