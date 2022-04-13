@@ -76,6 +76,12 @@ pub fn white_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
   style(s, style_spec)
 }
 
+pub fn red_bg<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_bg(Some(Red)).set_fg(Some(White));
+  style(s, style_spec)
+}
+
 pub fn black_on_green<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Green)).set_fg(Some(Black));

@@ -409,7 +409,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
-      println!("\nfailures:\n");
+      println!("\n{}\n", colors::red_bg("ERRORS"));
       for (description, error) in &summary.failures {
         println!(
           "{} {} {}",
@@ -437,14 +437,15 @@ impl TestReporter for PrettyTestReporter {
         test_names.push(description.name.clone());
       }
 
-      println!("failures:\n");
+      println!("{}\n", colors::red_bg("FAILURES"));
       for (origin, test_names) in &grouped_by_origin {
         println!(
-          "\t{}",
-          colors::gray(self.to_relative_path_or_remote_url(origin))
+          "\t{} {}",
+          colors::gray(self.to_relative_path_or_remote_url(origin)),
+          colors::gray(">"),
         );
         for test_name in test_names {
-          println!("\t{}", test_name);
+          println!("\t\t{}", test_name);
         }
       }
     }
@@ -464,20 +465,44 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
+
+    println!();
+    println!("{} {}", colors::gray("test result:"), status);
     println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
-      summary.passed,
-      get_steps_text(summary.passed_steps),
-      summary.failed,
-      get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+      "     {} {}{}",
+      colors::gray("passed:"),
+      if summary.passed == 0 {
+        colors::gray("0").to_string()
+      } else {
+        colors::green(format!("{}", summary.passed)).to_string()
+      },
+      get_steps_text(summary.passed_steps)
     );
+    if summary.failed > 0 {
+      println!(
+        "     {} {}{}",
+        colors::gray("failed:"),
+        colors::red(format!("{}", summary.failed)),
+        get_steps_text(summary.failed_steps)
+      );
+    }
+    if summary.ignored > 0 {
+      println!(
+        "    {} {}{}",
+        colors::gray("ignored:"),
+        summary.ignored,
+        get_steps_text(summary.ignored_steps)
+      );
+    }
+    if summary.filtered_out > 0 {
+      println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
+    }
+    println!(
+      "       {} {}",
+      colors::gray("time:"),
+      colors::gray(display::human_elapsed(elapsed.as_millis()))
+    );
+    println!();
   }
 }
 
