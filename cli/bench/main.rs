@@ -351,7 +351,7 @@ fn run_strace_benchmarks(
   let mut syscall_count = HashMap::<String, u64>::new();
 
   for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
-    let mut file = tempfile::NamedTempFile::new()?;
+    let mut file = secure_tempfile::NamedTempFile::new()?;
 
     let exit_status = Command::new("strace")
       .args(&[

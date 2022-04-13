@@ -2,13 +2,13 @@
 
 use std::fs;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn install_basic() {
   let _guard = util::http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
   let status = util::deno_cmd()
@@ -50,7 +50,7 @@ fn install_basic() {
 #[test]
 fn install_custom_dir_env_var() {
   let _guard = util::http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
   let status = util::deno_cmd()
@@ -87,7 +87,7 @@ fn install_custom_dir_env_var() {
 
 #[test]
 fn installer_test_local_module_run() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let status = util::deno_cmd()
@@ -124,7 +124,7 @@ fn installer_test_local_module_run() {
 #[test]
 fn installer_test_remote_module_run() {
   let _g = util::http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let status = util::deno_cmd()
