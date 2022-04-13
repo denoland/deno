@@ -164,7 +164,7 @@
     stdout = "piped",
     stderr = "piped",
   } = {}) { // TODO(@crowlKats): more options (like input)?
-    const res = core.opSync("op_command_sync", {
+    return core.opSync("op_command_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -176,8 +176,6 @@
       stdout,
       stderr,
     });
-    res.status.signal ??= undefined;
-    return res;
   }
 
   window.__bootstrap.command = {
