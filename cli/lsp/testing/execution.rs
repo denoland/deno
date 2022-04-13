@@ -753,7 +753,8 @@ impl test::TestReporter for LspTestReporter {
         .and_then(|v| v.last().map(|td| td.into()))
     });
     match output {
-      test::TestOutput::Console(value) => {
+      test::TestOutput::PrintStdout(value)
+      | test::TestOutput::PrintStderr(value) => {
         self.progress(lsp_custom::TestRunProgressMessage::Output {
           value: value.replace('\n', "\r\n"),
           test,

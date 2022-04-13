@@ -81,7 +81,8 @@ pub struct TestDescription {
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
   // TODO(caspervonb): add stdout and stderr redirection.
-  Console(String),
+  PrintStdout(String),
+  PrintStderr(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -323,7 +324,9 @@ impl TestReporter for PrettyTestReporter {
     }
     if self.echo_output {
       match output {
-        TestOutput::Console(line) => print!("{}", line),
+        TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
+          print!("{}", line)
+        }
       }
     }
   }

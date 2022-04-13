@@ -871,12 +871,6 @@
     });
   }
 
-  function reportTestConsoleOutput(console) {
-    core.opSync("op_dispatch_test_event", {
-      output: { console },
-    });
-  }
-
   function reportTestWait(test) {
     core.opSync("op_dispatch_test_event", {
       wait: test,
@@ -955,12 +949,6 @@
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
-    const originalConsole = globalThis.console;
-
-    // TODO(bartlomieju): we should use regular console and instead
-    // override "op_print" on the Rust side to capture both console
-    // and `Deno.core.print`
-    globalThis.console = new Console(reportTestConsoleOutput);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
@@ -1007,8 +995,6 @@
 
       reportTestResult(description, result, elapsed);
     }
-
-    globalThis.console = originalConsole;
   }
 
   async function runBenchmarks({
