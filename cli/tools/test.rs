@@ -222,7 +222,7 @@ struct PrettyTestReporter {
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
   last_wait_output_level: usize,
   cwd: Url,
-  did_test_have_output: bool,
+  did_have_user_output: bool,
 }
 
 impl PrettyTestReporter {
@@ -233,7 +233,7 @@ impl PrettyTestReporter {
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
-      did_test_have_output: false,
+      did_have_user_output: false,
     }
   }
 
@@ -317,16 +317,18 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_output(&mut self, output: &TestOutput) {
-    if !self.did_test_have_output {
-      self.did_test_have_output = true;
+    if !self.echo_output {
+      return;
+    }
+
+    if !self.did_have_user_output {
+      self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("-------output:-------"));
     }
-    if self.echo_output {
-      match output {
-        TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
-          print!("{}", line)
-        }
+    match output {
+      TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
+        print!("{}", line)
       }
     }
   }
@@ -361,9 +363,9 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
-    if self.did_test_have_output {
+    if self.did_have_user_output {
       println!("{}", colors::gray("----end of output----"));
-      self.did_test_have_output = false;
+      self.did_have_user_output = false;
     } else if self.last_wait_output_level == 0 {
       print!(" ");
     }
