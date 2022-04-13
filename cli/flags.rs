@@ -477,6 +477,8 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (defaults to $HOME/.deno/bin)
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
+    DENO_FUTURE_CHECK    Opt-in into new behavior of "deno run" that doesn't
+                         perform type-checking by default.
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
