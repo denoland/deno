@@ -1329,7 +1329,7 @@
   function reportException(error) {
     reportExceptionStackedCalls++;
     const jsError = core.destructureError(error);
-    const message = jsError.message;
+    const message = jsError.exceptionMessage;
     let filename = "";
     let lineno = 0;
     let colno = 0;

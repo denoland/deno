@@ -283,7 +283,7 @@ impl fmt::Display for PrettyJsError {
       "{}",
       &format_stack(
         true,
-        &self.0.message,
+        &self.0.exception_message,
         cause.as_deref(),
         self.0.source_line.as_deref(),
         self.0.start_column,
