@@ -9,13 +9,13 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -24,6 +24,9 @@ use deno_core::ZeroCopyBuf;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -47,16 +50,16 @@ use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
-    ("op_net_accept", op_async(op_net_accept)),
-    ("op_net_connect", op_async(op_net_connect::<P>)),
-    ("op_net_listen", op_sync(op_net_listen::<P>)),
-    ("op_dgram_recv", op_async(op_dgram_recv)),
-    ("op_dgram_send", op_async(op_dgram_send::<P>)),
-    ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
-    ("op_set_nodelay", op_sync(op_set_nodelay::<P>)),
-    ("op_set_keepalive", op_sync(op_set_keepalive::<P>)),
+    op_net_accept::decl(),
+    op_net_connect::decl::<P>(),
+    op_net_listen::decl::<P>(),
+    op_dgram_recv::decl(),
+    op_dgram_send::decl::<P>(),
+    op_dns_resolve::decl::<P>(),
+    op_set_nodelay::decl::<P>(),
+    op_set_keepalive::decl::<P>(),
   ]
 }
 
@@ -155,10 +158,10 @@ async fn accept_tcp(
   })
 }
 
+#[op]
 async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _: (),
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, ()).await,
@@ -207,6 +210,7 @@ async fn receive_udp(
   })
 }
 
+#[op]
 async fn op_dgram_recv(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
@@ -228,6 +232,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
+#[op]
 async fn op_dgram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
@@ -296,10 +301,10 @@ pub struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
+#[op]
 pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -428,8 +433,19 @@ fn listen_tcp(
   state: &mut OpState,
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), AnyError> {
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
@@ -460,10 +476,10 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
+#[op]
 fn op_net_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -599,10 +615,10 @@ pub struct NameServer {
   port: u16,
 }
 
+#[op]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _: (),
 ) -> Result<Vec<DnsReturnRecord>, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -667,21 +683,25 @@ where
   Ok(results)
 }
 
+#[op]
 pub fn op_set_nodelay<NP>(
   state: &mut OpState,
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
+  super::check_unstable(state, "Deno.Conn#setNoDelay");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
 }
 
+#[op]
 pub fn op_set_keepalive<NP>(
   state: &mut OpState,
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
+  super::check_unstable(state, "Deno.Conn#setKeepAlive");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive)
@@ -739,6 +759,7 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::UnstableChecker;
   use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -860,7 +881,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
-      op_set_nodelay::<TestPermission>(state, rid, true).unwrap();
+      op_set_nodelay::call::<TestPermission>(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(socket.nodelay().unwrap());
@@ -872,7 +893,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      op_set_keepalive::<TestPermission>(state, rid, true).unwrap();
+      op_set_keepalive::call::<TestPermission>(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
@@ -894,6 +915,7 @@ mod tests {
     let my_ext = Extension::builder()
       .state(move |state| {
         state.put(TestPermission {});
+        state.put(UnstableChecker { unstable: true });
         Ok(())
       })
       .build();
@@ -916,7 +938,7 @@ mod tests {
     };
 
     let connect_fut =
-      op_net_connect::<TestPermission>(conn_state, connect_args, ());
+      op_net_connect::call::<TestPermission>(conn_state, connect_args);
     let conn = connect_fut.await.unwrap();
 
     let rid = conn.rid;

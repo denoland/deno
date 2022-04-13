@@ -54,7 +54,7 @@
   function checkRelative(specifier) {
     return StringPrototypeMatch(
         specifier,
-        /^([\.\/\\]|https?:\/{2}|file:\/{2})/,
+        /^([\.\/\\]|https?:\/{2}|file:\/{2}|data:)/,
       )
       ? specifier
       : `./${specifier}`;

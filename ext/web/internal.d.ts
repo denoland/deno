@@ -60,6 +60,9 @@ declare namespace globalThis {
       declare function parseMimeType(input: string): MimeType | null;
       declare function essence(mimeType: MimeType): string;
       declare function serializeMimeType(mimeType: MimeType): string;
+      declare function extractMimeType(
+        headerValues: string[] | null,
+      ): MimeType | null;
     }
 
     declare var eventTarget: {

@@ -869,6 +869,10 @@
     return target?.[eventTargetData]?.mode ?? null;
   }
 
+  function listenerCount(target, type) {
+    return getListeners(target)?.[type]?.length ?? 0;
+  }
+
   function getDefaultTargetData() {
     return {
       assignedSlot: false,
@@ -1327,6 +1331,7 @@
   window.__bootstrap.eventTarget = {
     EventTarget,
     setEventTargetData,
+    listenerCount,
   };
   window.__bootstrap.event = {
     setIsTrusted,

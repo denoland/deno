@@ -93,7 +93,7 @@ mod not_docs {
     }
   }
 
-  impl deno_timers::TimersPermission for Permissions {
+  impl deno_web::TimersPermission for Permissions {
     fn allow_hrtime(&mut self) -> bool {
       unreachable!("snapshotting!")
     }
@@ -145,13 +145,15 @@ mod not_docs {
       deno_console::init(),
       deno_url::init(),
       deno_tls::init(),
-      deno_web::init(deno_web::BlobStore::default(), Default::default()),
+      deno_web::init::<Permissions>(
+        deno_web::BlobStore::default(),
+        Default::default(),
+      ),
       deno_fetch::init::<Permissions>(Default::default()),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
       deno_webgpu::init(false),
-      deno_timers::init::<Permissions>(),
       deno_broadcast_channel::init(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.

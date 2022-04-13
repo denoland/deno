@@ -70,7 +70,7 @@ impl EditorHelper {
 
     self
       .get_object_expr_properties(object_expr)
-      .unwrap_or_else(Vec::new)
+      .unwrap_or_default()
   }
 
   fn get_expression_type(&self, expr: &str) -> Option<String> {
@@ -315,7 +315,7 @@ impl Highlighter for EditorHelper {
               colors::green(&line[span]).to_string()
             }
             Token::Regex(_, _) => colors::red(&line[span]).to_string(),
-            Token::Num(_) | Token::BigInt(_) => {
+            Token::Num { .. } | Token::BigInt { .. } => {
               colors::yellow(&line[span]).to_string()
             }
             Token::Word(word) => match word {

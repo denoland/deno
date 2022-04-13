@@ -34,6 +34,17 @@ fn pty_multiline() {
 }
 
 #[test]
+fn pty_null() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("null");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("null"));
+  });
+}
+
+#[test]
 fn pty_unpaired_braces() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(")");
@@ -68,7 +79,8 @@ fn pty_syntax_error_input() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("Expected 4 hex characters"));
+    assert!(output
+      .contains("Bad character escape sequence, expected 4 hex characters"));
     assert!(output.contains("Unterminated string constant"));
     assert!(output.contains("Expected a semicolon"));
   });
@@ -151,7 +163,7 @@ fn pty_complete_imports() {
 
     let output = console.read_all_output();
     assert!(output.contains("Hello World"));
-    assert!(output.contains("\ntesting output"));
+    assert!(output.contains("testing output\u{1b}"));
   });
 
   // ensure when the directory changes that the suggestions come from the cwd

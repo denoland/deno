@@ -4,13 +4,19 @@
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { ReadableStream, WritableStream } = window.__bootstrap.streams;
   const {
+    Error,
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
+    Symbol,
     SymbolAsyncIterator,
-    Uint8Array,
+    SymbolFor,
     TypedArrayPrototypeSubarray,
+    Uint8Array,
   } = window.__bootstrap.primordials;
+
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   async function read(
     rid,
@@ -59,10 +65,75 @@
     return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
 
+  const DEFAULT_CHUNK_SIZE = 16_640;
+
+  function tryClose(rid) {
+    try {
+      core.close(rid);
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  function readableStreamForRid(rid) {
+    return new ReadableStream({
+      type: "bytes",
+      async pull(controller) {
+        const v = controller.byobRequest.view;
+        try {
+          const bytesRead = await read(rid, v);
+          if (bytesRead === null) {
+            tryClose(rid);
+            controller.close();
+            controller.byobRequest.respond(0);
+          } else {
+            controller.byobRequest.respond(bytesRead);
+          }
+        } catch (e) {
+          controller.error(e);
+          tryClose(rid);
+        }
+      },
+      cancel() {
+        tryClose(rid);
+      },
+      autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
+    });
+  }
+
+  function writableStreamForRid(rid) {
+    return new WritableStream({
+      async write(chunk, controller) {
+        try {
+          let nwritten = 0;
+          while (nwritten < chunk.length) {
+            nwritten += await write(
+              rid,
+              TypedArrayPrototypeSubarray(chunk, nwritten),
+            );
+          }
+        } catch (e) {
+          controller.error(e);
+          tryClose(rid);
+        }
+      },
+      close() {
+        tryClose(rid);
+      },
+      abort() {
+        tryClose(rid);
+      },
+    });
+  }
+
   class Conn {
     #rid = 0;
     #remoteAddr = null;
     #localAddr = null;
+
+    #readable;
+    #writable;
+
     constructor(rid, remoteAddr, localAddr) {
       this.#rid = rid;
       this.#remoteAddr = remoteAddr;
@@ -97,6 +168,22 @@
       return shutdown(this.rid);
     }
 
+    get readable() {
+      if (this.#readable === undefined) {
+        this.#readable = readableStreamForRid(this.rid);
+      }
+      return this.#readable;
+    }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
+    }
+  }
+
+  class TcpConn extends Conn {
     setNoDelay(nodelay = true) {
       return core.opSync("op_set_nodelay", this.rid, nodelay);
     }
@@ -106,9 +193,18 @@
     }
   }
 
+  class UnixConn extends Conn {}
+
+  // Use symbols for method names to hide these in stable API.
+  // TODO(kt3k): Remove these symbols when ref/unref become stable.
+  const listenerRef = Symbol("listenerRef");
+  const listenerUnref = Symbol("listenerUnref");
+
   class Listener {
     #rid = 0;
     #addr = null;
+    #unref = false;
+    #promiseId = null;
 
     constructor(rid, addr) {
       this.#rid = rid;
@@ -123,9 +219,21 @@
       return this.#addr;
     }
 
-    async accept() {
-      const res = await opAccept(this.rid, this.addr.transport);
-      return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    accept() {
+      const promise = opAccept(this.rid, this.addr.transport);
+      this.#promiseId = promise[promiseIdSymbol];
+      if (this.#unref) {
+        this.#unrefOpAccept();
+      }
+      return promise.then((res) => {
+        if (this.addr.transport == "tcp") {
+          return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
+        } else if (this.addr.transport == "unix") {
+          return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
+        } else {
+          throw new Error("unreachable");
+        }
+      });
     }
 
     async next() {
@@ -155,6 +263,27 @@
 
     [SymbolAsyncIterator]() {
       return this;
+    }
+
+    [listenerRef]() {
+      this.#unref = false;
+      this.#refOpAccept();
+    }
+
+    [listenerUnref]() {
+      this.#unref = true;
+      this.#unrefOpAccept();
+    }
+
+    #refOpAccept() {
+      if (typeof this.#promiseId === "number") {
+        core.refOp(this.#promiseId);
+      }
+    }
+    #unrefOpAccept() {
+      if (typeof this.#promiseId === "number") {
+        core.unrefOp(this.#promiseId);
+      }
     }
   }
 
@@ -188,9 +317,7 @@
     }
 
     send(p, addr) {
-      const remote = { hostname: "127.0.0.1", ...addr };
-
-      const args = { ...remote, rid: this.rid };
+      const args = { hostname: "127.0.0.1", ...addr, rid: this.rid };
       return opSend(args, p);
     }
 
@@ -215,41 +342,47 @@
     }
   }
 
-  function listen({ hostname, ...options }) {
+  function listen({ hostname, ...options }, constructor = Listener) {
     const res = opListen({
       transport: "tcp",
       hostname: typeof hostname === "undefined" ? "0.0.0.0" : hostname,
       ...options,
     });
 
-    return new Listener(res.rid, res.localAddr);
+    return new constructor(res.rid, res.localAddr);
   }
 
   async function connect(options) {
-    let res;
-
     if (options.transport === "unix") {
-      res = await opConnect(options);
-    } else {
-      res = await opConnect({
-        transport: "tcp",
-        hostname: "127.0.0.1",
-        ...options,
-      });
+      const res = await opConnect(options);
+      return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
     }
 
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    const res = await opConnect({
+      transport: "tcp",
+      hostname: "127.0.0.1",
+      ...options,
+    });
+    return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.net = {
     connect,
     Conn,
+    TcpConn,
+    UnixConn,
     opConnect,
     listen,
+    listenerRef,
+    listenerUnref,
     opListen,
     Listener,
     shutdown,
     Datagram,
     resolveDns,
+  };
+  window.__bootstrap.streamUtils = {
+    readableStreamForRid,
+    writableStreamForRid,
   };
 })(this);

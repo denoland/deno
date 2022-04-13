@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use atty;
 use once_cell::sync::Lazy;
 use std::fmt;
 use std::io::Write;
@@ -11,6 +12,12 @@ use termcolor::{BufferWriter, ColorChoice};
 
 static NO_COLOR: Lazy<bool> =
   Lazy::new(|| std::env::var_os("NO_COLOR").is_some());
+
+static IS_TTY: Lazy<bool> = Lazy::new(|| atty::is(atty::Stream::Stdout));
+
+pub fn is_tty() -> bool {
+  *IS_TTY
+}
 
 pub fn use_color() -> bool {
   !(*NO_COLOR)

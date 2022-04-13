@@ -50,10 +50,9 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
-    /** Enable/disable the use of Nagle's algorithm. Defaults to true */
-    setNoDelay(nodelay?: boolean): void;
-    /** Enable/disable keep-alive functionality */
-    setKeepAlive(keepalive?: boolean): void;
+
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
   }
 
   // deno-lint-ignore no-empty-interface
@@ -94,11 +93,21 @@ declare namespace Deno {
   ): Listener;
 
   export interface ListenTlsOptions extends ListenOptions {
+    /** Server private key in PEM format */
+    key?: string;
+    /** Cert chain in PEM format */
+    cert?: string;
     /** Path to a file containing a PEM formatted CA certificate. Requires
-     * `--allow-read`. */
-    certFile: string;
-    /** Server public key file. Requires `--allow-read`.*/
-    keyFile: string;
+     * `--allow-read`.
+     *
+     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     */
+    certFile?: string;
+    /** Server private key file. Requires `--allow-read`.
+     *
+     * @deprecated This option is deprecated and will be removed in Deno 2.0.
+     */
+    keyFile?: string;
 
     transport?: "tcp";
   }
@@ -134,7 +143,25 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+  export function connect(options: ConnectOptions): Promise<TcpConn>;
+
+  export interface TcpConn extends Conn {
+    /**
+     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
+     *
+     * Enable/disable the use of Nagle's algorithm. Defaults to true.
+     */
+    setNoDelay(nodelay?: boolean): void;
+    /**
+     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
+     *
+     * Enable/disable keep-alive functionality.
+     */
+    setKeepAlive(keepalive?: boolean): void;
+  }
+
+  // deno-lint-ignore no-empty-interface
+  export interface UnixConn extends Conn {}
 
   export interface ConnectTlsOptions {
     /** The port to connect to. */

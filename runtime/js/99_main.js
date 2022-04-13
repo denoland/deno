@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
+  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -574,13 +575,14 @@ delete Object.prototype.__proto__;
       args,
       location: locationHref,
       noColor,
+      isTty,
       pid,
       ppid,
       unstableFlag,
       cpuCount,
     } = runtimeOptions;
 
-    colors.setNoColor(noColor);
+    colors.setNoColor(noColor || !isTty);
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
@@ -666,17 +668,18 @@ delete Object.prototype.__proto__;
       unstableFlag,
       pid,
       noColor,
+      isTty,
       args,
       location: locationHref,
       cpuCount,
     } = runtimeOptions;
 
-    colors.setNoColor(noColor);
+    colors.setNoColor(noColor || !isTty);
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();
 
-    pollForMessages();
+    globalThis.pollForMessages = pollForMessages;
 
     const internalSymbol = Symbol("Deno.internal");
 
@@ -703,7 +706,7 @@ delete Object.prototype.__proto__;
       ObjectFreeze(globalThis.Deno.core);
     } else {
       delete globalThis.Deno;
-      util.assert(globalThis.Deno === undefined);
+      infra.assert(globalThis.Deno === undefined);
     }
   }
 

@@ -35,7 +35,7 @@ type Request = (
 /// A "server" that handles requests from the language server to cache modules
 /// in its own thread.
 #[derive(Debug)]
-pub(crate) struct CacheServer(mpsc::UnboundedSender<Request>);
+pub struct CacheServer(mpsc::UnboundedSender<Request>);
 
 impl CacheServer {
   pub async fn new(
@@ -50,24 +50,21 @@ impl CacheServer {
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let ps = ProcState::build(Flags {
+        let ps = ProcState::build(Arc::new(Flags {
           cache_path: maybe_cache_path,
           ca_stores: maybe_ca_stores,
           ca_file: maybe_ca_file,
           unsafely_ignore_certificate_errors,
           ..Default::default()
-        })
+        }))
         .await
         .unwrap();
         let maybe_import_map_resolver =
           maybe_import_map.map(ImportMapResolver::new);
-        let maybe_jsx_resolver = maybe_config_file
-          .as_ref()
-          .map(|cf| {
-            cf.to_maybe_jsx_import_source_module()
-              .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-          })
-          .flatten();
+        let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
+          cf.to_maybe_jsx_import_source_module()
+            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+        });
         let maybe_resolver = if maybe_jsx_resolver.is_some() {
           maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
         } else {
@@ -76,8 +73,7 @@ impl CacheServer {
             .map(|im| im.as_resolver())
         };
         let maybe_imports = maybe_config_file
-          .map(|cf| cf.to_maybe_imports().ok())
-          .flatten()
+          .and_then(|cf| cf.to_maybe_imports().ok())
           .flatten();
         let mut cache = FetchCacher::new(
           ps.dir.gen_cache.clone(),
@@ -125,7 +121,7 @@ impl CacheServer {
 }
 
 /// Calculate a version for for a given path.
-pub(crate) fn calculate_fs_version(path: &Path) -> Option<String> {
+pub fn calculate_fs_version(path: &Path) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {
     if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
@@ -150,7 +146,7 @@ fn parse_metadata(
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) enum MetadataKey {
+pub enum MetadataKey {
   /// Represent the `x-deno-warning` header associated with the document
   Warning,
 }
@@ -162,7 +158,7 @@ struct Metadata {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct CacheMetadata {
+pub struct CacheMetadata {
   cache: http_cache::HttpCache,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
 }
@@ -187,10 +183,9 @@ impl CacheMetadata {
     let version = self
       .cache
       .get_cache_filename(specifier)
-      .map(|ref path| calculate_fs_version(path))
-      .flatten();
+      .and_then(|ref path| calculate_fs_version(path));
     let metadata = self.metadata.lock().get(specifier).cloned();
-    if metadata.as_ref().map(|m| m.version.clone()).flatten() != version {
+    if metadata.as_ref().and_then(|m| m.version.clone()) != version {
       self.refresh(specifier).map(|m| m.values)
     } else {
       metadata.map(|m| m.values)

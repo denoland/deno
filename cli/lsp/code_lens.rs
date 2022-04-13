@@ -19,13 +19,13 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
@@ -377,7 +377,7 @@ async fn resolve_references_code_lens(
   }
 }
 
-pub(crate) async fn resolve_code_lens(
+pub async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
   language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
@@ -393,7 +393,7 @@ pub(crate) async fn resolve_code_lens(
   }
 }
 
-pub(crate) async fn collect(
+pub async fn collect(
   specifier: &ModuleSpecifier,
   parsed_source: Option<ParsedSource>,
   config: &Config,

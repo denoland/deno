@@ -50,6 +50,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
+  let flags = Arc::new(flags);
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
@@ -499,7 +500,7 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
   });
 }
 
-pub(crate) fn get_configured_rules(
+pub fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
   maybe_rules_tags: Option<Vec<String>>,
   maybe_rules_include: Option<Vec<String>>,
@@ -549,7 +550,7 @@ pub(crate) fn get_configured_rules(
   );
 
   if configured_rules.is_empty() {
-    anyhow!("No rules have been configured");
+    return Err(anyhow!("No rules have been configured"));
   }
 
   Ok(configured_rules)

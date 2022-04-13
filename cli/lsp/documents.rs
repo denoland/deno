@@ -23,10 +23,8 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolveResponse;
 use deno_graph::Module;
 use deno_graph::Resolved;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -37,7 +35,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::SystemTime;
+use tower_lsp::lsp_types as lsp;
 
 static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([(
@@ -98,7 +96,7 @@ impl deno_graph::SourceParser for SourceParser {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LanguageId {
+pub enum LanguageId {
   JavaScript,
   Jsx,
   TypeScript,
@@ -161,12 +159,19 @@ impl IndexValid {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum AssetOrDocument {
+pub enum AssetOrDocument {
   Document(Document),
   Asset(AssetDocument),
 }
 
 impl AssetOrDocument {
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    match self {
+      AssetOrDocument::Asset(asset) => asset.specifier(),
+      AssetOrDocument::Document(doc) => doc.specifier(),
+    }
+  }
+
   pub fn document(&self) -> Option<&Document> {
     match self {
       AssetOrDocument::Asset(_) => None,
@@ -201,18 +206,21 @@ impl AssetOrDocument {
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
     self
       .document()
-      .map(|d| d.get_maybe_dependency(position))
-      .flatten()
+      .and_then(|d| d.get_maybe_dependency(position))
   }
 
   pub fn maybe_parsed_source(
     &self,
   ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
-    self.document().map(|d| d.maybe_parsed_source()).flatten()
+    self.document().and_then(|d| d.maybe_parsed_source())
   }
 
   pub fn document_lsp_version(&self) -> Option<i32> {
-    self.document().map(|d| d.maybe_lsp_version()).flatten()
+    self.document().and_then(|d| d.maybe_lsp_version())
+  }
+
+  pub fn is_open(&self) -> bool {
+    self.document().map(|d| d.is_open()).unwrap_or(false)
   }
 }
 
@@ -232,7 +240,7 @@ struct DocumentInner {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Document(Arc<DocumentInner>);
+pub struct Document(Arc<DocumentInner>);
 
 impl Document {
   fn new(
@@ -349,8 +357,7 @@ impl Document {
         .0
         .maybe_language_id
         .as_ref()
-        .map(|li| li.as_headers())
-        .flatten();
+        .and_then(|li| li.as_headers());
       let parser = SourceParser::default();
       Some(deno_graph::parse_module(
         &self.0.specifier,
@@ -520,7 +527,7 @@ impl Document {
   }
 }
 
-pub(crate) fn to_hover_text(result: &Resolved) -> String {
+pub fn to_hover_text(result: &Resolved) -> String {
   match result {
     Resolved::Ok { specifier, .. } => match specifier.scheme() {
       "data" => "_(a data url)_".to_string(),
@@ -537,7 +544,7 @@ pub(crate) fn to_hover_text(result: &Resolved) -> String {
   }
 }
 
-pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -547,32 +554,6 @@ pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
       line: range.end.line as u32,
       character: range.end.character as u32,
     },
-  }
-}
-
-fn to_deno_graph_range(
-  specifier: &ModuleSpecifier,
-  maybe_range: Option<&lsp::Range>,
-) -> deno_graph::Range {
-  let specifier = specifier.clone();
-  if let Some(range) = maybe_range {
-    deno_graph::Range {
-      specifier,
-      start: deno_graph::Position {
-        line: range.start.line as usize,
-        character: range.start.character as usize,
-      },
-      end: deno_graph::Position {
-        line: range.end.line as usize,
-        character: range.end.character as usize,
-      },
-    }
-  } else {
-    deno_graph::Range {
-      specifier,
-      start: deno_graph::Position::zeroed(),
-      end: deno_graph::Position::zeroed(),
-    }
   }
 }
 
@@ -716,7 +697,7 @@ fn get_document_path(
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Documents {
+pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
   /// A flag that indicates that stated data is potentially invalid and needs to
@@ -893,8 +874,7 @@ impl Documents {
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
       let fs_version = get_document_path(&self.cache, &specifier)
-        .map(|path| calculate_fs_version(&path))
-        .flatten();
+        .and_then(|path| calculate_fs_version(&path));
       let file_system_doc = file_system_docs.docs.get(&specifier);
       if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
         // attempt to update the file on the file system
@@ -1037,12 +1017,10 @@ impl Documents {
   ) {
     // TODO(@kitsonk) update resolved dependencies?
     self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
-    self.maybe_jsx_resolver = maybe_config_file
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
-      })
-      .flatten();
+    self.maybe_jsx_resolver = maybe_config_file.and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
+    });
     self.imports = Arc::new(
       if let Some(Ok(Some(imports))) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1122,14 +1100,12 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_module().map(|r| r.as_ref().ok()).flatten();
-    let maybe_types_dependency = maybe_module
-      .map(|m| {
-        m.maybe_types_dependency
-          .as_ref()
-          .map(|(_, resolved)| resolved.clone())
-      })
-      .flatten();
+    let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
+    let maybe_types_dependency = maybe_module.and_then(|m| {
+      m.maybe_types_dependency
+        .as_ref()
+        .map(|(_, resolved)| resolved.clone())
+    });
     if let Some(Resolved::Ok { specifier, .. }) = maybe_types_dependency {
       self.resolve_dependency(&specifier)
     } else {
@@ -1158,10 +1134,9 @@ impl Documents {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
-  fn setup() -> (Documents, PathBuf) {
-    let temp_dir = TempDir::new().unwrap();
+  fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
     let documents = Documents::new(&location);
     (documents, location)
@@ -1169,7 +1144,8 @@ mod tests {
 
   #[test]
   fn test_documents_open() {
-    let (mut documents, _) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1185,7 +1161,8 @@ console.log(b);
 
   #[test]
   fn test_documents_change() {
-    let (mut documents, _) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1231,7 +1208,8 @@ console.log(b, "hello deno");
   fn test_documents_ensure_no_duplicates() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let (mut documents, documents_path) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, documents_path) = setup(&temp_dir);
     let file_path = documents_path.join("file.ts");
     let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
     fs::create_dir_all(&documents_path).unwrap();

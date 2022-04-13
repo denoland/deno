@@ -21,7 +21,12 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function runSuccess() {
     const p = Deno.run({
-      cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+      // freeze the array to ensure it's not modified
+      cmd: Object.freeze([
+        Deno.execPath(),
+        "eval",
+        "console.log('hello world')",
+      ]),
       stdout: "piped",
       stderr: "null",
     });

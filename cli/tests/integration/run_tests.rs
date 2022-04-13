@@ -2,8 +2,8 @@
 
 use deno_core::url;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 itest!(stdout_write_all {
   args: "run --quiet stdout_write_all.ts",
@@ -13,6 +13,7 @@ itest!(stdout_write_all {
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
   output: "001_hello.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(_002_hello {
@@ -104,8 +105,9 @@ itest!(_021_mjs_modules {
 });
 
 itest!(_023_no_ext {
-  args: "run --reload 023_no_ext",
+  args: "run --reload --check 023_no_ext",
   output: "023_no_ext.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -155,10 +157,11 @@ itest!(_034_onload {
 });
 
 itest!(_035_cached_only_flag {
-  args: "run --reload --cached-only http://127.0.0.1:4545/019_media_types.ts",
+  args: "run --reload --check --cached-only http://127.0.0.1:4545/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(_038_checkjs {
@@ -202,10 +205,12 @@ itest!(_048_media_types_jsx {
 });
 
 itest!(_052_no_remote_flag {
-  args: "run --reload --no-remote http://127.0.0.1:4545/019_media_types.ts",
+  args:
+    "run --reload --check --no-remote http://127.0.0.1:4545/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(_056_make_temp_file_write_perm {
@@ -253,7 +258,7 @@ itest!(webstorage_serialization {
 fn webstorage_location_shares_origin() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -268,7 +273,7 @@ fn webstorage_location_shares_origin() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -290,7 +295,7 @@ fn webstorage_location_shares_origin() {
 fn webstorage_config_file() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -305,7 +310,7 @@ fn webstorage_config_file() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -320,7 +325,7 @@ fn webstorage_config_file() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -342,7 +347,7 @@ fn webstorage_config_file() {
 fn webstorage_location_precedes_config() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -359,7 +364,7 @@ fn webstorage_location_precedes_config() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -383,7 +388,7 @@ fn webstorage_location_precedes_config() {
 fn webstorage_main_module() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -396,7 +401,7 @@ fn webstorage_main_module() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -409,7 +414,7 @@ fn webstorage_main_module() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Storage { length: 0 }\n");
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -466,22 +471,21 @@ itest!(_082_prepare_stack_trace_throw {
 #[test]
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
-  let deno_dir = TempDir::new().expect("tempdir fail");
+  let deno_dir = TempDir::new();
   let module_url =
     url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
       .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
-  std::fs::create_dir_all(faulty_map_path.parent().unwrap())
-    .expect("Failed to create faulty source map dir.");
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+  std::fs::create_dir_all(faulty_map_path.parent().unwrap()).unwrap();
+  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
-    .expect("Failed to spawn script");
+    .unwrap();
   // Before https://github.com/denoland/deno/issues/6965 was fixed, the faulty
   // old external source map would cause a panic while formatting the error
   // and the exit code would be 101. The external source map should be ignored
@@ -521,9 +525,9 @@ fn _090_run_permissions_request() {
   let args = "run --quiet 090_run_permissions_request.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
-    Output("⚠️  ️Deno requests run access to \"ls\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Output("⚠️  ️Deno requests run access to \"ls\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("y\n"),
-    Output("⚠️  ️Deno requests run access to \"cat\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Output("⚠️  ️Deno requests run access to \"cat\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("n\n"),
     Output("granted\r\n"),
     Output("prompt\r\n"),
@@ -553,6 +557,7 @@ itest!(blob_gc_finalization {
   args: "run blob_gc_finalization.js",
   output: "blob_gc_finalization.js.out",
   exit_code: 0,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fetch_response_finalization {
@@ -560,6 +565,7 @@ itest!(fetch_response_finalization {
   output: "fetch_response_finalization.js.out",
   http_server: true,
   exit_code: 0,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(import_type {
@@ -665,8 +671,9 @@ itest!(config_types_remote {
   });
 
 itest!(empty_typescript {
-  args: "run --reload subdir/empty.ts",
+  args: "run --reload --check subdir/empty.ts",
   output_str: Some("Check file:[WILDCARD]/subdir/empty.ts\n"),
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_001 {
@@ -740,20 +747,23 @@ itest!(error_011_bad_module_specifier {
 });
 
 itest!(error_012_bad_dynamic_import_specifier {
-  args: "run --reload error_012_bad_dynamic_import_specifier.ts",
+  args: "run --reload --check error_012_bad_dynamic_import_specifier.ts",
   exit_code: 1,
   output: "error_012_bad_dynamic_import_specifier.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_013_missing_script {
   args: "run --reload missing_file_name",
   exit_code: 1,
   output: "error_013_missing_script.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_014_catch_dynamic_import_error {
   args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_015_dynamic_import_permissions {
@@ -781,6 +791,7 @@ itest!(error_018_hide_long_source_js {
   args: "run error_018_hide_long_source_js.js",
   output: "error_018_hide_long_source_js.js.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_019_stack_function {
@@ -854,12 +865,14 @@ itest!(error_syntax {
   args: "run --reload error_syntax.js",
   exit_code: 1,
   output: "error_syntax.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_syntax_empty_trailing_line {
   args: "run --reload error_syntax_empty_trailing_line.mjs",
   exit_code: 1,
   output: "error_syntax_empty_trailing_line.mjs.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_type_definitions {
@@ -990,8 +1003,8 @@ itest!(lib_runtime_api {
 
 itest!(seed_random {
   args: "run --seed=100 seed_random.js",
-
   output: "seed_random.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_definitions {
@@ -1000,9 +1013,10 @@ itest!(type_definitions {
 });
 
 itest!(type_definitions_for_export {
-  args: "run --reload type_definitions_for_export.ts",
+  args: "run --reload --check type_definitions_for_export.ts",
   output: "type_definitions_for_export.ts.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_directives_01 {
@@ -1023,37 +1037,43 @@ itest!(type_directives_js_main {
 });
 
 itest!(type_directives_redirect {
-  args: "run --reload type_directives_redirect.ts",
+  args: "run --reload --check type_directives_redirect.ts",
   output: "type_directives_redirect.ts.out",
   http_server: true,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_headers_deno_types {
-  args: "run --reload type_headers_deno_types.ts",
+  args: "run --reload --check type_headers_deno_types.ts",
   output: "type_headers_deno_types.ts.out",
   http_server: true,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_type_imports {
-  args: "run --reload ts_type_imports.ts",
+  args: "run --reload --check ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
+  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_type_only_import {
-  args: "run --reload ts_type_only_import.ts",
+  args: "run --reload --check ts_type_only_import.ts",
   output: "ts_type_only_import.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(swc_syntax_error {
-  args: "run --reload swc_syntax_error.ts",
+  args: "run --reload --check swc_syntax_error.ts",
   output: "swc_syntax_error.ts.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unbuffered_stderr {
@@ -1069,6 +1089,7 @@ itest!(unbuffered_stdout {
 itest!(v8_flags_run {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(v8_flags_unrecognized {
@@ -1101,12 +1122,14 @@ itest!(wasm_shared {
 itest!(wasm_async {
   args: "run wasm_async.js",
   output: "wasm_async.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(wasm_unreachable {
   args: "run --allow-read wasm_unreachable.js",
   output: "wasm_unreachable.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(wasm_url {
@@ -1124,34 +1147,40 @@ itest!(weakref {
 itest!(top_level_await_order {
   args: "run --allow-read top_level_await_order.js",
   output: "top_level_await_order.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_loop {
   args: "run --allow-read top_level_await_loop.js",
   output: "top_level_await_loop.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_circular {
   args: "run --allow-read top_level_await_circular.js",
   output: "top_level_await_circular.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // Regression test for https://github.com/denoland/deno/issues/11238.
 itest!(top_level_await_nested {
   args: "run --allow-read top_level_await_nested/main.js",
   output: "top_level_await_nested.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_unresolved {
   args: "run top_level_await_unresolved.js",
   output: "top_level_await_unresolved.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_ts {
@@ -1183,6 +1212,7 @@ itest!(unstable_enabled {
 itest!(unstable_disabled_js {
   args: "run --reload unstable.js",
   output: "unstable_disabled_js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_enabled_js {
@@ -1221,13 +1251,15 @@ itest!(dynamic_import_conditional {
 });
 
 itest!(tsx_imports {
-  args: "run --reload tsx_imports.ts",
+  args: "run --reload --check tsx_imports.ts",
   output: "tsx_imports.ts.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fix_dynamic_import_errors {
   args: "run --reload fix_dynamic_import_errors.js",
   output: "fix_dynamic_import_errors.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fix_emittable_skipped {
@@ -1402,6 +1434,7 @@ itest!(jsx_import_source_import_map_no_check {
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(reference_types {
@@ -1498,6 +1531,7 @@ itest!(classic_workers_event_loop {
   args:
     "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
   output: "classic_workers_event_loop.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // FIXME(bartlomieju): disabled, because this test is very flaky on CI
@@ -1549,6 +1583,7 @@ itest!(error_import_map_unable_to_load {
   args: "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
   output: "error_import_map_unable_to_load.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // Test that setting `self` in the main thread to some other value doesn't break
@@ -1556,6 +1591,7 @@ itest!(error_import_map_unable_to_load {
 itest!(replace_self {
   args: "run replace_self.js",
   output: "replace_self.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(worker_event_handler_test {
@@ -1590,9 +1626,10 @@ itest!(worker_close_in_wasm_reactions {
 });
 
 itest!(reference_types_error {
-  args: "run --config checkjs.tsconfig.json reference_types_error.js",
+  args: "run --config checkjs.tsconfig.json --check reference_types_error.js",
   output: "reference_types_error.js.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(reference_types_error_no_check {
@@ -1601,9 +1638,10 @@ itest!(reference_types_error_no_check {
 });
 
 itest!(jsx_import_source_error {
-  args: "run --config jsx/deno-jsx-error.jsonc jsx_import_source_no_pragma.tsx",
+  args: "run --config jsx/deno-jsx-error.jsonc --check jsx_import_source_no_pragma.tsx",
   output: "jsx_import_source_error.out",
   exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(shebang_tsc {
@@ -1632,6 +1670,7 @@ itest!(shebang_with_json_imports_swc {
 fn no_validate_asm() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("no_validate_asm.js")
     .stderr(std::process::Stdio::piped())
@@ -1776,6 +1815,7 @@ fn rust_log() {
   // Without RUST_LOG the stderr is empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("001_hello.js")
     .stderr(std::process::Stdio::piped())
@@ -1789,6 +1829,7 @@ fn rust_log() {
   // With RUST_LOG the stderr is not empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("001_hello.js")
     .env("RUST_LOG", "debug")
@@ -1805,7 +1846,7 @@ fn rust_log() {
 fn dont_cache_on_check_fail() {
   let deno_dir = util::new_deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1819,7 +1860,7 @@ fn dont_cache_on_check_fail() {
   assert!(!output.status.success());
   assert!(!output.stderr.is_empty());
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2197,9 +2238,9 @@ mod permissions {
     let args = "run --quiet 061_permissions_request.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
-      Output("⚠️  ️Deno requests read access to \"foo\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access to \"foo\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
-      Output("⚠️  ️Deno requests read access to \"bar\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access to \"bar\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("granted\r\n"),
       Output("prompt\r\n"),
@@ -2212,7 +2253,7 @@ mod permissions {
     let args = "run --quiet 062_permissions_request_global.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
-      Output("⚠️  ️Deno requests read access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests read access. Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
@@ -2332,9 +2373,9 @@ fn issue9750() {
     vec![
       Output("Enter 'yy':\r\n"),
       Input("yy\n"),
-      Output("⚠️  ️Deno requests env access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests env access. Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
-      Output("⚠️  ️Deno requests env access to \"SECRET\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Run again with --allow-env to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
     ],
@@ -2363,13 +2404,14 @@ itest!(eval_context_throw_with_conflicting_source {
 itest!(eval_context_throw_dom_exception {
   args: "run eval_context_throw_dom_exception.js",
   output: "eval_context_throw_dom_exception.js.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 #[test]
 fn issue12453() {
   let _g = util::http_server();
   let deno_dir = util::new_deno_dir();
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2386,7 +2428,7 @@ fn issue12453() {
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
-  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2420,7 +2462,7 @@ fn issue12740() {
 /// Regression test for https://github.com/denoland/deno/issues/12807.
 #[test]
 fn issue12807() {
-  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod_dir = TempDir::new();
   let mod1_path = mod_dir.path().join("mod1.ts");
   let mod2_path = mod_dir.path().join("mod2.ts");
   let mut deno_cmd = util::deno_cmd();
@@ -2494,9 +2536,152 @@ itest!(import_assertions_type_check {
 itest!(delete_window {
   args: "run delete_window.js",
   output_str: Some("true\n"),
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(colors_without_global_this {
   args: "run colors_without_globalThis.js",
   output_str: Some("true\n"),
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(config_auto_discovered_for_local_script {
+  args: "run --quiet run/with_config/frontend_work.ts",
+  output_str: Some("ok\n"),
+});
+
+itest!(config_not_auto_discovered_for_remote_script {
+  args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
+  output_str: Some("ok\n"),
+  http_server: true,
+});
+
+itest!(wasm_streaming_panic_test {
+  args: "run wasm_streaming_panic_test.js",
+  output: "wasm_streaming_panic_test.js.out",
+  exit_code: 1,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+// Regression test for https://github.com/denoland/deno/issues/13897.
+itest!(fetch_async_error_stack {
+  args: "run --quiet -A fetch_async_error_stack.ts",
+  output: "fetch_async_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(unstable_ffi_1 {
+  args: "run unstable_ffi_1.js",
+  output: "unstable_ffi_1.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_2 {
+  args: "run unstable_ffi_2.js",
+  output: "unstable_ffi_2.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_3 {
+  args: "run unstable_ffi_3.js",
+  output: "unstable_ffi_3.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_4 {
+  args: "run unstable_ffi_4.js",
+  output: "unstable_ffi_4.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_5 {
+  args: "run unstable_ffi_5.js",
+  output: "unstable_ffi_5.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_6 {
+  args: "run unstable_ffi_6.js",
+  output: "unstable_ffi_6.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_7 {
+  args: "run unstable_ffi_7.js",
+  output: "unstable_ffi_7.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_8 {
+  args: "run unstable_ffi_8.js",
+  output: "unstable_ffi_8.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_9 {
+  args: "run unstable_ffi_9.js",
+  output: "unstable_ffi_9.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_10 {
+  args: "run unstable_ffi_10.js",
+  output: "unstable_ffi_10.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_11 {
+  args: "run unstable_ffi_11.js",
+  output: "unstable_ffi_11.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_12 {
+  args: "run unstable_ffi_12.js",
+  output: "unstable_ffi_12.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_13 {
+  args: "run unstable_ffi_13.js",
+  output: "unstable_ffi_13.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_14 {
+  args: "run unstable_ffi_14.js",
+  output: "unstable_ffi_14.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(unstable_ffi_15 {
+  args: "run unstable_ffi_15.js",
+  output: "unstable_ffi_15.js.out",
+  exit_code: 70,
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
+});
+
+itest!(future_check1 {
+  args: "run future_check.ts",
+  output: "future_check1.out",
+});
+
+itest!(future_check2 {
+  args: "run --check future_check.ts",
+  output: "future_check2.out",
+  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });

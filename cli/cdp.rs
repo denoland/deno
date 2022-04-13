@@ -4,6 +4,7 @@
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-awaitPromise
@@ -245,12 +246,23 @@ pub struct RemoteObject {
   pub kind: String,
   pub subtype: Option<String>,
   pub class_name: Option<String>,
+  #[serde(default, deserialize_with = "deserialize_some")]
   pub value: Option<Value>,
   pub unserializable_value: Option<UnserializableValue>,
   pub description: Option<String>,
   pub object_id: Option<RemoteObjectId>,
   pub preview: Option<ObjectPreview>,
   pub custom_preview: Option<CustomPreview>,
+}
+
+// Any value that is present is considered Some value, including null.
+// ref: https://github.com/serde-rs/serde/issues/984#issuecomment-314143738
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+  T: Deserialize<'de>,
+  D: Deserializer<'de>,
+{
+  Deserialize::deserialize(deserializer).map(Some)
 }
 
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ObjectPreview

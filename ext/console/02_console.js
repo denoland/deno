@@ -665,7 +665,8 @@
         if (ctxHas(value)) {
           return handleCircular(value, cyan);
         }
-        return inspectObject(value, level, inspectOptions);
+
+        return inspectObject(value, level, inspectOptions, proxyDetails);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -1193,7 +1194,7 @@
     if (circular !== undefined) {
       const index = MapPrototypeGet(circular, value);
       if (index !== undefined) {
-        refIndex = `<ref *${index}> `;
+        refIndex = cyan(`<ref *${index}> `);
       }
     }
 
@@ -1204,6 +1205,7 @@
     value,
     level,
     inspectOptions,
+    proxyDetails,
   ) {
     if (
       ObjectHasOwn(value, customInspect) &&
@@ -1247,9 +1249,17 @@
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       return inspectDate(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
-      return inspectSet(value, level, inspectOptions);
+      return inspectSet(
+        proxyDetails ? proxyDetails[0] : value,
+        level,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
-      return inspectMap(value, level, inspectOptions);
+      return inspectMap(
+        proxyDetails ? proxyDetails[0] : value,
+        level,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {

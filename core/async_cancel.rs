@@ -460,18 +460,18 @@ mod internal {
     /// must refer to a head (`CancelHandle`) node.
     fn cancel(&mut self) {
       let mut head_nn = NonNull::from(self);
-      let mut item_nn;
 
       // Mark the head node as canceled.
-      match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
-        NodeInner::Linked {
-          kind: NodeKind::Head { .. },
-          next: next_nn,
-          ..
-        } => item_nn = next_nn,
-        NodeInner::Unlinked | NodeInner::Canceled => return,
-        _ => unreachable!(),
-      };
+      let mut item_nn =
+        match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
+          NodeInner::Linked {
+            kind: NodeKind::Head { .. },
+            next: next_nn,
+            ..
+          } => next_nn,
+          NodeInner::Unlinked | NodeInner::Canceled => return,
+          _ => unreachable!(),
+        };
 
       // Cancel all item nodes in the chain, waking each stored `Waker`.
       while item_nn != head_nn {
