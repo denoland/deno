@@ -1,4 +1,5 @@
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestOutput;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -19,6 +20,10 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
       op_get_test_origin::decl(),
       op_dispatch_test_event::decl(),
     ])
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
+    })
     .state(move |state| {
       state.put(sender.clone());
       Ok(())
@@ -77,6 +82,21 @@ fn op_dispatch_test_event(
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
   sender.send(event).ok();
+  Ok(())
+}
 
+#[op]
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  is_err: bool,
+) -> Result<(), AnyError> {
+  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
+  let msg = if is_err {
+    TestOutput::PrintStderr(msg)
+  } else {
+    TestOutput::PrintStdout(msg)
+  };
+  sender.send(TestEvent::Output(msg)).ok();
   Ok(())
 }

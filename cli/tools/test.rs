@@ -82,7 +82,8 @@ pub struct TestDescription {
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
   // TODO(caspervonb): add stdout and stderr redirection.
-  Console(String),
+  PrintStdout(String),
+  PrintStderr(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -222,6 +223,7 @@ struct PrettyTestReporter {
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
   last_wait_output_level: usize,
   cwd: Url,
+  did_have_user_output: bool,
 }
 
 impl PrettyTestReporter {
@@ -232,6 +234,7 @@ impl PrettyTestReporter {
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      did_have_user_output: false,
     }
   }
 
@@ -320,9 +323,18 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_output(&mut self, output: &TestOutput) {
-    if self.echo_output {
-      match output {
-        TestOutput::Console(line) => println!("{}", line),
+    if !self.echo_output {
+      return;
+    }
+
+    if !self.did_have_user_output {
+      self.did_have_user_output = true;
+      println!();
+      println!("{}", colors::gray("-------output:-------"));
+    }
+    match output {
+      TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
+        print!("{}", line)
       }
     }
   }
@@ -357,15 +369,18 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----end of output----"));
+      self.did_have_user_output = false;
+    } else if self.last_wait_output_level == 0 {
+      print!(" ");
+    }
+
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
       TestResult::Failed(_) => colors::red("FAILED").to_string(),
     };
-
-    if self.last_wait_output_level == 0 {
-      print!(" ");
-    }
 
     println!(
       "{} {}",
