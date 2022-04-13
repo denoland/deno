@@ -4343,7 +4343,7 @@
           highWaterMark,
         );
       } else {
-        assert(!(ReflectHas(underlyingSource, "type")));
+        assert(!(ReflectHas(underlyingSourceDict, "type")));
         const sizeAlgorithm = extractSizeAlgorithm(strategy);
         const highWaterMark = extractHighWaterMark(strategy, 1);
         setUpReadableStreamDefaultControllerFromUnderlyingSource(
