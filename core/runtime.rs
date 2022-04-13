@@ -86,7 +86,6 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
-  ops: Vec<OpDecl>,
 }
 
 struct DynImportModEvaluate {
@@ -406,7 +405,6 @@ impl JsRuntime {
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
-      ops,
     };
 
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
@@ -451,12 +449,10 @@ impl JsRuntime {
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
-      let op_state = self.op_state();
       let context = bindings::initialize_context(
         scope,
-        &self.ops,
+        &Self::state(self.v8_isolate()).borrow().op_ctxs,
         self.built_from_snapshot,
-        op_state,
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
