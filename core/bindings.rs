@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::error::JsError;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -101,6 +102,12 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       },
       v8::ExternalReference {
         function: abort_wasm_streaming.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: destructure_error.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: terminate.map_fn_to(),
       },
     ])
   });
@@ -228,6 +235,8 @@ pub fn initialize_context<'s>(
     set_wasm_streaming_callback,
   );
   set_func(scope, core_val, "abortWasmStreaming", abort_wasm_streaming);
+  set_func(scope, core_val, "destructureError", destructure_error);
+  set_func(scope, core_val, "terminate", terminate);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -1291,6 +1300,28 @@ fn queue_microtask(
       throw_type_error(scope, "Invalid argument");
     }
   };
+}
+
+fn destructure_error(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let js_error = JsError::from_v8_exception(scope, args.get(0));
+  let object = serde_v8::to_v8(scope, js_error).unwrap();
+  rv.set(object);
+}
+
+fn terminate(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  state.explicit_terminate_exception =
+    Some(v8::Global::new(scope, args.get(0)));
+  scope.terminate_execution();
 }
 
 fn create_host_object(

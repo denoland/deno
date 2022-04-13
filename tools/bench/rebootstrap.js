@@ -1,5 +1,5 @@
-import { dirname, fromFileUrl, join } from "https://deno.land/std/path/mod.ts";
-import { expandGlobSync } from "https://deno.land/std/fs/mod.ts";
+import { dirname, fromFileUrl, join } from "../../test_util/std/path/mod.ts";
+import { expandGlobSync } from "../../test_util/std/fs/mod.ts";
 
 const ROOT_DIR = join(dirname(fromFileUrl(import.meta.url)), "..", "..");
 

@@ -35,6 +35,7 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
@@ -45,6 +46,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -218,6 +220,7 @@ struct PrettyTestReporter {
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
   last_wait_output_level: usize,
+  cwd: Url,
 }
 
 impl PrettyTestReporter {
@@ -227,25 +230,31 @@ impl PrettyTestReporter {
       echo_output,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
+      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
     }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
-    print!("test {} ...", description.name);
+    print!("{} ...", description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
+  }
+
+  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
+    let url = Url::parse(path_or_url).unwrap();
+    if url.scheme() == "file" {
+      self.cwd.make_relative(&url).unwrap()
+    } else {
+      path_or_url.to_string()
+    }
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
     if self.last_wait_output_level < description.level {
       println!();
     }
-    print!(
-      "{}test {} ...",
-      "  ".repeat(description.level),
-      description.name
-    );
+    print!("{}{} ...", "  ".repeat(description.level), description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = description.level;
@@ -287,7 +296,15 @@ impl PrettyTestReporter {
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
-    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+    println!(
+      "{}",
+      colors::gray(format!(
+        "running {} {} from {}",
+        plan.total,
+        inflection,
+        self.to_relative_path_or_remote_url(&plan.origin)
+      ))
+    );
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
@@ -388,14 +405,36 @@ impl TestReporter for PrettyTestReporter {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
-        println!("{}", description.name);
+        println!(
+          "{} {} {}",
+          colors::gray(
+            self.to_relative_path_or_remote_url(&description.origin)
+          ),
+          colors::gray(">"),
+          description.name
+        );
         println!("{}", error);
         println!();
       }
 
-      println!("failures:\n");
+      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
+        BTreeMap::default();
       for (description, _) in &summary.failures {
-        println!("\t{}", description.name);
+        let test_names = grouped_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        test_names.push(description.name.clone());
+      }
+
+      println!("failures:\n");
+      for (origin, test_names) in &grouped_by_origin {
+        println!(
+          "\t{}",
+          colors::gray(self.to_relative_path_or_remote_url(origin))
+        );
+        for test_name in test_names {
+          println!("\t{}", test_name);
+        }
       }
     }
 

@@ -169,6 +169,10 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  /// The error that was passed to an explicit `Deno.core.terminate` call.
+  /// It will be retrieved by `exception_to_err_result` and used as an error
+  /// instead of any other exceptions.
+  pub(crate) explicit_terminate_exception: Option<v8::Global<v8::Value>>,
   waker: AtomicWaker,
 }
 
@@ -384,6 +388,7 @@ impl JsRuntime {
       op_state: op_state.clone(),
       op_ctxs,
       have_unpolled_ops: false,
+      explicit_terminate_exception: None,
       waker: AtomicWaker::new(),
     })));
 
@@ -1017,19 +1022,33 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
   if is_terminating_exception {
-    // TerminateExecution was called. Cancel exception termination so that the
+    // TerminateExecution was called. Cancel isolate termination so that the
     // exception can be created..
     scope.cancel_terminate_execution();
 
-    // Maybe make a new exception object.
-    if exception.is_null_or_undefined() {
-      let message = v8::String::new(scope, "execution terminated").unwrap();
-      exception = v8::Exception::error(scope, message);
-    }
+    // If the termination is the result of a `Deno.core.terminate` call, we want
+    // to use the exception that was passed to it rather than the exception that
+    // was passed to this function.
+    exception = state
+      .explicit_terminate_exception
+      .take()
+      .map(|exception| v8::Local::new(scope, exception))
+      .unwrap_or_else(|| {
+        // Maybe make a new exception object.
+        if exception.is_null_or_undefined() {
+          let message = v8::String::new(scope, "execution terminated").unwrap();
+          v8::Exception::error(scope, message)
+        } else {
+          exception
+        }
+      });
   }
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
@@ -1039,9 +1058,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
       js_error.message.trim_start_matches("Uncaught ")
     );
   }
-
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
   let js_error = (state.js_error_create_fn)(js_error);
 
   if is_terminating_exception {
@@ -1222,7 +1238,14 @@ impl JsRuntime {
     // Update status after evaluating.
     status = module.get_status();
 
-    if let Some(value) = maybe_value {
+    let explicit_terminate_exception =
+      state_rc.borrow_mut().explicit_terminate_exception.take();
+    if let Some(exception) = explicit_terminate_exception {
+      let exception = v8::Local::new(tc_scope, exception);
+      sender
+        .send(exception_to_err_result(tc_scope, exception, false))
+        .expect("Failed to send module evaluation error.");
+    } else if let Some(value) = maybe_value {
       assert!(
         status == v8::ModuleStatus::Evaluated
           || status == v8::ModuleStatus::Errored
@@ -3093,8 +3116,8 @@ assertEquals(1, notify_return_value);
         const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
         const a2b = a2.subarray(0, 3);
-        
-        
+
+
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
@@ -3116,7 +3139,7 @@ assertEquals(1, notify_return_value);
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
-        
+
         const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
         const w32 = new Uint32Array(wmem.buffer);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;
