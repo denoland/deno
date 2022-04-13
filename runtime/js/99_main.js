@@ -558,6 +558,7 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
+    defineEventHandler(window, "error");
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
 

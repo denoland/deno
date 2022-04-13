@@ -140,14 +140,16 @@
         error: null,
       });
 
-      let handled = false;
-
       this.dispatchEvent(event);
-      if (event.defaultPrevented) {
-        handled = true;
+      // Don't bubble error event to window for loader errors (`!e.fileName`).
+      // TODO(nayeemrmn): Currently these are never bubbled because worker
+      // error event fields aren't populated correctly and `e.fileName` is
+      // always empty.
+      if (e.fileName && !event.defaultPrevented) {
+        window.dispatchEvent(event);
       }
 
-      return handled;
+      return event.defaultPrevented;
     }
 
     #pollControl = async () => {
@@ -165,7 +167,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              throw new Error("Unhandled error event in child worker.");
+              throw new Error("Unhandled error in child worker.");
             }
             break;
           }

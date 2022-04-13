@@ -10,7 +10,6 @@ use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use serde::Deserialize;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -135,17 +134,11 @@ pub fn op_webstorage_key(
   Ok(key)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetArgs {
-  key_name: String,
-  key_value: String,
-}
-
 #[op]
 pub fn op_webstorage_set(
   state: &mut OpState,
-  args: SetArgs,
+  key: String,
+  value: String,
   persistent: bool,
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -165,7 +158,7 @@ pub fn op_webstorage_set(
 
   let mut stmt = conn
     .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
-  stmt.execute(params![args.key_name, args.key_value])?;
+  stmt.execute(params![key, value])?;
 
   Ok(())
 }
