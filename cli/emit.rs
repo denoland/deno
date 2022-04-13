@@ -339,7 +339,7 @@ pub fn is_emittable(
 pub struct CheckOptions {
   /// The check flag from the option which can effect the filtering of
   /// diagnostics in the emit result.
-  pub check: flags::CheckFlag,
+  pub type_check_mode: flags::TypeCheckMode,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -430,7 +430,7 @@ pub fn check_and_maybe_emit(
     root_names,
   })?;
 
-  let diagnostics = if options.check == flags::CheckFlag::Local {
+  let diagnostics = if options.type_check_mode == flags::TypeCheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
@@ -986,8 +986,7 @@ impl Hook for BundleHook {
         value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
           span,
           value: module_record.file_name.to_string().into(),
-          kind: ast::StrKind::Synthesized,
-          has_escape: false,
+          raw: None,
         }))),
       },
       ast::KeyValueProp {

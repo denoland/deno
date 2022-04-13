@@ -6,13 +6,13 @@ use pretty_assertions::assert_eq;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Stdio;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 use util::http_server;
 
 #[test]
 fn output_dir_exists() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let vendor_dir = t.path().join("vendor");
   fs::write(t.path().join("mod.ts"), "").unwrap();
   fs::create_dir_all(&vendor_dir).unwrap();
@@ -75,7 +75,7 @@ fn output_dir_exists() {
 
 #[test]
 fn import_map_output_dir() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let vendor_dir = t.path().join("vendor");
   fs::write(t.path().join("mod.ts"), "").unwrap();
   fs::create_dir_all(&vendor_dir).unwrap();
@@ -109,7 +109,7 @@ fn import_map_output_dir() {
 #[test]
 fn standard_test() {
   let _server = http_server();
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let vendor_dir = t.path().join("vendor2");
   fs::write(
     t.path().join("my_app.ts"),
@@ -186,7 +186,7 @@ fn standard_test() {
 #[test]
 fn remote_module_test() {
   let _server = http_server();
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let vendor_dir = t.path().join("vendor");
 
   let deno = util::deno_cmd()
@@ -239,7 +239,7 @@ fn remote_module_test() {
 #[test]
 fn existing_import_map() {
   let _server = http_server();
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let vendor_dir = t.path().join("vendor");
   fs::write(
     t.path().join("mod.ts"),
@@ -274,7 +274,7 @@ fn existing_import_map() {
 #[test]
 fn dynamic_import() {
   let _server = http_server();
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let vendor_dir = t.path().join("vendor");
   fs::write(
     t.path().join("mod.ts"),
@@ -327,7 +327,7 @@ fn dynamic_import() {
 #[test]
 fn dynamic_non_analyzable_import() {
   let _server = http_server();
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   fs::write(
     t.path().join("mod.ts"),
     "import {Logger} from 'http://localhost:4545/vendor/dynamic_non_analyzable.ts'; new Logger().log('outputted');",
