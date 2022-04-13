@@ -92,7 +92,7 @@ impl Serialize for WorkerControlEvent {
       | WorkerControlEvent::Error(error) => {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => json!({
-            "message": js_error.message,
+            "message": js_error.exception_message,
             "fileName": js_error.script_resource_name,
             "lineNumber": js_error.line_number,
             "columnNumber": js_error.start_column,
