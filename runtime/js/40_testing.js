@@ -957,6 +957,9 @@
     const origin = getTestOrigin();
     const originalConsole = globalThis.console;
 
+    // TODO(bartlomieju): we should use regular console and instead
+    // override "op_print" on the Rust side to capture both console
+    // and `Deno.core.print`
     globalThis.console = new Console(reportTestConsoleOutput);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
