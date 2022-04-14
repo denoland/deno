@@ -436,7 +436,7 @@ impl TestReporter for PrettyTestReporter {
     }
 
     if !summary.failures.is_empty() {
-      println!("\n{}\n", colors::red_bg("ERRORS"));
+      println!("\n{}\n", colors::black_on_red("ERRORS"));
       for (description, error) in &summary.failures {
         println!(
           "{} {} {}",
@@ -464,7 +464,7 @@ impl TestReporter for PrettyTestReporter {
         test_names.push(description.name.clone());
       }
 
-      println!("{}\n", colors::red_bg("FAILURES"));
+      println!("{}\n", colors::black_on_red("FAILURES"));
       for (origin, test_names) in &grouped_by_origin {
         println!(
           "\t{} {}",
@@ -522,7 +522,11 @@ impl TestReporter for PrettyTestReporter {
       );
     }
     if summary.filtered_out > 0 {
-      println!("   {} {}", colors::gray("filtered:"), colors::gray(format!("{}", summary.filtered_out)));
+      println!(
+        "   {} {}",
+        colors::gray("filtered:"),
+        colors::gray(format!("{}", summary.filtered_out))
+      );
     }
     println!(
       "       {} {}",
