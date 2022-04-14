@@ -10,7 +10,7 @@ use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
-use crate::source_map::get_orig_position;
+use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRuntime;
 use crate::PromiseId;
 use crate::ResourceId;
@@ -1345,9 +1345,11 @@ fn apply_source_map(
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   if let Some(source_map_getter) = &state.source_map_getter {
-    let mut location =
-      serde_v8::from_v8::<Location>(scope, args.get(0)).unwrap();
-    let (f, l, c, _) = get_orig_position(
+    let mut location = match serde_v8::from_v8::<Location>(scope, args.get(0)) {
+      Ok(location) => location,
+      Err(error) => return throw_type_error(scope, error.to_string()),
+    };
+    let (f, l, c, _) = apply_source_map_(
       location.file_name,
       location.line_number.into(),
       location.column_number.into(),

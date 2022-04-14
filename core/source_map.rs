@@ -21,7 +21,7 @@ pub trait SourceMapGetter: Sync + Send {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-pub fn get_orig_position<G: SourceMapGetter + ?Sized>(
+pub fn apply_source_map<G: SourceMapGetter + ?Sized>(
   file_name: String,
   line_number: i64,
   column_number: i64,

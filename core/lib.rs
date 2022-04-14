@@ -98,8 +98,6 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
-pub use crate::source_map::get_orig_position;
-pub use crate::source_map::CachedMaps;
 pub use crate::source_map::SourceMapGetter;
 pub use deno_ops::op;
 

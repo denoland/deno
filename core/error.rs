@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::runtime::JsRuntime;
-use crate::source_map::get_orig_position;
+use crate::source_map::apply_source_map;
 use anyhow::Error;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -262,7 +262,7 @@ impl JsError {
           // V8's column numbers are 0-based, we want 1-based.
           let c = c + 1;
           if let Some(source_map_getter) = &state.source_map_getter {
-            let (f, l, c, _) = get_orig_position(
+            let (f, l, c, _) = apply_source_map(
               f,
               l,
               c,
