@@ -34,6 +34,7 @@ console.log(`Opened PR at ${openedPr.data.url}`);
 function getPrBody() {
   let text = `Bumped versions for ${cliCrate.version}\n\n` +
     `Please ensure:\n` +
+    `- [ ] Target branch is correct\n` +
     `- [ ] Crate versions are bumped correctly\n` +
     `- [ ] deno_std version is incremented in the code\n` +
     `- [ ] Releases.md is updated correctly\n\n` +
