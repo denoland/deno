@@ -222,6 +222,7 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  in_test_count: usize,
   last_wait_output_level: usize,
   cwd: Url,
   did_have_user_output: bool,
@@ -232,6 +233,7 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      in_test_count: 0,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
@@ -244,6 +246,7 @@ impl PrettyTestReporter {
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
+    self.in_test_count += 1;
   }
 
   fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
@@ -323,7 +326,7 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
 
-    if !self.did_have_user_output {
+    if !self.did_have_user_output && self.in_test_count > 0 {
       self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("------- output -------"));
@@ -350,6 +353,8 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    self.in_test_count -= 1;
+
     if self.concurrent {
       self.force_report_wait(description);
 
