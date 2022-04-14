@@ -424,7 +424,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     fn format_error(error: &str) -> String {
-      let lines: Vec<&str> = error.split("\n").collect();
+      let lines: Vec<&str> = error.split('\n').collect();
       let mut output = vec![colors::red(lines[0]).to_string()];
       for line in &lines[1..] {
         if line.contains("(deno:") {
