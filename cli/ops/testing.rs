@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use std::io::Read;
 use std::os::windows::prelude::FromRawHandle;
+use std::rc::Rc;
 
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestOutput;
@@ -27,6 +29,10 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
     TestOutput::Stderr(bytes)
   });
 
+  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
+  let stdout_writer = Rc::new(RefCell::new(Some(stdout_writer)));
+  let stderr_writer = Rc::new(RefCell::new(Some(stderr_writer)));
+
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
@@ -41,11 +47,17 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
     .state(move |state| {
       state.resource_table.replace(
         1,
-        StdFileResource::stdio(&pipe_writer_to_file(&stdout_writer), "stdout"),
+        StdFileResource::stdio(
+          &pipe_writer_to_file(&stdout_writer.borrow_mut().take().unwrap()),
+          "stdout",
+        ),
       );
       state.resource_table.replace(
         2,
-        StdFileResource::stdio(&pipe_writer_to_file(&stderr_writer), "stderr"),
+        StdFileResource::stdio(
+          &pipe_writer_to_file(&stderr_writer.borrow_mut().take().unwrap()),
+          "stderr",
+        ),
       );
       state.put(sender.clone());
       Ok(())
