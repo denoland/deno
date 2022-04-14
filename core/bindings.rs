@@ -1361,7 +1361,6 @@ fn apply_source_map(
     location.column_number = c as u32;
     rv.set(serde_v8::to_v8(scope, location).unwrap());
   } else {
-    dbg!();
     rv.set(args.get(0));
   }
 }

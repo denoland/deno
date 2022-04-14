@@ -285,7 +285,7 @@ impl JsError {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
           {
-            if !file_name.starts_with("deno:") {
+            if !file_name.trim_start_matches('[').starts_with("deno:") {
               // Source lookup expects a 0-based line number, ours are 1-based.
               source_line = source_map_getter
                 .get_source_line(file_name, (line_number - 1) as usize);
@@ -296,7 +296,7 @@ impl JsError {
         }
       } else if let Some(frame) = frames.first() {
         if let Some(file_name) = &frame.file_name {
-          if !file_name.starts_with("deno:") {
+          if !file_name.trim_start_matches('[').starts_with("deno:") {
             source_line = msg
               .get_source_line(scope)
               .map(|v| v.to_rust_string_lossy(scope));
