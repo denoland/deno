@@ -1,7 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::deno_dir;
+use crate::file_fetcher::CacheSetting;
+use crate::file_fetcher::FileFetcher;
+use crate::http_cache::HttpCache;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
+use deno_core::DUMMY_SPECIFIER;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
@@ -19,6 +26,18 @@ use session::EvaluationOutput;
 use session::ReplSession;
 use std::fs::File;
 use std::io::Read;
+
+/// A structure representing all information we need to load and run an eval-file
+#[derive(Debug, Clone)]
+pub struct EvalFileConfig {
+  pub paths: Vec<String>,
+}
+
+impl EvalFileConfig {
+  pub fn new(paths: Vec<String>) -> Result<Self, AnyError> {
+    Ok(Self { paths })
+  }
+}
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
@@ -60,17 +79,28 @@ async fn read_line_and_poll(
   }
 }
 
-fn read_eval_file(eval_file_path: String) -> Result<String, AnyError> {
-  let mut file = File::open(eval_file_path)?;
-  let mut data = Vec::new();
-  file.read_to_end(&mut data)?;
-  Ok(String::from_utf8(data)?)
+async fn read_eval_file(
+  ps: &ProcState,
+  config: EvalFileConfig,
+) -> Result<Vec<String>, AnyError> {
+  let mut eval_sources: Vec<String> = Vec::new();
+  for path in config.paths {
+    let specifier =
+      deno_core::resolve_import(path.as_str(), deno_core::DUMMY_SPECIFIER)?;
+    let file = ps
+      .file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await?;
+    eval_sources.push((*file.source).clone());
+  }
+
+  Ok(eval_sources)
 }
 
 pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
-  maybe_eval_file: Option<String>,
+  maybe_eval_file_config: Option<EvalFileConfig>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
@@ -84,15 +114,17 @@ pub async fn run(
   let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
 
-  if let Some(eval_file) = maybe_eval_file {
-    match read_eval_file(eval_file) {
-      Ok(eval_file_content) => {
-        let output = repl_session
-          .evaluate_line_and_get_output(&eval_file_content)
-          .await?;
-        // only output errors
-        if let EvaluationOutput::Error(error_text) = output {
-          println!("error in --eval-file flag. {}", error_text);
+  if let Some(eval_file_config) = maybe_eval_file_config {
+    match read_eval_file(ps, eval_file_config).await {
+      Ok(eval_sources) => {
+        for eval_source in eval_sources {
+          let output = repl_session
+            .evaluate_line_and_get_output(&eval_source)
+            .await?;
+          // only output errors
+          if let EvaluationOutput::Error(error_text) = output {
+            println!("error in --eval-file flag. {}", error_text);
+          }
         }
       }
       Err(e) => {
