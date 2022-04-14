@@ -14,7 +14,7 @@
       "references": true,
       "test": true
     },
-    "config": "",
+    "config": null,
     "importMap": null,
     "lint": true,
     "suggest": {
@@ -25,6 +25,12 @@
       "imports": {
         "hosts": {}
       }
+    },
+    "testing": {
+      "args": [
+        "--allow-all"
+      ],
+      "enable": true
     },
     "tlsCertificate": null,
     "unsafelyIgnoreCertificateErrors": null,
@@ -63,6 +69,9 @@
     "workspace": {
       "configuration": true,
       "workspaceFolders": true
+    },
+    "experimental": {
+      "testingApi": true
     }
   }
 }

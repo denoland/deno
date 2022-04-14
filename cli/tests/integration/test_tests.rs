@@ -13,9 +13,9 @@ fn no_color() {
     false,
   );
   // ANSI escape codes should be stripped.
-  assert!(out.contains("test success ... ok"));
-  assert!(out.contains("test fail ... FAILED"));
-  assert!(out.contains("test ignored ... ignored"));
+  assert!(out.contains("success ... ok"));
+  assert!(out.contains("fail ... FAILED"));
+  assert!(out.contains("ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
@@ -178,6 +178,12 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
   args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
+});
+
+itest!(ops_sanitizer_missing_details {
+  args: "test --allow-write --allow-read test/ops_sanitizer_missing_details.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_missing_details.out",
 });
 
 itest!(ops_sanitizer_nexttick {

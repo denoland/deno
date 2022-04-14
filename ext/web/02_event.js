@@ -7,6 +7,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const consoleInternal = window.__bootstrap.console;
@@ -32,6 +33,7 @@
     ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
     SafeArrayIterator,
+    StringPrototypeStartsWith,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -787,7 +789,11 @@
 
     setCurrentTarget(eventImpl, tuple.item);
 
-    innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
+    try {
+      innerInvokeEventListeners(eventImpl, getListeners(tuple.item));
+    } catch (error) {
+      reportException(error);
+    }
   }
 
   function normalizeAddEventHandlerOptions(
@@ -1317,6 +1323,49 @@
     });
   }
 
+  let reportExceptionStackedCalls = 0;
+
+  // https://html.spec.whatwg.org/#report-the-exception
+  function reportException(error) {
+    reportExceptionStackedCalls++;
+    const jsError = core.destructureError(error);
+    const message = jsError.exceptionMessage;
+    let filename = "";
+    let lineno = 0;
+    let colno = 0;
+    if (jsError.frames.length > 0) {
+      filename = jsError.frames[0].fileName;
+      lineno = jsError.frames[0].lineNumber;
+      colno = jsError.frames[0].columnNumber;
+    } else {
+      const jsError = core.destructureError(new Error());
+      for (const frame of jsError.frames) {
+        if (
+          typeof frame.fileName == "string" &&
+          !StringPrototypeStartsWith(frame.fileName, "deno:")
+        ) {
+          filename = frame.fileName;
+          lineno = frame.lineNumber;
+          colno = frame.columnNumber;
+          break;
+        }
+      }
+    }
+    const event = new ErrorEvent("error", {
+      cancelable: true,
+      message,
+      filename,
+      lineno,
+      colno,
+      error,
+    });
+    // Avoid recursing `reportException()` via error handlers more than once.
+    if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
+      core.terminate(error);
+    }
+    reportExceptionStackedCalls--;
+  }
+
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
@@ -1333,6 +1382,7 @@
     listenerCount,
   };
   window.__bootstrap.event = {
+    reportException,
     setIsTrusted,
     setTarget,
     defineEventHandler,

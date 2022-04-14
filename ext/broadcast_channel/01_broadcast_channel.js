@@ -117,7 +117,7 @@
       dispatch(this, this[_name], new Uint8Array(data));
 
       // Send to listeners in other VMs.
-      defer(() => core.opAsync("op_broadcast_send", [rid, this[_name]], data));
+      defer(() => core.opAsync("op_broadcast_send", rid, this[_name], data));
     }
 
     close() {

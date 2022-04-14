@@ -35,7 +35,7 @@ type Request = (
 /// A "server" that handles requests from the language server to cache modules
 /// in its own thread.
 #[derive(Debug)]
-pub(crate) struct CacheServer(mpsc::UnboundedSender<Request>);
+pub struct CacheServer(mpsc::UnboundedSender<Request>);
 
 impl CacheServer {
   pub async fn new(
@@ -121,7 +121,7 @@ impl CacheServer {
 }
 
 /// Calculate a version for for a given path.
-pub(crate) fn calculate_fs_version(path: &Path) -> Option<String> {
+pub fn calculate_fs_version(path: &Path) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {
     if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
@@ -146,7 +146,7 @@ fn parse_metadata(
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) enum MetadataKey {
+pub enum MetadataKey {
   /// Represent the `x-deno-warning` header associated with the document
   Warning,
 }
@@ -158,7 +158,7 @@ struct Metadata {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct CacheMetadata {
+pub struct CacheMetadata {
   cache: http_cache::HttpCache,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
 }

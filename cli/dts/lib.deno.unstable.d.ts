@@ -1296,6 +1296,22 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
+  export interface Listener extends AsyncIterable<Conn> {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Make the listener not block the event loop from finishing.
+     */
+    unref(): void;
+  }
+
   /** **UNSTABLE**: New API should be tested first.
    *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
@@ -1360,11 +1376,11 @@ declare interface WorkerOptions {
    * Set deno.namespace to `true` to make `Deno` namespace and all of its
    * methods available to the worker environment. Defaults to `false`.
    *
-   * Configure deno.permissions options to change the level of access the worker will
-   * have. By default it will inherit the permissions of its parent thread. The permissions
+   * Configure permissions options to change the level of access the worker will
+   * have. By default it will have no permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    * - "inherit" will take the permissions of the thread the worker is created in
-   * - You can disable/enable permissions all together by passing a boolean
+   * - "none" will use the default behavior and have no permission
    * - You can provide a list of routes relative to the file the worker
    *   is created in to limit the access of the worker (read/write permissions only)
    *

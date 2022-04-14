@@ -92,7 +92,7 @@ impl Serialize for WorkerControlEvent {
       | WorkerControlEvent::Error(error) => {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => json!({
-            "message": js_error.message,
+            "message": js_error.exception_message,
             "fileName": js_error.script_resource_name,
             "lineNumber": js_error.line_number,
             "columnNumber": js_error.start_column,
@@ -119,6 +119,7 @@ pub struct WebWorkerInternalHandle {
   has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
+  pub name: String,
   pub worker_type: WebWorkerType,
 }
 
@@ -264,6 +265,7 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
+  name: String,
   worker_type: WebWorkerType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
@@ -272,13 +274,14 @@ fn create_handles(
   let has_terminated = Arc::new(AtomicBool::new(false));
   let terminate_waker = Arc::new(AtomicWaker::new());
   let internal_handle = WebWorkerInternalHandle {
-    sender: ctrl_tx,
+    name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
     has_terminated: has_terminated.clone(),
     terminate_waker: terminate_waker.clone(),
     isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
+    sender: ctrl_tx,
     worker_type,
   };
   let external_handle = SendableWebWorkerHandle {
@@ -386,55 +389,48 @@ impl WebWorker {
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
+      deno_webstorage::init(None).disable(),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
-      // Permissions ext (worker specific state)
-      perm_ext,
-    ];
-
-    // Runtime ops that are always initialized for WebWorkers
-    let runtime_exts = vec![
+      // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
       ),
+      // Extensions providing Deno.* features
+      ops::fs_events::init().enabled(options.use_deno_namespace),
+      ops::fs::init().enabled(options.use_deno_namespace),
       ops::io::init(),
+      ops::io::init_stdio().enabled(options.use_deno_namespace),
+      deno_tls::init().enabled(options.use_deno_namespace),
+      deno_net::init::<Permissions>(
+        options.root_cert_store.clone(),
+        unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      )
+      .enabled(options.use_deno_namespace),
+      ops::os::init(Some(
+        options
+          .maybe_exit_code
+          .expect("Worker has access to OS ops but exit code was not passed."),
+      ))
+      .enabled(options.use_deno_namespace),
+      ops::permissions::init().enabled(options.use_deno_namespace),
+      ops::process::init().enabled(options.use_deno_namespace),
+      ops::signal::init().enabled(options.use_deno_namespace),
+      ops::tty::init().enabled(options.use_deno_namespace),
+      deno_http::init().enabled(options.use_deno_namespace),
+      ops::http::init().enabled(options.use_deno_namespace),
+      // Permissions ext (worker specific state)
+      perm_ext,
     ];
 
-    // Extensions providing Deno.* features
-    let deno_ns_exts = if options.use_deno_namespace {
-      vec![
-        ops::fs_events::init(),
-        ops::fs::init(),
-        deno_tls::init(),
-        deno_net::init::<Permissions>(
-          options.root_cert_store.clone(),
-          unstable,
-          options.unsafely_ignore_certificate_errors.clone(),
-        ),
-        ops::os::init(Some(options.maybe_exit_code.expect(
-          "Worker has access to OS ops but exit code was not passed.",
-        ))),
-        ops::permissions::init(),
-        ops::process::init(),
-        ops::signal::init(),
-        ops::tty::init(),
-        deno_http::init(),
-        ops::http::init(),
-        ops::io::init_stdio(),
-      ]
-    } else {
-      vec![]
-    };
-
     // Append exts
-    extensions.extend(runtime_exts);
-    extensions.extend(deno_ns_exts); // May be empty
     extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -459,7 +455,7 @@ impl WebWorker {
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
       let (internal_handle, external_handle) =
-        create_handles(handle, options.worker_type);
+        create_handles(handle, name.clone(), options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());

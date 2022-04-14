@@ -119,8 +119,8 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::init(options.origin_storage_dir.clone()),
-      deno_crypto::init(options.seed),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
+      deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
@@ -217,6 +217,10 @@ impl MainWorker {
   async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      // Not using biased mode leads to non-determinism for relatively simple
+      // programs.
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")

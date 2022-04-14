@@ -173,13 +173,16 @@
           preOp.opsCompletedAsync;
 
         if (dispatchedDiff > completedDiff) {
-          const [name, hint] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = dispatchedDiff - completedDiff;
           let message = `${count} async operation${
             count === 1 ? "" : "s"
           } to ${name} ${
             count === 1 ? "was" : "were"
-          } started in this test, but never completed. This is often caused by not ${hint}.`;
+          } started in this test, but never completed.`;
+          if (hint) {
+            message += ` This is often caused by not ${hint}.`;
+          }
           const traces = [];
           for (const [id, { opName, stack }] of postTraces) {
             if (opName !== key) continue;
@@ -195,7 +198,7 @@
           }
           ArrayPrototypePush(details, message);
         } else if (dispatchedDiff < completedDiff) {
-          const [name] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = completedDiff - dispatchedDiff;
           ArrayPrototypePush(
             details,
@@ -203,7 +206,8 @@
               count === 1 ? "was" : "were"
             } started before this test, but ${
               count === 1 ? "was" : "were"
-            } completed during the test. Async operations should not complete in a test if they were not started in that test.`,
+            } completed during the test. Async operations should not complete in a test if they were not started in that test.
+            ${hint ? `This is often caused by not ${hint}.` : ""}`,
           );
         }
       }
@@ -636,6 +640,7 @@
     optionsOrFn,
     maybeFn,
   ) {
+    core.opSync("op_bench_check_unstable");
     let benchDef;
     const defaults = {
       ignore: false,
@@ -746,23 +751,37 @@
     return inspectArgs([error]);
   }
 
+  /**
+   * @param {string | { include?: string[], exclude?: string[] }} filter
+   * @returns {(def: { name: string }) => boolean}
+   */
   function createTestFilter(filter) {
+    if (!filter) {
+      return () => true;
+    }
+
+    const regex =
+      typeof filter === "string" && StringPrototypeStartsWith(filter, "/") &&
+        StringPrototypeEndsWith(filter, "/")
+        ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
+        : undefined;
+
+    const filterIsObject = filter != null && typeof filter === "object";
+
     return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
-        }
-
-        return StringPrototypeIncludes(def.name, filter);
+      if (regex) {
+        return RegExpPrototypeTest(regex, def.name);
       }
-
-      return true;
+      if (filterIsObject) {
+        if (filter.include && !filter.include.includes(def.name)) {
+          return false;
+        } else if (filter.exclude && filter.exclude.includes(def.name)) {
+          return false;
+        } else {
+          return true;
+        }
+      }
+      return StringPrototypeIncludes(def.name, filter);
     };
   }
 
@@ -774,6 +793,7 @@
     const step = new TestStep({
       name: test.name,
       parent: undefined,
+      parentContext: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
@@ -1046,8 +1066,9 @@
    * }} TestStepDefinition
    *
    * @typedef {{
-   *   name: string;
+   *   name: string,
    *   parent: TestStep | undefined,
+   *   parentContext: TestContext | undefined,
    *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -1079,6 +1100,10 @@
 
     get parent() {
       return this.#params.parent;
+    }
+
+    get parentContext() {
+      return this.#params.parentContext;
     }
 
     get rootTestDescription() {
@@ -1251,6 +1276,18 @@
     return {
       [SymbolToStringTag]: "TestContext",
       /**
+       * The current test name.
+       */
+      name: parentStep.name,
+      /**
+       * Parent test context.
+       */
+      parent: parentStep.parentContext ?? undefined,
+      /**
+       * File Uri of the test code.
+       */
+      origin: parentStep.rootTestDescription.origin,
+      /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}
        */
@@ -1266,6 +1303,7 @@
         const subStep = new TestStep({
           name: definition.name,
           parent: parentStep,
+          parentContext: this,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,

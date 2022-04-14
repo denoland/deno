@@ -39,11 +39,9 @@
     ArrayPrototypeSome,
     Error,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeHas,
     SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
@@ -183,10 +181,7 @@
   ) {
     return async function respondWith(resp) {
       try {
-        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-          resp = await resp;
-        }
-
+        resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
@@ -244,7 +239,9 @@
         try {
           await core.opAsync(
             "op_http_write_headers",
-            [streamRid, innerResp.status ?? 200, innerResp.headerList],
+            streamRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
             isStreamingResponseBody ? null : respBody,
           );
         } catch (error) {
@@ -331,7 +328,7 @@
           httpConn.close();
 
           if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", { rid: wsRid });
+            await core.opAsync("op_ws_close", wsRid);
 
             ws[_readyState] = WebSocket.CLOSED;
 
@@ -358,8 +355,7 @@
           }
         }
       } finally {
-        if (SetPrototypeHas(httpConn.managedResources, streamRid)) {
-          SetPrototypeDelete(httpConn.managedResources, streamRid);
+        if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
           core.close(streamRid);
         }
       }

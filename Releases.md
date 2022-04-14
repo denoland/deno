@@ -6,6 +6,55 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.20.5 / 2022.04.07
+
+- feat(lsp/unstable): add experimental testing API (#13798)
+- feat(lsp/unstable): support tasks in the config file (#14139)
+- feat(unstable): add ref/unref to Listener (#13961)
+- fix(cli/install): preserve compat flag (#14223)
+- fix(ext/crypto): check extractable in exportKey (#14222)
+
+### 1.20.4 / 2022.03.31
+
+- fix(compile): follow redirects when resolving (#14161)
+- fix(ext/fetch): extend deprecated fetch() overload with `string | Request`
+  (#14134)
+- fix(lsp): watch .jsonc files (#14135)
+- fix(runtime/ops/signal.rs): Add Solaris signals (#13931)
+- fix(task): handle `PATHEXT` with trailing semi-colon (#14140)
+- perf: micro-optimize core.encode (#14120)
+
+### 1.20.3 / 2022.03.25
+
+- fix(ext/fetch): deprecate URL as the first arg in types (#14113)
+- fix(ext/ffi): enforce unstable check on ops (#14115)
+- fix(runtime): do not modify user provided `cmd` array in `Deno.run` (#14109)
+
+### 1.20.2 / 2022.03.24
+
+- feat(lsp): support deno.enablePaths setting (#13978)
+- fix(bench): require --unstable flag in JavaScript (#14091)
+- fix(test): don't error on missing op details (#14074)
+- fix(compat): Changes an instance of collect::<Vec<_>>().join("") to
+  collect::<String>() (#14082)
+- fix(tests): do not use global env vars in install tests (#14078)
+- fix(ext/fetch): Connect async error stack with user code (#13899)
+- fix(unstable): upgrade deno_task_shell to 0.2 (#14073)
+- fix: upgrade to swc_ecmascript 0.137.0 (#14067)
+- fix(fetch): Fix uncaught rejection panic with
+  `WebAssembly.instantiateStreaming` (#13925)
+- fix(core): variadic opSync/opAsync (#14062)
+- fix(runtime): actually don't inherit runtime permissions (#14024)
+- fix(ext/console): fix error with a Proxy of a Map (#14032)
+- fix(ops): throw TypeError on op return failure (#14033)
+- fix(cli): improve `deno compile` error messages (#13944)
+- fix(cli): add support for DENO_CERT in upgrade command (#13862)
+- fix(config-file): fix config-file.v1.json schema to allow colons in the task
+  name (#14013)
+- perf(http): avoid Set.has() when closing connection resource (#14085)
+- perf(http): avoid checking promise every request (#14079)
+- perf(http): avoid per header alloc (#14051)
+
 ### 1.20.1 / 2022.03.16
 
 - BREAKING: don't inherit permissions by default (#13668)

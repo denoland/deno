@@ -90,9 +90,12 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
 /// A `JsError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JsError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsError {
-  pub message: String,
+  pub name: Option<String>,
+  pub message: Option<String>,
+  pub exception_message: String,
   pub cause: Option<Box<JsError>>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
@@ -103,7 +106,7 @@ pub struct JsError {
   pub stack: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
@@ -190,84 +193,88 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames, stack, cause) =
-      if is_instance_of_error(scope, exception) {
-        // The exception is a JS Error object.
-        let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
-        let cause = get_property(scope, exception, "cause");
-        let e: NativeJsError =
-          serde_v8::from_v8(scope, exception.into()).unwrap();
-        // Get the message by formatting error.name and error.message.
-        let name = e.name.unwrap_or_else(|| "Error".to_string());
-        let message_prop = e.message.unwrap_or_else(|| "".to_string());
-        let message = if !name.is_empty() && !message_prop.is_empty() {
-          format!("Uncaught {}: {}", name, message_prop)
-        } else if !name.is_empty() {
-          format!("Uncaught {}", name)
-        } else if !message_prop.is_empty() {
-          format!("Uncaught {}", message_prop)
-        } else {
-          "Uncaught".to_string()
-        };
-        let cause = cause.and_then(|cause| {
-          if cause.is_undefined() || seen.contains(&cause) {
-            None
-          } else {
-            seen.insert(cause);
-            Some(Box::new(JsError::inner_from_v8_exception(
-              scope, cause, seen,
-            )))
-          }
-        });
-
-        // Access error.stack to ensure that prepareStackTrace() has been called.
-        // This should populate error.__callSiteEvals.
-        let stack = get_property(scope, exception, "stack");
-        let stack: Option<v8::Local<v8::String>> =
-          stack.and_then(|s| s.try_into().ok());
-        let stack = stack.map(|s| s.to_rust_string_lossy(scope));
-
-        // Read an array of structured frames from error.__callSiteEvals.
-        let frames_v8 = get_property(scope, exception, "__callSiteEvals");
-        // Ignore non-array values
-        let frames_v8: Option<v8::Local<v8::Array>> =
-          frames_v8.and_then(|a| a.try_into().ok());
-
-        // Convert them into Vec<JsStackFrame>
-        let frames: Vec<JsStackFrame> = match frames_v8 {
-          Some(frames_v8) => {
-            serde_v8::from_v8(scope, frames_v8.into()).unwrap()
-          }
-          None => vec![],
-        };
-        (message, frames, stack, cause)
+    if is_instance_of_error(scope, exception) {
+      // The exception is a JS Error object.
+      let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
+      let cause = get_property(scope, exception, "cause");
+      let e: NativeJsError =
+        serde_v8::from_v8(scope, exception.into()).unwrap();
+      // Get the message by formatting error.name and error.message.
+      let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
+      let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
+      let exception_message = if !name.is_empty() && !message_prop.is_empty() {
+        format!("Uncaught {}: {}", name, message_prop)
+      } else if !name.is_empty() {
+        format!("Uncaught {}", name)
+      } else if !message_prop.is_empty() {
+        format!("Uncaught {}", message_prop)
       } else {
-        // The exception is not a JS Error object.
-        // Get the message given by V8::Exception::create_message(), and provide
-        // empty frames.
-        (
-          msg.get(scope).to_rust_string_lossy(scope),
-          vec![],
-          None,
-          None,
-        )
+        "Uncaught".to_string()
       };
+      let cause = cause.and_then(|cause| {
+        if cause.is_undefined() || seen.contains(&cause) {
+          None
+        } else {
+          seen.insert(cause);
+          Some(Box::new(JsError::inner_from_v8_exception(
+            scope, cause, seen,
+          )))
+        }
+      });
 
-    Self {
-      message,
-      cause,
-      script_resource_name: msg
-        .get_script_resource_name(scope)
-        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
-        .map(|v| v.to_rust_string_lossy(scope)),
-      source_line: msg
-        .get_source_line(scope)
-        .map(|v| v.to_rust_string_lossy(scope)),
-      line_number: msg.get_line_number(scope).and_then(|v| v.try_into().ok()),
-      start_column: msg.get_start_column().try_into().ok(),
-      end_column: msg.get_end_column().try_into().ok(),
-      frames,
-      stack,
+      // Access error.stack to ensure that prepareStackTrace() has been called.
+      // This should populate error.__callSiteEvals.
+      let stack = get_property(scope, exception, "stack");
+      let stack: Option<v8::Local<v8::String>> =
+        stack.and_then(|s| s.try_into().ok());
+      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+
+      // Read an array of structured frames from error.__callSiteEvals.
+      let frames_v8 = get_property(scope, exception, "__callSiteEvals");
+      // Ignore non-array values
+      let frames_v8: Option<v8::Local<v8::Array>> =
+        frames_v8.and_then(|a| a.try_into().ok());
+
+      // Convert them into Vec<JsStackFrame>
+      let frames: Vec<JsStackFrame> = match frames_v8 {
+        Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
+        None => vec![],
+      };
+      Self {
+        name: e.name,
+        message: e.message,
+        exception_message,
+        cause,
+        script_resource_name: msg
+          .get_script_resource_name(scope)
+          .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+          .map(|v| v.to_rust_string_lossy(scope)),
+        source_line: msg
+          .get_source_line(scope)
+          .map(|v| v.to_rust_string_lossy(scope)),
+        line_number: msg.get_line_number(scope).and_then(|v| v.try_into().ok()),
+        start_column: msg.get_start_column().try_into().ok(),
+        end_column: msg.get_end_column().try_into().ok(),
+        frames,
+        stack,
+      }
+    } else {
+      // The exception is not a JS Error object.
+      // Get the message given by V8::Exception::create_message(), and provide
+      // empty frames.
+      Self {
+        name: None,
+        message: None,
+        exception_message: msg.get(scope).to_rust_string_lossy(scope),
+        cause: None,
+        script_resource_name: None,
+        source_line: None,
+        line_number: None,
+        start_column: None,
+        end_column: None,
+        frames: vec![],
+        stack: None,
+      }
     }
   }
 }
@@ -293,7 +300,7 @@ impl Display for JsError {
       }
     }
 
-    write!(f, "{}", self.message)?;
+    write!(f, "{}", self.exception_message)?;
     if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
         let source_loc = format_source_loc(
@@ -337,6 +344,9 @@ pub(crate) fn is_instance_of_error<'s>(
   let mut maybe_prototype =
     value.to_object(scope).unwrap().get_prototype(scope);
   while let Some(prototype) = maybe_prototype {
+    if !prototype.is_object() {
+      return false;
+    }
     if prototype.strict_equals(error_prototype) {
       return true;
     }

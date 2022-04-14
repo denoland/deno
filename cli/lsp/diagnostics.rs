@@ -27,7 +27,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
@@ -35,8 +34,9 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types as lsp;
 
-pub(crate) type SnapshotForDiagnostics =
+pub type SnapshotForDiagnostics =
   (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
@@ -137,7 +137,7 @@ impl TsDiagnosticsStore {
 }
 
 #[derive(Debug)]
-pub(crate) struct DiagnosticsServer {
+pub struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<SnapshotForDiagnostics>>,
   ts_diagnostics: TsDiagnosticsStore,
   client: Client,
@@ -160,7 +160,7 @@ impl DiagnosticsServer {
     }
   }
 
-  pub(crate) fn get_ts_diagnostics(
+  pub fn get_ts_diagnostics(
     &self,
     specifier: &ModuleSpecifier,
     document_version: Option<i32>,
@@ -168,16 +168,16 @@ impl DiagnosticsServer {
     self.ts_diagnostics.get(specifier, document_version)
   }
 
-  pub(crate) fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
+  pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
     self.ts_diagnostics.invalidate(specifiers);
   }
 
-  pub(crate) fn invalidate_all(&self) {
+  pub fn invalidate_all(&self) {
     self.ts_diagnostics.invalidate_all();
   }
 
   #[allow(unused_must_use)]
-  pub(crate) fn start(&mut self) {
+  pub fn start(&mut self) {
     let (tx, mut rx) = mpsc::unbounded_channel::<SnapshotForDiagnostics>();
     self.channel = Some(tx);
     let client = self.client.clone();
@@ -320,7 +320,7 @@ impl DiagnosticsServer {
     });
   }
 
-  pub(crate) fn update(
+  pub fn update(
     &self,
     message: SnapshotForDiagnostics,
   ) -> Result<(), AnyError> {
@@ -573,7 +573,7 @@ struct DiagnosticDataRedirect {
 }
 
 /// An enum which represents diagnostic errors which originate from Deno itself.
-pub(crate) enum DenoDiagnostic {
+pub enum DenoDiagnostic {
   /// A `x-deno-warn` is associated with the specifier and should be displayed
   /// as a warning to the user.
   DenoWarn(String),
@@ -627,7 +627,7 @@ impl DenoDiagnostic {
 
   /// A "static" method which for a diagnostic that originated from the
   /// structure returns a code action which can resolve the diagnostic.
-  pub(crate) fn get_code_action(
+  pub fn get_code_action(
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<lsp::CodeAction, AnyError> {
@@ -713,7 +713,7 @@ impl DenoDiagnostic {
 
   /// Given a reference to the code from an LSP diagnostic, determine if the
   /// diagnostic is fixable or not
-  pub(crate) fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
+  pub fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
     if let Some(lsp::NumberOrString::String(code)) = code {
       matches!(
         code.as_str(),
@@ -726,10 +726,7 @@ impl DenoDiagnostic {
 
   /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
   /// provided.
-  pub(crate) fn to_lsp_diagnostic(
-    &self,
-    range: &lsp::Range,
-  ) -> lsp::Diagnostic {
+  pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
@@ -887,7 +884,7 @@ mod tests {
   use crate::lsp::language_server::StateSnapshot;
   use std::path::Path;
   use std::path::PathBuf;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
@@ -925,9 +922,9 @@ mod tests {
   }
 
   fn setup(
+    temp_dir: &TempDir,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (StateSnapshot, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = mock_state_snapshot(sources, &location);
     (state_snapshot, location)
@@ -935,16 +932,20 @@ mod tests {
 
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
+    let temp_dir = TempDir::new();
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    let (snapshot, _) = setup(&[(
-      "file:///a.ts",
-      r#"import * as b from "./b.ts";
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"import * as b from "./b.ts";
 let a: any = "a";
 let c: number = "a";
 "#,
-      1,
-      LanguageId::TypeScript,
-    )]);
+        1,
+        LanguageId::TypeScript,
+      )],
+    );
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
 
@@ -1029,12 +1030,16 @@ let c: number = "a";
 
   #[tokio::test]
   async fn test_cancelled_ts_diagnostics_request() {
-    let (snapshot, _) = setup(&[(
-      "file:///a.ts",
-      r#"export let a: string = 5;"#,
-      1,
-      LanguageId::TypeScript,
-    )]);
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"export let a: string = 5;"#,
+        1,
+        LanguageId::TypeScript,
+      )],
+    );
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
 

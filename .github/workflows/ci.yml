@@ -65,7 +65,7 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           # Use depth > 1, because sometimes we need to rebuild main and if
           # other commits have landed it will become impossible to rebuild if
@@ -89,9 +89,9 @@ jobs:
 
       - name: Install Deno
         if: matrix.job == 'lint'
-        run: |
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.13.2
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.19.3
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -236,7 +236,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 1-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 7-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -252,7 +252,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            1-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            7-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -268,7 +268,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            1-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            7-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -436,9 +436,11 @@ jobs:
         run: |
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts setup
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json              \
                           ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
 
       - name: Run web platform tests (release)
@@ -450,9 +452,11 @@ jobs:
         run: |
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts setup
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts run --quiet --release             \
                                              --binary="$DENO_BIN"          \
                                              --json=wpt.json               \
@@ -486,7 +490,7 @@ jobs:
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          ./target/release/deno run --allow-all \
+          ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks
@@ -554,6 +558,17 @@ jobs:
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
           gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
+      - name: Create release notes
+        shell: bash
+        if: |
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/')
+        run: |
+          export PATH=$PATH:$(pwd)/target/release
+          ./tools/release/05_create_release_notes.ts
+
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
@@ -570,6 +585,7 @@ jobs:
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
+          body_path: target/release/release-notes.md
           draft: true
 
   publish-canary:
