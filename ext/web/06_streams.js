@@ -633,6 +633,41 @@
     return stream[_disturbed];
   }
 
+  const DEFAULT_CHUNK_SIZE = 16_640;
+
+  function readableStreamForRid(rid) {
+    const stream = new ReadableStream({
+      type: "bytes",
+      async pull(controller) {
+        const v = controller.byobRequest.view;
+        try {
+          const bytesRead = await read(rid, v);
+          if (bytesRead === null) {
+            tryClose(rid);
+            controller.close();
+            controller.byobRequest.respond(0);
+          } else {
+            controller.byobRequest.respond(bytesRead);
+          }
+        } catch (e) {
+          controller.error(e);
+          tryClose(rid);
+        }
+      },
+      cancel() {
+        tryClose(rid);
+      },
+      autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
+    });
+
+    stream[_maybeRid] = rid;
+    return stream;
+  }
+
+  function getReadableStreamRid(stream) {
+    return stream[_maybeRid];
+  }
+
   /**
    * @param {unknown} value
    * @returns {value is WritableStream}
@@ -4278,6 +4313,7 @@
     WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
   }
 
+  const _maybeRid = Symbol("maybeRid");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
@@ -4292,6 +4328,8 @@
     [_state];
     /** @type {any} */
     [_storedError];
+    /** @type {number | null} */
+    [_maybeRid] = null;
 
     /**
      * @param {UnderlyingSource<R>=} underlyingSource
@@ -5830,6 +5868,8 @@
     errorReadableStream,
     createProxy,
     writableStreamClose,
+    readableStreamForRid,
+    getReadableStreamRid,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
