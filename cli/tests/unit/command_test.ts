@@ -42,6 +42,7 @@ tryExit();
     Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
     const status = await child.wait();
+    await Deno.remove(cwd, { recursive: true });
     assertEquals(status.success, false);
     assertEquals(status.code, code);
     assertEquals(status.signal, undefined);
