@@ -140,7 +140,8 @@
         this.#localAddr,
       );
 
-      return { request, respondWith };
+      const sendFile = createSendFile(streamRid);
+      return { request, respondWith, sendFile };
     }
 
     /** @returns {void} */
@@ -170,6 +171,20 @@
 
   function readRequest(streamRid, buf) {
     return core.opAsync("op_http_read", streamRid, buf);
+  }
+
+  function createSendFile(
+    streamRid,
+  ) {
+    return async function sendWith(path) {
+      await core.opAsync(
+        "op_http_sendfile",
+        streamRid,
+        path,
+      );
+
+      await core.opAsync("op_http_shutdown", streamRid);
+    };
   }
 
   function createRespondWith(

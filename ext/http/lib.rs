@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use bytes::BytesMut;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -16,12 +17,15 @@ use deno_core::futures::never::Never;
 use deno_core::futures::pin_mut;
 use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
+use deno_core::futures::stream::Stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
 use deno_core::op;
+use tokio::task::block_in_place;
 
+use bytes::BufMut;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -48,11 +52,14 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::error::Error;
+use std::fs::File;
 use std::future::Future;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -60,6 +67,7 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
+use tokio::io::ReadBuf;
 use tokio::task::spawn_local;
 
 mod compressible;
@@ -75,6 +83,7 @@ pub fn init() -> Extension {
       op_http_read::decl(),
       op_http_write_headers::decl(),
       op_http_write::decl(),
+      op_http_sendfile::decl(),
       op_http_shutdown::decl(),
       op_http_websocket_accept_header::decl(),
       op_http_upgrade_websocket::decl(),
@@ -631,7 +640,7 @@ async fn op_http_write_headers(
       new_wr = HttpResponseWriter::Closed;
     }
     None => {
-      // If no buffer was passed, the caller will stream the response body.
+      // If no buffer was passed, the caller will stream the response body OR send a file.
 
       // TODO(@kitsonk) had compression for streamed bodies.
 
@@ -661,6 +670,83 @@ async fn op_http_write_headers(
       stream.conn.closed().await?;
       Err(http_error("connection closed while sending response"))
     }
+  }
+}
+
+const BUF_SIZE: usize = 8 * 1024;
+
+struct ByteStream {
+  file: tokio::fs::File,
+  buf: Box<[MaybeUninit<u8>; BUF_SIZE]>,
+  range_remaining: u64,
+}
+
+impl Stream for ByteStream {
+  type Item = Result<Bytes, std::io::Error>;
+
+  fn poll_next(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let Self {
+      ref mut file,
+      ref mut buf,
+      ref mut range_remaining,
+    } = *self;
+
+    let max_read_length = min(*range_remaining, buf.len() as u64) as usize;
+    let mut read_buf = ReadBuf::uninit(&mut buf[..max_read_length]);
+    match Pin::new(file).poll_read(cx, &mut read_buf) {
+      Poll::Ready(Ok(())) => {
+        let filled = read_buf.filled();
+        *range_remaining -= filled.len() as u64;
+        if filled.is_empty() {
+          Poll::Ready(None)
+        } else {
+          Poll::Ready(Some(Ok(Bytes::copy_from_slice(filled))))
+        }
+      }
+      Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+}
+
+#[op]
+async fn op_http_sendfile(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  path: String,
+) -> Result<(), AnyError> {
+  let stream = state
+    .borrow()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?;
+  let builder = Response::builder();
+  let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
+  let response_tx = match replace(&mut *old_wr, HttpResponseWriter::Closed) {
+    HttpResponseWriter::Headers(response_tx) => response_tx,
+    _ => return Err(http_error("response headers already sent")),
+  };
+
+  if let Ok(file) = tokio::fs::File::open(&path).await {
+    let buf = Box::new([MaybeUninit::uninit(); BUF_SIZE]);
+    let byte_stream = ByteStream {
+      file,
+      buf,
+      range_remaining: u64::MAX,
+    };
+    let body = Body::wrap_stream(byte_stream);
+    let response = builder.body(body)?;
+    match response_tx.send(response) {
+      Ok(_) => Ok(()),
+      Err(_) => {
+        stream.conn.closed().await?;
+        Err(http_error("connection closed while sending response"))
+      }
+    }
+  } else {
+    Ok(())
   }
 }
 
