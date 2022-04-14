@@ -99,12 +99,12 @@ pub struct JsError {
   pub cause: Option<Box<JsError>>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
-  pub aggregated: Option<Vec<Box<JsError>>>,
   pub line_number: Option<i64>,
   pub start_column: Option<i64>, // 0-based
   pub end_column: Option<i64>,   // 0-based
   pub frames: Vec<JsStackFrame>,
   pub stack: Option<String>,
+  pub aggregated: Option<Vec<Box<JsError>>>,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
@@ -241,6 +241,25 @@ impl JsError {
         Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
         None => vec![],
       };
+
+      // Read an array of stored errors, this is only defined for `AggregateError`
+      let aggregated_errors = get_property(scope, exception, "errors");
+      let aggregated_errors: Option<v8::Local<v8::Array>> = aggregated_errors.and_then(|a| a.try_into().ok());
+
+      let mut aggregated: Option<Vec<Box<JsError>>> = None;
+
+      if let Some(errors) = aggregated_errors {
+        if errors.length() > 0 {
+          let mut agg = vec![];
+          for i in 0..errors.length() {
+            let error = errors.get_index(scope, i).unwrap();
+            let js_error = Self::from_v8_exception(scope, error);
+            agg.push(Box::new(js_error));
+          }
+          aggregated = Some(agg);
+        }
+      }
+
       Self {
         name: e.name,
         message: e.message,
@@ -258,6 +277,7 @@ impl JsError {
         end_column: msg.get_end_column().try_into().ok(),
         frames,
         stack,
+        aggregated,
       }
     } else {
       // The exception is not a JS Error object.
@@ -275,6 +295,7 @@ impl JsError {
         end_column: None,
         frames: vec![],
         stack: None,
+        aggregated: None,
       }
     }
   }
@@ -294,6 +315,26 @@ fn format_source_loc(
 
 impl Display for JsError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    if let Some(aggregated) = &self.aggregated {
+      write!(f, "{}", self.exception_message)?;
+      for error in aggregated {
+        let err_string = error
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
+        for line in err_string.lines() {
+          write!(f, "\n    {}", line)?;
+        }
+      }
+      if let Some(stack) = &self.stack {
+        let stack_lines = stack.lines();
+        if stack_lines.count() > 1 {
+          return write!(f, "{}", stack);
+        }
+      }
+      return Ok(());
+    }
+
     if let Some(stack) = &self.stack {
       let stack_lines = stack.lines();
       if stack_lines.count() > 1 {
