@@ -330,7 +330,7 @@ impl TestReporter for PrettyTestReporter {
     if !self.did_have_user_output {
       self.did_have_user_output = true;
       println!();
-      println!("{}", colors::gray("-------output:-------"));
+      println!("{}", colors::gray("------- output -------"));
     }
     match output {
       TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
@@ -370,7 +370,7 @@ impl TestReporter for PrettyTestReporter {
     }
 
     if self.did_have_user_output {
-      println!("{}", colors::gray("----end of output----"));
+      println!("{}", colors::gray("----- output end -----"));
       self.did_have_user_output = false;
     } else if self.last_wait_output_level == 0 {
       print!(" ");
@@ -423,6 +423,18 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
+    fn format_error(error: &str) -> String {
+      let lines: Vec<&str> = error.split("\n").collect();
+      let mut output = vec![colors::red(lines[0]).to_string()];
+      for line in &lines[1..] {
+        if line.contains("(deno:") {
+          continue;
+        }
+        output.push(colors::gray(line).to_string());
+      }
+      output.join("\n")
+    }
+
     if !summary.failures.is_empty() {
       println!("\n{}\n", colors::red_bg("ERRORS"));
       for (description, error) in &summary.failures {
@@ -439,7 +451,7 @@ impl TestReporter for PrettyTestReporter {
           .to_string()
           .trim_start_matches("Uncaught ")
           .to_string();
-        println!("{}", err_string);
+        println!("{}", format_error(&err_string));
         println!();
       }
 
@@ -505,12 +517,12 @@ impl TestReporter for PrettyTestReporter {
       println!(
         "    {} {}{}",
         colors::gray("ignored:"),
-        summary.ignored,
+        colors::yellow(format!("{}", summary.ignored)),
         get_steps_text(summary.ignored_steps)
       );
     }
     if summary.filtered_out > 0 {
-      println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
+      println!("   {} {}", colors::gray("filtered:"), colors::gray(format!("{}", summary.filtered_out)));
     }
     println!(
       "       {} {}",
