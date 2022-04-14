@@ -326,7 +326,7 @@ impl TestReporter for PrettyTestReporter {
     if !self.did_have_user_output {
       self.did_have_user_output = true;
       println!();
-      println!("{}", colors::gray("-------output:-------"));
+      println!("{}", colors::gray("------- output -------"));
     }
     match output {
       TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
@@ -372,7 +372,7 @@ impl TestReporter for PrettyTestReporter {
     }
 
     if self.did_have_user_output {
-      println!("{}", colors::gray("----end of output----"));
+      println!("{}", colors::gray("----- output end -----"));
       self.did_have_user_output = false;
     } else if self.last_wait_output_level == 0 {
       print!(" ");
