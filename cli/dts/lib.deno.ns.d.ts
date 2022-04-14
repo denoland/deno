@@ -3056,12 +3056,12 @@ declare namespace Deno {
   ): Child<T>;
 
   export class Child<T extends CommandOptions> {
-    readonly stdin: T["stdin"] extends "inherit" | "null" ? null
-      : WritableStream<Uint8Array>;
-    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
-      : ReadableStream<Uint8Array>;
-    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
-      : ReadableStream<Uint8Array>;
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
+    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
 
     readonly pid: number;
     /** Get the current status. */
@@ -3071,6 +3071,7 @@ declare namespace Deno {
     wait(): Promise<CommandStatus>;
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<CommandOutput<T>>;
+    /** Kills the process. */
     kill(signo: Signal): void;
   }
 
@@ -3100,15 +3101,15 @@ declare namespace Deno {
 
   export type CommandStatus =
     | {
-        success: true;
-        code: 0;
-        signal: null;
-      }
+      success: true;
+      code: 0;
+      signal: null;
+    }
     | {
-        success: false;
-        code: number;
-        signal: number | null;
-      };
+      success: false;
+      code: number;
+      signal: number | null;
+    };
 
   export interface CommandOutput<T extends CommandOptions> {
     status: CommandStatus;
