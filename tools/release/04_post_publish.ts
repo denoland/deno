@@ -50,7 +50,7 @@ async function forwardReleaseCommitToMain() {
     "checkout",
     "-b",
     newBranchName,
-    "main",
+    "origin/main",
   ]);
   await repo.runCommand([
     "git",
