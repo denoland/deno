@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::io::Read;
-use std::os::windows::prelude::FromRawHandle;
 use std::rc::Rc;
 
 use crate::tools::test::TestEvent;
@@ -85,17 +84,18 @@ fn start_output_redirect_thread(
   });
 }
 
+#[cfg(windows)]
 fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
-  #[cfg(windows)]
-  unsafe {
-    use std::os::windows::prelude::AsRawHandle;
-    std::fs::File::from_raw_handle(writer.as_raw_handle())
-  }
-  #[cfg(unix)]
-  {
-    use std::os::unix::io::AsRawFd;
-    writer.as_raw_fd().into()
-  }
+  use std::os::windows::prelude::AsRawHandle;
+  use std::os::windows::prelude::FromRawHandle;
+  unsafe { std::fs::File::from_raw_handle(writer.as_raw_handle()) }
+}
+
+#[cfg(unix)]
+fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::unix::io::AsRawFd;
+  use std::os::unix::io::FromRawFd;
+  unsafe { std::fs::File::from_raw_fd(writer.as_raw_fd()) }
 }
 
 #[derive(Clone)]
