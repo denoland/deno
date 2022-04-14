@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.20.6 / 2022.04.14
+
+- feat(ext/web): Add error events for event listener and timer errors (#14159)
+- fix(serde_v8): more robust number deserialization (#14216)
+- fix(test): Don't error on missing op details (#14184)
+- fix: upgrade to swc_ecmascript 0.143 (#14238)
+
 ### 1.20.5 / 2022.04.07
 
 - feat(lsp/unstable): add experimental testing API (#13798)
