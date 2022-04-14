@@ -14,6 +14,7 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state;
 use crate::tools::test;
 
@@ -183,11 +184,17 @@ async fn test_specifier(
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
+    let (stdout_writer, stderr_writer) =
+      create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
-      vec![ops::testing::init(channel.clone())],
+      vec![ops::testing::init(
+        channel.clone(),
+        stdout_writer,
+        stderr_writer,
+      )],
     );
 
     worker

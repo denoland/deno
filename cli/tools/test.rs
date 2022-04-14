@@ -21,6 +21,7 @@ use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -80,7 +81,6 @@ pub struct TestDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
-  // TODO(caspervonb): add stdout and stderr redirection.
   PrintStdout(String),
   PrintStderr(String),
   Stdout(Vec<u8>),
@@ -510,11 +510,17 @@ async fn test_specifier(
   channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let (stdout_writer, stderr_writer) =
+    create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(
+      channel.clone(),
+      stdout_writer,
+      stderr_writer,
+    )],
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =

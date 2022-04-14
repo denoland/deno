@@ -17,17 +17,11 @@ use deno_runtime::permissions::Permissions;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
-  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
-  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
-
-  start_output_redirect_thread(stdout_reader, sender.clone(), |bytes| {
-    TestOutput::Stdout(bytes)
-  });
-  start_output_redirect_thread(stderr_reader, sender.clone(), |bytes| {
-    TestOutput::Stderr(bytes)
-  });
-
+pub fn init(
+  sender: UnboundedSender<TestEvent>,
+  stdout_writer: os_pipe::PipeWriter,
+  stderr_writer: os_pipe::PipeWriter,
+) -> Extension {
   // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
   let stdout_writer = Rc::new(RefCell::new(Some(stdout_writer)));
   let stderr_writer = Rc::new(RefCell::new(Some(stderr_writer)));
@@ -64,6 +58,37 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
     .build()
 }
 
+#[cfg(windows)]
+fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::windows::prelude::AsRawHandle;
+  use std::os::windows::prelude::FromRawHandle;
+  unsafe { std::fs::File::from_raw_handle(writer.as_raw_handle()) }
+}
+
+#[cfg(unix)]
+fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::unix::io::AsRawFd;
+  use std::os::unix::io::FromRawFd;
+  unsafe { std::fs::File::from_raw_fd(writer.as_raw_fd()) }
+}
+
+/// Creates the stdout and stderr pipes and returns the writers for stdout and stderr.
+pub fn create_stdout_stderr_pipes(
+  sender: UnboundedSender<TestEvent>,
+) -> (os_pipe::PipeWriter, os_pipe::PipeWriter) {
+  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
+  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+
+  start_output_redirect_thread(stdout_reader, sender.clone(), |bytes| {
+    TestOutput::Stdout(bytes)
+  });
+  start_output_redirect_thread(stderr_reader, sender, |bytes| {
+    TestOutput::Stderr(bytes)
+  });
+
+  (stdout_writer, stderr_writer)
+}
+
 fn start_output_redirect_thread(
   mut pipe_reader: os_pipe::PipeReader,
   sender: UnboundedSender<TestEvent>,
@@ -82,20 +107,6 @@ fn start_output_redirect_thread(
       break;
     }
   });
-}
-
-#[cfg(windows)]
-fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
-  use std::os::windows::prelude::AsRawHandle;
-  use std::os::windows::prelude::FromRawHandle;
-  unsafe { std::fs::File::from_raw_handle(writer.as_raw_handle()) }
-}
-
-#[cfg(unix)]
-fn pipe_writer_to_file(writer: &os_pipe::PipeWriter) -> std::fs::File {
-  use std::os::unix::io::AsRawFd;
-  use std::os::unix::io::FromRawFd;
-  unsafe { std::fs::File::from_raw_fd(writer.as_raw_fd()) }
 }
 
 #[derive(Clone)]
