@@ -2714,3 +2714,8 @@ itest!(set_timeout_error_handled {
   args: "run --quiet set_timeout_error_handled.ts",
   output: "set_timeout_error_handled.ts.out",
 });
+
+itest!(aggregate_error {
+  args: "run aggregate_error.ts",
+  output: "aggregate_error.out",
+});

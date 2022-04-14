@@ -244,7 +244,8 @@ impl JsError {
 
       // Read an array of stored errors, this is only defined for `AggregateError`
       let aggregated_errors = get_property(scope, exception, "errors");
-      let aggregated_errors: Option<v8::Local<v8::Array>> = aggregated_errors.and_then(|a| a.try_into().ok());
+      let aggregated_errors: Option<v8::Local<v8::Array>> =
+        aggregated_errors.and_then(|a| a.try_into().ok());
 
       let mut aggregated: Option<Vec<Box<JsError>>> = None;
 

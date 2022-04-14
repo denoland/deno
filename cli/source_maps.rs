@@ -82,7 +82,14 @@ pub fn apply_source_map<G: SourceMapGetter>(
   let cause = js_error
     .cause
     .clone()
-    .map(|cause| Box::new(apply_source_map(&*cause, getter)));
+    .map(|cause| Box::new(apply_source_map(&*cause, getter.clone())));
+
+  let aggregated = js_error.aggregated.clone().map(|aggregated| {
+    aggregated
+      .into_iter()
+      .map(|error| Box::new(apply_source_map(&*error, getter.clone())))
+      .collect::<Vec<Box<JsError>>>()
+  });
 
   JsError {
     name: js_error.name.clone(),
@@ -96,7 +103,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     end_column,
     frames: js_error.frames.clone(),
     stack: None,
-    aggregated: None,
+    aggregated,
   }
 }
 
