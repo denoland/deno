@@ -246,7 +246,7 @@ itest!(shuffle_with_seed {
 });
 
 itest!(aggregate_error {
-  args: "test test/aggregate_error.ts",
+  args: "test --quiet test/aggregate_error.ts",
   exit_code: 1,
   output: "test/aggregate_error.out",
 });

@@ -17,6 +17,7 @@ use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::source_map::SourceMapGetter;
 use crate::Extension;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -159,6 +160,7 @@ pub(crate) struct JsRuntimeState {
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
+  pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
@@ -225,6 +227,9 @@ fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
 
 #[derive(Default)]
 pub struct RuntimeOptions {
+  /// Source map reference for errors.
+  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the JsError into an error. By default this callback
   /// is set to `JsError::create()`.
@@ -380,6 +385,7 @@ impl JsRuntime {
       js_uncaught_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
+      source_map_getter: options.source_map_getter,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
@@ -1023,7 +1029,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   in_promise: bool,
 ) -> Result<T, Error> {
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
 
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
@@ -1036,6 +1041,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
     // If the termination is the result of a `Deno.core.terminate` call, we want
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
+    let mut state = state_rc.borrow_mut();
     exception = state
       .explicit_terminate_exception
       .take()
@@ -1058,7 +1064,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
       js_error.exception_message.trim_start_matches("Uncaught ")
     );
   }
-  let js_error = (state.js_error_create_fn)(js_error);
+  let js_error = (state_rc.borrow().js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -2158,7 +2164,8 @@ pub mod tests {
     let r = runtime.execute_script("i.js", src);
     let e = r.unwrap_err();
     let js_error = e.downcast::<JsError>().unwrap();
-    assert_eq!(js_error.end_column, Some(11));
+    let frame = js_error.frames.first().unwrap();
+    assert_eq!(frame.column_number, Some(12));
   }
 
   #[test]
@@ -2500,7 +2507,7 @@ main();
 "#,
     );
     let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
-    at error_without_stack.js:3:14"#;
+    at error_without_stack.js:3:15"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 

@@ -3,13 +3,13 @@
 use crate::diagnostics::Diagnostics;
 use crate::fmt_errors::format_file_name;
 use crate::proc_state::ProcState;
-use crate::source_maps::get_orig_position;
-use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
+use deno_core::get_orig_position;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::CachedMaps;
 use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
@@ -56,7 +56,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      ps,
+      &ps,
     );
 
   Ok(AppliedSourceMap {
