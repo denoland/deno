@@ -27,18 +27,6 @@ use session::ReplSession;
 use std::fs::File;
 use std::io::Read;
 
-/// A structure representing all information we need to load and run an eval-file
-#[derive(Debug, Clone)]
-pub struct EvalFileConfig {
-  pub paths: Vec<String>,
-}
-
-impl EvalFileConfig {
-  pub fn new(paths: Vec<String>) -> Result<Self, AnyError> {
-    Ok(Self { paths })
-  }
-}
-
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -81,12 +69,14 @@ async fn read_line_and_poll(
 
 async fn read_eval_file(
   ps: &ProcState,
-  config: EvalFileConfig,
+  eval_files: Vec<String>,
 ) -> Result<Vec<String>, AnyError> {
   let mut eval_sources: Vec<String> = Vec::new();
-  for path in config.paths {
-    let specifier =
-      deno_core::resolve_import(path.as_str(), deno_core::DUMMY_SPECIFIER)?;
+  for eval_file in eval_files {
+    let specifier = deno_core::resolve_import(
+      eval_file.as_str(),
+      deno_core::DUMMY_SPECIFIER,
+    )?;
     let file = ps
       .file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -100,7 +90,7 @@ async fn read_eval_file(
 pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
-  maybe_eval_file_config: Option<EvalFileConfig>,
+  maybe_eval_files: Option<Vec<String>>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
@@ -114,8 +104,8 @@ pub async fn run(
   let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
 
-  if let Some(eval_file_config) = maybe_eval_file_config {
-    match read_eval_file(ps, eval_file_config).await {
+  if let Some(eval_files) = maybe_eval_files {
+    match read_eval_file(ps, eval_files).await {
       Ok(eval_sources) => {
         for eval_source in eval_sources {
           let output = repl_session

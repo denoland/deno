@@ -919,12 +919,7 @@ async fn repl_command(
   }
   worker.run_event_loop(false).await?;
 
-  let eval_file_config = match repl_flags.eval_file {
-    Some(eval_file) => Some(tools::repl::EvalFileConfig::new(vec![eval_file])?),
-    None => None,
-  };
-
-  tools::repl::run(&ps, worker, eval_file_config, repl_flags.eval).await
+  tools::repl::run(&ps, worker, repl_flags.eval_files, repl_flags.eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
