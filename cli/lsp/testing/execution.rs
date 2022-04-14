@@ -759,20 +759,20 @@ impl test::TestReporter for LspTestReporter {
         .get(origin)
         .and_then(|v| v.last().map(|td| td.into()))
     });
-    match output {
+    let value = match output {
       test::TestOutput::PrintStdout(value)
-      | test::TestOutput::PrintStderr(value) => {
-        self.progress(lsp_custom::TestRunProgressMessage::Output {
-          value: value.replace('\n', "\r\n"),
-          test,
-          // TODO(@kitsonk) test output should include a location
-          location: None,
-        })
+      | test::TestOutput::PrintStderr(value) => value.replace('\n', "\r\n"),
+      test::TestOutput::Stdout(bytes) | test::TestOutput::Stderr(bytes) => {
+        String::from_utf8_lossy(bytes).replace('\n', "\r\n")
       }
-      test::TestOutput::Stdout(_) | test::TestOutput::Stderr(_) => {
-        // todo(@dsherret): handle
-      }
-    }
+    };
+
+    self.progress(lsp_custom::TestRunProgressMessage::Output {
+      value,
+      test,
+      // TODO(@kitsonk) test output should include a location
+      location: None,
+    })
   }
 
   fn report_result(

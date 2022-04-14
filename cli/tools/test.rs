@@ -329,8 +329,11 @@ impl TestReporter for PrettyTestReporter {
       println!("{}", colors::gray("------- output -------"));
     }
     match output {
-      TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
+      TestOutput::PrintStdout(line) => {
         print!("{}", line)
+      }
+      TestOutput::PrintStderr(line) => {
+        eprint!("{}", line)
       }
       TestOutput::Stdout(bytes) => {
         std::io::stdout().write_all(bytes).unwrap();
