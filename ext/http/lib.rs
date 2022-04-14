@@ -34,6 +34,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use deno_core::serde_v8::DetachedBuffer;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -668,7 +669,7 @@ async fn op_http_write_headers(
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: DetachedBuffer,
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
@@ -687,7 +688,10 @@ async fn op_http_write(
       }
     };
 
-    let bytes = Bytes::copy_from_slice(&buf[..]);
+    // SAFETY: buffer is detached and freed after send_data.
+    let bytes = unsafe {
+      Bytes::from_static(std::mem::transmute::<&[u8], &'static [u8]>(&buf[..]))
+    };
     match body_tx.send_data(bytes).await {
       Ok(_) => break Ok(()),
       Err(err) => {
