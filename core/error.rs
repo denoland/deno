@@ -99,6 +99,7 @@ pub struct JsError {
   pub cause: Option<Box<JsError>>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
+  pub aggregated: Option<Vec<Box<JsError>>>,
   pub line_number: Option<i64>,
   pub start_column: Option<i64>, // 0-based
   pub end_column: Option<i64>,   // 0-based
