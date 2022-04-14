@@ -246,7 +246,6 @@ impl PrettyTestReporter {
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
-    self.in_test_count += 1;
   }
 
   fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
@@ -259,7 +258,8 @@ impl PrettyTestReporter {
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    if self.last_wait_output_level < description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level < description.level {
       println!();
     }
     print!("{}{} ...", "  ".repeat(description.level), description.name);
@@ -281,7 +281,8 @@ impl PrettyTestReporter {
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    if self.last_wait_output_level == description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == description.level {
       print!(" ");
     } else {
       print!("{}", "  ".repeat(description.level));
@@ -297,6 +298,16 @@ impl PrettyTestReporter {
       for line in error_text.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
+    }
+  }
+
+  fn write_output_end(&mut self) -> bool {
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----- output end -----"));
+      self.did_have_user_output = false;
+      true
+    } else {
+      false
     }
   }
 }
@@ -319,6 +330,7 @@ impl TestReporter for PrettyTestReporter {
     if !self.concurrent {
       self.force_report_wait(description);
     }
+    self.in_test_count += 1;
   }
 
   fn report_output(&mut self, output: &TestOutput) {
@@ -379,10 +391,8 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
-    if self.did_have_user_output {
-      println!("{}", colors::gray("----- output end -----"));
-      self.did_have_user_output = false;
-    } else if self.last_wait_output_level == 0 {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == 0 {
       print!(" ");
     }
 
