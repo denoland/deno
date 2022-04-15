@@ -281,6 +281,12 @@ itest!(steps_invalid_usage {
   output: "test/steps/invalid_usage.out",
 });
 
+itest!(steps_output_within {
+  args: "test test/steps/output_within.ts",
+  exit_code: 0,
+  output: "test/steps/output_within.out",
+});
+
 itest!(no_prompt_by_default {
   args: "test test/no_prompt_by_default.ts",
   exit_code: 1,

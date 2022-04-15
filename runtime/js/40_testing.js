@@ -871,12 +871,6 @@
     });
   }
 
-  function reportTestConsoleOutput(console) {
-    core.opSync("op_dispatch_test_event", {
-      output: { console },
-    });
-  }
-
   function reportTestWait(test) {
     core.opSync("op_dispatch_test_event", {
       wait: test,
@@ -955,9 +949,6 @@
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
-    const originalConsole = globalThis.console;
-
-    globalThis.console = new Console(reportTestConsoleOutput);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
@@ -1004,8 +995,6 @@
 
       reportTestResult(description, result, elapsed);
     }
-
-    globalThis.console = originalConsole;
   }
 
   async function runBenchmarks({
