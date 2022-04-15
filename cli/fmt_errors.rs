@@ -132,6 +132,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
 fn format_stack(
   is_error: bool,
   message_line: &str,
+  aggregated: Option<Vec<String>>,
   cause: Option<&str>,
   source_line: Option<&str>,
   start_column: Option<i64>,
@@ -141,6 +142,16 @@ fn format_stack(
 ) -> String {
   let mut s = String::new();
   s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
+  if let Some(aggregated) = aggregated {
+    for aggregated_error in &aggregated {
+      s.push_str(&format!(
+        "\n{:indent$}{}",
+        "",
+        aggregated_error,
+        indent = level + 2
+      ));
+    }
+  }
   s.push_str(&format_maybe_source_line(
     source_line,
     start_column,
@@ -278,12 +289,20 @@ impl fmt::Display for PrettyJsError {
       .clone()
       .map(|cause| format!("{}", PrettyJsError(*cause)));
 
+    let aggregated = self.0.aggregated.clone().map(|aggregated| {
+      aggregated
+        .into_iter()
+        .map(|error| format!("{}", PrettyJsError(*error)))
+        .collect::<Vec<String>>()
+    });
+
     write!(
       f,
       "{}",
       &format_stack(
         true,
         &self.0.exception_message,
+        aggregated,
         cause.as_deref(),
         self.0.source_line.as_deref(),
         self.0.start_column,

@@ -2716,6 +2716,7 @@ itest!(set_timeout_error_handled {
 });
 
 itest!(aggregate_error {
-  args: "run aggregate_error.ts",
+  args: "run --quiet aggregate_error.ts",
   output: "aggregate_error.out",
+  exit_code: 1,
 });
