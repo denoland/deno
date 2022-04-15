@@ -3154,8 +3154,12 @@
         "queue-microtask.any.worker.html": true
       },
       "scripting": {
-        "reporterror.any.html": false,
-        "reporterror.any.worker.html": false
+        "reporterror.any.html": [
+          "self.reportError(undefined)"
+        ],
+        "reporterror.any.worker.html": [
+          "self.reportError(undefined)"
+        ]
       },
       "structured-clone": {
         "structured-clone.any.html": [
