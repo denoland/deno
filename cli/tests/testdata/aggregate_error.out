@@ -7,14 +7,14 @@ AggregateError: Multiple errors.
     at [WILDCARD]testdata/aggregate_error.ts:4:24
 
 error: Uncaught AggregateError: Multiple errors.
-  Uncaught Error: Error message 1.
-  new Error("Error message 1."),
-  ^
-    at [WILDCARD]testdata/aggregate_error.ts:5:3
-  Uncaught Error: Error message 2.
-  new Error("Error message 2."),
-  ^
-    at [WILDCARD]testdata/aggregate_error.ts:6:3
+    Error: Error message 1.
+      new Error("Error message 1."),
+      ^
+        at [WILDCARD]testdata/aggregate_error.ts:5:3
+    Error: Error message 2.
+      new Error("Error message 2."),
+      ^
+        at [WILDCARD]testdata/aggregate_error.ts:6:3
 const aggregateError = new AggregateError([
                        ^
     at [WILDCARD]testdata/aggregate_error.ts:4:24

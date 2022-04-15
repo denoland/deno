@@ -143,12 +143,14 @@ fn format_stack(
   s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
   if let Some(aggregated) = aggregated {
     for aggregated_error in &aggregated {
-      s.push_str(&format!(
-        "\n{:indent$}{}",
-        "",
-        aggregated_error,
-        indent = level + 2
-      ));
+      for line in aggregated_error.lines() {
+        s.push_str(&format!(
+          "\n{:indent$}{}",
+          "",
+          line.trim_start_matches("Uncaught "),
+          indent = level + 4
+        ));
+      }
     }
   }
   let column_number =
