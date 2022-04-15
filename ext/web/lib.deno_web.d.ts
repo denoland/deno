@@ -891,7 +891,7 @@ declare class DecompressionStream {
   readonly writable: WritableStream<Uint8Array>;
 }
 
-/** Dispatch an uncaught exception. Similar to:
+/** Dispatch an uncaught exception. Similar to a synchronous version of:
  * ```ts
  * setTimeout(() => { throw error; }, 0);
  * ```
