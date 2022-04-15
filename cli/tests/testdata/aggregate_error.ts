@@ -7,5 +7,6 @@ const aggregateError = new AggregateError([
 ], "Multiple errors.");
 
 console.error(aggregateError);
+console.error();
 
 throw aggregateError;
