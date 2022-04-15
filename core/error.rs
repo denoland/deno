@@ -369,26 +369,6 @@ fn format_source_loc(
 
 impl Display for JsError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    if let Some(aggregated) = &self.aggregated {
-      write!(f, "{}", self.exception_message)?;
-      for error in aggregated {
-        let err_string = error
-          .to_string()
-          .trim_start_matches("Uncaught ")
-          .to_string();
-        for line in err_string.lines() {
-          write!(f, "\n    {}", line)?;
-        }
-      }
-      if let Some(stack) = &self.stack {
-        let stack_lines = stack.lines();
-        if stack_lines.count() > 1 {
-          return write!(f, "{}", stack);
-        }
-      }
-      return Ok(());
-    }
-
     if let Some(stack) = &self.stack {
       let stack_lines = stack.lines();
       if stack_lines.count() > 1 {
