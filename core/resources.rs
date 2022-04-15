@@ -147,6 +147,16 @@ impl ResourceTable {
       .ok_or_else(bad_resource_id)
   }
 
+  /// Replaces a resource with a new resource.
+  ///
+  /// Panics if the resource does not exist.
+  pub fn replace<T: Resource>(&mut self, rid: ResourceId, resource: T) {
+    let result = self
+      .index
+      .insert(rid, Rc::new(resource) as Rc<dyn Resource>);
+    assert!(result.is_some());
+  }
+
   /// Removes a resource of type `T` from the resource table and returns it.
   /// If a resource with the given `rid` exists but its type does not match `T`,
   /// it is not removed from the resource table. Note that the resource's
