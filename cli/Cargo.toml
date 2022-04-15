@@ -78,6 +78,7 @@ node_resolver = "=0.1.1"
 notify = "=5.0.0-pre.14"
 num-format = "=0.4.0"
 once_cell = "=1.10.0"
+os_pipe = "=1.0.1"
 percent-encoding = "=2.1.0"
 pin-project = "=1.0.8"
 rand = { version = "=0.8.4", features = ["small_rng"] }
