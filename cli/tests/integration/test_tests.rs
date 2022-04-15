@@ -246,7 +246,7 @@ itest!(shuffle_with_seed {
 });
 
 itest!(aggregate_error {
-  args: "test test/aggregate_error.ts",
+  args: "test --quiet test/aggregate_error.ts",
   exit_code: 1,
   output: "test/aggregate_error.out",
 });
@@ -279,6 +279,12 @@ itest!(steps_invalid_usage {
   args: "test test/steps/invalid_usage.ts",
   exit_code: 1,
   output: "test/steps/invalid_usage.out",
+});
+
+itest!(steps_output_within {
+  args: "test test/steps/output_within.ts",
+  exit_code: 0,
+  output: "test/steps/output_within.out",
 });
 
 itest!(no_prompt_by_default {
