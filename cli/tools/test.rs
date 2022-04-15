@@ -21,6 +21,7 @@ use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -80,8 +81,10 @@ pub struct TestDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
-  // TODO(caspervonb): add stdout and stderr redirection.
-  Console(String),
+  PrintStdout(String),
+  PrintStderr(String),
+  Stdout(Vec<u8>),
+  Stderr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -219,8 +222,10 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  in_test_count: usize,
   last_wait_output_level: usize,
   cwd: Url,
+  did_have_user_output: bool,
 }
 
 impl PrettyTestReporter {
@@ -228,9 +233,11 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      in_test_count: 0,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      did_have_user_output: false,
     }
   }
 
@@ -251,7 +258,8 @@ impl PrettyTestReporter {
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    if self.last_wait_output_level < description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level < description.level {
       println!();
     }
     print!("{}{} ...", "  ".repeat(description.level), description.name);
@@ -273,7 +281,8 @@ impl PrettyTestReporter {
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    if self.last_wait_output_level == description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == description.level {
       print!(" ");
     } else {
       print!("{}", "  ".repeat(description.level));
@@ -289,6 +298,16 @@ impl PrettyTestReporter {
       for line in error_text.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
+    }
+  }
+
+  fn write_output_end(&mut self) -> bool {
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----- output end -----"));
+      self.did_have_user_output = false;
+      true
+    } else {
+      false
     }
   }
 }
@@ -311,12 +330,31 @@ impl TestReporter for PrettyTestReporter {
     if !self.concurrent {
       self.force_report_wait(description);
     }
+    self.in_test_count += 1;
   }
 
   fn report_output(&mut self, output: &TestOutput) {
-    if self.echo_output {
-      match output {
-        TestOutput::Console(line) => println!("{}", line),
+    if !self.echo_output {
+      return;
+    }
+
+    if !self.did_have_user_output && self.in_test_count > 0 {
+      self.did_have_user_output = true;
+      println!();
+      println!("{}", colors::gray("------- output -------"));
+    }
+    match output {
+      TestOutput::PrintStdout(line) => {
+        print!("{}", line)
+      }
+      TestOutput::PrintStderr(line) => {
+        eprint!("{}", line)
+      }
+      TestOutput::Stdout(bytes) => {
+        std::io::stdout().write_all(bytes).unwrap();
+      }
+      TestOutput::Stderr(bytes) => {
+        std::io::stderr().write_all(bytes).unwrap();
       }
     }
   }
@@ -327,6 +365,8 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    self.in_test_count -= 1;
+
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -351,15 +391,16 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == 0 {
+      print!(" ");
+    }
+
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
       TestResult::Failed(_) => colors::red("FAILED").to_string(),
     };
-
-    if self.last_wait_output_level == 0 {
-      print!(" ");
-    }
 
     println!(
       "{} {}",
@@ -487,11 +528,17 @@ async fn test_specifier(
   channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let (stdout_writer, stderr_writer) =
+    create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(
+      channel.clone(),
+      stdout_writer,
+      stderr_writer,
+    )],
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
