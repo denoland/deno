@@ -29,6 +29,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -91,12 +92,15 @@ impl Serialize for WorkerControlEvent {
       WorkerControlEvent::TerminalError(error)
       | WorkerControlEvent::Error(error) => {
         let value = match error.downcast_ref::<JsError>() {
-          Some(js_error) => json!({
-            "message": js_error.exception_message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }),
+          Some(js_error) => {
+            let frame = js_error.frames.first();
+            json!({
+              "message": js_error.exception_message,
+              "fileName": frame.map(|f| f.file_name.as_ref()),
+              "lineNumber": frame.map(|f| f.line_number.as_ref()),
+              "columnNumber": frame.map(|f| f.column_number.as_ref()),
+            })
+          }
           None => json!({
             "message": error.to_string(),
           }),
@@ -320,6 +324,7 @@ pub struct WebWorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
@@ -436,6 +441,7 @@ impl WebWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
+      source_map_getter: options.source_map_getter,
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),

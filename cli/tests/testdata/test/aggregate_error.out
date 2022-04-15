@@ -1,4 +1,3 @@
-Check [WILDCARD]/testdata/test/aggregate_error.ts
 running 1 test from test/aggregate_error.ts
 aggregate ... FAILED ([WILDCARD])
 

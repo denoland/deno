@@ -1,7 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::runtime::JsRuntime;
+use crate::source_map::apply_source_map;
 use anyhow::Error;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
@@ -95,15 +98,12 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
 pub struct JsError {
   pub name: Option<String>,
   pub message: Option<String>,
-  pub exception_message: String,
-  pub cause: Option<Box<JsError>>,
-  pub source_line: Option<String>,
-  pub script_resource_name: Option<String>,
-  pub line_number: Option<i64>,
-  pub start_column: Option<i64>, // 0-based
-  pub end_column: Option<i64>,   // 0-based
-  pub frames: Vec<JsStackFrame>,
   pub stack: Option<String>,
+  pub cause: Option<Box<JsError>>,
+  pub exception_message: String,
+  pub frames: Vec<JsStackFrame>,
+  pub source_line: Option<String>,
+  pub source_line_frame_index: Option<usize>,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
@@ -236,25 +236,82 @@ impl JsError {
         frames_v8.and_then(|a| a.try_into().ok());
 
       // Convert them into Vec<JsStackFrame>
-      let frames: Vec<JsStackFrame> = match frames_v8 {
+      let mut frames: Vec<JsStackFrame> = match frames_v8 {
         Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
         None => vec![],
       };
+
+      let state_rc = JsRuntime::state(scope);
+      let state = state_rc.borrow();
+
+      // When the stack frame array is empty, but the source location given by
+      // (script_resource_name, line_number, start_column + 1) exists, this is
+      // likely a syntax error. For the sake of formatting we treat it like it
+      // was given as a single stack frame.
+      if frames.is_empty() {
+        let script_resource_name = msg
+          .get_script_resource_name(scope)
+          .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+          .map(|v| v.to_rust_string_lossy(scope));
+        let line_number: Option<i64> =
+          msg.get_line_number(scope).and_then(|v| v.try_into().ok());
+        let column_number: Option<i64> = msg.get_start_column().try_into().ok();
+        if let (Some(f), Some(l), Some(c)) =
+          (script_resource_name, line_number, column_number)
+        {
+          // V8's column numbers are 0-based, we want 1-based.
+          let c = c + 1;
+          if let Some(source_map_getter) = &state.source_map_getter {
+            let (f, l, c, _) = apply_source_map(
+              f,
+              l,
+              c,
+              &mut HashMap::new(),
+              source_map_getter.as_ref(),
+            );
+            frames =
+              vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+          } else {
+            frames =
+              vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+          }
+        }
+      }
+
+      let mut source_line = None;
+      let mut source_line_frame_index = None;
+      if let Some(source_map_getter) = &state.source_map_getter {
+        for (i, frame) in frames.iter().enumerate() {
+          if let (Some(file_name), Some(line_number)) =
+            (&frame.file_name, frame.line_number)
+          {
+            if !file_name.trim_start_matches('[').starts_with("deno:") {
+              // Source lookup expects a 0-based line number, ours are 1-based.
+              source_line = source_map_getter
+                .get_source_line(file_name, (line_number - 1) as usize);
+              source_line_frame_index = Some(i);
+              break;
+            }
+          }
+        }
+      } else if let Some(frame) = frames.first() {
+        if let Some(file_name) = &frame.file_name {
+          if !file_name.trim_start_matches('[').starts_with("deno:") {
+            source_line = msg
+              .get_source_line(scope)
+              .map(|v| v.to_rust_string_lossy(scope));
+            source_line_frame_index = Some(0);
+          }
+        }
+      }
+
       Self {
         name: e.name,
         message: e.message,
         exception_message,
         cause,
-        script_resource_name: msg
-          .get_script_resource_name(scope)
-          .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
-          .map(|v| v.to_rust_string_lossy(scope)),
-        source_line: msg
-          .get_source_line(scope)
-          .map(|v| v.to_rust_string_lossy(scope)),
-        line_number: msg.get_line_number(scope).and_then(|v| v.try_into().ok()),
-        start_column: msg.get_start_column().try_into().ok(),
-        end_column: msg.get_end_column().try_into().ok(),
+        source_line,
+        source_line_frame_index,
         frames,
         stack,
       }
@@ -267,11 +324,8 @@ impl JsError {
         message: None,
         exception_message: msg.get(scope).to_rust_string_lossy(scope),
         cause: None,
-        script_resource_name: None,
         source_line: None,
-        line_number: None,
-        start_column: None,
-        end_column: None,
+        source_line_frame_index: None,
         frames: vec![],
         stack: None,
       }
@@ -299,15 +353,13 @@ impl Display for JsError {
         return write!(f, "{}", stack);
       }
     }
-
     write!(f, "{}", self.exception_message)?;
-    if let Some(script_resource_name) = &self.script_resource_name {
-      if self.line_number.is_some() && self.start_column.is_some() {
-        let source_loc = format_source_loc(
-          script_resource_name,
-          self.line_number.unwrap(),
-          self.start_column.unwrap(),
-        );
+    let frame = self.frames.first();
+    if let Some(frame) = frame {
+      if let (Some(f_), Some(l), Some(c)) =
+        (&frame.file_name, frame.line_number, frame.column_number)
+      {
+        let source_loc = format_source_loc(f_, l, c);
         write!(f, "\n    at {}", source_loc)?;
       }
     }

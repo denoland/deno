@@ -134,17 +134,17 @@ fn format_stack(
   message_line: &str,
   cause: Option<&str>,
   source_line: Option<&str>,
-  start_column: Option<i64>,
-  end_column: Option<i64>,
+  source_line_frame_index: Option<usize>,
   frames: &[JsStackFrame],
   level: usize,
 ) -> String {
   let mut s = String::new();
   s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
+  let column_number =
+    source_line_frame_index.and_then(|i| frames.get(i).unwrap().column_number);
   s.push_str(&format_maybe_source_line(
     source_line,
-    start_column,
-    end_column,
+    column_number,
     is_error,
     level,
   ));
@@ -171,12 +171,11 @@ fn format_stack(
 /// a pretty printed version of that line.
 fn format_maybe_source_line(
   source_line: Option<&str>,
-  start_column: Option<i64>,
-  end_column: Option<i64>,
+  column_number: Option<i64>,
   is_error: bool,
   level: usize,
 ) -> String {
-  if source_line.is_none() || start_column.is_none() || end_column.is_none() {
+  if source_line.is_none() || column_number.is_none() {
     return "".to_string();
   }
 
@@ -191,37 +190,24 @@ fn format_maybe_source_line(
     return format!("\n{}", source_line);
   }
 
-  assert!(start_column.is_some());
-  assert!(end_column.is_some());
   let mut s = String::new();
-  let start_column = start_column.unwrap();
-  let end_column = end_column.unwrap();
+  let column_number = column_number.unwrap();
 
-  if start_column as usize >= source_line.len() {
+  if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      crate::colors::yellow("Warning"), start_column + 1,
+      crate::colors::yellow("Warning"), column_number,
     );
   }
 
-  // TypeScript uses `~` always, but V8 would utilise `^` always, even when
-  // doing ranges, so here, if we only have one marker (very common with V8
-  // errors) we will use `^` instead.
-  let underline_char = if (end_column - start_column) <= 1 {
-    '^'
-  } else {
-    '~'
-  };
-  for _i in 0..start_column {
+  for _i in 0..(column_number - 1) {
     if source_line.chars().nth(_i as usize).unwrap() == '\t' {
       s.push('\t');
     } else {
       s.push(' ');
     }
   }
-  for _i in 0..(end_column - start_column) {
-    s.push(underline_char);
-  }
+  s.push('^');
   let color_underline = if is_error {
     red(&s).to_string()
   } else {
@@ -254,24 +240,6 @@ impl Deref for PrettyJsError {
 
 impl fmt::Display for PrettyJsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut frames = self.0.frames.clone();
-
-    // When the stack frame array is empty, but the source location given by
-    // (script_resource_name, line_number, start_column + 1) exists, this is
-    // likely a syntax error. For the sake of formatting we treat it like it was
-    // given as a single stack frame.
-    if frames.is_empty()
-      && self.0.script_resource_name.is_some()
-      && self.0.line_number.is_some()
-      && self.0.start_column.is_some()
-    {
-      frames = vec![JsStackFrame::from_location(
-        self.0.script_resource_name.clone(),
-        self.0.line_number,
-        self.0.start_column.map(|n| n + 1),
-      )];
-    }
-
     let cause = self
       .0
       .cause
@@ -286,9 +254,8 @@ impl fmt::Display for PrettyJsError {
         &self.0.exception_message,
         cause.as_deref(),
         self.0.source_line.as_deref(),
-        self.0.start_column,
-        self.0.end_column,
-        &frames,
+        self.0.source_line_frame_index,
+        &self.0.frames,
         0
       )
     )?;
@@ -305,22 +272,17 @@ mod tests {
 
   #[test]
   fn test_format_none_source_line() {
-    let actual = format_maybe_source_line(None, None, None, false, 0);
+    let actual = format_maybe_source_line(None, None, false, 0);
     assert_eq!(actual, "");
   }
 
   #[test]
   fn test_format_some_source_line() {
-    let actual = format_maybe_source_line(
-      Some("console.log('foo');"),
-      Some(8),
-      Some(11),
-      true,
-      0,
-    );
+    let actual =
+      format_maybe_source_line(Some("console.log('foo');"), Some(9), true, 0);
     assert_eq!(
       strip_ansi_codes(&actual),
-      "\nconsole.log(\'foo\');\n        ~~~"
+      "\nconsole.log(\'foo\');\n        ^"
     );
   }
 }

@@ -16,6 +16,7 @@ mod ops_builtin;
 mod ops_metrics;
 mod resources;
 mod runtime;
+mod source_map;
 
 // Re-exports
 pub use anyhow;
@@ -28,6 +29,7 @@ pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use serde_v8::ByteString;
 pub use serde_v8::StringOrBuffer;
 pub use serde_v8::U16String;
+pub use sourcemap;
 pub use url;
 pub use v8;
 
@@ -96,6 +98,7 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
+pub use crate::source_map::SourceMapGetter;
 pub use deno_ops::op;
 
 pub fn v8_version() -> &'static str {
