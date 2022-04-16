@@ -3049,6 +3049,17 @@ declare namespace Deno {
    * `CommandOptions.stdin` defaults to `"null"`.
    * `CommandOptions.stdout` defaults to `"inherit"`.
    * `CommandOptions.stderr` defaults to `"inherit"`.
+   *
+   * ```ts
+   * const child = Deno.spawnChild(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   * });
+   *
+   * const status = await child.wait();
+   * ```
    */
   export function spawnChild<T extends CommandOptions = CommandOptions>(
     command: string | URL,
@@ -3071,7 +3082,7 @@ declare namespace Deno {
     wait(): Promise<CommandStatus>;
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<CommandOutput<T>>;
-    /** Kills the process. */
+    /** Kills the process with given Signal. */
     kill(signo: Signal): void;
   }
 
@@ -3081,6 +3092,15 @@ declare namespace Deno {
    * `CommandOptions.stdin` defaults to `"null"`.
    * `CommandOptions.stdout` defaults to `"piped"`.
    * `CommandOptions.stderr` defaults to `"piped"`.
+   *
+   * ```ts
+   * const { status } = await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   * });
+   * ```
    */
   export function spawn<T extends CommandOptions = CommandOptions>(
     command: string | URL,
@@ -3093,6 +3113,15 @@ declare namespace Deno {
    * `CommandOptions.stdin` defaults to `"null"`.
    * `CommandOptions.stdout` defaults to `"piped"`.
    * `CommandOptions.stderr` defaults to `"piped"`.
+   *
+   * ```ts
+   * const { status } = Deno.spawnSync(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   * });
+   * ```
    */
   export function spawnSync<T extends CommandOptions = CommandOptions>(
     command: string | URL,
