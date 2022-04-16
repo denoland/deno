@@ -180,12 +180,20 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-fn format_js_error(js_error: &JsError, is_child: bool) -> String {
+fn format_js_error(
+  js_error: &JsError,
+  is_child: bool,
+  color_message: bool,
+) -> String {
   let mut s = String::new();
-  s.push_str(&js_error.exception_message);
+  if color_message {
+    s.push_str(&red(&js_error.exception_message).to_string());
+  } else {
+    s.push_str(&js_error.exception_message);
+  }
   if let Some(aggregated) = &js_error.aggregated {
     for aggregated_error in aggregated {
-      let error_string = format_js_error(aggregated_error, true);
+      let error_string = format_js_error(aggregated_error, true, false);
       for line in error_string.trim_start_matches("Uncaught ").lines() {
         s.push_str(&format!("\n    {}", line));
       }
@@ -208,7 +216,7 @@ fn format_js_error(js_error: &JsError, is_child: bool) -> String {
     s.push_str(&format!("\n    at {}", format_frame(frame)));
   }
   if let Some(cause) = &js_error.cause {
-    let error_string = format_js_error(cause, true);
+    let error_string = format_js_error(cause, true, false);
     s.push_str(&format!(
       "\nCaused by: {}",
       error_string.trim_start_matches("Uncaught ")
@@ -220,11 +228,41 @@ fn format_js_error(js_error: &JsError, is_child: bool) -> String {
 /// Wrapper around deno_core::JsError which provides colorful
 /// string representation.
 #[derive(Debug)]
-pub struct PrettyJsError(JsError);
+pub struct PrettyJsError {
+  js_error: JsError,
+  color_message: bool,
+}
 
 impl PrettyJsError {
   pub fn create(js_error: JsError) -> AnyError {
-    let pretty_js_error = Self(js_error);
+    let pretty_js_error = Self {
+      js_error,
+      color_message: false,
+    };
+    pretty_js_error.into()
+  }
+
+  pub fn create_for_testing(mut js_error: JsError) -> AnyError {
+    // filter out stack frames that are internal Deno code (starting with
+    // "[deno:" or "deno:"
+    let frames = std::mem::take(&mut js_error.frames);
+    let frames = frames
+      .into_iter()
+      .rev()
+      .skip_while(|f| {
+        if let Some(file_name) = &f.file_name {
+          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+        } else {
+          false
+        }
+      })
+      .collect();
+    js_error.frames = frames;
+
+    let pretty_js_error = Self {
+      js_error,
+      color_message: true,
+    };
     pretty_js_error.into()
   }
 }
@@ -232,13 +270,17 @@ impl PrettyJsError {
 impl Deref for PrettyJsError {
   type Target = JsError;
   fn deref(&self) -> &Self::Target {
-    &self.0
+    &self.js_error
   }
 }
 
 impl fmt::Display for PrettyJsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}", &format_js_error(&self.0, false))
+    write!(
+      f,
+      "{}",
+      &format_js_error(&self.js_error, false, self.color_message)
+    )
   }
 }
 
