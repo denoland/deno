@@ -7,13 +7,13 @@ use crate::compat;
 use crate::create_main_worker;
 use crate::display;
 use crate::emit;
-use crate::fmt_errors::PrettyJsError;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
 use crate::flags::TypeCheckMode;
+use crate::fmt_errors::PrettyJsError;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -297,8 +297,7 @@ impl PrettyTestReporter {
     );
 
     if let Some(js_error) = result.error() {
-      let err_string = PrettyJsError::create(js_error.clone())
-        .to_string();
+      let err_string = PrettyJsError::create(js_error.clone()).to_string();
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
@@ -458,8 +457,7 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        let err_string = PrettyJsError::create(*js_error.clone())
-          .to_string();
+        let err_string = PrettyJsError::create(*js_error.clone()).to_string();
         println!("{}", err_string);
         println!();
       }
