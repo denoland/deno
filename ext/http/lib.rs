@@ -676,7 +676,7 @@ async fn op_http_write_resource(
     .resource_table
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
-
+  let resource = state.borrow().resource_table.get_any(stream)?;
   loop {
     let body_tx = match &mut *wr {
       HttpResponseWriter::Body(body_tx) => body_tx,
@@ -688,17 +688,16 @@ async fn op_http_write_resource(
       }
     };
 
-    let resource = state.borrow().resource_table.get_any(stream)?;
     let mut vec = vec![0u8; 16 * 1024];
     let vec_ptr = vec.as_mut_ptr();
     let buf = ZeroCopyBuf::new_temp(vec);
-    let nread = resource.read(buf).await?;
+    let nread = resource.clone().read(buf).await?;
     if nread == 0 {
       break;
     }
-    let bytes = Bytes::copy_from_slice(unsafe {
-      std::slice::from_raw_parts(vec_ptr, nread)
-    });
+    // SAFETY: ZeroCopyBuf keeps the Vec<u8> alive.
+    let bytes =
+      Bytes::from_static(unsafe { std::slice::from_raw_parts(vec_ptr, nread) });
     match body_tx.send_data(bytes).await {
       Ok(_) => {}
       Err(err) => {
@@ -713,6 +712,7 @@ async fn op_http_write_resource(
   }
 
   take(&mut *wr);
+  let _ = state.borrow_mut().resource_table.close(stream);
   Ok(())
 }
 
