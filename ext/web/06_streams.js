@@ -8,6 +8,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { add, remove, signalAbort, newSignal, AbortSignalPrototype } =
     window.__bootstrap.abortSignal;
@@ -641,8 +642,8 @@
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
-          const bytesRead = await read(rid, v);
-          if (bytesRead === null) {
+          const bytesRead = await core.read(rid, v);
+          if (bytesRead === 0) {
             tryClose(rid);
             controller.close();
             controller.byobRequest.respond(0);
