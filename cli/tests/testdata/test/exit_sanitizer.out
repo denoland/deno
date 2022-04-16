@@ -12,7 +12,6 @@ AssertionError: Test case attempted to exit with exit code: 0
        ^
     at [WILDCARD]
     at [WILDCARD]/test/exit_sanitizer.ts:2:8
-    at [WILDCARD]
 
 ./test/exit_sanitizer.ts > exit(1)
 AssertionError: Test case attempted to exit with exit code: 1
@@ -20,7 +19,6 @@ AssertionError: Test case attempted to exit with exit code: 1
        ^
     at [WILDCARD]
     at [WILDCARD]/test/exit_sanitizer.ts:6:8
-    at [WILDCARD]
 
 ./test/exit_sanitizer.ts > exit(2)
 AssertionError: Test case attempted to exit with exit code: 2
@@ -28,7 +26,6 @@ AssertionError: Test case attempted to exit with exit code: 2
        ^
     at [WILDCARD]
     at [WILDCARD]/test/exit_sanitizer.ts:10:8
-    at [WILDCARD]
 
 failures:
 

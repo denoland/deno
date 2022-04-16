@@ -8,7 +8,6 @@ use crate::checksum;
 use crate::create_main_worker;
 use crate::emit;
 use crate::flags;
-use crate::fmt_errors::PrettyJsError;
 use crate::located_script_name;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
@@ -799,10 +798,7 @@ impl test::TestReporter for LspTestReporter {
         })
       }
       test::TestResult::Failed(js_error) => {
-        let err_string = PrettyJsError::create(*js_error.clone())
-          .to_string()
-          .trim_start_matches("Uncaught ")
-          .to_string();
+        let err_string = test::format_test_error(js_error);
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
           messages: as_test_messages(err_string, false),
@@ -846,10 +842,7 @@ impl test::TestReporter for LspTestReporter {
       }
       test::TestStepResult::Failed(js_error) => {
         let messages = if let Some(js_error) = js_error {
-          let err_string = PrettyJsError::create(*js_error.clone())
-            .to_string()
-            .trim_start_matches("Uncaught ")
-            .to_string();
+          let err_string = test::format_test_error(js_error);
           as_test_messages(err_string, false)
         } else {
           vec![]
