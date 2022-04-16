@@ -113,10 +113,10 @@
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
-    spawn: __bootstrap.command.spawn,
     Child: __bootstrap.command.Child,
-    command: __bootstrap.command.command,
-    commandSync: __bootstrap.command.commandSync,
+    spawnChild: __bootstrap.command.spawnChild,
+    spawn: __bootstrap.command.spawn,
+    spawnSync: __bootstrap.command.spawnSync,
   };
 
   __bootstrap.denoNsUnstable = {
