@@ -253,10 +253,14 @@ impl PrettyTestReporter {
   fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
     let url = Url::parse(path_or_url).unwrap();
     if url.scheme() == "file" {
-      self.cwd.make_relative(&url).unwrap()
-    } else {
-      path_or_url.to_string()
+      if let Some(mut r) = self.cwd.make_relative(&url) {
+        if !r.starts_with("../") {
+          r = format!("./{}", r);
+        }
+        return r;
+      }
     }
+    path_or_url.to_string()
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
