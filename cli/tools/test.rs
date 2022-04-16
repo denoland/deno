@@ -518,19 +518,10 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-// This function maps JsError to PrettyJsError and applies some changes
-// specifically for test runner purposes:
-//
-// - color the exception message in red
-// - remove stack frames for internal Deno code that are not helpful for users
-pub fn format_test_error(js_error: &JsError) -> String {
+fn abbreviate_test_error(js_error: &JsError) -> JsError {
   let mut js_error = js_error.clone();
-  let e =
-    colors::red(&js_error.exception_message.trim_start_matches("Uncaught "))
-      .to_string();
-  js_error.exception_message = e;
   let frames = std::mem::take(&mut js_error.frames);
-  let frames = frames
+  let mut frames = frames
     .into_iter()
     .rev()
     .skip_while(|f| {
@@ -540,8 +531,32 @@ pub fn format_test_error(js_error: &JsError) -> String {
         false
       }
     })
-    .collect();
+    .into_iter()
+    .collect::<Vec<_>>();
+  frames.reverse();
   js_error.frames = frames;
+  js_error.cause = js_error
+    .cause
+    .as_ref()
+    .map(|e| Box::new(abbreviate_test_error(e)));
+  js_error.aggregated = js_error
+    .aggregated
+    .as_ref()
+    .map(|es| es.iter().map(abbreviate_test_error).collect());
+  js_error
+}
+
+// This function maps JsError to PrettyJsError and applies some changes
+// specifically for test runner purposes:
+//
+// - color the exception message in red
+// - remove stack frames for internal Deno code that are not helpful for users
+pub fn format_test_error(js_error: &JsError) -> String {
+  let mut js_error = abbreviate_test_error(js_error);
+  let e =
+    colors::red(&js_error.exception_message.trim_start_matches("Uncaught "))
+      .to_string();
+  js_error.exception_message = e;
   PrettyJsError::create(js_error).to_string()
 }
 
