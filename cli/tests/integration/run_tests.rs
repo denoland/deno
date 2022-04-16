@@ -2715,6 +2715,18 @@ itest!(set_timeout_error_handled {
   output: "set_timeout_error_handled.ts.out",
 });
 
+itest!(aggregate_error {
+  args: "run --quiet aggregate_error.ts",
+  output: "aggregate_error.out",
+  exit_code: 1,
+});
+
+itest!(complex_error {
+  args: "run --quiet complex_error.ts",
+  output: "complex_error.ts.out",
+  exit_code: 1,
+});
+
 itest!(report_error {
   args: "run --quiet report_error.ts",
   output: "report_error.ts.out",
