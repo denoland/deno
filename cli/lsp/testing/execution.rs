@@ -8,12 +8,14 @@ use crate::checksum;
 use crate::create_main_worker;
 use crate::emit;
 use crate::flags;
+use crate::fmt_errors::PrettyJsError;
 use crate::located_script_name;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state;
 use crate::tools::test;
 
@@ -183,11 +185,17 @@ async fn test_specifier(
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
+    let (stdout_writer, stderr_writer) =
+      create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
-      vec![ops::testing::init(channel.clone())],
+      vec![ops::testing::init(
+        channel.clone(),
+        stdout_writer,
+        stderr_writer,
+      )],
     );
 
     worker
@@ -752,17 +760,20 @@ impl test::TestReporter for LspTestReporter {
         .get(origin)
         .and_then(|v| v.last().map(|td| td.into()))
     });
-    match output {
+    let value = match output {
       test::TestOutput::PrintStdout(value)
-      | test::TestOutput::PrintStderr(value) => {
-        self.progress(lsp_custom::TestRunProgressMessage::Output {
-          value: value.replace('\n', "\r\n"),
-          test,
-          // TODO(@kitsonk) test output should include a location
-          location: None,
-        })
+      | test::TestOutput::PrintStderr(value) => value.replace('\n', "\r\n"),
+      test::TestOutput::Stdout(bytes) | test::TestOutput::Stderr(bytes) => {
+        String::from_utf8_lossy(bytes).replace('\n', "\r\n")
       }
-    }
+    };
+
+    self.progress(lsp_custom::TestRunProgressMessage::Output {
+      value,
+      test,
+      // TODO(@kitsonk) test output should include a location
+      location: None,
+    })
   }
 
   fn report_result(
@@ -788,8 +799,7 @@ impl test::TestReporter for LspTestReporter {
         })
       }
       test::TestResult::Failed(js_error) => {
-        // TODO(bartlomieju): use structured data here
-        let err_string = js_error
+        let err_string = PrettyJsError::create(*js_error.clone())
           .to_string()
           .trim_start_matches("Uncaught ")
           .to_string();
@@ -836,8 +846,7 @@ impl test::TestReporter for LspTestReporter {
       }
       test::TestStepResult::Failed(js_error) => {
         let messages = if let Some(js_error) = js_error {
-          // TODO(bartlomieju): use structured data here
-          let err_string = js_error
+          let err_string = PrettyJsError::create(*js_error.clone())
             .to_string()
             .trim_start_matches("Uncaught ")
             .to_string();

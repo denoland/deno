@@ -13,6 +13,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
 use crate::flags::TypeCheckMode;
+use crate::fmt_errors::PrettyJsError;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -21,6 +22,7 @@ use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -81,9 +83,10 @@ pub struct TestDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
-  // TODO(caspervonb): add stdout and stderr redirection.
   PrintStdout(String),
   PrintStderr(String),
+  Stdout(Vec<u8>),
+  Stderr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -221,6 +224,7 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  in_test_count: usize,
   last_wait_output_level: usize,
   cwd: Url,
   did_have_user_output: bool,
@@ -231,6 +235,7 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      in_test_count: 0,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
@@ -255,7 +260,8 @@ impl PrettyTestReporter {
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    if self.last_wait_output_level < description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level < description.level {
       println!();
     }
     print!("{}{} ...", "  ".repeat(description.level), description.name);
@@ -277,7 +283,8 @@ impl PrettyTestReporter {
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    if self.last_wait_output_level == description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == description.level {
       print!(" ");
     } else {
       print!("{}", "  ".repeat(description.level));
@@ -290,14 +297,23 @@ impl PrettyTestReporter {
     );
 
     if let Some(js_error) = result.error() {
-      // TODO(bartlomieju): use structured data here
-      let err_string = js_error
+      let err_string = PrettyJsError::create(js_error.clone())
         .to_string()
         .trim_start_matches("Uncaught ")
         .to_string();
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
+    }
+  }
+
+  fn write_output_end(&mut self) -> bool {
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----- output end -----"));
+      self.did_have_user_output = false;
+      true
+    } else {
+      false
     }
   }
 }
@@ -320,6 +336,7 @@ impl TestReporter for PrettyTestReporter {
     if !self.concurrent {
       self.force_report_wait(description);
     }
+    self.in_test_count += 1;
   }
 
   fn report_output(&mut self, output: &TestOutput) {
@@ -327,14 +344,23 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
 
-    if !self.did_have_user_output {
+    if !self.did_have_user_output && self.in_test_count > 0 {
       self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("------- output -------"));
     }
     match output {
-      TestOutput::PrintStdout(line) | TestOutput::PrintStderr(line) => {
+      TestOutput::PrintStdout(line) => {
         print!("{}", line)
+      }
+      TestOutput::PrintStderr(line) => {
+        eprint!("{}", line)
+      }
+      TestOutput::Stdout(bytes) => {
+        std::io::stdout().write_all(bytes).unwrap();
+      }
+      TestOutput::Stderr(bytes) => {
+        std::io::stderr().write_all(bytes).unwrap();
       }
     }
   }
@@ -345,6 +371,8 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    self.in_test_count -= 1;
+
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -369,10 +397,8 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
-    if self.did_have_user_output {
-      println!("{}", colors::gray("----- output end -----"));
-      self.did_have_user_output = false;
-    } else if self.last_wait_output_level == 0 {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == 0 {
       print!(" ");
     }
 
@@ -423,21 +449,9 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
-    fn format_error(error: &str) -> String {
-      let lines: Vec<&str> = error.split('\n').collect();
-      let mut output = vec![colors::red(lines[0]).to_string()];
-      for line in &lines[1..] {
-        if line.contains("(deno:") {
-          continue;
-        }
-        output.push(colors::gray(line).to_string());
-      }
-      output.join("\n")
-    }
-
     if !summary.failures.is_empty() {
       println!("\n{}\n", colors::black_on_red("ERRORS"));
-      for (description, error) in &summary.failures {
+      for (description, js_error) in &summary.failures {
         println!(
           "{} {} {}",
           colors::gray(
@@ -446,12 +460,11 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        // TODO(bartlomieju): use structured data here
-        let err_string = error
+        let err_string = PrettyJsError::create(*js_error.clone())
           .to_string()
           .trim_start_matches("Uncaught ")
           .to_string();
-        println!("{}", format_error(&err_string));
+        println!("{}", err_string);
         println!();
       }
 
@@ -554,11 +567,17 @@ async fn test_specifier(
   channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let (stdout_writer, stderr_writer) =
+    create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(
+      channel.clone(),
+      stdout_writer,
+      stderr_writer,
+    )],
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
