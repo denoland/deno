@@ -4,8 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype } = core;
-  const { ReadableStream, WritableStream, readableStreamForRid } =
-    window.__bootstrap.streams;
+  const { WritableStream, readableStreamForRid } = window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -65,8 +64,6 @@
   function resolveDns(query, recordType, options) {
     return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
-
-  const DEFAULT_CHUNK_SIZE = 16_640;
 
   function tryClose(rid) {
     try {
