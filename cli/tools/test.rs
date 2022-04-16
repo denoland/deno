@@ -301,10 +301,7 @@ impl PrettyTestReporter {
     );
 
     if let Some(js_error) = result.error() {
-      let err_string = PrettyJsError::create(js_error.clone())
-        .to_string()
-        .trim_start_matches("Uncaught ")
-        .to_string();
+      let err_string = format_test_error(js_error);
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
@@ -464,11 +461,7 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        let err_string = PrettyJsError::create(*js_error.clone())
-          .to_string()
-          .trim_start_matches("Uncaught ")
-          .to_string();
-        println!("{}", err_string);
+        println!("{}", format_test_error(js_error));
         println!();
       }
 
@@ -523,6 +516,33 @@ impl TestReporter for PrettyTestReporter {
         format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
+}
+
+// This function maps JsError to PrettyJsError and applies some changes
+// specifically for test runner purposes:
+//
+// - color the exception message in red
+// - remove stack frames for internal Deno code that are not helpful for users
+pub fn format_test_error(js_error: &JsError) -> String {
+  let mut js_error = js_error.clone();
+  let e =
+    colors::red(&js_error.exception_message.trim_start_matches("Uncaught "))
+      .to_string();
+  js_error.exception_message = e;
+  let frames = std::mem::take(&mut js_error.frames);
+  let frames = frames
+    .into_iter()
+    .rev()
+    .skip_while(|f| {
+      if let Some(file_name) = &f.file_name {
+        file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+      } else {
+        false
+      }
+    })
+    .collect();
+  js_error.frames = frames;
+  PrettyJsError::create(js_error).to_string()
 }
 
 fn create_reporter(
