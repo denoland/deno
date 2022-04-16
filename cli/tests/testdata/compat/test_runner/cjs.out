@@ -5,7 +5,7 @@ Failed assertion ... FAILED ([WILDCARD])
 failures:
 
 compat/test_runner/cjs.js > Failed assertion
-AssertionError [ERR_ASSERTION]: Values are not strictly equal:
+AssertionError: Values are not strictly equal:
 
 
     [Diff] Actual / Expected
@@ -14,6 +14,8 @@ AssertionError [ERR_ASSERTION]: Values are not strictly equal:
 -   10
 +   20
 
+    Error.captureStackTrace(this, stackStartFn || stackStartFunction);
+          ^
 [WILDCARD]
 
 failures:

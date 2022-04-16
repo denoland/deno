@@ -804,7 +804,7 @@
       await test.fn(step);
       const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
-        "failed": formatError(
+        "failed": core.destructureError(
           new Error(
             `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
           ),
@@ -812,7 +812,7 @@
       };
     } catch (error) {
       return {
-        "failed": formatError(error),
+        "failed": core.destructureError(error),
       };
     } finally {
       step.finalized = true;
@@ -1211,11 +1211,11 @@
           return "ignored";
         case "pending":
           return {
-            "pending": this.error && formatError(this.error),
+            "pending": this.error && core.destructureError(this.error),
           };
         case "failed":
           return {
-            "failed": this.error && formatError(this.error),
+            "failed": this.error && core.destructureError(this.error),
           };
         default:
           throw new Error(`Unhandled status: ${this.status}`);
@@ -1335,7 +1335,7 @@
               subStep.status = "ok";
             }
           } catch (error) {
-            subStep.error = formatError(error);
+            subStep.error = error;
             subStep.status = "failed";
           }
 

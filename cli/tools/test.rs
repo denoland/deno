@@ -13,6 +13,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
 use crate::flags::TypeCheckMode;
+use crate::fmt_errors::PrettyJsError;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -31,6 +32,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
@@ -92,7 +94,7 @@ pub enum TestOutput {
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(String),
+  Failed(Box<JsError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -108,15 +110,15 @@ pub struct TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<String>),
-  Pending(Option<String>),
+  Failed(Option<Box<JsError>>),
+  Pending(Option<Box<JsError>>),
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&str> {
+  fn error(&self) -> Option<&JsError> {
     match self {
-      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
-      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      TestStepResult::Failed(Some(error)) => Some(error),
+      TestStepResult::Pending(Some(error)) => Some(error),
       _ => None,
     }
   }
@@ -154,7 +156,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, String)>,
+  pub failures: Vec<(TestDescription, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -294,8 +296,12 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
-    if let Some(error_text) = result.error() {
-      for line in error_text.lines() {
+    if let Some(js_error) = result.error() {
+      let err_string = PrettyJsError::create(js_error.clone())
+        .to_string()
+        .trim_start_matches("Uncaught ")
+        .to_string();
+      for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
     }
@@ -445,7 +451,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
+      for (description, js_error) in &summary.failures {
         println!(
           "{} {} {}",
           colors::gray(
@@ -454,7 +460,11 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        println!("{}", error);
+        let err_string = PrettyJsError::create(*js_error.clone())
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
+        println!("{}", err_string);
         println!();
       }
 

@@ -4,6 +4,8 @@ nested failure ...
   step 1 ...
     inner 1 ... FAILED ([WILDCARD])
       Error: Failed.
+            throw new Error("Failed.");
+                  ^
           at [WILDCARD]/failing_steps.ts:[WILDCARD]
           [WILDCARD]
     inner 2 ... ok ([WILDCARD])
@@ -12,15 +14,21 @@ FAILED ([WILDCARD])
 multiple test step failures ...
   step 1 ... FAILED ([WILDCARD])
     Error: Fail.
+        throw new Error("Fail.");
+              ^
         [WILDCARD]
   step 2 ... FAILED ([WILDCARD])
     Error: Fail.
+      await t.step("step 2", () => Promise.reject(new Error("Fail.")));
+                                                  ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         [WILDCARD]
 FAILED ([WILDCARD])
 failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
     Error: Fail.
+        throw new Error("Fail.");
+              ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         at [WILDCARD]
 FAILED ([WILDCARD])
@@ -39,6 +47,8 @@ Error: 2 test steps failed.
 
 test/steps/failing_steps.ts > failing step in failing test
 Error: Fail test.
+  throw new Error("Fail test.");
+        ^
     at [WILDCARD]/failing_steps.ts:[WILDCARD]
     at [WILDCARD]
 
