@@ -90,7 +90,6 @@ secure_tempfile = { version = "=3.2.0", package = "tempfile" } # different name 
 semver-parser = "=0.10.2"
 serde = { version = "=1.0.136", features = ["derive"] }
 shell-escape = "=0.1.5"
-sourcemap = "=6.0.1"
 text-size = "=1.1.0"
 text_lines = "=0.4.1"
 tokio = { version = "=1.17", features = ["full"] }
