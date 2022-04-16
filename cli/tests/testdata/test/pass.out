@@ -1,5 +1,5 @@
 Check [WILDCARD]/test/pass.ts
-running 10 tests from test/pass.ts
+running 10 tests from ./test/pass.ts
 test 0 ... ok ([WILDCARD])
 test 1 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])

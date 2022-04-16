@@ -1,5 +1,5 @@
 [WILDCARD]
-running 7 tests from test/steps/invalid_usage.ts
+running 7 tests from ./test/steps/invalid_usage.ts
 capturing ...
   some step ... ok ([WILDCARD])
 FAILED ([WILDCARD])
@@ -75,7 +75,7 @@ FAILED ([WILDCARD])
 
 failures:
 
-test/steps/invalid_usage.ts > capturing
+./test/steps/invalid_usage.ts > capturing
 Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
   await capturedContext.step("next step", () => {});
                         ^
@@ -83,35 +83,35 @@ Error: Cannot run test step after parent scope has finished execution. Ensure an
     at [WILDCARD]/invalid_usage.ts:[WILDCARD]
     at [WILDCARD]
 
-test/steps/invalid_usage.ts > top level missing await
+./test/steps/invalid_usage.ts > top level missing await
 Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
     at postValidation [WILDCARD]
     at testStepSanitizer ([WILDCARD])
     [WILDCARD]
 
-test/steps/invalid_usage.ts > inner missing await
+./test/steps/invalid_usage.ts > inner missing await
 Error: 1 test step failed.
     at [WILDCARD]
 
-test/steps/invalid_usage.ts > parallel steps with sanitizers
+./test/steps/invalid_usage.ts > parallel steps with sanitizers
 Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
     at postValidation [WILDCARD]
     at testStepSanitizer ([WILDCARD])
     [WILDCARD]
 
-test/steps/invalid_usage.ts > parallel steps when first has sanitizer
+./test/steps/invalid_usage.ts > parallel steps when first has sanitizer
 Error: 1 test step failed.
     at runTest ([WILDCARD])
     at [WILDCARD]
 
-test/steps/invalid_usage.ts > parallel steps when second has sanitizer
+./test/steps/invalid_usage.ts > parallel steps when second has sanitizer
 Error: 1 test step failed.
     at runTest ([WILDCARD])
     at [WILDCARD]
 
 failures:
 
-	test/steps/invalid_usage.ts
+	./test/steps/invalid_usage.ts
 	capturing
 	top level missing await
 	inner missing await
