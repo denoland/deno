@@ -9,16 +9,20 @@
   const { assert } = window.__bootstrap.infra;
   const {
     AggregateErrorPrototype,
+    ArrayFrom,
     ArrayPrototypeFilter,
     ArrayPrototypeJoin,
+    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSome,
+    ArrayPrototypeSort,
     DateNow,
     Error,
     FunctionPrototype,
     Map,
     MapPrototypeHas,
+    MathCeil,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     Promise,
@@ -434,6 +438,27 @@
     };
   }
 
+  function assertExitSync(fn, isTest) {
+    return function exitSanitizer(...params) {
+      setExitHandler((exitCode) => {
+        assert(
+          false,
+          `${
+            isTest ? "Test case" : "Bench"
+          } attempted to exit with exit code: ${exitCode}`,
+        );
+      });
+
+      try {
+        fn(...new SafeArrayIterator(params));
+      } catch (err) {
+        throw err;
+      } finally {
+        setExitHandler(null);
+      }
+    };
+  }
+
   function assertTestStepScopes(fn) {
     /** @param step {TestStep} */
     return async function testStepSanitizer(step) {
@@ -721,17 +746,13 @@
       benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
+    const AsyncFunction = (async () => {}).constructor;
+    benchDef.async = AsyncFunction === benchDef.fn.constructor;
+
     benchDef.fn = wrapBenchFnWithSanitizers(
-      reportBenchIteration(benchDef.fn),
+      benchDef.fn,
       benchDef,
     );
-
-    if (benchDef.permissions) {
-      benchDef.fn = withPermissions(
-        benchDef.fn,
-        benchDef.permissions,
-      );
-    }
 
     ArrayPrototypePush(benches, benchDef);
   }
@@ -823,37 +844,227 @@
     }
   }
 
-  async function runBench(bench) {
-    if (bench.ignore) {
-      return "ignored";
+  function compareMeasurements(a, b) {
+    if (a > b) return 1;
+    if (a < b) return -1;
+
+    return 0;
+  }
+
+  function benchStats(n, t, avg, min, max, all) {
+    return {
+      n,
+      min,
+      max,
+      p75: all[MathCeil(n * (75 / 100)) - 1],
+      p99: all[MathCeil(n * (99 / 100)) - 1],
+      avg: !t ? (avg / n) : MathCeil(avg / n),
+      p995: all[MathCeil(n * (99.5 / 100)) - 1],
+      p999: all[MathCeil(n * (99.9 / 100)) - 1],
+    };
+  }
+
+  function benchMeasureSync(t, fn, step) {
+    let n = 0;
+    let avg = 0;
+    let wavg = 0;
+    const all = [];
+    let min = Infinity;
+    let max = -Infinity;
+
+    warmup: {
+      let c = 0;
+      step.warmup = true;
+      let iterations = 20;
+      let budget = 10 * 1e6;
+
+      while (0 < budget || 0 < iterations--) {
+        const t1 = benchNow();
+
+        fn();
+        const t2 = benchNow() - t1;
+        if (0 > t2) {
+          iterations++;
+          continue;
+        }
+
+        c++;
+        wavg += t2;
+        budget -= t2;
+      }
+
+      wavg /= c;
+      break warmup;
     }
 
+    measure: {
+      step.warmup = false;
+
+      if (wavg > 10_000) {
+        let iterations = 10;
+        let budget = t * 1e6;
+
+        while (0 < budget || 0 < iterations--) {
+          const t1 = benchNow();
+
+          fn();
+          const t2 = benchNow() - t1;
+          if (0 > t2) {
+            iterations++;
+            continue;
+          }
+
+          n++;
+          avg += t2;
+          budget -= t2;
+          all.push(t2);
+          if (t2 < min) min = t2;
+          if (t2 > max) max = t2;
+        }
+      } else {
+        let iterations = 10;
+        let budget = t * 1e6;
+
+        while (0 < budget || 0 < iterations--) {
+          const t1 = benchNow();
+          for (let c = 0; c < 1e4; c++) fn();
+          const t2 = (benchNow() - t1) / 1e4;
+          if (0 > t2) {
+            iterations++;
+            continue;
+          }
+
+          n++;
+          avg += t2;
+          all.push(t2);
+          budget -= t2 * 1e4;
+          if (t2 < min) min = t2;
+          if (t2 > max) max = t2;
+        }
+      }
+
+      break measure;
+    }
+
+    all.sort(compareMeasurements);
+    return benchStats(n, wavg > 10_000, avg, min, max, all);
+  }
+
+  async function benchMeasureAsync(t, fn, step) {
+    let n = 0;
+    let avg = 0;
+    let wavg = 0;
+    const all = [];
+    let min = Infinity;
+    let max = -Infinity;
+
+    warmup: {
+      let c = 0;
+      step.warmup = true;
+      let iterations = 20;
+      let budget = 10 * 1e6;
+
+      while (0 < budget || 0 < iterations--) {
+        const t1 = benchNow();
+
+        await fn();
+        const t2 = benchNow() - t1;
+        if (0 > t2) {
+          iterations++;
+          continue;
+        }
+
+        c++;
+        wavg += t2;
+        budget -= t2;
+      }
+
+      wavg /= c;
+      break warmup;
+    }
+
+    measure: {
+      step.warmup = false;
+
+      if (wavg > 10_000) {
+        let iterations = 10;
+        let budget = t * 1e6;
+
+        while (0 < budget || 0 < iterations--) {
+          const t1 = benchNow();
+
+          await fn();
+          const t2 = benchNow() - t1;
+          if (0 > t2) {
+            iterations++;
+            continue;
+          }
+
+          n++;
+          avg += t2;
+          budget -= t2;
+          all.push(t2);
+          if (t2 < min) min = t2;
+          if (t2 > max) max = t2;
+        }
+      } else {
+        let iterations = 10;
+        let budget = t * 1e6;
+
+        while (0 < budget || 0 < iterations--) {
+          const t1 = benchNow();
+          for (let c = 0; c < 1e4; c++) await fn();
+
+          const t2 = (benchNow() - t1) / 1e4;
+          if (0 > t2) {
+            iterations++;
+            continue;
+          }
+
+          n++;
+          avg += t2;
+          all.push(t2);
+          budget -= t2 * 1e4;
+          if (t2 < min) min = t2;
+          if (t2 > max) max = t2;
+        }
+      }
+
+      break measure;
+    }
+
+    all.sort(compareMeasurements);
+    return benchStats(n, wavg > 10_000, avg, min, max, all);
+  }
+
+  async function runBench(bench) {
     const step = new BenchStep({
       name: bench.name,
       sanitizeExit: bench.sanitizeExit,
       warmup: false,
     });
 
+    let token = null;
+
     try {
-      const warmupIterations = bench.warmupIterations;
-      step.warmup = true;
-
-      for (let i = 0; i < warmupIterations; i++) {
-        await bench.fn(step);
+      if (bench.permissions) {
+        token = core.opSync(
+          "op_pledge_test_permissions",
+          serializePermissions(bench.permissions),
+        );
       }
 
-      const iterations = bench.n;
-      step.warmup = false;
+      const benchTimeInMs = 500;
+      const fn = bench.fn.bind(null, step);
+      const stats = !bench.async
+        ? benchMeasureSync(benchTimeInMs, fn, step)
+        : await benchMeasureAsync(benchTimeInMs, fn, step);
 
-      for (let i = 0; i < iterations; i++) {
-        await bench.fn(step);
-      }
-
-      return "ok";
+      return { ok: { stats, ...bench } };
     } catch (error) {
-      return {
-        "failed": formatError(error),
-      };
+      return { failed: { ...bench, error: formatError(error) } };
+    } finally {
+      if (token !== null) core.opSync("op_restore_test_permissions", token);
     }
   }
 
@@ -913,33 +1124,14 @@
     });
   }
 
-  function reportBenchResult(description, result, elapsed) {
+  function reportBenchResult(origin, result) {
     core.opSync("op_dispatch_bench_event", {
-      result: [description, result, elapsed],
+      result: [origin, result],
     });
-  }
-
-  function reportBenchIteration(fn) {
-    return async function benchIteration(step) {
-      let now;
-      if (!step.warmup) {
-        now = benchNow();
-      }
-      await fn(step);
-      if (!step.warmup) {
-        reportIterationTime(benchNow() - now);
-      }
-    };
   }
 
   function benchNow() {
     return core.opSync("op_bench_now");
-  }
-
-  function reportIterationTime(time) {
-    core.opSync("op_dispatch_bench_event", {
-      iterationTime: time,
-    });
   }
 
   async function runTests({
@@ -1013,32 +1205,31 @@
       createTestFilter(filter),
     );
 
+    let groups = new Set([undefined]);
+    const benchmarks = ArrayPrototypeFilter(filtered, (bench) => !bench.ignore);
+
+    for (const bench of benchmarks) {
+      bench.group ||= undefined;
+      groups.add(bench.group);
+    }
+
+    groups = ArrayFrom(groups);
+    ArrayPrototypeSort(
+      benchmarks,
+      (a, b) => groups.indexOf(a.group) - groups.indexOf(b.group),
+    );
+
     reportBenchPlan({
       origin,
-      total: filtered.length,
-      filteredOut: benches.length - filtered.length,
+      total: benchmarks.length,
       usedOnly: only.length > 0,
+      names: ArrayPrototypeMap(benchmarks, (bench) => bench.name),
     });
 
-    for (const bench of filtered) {
-      // TODO(bartlomieju): probably needs some validation?
-      const iterations = bench.n ?? 1000;
-      const warmupIterations = bench.warmup ?? 1000;
-      const description = {
-        origin,
-        name: bench.name,
-        iterations,
-      };
-      bench.n = iterations;
-      bench.warmupIterations = warmupIterations;
-      const earlier = DateNow();
-
-      reportBenchWait(description);
-
-      const result = await runBench(bench);
-      const elapsed = DateNow() - earlier;
-
-      reportBenchResult(description, result, elapsed);
+    for (const bench of benchmarks) {
+      bench.baseline = !!bench.baseline;
+      reportBenchWait({ origin, ...bench });
+      reportBenchResult(origin, await runBench(bench));
     }
 
     globalThis.console = originalConsole;
@@ -1420,7 +1611,7 @@
    */
   function wrapBenchFnWithSanitizers(fn, opts) {
     if (opts.sanitizeExit) {
-      fn = assertExit(fn, false);
+      fn = opts.async ? assertExit(fn, false) : assertExitSync(fn, false);
     }
     return fn;
   }
