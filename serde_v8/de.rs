@@ -75,14 +75,19 @@ macro_rules! deserialize_signed {
     where
       V: Visitor<'de>,
     {
-      let value: $t = match self.input.is_big_int() {
-        true => {
-          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
-          bigint.unwrap().i64_value().0 as $t
-        }
-        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
-      };
-      visitor.$vmethod(value)
+      visitor.$vmethod(
+        if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+          x.value() as $t
+        } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+          x.i64_value().0 as $t
+        } else if let Some(x) = self.input.number_value(self.scope) {
+          x as $t
+        } else if let Some(x) = self.input.to_big_int(self.scope) {
+          x.i64_value().0 as $t
+        } else {
+          return Err(Error::ExpectedInteger);
+        },
+      )
     }
   };
 }
@@ -93,14 +98,19 @@ macro_rules! deserialize_unsigned {
     where
       V: Visitor<'de>,
     {
-      let value: $t = match self.input.is_big_int() {
-        true => {
-          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
-          bigint.unwrap().u64_value().0 as $t
-        }
-        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
-      };
-      visitor.$vmethod(value)
+      visitor.$vmethod(
+        if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+          x.value() as $t
+        } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+          x.u64_value().0 as $t
+        } else if let Some(x) = self.input.number_value(self.scope) {
+          x as $t
+        } else if let Some(x) = self.input.to_big_int(self.scope) {
+          x.u64_value().0 as $t
+        } else {
+          return Err(Error::ExpectedInteger);
+        },
+      )
     }
   };
 }
@@ -162,14 +172,26 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    visitor.visit_f32(self.input.number_value(self.scope).unwrap() as f32)
+    self.deserialize_f64(visitor)
   }
 
   fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
   where
     V: Visitor<'de>,
   {
-    visitor.visit_f64(self.input.number_value(self.scope).unwrap())
+    visitor.visit_f64(
+      if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+        x.value() as f64
+      } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+        bigint_to_f64(x)
+      } else if let Some(x) = self.input.number_value(self.scope) {
+        x as f64
+      } else if let Some(x) = self.input.to_big_int(self.scope) {
+        bigint_to_f64(x)
+      } else {
+        return Err(Error::ExpectedNumber);
+      },
+    )
   }
 
   wip!(deserialize_char);
@@ -614,4 +636,23 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
     let mut d = Deserializer::new(self.scope, self.value, None);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
   }
+}
+
+fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
+  // log2(f64::MAX) == log2(1.7976931348623157e+308) == 1024
+  let mut words: [u64; 16] = [0; 16]; // 1024/64 => 16 64bit words
+  let (neg, words) = b.to_words_array(&mut words);
+  if b.word_count() > 16 {
+    return match neg {
+      true => f64::NEG_INFINITY,
+      false => f64::INFINITY,
+    };
+  }
+  let sign = if neg { -1.0 } else { 1.0 };
+  let x: f64 = words
+    .iter()
+    .enumerate()
+    .map(|(i, w)| (*w as f64) * 2.0f64.powi(64 * i as i32))
+    .sum();
+  sign * x
 }

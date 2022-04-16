@@ -198,7 +198,7 @@
           }
           ArrayPrototypePush(details, message);
         } else if (dispatchedDiff < completedDiff) {
-          const [name] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = completedDiff - dispatchedDiff;
           ArrayPrototypePush(
             details,
@@ -206,7 +206,8 @@
               count === 1 ? "was" : "were"
             } started before this test, but ${
               count === 1 ? "was" : "were"
-            } completed during the test. Async operations should not complete in a test if they were not started in that test.`,
+            } completed during the test. Async operations should not complete in a test if they were not started in that test.
+            ${hint ? `This is often caused by not ${hint}.` : ""}`,
           );
         }
       }
@@ -792,6 +793,7 @@
     const step = new TestStep({
       name: test.name,
       parent: undefined,
+      parentContext: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
@@ -866,12 +868,6 @@
   function reportTestPlan(plan) {
     core.opSync("op_dispatch_test_event", {
       plan,
-    });
-  }
-
-  function reportTestConsoleOutput(console) {
-    core.opSync("op_dispatch_test_event", {
-      output: { console },
     });
   }
 
@@ -953,9 +949,6 @@
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
-    const originalConsole = globalThis.console;
-
-    globalThis.console = new Console(reportTestConsoleOutput);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
@@ -1002,8 +995,6 @@
 
       reportTestResult(description, result, elapsed);
     }
-
-    globalThis.console = originalConsole;
   }
 
   async function runBenchmarks({
@@ -1064,8 +1055,9 @@
    * }} TestStepDefinition
    *
    * @typedef {{
-   *   name: string;
+   *   name: string,
    *   parent: TestStep | undefined,
+   *   parentContext: TestContext | undefined,
    *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -1097,6 +1089,10 @@
 
     get parent() {
       return this.#params.parent;
+    }
+
+    get parentContext() {
+      return this.#params.parentContext;
     }
 
     get rootTestDescription() {
@@ -1269,6 +1265,18 @@
     return {
       [SymbolToStringTag]: "TestContext",
       /**
+       * The current test name.
+       */
+      name: parentStep.name,
+      /**
+       * Parent test context.
+       */
+      parent: parentStep.parentContext ?? undefined,
+      /**
+       * File Uri of the test code.
+       */
+      origin: parentStep.rootTestDescription.origin,
+      /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}
        */
@@ -1284,6 +1292,7 @@
         const subStep = new TestStep({
           name: definition.name,
           parent: parentStep,
+          parentContext: this,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,

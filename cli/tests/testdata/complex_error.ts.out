@@ -1,0 +1,44 @@
+AggregateError: foo1
+    at [WILDCARD]/complex_error.ts:1:15
+
+AggregateError: foo1
+    AggregateError
+        Error: qux1
+            at [WILDCARD]/complex_error.ts:3:25
+        Error: quux1
+            at [WILDCARD]/complex_error.ts:3:44
+        at [WILDCARD]/complex_error.ts:3:5
+    Error: bar1
+        at [WILDCARD]/complex_error.ts:4:5
+    Caused by Error: baz1
+        at [WILDCARD]/complex_error.ts:4:32
+    at [WILDCARD]/complex_error.ts:1:15
+Caused by AggregateError: foo2
+    at [WILDCARD]/complex_error.ts:8:12
+
+error: Uncaught AggregateError: foo1
+    AggregateError
+        Error: qux1
+            at [WILDCARD]/complex_error.ts:3:25
+        Error: quux1
+            at [WILDCARD]/complex_error.ts:3:44
+        at [WILDCARD]/complex_error.ts:3:5
+    Error: bar1
+        at [WILDCARD]/complex_error.ts:4:5
+    Caused by: Error: baz1
+        at [WILDCARD]/complex_error.ts:4:32
+const error = new AggregateError(
+              ^
+    at [WILDCARD]/complex_error.ts:1:15
+Caused by: AggregateError: foo2
+    AggregateError
+        Error: qux2
+            at [WILDCARD]/complex_error.ts:9:27
+        Error: quux2
+            at [WILDCARD]/complex_error.ts:9:46
+        at [WILDCARD]/complex_error.ts:9:7
+    Error: bar2
+        at [WILDCARD]/complex_error.ts:10:7
+    Caused by: Error: baz2
+        at [WILDCARD]/complex_error.ts:10:34
+    at [WILDCARD]/complex_error.ts:8:12

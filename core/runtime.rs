@@ -17,6 +17,7 @@ use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::source_map::SourceMapGetter;
 use crate::Extension;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -159,13 +160,21 @@ pub(crate) struct JsRuntimeState {
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
+  pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
+  #[allow(dead_code)]
+  // We don't explicitly re-read this prop but need the slice to live alongside the isolate
+  pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  /// The error that was passed to an explicit `Deno.core.terminate` call.
+  /// It will be retrieved by `exception_to_err_result` and used as an error
+  /// instead of any other exceptions.
+  pub(crate) explicit_terminate_exception: Option<v8::Global<v8::Value>>,
   waker: AtomicWaker,
 }
 
@@ -218,6 +227,9 @@ fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
 
 #[derive(Default)]
 pub struct RuntimeOptions {
+  /// Source map reference for errors.
+  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
+
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the JsError into an error. By default this callback
   /// is set to `JsError::create()`.
@@ -298,6 +310,16 @@ impl JsRuntime {
     }
 
     let op_state = Rc::new(RefCell::new(op_state));
+    let op_ctxs = ops
+      .into_iter()
+      .enumerate()
+      .map(|(id, decl)| OpCtx {
+        id,
+        state: op_state.clone(),
+        decl,
+      })
+      .collect::<Vec<_>>()
+      .into_boxed_slice();
 
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
@@ -309,8 +331,7 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &ops, false, op_state.clone());
+        let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -336,12 +357,8 @@ impl JsRuntime {
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &ops,
-          snapshot_loaded,
-          op_state.clone(),
-        );
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -368,13 +385,16 @@ impl JsRuntime {
       js_uncaught_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
+      source_map_getter: options.source_map_getter,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
+      op_ctxs,
       have_unpolled_ops: false,
+      explicit_terminate_exception: None,
       waker: AtomicWaker::new(),
     })));
 
@@ -1008,32 +1028,43 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
+  let state_rc = JsRuntime::state(scope);
+
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
   if is_terminating_exception {
-    // TerminateExecution was called. Cancel exception termination so that the
+    // TerminateExecution was called. Cancel isolate termination so that the
     // exception can be created..
     scope.cancel_terminate_execution();
 
-    // Maybe make a new exception object.
-    if exception.is_null_or_undefined() {
-      let message = v8::String::new(scope, "execution terminated").unwrap();
-      exception = v8::Exception::error(scope, message);
-    }
+    // If the termination is the result of a `Deno.core.terminate` call, we want
+    // to use the exception that was passed to it rather than the exception that
+    // was passed to this function.
+    let mut state = state_rc.borrow_mut();
+    exception = state
+      .explicit_terminate_exception
+      .take()
+      .map(|exception| v8::Local::new(scope, exception))
+      .unwrap_or_else(|| {
+        // Maybe make a new exception object.
+        if exception.is_null_or_undefined() {
+          let message = v8::String::new(scope, "execution terminated").unwrap();
+          v8::Exception::error(scope, message)
+        } else {
+          exception
+        }
+      });
   }
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
   if in_promise {
-    js_error.message = format!(
+    js_error.exception_message = format!(
       "Uncaught (in promise) {}",
-      js_error.message.trim_start_matches("Uncaught ")
+      js_error.exception_message.trim_start_matches("Uncaught ")
     );
   }
-
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-  let js_error = (state.js_error_create_fn)(js_error);
+  let js_error = (state_rc.borrow().js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -1213,7 +1244,14 @@ impl JsRuntime {
     // Update status after evaluating.
     status = module.get_status();
 
-    if let Some(value) = maybe_value {
+    let explicit_terminate_exception =
+      state_rc.borrow_mut().explicit_terminate_exception.take();
+    if let Some(exception) = explicit_terminate_exception {
+      let exception = v8::Local::new(tc_scope, exception);
+      sender
+        .send(exception_to_err_result(tc_scope, exception, false))
+        .expect("Failed to send module evaluation error.");
+    } else if let Some(value) = maybe_value {
       assert!(
         status == v8::ModuleStatus::Evaluated
           || status == v8::ModuleStatus::Errored
@@ -2012,7 +2050,7 @@ pub mod tests {
         .unwrap();
       let v = runtime.poll_value(&value_global, cx);
       assert!(
-        matches!(v, Poll::Ready(Err(e)) if e.downcast_ref::<JsError>().unwrap().message == "Uncaught Error: fail")
+        matches!(v, Poll::Ready(Err(e)) if e.downcast_ref::<JsError>().unwrap().exception_message == "Uncaught Error: fail")
       );
 
       let value_global = runtime
@@ -2055,7 +2093,7 @@ pub mod tests {
     let err = runtime.resolve_value(value_global).await.unwrap_err();
     assert_eq!(
       "Uncaught Error: fail",
-      err.downcast::<JsError>().unwrap().message
+      err.downcast::<JsError>().unwrap().exception_message
     );
 
     let value_global = runtime
@@ -2126,7 +2164,8 @@ pub mod tests {
     let r = runtime.execute_script("i.js", src);
     let e = r.unwrap_err();
     let js_error = e.downcast::<JsError>().unwrap();
-    assert_eq!(js_error.end_column, Some(11));
+    let frame = js_error.frames.first().unwrap();
+    assert_eq!(frame.column_number, Some(12));
   }
 
   #[test]
@@ -2345,7 +2384,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JsError>().unwrap().message
+      err.downcast::<JsError>().unwrap().exception_message
     );
     assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
   }
@@ -2398,7 +2437,7 @@ pub mod tests {
       .expect_err("script should fail");
     assert_eq!(
       "Uncaught Error: execution terminated",
-      err.downcast::<JsError>().unwrap().message
+      err.downcast::<JsError>().unwrap().exception_message
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
@@ -2468,7 +2507,7 @@ main();
 "#,
     );
     let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
-    at error_without_stack.js:3:14"#;
+    at error_without_stack.js:3:15"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -3084,8 +3123,8 @@ assertEquals(1, notify_return_value);
         const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
         const a2b = a2.subarray(0, 3);
-        
-        
+
+
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
@@ -3107,7 +3146,7 @@ assertEquals(1, notify_return_value);
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
-        
+
         const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
         const w32 = new Uint32Array(wmem.buffer);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;

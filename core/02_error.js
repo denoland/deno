@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const core = Deno.core;
   const {
     Error,
     ObjectFreeze,
@@ -188,24 +189,8 @@
     };
   }
 
-  /**
-   * Returns a function that can be used as `Error.prepareStackTrace`.
-   *
-   * This function accepts an optional argument, a function that performs
-   * source mapping. It is not required to pass this argument, but
-   * in such case only JavaScript sources will have proper position in
-   * stack frames.
-   * @param {(
-   *  fileName: string,
-   *  lineNumber: number,
-   *  columnNumber: number
-   * ) => {
-   *  fileName: string,
-   *  lineNumber: number,
-   *  columnNumber: number
-   * }} sourceMappingFn
-   */
-  function createPrepareStackTrace(sourceMappingFn, formatFileNameFn) {
+  /** Returns a function that can be used as `Error.prepareStackTrace`. */
+  function createPrepareStackTrace(formatFileNameFn) {
     return function prepareStackTrace(
       error,
       callSites,
@@ -214,13 +199,10 @@
         const fileName = callSite.getFileName();
         const lineNumber = callSite.getLineNumber();
         const columnNumber = callSite.getColumnNumber();
-        if (
-          sourceMappingFn && fileName && lineNumber != null &&
-          columnNumber != null
-        ) {
+        if (fileName && lineNumber != null && columnNumber != null) {
           return patchCallSite(
             callSite,
-            sourceMappingFn({
+            core.applySourceMap({
               fileName,
               lineNumber,
               columnNumber,

@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.20.6 / 2022.04.14
+
+- fix(serde_v8): more robust number deserialization (#14216)
+- fix(test): Don't error on missing op details (#14184)
+- fix: upgrade to swc_ecmascript 0.143 (#14238)
+
+### 1.20.5 / 2022.04.07
+
+- feat(lsp/unstable): add experimental testing API (#13798)
+- feat(lsp/unstable): support tasks in the config file (#14139)
+- feat(unstable): add ref/unref to Listener (#13961)
+- fix(cli/install): preserve compat flag (#14223)
+- fix(ext/crypto): check extractable in exportKey (#14222)
+
 ### 1.20.4 / 2022.03.31
 
 - fix(compile): follow redirects when resolving (#14161)
