@@ -10,7 +10,7 @@
   const { readableStreamForRid, writableStreamForRid } =
     window.__bootstrap.streamUtils;
 
-  function spawn(command, {
+  function spawnChild(command, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -138,13 +138,13 @@
     }
   }
 
-  function command(command, {
+  function spawn(command, {
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
     ...options
   } = {}) { // TODO(@crowlKats): more options (like input)?
-    const child = spawn(command, {
+    const child = spawnChild(command, {
       stdin,
       stdout,
       stderr,
@@ -153,7 +153,7 @@
     return child.output();
   }
 
-  function commandSync(command, {
+  function spawnSync(command, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -179,9 +179,9 @@
   }
 
   window.__bootstrap.command = {
-    spawn,
     Child,
-    command,
-    commandSync,
+    spawnChild,
+    spawn,
+    spawnSync,
   };
 })(this);

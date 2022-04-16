@@ -3050,7 +3050,7 @@ declare namespace Deno {
    * `CommandOptions.stdout` defaults to `"inherit"`.
    * `CommandOptions.stderr` defaults to `"inherit"`.
    */
-  export function spawn<T extends CommandOptions = CommandOptions>(
+  export function spawnChild<T extends CommandOptions = CommandOptions>(
     command: string | URL,
     options?: T,
   ): Child<T>;
@@ -3082,7 +3082,7 @@ declare namespace Deno {
    * `CommandOptions.stdout` defaults to `"piped"`.
    * `CommandOptions.stderr` defaults to `"piped"`.
    */
-  export function command<T extends CommandOptions = CommandOptions>(
+  export function spawn<T extends CommandOptions = CommandOptions>(
     command: string | URL,
     options?: T,
   ): Promise<CommandOutput<T>>;
@@ -3094,7 +3094,7 @@ declare namespace Deno {
    * `CommandOptions.stdout` defaults to `"piped"`.
    * `CommandOptions.stderr` defaults to `"piped"`.
    */
-  export function commandSync<T extends CommandOptions = CommandOptions>(
+  export function spawnSync<T extends CommandOptions = CommandOptions>(
     command: string | URL,
     options?: T,
   ): CommandOutput<T>;
