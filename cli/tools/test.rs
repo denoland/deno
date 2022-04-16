@@ -525,14 +525,13 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames
     .iter()
-    .find(|f| {
+    .any(|f| {
       if let Some(file_name) = &f.file_name {
         !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
       } else {
         true
       }
-    })
-    .is_some();
+    });
 
   if should_filter {
     let mut frames = frames
