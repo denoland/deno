@@ -12,6 +12,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::Flags;
 use crate::flags::TypeCheckMode;
+use crate::fmt_errors::PrettyJsError;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
 use crate::graph_util::contains_specifier;
@@ -23,13 +24,16 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+use crate::ops::bench::create_stdout_stderr_pipes;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
@@ -38,6 +42,7 @@ use log::Level;
 use num_format::Locale;
 use num_format::ToFormattedString;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
@@ -64,7 +69,10 @@ pub struct BenchDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchOutput {
-  Console(String),
+  PrintStdout(String),
+  PrintStderr(String),
+  Stdout(Vec<u8>),
+  Stderr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -72,7 +80,7 @@ pub enum BenchOutput {
 pub enum BenchResult {
   Ok,
   Ignored,
-  Failed(String),
+  Failed(Box<JsError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -111,7 +119,7 @@ pub struct BenchSummary {
   pub measured: usize,
   pub measures: Vec<BenchMeasures>,
   pub current_bench: BenchMeasures,
-  pub failures: Vec<(BenchDescription, String)>,
+  pub failures: Vec<(BenchDescription, Box<JsError>)>,
 }
 
 impl BenchSummary {
@@ -158,20 +166,47 @@ pub trait BenchReporter {
 
 struct PrettyBenchReporter {
   echo_output: bool,
+  cwd: Url,
+  did_have_user_output: bool,
+  in_bench_count: usize,
 }
 
 impl PrettyBenchReporter {
   fn new(echo_output: bool) -> Self {
-    Self { echo_output }
+    Self {
+      echo_output,
+      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      did_have_user_output: false,
+      in_bench_count: 0,
+    }
   }
 
   fn force_report_wait(&mut self, description: &BenchDescription) {
     print!(
-      "bench {} ... {} iterations ",
+      "{} ... {} iterations ",
       description.name, description.iterations
     );
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
+  }
+
+  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
+    let url = Url::parse(path_or_url).unwrap();
+    if url.scheme() == "file" {
+      self.cwd.make_relative(&url).unwrap()
+    } else {
+      path_or_url.to_string()
+    }
+  }
+
+  fn write_output_end(&mut self) -> bool {
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----- output end -----"));
+      self.did_have_user_output = false;
+      true
+    } else {
+      false
+    }
   }
 }
 
@@ -183,12 +218,31 @@ impl BenchReporter for PrettyBenchReporter {
 
   fn report_wait(&mut self, description: &BenchDescription) {
     self.force_report_wait(description);
+    self.in_bench_count += 1;
   }
 
   fn report_output(&mut self, output: &BenchOutput) {
-    if self.echo_output {
-      match output {
-        BenchOutput::Console(line) => print!("{}", line),
+    if !self.echo_output {
+      return;
+    }
+
+    if !self.did_have_user_output && self.in_bench_count > 0 {
+      self.did_have_user_output = true;
+      println!();
+      println!("{}", colors::gray("------- output -------"));
+    }
+    match output {
+      BenchOutput::PrintStdout(line) => {
+        print!("{}", line)
+      }
+      BenchOutput::PrintStderr(line) => {
+        eprint!("{}", line)
+      }
+      BenchOutput::Stdout(bytes) => {
+        std::io::stdout().write_all(bytes).unwrap();
+      }
+      BenchOutput::Stderr(bytes) => {
+        std::io::stderr().write_all(bytes).unwrap();
       }
     }
   }
@@ -200,6 +254,10 @@ impl BenchReporter for PrettyBenchReporter {
     elapsed: u64,
     current_bench: &BenchMeasures,
   ) {
+    self.in_bench_count -= 1;
+
+    self.write_output_end();
+
     let status = match result {
       BenchResult::Ok => {
         let ns_op = current_bench.measures.iter().sum::<u128>()
@@ -228,15 +286,41 @@ impl BenchReporter for PrettyBenchReporter {
   fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
-        println!("{}", description.name);
-        println!("{}", error);
+      for (description, js_error) in &summary.failures {
+        println!(
+          "{} {} {}",
+          colors::gray(
+            self.to_relative_path_or_remote_url(&description.origin)
+          ),
+          colors::gray(">"),
+          description.name
+        );
+        let err_string = PrettyJsError::create(*js_error.clone())
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
+        println!("{}", err_string);
         println!();
       }
 
-      println!("failures:\n");
+      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
+        BTreeMap::default();
       for (description, _) in &summary.failures {
-        println!("\t{}", description.name);
+        let bench_names = grouped_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        bench_names.push(description.name.clone());
+      }
+
+      println!("failures:\n");
+      for (origin, bench_names) in &grouped_by_origin {
+        println!(
+          "\t{}",
+          colors::gray(self.to_relative_path_or_remote_url(origin))
+        );
+        for bench_name in bench_names {
+          println!("\t{}", bench_name);
+        }
       }
     }
 
@@ -291,11 +375,19 @@ async fn bench_specifier(
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let (stdout_writer, stderr_writer) =
+    create_stdout_stderr_pipes(channel.clone());
+
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::bench::init(channel.clone(), ps.flags.unstable)],
+    vec![ops::bench::init(
+      channel.clone(),
+      ps.flags.unstable,
+      stdout_writer,
+      stderr_writer,
+    )],
   );
 
   if options.compat_mode {

@@ -4,11 +4,9 @@
 ((window) => {
   const core = window.Deno.core;
   const { setExitHandler } = window.__bootstrap.os;
-  const { Console, inspectArgs } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.infra;
   const {
-    AggregateErrorPrototype,
     ArrayPrototypeFilter,
     ArrayPrototypeJoin,
     ArrayPrototypePush,
@@ -736,21 +734,6 @@
     ArrayPrototypePush(benches, benchDef);
   }
 
-  function formatError(error) {
-    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
-      const message = error
-        .errors
-        .map((error) =>
-          inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4))
-        )
-        .join("\n");
-
-      return error.name + "\n" + message + error.stack;
-    }
-
-    return inspectArgs([error]);
-  }
-
   /**
    * @param {string | { include?: string[], exclude?: string[] }} filter
    * @returns {(def: { name: string }) => boolean}
@@ -852,7 +835,7 @@
       return "ok";
     } catch (error) {
       return {
-        "failed": formatError(error),
+        "failed": core.destructureError(error),
       };
     }
   }
@@ -898,12 +881,6 @@
   function reportBenchPlan(plan) {
     core.opSync("op_dispatch_bench_event", {
       plan,
-    });
-  }
-
-  function reportBenchConsoleOutput(console) {
-    core.opSync("op_dispatch_bench_event", {
-      output: { console },
     });
   }
 
@@ -1003,9 +980,6 @@
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getBenchOrigin();
-    const originalConsole = globalThis.console;
-
-    globalThis.console = new Console(reportBenchConsoleOutput);
 
     const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
     const filtered = ArrayPrototypeFilter(
@@ -1040,8 +1014,6 @@
 
       reportBenchResult(description, result, elapsed);
     }
-
-    globalThis.console = originalConsole;
   }
 
   /**
