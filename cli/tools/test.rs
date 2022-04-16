@@ -7,6 +7,7 @@ use crate::compat;
 use crate::create_main_worker;
 use crate::display;
 use crate::emit;
+use crate::fmt_errors::PrettyJsError;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -296,10 +297,7 @@ impl PrettyTestReporter {
     );
 
     if let Some(js_error) = result.error() {
-      // TODO(bartlomieju): use structured data here
-      let err_string = js_error
-        .to_string()
-        .trim_start_matches("Uncaught ")
+      let err_string = PrettyJsError::create(js_error.clone())
         .to_string();
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
@@ -451,7 +449,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
+      for (description, js_error) in &summary.failures {
         println!(
           "{} {} {}",
           colors::gray(
@@ -460,10 +458,7 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        // TODO(bartlomieju): use structured data here
-        let err_string = error
-          .to_string()
-          .trim_start_matches("Uncaught ")
+        let err_string = PrettyJsError::create(*js_error.clone())
           .to_string();
         println!("{}", err_string);
         println!();
