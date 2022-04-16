@@ -480,12 +480,12 @@ impl TestReporter for PrettyTestReporter {
       println!("{}\n", colors::black_on_red("FAILURES"));
       for (origin, test_names) in &grouped_by_origin {
         println!(
-          "\t{} {}",
+          "{} {}",
           colors::gray(self.to_relative_path_or_remote_url(origin)),
           colors::gray(">"),
         );
         for test_name in test_names {
-          println!("\t\t{}", test_name);
+          println!("\t{}", test_name);
         }
       }
     }
