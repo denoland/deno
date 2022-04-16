@@ -45,7 +45,7 @@ tryExit();
     await Deno.remove(cwd, { recursive: true });
     assertEquals(status.success, false);
     assertEquals(status.code, code);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -72,7 +72,7 @@ Deno.test(
     const status = await child.wait();
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -105,7 +105,7 @@ Deno.test(
     const status = await child.wait();
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -138,7 +138,7 @@ Deno.test(
     const status = await child.wait();
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -213,7 +213,7 @@ Deno.test(
     assertEquals(status.success, false);
     if (Deno.build.os === "windows") {
       assertEquals(status.code, 1);
-      assertEquals(status.signal, undefined);
+      assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 137);
       assertEquals(status.signal, 9);
@@ -270,7 +270,7 @@ Deno.test(
 
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -285,7 +285,7 @@ Deno.test(
 
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -301,7 +301,7 @@ Deno.test(
 
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -314,7 +314,7 @@ Deno.test(
 
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -340,7 +340,7 @@ Deno.test(
     });
     assertEquals(status.success, false);
     assertEquals(status.code, 42);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -352,7 +352,7 @@ Deno.test(
     });
     assertEquals(status.success, false);
     assertEquals(status.code, 42);
-    assertEquals(status.signal, undefined);
+    assertEquals(status.signal, null);
   },
 );
 
@@ -367,7 +367,7 @@ Deno.test(
     assertEquals(status.success, false);
     if (Deno.build.os === "windows") {
       assertEquals(status.code, 1);
-      assertEquals(status.signal, undefined);
+      assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
       assertEquals(status.signal, 9);
@@ -386,7 +386,7 @@ Deno.test(
     assertEquals(status.success, false);
     if (Deno.build.os === "windows") {
       assertEquals(status.code, 1);
-      assertEquals(status.signal, undefined);
+      assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
       assertEquals(status.signal, 9);
