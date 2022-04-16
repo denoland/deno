@@ -297,7 +297,10 @@ impl PrettyTestReporter {
     );
 
     if let Some(js_error) = result.error() {
-      let err_string = PrettyJsError::create(js_error.clone()).to_string();
+      let err_string = PrettyJsError::create(js_error.clone())
+        .to_string()
+        .trim_start_matches("Uncaught ")
+        .to_string();
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
@@ -457,7 +460,10 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        let err_string = PrettyJsError::create(*js_error.clone()).to_string();
+        let err_string = PrettyJsError::create(*js_error.clone())
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
         println!("{}", err_string);
         println!();
       }
