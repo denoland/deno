@@ -521,20 +521,38 @@ impl TestReporter for PrettyTestReporter {
 fn abbreviate_test_error(js_error: &JsError) -> JsError {
   let mut js_error = js_error.clone();
   let frames = std::mem::take(&mut js_error.frames);
-  let mut frames = frames
-    .into_iter()
-    .rev()
-    .skip_while(|f| {
+
+  // check if there are any stack frames coming from user code
+  let should_filter = frames
+    .iter()
+    .find(|f| {
       if let Some(file_name) = &f.file_name {
-        file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+        !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
       } else {
-        false
+        true
       }
     })
-    .into_iter()
-    .collect::<Vec<_>>();
-  frames.reverse();
-  js_error.frames = frames;
+    .is_some();
+
+  if should_filter {
+    let mut frames = frames
+      .into_iter()
+      .rev()
+      .skip_while(|f| {
+        if let Some(file_name) = &f.file_name {
+          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+        } else {
+          false
+        }
+      })
+      .into_iter()
+      .collect::<Vec<_>>();
+    frames.reverse();
+    js_error.frames = frames;
+  } else {
+    js_error.frames = frames;
+  }
+
   js_error.cause = js_error
     .cause
     .as_ref()
@@ -550,7 +568,10 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
 // specifically for test runner purposes:
 //
 // - color the exception message in red
-// - remove stack frames for internal Deno code that are not helpful for users
+// - filter out stack frames:
+//   - if stack trace consists of mixed user and internal code, the frames
+//     below the first user code frame are filtered out
+//   - if stack trace consists only of internal code it is preserved as is
 pub fn format_test_error(js_error: &JsError) -> String {
   let mut js_error = abbreviate_test_error(js_error);
   let e =

@@ -50,7 +50,6 @@ Error: Fail test.
   throw new Error("Fail test.");
         ^
     at [WILDCARD]/failing_steps.ts:[WILDCARD]
-    at [WILDCARD]
 
 failures:
 
