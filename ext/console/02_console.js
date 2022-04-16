@@ -9,6 +9,8 @@
   const colors = window.__bootstrap.colors;
   const {
     ArrayBufferIsView,
+    AggregateErrorPrototype,
+    ArrayPrototypeUnshift,
     isNaN,
     DataViewPrototype,
     DatePrototype,
@@ -947,16 +949,50 @@
     }
     ArrayPrototypeShift(causes);
 
-    return (MapPrototypeGet(refMap, value) ?? "") + value.stack +
-      ArrayPrototypeJoin(
+    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+
+    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
+      const stackLines = StringPrototypeSplit(value.stack, "\n");
+      while (true) {
+        const line = ArrayPrototypeShift(stackLines);
+        if (RegExpPrototypeTest(/\s+at/, line)) {
+          ArrayPrototypeUnshift(stackLines, line);
+          break;
+        }
+
+        finalMessage += line;
+        finalMessage += "\n";
+      }
+      const aggregateMessage = ArrayPrototypeJoin(
         ArrayPrototypeMap(
-          causes,
-          (cause) =>
-            "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-            (cause?.stack ?? cause),
+          value.errors,
+          (error) =>
+            StringPrototypeReplace(
+              inspectArgs([error]),
+              /^(?!\s*$)/gm,
+              StringPrototypeRepeat(" ", 4),
+            ),
         ),
-        "",
+        "\n",
       );
+      finalMessage += aggregateMessage;
+      finalMessage += "\n";
+      finalMessage += ArrayPrototypeJoin(stackLines, "\n");
+    } else {
+      finalMessage += value.stack;
+    }
+
+    finalMessage += ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        causes,
+        (cause) =>
+          "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
+          (cause?.stack ?? cause),
+      ),
+      "",
+    );
+
+    return finalMessage;
   }
 
   function inspectStringObject(value, inspectOptions) {

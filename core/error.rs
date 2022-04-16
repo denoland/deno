@@ -104,6 +104,7 @@ pub struct JsError {
   pub frames: Vec<JsStackFrame>,
   pub source_line: Option<String>,
   pub source_line_frame_index: Option<usize>,
+  pub aggregated: Option<Vec<JsError>>,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
@@ -305,6 +306,25 @@ impl JsError {
         }
       }
 
+      // Read an array of stored errors, this is only defined for `AggregateError`
+      let aggregated_errors = get_property(scope, exception, "errors");
+      let aggregated_errors: Option<v8::Local<v8::Array>> =
+        aggregated_errors.and_then(|a| a.try_into().ok());
+
+      let mut aggregated: Option<Vec<JsError>> = None;
+
+      if let Some(errors) = aggregated_errors {
+        if errors.length() > 0 {
+          let mut agg = vec![];
+          for i in 0..errors.length() {
+            let error = errors.get_index(scope, i).unwrap();
+            let js_error = Self::from_v8_exception(scope, error);
+            agg.push(js_error);
+          }
+          aggregated = Some(agg);
+        }
+      }
+
       Self {
         name: e.name,
         message: e.message,
@@ -314,6 +334,7 @@ impl JsError {
         source_line_frame_index,
         frames,
         stack,
+        aggregated,
       }
     } else {
       // The exception is not a JS Error object.
@@ -328,6 +349,7 @@ impl JsError {
         source_line_frame_index: None,
         frames: vec![],
         stack: None,
+        aggregated: None,
       }
     }
   }

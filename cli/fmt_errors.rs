@@ -128,45 +128,6 @@ fn format_frame(frame: &JsStackFrame) -> String {
   result
 }
 
-#[allow(clippy::too_many_arguments)]
-fn format_stack(
-  is_error: bool,
-  message_line: &str,
-  cause: Option<&str>,
-  source_line: Option<&str>,
-  source_line_frame_index: Option<usize>,
-  frames: &[JsStackFrame],
-  level: usize,
-) -> String {
-  let mut s = String::new();
-  s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
-  let column_number =
-    source_line_frame_index.and_then(|i| frames.get(i).unwrap().column_number);
-  s.push_str(&format_maybe_source_line(
-    source_line,
-    column_number,
-    is_error,
-    level,
-  ));
-  for frame in frames {
-    s.push_str(&format!(
-      "\n{:indent$}    at {}",
-      "",
-      format_frame(frame),
-      indent = level
-    ));
-  }
-  if let Some(cause) = cause {
-    s.push_str(&format!(
-      "\n{:indent$}Caused by: {}",
-      "",
-      cause,
-      indent = level
-    ));
-  }
-  s
-}
-
 /// Take an optional source line and associated information to format it into
 /// a pretty printed version of that line.
 fn format_maybe_source_line(
@@ -219,6 +180,43 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
+fn format_js_error(js_error: &JsError, is_child: bool) -> String {
+  let mut s = String::new();
+  s.push_str(&js_error.exception_message);
+  if let Some(aggregated) = &js_error.aggregated {
+    for aggregated_error in aggregated {
+      let error_string = format_js_error(aggregated_error, true);
+      for line in error_string.trim_start_matches("Uncaught ").lines() {
+        s.push_str(&format!("\n    {}", line));
+      }
+    }
+  }
+  let column_number = js_error
+    .source_line_frame_index
+    .and_then(|i| js_error.frames.get(i).unwrap().column_number);
+  s.push_str(&format_maybe_source_line(
+    if is_child {
+      None
+    } else {
+      js_error.source_line.as_deref()
+    },
+    column_number,
+    true,
+    0,
+  ));
+  for frame in &js_error.frames {
+    s.push_str(&format!("\n    at {}", format_frame(frame)));
+  }
+  if let Some(cause) = &js_error.cause {
+    let error_string = format_js_error(cause, true);
+    s.push_str(&format!(
+      "\nCaused by: {}",
+      error_string.trim_start_matches("Uncaught ")
+    ));
+  }
+  s
+}
+
 /// Wrapper around deno_core::JsError which provides colorful
 /// string representation.
 #[derive(Debug)]
@@ -240,26 +238,7 @@ impl Deref for PrettyJsError {
 
 impl fmt::Display for PrettyJsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let cause = self
-      .0
-      .cause
-      .clone()
-      .map(|cause| format!("{}", PrettyJsError(*cause)));
-
-    write!(
-      f,
-      "{}",
-      &format_stack(
-        true,
-        &self.0.exception_message,
-        cause.as_deref(),
-        self.0.source_line.as_deref(),
-        self.0.source_line_frame_index,
-        &self.0.frames,
-        0
-      )
-    )?;
-    Ok(())
+    write!(f, "{}", &format_js_error(&self.0, false))
   }
 }
 
