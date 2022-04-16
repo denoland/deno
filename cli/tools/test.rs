@@ -451,7 +451,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
-      println!("\n{}\n", colors::black_on_red("ERRORS"));
+      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (description, js_error) in &summary.failures {
         println!(
           "{} {} {}",
@@ -474,7 +474,7 @@ impl TestReporter for PrettyTestReporter {
         test_names.push(description.name.clone());
       }
 
-      println!("{}\n", colors::black_on_red("FAILURES"));
+      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for (origin, test_names) in &grouped_by_origin {
         println!(
           "{} {}",
@@ -508,18 +508,14 @@ impl TestReporter for PrettyTestReporter {
     println!(
       "     {} {}{}",
       colors::gray("passed:"),
-      if summary.passed == 0 {
-        colors::gray("0").to_string()
-      } else {
-        colors::green(format!("{}", summary.passed)).to_string()
-      },
+      summary.passed,
       get_steps_text(summary.passed_steps)
     );
     if summary.failed > 0 {
       println!(
         "     {} {}{}",
         colors::gray("failed:"),
-        colors::red(format!("{}", summary.failed)),
+        summary.failed,
         get_steps_text(summary.failed_steps)
       );
     }
@@ -527,16 +523,12 @@ impl TestReporter for PrettyTestReporter {
       println!(
         "    {} {}{}",
         colors::gray("ignored:"),
-        colors::yellow(format!("{}", summary.ignored)),
+        summary.ignored,
         get_steps_text(summary.ignored_steps)
       );
     }
     if summary.filtered_out > 0 {
-      println!(
-        "   {} {}",
-        colors::gray("filtered:"),
-        colors::gray(format!("{}", summary.filtered_out))
-      );
+      println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
     }
     println!(
       "       {} {}",

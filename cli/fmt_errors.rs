@@ -241,30 +241,6 @@ impl PrettyJsError {
     };
     pretty_js_error.into()
   }
-
-  pub fn create_for_testing(mut js_error: JsError) -> AnyError {
-    // filter out stack frames that are internal Deno code (starting with
-    // "[deno:" or "deno:"
-    let frames = std::mem::take(&mut js_error.frames);
-    let frames = frames
-      .into_iter()
-      .rev()
-      .skip_while(|f| {
-        if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
-        } else {
-          false
-        }
-      })
-      .collect();
-    js_error.frames = frames;
-
-    let pretty_js_error = Self {
-      js_error,
-      color_message: true,
-    };
-    pretty_js_error.into()
-  }
 }
 
 impl Deref for PrettyJsError {
