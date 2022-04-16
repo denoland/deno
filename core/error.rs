@@ -104,7 +104,7 @@ pub struct JsError {
   pub frames: Vec<JsStackFrame>,
   pub source_line: Option<String>,
   pub source_line_frame_index: Option<usize>,
-  pub aggregated: Option<Vec<Box<JsError>>>,
+  pub aggregated: Option<Vec<JsError>>,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
@@ -311,7 +311,7 @@ impl JsError {
       let aggregated_errors: Option<v8::Local<v8::Array>> =
         aggregated_errors.and_then(|a| a.try_into().ok());
 
-      let mut aggregated: Option<Vec<Box<JsError>>> = None;
+      let mut aggregated: Option<Vec<JsError>> = None;
 
       if let Some(errors) = aggregated_errors {
         if errors.length() > 0 {
@@ -319,7 +319,7 @@ impl JsError {
           for i in 0..errors.length() {
             let error = errors.get_index(scope, i).unwrap();
             let js_error = Self::from_v8_exception(scope, error);
-            agg.push(Box::new(js_error));
+            agg.push(js_error);
           }
           aggregated = Some(agg);
         }
