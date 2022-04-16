@@ -2720,3 +2720,9 @@ itest!(aggregate_error {
   output: "aggregate_error.out",
   exit_code: 1,
 });
+
+itest!(complex_error {
+  args: "run --quiet complex_error.ts",
+  output: "complex_error.ts.out",
+  exit_code: 1,
+});

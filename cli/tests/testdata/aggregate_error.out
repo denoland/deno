@@ -1,20 +1,18 @@
-[WILDCARD]
+AggregateError: Multiple errors.
+    at [WILDCARD]/aggregate_error.ts:1:24
+
 AggregateError: Multiple errors.
     Error: Error message 1.
-        at [WILDCARD]testdata/aggregate_error.ts:5:3
+        at [WILDCARD]/aggregate_error.ts:2:3
     Error: Error message 2.
-        at [WILDCARD]testdata/aggregate_error.ts:6:3
-    at [WILDCARD]testdata/aggregate_error.ts:4:24
+        at [WILDCARD]/aggregate_error.ts:3:3
+    at [WILDCARD]/aggregate_error.ts:1:24
 
 error: Uncaught AggregateError: Multiple errors.
     Error: Error message 1.
-      new Error("Error message 1."),
-      ^
-        at [WILDCARD]testdata/aggregate_error.ts:5:3
+        at [WILDCARD]/aggregate_error.ts:2:3
     Error: Error message 2.
-      new Error("Error message 2."),
-      ^
-        at [WILDCARD]testdata/aggregate_error.ts:6:3
+        at [WILDCARD]/aggregate_error.ts:3:3
 const aggregateError = new AggregateError([
                        ^
-    at [WILDCARD]testdata/aggregate_error.ts:4:24
+    at [WILDCARD]/aggregate_error.ts:1:24
