@@ -506,14 +506,14 @@ impl TestReporter for PrettyTestReporter {
     println!();
     println!("{} {}", colors::gray("test result:"), status);
     println!(
-      "     {} {}{}",
+      "{}      {}{}",
       colors::gray("passed:"),
       summary.passed,
       get_steps_text(summary.passed_steps)
     );
     if summary.failed > 0 {
       println!(
-        "     {} {}{}",
+        "{}      {}{}",
         colors::gray("failed:"),
         summary.failed,
         get_steps_text(summary.failed_steps)
@@ -521,17 +521,17 @@ impl TestReporter for PrettyTestReporter {
     }
     if summary.ignored > 0 {
       println!(
-        "    {} {}{}",
+        "{}     {}{}",
         colors::gray("ignored:"),
         summary.ignored,
         get_steps_text(summary.ignored_steps)
       );
     }
     if summary.filtered_out > 0 {
-      println!("   {} {}", colors::gray("filtered:"), summary.filtered_out);
+      println!("{}    {}", colors::gray("filtered:"), summary.filtered_out);
     }
     println!(
-      "       {} {}",
+      "{}        {}",
       colors::gray("time:"),
       colors::gray(display::human_elapsed(elapsed.as_millis()))
     );
