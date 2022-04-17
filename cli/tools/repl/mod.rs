@@ -1,13 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::deno_dir;
-use crate::file_fetcher::CacheSetting;
-use crate::file_fetcher::FileFetcher;
-use crate::http_cache::HttpCache;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
-use deno_core::DUMMY_SPECIFIER;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
@@ -24,8 +18,6 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 use session::EvaluationOutput;
 use session::ReplSession;
-use std::fs::File;
-use std::io::Read;
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
