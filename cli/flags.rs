@@ -474,6 +474,8 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+    DENO_FUTURE_CHECK    Opt-in to the upcoming behavior of the `deno run` 
+                         subcommand that doesn't perform type-checking by default.
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)

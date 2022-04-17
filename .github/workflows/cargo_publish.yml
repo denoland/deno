@@ -44,6 +44,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: |
-          git config user.email "propelml@gmail.com"
-          git config user.name "denobot"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
           ./tools/release/04_post_publish.ts
