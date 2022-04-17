@@ -3832,6 +3832,31 @@ mod tests {
   }
 
   #[test]
+  fn repl_with_eval_file_flag() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://examples.deno.land/hello-world.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        repl: true,
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: Some(vec!["./a.js".to_string(), "./b.ts".to_string(), "https://examples.deno.land/hello-world.ts".to_string()]),
+          eval: None,
+        }),
+        allow_net: Some(vec![]),
+        allow_env: Some(vec![]),
+        allow_run: Some(vec![]),
+        allow_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        allow_ffi: Some(vec![]),
+        allow_hrtime: true,
+        typecheck_mode: TypecheckMode::None,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_read_allowlist() {
     use test_util::TempDir;
     let temp_dir_guard = TempDir::new();
