@@ -2366,16 +2366,15 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
-  let eval_files: Vec<String> = matches
-    .values_of("eval-file")
-    .unwrap()
-    .map(String::from)
-    .collect();
+  let eval_files: Option<Vec<String>> = match matches.values_of("eval-file") {
+    Some(values) => Some(values.map(String::from).collect()),
+    None => None,
+  };
 
   handle_repl_flags(
     flags,
     ReplFlags {
-      eval_files: Some(eval_files),
+      eval_files: eval_files,
       eval: matches.value_of("eval").map(ToOwned::to_owned),
     },
   );
