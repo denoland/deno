@@ -65,6 +65,11 @@ impl IncrementalCache {
 
   pub fn update_file(&self, path: &Path, formatted_text: &str) {
     let hash = fast_insecure_hash(formatted_text.as_bytes());
+    if let Some(previous_hash) = self.previous_hashes.get(path) {
+      if *previous_hash == hash {
+        return; // do not bother updating the db file because nothing has changed
+      }
+    }
     let _ = self.sender.send((path.to_path_buf(), hash));
   }
 }

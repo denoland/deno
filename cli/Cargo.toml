@@ -64,7 +64,7 @@ data-url = "=0.1.1"
 dissimilar = "=1.0.2"
 dprint-plugin-json = "=0.15.1"
 dprint-plugin-markdown = "=0.13.1"
-dprint-plugin-typescript = "=0.67.0"
+dprint-plugin-typescript = "=0.67.1"
 encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
 eszip = "=0.19.0"
@@ -96,8 +96,8 @@ text_lines = "=0.4.1"
 tokio = { version = "=1.17", features = ["full"] }
 tokio-util = "=0.7.0"
 tower-lsp = "=0.16.0"
-typed-arena = "2.0.1"
 twox-hash = "1.6.2"
+typed-arena = "2.0.1"
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
 zstd = '=0.9.2'
