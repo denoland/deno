@@ -69,6 +69,7 @@ Deno.test(
     await writer.write(msg);
     writer.releaseLock();
 
+    await child.stdin.close();
     const status = await child.wait();
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
@@ -195,6 +196,7 @@ Deno.test(
       preventClose: true,
     });
 
+    await child.stdin.close();
     const status = await child.wait();
     assertEquals(status.code, 0);
   },
