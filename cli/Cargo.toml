@@ -84,6 +84,7 @@ pin-project = "=1.0.8"
 rand = { version = "=0.8.4", features = ["small_rng"] }
 regex = "=1.5.5"
 ring = "=0.16.20"
+rusqlite = { version = "=0.27.0", features = ["unlock_notify", "bundled"] }
 rustyline = { version = "=9.1.2", default-features = false }
 rustyline-derive = "=0.6.0"
 secure_tempfile = { version = "=3.2.0", package = "tempfile" } # different name to discourage use in tests
@@ -96,6 +97,7 @@ tokio = { version = "=1.17", features = ["full"] }
 tokio-util = "=0.7.0"
 tower-lsp = "=0.16.0"
 typed-arena = "2.0.1"
+twox-hash = "1.6.2"
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
 zstd = '=0.9.2'

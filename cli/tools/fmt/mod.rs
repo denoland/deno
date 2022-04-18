@@ -40,6 +40,8 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+mod incremental_cache;
+
 /// Format JavaScript/TypeScript files.
 pub async fn format(
   flags: &Flags,
