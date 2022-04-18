@@ -21,7 +21,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::string::ToString;
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
@@ -251,25 +250,35 @@ impl AsRef<str> for EnvDescriptor {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum RunDescriptor {
+  /// Warning: You may want to use `RunDescriptor::from()` for case handling.
   Name(String),
+  /// Warning: You may want to use `RunDescriptor::from()` for case handling.
   Path(PathBuf),
 }
 
-impl FromStr for RunDescriptor {
-  type Err = ();
-
-  fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl From<String> for RunDescriptor {
+  fn from(s: String) -> Self {
     #[cfg(windows)]
-    let s_ = s.to_lowercase();
-    #[cfg(windows)]
-    let s = &s_;
+    let s = s.to_lowercase();
     let is_path = s.contains('/');
     #[cfg(windows)]
     let is_path = is_path || s.contains('\\') || Path::new(s).is_absolute();
     if is_path {
-      Ok(Self::Path(resolve_from_cwd(Path::new(s)).unwrap()))
+      Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
     } else {
-      Ok(Self::Name(s.to_string()))
+      Self::Name(s)
+    }
+  }
+}
+
+impl From<PathBuf> for RunDescriptor {
+  fn from(p: PathBuf) -> Self {
+    #[cfg(windows)]
+    let p = PathBuf::from(p.to_string_lossy().to_string().to_lowercase());
+    if p.is_absolute() {
+      Self::Path(p)
+    } else {
+      Self::Path(resolve_from_cwd(&p).unwrap())
     }
   }
 }
@@ -909,7 +918,7 @@ impl UnaryPermission<RunDescriptor> {
         None => true,
         Some(cmd) => run_descriptor_list_contains(
           &self.denied_list,
-          &RunDescriptor::from_str(cmd).unwrap(),
+          &RunDescriptor::from(cmd.to_string()),
         ),
       }
     {
@@ -919,7 +928,7 @@ impl UnaryPermission<RunDescriptor> {
         None => false,
         Some(cmd) => run_descriptor_list_contains(
           &self.granted_list,
-          &RunDescriptor::from_str(cmd).unwrap(),
+          &RunDescriptor::from(cmd.to_string()),
         ),
       }
     {
@@ -936,13 +945,13 @@ impl UnaryPermission<RunDescriptor> {
         if permission_prompt(&format!("run access to \"{}\"", cmd), self.name) {
           run_descriptor_list_insert(
             &mut self.granted_list,
-            RunDescriptor::from_str(cmd).unwrap(),
+            RunDescriptor::from(cmd.to_string()),
           );
           PermissionState::Granted
         } else {
           run_descriptor_list_insert(
             &mut self.denied_list,
-            RunDescriptor::from_str(cmd).unwrap(),
+            RunDescriptor::from(cmd.to_string()),
           );
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
@@ -950,7 +959,7 @@ impl UnaryPermission<RunDescriptor> {
       } else if state == PermissionState::Granted {
         run_descriptor_list_insert(
           &mut self.denied_list,
-          RunDescriptor::from_str(cmd).unwrap(),
+          RunDescriptor::from(cmd.to_string()),
         );
         PermissionState::Granted
       } else {
@@ -977,7 +986,7 @@ impl UnaryPermission<RunDescriptor> {
     if let Some(cmd) = cmd {
       run_descriptor_list_remove(
         &mut self.granted_list,
-        &RunDescriptor::from_str(cmd).unwrap(),
+        &RunDescriptor::from(cmd.to_string()),
       );
     } else {
       self.granted_list.clear();
@@ -998,12 +1007,12 @@ impl UnaryPermission<RunDescriptor> {
       if result.is_ok() {
         run_descriptor_list_insert(
           &mut self.granted_list,
-          RunDescriptor::from_str(cmd).unwrap(),
+          RunDescriptor::from(cmd.to_string()),
         );
       } else {
         run_descriptor_list_insert(
           &mut self.denied_list,
-          RunDescriptor::from_str(cmd).unwrap(),
+          RunDescriptor::from(cmd.to_string()),
         );
         self.global_state = PermissionState::Denied;
       }
@@ -1277,7 +1286,7 @@ impl Permissions {
     let mut granted_list = HashSet::new();
     if let Some(state) = state {
       for s in state {
-        let desc = RunDescriptor::from_str(s).unwrap();
+        let desc = RunDescriptor::from(s.to_string());
         run_descriptor_list_insert(&mut granted_list, desc);
       }
     }
