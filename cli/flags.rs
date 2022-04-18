@@ -3840,7 +3840,11 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          eval_files: Some(vec!["./a.js".to_string(), "./b.ts".to_string(), "https://examples.deno.land/hello-world.ts".to_string()]),
+          eval_files: Some(vec![
+            "./a.js".to_string(),
+            "./b.ts".to_string(),
+            "https://examples.deno.land/hello-world.ts".to_string()
+          ]),
           eval: None,
         }),
         allow_net: Some(vec![]),
