@@ -3,6 +3,7 @@
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
 use futures::future::maybe_done;
@@ -12,10 +13,12 @@ use futures::ready;
 use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -132,6 +135,13 @@ pub fn to_op_result<R: Serialize + 'static>(
     Ok(v) => OpResult::Ok(v.into()),
     Err(err) => OpResult::Err(OpError::new(get_class, err)),
   }
+}
+
+// TODO(@AaronO): optimize OpCtx(s) mem usage ?
+pub struct OpCtx {
+  pub id: OpId,
+  pub state: Rc<RefCell<OpState>>,
+  pub decl: OpDecl,
 }
 
 /// Maintains the resources and ops inside a JS runtime.

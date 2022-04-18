@@ -12,7 +12,8 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
-use crate::flags::TypecheckMode;
+use crate::flags::TypeCheckMode;
+use crate::fmt_errors::PrettyJsError;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -21,6 +22,7 @@ use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -30,11 +32,13 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
@@ -45,6 +49,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -78,8 +83,10 @@ pub struct TestDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
-  // TODO(caspervonb): add stdout and stderr redirection.
-  Console(String),
+  PrintStdout(String),
+  PrintStderr(String),
+  Stdout(Vec<u8>),
+  Stderr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -87,7 +94,7 @@ pub enum TestOutput {
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(String),
+  Failed(Box<JsError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -103,15 +110,15 @@ pub struct TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<String>),
-  Pending(Option<String>),
+  Failed(Option<Box<JsError>>),
+  Pending(Option<Box<JsError>>),
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&str> {
+  fn error(&self) -> Option<&JsError> {
     match self {
-      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
-      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      TestStepResult::Failed(Some(error)) => Some(error),
+      TestStepResult::Pending(Some(error)) => Some(error),
       _ => None,
     }
   }
@@ -149,7 +156,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, String)>,
+  pub failures: Vec<(TestDescription, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -217,7 +224,10 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  in_test_count: usize,
   last_wait_output_level: usize,
+  cwd: Url,
+  did_have_user_output: bool,
 }
 
 impl PrettyTestReporter {
@@ -225,27 +235,40 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      in_test_count: 0,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
+      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      did_have_user_output: false,
     }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
-    print!("test {} ...", description.name);
+    print!("{} ...", description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
   }
 
+  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
+    let url = Url::parse(path_or_url).unwrap();
+    if url.scheme() == "file" {
+      if let Some(mut r) = self.cwd.make_relative(&url) {
+        if !r.starts_with("../") {
+          r = format!("./{}", r);
+        }
+        return r;
+      }
+    }
+    path_or_url.to_string()
+  }
+
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    if self.last_wait_output_level < description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level < description.level {
       println!();
     }
-    print!(
-      "{}test {} ...",
-      "  ".repeat(description.level),
-      description.name
-    );
+    print!("{}{} ...", "  ".repeat(description.level), description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = description.level;
@@ -264,7 +287,8 @@ impl PrettyTestReporter {
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    if self.last_wait_output_level == description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == description.level {
       print!(" ");
     } else {
       print!("{}", "  ".repeat(description.level));
@@ -276,10 +300,24 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
-    if let Some(error_text) = result.error() {
-      for line in error_text.lines() {
+    if let Some(js_error) = result.error() {
+      let err_string = PrettyJsError::create(js_error.clone())
+        .to_string()
+        .trim_start_matches("Uncaught ")
+        .to_string();
+      for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
+    }
+  }
+
+  fn write_output_end(&mut self) -> bool {
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----- output end -----"));
+      self.did_have_user_output = false;
+      true
+    } else {
+      false
     }
   }
 }
@@ -287,19 +325,46 @@ impl PrettyTestReporter {
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
-    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+    println!(
+      "{}",
+      colors::gray(format!(
+        "running {} {} from {}",
+        plan.total,
+        inflection,
+        self.to_relative_path_or_remote_url(&plan.origin)
+      ))
+    );
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       self.force_report_wait(description);
     }
+    self.in_test_count += 1;
   }
 
   fn report_output(&mut self, output: &TestOutput) {
-    if self.echo_output {
-      match output {
-        TestOutput::Console(line) => println!("{}", line),
+    if !self.echo_output {
+      return;
+    }
+
+    if !self.did_have_user_output && self.in_test_count > 0 {
+      self.did_have_user_output = true;
+      println!();
+      println!("{}", colors::gray("------- output -------"));
+    }
+    match output {
+      TestOutput::PrintStdout(line) => {
+        print!("{}", line)
+      }
+      TestOutput::PrintStderr(line) => {
+        eprint!("{}", line)
+      }
+      TestOutput::Stdout(bytes) => {
+        std::io::stdout().write_all(bytes).unwrap();
+      }
+      TestOutput::Stderr(bytes) => {
+        std::io::stderr().write_all(bytes).unwrap();
       }
     }
   }
@@ -310,6 +375,8 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    self.in_test_count -= 1;
+
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -334,15 +401,16 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == 0 {
+      print!(" ");
+    }
+
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
       TestResult::Failed(_) => colors::red("FAILED").to_string(),
     };
-
-    if self.last_wait_output_level == 0 {
-      print!(" ");
-    }
 
     println!(
       "{} {}",
@@ -387,15 +455,41 @@ impl TestReporter for PrettyTestReporter {
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
-        println!("{}", description.name);
-        println!("{}", error);
+      for (description, js_error) in &summary.failures {
+        println!(
+          "{} {} {}",
+          colors::gray(
+            self.to_relative_path_or_remote_url(&description.origin)
+          ),
+          colors::gray(">"),
+          description.name
+        );
+        let err_string = PrettyJsError::create(*js_error.clone())
+          .to_string()
+          .trim_start_matches("Uncaught ")
+          .to_string();
+        println!("{}", err_string);
         println!();
       }
 
-      println!("failures:\n");
+      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
+        BTreeMap::default();
       for (description, _) in &summary.failures {
-        println!("\t{}", description.name);
+        let test_names = grouped_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        test_names.push(description.name.clone());
+      }
+
+      println!("failures:\n");
+      for (origin, test_names) in &grouped_by_origin {
+        println!(
+          "\t{}",
+          colors::gray(self.to_relative_path_or_remote_url(origin))
+        );
+        for test_name in test_names {
+          println!("\t{}", test_name);
+        }
       }
     }
 
@@ -448,11 +542,17 @@ async fn test_specifier(
   channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let (stdout_writer, stderr_writer) =
+    create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(
+      channel.clone(),
+      stdout_writer,
+      stderr_writer,
+    )],
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
@@ -1075,7 +1175,7 @@ pub async fn run_tests_with_watch(
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.typecheck_mode == TypecheckMode::None;
+  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(

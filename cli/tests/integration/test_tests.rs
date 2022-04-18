@@ -13,9 +13,9 @@ fn no_color() {
     false,
   );
   // ANSI escape codes should be stripped.
-  assert!(out.contains("test success ... ok"));
-  assert!(out.contains("test fail ... FAILED"));
-  assert!(out.contains("test ignored ... ignored"));
+  assert!(out.contains("success ... ok"));
+  assert!(out.contains("fail ... FAILED"));
+  assert!(out.contains("ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
@@ -246,7 +246,7 @@ itest!(shuffle_with_seed {
 });
 
 itest!(aggregate_error {
-  args: "test test/aggregate_error.ts",
+  args: "test --quiet test/aggregate_error.ts",
   exit_code: 1,
   output: "test/aggregate_error.out",
 });
@@ -281,6 +281,12 @@ itest!(steps_invalid_usage {
   output: "test/steps/invalid_usage.out",
 });
 
+itest!(steps_output_within {
+  args: "test test/steps/output_within.ts",
+  exit_code: 0,
+  output: "test/steps/output_within.out",
+});
+
 itest!(no_prompt_by_default {
   args: "test test/no_prompt_by_default.ts",
   exit_code: 1,
@@ -292,3 +298,21 @@ itest!(no_prompt_with_denied_perms {
   exit_code: 1,
   output: "test/no_prompt_with_denied_perms.out",
 });
+
+#[test]
+fn recursive_permissions_pledge() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("test")
+    .arg("test/recursive_permissions_pledge.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(String::from_utf8(output.stderr).unwrap().contains(
+    "pledge test permissions called before restoring previous pledge"
+  ));
+}
