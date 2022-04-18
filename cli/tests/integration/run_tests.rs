@@ -2727,6 +2727,13 @@ itest!(complex_error {
   exit_code: 1,
 });
 
+// Regression test for https://github.com/denoland/deno/issues/12143.
+itest!(js_root_with_ts_check {
+  args: "run --quiet js_root_with_ts_check.js",
+  output: "js_root_with_ts_check.js.out",
+  exit_code: 1,
+});
+
 itest!(no_prompt_flag {
   args: "run --quiet --unstable --no-prompt no_prompt.ts",
   output_str: Some(""),

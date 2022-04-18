@@ -10,7 +10,6 @@ Error: fail
     throw new Error("fail");
           ^
     at [WILDCARD]/test/finally_timeout.ts:4:11
-    at [WILDCARD]
 
 failures:
 
