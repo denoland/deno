@@ -837,9 +837,9 @@ mod test {
       &Default::default(),
       |_, file_text, _| {
         if file_text == "1" {
-          return Ok(Some("11".to_string()));
+          Ok(Some("11".to_string()))
         } else if file_text == "11" {
-          return Ok(None);
+          Ok(None)
         } else {
           unreachable!();
         }

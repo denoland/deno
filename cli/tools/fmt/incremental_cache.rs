@@ -263,7 +263,7 @@ mod test {
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCache::from_sql_incremental_cache(
       sql_cache,
-      &vec![file_path.clone()],
+      &[file_path.clone()],
     );
 
     assert!(cache.is_file_same(&file_path, "test"));
