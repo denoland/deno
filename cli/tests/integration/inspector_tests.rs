@@ -142,6 +142,7 @@ async fn assert_inspector_messages(
 async fn inspector_connect() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
@@ -167,6 +168,7 @@ async fn inspector_connect() {
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
@@ -257,6 +259,7 @@ async fn inspector_break_on_first_line() {
 async fn inspector_pause() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
@@ -327,6 +330,7 @@ async fn inspector_port_collision() {
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
   let mut child1 = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&inspect_flag)
     .arg(script.clone())
@@ -341,6 +345,7 @@ async fn inspector_port_collision() {
   let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
 
   let mut child2 = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&inspect_flag)
     .arg(script)
@@ -365,6 +370,7 @@ async fn inspector_port_collision() {
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .env("NO_COLOR", "1")
@@ -476,6 +482,7 @@ async fn inspector_does_not_hang() {
 async fn inspector_without_brk_runs_code() {
   let script = util::testdata_path().join("inspector/inspector4.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
@@ -603,6 +610,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 async fn inspector_json() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
@@ -632,6 +640,7 @@ async fn inspector_json() {
 async fn inspector_json_list() {
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
@@ -663,6 +672,7 @@ async fn inspector_connect_non_ws() {
   // Verify we don't panic if non-WS connection is being established
   let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
@@ -688,6 +698,7 @@ async fn inspector_connect_non_ws() {
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("test")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
@@ -782,7 +793,9 @@ async fn inspector_break_on_first_line_in_test() {
 async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .stdout(std::process::Stdio::piped())
@@ -907,6 +920,7 @@ async fn inspector_with_ts_files() {
 async fn inspector_memory() {
   let script = util::testdata_path().join("inspector/memory.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
@@ -1021,6 +1035,7 @@ async fn inspector_memory() {
 async fn inspector_profile() {
   let script = util::testdata_path().join("inspector/memory.js");
   let mut child = util::deno_cmd()
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)

@@ -29,7 +29,6 @@ mod module_loader;
 mod ops;
 mod proc_state;
 mod resolver;
-mod source_maps;
 mod standalone;
 mod text_encoding;
 mod tools;
@@ -43,6 +42,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
+use crate::flags::CheckFlags;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -51,6 +51,7 @@ use crate::flags::DocFlags;
 use crate::flags::EvalFlags;
 use crate::flags::Flags;
 use crate::flags::FmtFlags;
+use crate::flags::FutureTypeCheckMode;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
@@ -58,7 +59,7 @@ use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
-use crate::flags::TypecheckMode;
+use crate::flags::TypeCheckMode;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::flags::VendorFlags;
@@ -69,7 +70,6 @@ use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::source_maps::apply_source_map;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -125,13 +125,6 @@ fn create_web_worker_preload_module_callback(
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
-    let global_state_ = ps.clone();
-    let js_error_create_fn = Rc::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
-
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(
@@ -147,7 +140,6 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
-        apply_source_maps: true,
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
@@ -174,7 +166,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       module_loader,
       create_web_worker_cb,
       preload_module_cb,
-      js_error_create_fn: Some(js_error_create_fn),
+      source_map_getter: Some(Box::new(ps.clone())),
+      js_error_create_fn: Some(Rc::new(PrettyJsError::create)),
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
@@ -203,14 +196,6 @@ pub fn create_main_worker(
   mut custom_extensions: Vec<Extension>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
-
-  let global_state_ = ps.clone();
-
-  let js_error_create_fn = Rc::new(move |core_js_error| {
-    let source_mapped_error =
-      apply_source_map(&core_js_error, global_state_.clone());
-    PrettyJsError::create(source_mapped_error)
-  });
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
   let should_break_on_first_statement = ps.flags.inspect_brk.is_some();
@@ -250,7 +235,6 @@ pub fn create_main_worker(
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
-      apply_source_maps: true,
       args: ps.flags.argv.clone(),
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
@@ -272,7 +256,8 @@ pub fn create_main_worker(
     root_cert_store: ps.root_cert_store.clone(),
     user_agent: version::get_user_agent(),
     seed: ps.flags.seed,
-    js_error_create_fn: Some(js_error_create_fn),
+    source_map_getter: Some(Box::new(ps.clone())),
+    js_error_create_fn: Some(Rc::new(PrettyJsError::create)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
     maybe_inspector_server,
@@ -585,6 +570,31 @@ async fn cache_command(
   Ok(0)
 }
 
+async fn check_command(
+  flags: Flags,
+  check_flags: CheckFlags,
+) -> Result<i32, AnyError> {
+  // NOTE(bartlomieju): currently just an alias for `deno cache`, but
+  // it will be changed in Deno 2.0.
+  let mut flags = flags.clone();
+
+  // In `deno check` the default mode is to check only
+  // local modules, with `--remote` we check remote modules too.
+  flags.type_check_mode = if check_flags.remote {
+    TypeCheckMode::All
+  } else {
+    TypeCheckMode::Local
+  };
+
+  cache_command(
+    flags,
+    CacheFlags {
+      files: check_flags.files,
+    },
+  )
+  .await
+}
+
 async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
@@ -679,12 +689,12 @@ async fn create_graph_and_maybe_check(
     .unwrap_or(false);
   graph_valid(
     &graph,
-    ps.flags.typecheck_mode != TypecheckMode::None,
+    ps.flags.type_check_mode != TypeCheckMode::None,
     check_js,
   )?;
   graph_lock_or_exit(&graph);
 
-  if ps.flags.typecheck_mode != TypecheckMode::None {
+  if ps.flags.type_check_mode != TypeCheckMode::None {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -708,7 +718,7 @@ async fn create_graph_and_maybe_check(
       Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
-        typecheck_mode: ps.flags.typecheck_mode.clone(),
+        type_check_mode: ps.flags.type_check_mode.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -739,7 +749,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.typecheck_mode == TypecheckMode::None {
+  if flags.type_check_mode == TypeCheckMode::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -1010,7 +1020,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .unwrap_or(false);
       graph_valid(
         &graph,
-        ps.flags.typecheck_mode != flags::TypecheckMode::None,
+        ps.flags.type_check_mode != flags::TypeCheckMode::None,
         check_js,
       )?;
 
@@ -1140,6 +1150,11 @@ async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
+  if !flags.has_check_flag && flags.type_check_mode == TypeCheckMode::All {
+    info!("{} In future releases `deno run` will not automatically type check without the --check flag.
+To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.", colors::yellow("Warning"));
+  }
+
   // Read script content from stdin
   if run_flags.script == "-" {
     return run_from_stdin(flags).await;
@@ -1349,6 +1364,9 @@ fn get_subcommand(
     DenoSubcommand::Cache(cache_flags) => {
       cache_command(flags, cache_flags).boxed_local()
     }
+    DenoSubcommand::Check(check_flags) => {
+      check_command(flags, check_flags).boxed_local()
+    }
     DenoSubcommand::Compile(compile_flags) => {
       compile_command(flags, compile_flags).boxed_local()
     }
@@ -1458,7 +1476,7 @@ pub fn main() {
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
-    let flags = match flags::flags_from_vec(args) {
+    let mut flags = match flags::flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
         if err.kind() == clap::ErrorKind::DisplayHelp
@@ -1474,6 +1492,21 @@ pub fn main() {
     }
 
     logger::init(flags.log_level);
+
+    // TODO(bartlomieju): remove once type checking is skipped by default (probably
+    // in 1.23).
+    // If this env var is set we're gonna override default behavior of type checking
+    // and use behavior defined by the `--check` flag.
+    let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
+    if let Some(env_var) = future_check_env_var {
+      if env_var == "1" {
+        flags.type_check_mode = match &flags.future_type_check_mode {
+          FutureTypeCheckMode::None => TypeCheckMode::None,
+          FutureTypeCheckMode::All => TypeCheckMode::All,
+          FutureTypeCheckMode::Local => TypeCheckMode::Local,
+        }
+      }
+    }
 
     let exit_code = get_subcommand(flags).await;
 

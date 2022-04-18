@@ -10,6 +10,7 @@
     ArrayPrototypeSlice,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
+    ReflectHas,
     Symbol,
     SymbolFor,
     TypeError,
@@ -470,17 +471,17 @@
           throw new TypeError("Options cannot be passed with endMark.");
         }
         if (
-          !("start" in startOrMeasureOptions) &&
-          !("end" in startOrMeasureOptions)
+          !ReflectHas(startOrMeasureOptions, "start") &&
+          !ReflectHas(startOrMeasureOptions, "end")
         ) {
           throw new TypeError(
             "A start or end mark must be supplied in options.",
           );
         }
         if (
-          "start" in startOrMeasureOptions &&
-          "duration" in startOrMeasureOptions &&
-          "end" in startOrMeasureOptions
+          ReflectHas(startOrMeasureOptions, "start") &&
+          ReflectHas(startOrMeasureOptions, "duration") &&
+          ReflectHas(startOrMeasureOptions, "end")
         ) {
           throw new TypeError(
             "Cannot specify start, end, and duration together in options.",
@@ -492,13 +493,13 @@
         endTime = convertMarkToTimestamp(endMark);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        "end" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "end")
       ) {
         endTime = convertMarkToTimestamp(startOrMeasureOptions.end);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        "start" in startOrMeasureOptions &&
-        "duration" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "start") &&
+        ReflectHas(startOrMeasureOptions, "duration")
       ) {
         const start = convertMarkToTimestamp(startOrMeasureOptions.start);
         const duration = convertMarkToTimestamp(startOrMeasureOptions.duration);
@@ -509,13 +510,13 @@
       let startTime;
       if (
         typeof startOrMeasureOptions === "object" &&
-        "start" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "start")
       ) {
         startTime = convertMarkToTimestamp(startOrMeasureOptions.start);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        "end" in startOrMeasureOptions &&
-        "duration" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "end") &&
+        ReflectHas(startOrMeasureOptions, "duration")
       ) {
         const end = convertMarkToTimestamp(startOrMeasureOptions.end);
         const duration = convertMarkToTimestamp(startOrMeasureOptions.duration);
