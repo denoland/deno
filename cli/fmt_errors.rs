@@ -180,20 +180,12 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-fn format_js_error(
-  js_error: &JsError,
-  is_child: bool,
-  color_message: bool,
-) -> String {
+fn format_js_error(js_error: &JsError, is_child: bool) -> String {
   let mut s = String::new();
-  if color_message {
-    s.push_str(&red(&js_error.exception_message).to_string());
-  } else {
-    s.push_str(&js_error.exception_message);
-  }
+  s.push_str(&js_error.exception_message);
   if let Some(aggregated) = &js_error.aggregated {
     for aggregated_error in aggregated {
-      let error_string = format_js_error(aggregated_error, true, false);
+      let error_string = format_js_error(aggregated_error, true);
       for line in error_string.trim_start_matches("Uncaught ").lines() {
         s.push_str(&format!("\n    {}", line));
       }
@@ -216,7 +208,7 @@ fn format_js_error(
     s.push_str(&format!("\n    at {}", format_frame(frame)));
   }
   if let Some(cause) = &js_error.cause {
-    let error_string = format_js_error(cause, true, false);
+    let error_string = format_js_error(cause, true);
     s.push_str(&format!(
       "\nCaused by: {}",
       error_string.trim_start_matches("Uncaught ")
@@ -228,17 +220,11 @@ fn format_js_error(
 /// Wrapper around deno_core::JsError which provides colorful
 /// string representation.
 #[derive(Debug)]
-pub struct PrettyJsError {
-  js_error: JsError,
-  color_message: bool,
-}
+pub struct PrettyJsError(JsError);
 
 impl PrettyJsError {
   pub fn create(js_error: JsError) -> AnyError {
-    let pretty_js_error = Self {
-      js_error,
-      color_message: false,
-    };
+    let pretty_js_error = Self(js_error);
     pretty_js_error.into()
   }
 }
@@ -246,17 +232,13 @@ impl PrettyJsError {
 impl Deref for PrettyJsError {
   type Target = JsError;
   fn deref(&self) -> &Self::Target {
-    &self.js_error
+    &self.0
   }
 }
 
 impl fmt::Display for PrettyJsError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(
-      f,
-      "{}",
-      &format_js_error(&self.js_error, false, self.color_message)
-    )
+    write!(f, "{}", &format_js_error(&self.0, false))
   }
 }
 
