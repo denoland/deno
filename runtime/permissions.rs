@@ -27,23 +27,7 @@ use std::string::ToString;
 use std::sync::atomic::AtomicBool;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
-#[cfg(not(windows))]
 use which::which;
-
-// `which::which` is bugged on Windows, we patch it here.
-// https://github.com/harryfei/which-rs/issues/54
-#[cfg(windows)]
-use which::Result as WhichResult;
-#[cfg(windows)]
-fn which(name: &str) -> WhichResult<PathBuf> {
-  use which::which as which_;
-  which_(name).map(|mut p| {
-    if p.extension().and_then(std::ffi::OsStr::to_str) == Some("EXE") {
-      p.set_extension("exe");
-    }
-    p
-  })
-}
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -275,6 +259,10 @@ impl FromStr for RunDescriptor {
   type Err = ();
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
+    #[cfg(windows)]
+    let s_ = s.to_lowercase();
+    #[cfg(windows)]
+    let s = &s_;
     let is_path = s.contains('/');
     #[cfg(windows)]
     let is_path = is_path || s.contains('\\') || Path::new(s).is_absolute();
@@ -1286,27 +1274,16 @@ impl Permissions {
     state: &Option<Vec<String>>,
     prompt: bool,
   ) -> UnaryPermission<RunDescriptor> {
+    let mut granted_list = HashSet::new();
+    if let Some(state) = state {
+      for s in state {
+        let desc = RunDescriptor::from_str(s).unwrap();
+        run_descriptor_list_insert(&mut granted_list, desc);
+      }
+    }
     UnaryPermission::<RunDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state
-        .as_ref()
-        .map(|v| {
-          v.iter()
-            .flat_map(|x| {
-              // If a bare name is given as the command, resolve it now and add
-              // both RunDescriptor::Name(name) and RunDescriptor::Path(path)
-              // to the allowlist.
-              let d = RunDescriptor::from_str(x).unwrap();
-              if let RunDescriptor::Name(name) = &d {
-                if let Ok(path) = which(name) {
-                  return vec![d, RunDescriptor::Path(path)];
-                }
-              }
-              vec![d]
-            })
-            .collect()
-        })
-        .unwrap_or_else(HashSet::new),
+      granted_list,
       prompt,
       ..Default::default()
     }
