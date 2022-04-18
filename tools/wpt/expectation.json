@@ -3434,16 +3434,15 @@
     "range": {
       "general.any.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity"
+        "Fetch with range header will be sent with Accept-Encoding: identity",
+        "Cross Origin Fetch with non safe range header"
       ],
       "general.any.worker.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity"
+        "Fetch with range header will be sent with Accept-Encoding: identity",
+        "Cross Origin Fetch with non safe range header"
       ],
-      "general.window.html": [
-        "Script executed from partial response",
-        "Fetch with range header will be sent with Accept-Encoding: identity"
-      ]
+      "general.window.html": false
     }
   },
   "FileAPI": {
