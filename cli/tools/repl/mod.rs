@@ -61,22 +61,17 @@ async fn read_line_and_poll(
 
 async fn read_eval_file(
   ps: &ProcState,
-  eval_files: Vec<String>,
-) -> Result<Vec<String>, AnyError> {
-  let mut eval_sources: Vec<String> = Vec::new();
-  for eval_file in eval_files {
-    let specifier = deno_core::resolve_import(
-      eval_file.as_str(),
-      deno_core::DUMMY_SPECIFIER,
-    )?;
-    let file = ps
-      .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
-      .await?;
-    eval_sources.push((*file.source).clone());
-  }
+  eval_file: &String,
+) -> Result<String, AnyError> {
+  let specifier =
+    deno_core::resolve_import(eval_file.as_str(), deno_core::DUMMY_SPECIFIER)?;
 
-  Ok(eval_sources)
+  let file = ps
+    .file_fetcher
+    .fetch(&specifier, &mut Permissions::allow_all())
+    .await?;
+
+  return Ok((*file.source).clone());
 }
 
 pub async fn run(
@@ -97,20 +92,20 @@ pub async fn run(
   let editor = ReplEditor::new(helper, history_file_path);
 
   if let Some(eval_files) = maybe_eval_files {
-    match read_eval_file(ps, eval_files).await {
-      Ok(eval_sources) => {
-        for eval_source in eval_sources {
+    for eval_file in eval_files {
+      match read_eval_file(ps, &eval_file).await {
+        Ok(eval_source) => {
           let output = repl_session
             .evaluate_line_and_get_output(&eval_source)
             .await?;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!("error in --eval-file flag. {}", error_text);
+            println!("error in --eval-file file {}. {}", eval_file, error_text);
           }
         }
-      }
-      Err(e) => {
-        println!("error in --eval-file flag. {}", e);
+        Err(e) => {
+          println!("error in --eval-file file {}. {}", eval_file, e);
+        }
       }
     }
   }
