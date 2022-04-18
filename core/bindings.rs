@@ -10,6 +10,7 @@ use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
+use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRuntime;
 use crate::PromiseId;
 use crate::ResourceId;
@@ -21,6 +22,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::option::Option;
 use std::os::raw::c_void;
 use url::Url;
@@ -108,6 +110,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       },
       v8::ExternalReference {
         function: terminate.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: apply_source_map.map_fn_to(),
       },
     ])
   });
@@ -237,6 +242,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "abortWasmStreaming", abort_wasm_streaming);
   set_func(scope, core_val, "destructureError", destructure_error);
   set_func(scope, core_val, "terminate", terminate);
+  set_func(scope, core_val, "applySourceMap", apply_source_map);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -1322,6 +1328,41 @@ fn terminate(
   state.explicit_terminate_exception =
     Some(v8::Global::new(scope, args.get(0)));
   scope.terminate_execution();
+}
+
+fn apply_source_map(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  #[derive(Deserialize, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct Location {
+    file_name: String,
+    line_number: u32,
+    column_number: u32,
+  }
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  if let Some(source_map_getter) = &state.source_map_getter {
+    let mut location = match serde_v8::from_v8::<Location>(scope, args.get(0)) {
+      Ok(location) => location,
+      Err(error) => return throw_type_error(scope, error.to_string()),
+    };
+    let (f, l, c, _) = apply_source_map_(
+      location.file_name,
+      location.line_number.into(),
+      location.column_number.into(),
+      &mut HashMap::new(),
+      source_map_getter.as_ref(),
+    );
+    location.file_name = f;
+    location.line_number = l as u32;
+    location.column_number = c as u32;
+    rv.set(serde_v8::to_v8(scope, location).unwrap());
+  } else {
+    rv.set(args.get(0));
+  }
 }
 
 fn create_host_object(

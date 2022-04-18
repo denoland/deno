@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo --allow-net=crates.io --no-check
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo --allow-net=crates.io --no-check --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { Crate, getCratesPublishOrder } from "./deps.ts";

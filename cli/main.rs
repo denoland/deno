@@ -29,7 +29,6 @@ mod module_loader;
 mod ops;
 mod proc_state;
 mod resolver;
-mod source_maps;
 mod standalone;
 mod text_encoding;
 mod tools;
@@ -71,7 +70,6 @@ use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::source_maps::apply_source_map;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -127,13 +125,6 @@ fn create_web_worker_preload_module_callback(
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
-    let global_state_ = ps.clone();
-    let js_error_create_fn = Rc::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
-      PrettyJsError::create(source_mapped_error)
-    });
-
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(
@@ -149,7 +140,6 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
-        apply_source_maps: true,
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
@@ -176,7 +166,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       module_loader,
       create_web_worker_cb,
       preload_module_cb,
-      js_error_create_fn: Some(js_error_create_fn),
+      source_map_getter: Some(Box::new(ps.clone())),
+      js_error_create_fn: Some(Rc::new(PrettyJsError::create)),
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
@@ -205,14 +196,6 @@ pub fn create_main_worker(
   mut custom_extensions: Vec<Extension>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
-
-  let global_state_ = ps.clone();
-
-  let js_error_create_fn = Rc::new(move |core_js_error| {
-    let source_mapped_error =
-      apply_source_map(&core_js_error, global_state_.clone());
-    PrettyJsError::create(source_mapped_error)
-  });
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
   let should_break_on_first_statement = ps.flags.inspect_brk.is_some();
@@ -252,7 +235,6 @@ pub fn create_main_worker(
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
-      apply_source_maps: true,
       args: ps.flags.argv.clone(),
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
@@ -274,7 +256,8 @@ pub fn create_main_worker(
     root_cert_store: ps.root_cert_store.clone(),
     user_agent: version::get_user_agent(),
     seed: ps.flags.seed,
-    js_error_create_fn: Some(js_error_create_fn),
+    source_map_getter: Some(Box::new(ps.clone())),
+    js_error_create_fn: Some(Rc::new(PrettyJsError::create)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
     maybe_inspector_server,
@@ -1168,7 +1151,7 @@ async fn run_command(
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
   if !flags.has_check_flag && flags.type_check_mode == TypeCheckMode::All {
-    info!("{} In future releases `deno run` will not automatically type check without the --check flag. 
+    info!("{} In future releases `deno run` will not automatically type check without the --check flag.
 To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.", colors::yellow("Warning"));
   }
 
