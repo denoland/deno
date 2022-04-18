@@ -63,7 +63,6 @@ impl IncrementalCache {
           ReceiverMessage::Exit => break,
         }
       }
-      let _ = cache.cleanup();
     });
 
     IncrementalCache {
@@ -105,9 +104,6 @@ impl IncrementalCache {
 
 struct SqlIncrementalCache {
   conn: Connection,
-  /// The CLI version, which is used to clean up the cache of entries that
-  /// don't match the current CLI version.
-  cli_version: String,
   /// A hash of the state used to produce the formatting other than the CLI version.
   /// This state is a hash of the configuration and ensures we don't not format
   /// a file when the configuration changes.
@@ -117,34 +113,27 @@ struct SqlIncrementalCache {
 impl SqlIncrementalCache {
   pub fn new(db_file_path: &Path, state_hash: u64) -> Result<Self, AnyError> {
     let conn = Connection::open(db_file_path)?;
-    Self::from_connection(conn, state_hash)
+    Self::from_connection(conn, state_hash, crate::version::deno())
   }
 
   fn from_connection(
     conn: Connection,
     state_hash: u64,
+    cli_version: String,
   ) -> Result<Self, AnyError> {
     run_pragma(&conn)?;
-    create_tables(&conn)?;
+    create_tables(&conn, cli_version)?;
 
-    Ok(Self {
-      conn,
-      cli_version: crate::version::deno(),
-      state_hash,
-    })
+    Ok(Self { conn, state_hash })
   }
 
   pub fn get_source_hash(&self, path: &Path) -> Option<u64> {
-    let mut stmt = self.conn.prepare_cached("SELECT source_hash FROM incrementalcache WHERE file_path=?1 AND cli_version=?2 AND state_hash=?3 LIMIT 1").ok()?;
-    let mut rows = stmt
-      .query(params![
-        path.to_string_lossy(),
-        self.cli_version,
-        self.state_hash
-      ])
+    let mut stmt = self.conn.prepare_cached("SELECT source_hash FROM incrementalcache WHERE file_path=?1 AND state_hash=?2 LIMIT 1").ok()?;
+    let hash: String = stmt
+      .query_row(params![path.to_string_lossy(), self.state_hash], |row| {
+        row.get(0)
+      })
       .ok()?;
-    let row = rows.next().ok().flatten()?;
-    let hash: String = row.get(0).ok()?;
     hash.parse::<u64>().ok()
   }
 
@@ -153,22 +142,12 @@ impl SqlIncrementalCache {
     path: &Path,
     source_hash: u64,
   ) -> Result<(), AnyError> {
-    let mut stmt = self.conn.prepare_cached("INSERT OR REPLACE INTO incrementalcache (file_path, cli_version, state_hash, source_hash) VALUES (?1, ?2, ?3, ?4)")?;
+    let mut stmt = self.conn.prepare_cached("INSERT OR REPLACE INTO incrementalcache (file_path, state_hash, source_hash) VALUES (?1, ?2, ?3)")?;
     stmt.execute(params![
       path.to_string_lossy(),
-      &self.cli_version,
       &self.state_hash.to_string(),
       &source_hash.to_string(),
     ])?;
-    Ok(())
-  }
-
-  /// Only keep around items in the cache for the current CLI version
-  pub fn cleanup(&self) -> Result<(), AnyError> {
-    self.conn.execute(
-      "DELETE FROM incrementalcache WHERE cli_version!=?1",
-      params![self.cli_version],
-    )?;
     Ok(())
   }
 }
@@ -189,17 +168,42 @@ fn run_pragma(conn: &Connection) -> Result<(), AnyError> {
   Ok(())
 }
 
-fn create_tables(conn: &Connection) -> Result<(), AnyError> {
+fn create_tables(
+  conn: &Connection,
+  cli_version: String,
+) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT
   conn.execute(
     "CREATE TABLE IF NOT EXISTS incrementalcache (
         file_path TEXT PRIMARY KEY,
-        cli_version TEXT NOT NULL,
         state_hash TEXT NOT NULL,
         source_hash TEXT NOT NULL
       )",
     [],
   )?;
+  conn.execute(
+    "CREATE TABLE IF NOT EXISTS info (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )",
+    [],
+  )?;
+
+  // delete the cache when the CLI version changes
+  let data_cli_version: Option<String> = conn
+    .query_row(
+      "SELECT value FROM info WHERE key='CLI_VERSION' LIMIT 1",
+      [],
+      |row| row.get(0),
+    )
+    .ok();
+  if data_cli_version != Some(cli_version.to_string()) {
+    conn.execute("DELETE FROM incrementalcache", params![])?;
+    let mut stmt = conn
+      .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
+    stmt.execute(params!["CLI_VERSION", &cli_version])?;
+  }
+
   Ok(())
 }
 
@@ -222,18 +226,25 @@ mod test {
   #[test]
   pub fn sql_cache_general_use() {
     let conn = Connection::open_in_memory().unwrap();
-    let mut cache = SqlIncrementalCache::from_connection(conn, 1).unwrap();
+    let cache =
+      SqlIncrementalCache::from_connection(conn, 1, "1.0.0".to_string())
+        .unwrap();
     let path = PathBuf::from("/mod.ts");
 
     assert_eq!(cache.get_source_hash(&path), None);
     cache.set_source_hash(&path, 2).unwrap();
     assert_eq!(cache.get_source_hash(&path), Some(2));
 
-    // try changing the cli version (should not return)
-    let old_version = cache.cli_version.to_string();
-    cache.cli_version = "1.0.0".to_string();
+    // try changing the cli version (should clear)
+    let conn = cache.conn;
+    let mut cache =
+      SqlIncrementalCache::from_connection(conn, 1, "2.0.0".to_string())
+        .unwrap();
     assert_eq!(cache.get_source_hash(&path), None);
-    cache.cli_version = old_version.clone();
+
+    // add back the file to the cache
+    cache.set_source_hash(&path, 2).unwrap();
+    assert_eq!(cache.get_source_hash(&path), Some(2));
 
     // try changing the state hash
     cache.state_hash = 2;
@@ -243,15 +254,12 @@ mod test {
     // should return now that everything is back
     assert_eq!(cache.get_source_hash(&path), Some(2));
 
-    // cleanup should not remove because the CLI version is the same
-    cache.cleanup().unwrap();
+    // recreating the cache should not remove the data because the CLI version and state hash is the same
+    let conn = cache.conn;
+    let cache =
+      SqlIncrementalCache::from_connection(conn, 1, "2.0.0".to_string())
+        .unwrap();
     assert_eq!(cache.get_source_hash(&path), Some(2));
-
-    // now change the version and cleanup
-    cache.cli_version = "1.0.0".to_string();
-    cache.cleanup().unwrap();
-    cache.cli_version = old_version;
-    assert_eq!(cache.get_source_hash(&path), None);
 
     // now try replacing and using another path
     cache.set_source_hash(&path, 3).unwrap();
@@ -265,7 +273,9 @@ mod test {
   #[tokio::test]
   pub async fn incremental_cache_general_use() {
     let conn = Connection::open_in_memory().unwrap();
-    let sql_cache = SqlIncrementalCache::from_connection(conn, 1).unwrap();
+    let sql_cache =
+      SqlIncrementalCache::from_connection(conn, 1, "1.0.0".to_string())
+        .unwrap();
     let file_path = PathBuf::from("/mod.ts");
     let file_text = "test";
     let file_hash = fast_insecure_hash(file_text.as_bytes());
