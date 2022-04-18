@@ -644,7 +644,7 @@
         try {
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
-            tryClose(rid);
+            core.tryClose(rid);
             controller.close();
             controller.byobRequest.respond(0);
           } else {
@@ -652,11 +652,11 @@
           }
         } catch (e) {
           controller.error(e);
-          tryClose(rid);
+          core.tryClose(rid);
         }
       },
       cancel() {
-        tryClose(rid);
+        core.tryClose(rid);
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
     });
