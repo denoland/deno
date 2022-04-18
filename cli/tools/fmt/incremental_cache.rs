@@ -26,7 +26,7 @@ impl IncrementalCache {
   pub fn new(
     db_file_path: &Path,
     fmt_config: &FmtOptionsConfig,
-    initial_file_paths: &Vec<PathBuf>,
+    initial_file_paths: &[PathBuf],
   ) -> Result<Self, AnyError> {
     let state_hash =
       fast_insecure_hash(serde_json::to_string(fmt_config).unwrap().as_bytes());
@@ -39,7 +39,7 @@ impl IncrementalCache {
 
   fn from_sql_incremental_cache(
     cache: SqlIncrementalCache,
-    initial_file_paths: &Vec<PathBuf>,
+    initial_file_paths: &[PathBuf],
   ) -> Self {
     let mut previous_hashes = HashMap::new();
     for path in initial_file_paths {

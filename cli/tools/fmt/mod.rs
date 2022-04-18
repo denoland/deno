@@ -426,7 +426,7 @@ fn format_ensure_stable(
     &FmtOptionsConfig,
   ) -> Result<Option<String>, AnyError>,
 ) -> Result<Option<String>, AnyError> {
-  let formatted_text = fmt_func(file_path, &file_text, fmt_options)?;
+  let formatted_text = fmt_func(file_path, file_text, fmt_options)?;
 
   match formatted_text {
     Some(mut current_text) => {
