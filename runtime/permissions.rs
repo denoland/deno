@@ -250,9 +250,11 @@ impl AsRef<str> for EnvDescriptor {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum RunDescriptor {
-  /// Warning: You may want to use `RunDescriptor::from()` for case handling.
+  /// Warning: You may want to construct with `RunDescriptor::from()` for case
+  /// handling.
   Name(String),
-  /// Warning: You may want to use `RunDescriptor::from()` for case handling.
+  /// Warning: You may want to construct with `RunDescriptor::from()` for case
+  /// handling.
   Path(PathBuf),
 }
 
@@ -869,7 +871,7 @@ fn run_descriptor_list_contains(
   list.contains(desc)
     || match desc {
       RunDescriptor::Name(name) => match which(name) {
-        Ok(path) => list.contains(&RunDescriptor::Path(path)),
+        Ok(path) => list.contains(&RunDescriptor::from(path)),
         _ => false,
       },
       _ => false,
@@ -882,7 +884,7 @@ fn run_descriptor_list_insert(
 ) {
   if let RunDescriptor::Name(name) = &desc {
     if let Ok(path) = which(name) {
-      list.insert(RunDescriptor::Path(path));
+      list.insert(RunDescriptor::from(path));
     }
   }
   list.insert(desc);
@@ -896,7 +898,7 @@ fn run_descriptor_list_remove(
     RunDescriptor::Name(name) => {
       list.remove(desc);
       if let Ok(path) = which(name) {
-        list.remove(&RunDescriptor::Path(path));
+        list.remove(&RunDescriptor::from(path));
       }
     }
     RunDescriptor::Path(path) => {
