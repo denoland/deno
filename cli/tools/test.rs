@@ -564,16 +564,16 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
 // This function maps JsError to PrettyJsError and applies some changes
 // specifically for test runner purposes:
 //
-// - color the exception message in red
 // - filter out stack frames:
 //   - if stack trace consists of mixed user and internal code, the frames
 //     below the first user code frame are filtered out
 //   - if stack trace consists only of internal code it is preserved as is
 pub fn format_test_error(js_error: &JsError) -> String {
   let mut js_error = abbreviate_test_error(js_error);
-  let e =
-    colors::red(&js_error.exception_message.trim_start_matches("Uncaught "))
-      .to_string();
+  let e = &js_error
+    .exception_message
+    .trim_start_matches("Uncaught ")
+    .to_string();
   js_error.exception_message = e;
   PrettyJsError::create(js_error).to_string()
 }
