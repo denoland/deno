@@ -451,7 +451,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
-      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+      println!("\n{}\n", colors::white_bold_on_red("  ERRORS  "));
       for (description, js_error) in &summary.failures {
         println!(
           "{} {} {}",
@@ -504,7 +504,6 @@ impl TestReporter for PrettyTestReporter {
     };
 
     println!();
-    println!("{} {}", colors::gray("test result:"), status);
     println!(
       "{}      {}{}",
       colors::gray("passed:"),
@@ -535,6 +534,7 @@ impl TestReporter for PrettyTestReporter {
       colors::gray("time:"),
       colors::gray(display::human_elapsed(elapsed.as_millis()))
     );
+    println!("{} {}", colors::gray("test result:"), status);
     println!();
   }
 }
