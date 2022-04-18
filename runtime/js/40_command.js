@@ -114,17 +114,23 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      if (this.#stdout?.locked || this.#stderr?.locked) {
+      if (this.#stdout?.locked) {
         throw new TypeError(
-          "Can't collect output because stdout or stderr are locked",
+          "Can't collect output because stdout is locked",
+        );
+      }
+      if (this.#stderr?.locked) {
+        throw new TypeError(
+          "Can't collect output because stderr is locked",
         );
       }
 
-      const res = await core.opAsync("op_command_output", {
-        rid: this.#rid,
-        stdoutRid: this.#stdoutRid,
-        stderrRid: this.#stderrRid,
-      });
+      const res = await core.opAsync(
+        "op_command_output",
+        this.#rid,
+        this.#stdoutRid,
+        this.#stderrRid,
+      );
       this.#rid = null;
       this.#status = res.status;
       return res;

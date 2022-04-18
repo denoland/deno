@@ -248,33 +248,30 @@ async fn op_command_wait(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ChildStdio {
-  rid: ResourceId,
-  stdout_rid: Option<ResourceId>,
-  stderr_rid: Option<ResourceId>,
-}
+struct ChildStdio {}
 
 #[op]
 async fn op_command_output(
   state: Rc<RefCell<OpState>>,
-  args: ChildStdio,
-  _: (),
+  rid: ResourceId,
+  stdout_rid: Option<ResourceId>,
+  stderr_rid: Option<ResourceId>,
 ) -> Result<CommandOutput, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ChildResource>(args.rid)?;
+    .take::<ChildResource>(rid)?;
   let resource = Rc::try_unwrap(resource).ok().unwrap();
   let mut child = resource.0.into_inner();
 
-  if let Some(stdout_rid) = args.stdout_rid {
+  if let Some(stdout_rid) = stdout_rid {
     let stdout = state
       .borrow_mut()
       .resource_table
       .take::<ChildStdoutResource>(stdout_rid)?;
     child.stdout = Some(Rc::try_unwrap(stdout).unwrap().into_inner());
   }
-  if let Some(stderr_rid) = args.stderr_rid {
+  if let Some(stderr_rid) = stderr_rid {
     let stderr = state
       .borrow_mut()
       .resource_table
@@ -286,8 +283,8 @@ async fn op_command_output(
 
   Ok(CommandOutput {
     status: output.status.into(),
-    stdout: args.stdout_rid.map(|_| output.stdout.into()),
-    stderr: args.stderr_rid.map(|_| output.stderr.into()),
+    stdout: stdout_rid.map(|_| output.stdout.into()),
+    stderr: stderr_rid.map(|_| output.stderr.into()),
   })
 }
 
