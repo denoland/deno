@@ -2733,3 +2733,23 @@ itest!(js_root_with_ts_check {
   output: "js_root_with_ts_check.js.out",
   exit_code: 1,
 });
+
+itest!(no_prompt_flag {
+  args: "run --quiet --unstable --no-prompt no_prompt.ts",
+  output_str: Some(""),
+});
+
+#[test]
+fn deno_no_prompt_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("no_prompt.ts")
+    .env("DENO_NO_PROMPT", "1")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}

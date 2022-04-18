@@ -1,4 +1,3 @@
-Check [WILDCARD]/no_prompt_by_default.ts
 running 1 test from ./test/no_prompt_by_default.ts
 no prompt ... FAILED ([WILDCARD]ms)
 
