@@ -264,7 +264,7 @@ impl From<String> for RunDescriptor {
     let s = s.to_lowercase();
     let is_path = s.contains('/');
     #[cfg(windows)]
-    let is_path = is_path || s.contains('\\') || Path::new(s).is_absolute();
+    let is_path = is_path || s.contains('\\') || Path::new(&s).is_absolute();
     if is_path {
       Self::Path(resolve_from_cwd(Path::new(&s)).unwrap())
     } else {
