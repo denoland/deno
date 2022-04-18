@@ -41,7 +41,7 @@ tryExit();
     const code = 84;
     Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
-    const status = await child.wait();
+    const status = await child.status;
     await Deno.remove(cwd, { recursive: true });
     assertEquals(status.success, false);
     assertEquals(status.code, code);
@@ -70,7 +70,7 @@ Deno.test(
     writer.releaseLock();
 
     await child.stdin.close();
-    const status = await child.wait();
+    const status = await child.status;
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
     assertEquals(status.signal, null);
@@ -103,7 +103,7 @@ Deno.test(
     assertEquals(resEnd.value, undefined);
     reader.releaseLock();
 
-    const status = await child.wait();
+    const status = await child.status;
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
     assertEquals(status.signal, null);
@@ -136,7 +136,7 @@ Deno.test(
     assertEquals(resEnd.value, undefined);
     reader.releaseLock();
 
-    const status = await child.wait();
+    const status = await child.status;
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
     assertEquals(status.signal, null);
@@ -165,7 +165,7 @@ Deno.test(
       preventClose: true,
     });
     await child.stderr.pipeTo(file.writable);
-    await child.wait();
+    await child.status;
 
     const fileContents = await Deno.readFile(fileName);
     const decoder = new TextDecoder();
@@ -197,7 +197,7 @@ Deno.test(
     });
 
     await child.stdin.close();
-    const status = await child.wait();
+    const status = await child.status;
     assertEquals(status.code, 0);
   },
 );
@@ -210,7 +210,7 @@ Deno.test(
     });
 
     child.kill("SIGKILL");
-    const status = await child.wait();
+    const status = await child.status;
 
     assertEquals(status.success, false);
     if (Deno.build.os === "windows") {
@@ -235,7 +235,7 @@ Deno.test(
       child.kill("foobar");
     }, TypeError);
 
-    await child.wait();
+    await child.status;
   },
 );
 

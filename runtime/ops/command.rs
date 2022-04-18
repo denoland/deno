@@ -29,9 +29,7 @@ pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
       op_command_spawn::decl(),
-      op_command_status::decl(),
       op_command_wait::decl(),
-      op_command_output::decl(),
       op_command_sync::decl(),
     ])
     .build()
@@ -224,16 +222,6 @@ fn op_command_spawn(
 }
 
 #[op]
-fn op_command_status(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<Option<CommandStatus>, AnyError> {
-  let resource = state.resource_table.get::<ChildResource>(rid)?;
-  let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
-  Ok(child.try_wait()?.map(|status| status.into()))
-}
-
-#[op]
 async fn op_command_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -244,48 +232,6 @@ async fn op_command_wait(
     .take::<ChildResource>(rid)?;
   let mut child = RcRef::map(resource, |r| &r.0).borrow_mut().await;
   Ok(child.wait().await?.into())
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ChildStdio {}
-
-#[op]
-async fn op_command_output(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  stdout_rid: Option<ResourceId>,
-  stderr_rid: Option<ResourceId>,
-) -> Result<CommandOutput, AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .take::<ChildResource>(rid)?;
-  let resource = Rc::try_unwrap(resource).ok().unwrap();
-  let mut child = resource.0.into_inner();
-
-  if let Some(stdout_rid) = stdout_rid {
-    let stdout = state
-      .borrow_mut()
-      .resource_table
-      .take::<ChildStdoutResource>(stdout_rid)?;
-    child.stdout = Some(Rc::try_unwrap(stdout).unwrap().into_inner());
-  }
-  if let Some(stderr_rid) = stderr_rid {
-    let stderr = state
-      .borrow_mut()
-      .resource_table
-      .take::<ChildStderrResource>(stderr_rid)?;
-    child.stderr = Some(Rc::try_unwrap(stderr).unwrap().into_inner());
-  }
-
-  let output = child.wait_with_output().await?;
-
-  Ok(CommandOutput {
-    status: output.status.into(),
-    stdout: stdout_rid.map(|_| output.stdout.into()),
-    stderr: stderr_rid.map(|_| output.stderr.into()),
-  })
 }
 
 #[op]

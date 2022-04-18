@@ -3094,11 +3094,9 @@ declare namespace Deno {
       : null;
 
     readonly pid: number;
-    /** Get the current status. */
-    readonly status: CommandStatus | null;
+    /** Get the status of the child. */
+    readonly status: Promise<CommandStatus>;
 
-    /** Waits for the child to exit completely, returning the status that it exited with. */
-    wait(): Promise<CommandStatus>;
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<CommandOutput<T>>;
     /** Kills the process with given Signal. */

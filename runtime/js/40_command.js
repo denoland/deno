@@ -5,8 +5,14 @@
   const core = window.Deno.core;
   const { pathFromURL } = window.__bootstrap.util;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
-  const { ArrayPrototypeMap, ObjectEntries, String, TypeError } =
-    window.__bootstrap.primordials;
+  const {
+    ArrayPrototypeMap,
+    ObjectEntries,
+    String,
+    TypeError,
+    Uint8Array,
+    PromiseAll,
+  } = window.__bootstrap.primordials;
   const { readableStreamForRid, writableStreamForRid } =
     window.__bootstrap.streamUtils;
 
@@ -34,6 +40,28 @@
       stderr,
     });
     return new Child(illegalConstructorKey, child);
+  }
+
+  async function collectOutput(readableStream) {
+    if (!(readableStream instanceof ReadableStream)) {
+      return null;
+    }
+
+    const bufs = [];
+    let size = 0;
+    for await (const chunk of readableStream) {
+      bufs.push(chunk);
+      size += chunk.byteLength;
+    }
+
+    const buffer = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of bufs) {
+      buffer.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    return buffer;
   }
 
   class Child {
@@ -90,24 +118,16 @@
         this.#stderrRid = stderrRid;
         this.#stderr = readableStreamForRid(stderrRid);
       }
+
+      this.#status = core.opAsync("op_command_wait", this.#rid).then((res) => {
+        this.#rid = null;
+        return res;
+      });
     }
 
     #status;
     get status() {
-      if (this.#status) {
-        return this.#status;
-      }
-      return core.opSync("op_command_status", this.#rid);
-    }
-
-    async wait() {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
-      }
-      const status = await core.opAsync("op_command_wait", this.#rid);
-      this.#rid = null;
-      this.#status = status;
-      return status;
+      return this.#status;
     }
 
     async output() {
@@ -125,15 +145,17 @@
         );
       }
 
-      const res = await core.opAsync(
-        "op_command_output",
-        this.#rid,
-        this.#stdoutRid,
-        this.#stderrRid,
-      );
-      this.#rid = null;
-      this.#status = res.status;
-      return res;
+      const [status, stdout, stderr] = await PromiseAll([
+        this.#status,
+        collectOutput(this.#stdout),
+        collectOutput(this.#stderr),
+      ]);
+
+      return {
+        status,
+        stdout,
+        stderr,
+      };
     }
 
     kill(signo) {
