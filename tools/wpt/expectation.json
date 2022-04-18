@@ -3961,7 +3961,6 @@
     "Create-nonAscii-protocol-string.any.worker.html": true,
     "Create-nonAscii-protocol-string.any.worker.html?wpt_flags=h2": true,
     "Create-nonAscii-protocol-string.any.worker.html?wss": true,
-    "Create-on-worker-shutdown.any.html": false,
     "Create-protocol-with-space.any.html": true,
     "Create-protocol-with-space.any.html?wpt_flags=h2": true,
     "Create-protocol-with-space.any.html?wss": true,
