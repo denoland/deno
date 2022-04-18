@@ -3,15 +3,23 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use rusqlite::params;
 use rusqlite::Connection;
+use tokio::task::JoinHandle;
 
 use crate::config_file::FmtOptionsConfig;
 
+enum ReceiverMessage {
+  Update(PathBuf, u64),
+  Exit,
+}
+
 pub struct IncrementalCache {
   previous_hashes: HashMap<PathBuf, u64>,
-  sender: tokio::sync::mpsc::UnboundedSender<(PathBuf, u64)>,
+  sender: tokio::sync::mpsc::UnboundedSender<ReceiverMessage>,
+  handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl IncrementalCache {
@@ -41,11 +49,16 @@ impl IncrementalCache {
     }
 
     let (sender, mut receiver) =
-      tokio::sync::mpsc::unbounded_channel::<(PathBuf, u64)>();
+      tokio::sync::mpsc::unbounded_channel::<ReceiverMessage>();
 
-    tokio::task::spawn(async move {
-      if let Some((path, hash)) = receiver.recv().await {
-        let _ = cache.set_source_hash(&path, hash);
+    let handle = tokio::task::spawn(async move {
+      while let Some(message) = receiver.recv().await {
+        match message {
+          ReceiverMessage::Update(path, hash) => {
+            let _ = cache.set_source_hash(&path, hash);
+          }
+          ReceiverMessage::Exit => break,
+        }
       }
       let _ = cache.cleanup();
     });
@@ -53,6 +66,7 @@ impl IncrementalCache {
     IncrementalCache {
       previous_hashes,
       sender,
+      handle: Mutex::new(Some(handle)),
     }
   }
 
@@ -70,7 +84,19 @@ impl IncrementalCache {
         return; // do not bother updating the db file because nothing has changed
       }
     }
-    let _ = self.sender.send((path.to_path_buf(), hash));
+    let _ = self
+      .sender
+      .send(ReceiverMessage::Update(path.to_path_buf(), hash));
+  }
+
+  pub async fn wait_completion(&self) {
+    if self.sender.send(ReceiverMessage::Exit).is_err() {
+      return;
+    }
+    let handle = self.handle.lock().take();
+    if let Some(handle) = handle {
+      handle.await.unwrap();
+    }
   }
 }
 
@@ -101,7 +127,7 @@ impl SqlIncrementalCache {
   }
 
   pub fn get_source_hash(&self, path: &Path) -> Option<u64> {
-    let mut stmt = self.conn.prepare_cached("SELECT source_hash FROM incrementalcache WHERE specifier=?1 AND cli_version=?2 AND state_hash=?3 LIMIT 1").ok()?;
+    let mut stmt = self.conn.prepare_cached("SELECT source_hash FROM incrementalcache WHERE file_path=?1 AND cli_version=?2 AND state_hash=?3 LIMIT 1").ok()?;
     let mut rows = stmt
       .query(params![
         path.to_string_lossy(),
@@ -110,7 +136,8 @@ impl SqlIncrementalCache {
       ])
       .ok()?;
     let row = rows.next().ok().flatten()?;
-    row.get(0).ok()
+    let hash: String = row.get(0).ok()?;
+    hash.parse::<u64>().ok()
   }
 
   pub fn set_source_hash(
@@ -118,12 +145,12 @@ impl SqlIncrementalCache {
     path: &Path,
     source_hash: u64,
   ) -> Result<(), AnyError> {
-    let mut stmt = self.conn.prepare_cached("INSERT OR REPLACE INTO incrementalcache (specifier, cli_version, state_hash, source_hash) VALUES (?1, ?2, ?3, ?4)")?;
+    let mut stmt = self.conn.prepare_cached("INSERT OR REPLACE INTO incrementalcache (file_path, cli_version, state_hash, source_hash) VALUES (?1, ?2, ?3, ?4)")?;
     stmt.execute(params![
       path.to_string_lossy(),
       &self.cli_version,
-      &self.state_hash,
-      &source_hash,
+      &self.state_hash.to_string(),
+      &source_hash.to_string(),
     ])?;
     Ok(())
   }
@@ -154,12 +181,13 @@ fn run_pragma(conn: &Connection) -> Result<(), AnyError> {
 }
 
 fn create_tables(conn: &Connection) -> Result<(), AnyError> {
+  // INT doesn't store up to u64, so use TEXT
   conn.execute(
     "CREATE TABLE IF NOT EXISTS incrementalcache (
-        specifier TEXT PRIMARY KEY,
+        file_path TEXT PRIMARY KEY,
         cli_version TEXT NOT NULL,
-        state_hash INT NOT NULL,
-        source_hash INT NOT NULL
+        state_hash TEXT NOT NULL,
+        source_hash TEXT NOT NULL
       )",
     [],
   )?;

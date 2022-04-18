@@ -144,10 +144,12 @@ pub async fn format(
       &paths,
     )?);
     if check {
-      check_source_files(paths, fmt_options, incremental_cache).await?;
+      check_source_files(paths, fmt_options, incremental_cache.clone()).await?;
     } else {
-      format_source_files(paths, fmt_options, incremental_cache).await?;
+      format_source_files(paths, fmt_options, incremental_cache.clone())
+        .await?;
     }
+    incremental_cache.wait_completion().await;
     Ok(())
   };
 
