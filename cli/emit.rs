@@ -279,12 +279,21 @@ fn get_tsc_roots(
       .entries()
       .into_iter()
       .filter_map(|(specifier, module_entry)| match module_entry {
-        ModuleEntry::Module { media_type, .. } => match &media_type {
+        ModuleEntry::Module {
+          media_type,
+          ts_check,
+          ..
+        } => match &media_type {
           MediaType::TypeScript
           | MediaType::Tsx
           | MediaType::Mts
           | MediaType::Cts
           | MediaType::Jsx => Some((specifier.clone(), *media_type)),
+          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
+            if check_js || *ts_check =>
+          {
+            Some((specifier.clone(), *media_type))
+          }
           _ => None,
         },
         _ => None,
@@ -461,20 +470,25 @@ pub fn check_and_maybe_emit(
         // resolve it via the graph.
         let graph_data = graph_data.read();
         let specifier = graph_data.follow_redirect(&specifiers[0]);
-        let (source_bytes, media_type) = match graph_data.get(&specifier) {
-          Some(ModuleEntry::Module {
-            code, media_type, ..
-          }) => (code.as_bytes(), *media_type),
-          _ => {
-            log::debug!("skipping emit for {}", specifier);
-            continue;
-          }
-        };
+        let (source_bytes, media_type, ts_check) =
+          match graph_data.get(&specifier) {
+            Some(ModuleEntry::Module {
+              code,
+              media_type,
+              ts_check,
+              ..
+            }) => (code.as_bytes(), *media_type, *ts_check),
+            _ => {
+              log::debug!("skipping emit for {}", specifier);
+              continue;
+            }
+          };
         // Sometimes if `tsc` sees a CommonJS file or a JSON module, it will
         // _helpfully_ output it, which we don't really want to do unless
         // someone has enabled check_js.
         if matches!(media_type, MediaType::Json)
           || (!check_js
+            && !ts_check
             && matches!(
               media_type,
               MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
@@ -862,10 +876,13 @@ fn valid_emit(
   reload_exclusions: &HashSet<ModuleSpecifier>,
 ) -> bool {
   let config_bytes = ts_config.as_bytes();
-  let emit_js = ts_config.get_check_js();
+  let check_js = ts_config.get_check_js();
   for (specifier, module_entry) in graph_data.entries() {
     if let ModuleEntry::Module {
-      code, media_type, ..
+      code,
+      media_type,
+      ts_check,
+      ..
     } = module_entry
     {
       match media_type {
@@ -875,7 +892,7 @@ fn valid_emit(
         | MediaType::Tsx
         | MediaType::Jsx => {}
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-          if !emit_js {
+          if !check_js && !ts_check {
             continue;
           }
         }
