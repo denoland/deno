@@ -16,6 +16,8 @@ enum ReceiverMessage {
   Exit,
 }
 
+/// Cache used to not bother formatting a file again when we
+/// know it is already formatted.
 pub struct IncrementalCache {
   previous_hashes: HashMap<PathBuf, u64>,
   sender: tokio::sync::mpsc::UnboundedSender<ReceiverMessage>,
@@ -51,6 +53,7 @@ impl IncrementalCache {
     let (sender, mut receiver) =
       tokio::sync::mpsc::unbounded_channel::<ReceiverMessage>();
 
+    // sqlite isn't `Sync`, so we do all the updating on a dedicated thread
     let handle = tokio::task::spawn(async move {
       while let Some(message) = receiver.recv().await {
         match message {
@@ -102,7 +105,12 @@ impl IncrementalCache {
 
 struct SqlIncrementalCache {
   conn: Connection,
+  /// The CLI version, which is used to clean up the cache of entries that
+  /// don't match the current CLI version.
   cli_version: String,
+  /// A hash of the state used to produce the formatting other than the CLI version.
+  /// This state is a hash of the configuration and ensures we don't not format
+  /// a file when the configuration changes.
   state_hash: u64,
 }
 
@@ -112,7 +120,7 @@ impl SqlIncrementalCache {
     Self::from_connection(conn, state_hash)
   }
 
-  pub(super) fn from_connection(
+  fn from_connection(
     conn: Connection,
     state_hash: u64,
   ) -> Result<Self, AnyError> {
@@ -155,6 +163,7 @@ impl SqlIncrementalCache {
     Ok(())
   }
 
+  /// Only keep around items in the cache for the current CLI version
   pub fn cleanup(&self) -> Result<(), AnyError> {
     self.conn.execute(
       "DELETE FROM incrementalcache WHERE cli_version!=?1",
