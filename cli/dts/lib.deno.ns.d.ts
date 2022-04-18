@@ -3077,7 +3077,7 @@ declare namespace Deno {
    *   ],
    * });
    *
-   * const status = await child.wait();
+   * const status = await child.status;
    * ```
    */
   export function spawnChild<T extends CommandOptions = CommandOptions>(
