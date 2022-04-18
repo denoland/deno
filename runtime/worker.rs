@@ -20,6 +20,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -54,6 +55,7 @@ pub struct WorkerOptions {
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
@@ -155,6 +157,7 @@ impl MainWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
+      source_map_getter: options.source_map_getter,
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -357,7 +360,6 @@ mod tests {
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
-        apply_source_maps: false,
         args: vec![],
         cpu_count: 1,
         debug_flag: false,
@@ -374,6 +376,7 @@ mod tests {
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
+      source_map_getter: None,
       js_error_create_fn: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),

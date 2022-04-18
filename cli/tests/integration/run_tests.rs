@@ -2715,6 +2715,18 @@ itest!(set_timeout_error_handled {
   output: "set_timeout_error_handled.ts.out",
 });
 
+itest!(aggregate_error {
+  args: "run --quiet aggregate_error.ts",
+  output: "aggregate_error.out",
+  exit_code: 1,
+});
+
+itest!(complex_error {
+  args: "run --quiet complex_error.ts",
+  output: "complex_error.ts.out",
+  exit_code: 1,
+});
+
 itest!(allow_run_allowlist_resolution {
   args: "run --quiet -A allow_run_allowlist_resolution.ts",
   output: "allow_run_allowlist_resolution.ts.out",

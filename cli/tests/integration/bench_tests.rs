@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
+use test_util as util;
 
 itest!(requires_unstable {
   args: "bench bench/requires_unstable.js",
@@ -139,3 +140,21 @@ itest!(no_prompt_with_denied_perms {
   exit_code: 1,
   output: "bench/no_prompt_with_denied_perms.out",
 });
+
+#[test]
+fn recursive_permissions_pledge() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bench")
+    .arg("--unstable")
+    .arg("bench/recursive_permissions_pledge.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(String::from_utf8(output.stderr).unwrap().contains(
+    "pledge test permissions called before restoring previous pledge"
+  ));
+}

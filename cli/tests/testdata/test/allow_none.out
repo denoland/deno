@@ -10,37 +10,37 @@ hrtime ... FAILED [WILDCARD]
 
 failures:
 
-test/allow_none.ts > read
+./test/allow_none.ts > read
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-test/allow_none.ts > write
+./test/allow_none.ts > write
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-test/allow_none.ts > net
+./test/allow_none.ts > net
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-test/allow_none.ts > env
+./test/allow_none.ts > env
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-test/allow_none.ts > run
+./test/allow_none.ts > run
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-test/allow_none.ts > ffi
+./test/allow_none.ts > ffi
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-test/allow_none.ts > hrtime
+./test/allow_none.ts > hrtime
 PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 failures:
 
-	test/allow_none.ts
+	./test/allow_none.ts
 	read
 	write
 	net

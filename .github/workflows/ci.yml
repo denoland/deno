@@ -436,9 +436,11 @@ jobs:
         run: |
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts setup
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json              \
                           ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
 
       - name: Run web platform tests (release)
@@ -450,9 +452,11 @@ jobs:
         run: |
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts setup
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts run --quiet --release             \
                                              --binary="$DENO_BIN"          \
                                              --json=wpt.json               \
@@ -486,7 +490,7 @@ jobs:
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          ./target/release/deno run --allow-all \
+          ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks
