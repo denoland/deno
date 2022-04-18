@@ -9,7 +9,6 @@ Error
   throw new Error();
         ^
     at [WILDCARD]/test/fail_fast.ts:2:9
-    at [WILDCARD]
 
 failures:
 
