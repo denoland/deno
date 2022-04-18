@@ -14,6 +14,8 @@ use crate::magic::transl8::impl_magic;
 pub enum MagicBuffer {
   FromV8(ZeroCopyBuf),
   ToV8(Mutex<Option<Box<[u8]>>>),
+  // Variant of the MagicBuffer than is never exposed to the JS.
+  // Generally used to pass Vec<u8> backed buffers to resource methods.
   Temp(Vec<u8>),
 }
 

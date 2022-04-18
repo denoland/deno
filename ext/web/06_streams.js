@@ -4314,7 +4314,7 @@
     WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
   }
 
-  const _maybeRid = Symbol("maybeRid");
+  const _maybeRid = Symbol("[[maybeRid]]");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
