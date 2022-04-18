@@ -2,6 +2,7 @@
 "use strict";
 ((window) => {
   const core = window.__bootstrap.core;
+  const { abortSignal } = window.__bootstrap;
   const { pathFromURL } = window.__bootstrap.util;
 
   function writeFileSync(
@@ -29,8 +30,8 @@
     if (options.signal) {
       options.signal.throwIfAborted();
       cancelRid = core.opSync("op_cancel_handle");
-      abortHandler = options.signal
-        .addEventListener("abort", () => core.tryClose(cancelRid));
+      abortHandler = () => core.tryClose(cancelRid);
+      options.signal[abortSignal.add](abortHandler);
     }
     try {
       await core.opAsync("op_write_file_async", {
@@ -43,7 +44,7 @@
       });
     } finally {
       if (options.signal) {
-        options.signal.removeEventListener("abort", abortHandler);
+        options.signal[abortSignal.remove](abortHandler);
 
         // always throw the abort error when aborted
         options.signal.throwIfAborted();
