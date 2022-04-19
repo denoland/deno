@@ -95,8 +95,6 @@
         context: "Argument 2",
       });
 
-      // TODO(lucacasonato): add fast path for non-streaming decoder & decode
-
       try {
         try {
           if (ArrayBufferIsView(input)) {
