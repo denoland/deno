@@ -95,7 +95,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       return Err(bad_resource_id());
     }
 
-    let handle_result = if let Some((fs_file, _)) = resource.fs_file {
+    let handle_result = if let Some((fs_file, _)) = &resource.fs_file {
       let file = fs_file.as_ref().unwrap().clone();
       let std_file = file.lock().unwrap();
       let raw_handle = std_file.as_raw_handle();
