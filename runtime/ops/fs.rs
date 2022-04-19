@@ -21,7 +21,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
-use std::fs::File as StdFile;
 use std::io;
 use std::io::{Error, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -242,7 +241,7 @@ async fn op_seek_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
 
@@ -282,14 +281,14 @@ async fn op_fdatasync_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
 
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || {
-    let mut std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock().unwrap();
     std_file.sync_data()
   })
   .await?
@@ -319,13 +318,13 @@ async fn op_fsync_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || {
-    let mut std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock().unwrap();
     std_file.sync_all()
   })
   .await?
@@ -358,7 +357,7 @@ async fn op_fstat_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
 
@@ -413,7 +412,7 @@ async fn op_flock_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
 
@@ -465,7 +464,7 @@ async fn op_funlock_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
 
@@ -1568,7 +1567,7 @@ async fn op_ftruncate_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
   let std_file = fs_file.0.as_ref().unwrap().clone();
@@ -1875,7 +1874,7 @@ async fn op_futime_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
     .borrow_mut()
     .await;
 
