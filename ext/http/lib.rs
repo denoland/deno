@@ -688,6 +688,7 @@ async fn op_http_write_resource(
       }
     };
 
+    // TODO(@littledivy): Change this to 64K once `read` accepts >16K reads.
     let mut vec = vec![0u8; 16 * 1024];
     let vec_ptr = vec.as_mut_ptr();
     let buf = ZeroCopyBuf::new_temp(vec);
