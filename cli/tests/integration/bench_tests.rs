@@ -130,13 +130,14 @@ itest!(filter {
 });
 
 itest!(no_prompt_by_default {
-  args: "bench --unstable bench/no_prompt_by_default.ts",
+  args: "bench --quiet --unstable bench/no_prompt_by_default.ts",
   exit_code: 1,
   output: "bench/no_prompt_by_default.out",
 });
 
 itest!(no_prompt_with_denied_perms {
-  args: "bench --unstable --allow-read bench/no_prompt_with_denied_perms.ts",
+  args:
+    "bench --quiet --unstable --allow-read bench/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "bench/no_prompt_with_denied_perms.out",
 });
