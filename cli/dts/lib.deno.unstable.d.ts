@@ -1388,17 +1388,16 @@ declare namespace Deno {
     /** Similar to `uid`, but sets the group ID of the child process. */
     gid?: number;
 
+    /** Defaults to "null". */
     stdin?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
     stdout?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
   }
 
   /**
    * Spawns a child process.
-   *
-   * `CommandOptions.stdin` defaults to `"null"`.
-   * `CommandOptions.stdout` defaults to `"inherit"`.
-   * `CommandOptions.stderr` defaults to `"inherit"`.
    *
    * ```ts
    * const child = Deno.spawnChild(Deno.execPath(), {
@@ -1419,10 +1418,10 @@ declare namespace Deno {
   export class Child<T extends SpawnOptions> {
     readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
       : null;
-    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
-      : null;
-    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array>
-      : null;
+    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
 
     readonly pid: number;
     /** Get the status of the child. */
@@ -1436,10 +1435,6 @@ declare namespace Deno {
 
   /**
    * Executes a subprocess, waiting for it to finish and collecting all of its output.
-   *
-   * `CommandOptions.stdin` defaults to `"null"`.
-   * `CommandOptions.stdout` defaults to `"piped"`.
-   * `CommandOptions.stderr` defaults to `"piped"`.
    *
    * ```ts
    * const { stdout } = await Deno.spawn(Deno.execPath(), {
@@ -1458,10 +1453,6 @@ declare namespace Deno {
 
   /**
    * Synchronously executes a subprocess, waiting for it to finish and collecting all of its output.
-   *
-   * `CommandOptions.stdin` defaults to `"null"`.
-   * `CommandOptions.stdout` defaults to `"piped"`.
-   * `CommandOptions.stderr` defaults to `"piped"`.
    *
    * ```ts
    * const { stdout } = Deno.spawnSync(Deno.execPath(), {

@@ -24,8 +24,8 @@
     uid = undefined,
     gid = undefined,
     stdin = "null",
-    stdout = "inherit",
-    stderr = "inherit",
+    stdout = "piped",
+    stderr = "piped",
   } = {}) {
     const child = core.opSync("op_command_spawn", {
       cmd: pathFromURL(command),
@@ -166,19 +166,8 @@
     }
   }
 
-  function spawn(command, {
-    stdin = "null",
-    stdout = "piped",
-    stderr = "piped",
-    ...options
-  } = {}) { // TODO(@crowlKats): more options (like input)?
-    const child = spawnChild(command, {
-      stdin,
-      stdout,
-      stderr,
-      ...options,
-    });
-    return child.output();
+  function spawn(command, options) { // TODO(@crowlKats): more options (like input)?
+    return spawnChild(command, options).output();
   }
 
   function spawnSync(command, {

@@ -34,6 +34,8 @@ tryExit();
     const child = Deno.spawnChild(Deno.execPath(), {
       cwd,
       args: ["run", "--allow-read", programFile],
+      stdout: "inherit",
+      stderr: "inherit",
     });
 
     // Write the expected exit code *after* starting deno.
@@ -58,6 +60,8 @@ Deno.test(
         "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
       ],
       stdin: "piped",
+      stdout: "null",
+      stderr: "null",
     });
 
     assert(child.stdin !== null);
@@ -85,7 +89,7 @@ Deno.test(
         "eval",
         "await Deno.stdout.write(new TextEncoder().encode('hello'))",
       ],
-      stdout: "piped",
+      stderr: "null",
     });
 
     assert(child.stdin === null);
@@ -119,6 +123,7 @@ Deno.test(
         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
       ],
       stderr: "piped",
+      stdout: "null",
     });
 
     assert(child.stdin === null);
@@ -158,8 +163,6 @@ Deno.test(
         "eval",
         "Deno.stderr.write(new TextEncoder().encode('error\\n')); Deno.stdout.write(new TextEncoder().encode('output\\n'));",
       ],
-      stdout: "piped",
-      stderr: "piped",
     });
     await child.stdout.pipeTo(file.writable, {
       preventClose: true,
@@ -191,6 +194,8 @@ Deno.test(
         "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
       ],
       stdin: "piped",
+      stdout: "null",
+      stderr: "null",
     });
     await file.readable.pipeTo(child.stdin, {
       preventClose: true,
@@ -207,6 +212,8 @@ Deno.test(
   async function spawnKillSuccess() {
     const child = Deno.spawnChild(Deno.execPath(), {
       args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
     });
 
     child.kill("SIGKILL");
@@ -228,6 +235,8 @@ Deno.test(
   async function spawnKillFailed() {
     const child = Deno.spawnChild(Deno.execPath(), {
       args: ["eval", "setTimeout(() => {}, 5000)"],
+      stdout: "null",
+      stderr: "null",
     });
 
     assertThrows(() => {
