@@ -168,7 +168,13 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       return Err(resource_unavailable());
     }
 
-    let raw_fd = fs_file_resource.0.as_ref().unwrap().as_raw_fd();
+    let raw_fd = fs_file_resource
+      .0
+      .as_ref()
+      .unwrap()
+      .lock()
+      .unwrap()
+      .as_raw_fd();
     let maybe_tty_mode = &mut fs_file_resource.1.as_mut().unwrap().tty.mode;
 
     if is_raw {
