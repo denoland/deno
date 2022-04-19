@@ -1144,8 +1144,11 @@
       createTestFilter(filter),
     );
 
-    let groups = new Set([undefined]);
+    let groups = new Set();
     const benchmarks = ArrayPrototypeFilter(filtered, (bench) => !bench.ignore);
+
+    // make sure ungrouped benchmarks are placed above grouped
+    groups.add(undefined);
 
     for (const bench of benchmarks) {
       bench.group ||= undefined;
