@@ -19,5 +19,4 @@ and limitations under the License.
 
 
 /// <reference lib="es2022" />
-/// <reference lib="esnext.array" />
 /// <reference lib="esnext.intl" />
