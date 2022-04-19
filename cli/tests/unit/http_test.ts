@@ -1614,7 +1614,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "http server doesn't compress streamed bodies",
+  name: "http server compresses streamed bodies",
   permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
@@ -1645,9 +1645,7 @@ Deno.test({
       });
       const response = new Response(
         bodyInit,
-        {
-          headers: { "content-type": "application/json", vary: "Accept" },
-        },
+        { headers: { "content-type": "application/json" } },
       );
       await respondWith(response);
       httpConn.close();
@@ -1670,8 +1668,8 @@ Deno.test({
       const status = await proc.status();
       assert(status.success);
       const output = decoder.decode(await proc.output());
-      assert(output.includes("vary: Accept\r\n"));
-      assert(!output.includes("content-encoding: "));
+      assert(output.includes("vary: Accept-Encoding\r\n"));
+      assert(output.includes("content-encoding: gzip\r\n"));
       proc.close();
     }
 
