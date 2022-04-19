@@ -1,5 +1,5 @@
 Check [WILDCARD]/test/ignore.ts
-running 10 tests from test/ignore.ts
+running 10 tests from ./test/ignore.ts
 test 0 ... ignored ([WILDCARD])
 test 1 ... ignored ([WILDCARD])
 test 2 ... ignored ([WILDCARD])

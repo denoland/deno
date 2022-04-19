@@ -1,4 +1,3 @@
-Check [WILDCARD]no_prompt_by_default.ts
 running 1 bench from [WILDCARD]no_prompt_by_default.ts
 bench no prompt ... 1000 iterations FAILED ([WILDCARD]ms)
 

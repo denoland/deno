@@ -2685,3 +2685,71 @@ itest!(future_check2 {
   output: "future_check2.out",
   envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
+
+itest!(event_listener_error {
+  args: "run --quiet event_listener_error.ts",
+  output: "event_listener_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(event_listener_error_handled {
+  args: "run --quiet event_listener_error_handled.ts",
+  output: "event_listener_error_handled.ts.out",
+});
+
+// https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
+itest!(event_listener_error_immediate_exit {
+  args: "run --quiet event_listener_error_immediate_exit.ts",
+  output: "event_listener_error_immediate_exit.ts.out",
+  exit_code: 1,
+});
+
+itest!(set_timeout_error {
+  args: "run --quiet set_timeout_error.ts",
+  output: "set_timeout_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(set_timeout_error_handled {
+  args: "run --quiet set_timeout_error_handled.ts",
+  output: "set_timeout_error_handled.ts.out",
+});
+
+itest!(aggregate_error {
+  args: "run --quiet aggregate_error.ts",
+  output: "aggregate_error.out",
+  exit_code: 1,
+});
+
+itest!(complex_error {
+  args: "run --quiet complex_error.ts",
+  output: "complex_error.ts.out",
+  exit_code: 1,
+});
+
+// Regression test for https://github.com/denoland/deno/issues/12143.
+itest!(js_root_with_ts_check {
+  args: "run --quiet js_root_with_ts_check.js",
+  output: "js_root_with_ts_check.js.out",
+  exit_code: 1,
+});
+
+itest!(no_prompt_flag {
+  args: "run --quiet --unstable --no-prompt no_prompt.ts",
+  output_str: Some(""),
+});
+
+#[test]
+fn deno_no_prompt_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("no_prompt.ts")
+    .env("DENO_NO_PROMPT", "1")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}

@@ -1,9 +1,11 @@
 [WILDCARD]
-running 3 tests from test/steps/failing_steps.ts
+running 3 tests from ./test/steps/failing_steps.ts
 nested failure ...
   step 1 ...
     inner 1 ... FAILED ([WILDCARD])
       Error: Failed.
+            throw new Error("Failed.");
+                  ^
           at [WILDCARD]/failing_steps.ts:[WILDCARD]
           [WILDCARD]
     inner 2 ... ok ([WILDCARD])
@@ -12,39 +14,46 @@ FAILED ([WILDCARD])
 multiple test step failures ...
   step 1 ... FAILED ([WILDCARD])
     Error: Fail.
+        throw new Error("Fail.");
+              ^
         [WILDCARD]
   step 2 ... FAILED ([WILDCARD])
     Error: Fail.
+      await t.step("step 2", () => Promise.reject(new Error("Fail.")));
+                                                  ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         [WILDCARD]
 FAILED ([WILDCARD])
 failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
     Error: Fail.
+        throw new Error("Fail.");
+              ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         at [WILDCARD]
 FAILED ([WILDCARD])
 
 failures:
 
-test/steps/failing_steps.ts > nested failure
+./test/steps/failing_steps.ts > nested failure
 Error: 1 test step failed.
     at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
     at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
 
-test/steps/failing_steps.ts > multiple test step failures
+./test/steps/failing_steps.ts > multiple test step failures
 Error: 2 test steps failed.
     at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
     at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
 
-test/steps/failing_steps.ts > failing step in failing test
+./test/steps/failing_steps.ts > failing step in failing test
 Error: Fail test.
+  throw new Error("Fail test.");
+        ^
     at [WILDCARD]/failing_steps.ts:[WILDCARD]
-    at [WILDCARD]
 
 failures:
 
-	test/steps/failing_steps.ts
+	./test/steps/failing_steps.ts
 	nested failure
 	multiple test step failures
 	failing step in failing test
