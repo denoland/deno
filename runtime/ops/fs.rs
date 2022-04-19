@@ -22,6 +22,7 @@ use deno_crypto::rand::Rng;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
@@ -31,8 +32,6 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-// use tokio::io::AsyncSeekExt;
-use std::cell::RefCell;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
@@ -1665,9 +1664,6 @@ async fn op_ftruncate_async(
   })
   .await?
   .map_err(AnyError::from)
-
-  // (*fs_file).0.as_mut().unwrap().set_len(len).await?;
-  // Ok(())
 }
 
 #[derive(Deserialize)]
