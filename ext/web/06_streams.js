@@ -641,7 +641,7 @@
     return stream[_disturbed];
   }
 
-  const DEFAULT_CHUNK_SIZE = 16_640;
+  const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
   function readableStreamForRid(rid) {
     const stream = new ReadableStream({
