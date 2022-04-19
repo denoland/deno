@@ -227,10 +227,10 @@ impl Resource for ChildStderrResource {
   }
 }
 
+type MaybeSharedStdFile = Option<Arc<Mutex<StdFile>>>;
 #[derive(Debug, Default)]
 pub struct StdFileResource {
-  pub fs_file:
-    Option<AsyncRefCell<(Option<Arc<Mutex<StdFile>>>, Option<FileMetadata>)>>,
+  pub fs_file: Option<AsyncRefCell<(MaybeSharedStdFile, Option<FileMetadata>)>>,
   cancel: CancelHandle,
   name: String,
 }
