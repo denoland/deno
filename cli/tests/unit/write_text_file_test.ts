@@ -11,7 +11,7 @@ Deno.test(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeTextFileSync(filename, "Hello");
     const dataRead = Deno.readTextFileSync(filename);
-    assertEquals("Hello", dataRead);
+    assertEquals(dataRead, "Hello");
   },
 );
 
@@ -24,7 +24,7 @@ Deno.test(
     );
     Deno.writeTextFileSync(fileUrl, "Hello");
     const dataRead = Deno.readTextFileSync(fileUrl);
-    assertEquals("Hello", dataRead);
+    assertEquals(dataRead, "Hello");
 
     Deno.removeSync(fileUrl, { recursive: true });
   },
@@ -78,7 +78,7 @@ Deno.test(
     // Turn on create, should have no error
     Deno.writeTextFileSync(filename, data, { create: true });
     Deno.writeTextFileSync(filename, data, { create: false });
-    assertEquals("Hello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "Hello");
   },
 );
 
@@ -89,13 +89,13 @@ Deno.test(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeTextFileSync(filename, data);
     Deno.writeTextFileSync(filename, data, { append: true });
-    assertEquals("HelloHello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "HelloHello");
     // Now attempt overwrite
     Deno.writeTextFileSync(filename, data, { append: false });
-    assertEquals("Hello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "Hello");
     // append not set should also overwrite
     Deno.writeTextFileSync(filename, data);
-    assertEquals("Hello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "Hello");
   },
 );
 
@@ -105,7 +105,7 @@ Deno.test(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeTextFile(filename, "Hello");
     const dataRead = Deno.readTextFileSync(filename);
-    assertEquals("Hello", dataRead);
+    assertEquals(dataRead, "Hello");
   },
 );
 
@@ -118,7 +118,7 @@ Deno.test(
     );
     await Deno.writeTextFile(fileUrl, "Hello");
     const dataRead = Deno.readTextFileSync(fileUrl);
-    assertEquals("Hello", dataRead);
+    assertEquals(dataRead, "Hello");
 
     Deno.removeSync(fileUrl, { recursive: true });
   },
@@ -178,7 +178,7 @@ Deno.test(
     // Turn on create, should have no error
     await Deno.writeTextFile(filename, data, { create: true });
     await Deno.writeTextFile(filename, data, { create: false });
-    assertEquals("Hello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "Hello");
   },
 );
 
@@ -189,12 +189,12 @@ Deno.test(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeTextFile(filename, data);
     await Deno.writeTextFile(filename, data, { append: true });
-    assertEquals("HelloHello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "HelloHello");
     // Now attempt overwrite
     await Deno.writeTextFile(filename, data, { append: false });
-    assertEquals("Hello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "Hello");
     // append not set should also overwrite
     await Deno.writeTextFile(filename, data);
-    assertEquals("Hello", Deno.readTextFileSync(filename));
+    assertEquals(Deno.readTextFileSync(filename), "Hello");
   },
 );
