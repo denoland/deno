@@ -851,190 +851,131 @@
     return 0;
   }
 
-  function benchStats(n, t, avg, min, max, all) {
+  function benchStats(n, highPrecision, avg, min, max, all) {
     return {
       n,
       min,
       max,
       p75: all[MathCeil(n * (75 / 100)) - 1],
       p99: all[MathCeil(n * (99 / 100)) - 1],
-      avg: !t ? (avg / n) : MathCeil(avg / n),
       p995: all[MathCeil(n * (99.5 / 100)) - 1],
       p999: all[MathCeil(n * (99.9 / 100)) - 1],
+      avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
     };
   }
 
-  function benchMeasureSync(t, fn, step) {
+  async function benchMeasure(timeBudget, fn, step, sync) {
     let n = 0;
     let avg = 0;
     let wavg = 0;
     const all = [];
     let min = Infinity;
     let max = -Infinity;
+    const lowPrecisionThresholdInNs = 1e4;
 
-    warmup: {
-      let c = 0;
-      step.warmup = true;
-      let iterations = 20;
-      let budget = 10 * 1e6;
+    // warmup step
+    let c = 0;
+    step.warmup = true;
+    let iterations = 20;
+    let budget = 10 * 1e6;
 
-      while (0 < budget || 0 < iterations--) {
+    if (sync) {
+      while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
 
         fn();
-        const t2 = benchNow() - t1;
-        if (0 > t2) {
-          iterations++;
-          continue;
-        }
+        const iterationTime = benchNow() - t1;
 
         c++;
-        wavg += t2;
-        budget -= t2;
+        wavg += iterationTime;
+        budget -= iterationTime;
       }
-
-      wavg /= c;
-      break warmup;
-    }
-
-    measure: {
-      step.warmup = false;
-
-      if (wavg > 10_000) {
-        let iterations = 10;
-        let budget = t * 1e6;
-
-        while (0 < budget || 0 < iterations--) {
-          const t1 = benchNow();
-
-          fn();
-          const t2 = benchNow() - t1;
-          if (0 > t2) {
-            iterations++;
-            continue;
-          }
-
-          n++;
-          avg += t2;
-          budget -= t2;
-          all.push(t2);
-          if (t2 < min) min = t2;
-          if (t2 > max) max = t2;
-        }
-      } else {
-        let iterations = 10;
-        let budget = t * 1e6;
-
-        while (0 < budget || 0 < iterations--) {
-          const t1 = benchNow();
-          for (let c = 0; c < 1e4; c++) fn();
-          const t2 = (benchNow() - t1) / 1e4;
-          if (0 > t2) {
-            iterations++;
-            continue;
-          }
-
-          n++;
-          avg += t2;
-          all.push(t2);
-          budget -= t2 * 1e4;
-          if (t2 < min) min = t2;
-          if (t2 > max) max = t2;
-        }
-      }
-
-      break measure;
-    }
-
-    all.sort(compareMeasurements);
-    return benchStats(n, wavg > 10_000, avg, min, max, all);
-  }
-
-  async function benchMeasureAsync(t, fn, step) {
-    let n = 0;
-    let avg = 0;
-    let wavg = 0;
-    const all = [];
-    let min = Infinity;
-    let max = -Infinity;
-
-    warmup: {
-      let c = 0;
-      step.warmup = true;
-      let iterations = 20;
-      let budget = 10 * 1e6;
-
-      while (0 < budget || 0 < iterations--) {
+    } else {
+      while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
 
         await fn();
-        const t2 = benchNow() - t1;
-        if (0 > t2) {
-          iterations++;
-          continue;
-        }
+        const iterationTime = benchNow() - t1;
 
         c++;
-        wavg += t2;
-        budget -= t2;
+        wavg += iterationTime;
+        budget -= iterationTime;
       }
-
-      wavg /= c;
-      break warmup;
     }
 
-    measure: {
-      step.warmup = false;
+    wavg /= c;
 
-      if (wavg > 10_000) {
-        let iterations = 10;
-        let budget = t * 1e6;
+    // measure step
+    step.warmup = false;
 
-        while (0 < budget || 0 < iterations--) {
+    if (wavg > lowPrecisionThresholdInNs) {
+      let iterations = 10;
+      let budget = timeBudget * 1e6;
+
+      if (sync) {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+
+          fn();
+          const iterationTime = benchNow() - t1;
+
+          n++;
+          avg += iterationTime;
+          budget -= iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+        }
+      } else {
+        while (budget > 0 || iterations-- > 0) {
           const t1 = benchNow();
 
           await fn();
-          const t2 = benchNow() - t1;
-          if (0 > t2) {
-            iterations++;
-            continue;
-          }
+          const iterationTime = benchNow() - t1;
 
           n++;
-          avg += t2;
-          budget -= t2;
-          all.push(t2);
-          if (t2 < min) min = t2;
-          if (t2 > max) max = t2;
-        }
-      } else {
-        let iterations = 10;
-        let budget = t * 1e6;
-
-        while (0 < budget || 0 < iterations--) {
-          const t1 = benchNow();
-          for (let c = 0; c < 1e4; c++) await fn();
-
-          const t2 = (benchNow() - t1) / 1e4;
-          if (0 > t2) {
-            iterations++;
-            continue;
-          }
-
-          n++;
-          avg += t2;
-          all.push(t2);
-          budget -= t2 * 1e4;
-          if (t2 < min) min = t2;
-          if (t2 > max) max = t2;
+          avg += iterationTime;
+          budget -= iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
         }
       }
+    } else {
+      let iterations = 10;
+      let budget = timeBudget * 1e6;
 
-      break measure;
+      if (sync) {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+          for (let c = 0; c < lowPrecisionThresholdInNs; c++) fn();
+          const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
+
+          n++;
+          avg += iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+          budget -= iterationTime * lowPrecisionThresholdInNs;
+        }
+      } else {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+          for (let c = 0; c < lowPrecisionThresholdInNs; c++) await fn();
+          const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
+
+          n++;
+          avg += iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+          budget -= iterationTime * lowPrecisionThresholdInNs;
+        }
+      }
     }
 
     all.sort(compareMeasurements);
-    return benchStats(n, wavg > 10_000, avg, min, max, all);
+    return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
   }
 
   async function runBench(bench) {
@@ -1056,9 +997,7 @@
 
       const benchTimeInMs = 500;
       const fn = bench.fn.bind(null, step);
-      const stats = !bench.async
-        ? benchMeasureSync(benchTimeInMs, fn, step)
-        : await benchMeasureAsync(benchTimeInMs, fn, step);
+      const stats = await benchMeasure(benchTimeInMs, fn, step, !bench.async);
 
       return { ok: { stats, ...bench } };
     } catch (error) {

@@ -2444,9 +2444,9 @@ dependencies = [
 
 [[package]]
 name = "mitata"
-version = "0.0.5"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4b69d4416707ed9d09c526a123691a669cd0edf88b5801f26ef4ce91bfc5fec"
+checksum = "975d43e4088e68e8b18c81e866185c71d1682d3cf923ed6e98be0c6173d80f77"
 dependencies = [
  "clap",
 ]
