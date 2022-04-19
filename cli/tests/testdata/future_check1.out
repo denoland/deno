@@ -1,3 +1,1 @@
-Warning In future releases `deno run` will not automatically type check without the --check flag.
-To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.
 Check [WILDCARD]/future_check.ts
