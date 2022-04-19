@@ -1,5 +1,4 @@
-Check [WILDCARD]/bench/no_prompt_with_denied_perms.ts
-cpu: [WILDCARD]
+[WILDCARD]cpu: [WILDCARD]
 runtime: deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench/no_prompt_with_denied_perms.ts
