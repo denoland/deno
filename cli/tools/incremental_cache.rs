@@ -127,6 +127,23 @@ impl SqlIncrementalCache {
   }
 
   pub fn get_source_hash(&self, path: &Path) -> Option<u64> {
+    match self.get_source_hash_result(path) {
+      Ok(option) => option,
+      Err(err) => {
+        if cfg!(debug_assertions) {
+          panic!("Error retrieving hash: {}", err);
+        } else {
+          // fail silently when not debugging
+          None
+        }
+      }
+    }
+  }
+
+  fn get_source_hash_result(
+    &self,
+    path: &Path,
+  ) -> Result<Option<u64>, AnyError> {
     let query = "
       SELECT
         source_hash
@@ -136,13 +153,15 @@ impl SqlIncrementalCache {
         file_path=?1
         AND state_hash=?2
       LIMIT 1";
-    let mut stmt = self.conn.prepare_cached(query).ok()?;
-    let hash: String = stmt
-      .query_row(params![path.to_string_lossy(), self.state_hash], |row| {
-        row.get(0)
-      })
-      .ok()?;
-    hash.parse::<u64>().ok()
+    let mut stmt = self.conn.prepare_cached(query)?;
+    let mut rows = stmt
+      .query(params![path.to_string_lossy(), self.state_hash.to_string()])?;
+    if let Some(row) = rows.next()? {
+      let hash: String = row.get(0)?;
+      Ok(Some(hash.parse::<u64>()?))
+    } else {
+      Ok(None)
+    }
   }
 
   pub fn set_source_hash(

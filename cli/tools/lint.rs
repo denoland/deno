@@ -152,7 +152,12 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &ps.dir.lint_incremental_cache_db_file_path(),
       // use a hash of the rule names in order to bust the cache
-      &lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>(),
+      &{
+        // ensure this is stable by sorting it
+        let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
+        names.sort_unstable();
+        names
+      },
       &paths,
     )?);
     let target_files_len = paths.len();
@@ -162,6 +167,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let has_error = has_error.clone();
       let lint_rules = lint_rules.clone();
       let reporter_lock = reporter_lock.clone();
+      let incremental_cache = incremental_cache.clone();
       move |file_path| {
         let file_text = fs::read_to_string(&file_path)?;
 
@@ -189,6 +195,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       }
     })
     .await?;
+    incremental_cache.wait_completion().await;
     reporter_lock.lock().unwrap().close(target_files_len);
 
     Ok(())
