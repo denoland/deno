@@ -182,7 +182,7 @@ async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
+  let (path, open_options) = open_helper(&mut state.borrow_mut(), &args)?;
   let std_file = tokio::task::spawn_blocking(move || {
     open_options.open(path.clone()).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
