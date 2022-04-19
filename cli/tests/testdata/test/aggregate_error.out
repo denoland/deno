@@ -1,22 +1,21 @@
-running 1 test from test/aggregate_error.ts
+running 1 test from ./test/aggregate_error.ts
 aggregate ... FAILED ([WILDCARD])
 
 failures:
 
-test/aggregate_error.ts > aggregate
+./test/aggregate_error.ts > aggregate
 AggregateError
     Error: Error 1
         at [WILDCARD]/testdata/test/aggregate_error.ts:2:18
-        [WILDCARD]
     Error: Error 2
         at [WILDCARD]/testdata/test/aggregate_error.ts:3:18
-        [WILDCARD]
+  throw new AggregateError([error1, error2]);
+        ^
     at [WILDCARD]/testdata/test/aggregate_error.ts:5:9
-    at [WILDCARD]
 
 failures:
 
-	test/aggregate_error.ts
+	./test/aggregate_error.ts
 	aggregate
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])

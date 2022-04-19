@@ -32,7 +32,7 @@ import {
   wptreport,
 } from "./wpt/utils.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
+import { writeAll, writeAllSync } from "../test_util/std/streams/conversion.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];

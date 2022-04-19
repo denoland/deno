@@ -94,6 +94,7 @@ pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::CrossIsolateStore;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::JsErrorCreateFn;
+pub use crate::runtime::JsRealm;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;

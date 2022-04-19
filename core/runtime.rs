@@ -83,6 +83,7 @@ pub struct JsRuntime {
   inspector: Option<Box<JsRuntimeInspector>>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
+  built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
@@ -145,7 +146,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
-  pub global_context: Option<v8::Global<v8::Context>>,
+  global_realm: Option<JsRealm>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
@@ -373,7 +374,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
-      global_context: Some(global_context),
+      global_realm: Some(JsRealm(global_context)),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
@@ -406,6 +407,7 @@ impl JsRuntime {
       inspector: Some(inspector),
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
+      built_from_snapshot: has_startup_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
@@ -414,7 +416,8 @@ impl JsRuntime {
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
-      js_runtime.init_extension_js().unwrap();
+      let realm = js_runtime.global_realm();
+      js_runtime.init_extension_js(&realm).unwrap();
     }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
@@ -425,9 +428,7 @@ impl JsRuntime {
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
-    let state = Self::state(self.v8_isolate());
-    let state = state.borrow();
-    state.global_context.clone().unwrap()
+    self.global_realm().0
   }
 
   pub fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
@@ -438,9 +439,38 @@ impl JsRuntime {
     self.inspector.as_mut().unwrap()
   }
 
+  pub fn global_realm(&mut self) -> JsRealm {
+    let state = Self::state(self.v8_isolate());
+    let state = state.borrow();
+    state.global_realm.clone().unwrap()
+  }
+
+  pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
+    let realm = {
+      // SAFETY: Having the scope tied to self's lifetime makes it impossible to
+      // reference self.ops while the scope is alive. Here we turn it into an
+      // unbound lifetime, which is sound because 1. it only lives until the end
+      // of this block, and 2. the HandleScope only has access to the isolate,
+      // and nothing else we're accessing from self does.
+      let scope = &mut v8::HandleScope::new(unsafe {
+        &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
+      });
+      let context = bindings::initialize_context(
+        scope,
+        &Self::state(self.v8_isolate()).borrow().op_ctxs,
+        self.built_from_snapshot,
+      );
+      JsRealm::new(v8::Global::new(scope, context))
+    };
+
+    if !self.built_from_snapshot {
+      self.init_extension_js(&realm)?;
+    }
+    Ok(realm)
+  }
+
   pub fn handle_scope(&mut self) -> v8::HandleScope {
-    let context = self.global_context();
-    v8::HandleScope::with_context(self.v8_isolate(), context)
+    self.global_realm().handle_scope(self)
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -465,8 +495,8 @@ impl JsRuntime {
     module_map.clone()
   }
 
-  /// Initializes JS of provided Extensions
-  fn init_extension_js(&mut self) -> Result<(), Error> {
+  /// Initializes JS of provided Extensions in the given realm
+  fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
     for m in extensions.iter_mut() {
@@ -474,7 +504,7 @@ impl JsRuntime {
       for (filename, source) in js_files {
         let source = source()?;
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        self.execute_script(filename, &source)?;
+        realm.execute_script(self, filename, &source)?;
       }
     }
     // Restore extensions
@@ -630,33 +660,7 @@ impl JsRuntime {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope();
-
-    let source = v8::String::new(scope, source_code).unwrap();
-    let name = v8::String::new(scope, name).unwrap();
-    let origin = bindings::script_origin(scope, name);
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
-      Some(script) => script,
-      None => {
-        let exception = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, exception, false);
-      }
-    };
-
-    match script.run(tc_scope) {
-      Some(value) => {
-        let value_handle = v8::Global::new(tc_scope, value);
-        Ok(value_handle)
-      }
-      None => {
-        assert!(tc_scope.has_caught());
-        let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception, false)
-      }
-    }
+    self.global_realm().execute_script(self, name, source_code)
   }
 
   /// Takes a snapshot. The isolate should have been created with will_snapshot
@@ -682,7 +686,7 @@ impl JsRuntime {
 
     let state = Self::state(self.v8_isolate());
 
-    state.borrow_mut().global_context.take();
+    state.borrow_mut().global_realm.take();
 
     self.inspector.take();
 
@@ -1767,6 +1771,101 @@ impl JsRuntime {
 
     Ok(())
   }
+}
+
+/// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
+/// execution in the realm's context.
+///
+/// A [`JsRealm`] instance does not hold ownership of its corresponding realm,
+/// so they can be created and dropped as needed. And since every operation on
+/// them requires passing a mutable reference to the [`JsRuntime`], multiple
+/// [`JsRealm`] instances won't overlap.
+///
+/// # Panics
+///
+/// Every method of [`JsRealm`] will panic if you call if with a reference to a
+/// [`JsRuntime`] other than the one that corresponds to the current context.
+///
+/// # Lifetime of the realm
+///
+/// A [`JsRealm`] instance will keep the underlying V8 context alive even if it
+/// would have otherwise been garbage collected.
+#[derive(Clone)]
+pub struct JsRealm(v8::Global<v8::Context>);
+impl JsRealm {
+  pub fn new(context: v8::Global<v8::Context>) -> Self {
+    JsRealm(context)
+  }
+
+  pub fn context(&self) -> &v8::Global<v8::Context> {
+    &self.0
+  }
+
+  pub fn handle_scope<'s>(
+    &self,
+    runtime: &'s mut JsRuntime,
+  ) -> v8::HandleScope<'s> {
+    v8::HandleScope::with_context(runtime.v8_isolate(), &self.0)
+  }
+
+  pub fn global_object<'s>(
+    &self,
+    runtime: &'s mut JsRuntime,
+  ) -> v8::Local<'s, v8::Object> {
+    let scope = &mut self.handle_scope(runtime);
+    self.0.open(scope).global(scope)
+  }
+
+  /// Executes traditional JavaScript code (traditional = not ES modules) in the
+  /// realm's context.
+  ///
+  /// `name` can be a filepath or any other string, eg.
+  ///
+  ///   - "/some/file/path.js"
+  ///   - "<anon>"
+  ///   - "[native code]"
+  ///
+  /// The same `name` value can be used for multiple executions.
+  ///
+  /// `Error` can be downcast to a type that exposes additional information
+  /// about the V8 exception. By default this type is `JsError`, however it may
+  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  pub fn execute_script(
+    &self,
+    runtime: &mut JsRuntime,
+    name: &str,
+    source_code: &str,
+  ) -> Result<v8::Global<v8::Value>, Error> {
+    let scope = &mut self.handle_scope(runtime);
+
+    let source = v8::String::new(scope, source_code).unwrap();
+    let name = v8::String::new(scope, name).unwrap();
+    let origin = bindings::script_origin(scope, name);
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
+      Some(script) => script,
+      None => {
+        let exception = tc_scope.exception().unwrap();
+        return exception_to_err_result(tc_scope, exception, false);
+      }
+    };
+
+    match script.run(tc_scope) {
+      Some(value) => {
+        let value_handle = v8::Global::new(tc_scope, value);
+        Ok(value_handle)
+      }
+      None => {
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        exception_to_err_result(tc_scope, exception, false)
+      }
+    }
+  }
+
+  // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
 }
 
 #[inline]
@@ -3199,5 +3298,75 @@ assertEquals(1, notify_return_value);
       "#,
       )
       .unwrap();
+  }
+
+  #[test]
+  fn js_realm_simple() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let main_context = runtime.global_context();
+    let main_global = {
+      let scope = &mut runtime.handle_scope();
+      let local_global = main_context.open(scope).global(scope);
+      v8::Global::new(scope, local_global)
+    };
+
+    let realm = runtime.create_realm().unwrap();
+    assert_ne!(realm.context(), &main_context);
+    assert_ne!(realm.global_object(&mut runtime), main_global);
+
+    let main_object = runtime.execute_script("", "Object").unwrap();
+    let realm_object =
+      realm.execute_script(&mut runtime, "", "Object").unwrap();
+    assert_ne!(main_object, realm_object);
+  }
+
+  #[test]
+  fn js_realm_init() {
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      ..Default::default()
+    });
+    let realm = runtime.create_realm().unwrap();
+    let ret = realm
+      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .unwrap();
+
+    let scope = &mut realm.handle_scope(&mut runtime);
+    assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
+  }
+
+  #[test]
+  fn js_realm_init_snapshot() {
+    let snapshot = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      let snap: &[u8] = &*runtime.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(Snapshot::Boxed(snapshot)),
+      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      ..Default::default()
+    });
+    let realm = runtime.create_realm().unwrap();
+    let ret = realm
+      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .unwrap();
+
+    let scope = &mut realm.handle_scope(&mut runtime);
+    assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 }

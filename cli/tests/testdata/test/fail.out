@@ -1,5 +1,5 @@
 Check [WILDCARD]/test/fail.ts
-running 10 tests from test/fail.ts
+running 10 tests from ./test/fail.ts
 test 0 ... FAILED ([WILDCARD])
 test 1 ... FAILED ([WILDCARD])
 test 2 ... FAILED ([WILDCARD])
@@ -13,59 +13,69 @@ test 9 ... FAILED ([WILDCARD])
 
 failures:
 
-test/fail.ts > test 0
+./test/fail.ts > test 0
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:2:9
-    at [WILDCARD]
 
-test/fail.ts > test 1
+./test/fail.ts > test 1
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:5:9
-    at [WILDCARD]
 
-test/fail.ts > test 2
+./test/fail.ts > test 2
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:8:9
-    at [WILDCARD]
 
-test/fail.ts > test 3
+./test/fail.ts > test 3
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:11:9
-    at [WILDCARD]
 
-test/fail.ts > test 4
+./test/fail.ts > test 4
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:14:9
-    at [WILDCARD]
 
-test/fail.ts > test 5
+./test/fail.ts > test 5
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:17:9
-    at [WILDCARD]
 
-test/fail.ts > test 6
+./test/fail.ts > test 6
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:20:9
-    at [WILDCARD]
 
-test/fail.ts > test 7
+./test/fail.ts > test 7
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:23:9
-    at [WILDCARD]
 
-test/fail.ts > test 8
+./test/fail.ts > test 8
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:26:9
-    at [WILDCARD]
 
-test/fail.ts > test 9
+./test/fail.ts > test 9
 Error
+  throw new Error();
+        ^
     at [WILDCARD]/test/fail.ts:29:9
-    at [WILDCARD]
 
 failures:
 
-	test/fail.ts
+	./test/fail.ts
 	test 0
 	test 1
 	test 2
