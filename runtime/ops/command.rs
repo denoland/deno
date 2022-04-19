@@ -130,6 +130,7 @@ fn create_command(
   state: &mut OpState,
   args: CommandArgs,
 ) -> Result<std::process::Command, AnyError> {
+  super::check_unstable(state, "Deno.spawn");
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
   let mut command = std::process::Command::new(args.cmd);

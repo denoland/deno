@@ -1363,6 +1363,138 @@ declare namespace Deno {
   export function upgradeHttp(
     request: Request,
   ): Promise<[Deno.Conn, Uint8Array]>;
+
+  export interface SpawnOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     * If not specified, the cwd of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     * Doesn't guarantee that only `opt.env` variables are present,
+     * as the OS may set environmental variables for processes.
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call
+     * in the child process. Failure in the setuid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+
+    stdin?: "piped" | "inherit" | "null";
+    stdout?: "piped" | "inherit" | "null";
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  /**
+   * Spawns a child process.
+   *
+   * `CommandOptions.stdin` defaults to `"null"`.
+   * `CommandOptions.stdout` defaults to `"inherit"`.
+   * `CommandOptions.stderr` defaults to `"inherit"`.
+   *
+   * ```ts
+   * const child = Deno.spawnChild(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   * });
+   *
+   * const status = await child.status;
+   * ```
+   */
+  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Child<T>;
+
+  export class Child<T extends SpawnOptions> {
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
+    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
+
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<ChildStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and status. */
+    output(): Promise<SpawnOutput<T>>;
+    /** Kills the process with given Signal. */
+    kill(signo: Signal): void;
+  }
+
+  /**
+   * Executes a subprocess, waiting for it to finish and collecting all of its output.
+   *
+   * `CommandOptions.stdin` defaults to `"null"`.
+   * `CommandOptions.stdout` defaults to `"piped"`.
+   * `CommandOptions.stderr` defaults to `"piped"`.
+   *
+   * ```ts
+   * const { stdout } = await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   * });
+   * console.assert("Hello World" === new TextDecoder().decode(stdout));
+   * ```
+   */
+  export function spawn<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Promise<SpawnOutput<T>>;
+
+  /**
+   * Synchronously executes a subprocess, waiting for it to finish and collecting all of its output.
+   *
+   * `CommandOptions.stdin` defaults to `"null"`.
+   * `CommandOptions.stdout` defaults to `"piped"`.
+   * `CommandOptions.stderr` defaults to `"piped"`.
+   *
+   * ```ts
+   * const { stdout } = Deno.spawnSync(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   * });
+   * console.assert("Hello World" === new TextDecoder().decode(stdout));
+   * ```
+   */
+  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): SpawnOutput<T>;
+
+  export type ChildStatus =
+    | {
+      success: true;
+      code: 0;
+      signal: null;
+    }
+    | {
+      success: false;
+      code: number;
+      signal: number | null;
+    };
+
+  export interface SpawnOutput<T extends SpawnOptions> {
+    status: ChildStatus;
+    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
+    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
+  }
 }
 
 declare function fetch(
