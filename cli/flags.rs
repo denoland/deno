@@ -1316,7 +1316,7 @@ fn repl_subcommand<'a>() -> Command<'a> {
         .takes_value(true)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Evaluates the provided code file(s) when the REPL starts.")
+        .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs.")
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
