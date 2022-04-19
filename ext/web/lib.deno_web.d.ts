@@ -890,3 +890,22 @@ declare class DecompressionStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
+
+/** Dispatch an uncaught exception. Similar to a synchronous version of:
+ * ```ts
+ * setTimeout(() => { throw error; }, 0);
+ * ```
+ * The error can not be caught with a `try/catch` block. An error event will
+ * be dispatched to the global scope. You can prevent the error from being
+ * reported to the console with `Event.prototype.preventDefault()`:
+ * ```ts
+ * addEventListener("error", (event) => {
+ *   event.preventDefault();
+ * });
+ * reportError(new Error("foo")); // Will not be reported.
+ * ```
+ * In Deno, this error will terminate the process if not intercepted like above.
+ */
+declare function reportError(
+  error: any,
+): void;

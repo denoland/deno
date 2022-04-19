@@ -638,7 +638,8 @@ impl WebWorker {
       v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
     let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
     let undefined = v8::undefined(scope);
-    fn_.call(scope, undefined.into(), &[]).unwrap();
+    // This call may return `None` if worker is terminated.
+    fn_.call(scope, undefined.into(), &[]);
   }
 }
 

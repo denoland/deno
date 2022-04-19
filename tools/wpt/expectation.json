@@ -3646,18 +3646,8 @@
         "queue-microtask.any.worker.html": true
       },
       "scripting": {
-        "reporterror.any.html": [
-          "self.reportError(1)",
-          "self.reportError(TypeError)",
-          "self.reportError(undefined)",
-          "self.reportError() doesn't invoke getters"
-        ],
-        "reporterror.any.worker.html": [
-          "self.reportError(1)",
-          "self.reportError(TypeError)",
-          "self.reportError(undefined)",
-          "self.reportError() doesn't invoke getters"
-        ]
+        "reporterror.any.html": false,
+        "reporterror.any.worker.html": false
       },
       "structured-clone": {
         "structured-clone.any.html": [
@@ -4237,7 +4227,6 @@
     "opening-handshake": {
       "003-sets-origin.worker.html": false
     },
-    "Create-on-worker-shutdown.any.worker.html": false,
     "Send-data.worker.html": true,
     "Send-data.worker.html?wpt_flags=h2": false,
     "Send-data.worker.html?wss": true,

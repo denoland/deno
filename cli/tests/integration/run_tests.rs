@@ -2753,3 +2753,14 @@ fn deno_no_prompt_environment_variable() {
     .unwrap();
   assert!(output.status.success());
 }
+
+itest!(report_error {
+  args: "run --quiet report_error.ts",
+  output: "report_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(report_error_handled {
+  args: "run --quiet report_error_handled.ts",
+  output: "report_error_handled.ts.out",
+});
