@@ -15,7 +15,6 @@ use deno_core::ZeroCopyBuf;
 
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::ResourceId;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
@@ -339,10 +338,7 @@ async fn op_seek_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || {
@@ -379,10 +375,7 @@ async fn op_fdatasync_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || {
@@ -416,9 +409,7 @@ async fn op_fsync_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || {
@@ -455,10 +446,7 @@ async fn op_fstat_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   let metadata = tokio::task::spawn_blocking(move || {
@@ -510,10 +498,7 @@ async fn op_flock_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
@@ -562,10 +547,7 @@ async fn op_funlock_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
@@ -1653,9 +1635,7 @@ async fn op_ftruncate_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
 
   tokio::task::spawn_blocking(move || {
@@ -1957,10 +1937,7 @@ async fn op_futime_async(
     return Err(bad_resource_id());
   }
 
-  let fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
   let std_file = fs_file.0.as_ref().unwrap().clone();
   tokio::task::spawn_blocking(move || {
     let std_file = std_file.lock().unwrap();

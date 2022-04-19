@@ -17,6 +17,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fs::File as StdFile;
 use std::io::Read;
 use std::io::Write;
@@ -228,9 +229,10 @@ impl Resource for ChildStderrResource {
 }
 
 type MaybeSharedStdFile = Option<Arc<Mutex<StdFile>>>;
-#[derive(Debug, Default)]
+
+#[derive(Default)]
 pub struct StdFileResource {
-  pub fs_file: Option<AsyncRefCell<(MaybeSharedStdFile, Option<FileMetadata>)>>,
+  pub fs_file: Option<(MaybeSharedStdFile, Option<RefCell<FileMetadata>>)>,
   cancel: CancelHandle,
   name: String,
 }
@@ -238,10 +240,10 @@ pub struct StdFileResource {
 impl StdFileResource {
   pub fn stdio(std_file: &StdFile, name: &str) -> Self {
     Self {
-      fs_file: Some(AsyncRefCell::new((
+      fs_file: Some((
         std_file.try_clone().map(|s| Arc::new(Mutex::new(s))).ok(),
-        Some(FileMetadata::default()),
-      ))),
+        Some(RefCell::new(FileMetadata::default())),
+      )),
       name: name.to_string(),
       ..Default::default()
     }
@@ -249,10 +251,10 @@ impl StdFileResource {
 
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
-      fs_file: Some(AsyncRefCell::new((
+      fs_file: Some((
         Some(Arc::new(Mutex::new(fs_file))),
-        Some(FileMetadata::default()),
-      ))),
+        Some(RefCell::new(FileMetadata::default())),
+      )),
       name: "fsFile".to_string(),
       ..Default::default()
     }
@@ -263,9 +265,7 @@ impl StdFileResource {
     mut buf: ZeroCopyBuf,
   ) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
-      let fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
-        .borrow_mut()
-        .await;
+      let fs_file = self.fs_file.as_ref().unwrap();
       let std_file = fs_file.0.as_ref().unwrap().clone();
       tokio::task::spawn_blocking(move || {
         let mut std_file = std_file.lock().unwrap();
@@ -280,9 +280,7 @@ impl StdFileResource {
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
-      let fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
-        .borrow_mut()
-        .await;
+      let fs_file = self.fs_file.as_ref().unwrap();
       let std_file = fs_file.0.as_ref().unwrap().clone();
       tokio::task::spawn_blocking(move || {
         let mut std_file = std_file.lock().unwrap();
@@ -311,10 +309,9 @@ impl StdFileResource {
       return f(Err(()));
     }
 
-    let r =
-      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
+    let (r, _) = resource.fs_file.as_ref().unwrap();
     match r {
-      Some(r) => f(Ok(&mut r.0.as_ref().unwrap().lock().unwrap())),
+      Some(r) => f(Ok(&mut r.as_ref().lock().unwrap())),
       None => Err(resource_unavailable()),
     }
   }

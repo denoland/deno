@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::ResourceId;
 use serde::Deserialize;
 use serde::Serialize;
@@ -96,11 +95,8 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       return Err(bad_resource_id());
     }
 
-    let fs_file_resource =
-      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
-
-    let handle_result = if let Some(mut fs_file) = fs_file_resource {
-      let file = fs_file.0.as_ref().unwrap().clone();
+    let handle_result = if let Some((fs_file, _)) = resource.fs_file {
+      let file = fs_file.as_ref().unwrap().clone();
       let std_file = file.lock().unwrap();
       let raw_handle = std_file.as_raw_handle();
       Ok(raw_handle)
@@ -142,26 +138,15 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       return Err(not_supported());
     }
 
-    let maybe_fs_file_resource =
-      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
+    let (fs_file, meta) =
+      resource.fs_file.as_ref().ok_or_else(resource_unavailable)?;
 
-    if maybe_fs_file_resource.is_none() {
+    if fs_file.is_none() {
       return Err(resource_unavailable());
     }
 
-    let mut fs_file_resource = maybe_fs_file_resource.unwrap();
-    if fs_file_resource.0.is_none() {
-      return Err(resource_unavailable());
-    }
-
-    let raw_fd = fs_file_resource
-      .0
-      .as_ref()
-      .unwrap()
-      .lock()
-      .unwrap()
-      .as_raw_fd();
-    let maybe_tty_mode = &mut fs_file_resource.1.as_mut().unwrap().tty.mode;
+    let raw_fd = fs_file.as_ref().unwrap().lock().unwrap().as_raw_fd();
+    let maybe_tty_mode = &mut meta.as_ref().unwrap().borrow_mut().tty.mode;
 
     if is_raw {
       if maybe_tty_mode.is_none() {
