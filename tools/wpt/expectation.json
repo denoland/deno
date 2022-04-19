@@ -3961,6 +3961,7 @@
     "Create-nonAscii-protocol-string.any.worker.html": true,
     "Create-nonAscii-protocol-string.any.worker.html?wpt_flags=h2": true,
     "Create-nonAscii-protocol-string.any.worker.html?wss": true,
+    "Create-on-worker-shutdown.any.html": false,
     "Create-protocol-with-space.any.html": true,
     "Create-protocol-with-space.any.html?wpt_flags=h2": true,
     "Create-protocol-with-space.any.html?wss": true,
@@ -4226,7 +4227,6 @@
     "opening-handshake": {
       "003-sets-origin.worker.html": false
     },
-    "Create-on-worker-shutdown.any.worker.html": false,
     "Send-data.worker.html": true,
     "Send-data.worker.html?wpt_flags=h2": false,
     "Send-data.worker.html?wss": true,
