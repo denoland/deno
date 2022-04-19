@@ -2273,7 +2273,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
-  /** @deprecated Use `Deno.command` or `Deno.spawn`. */
+  /** @deprecated Use `Deno.spawn` or `Deno.spawnChild`. */
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
@@ -2415,7 +2415,7 @@ declare namespace Deno {
       signal?: number;
     };
 
-  /** @deprecated Use `Deno.command` or `Deno.spawn`. */
+  /** @deprecated Use `Deno.spawn` or `Deno.spawnChild`. */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
@@ -2429,7 +2429,7 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** @deprecated Use `Deno.command` or `Deno.spawn`.
+  /** @deprecated Use `Deno.spawn` or `Deno.spawnChild`.
    * Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
@@ -3033,7 +3033,7 @@ declare namespace Deno {
     options?: ResolveDnsOptions,
   ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
-  export interface CommandOptions {
+  export interface SpawnOptions {
     /** Arguments to pass to the process. */
     args?: string[];
     /**
@@ -3080,12 +3080,12 @@ declare namespace Deno {
    * const status = await child.status;
    * ```
    */
-  export function spawnChild<T extends CommandOptions = CommandOptions>(
+  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
     command: string | URL,
     options?: T,
   ): Child<T>;
 
-  export class Child<T extends CommandOptions> {
+  export class Child<T extends SpawnOptions> {
     readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
       : null;
     readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
@@ -3095,10 +3095,10 @@ declare namespace Deno {
 
     readonly pid: number;
     /** Get the status of the child. */
-    readonly status: Promise<CommandStatus>;
+    readonly status: Promise<ChildStatus>;
 
     /** Waits for the child to exit completely, returning all its output and status. */
-    output(): Promise<CommandOutput<T>>;
+    output(): Promise<SpawnOutput<T>>;
     /** Kills the process with given Signal. */
     kill(signo: Signal): void;
   }
@@ -3111,18 +3111,19 @@ declare namespace Deno {
    * `CommandOptions.stderr` defaults to `"piped"`.
    *
    * ```ts
-   * const { status } = await Deno.spawn(Deno.execPath(), {
+   * const { stdout } = await Deno.spawn(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('Hello World')",
    *   ],
    * });
+   * assertEquals("Hello World", new TextDecoder().decode(stdout));
    * ```
    */
-  export function spawn<T extends CommandOptions = CommandOptions>(
+  export function spawn<T extends SpawnOptions = SpawnOptions>(
     command: string | URL,
     options?: T,
-  ): Promise<CommandOutput<T>>;
+  ): Promise<SpawnOutput<T>>;
 
   /**
    * Synchronously executes a subprocess, waiting for it to finish and collecting all of its output.
@@ -3132,20 +3133,21 @@ declare namespace Deno {
    * `CommandOptions.stderr` defaults to `"piped"`.
    *
    * ```ts
-   * const { status } = Deno.spawnSync(Deno.execPath(), {
+   * const { stdout } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('Hello World')",
    *   ],
    * });
+   * assertEquals("Hello World", new TextDecoder().decode(stdout));
    * ```
    */
-  export function spawnSync<T extends CommandOptions = CommandOptions>(
+  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
     command: string | URL,
     options?: T,
-  ): CommandOutput<T>;
+  ): SpawnOutput<T>;
 
-  export type CommandStatus =
+  export type ChildStatus =
     | {
       success: true;
       code: 0;
@@ -3157,8 +3159,8 @@ declare namespace Deno {
       signal: number | null;
     };
 
-  export interface CommandOutput<T extends CommandOptions> {
-    status: CommandStatus;
+  export interface SpawnOutput<T extends SpawnOptions> {
+    status: ChildStatus;
     stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
     stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
   }
