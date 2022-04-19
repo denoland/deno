@@ -288,13 +288,13 @@ itest!(steps_output_within {
 });
 
 itest!(no_prompt_by_default {
-  args: "test test/no_prompt_by_default.ts",
+  args: "test --quiet test/no_prompt_by_default.ts",
   exit_code: 1,
   output: "test/no_prompt_by_default.out",
 });
 
 itest!(no_prompt_with_denied_perms {
-  args: "test --allow-read test/no_prompt_with_denied_perms.ts",
+  args: "test --quiet --allow-read test/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "test/no_prompt_with_denied_perms.out",
 });

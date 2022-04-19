@@ -12,6 +12,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
+use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -474,7 +475,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_FUTURE_CHECK    Opt-in to the upcoming behavior of the `deno run` 
+    DENO_NO_PROMPT       Set to disable permission prompts on access
+                         (alternative to passing --no-prompt on invocation)
+    DENO_FUTURE_CHECK    Opt-in to the upcoming behavior of the `deno run`
                          subcommand that doesn't perform type-checking by default.
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     HTTP_PROXY           Proxy address for HTTP requests
@@ -2705,7 +2708,11 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  if matches.is_present("no-prompt") {
+  #[cfg(not(test))]
+  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
+  #[cfg(test)]
+  let has_no_prompt_env = false;
+  if has_no_prompt_env || matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }
