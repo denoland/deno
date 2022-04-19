@@ -61,16 +61,16 @@ async fn read_line_and_poll(
 
 async fn read_eval_file(
   ps: &ProcState,
-  eval_file: &String,
+  eval_file: &str,
 ) -> Result<String, AnyError> {
-  let specifier = deno_core::resolve_url_or_path(eval_file.as_str())?;
+  let specifier = deno_core::resolve_url_or_path(eval_file)?;
 
   let file = ps
     .file_fetcher
     .fetch(&specifier, &mut Permissions::allow_all())
     .await?;
 
-  return Ok((*file.source).clone());
+  Ok((*file.source).clone())
 }
 
 pub async fn run(

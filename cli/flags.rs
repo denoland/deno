@@ -2467,15 +2467,14 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
-  let eval_files: Option<Vec<String>> = match matches.values_of("eval-file") {
-    Some(values) => Some(values.map(String::from).collect()),
-    None => None,
-  };
+  let eval_files: Option<Vec<String>> = matches
+    .values_of("eval-file")
+    .map(|values| values.map(String::from).collect());
 
   handle_repl_flags(
     flags,
     ReplFlags {
-      eval_files: eval_files,
+      eval_files,
       eval: matches.value_of("eval").map(ToOwned::to_owned),
     },
   );
@@ -4014,7 +4013,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
     );
