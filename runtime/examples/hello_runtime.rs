@@ -28,7 +28,6 @@ async fn main() -> Result<(), AnyError> {
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
-      apply_source_maps: false,
       args: vec![],
       cpu_count: 1,
       debug_flag: false,
@@ -45,6 +44,7 @@ async fn main() -> Result<(), AnyError> {
     root_cert_store: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
+    source_map_getter: None,
     js_error_create_fn: None,
     web_worker_preload_module_cb,
     create_web_worker_cb,

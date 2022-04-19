@@ -246,7 +246,7 @@ itest!(shuffle_with_seed {
 });
 
 itest!(aggregate_error {
-  args: "test test/aggregate_error.ts",
+  args: "test --quiet test/aggregate_error.ts",
   exit_code: 1,
   output: "test/aggregate_error.out",
 });
@@ -281,14 +281,38 @@ itest!(steps_invalid_usage {
   output: "test/steps/invalid_usage.out",
 });
 
+itest!(steps_output_within {
+  args: "test test/steps/output_within.ts",
+  exit_code: 0,
+  output: "test/steps/output_within.out",
+});
+
 itest!(no_prompt_by_default {
-  args: "test test/no_prompt_by_default.ts",
+  args: "test --quiet test/no_prompt_by_default.ts",
   exit_code: 1,
   output: "test/no_prompt_by_default.out",
 });
 
 itest!(no_prompt_with_denied_perms {
-  args: "test --allow-read test/no_prompt_with_denied_perms.ts",
+  args: "test --quiet --allow-read test/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "test/no_prompt_with_denied_perms.out",
 });
+
+#[test]
+fn recursive_permissions_pledge() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("test")
+    .arg("test/recursive_permissions_pledge.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(String::from_utf8(output.stderr).unwrap().contains(
+    "pledge test permissions called before restoring previous pledge"
+  ));
+}

@@ -35,8 +35,7 @@ Before starting the process write a message in company's #general channel:
 3. A PR will be automatically created. Follow the checklist in the PR and review
    it.
 
-4. Merge the PR. While doing so, ensure that the commit name is exactly the
-   version name. Eg. `0.121.0`, not `0.121.0 (#1810)`.
+4. Merge the PR.
 
 5. Wait for the CI run to complete which will tag the repo and create a draft
    release. Review the draft release and then publish it.
