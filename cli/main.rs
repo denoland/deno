@@ -1150,11 +1150,6 @@ async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
-  if !flags.has_check_flag && flags.type_check_mode == TypeCheckMode::All {
-    info!("{} In future releases `deno run` will not automatically type check without the --check flag.
-To opt into this new behavior now, specify DENO_FUTURE_CHECK=1.", colors::yellow("Warning"));
-  }
-
   // Read script content from stdin
   if run_flags.script == "-" {
     return run_from_stdin(flags).await;
