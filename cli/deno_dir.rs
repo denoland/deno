@@ -50,6 +50,12 @@ impl DenoDir {
     // bump this version name to invalidate the entire cache
     self.root.join("fmt_incremental_cache_v1")
   }
+
+  /// Path for the incremental cache used for linting.
+  pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("lint_incremental_cache_v1")
+  }
 }
 
 /// To avoid the poorly managed dirs crate

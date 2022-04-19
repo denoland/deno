@@ -5,19 +5,18 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use rusqlite::params;
-use rusqlite::Connection;
+use deno_runtime::deno_webstorage::rusqlite::params;
+use deno_runtime::deno_webstorage::rusqlite::Connection;
+use serde::Serialize;
 use tokio::task::JoinHandle;
-
-use crate::config_file::FmtOptionsConfig;
 
 enum ReceiverMessage {
   Update(PathBuf, u64),
   Exit,
 }
 
-/// Cache used to not bother formatting a file again when we
-/// know it is already formatted.
+/// Cache used to skip formatting/linting a file again when we
+/// know it is already formatted or has no lint diagnostics.
 pub struct IncrementalCache {
   previous_hashes: HashMap<PathBuf, u64>,
   sender: tokio::sync::mpsc::UnboundedSender<ReceiverMessage>,
@@ -25,13 +24,13 @@ pub struct IncrementalCache {
 }
 
 impl IncrementalCache {
-  pub fn new(
+  pub fn new<TState: Serialize>(
     db_file_path: &Path,
-    fmt_config: &FmtOptionsConfig,
+    state: &TState,
     initial_file_paths: &[PathBuf],
   ) -> Result<Self, AnyError> {
     let state_hash =
-      fast_insecure_hash(serde_json::to_string(fmt_config).unwrap().as_bytes());
+      fast_insecure_hash(serde_json::to_string(state).unwrap().as_bytes());
     let sql_cache = SqlIncrementalCache::new(db_file_path, state_hash)?;
     Ok(Self::from_sql_incremental_cache(
       sql_cache,
@@ -53,7 +52,7 @@ impl IncrementalCache {
     let (sender, mut receiver) =
       tokio::sync::mpsc::unbounded_channel::<ReceiverMessage>();
 
-    // sqlite isn't `Sync`, so we do all the updating on a dedicated thread
+    // sqlite isn't `Sync`, so we do all the updating on a dedicated task
     let handle = tokio::task::spawn(async move {
       while let Some(message) = receiver.recv().await {
         match message {
@@ -79,8 +78,8 @@ impl IncrementalCache {
     }
   }
 
-  pub fn update_file(&self, path: &Path, formatted_text: &str) {
-    let hash = fast_insecure_hash(formatted_text.as_bytes());
+  pub fn update_file(&self, path: &Path, file_text: &str) {
+    let hash = fast_insecure_hash(file_text.as_bytes());
     if let Some(previous_hash) = self.previous_hashes.get(path) {
       if *previous_hash == hash {
         return; // do not bother updating the db file because nothing has changed
@@ -104,9 +103,9 @@ impl IncrementalCache {
 
 struct SqlIncrementalCache {
   conn: Connection,
-  /// A hash of the state used to produce the formatting other than the CLI version.
-  /// This state is a hash of the configuration and ensures we don't not format
-  /// a file when the configuration changes.
+  /// A hash of the state used to produce the formatting/linting other than
+  /// the CLI version. This state is a hash of the configuration and ensures
+  /// we format/lint a file when the configuration changes.
   state_hash: u64,
 }
 
@@ -128,7 +127,16 @@ impl SqlIncrementalCache {
   }
 
   pub fn get_source_hash(&self, path: &Path) -> Option<u64> {
-    let mut stmt = self.conn.prepare_cached("SELECT source_hash FROM incrementalcache WHERE file_path=?1 AND state_hash=?2 LIMIT 1").ok()?;
+    let query = "
+      SELECT
+        source_hash
+      FROM
+        incrementalcache
+      WHERE
+        file_path=?1
+        AND state_hash=?2
+      LIMIT 1";
+    let mut stmt = self.conn.prepare_cached(query).ok()?;
     let hash: String = stmt
       .query_row(params![path.to_string_lossy(), self.state_hash], |row| {
         row.get(0)
@@ -142,7 +150,12 @@ impl SqlIncrementalCache {
     path: &Path,
     source_hash: u64,
   ) -> Result<(), AnyError> {
-    let mut stmt = self.conn.prepare_cached("INSERT OR REPLACE INTO incrementalcache (file_path, state_hash, source_hash) VALUES (?1, ?2, ?3)")?;
+    let sql = "
+      INSERT OR REPLACE INTO
+        incrementalcache (file_path, state_hash, source_hash)
+      VALUES
+        (?1, ?2, ?3)";
+    let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       path.to_string_lossy(),
       &self.state_hash.to_string(),

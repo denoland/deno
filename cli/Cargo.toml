@@ -84,7 +84,6 @@ pin-project = "=1.0.8"
 rand = { version = "=0.8.4", features = ["small_rng"] }
 regex = "=1.5.5"
 ring = "=0.16.20"
-rusqlite = { version = "=0.27.0", features = ["unlock_notify", "bundled"] }
 rustyline = { version = "=9.1.2", default-features = false }
 rustyline-derive = "=0.6.0"
 secure_tempfile = { version = "=3.2.0", package = "tempfile" } # different name to discourage use in tests

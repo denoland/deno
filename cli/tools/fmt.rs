@@ -41,9 +41,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use self::incremental_cache::IncrementalCache;
-
-mod incremental_cache;
+use super::incremental_cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
@@ -444,12 +442,12 @@ fn format_ensure_stable(
             return Ok(Some(current_text));
           }
           Err(err) => {
-            bail!(
+            panic!(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
-                "stable format. Please report this as it indicates a bug in ",
-                "the formatter where the text it produces is not syntatically ",
-                "correct.\n\n{:#}"
+                "stable format. This indicates a bug in the formatter where ",
+                "the text it produces is not syntatically correct. As a temporary ",
+                "workfaround you can ignore this file.\n\n{:#}"
               ),
               err,
             )
@@ -457,11 +455,11 @@ fn format_ensure_stable(
         }
         count += 1;
         if count == 5 {
-          bail!(
+          panic!(
             concat!(
-              "Formatting not stable. Bailed after {} tries. Please report this ",
-              "as it indicates a bug in the formatter where it formats the file ",
-              "differently each time."
+              "Formatting not stable. Bailed after {} tries. This indicates a bug ",
+              "in the formatter where it formats the file differently each time. As a ",
+              "temporary workaround you can ignore this file."
             ),
             count
           )
@@ -768,24 +766,15 @@ mod test {
   }
 
   #[test]
+  #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    let err = format_ensure_stable(
+    format_ensure_stable(
       &PathBuf::from("mod.ts"),
       "1",
       &Default::default(),
       |_, file_text, _| Ok(Some(format!("1{}", file_text))),
     )
-    .err()
     .unwrap();
-
-    assert_eq!(
-      err.to_string(),
-      concat!(
-        "Formatting not stable. Bailed after 5 tries. Please report this as it ",
-        "indicates a bug in the formatter where it formats the file differently ",
-        "each time."
-      ),
-    );
   }
 
   #[test]
@@ -796,15 +785,15 @@ mod test {
       &Default::default(),
       |_, _, _| bail!("Error formatting."),
     )
-    .err()
-    .unwrap();
+    .unwrap_err();
 
     assert_eq!(err.to_string(), "Error formatting.");
   }
 
   #[test]
+  #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    let err = format_ensure_stable(
+    format_ensure_stable(
       &PathBuf::from("mod.ts"),
       "1",
       &Default::default(),
@@ -816,17 +805,7 @@ mod test {
         }
       },
     )
-    .err()
     .unwrap();
-
-    assert_eq!(
-      err.to_string(),
-      concat!(
-        "Formatting succeeded initially, but failed when ensuring a stable format. ",
-        "Please report this as it indicates a bug in the formatter where the text it ",
-        "produces is not syntatically correct.\n\nError formatting."
-      ),
-    );
   }
 
   #[test]
