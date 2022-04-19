@@ -1,5 +1,5 @@
 Check [WILDCARD]/test/overloads.ts
-running 6 tests from test/overloads.ts
+running 6 tests from ./test/overloads.ts
 test0 ... ok ([WILDCARD])
 test1 ... ok ([WILDCARD])
 test2 ... ok ([WILDCARD])

@@ -1,0 +1,5 @@
+error: Uncaught Error: foo
+  throw new Error("foo");
+        ^
+    at [WILDCARD]/set_timeout_error.ts:2:9
+    at [WILDCARD]

@@ -42,6 +42,7 @@
     PromiseResolve,
     queueMicrotask,
     RangeError,
+    ReflectHas,
     SharedArrayBuffer,
     Symbol,
     SymbolAsyncIterator,
@@ -191,7 +192,7 @@
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    return isFakeDetached in O;
+    return ReflectHas(O, isFakeDetached);
   }
 
   /**
@@ -393,7 +394,10 @@
    * @returns {T}
    */
   function dequeueValue(container) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
+    );
     assert(container[_queue].length);
     const valueWithSize = ArrayPrototypeShift(container[_queue]);
     container[_queueTotalSize] -= valueWithSize.size;
@@ -411,7 +415,10 @@
    * @returns {void}
    */
   function enqueueValueWithSize(container, value, size) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
+    );
     if (isNonNegativeNumber(size) === false) {
       throw RangeError("chunk size isn't a positive number");
     }
@@ -593,7 +600,7 @@
    */
   function isReadableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_controller in value));
+      !ReflectHas(value, _controller));
   }
 
   /**
@@ -613,7 +620,7 @@
    */
   function isReadableStreamDefaultReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_readRequests in value));
+      !ReflectHas(value, _readRequests));
   }
 
   /**
@@ -622,7 +629,7 @@
    */
   function isReadableStreamBYOBReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_readIntoRequests in value));
+      !ReflectHas(value, _readIntoRequests));
   }
 
   /**
@@ -675,7 +682,7 @@
    */
   function isWritableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_controller in value));
+      !ReflectHas(value, _controller));
   }
 
   /**
@@ -695,7 +702,10 @@
    * @returns {T | _close}
    */
   function peekQueueValue(container) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
+    );
     assert(container[_queue].length);
     const valueWithSize = container[_queue][0];
     return valueWithSize.value;
@@ -4372,7 +4382,7 @@
           highWaterMark,
         );
       } else {
-        assert(!("type" in underlyingSourceDict));
+        assert(!(ReflectHas(underlyingSourceDict, "type")));
         const sizeAlgorithm = extractSizeAlgorithm(strategy);
         const highWaterMark = extractHighWaterMark(strategy, 1);
         setUpReadableStreamDefaultControllerFromUnderlyingSource(
