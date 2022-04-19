@@ -3117,7 +3117,7 @@ declare namespace Deno {
    *     "console.log('Hello World')",
    *   ],
    * });
-   * assertEquals("Hello World", new TextDecoder().decode(stdout));
+   * console.assert("Hello World", new TextDecoder().decode(stdout));
    * ```
    */
   export function spawn<T extends SpawnOptions = SpawnOptions>(
@@ -3139,7 +3139,7 @@ declare namespace Deno {
    *     "console.log('Hello World')",
    *   ],
    * });
-   * assertEquals("Hello World", new TextDecoder().decode(stdout));
+   * console.assert("Hello World", new TextDecoder().decode(stdout));
    * ```
    */
   export function spawnSync<T extends SpawnOptions = SpawnOptions>(
