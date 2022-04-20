@@ -32,8 +32,7 @@
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
-  const { Deferred, getReadableStreamRid, readableStreamClose } =
-    window.__bootstrap.streams;
+  const { Deferred } = window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
@@ -236,6 +235,7 @@
           typeof respBody === "string" ||
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
+
         try {
           await core.opAsync(
             "op_http_write_headers",
@@ -269,49 +269,34 @@
           ) {
             throw new TypeError("Unreachable");
           }
-          const resourceRid = getReadableStreamRid(respBody);
-          if (resourceRid) {
-            if (respBody.locked) {
-              throw new TypeError("ReadableStream is locked.");
+          const reader = respBody.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+              await reader.cancel(new TypeError("Value not a Uint8Array"));
+              break;
             }
-            const _reader = respBody.getReader(); // Aquire JS lock.
-            await core.opAsync(
-              "op_http_write_resource",
-              streamRid,
-              resourceRid,
-            );
-            readableStreamClose(respBody); // Release JS lock.
-          } else {
-            const reader = respBody.getReader();
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
-                await reader.cancel(new TypeError("Value not a Uint8Array"));
-                break;
-              }
-              try {
-                await core.opAsync("op_http_write", streamRid, value);
-              } catch (error) {
-                const connError = httpConn[connErrorSymbol];
-                if (
-                  ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-                  connError != null
-                ) {
-                  // deno-lint-ignore no-ex-assign
-                  error = new connError.constructor(connError.message);
-                }
-                await reader.cancel(error);
-                throw error;
-              }
-            }
-
             try {
-              await core.opAsync("op_http_shutdown", streamRid);
+              await core.opAsync("op_http_write", streamRid, value);
             } catch (error) {
+              const connError = httpConn[connErrorSymbol];
+              if (
+                ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+                connError != null
+              ) {
+                // deno-lint-ignore no-ex-assign
+                error = new connError.constructor(connError.message);
+              }
               await reader.cancel(error);
               throw error;
             }
+          }
+          try {
+            await core.opAsync("op_http_shutdown", streamRid);
+          } catch (error) {
+            await reader.cancel(error);
+            throw error;
           }
         }
 
