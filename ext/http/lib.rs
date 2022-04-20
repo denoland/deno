@@ -694,7 +694,7 @@ async fn op_http_write_resource(
     if nread == 0 {
       break;
     }
-    let bytes = Bytes::copy_from_slice(&buf);
+    let bytes = Bytes::from(buf.to_temp());
     match body_tx.send_data(bytes).await {
       Ok(_) => {}
       Err(err) => {
