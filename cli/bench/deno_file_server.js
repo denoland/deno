@@ -19,6 +19,10 @@ async function handleHttp(conn) {
   for await (const requestEvent of httpConn) {
     const fd = await Deno.open(tmpFile, { read: true });
     const response = new Response(fd.readable);
-    await requestEvent.respondWith(response);
+    try {
+      await requestEvent.respondWith(response);
+    } catch {
+      // pass
+    }
   }
 }
