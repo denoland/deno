@@ -795,6 +795,7 @@ dependencies = [
  "tower-lsp",
  "trust-dns-client",
  "trust-dns-server",
+ "twox-hash",
  "typed-arena",
  "uuid",
  "walkdir",
@@ -4721,6 +4722,17 @@ dependencies = [
  "url",
  "utf-8",
  "webpki",
+]
+
+[[package]]
+name = "twox-hash"
+version = "1.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
+dependencies = [
+ "cfg-if",
+ "rand",
+ "static_assertions",
 ]
 
 [[package]]
