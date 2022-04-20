@@ -43,7 +43,10 @@ pub trait Resource: Any + 'static {
     })
   }
 
-  fn read_return(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read_return(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(futures::future::err(not_supported()))
   }
 

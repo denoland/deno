@@ -722,7 +722,10 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
-  fn read_return(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 

@@ -103,7 +103,10 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn read_return(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
@@ -182,7 +185,10 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn read_return(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
