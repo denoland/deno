@@ -174,6 +174,7 @@
           case 3: { // Close
             log(`Host got "close" message from worker: ${this.#name}`);
             this.#status = "CLOSED";
+            this.dispatchEvent(new Event("close"));
             return;
           }
           default: {

@@ -889,3 +889,26 @@ Deno.test({
     w.terminate();
   },
 });
+
+Deno.test({
+  name: "handle worker close event",
+  fn: async function () {
+    let closeHandlersCalled = false;
+
+    const promise = deferred();
+    const worker = new Worker(
+      new URL("close_worker.js", import.meta.url),
+      { type: "module" },
+    );
+
+    worker.addEventListener("close", () => {
+      closeHandlersCalled = true;
+      promise.resolve();
+    });
+
+    await promise;
+
+    assertEquals(closeHandlersCalled, true);
+    worker.terminate();
+  },
+});
