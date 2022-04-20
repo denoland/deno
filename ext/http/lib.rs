@@ -688,7 +688,7 @@ async fn op_http_write_resource(
       }
     };
 
-    let mut vec = vec![0u8; 64 * 1024]; // 64KB
+    let vec = vec![0u8; 64 * 1024]; // 64KB
     let buf = ZeroCopyBuf::new_temp(vec);
     let (nread, buf) = resource.clone().read_return(buf).await?;
     if nread == 0 {
