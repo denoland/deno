@@ -163,7 +163,7 @@ impl UnixStreamResource {
   pub async fn read(
     self: Rc<Self>,
     _buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     unreachable!()
   }
   pub async fn write(
