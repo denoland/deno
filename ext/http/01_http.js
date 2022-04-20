@@ -270,11 +270,16 @@
           }
           const resourceRid = getReadableStreamRid(respBody);
           if (resourceRid) {
+            if (respBody.locked) {
+              throw new TypeError("ReadableStream is locked.");
+            }
+            const reader = respBody.getReader(); // Aquire JS lock.
             await core.opAsync(
               "op_http_write_resource",
               streamRid,
               resourceRid,
             );
+            await reader.close(); // Release JS lock.
           } else {
             const reader = respBody.getReader();
             while (true) {

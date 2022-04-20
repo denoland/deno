@@ -712,7 +712,6 @@ async fn op_http_write_resource(
   }
 
   take(&mut *wr);
-  let _ = state.borrow_mut().resource_table.close(stream);
   Ok(())
 }
 
