@@ -644,7 +644,7 @@ mod tests {
   }
 
   #[test]
-  fn ncompressible_content_type() {
+  fn compressible_content_type() {
     assert!(is_content_compressible("application/json"));
   }
 }
