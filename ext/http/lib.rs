@@ -35,9 +35,8 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_websocket::ws_create_server_stream;
-use fly_accept_encoding::Encoding;
 use hyper::header::HeaderName;
-use hyper::http::HeaderValue;
+use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
@@ -128,8 +127,8 @@ fn not_uncompressible(
   // with the user code and we can't compress the response
   let content_range = headers.contains_key(hyper::header::CONTENT_RANGE);
 
-  cache_control(headers).unwrap_or_default()
-    || content_range
+  content_range
+    || cache_control(headers).unwrap_or_default()
     || !headers
       .get(hyper::header::CONTENT_ENCODING)
       .map(is_content_compressible)
@@ -331,7 +330,6 @@ pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
   pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
-  accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
 }
 
@@ -345,7 +343,6 @@ impl HttpStreamResource {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
-      accept_encoding: RefCell::new(Encoding::Identity),
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -421,14 +418,6 @@ async fn op_http_accept(
     HttpRequestReader::Headers(request) => request,
     _ => unreachable!(),
   };
-
-  {
-    let mut accept_encoding = stream.accept_encoding.borrow_mut();
-    *accept_encoding = fly_accept_encoding::parse(request.headers())
-      .ok()
-      .flatten()
-      .unwrap_or(Encoding::Identity);
-  }
 
   let method = request.method().to_string();
   let headers = req_headers(request);
