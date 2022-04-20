@@ -95,6 +95,7 @@ text_lines = "=0.4.1"
 tokio = { version = "=1.17", features = ["full"] }
 tokio-util = "=0.7.0"
 tower-lsp = "=0.16.0"
+twox-hash = "=1.6.2"
 typed-arena = "2.0.1"
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"

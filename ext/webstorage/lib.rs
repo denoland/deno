@@ -13,6 +13,8 @@ use rusqlite::OptionalExtension;
 use std::fmt;
 use std::path::PathBuf;
 
+pub use rusqlite;
+
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
 
