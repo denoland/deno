@@ -70,13 +70,13 @@ where
   pub async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut rd = self.rd_borrow_mut().await;
     let nread = rd
       .read(&mut buf)
       .try_or_cancel(self.cancel_handle())
       .await?;
-    Ok(nread)
+    Ok((nread, buf))
   }
 
   pub async fn write(
@@ -103,7 +103,7 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
@@ -182,7 +182,7 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
