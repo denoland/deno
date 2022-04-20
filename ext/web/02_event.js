@@ -1367,6 +1367,20 @@
     reportExceptionStackedCalls--;
   }
 
+  function checkThis(thisArg) {
+    if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
+      throw new TypeError("Illegal invocation");
+    }
+  }
+
+  // https://html.spec.whatwg.org/#dom-reporterror
+  function reportError(error) {
+    checkThis(this);
+    const prefix = "Failed to call 'reportError'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    reportException(error);
+  }
+
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
@@ -1377,6 +1391,7 @@
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;
   window.removeEventListener = EventTarget.prototype.removeEventListener;
+  window.reportError = reportError;
   window.__bootstrap.eventTarget = {
     EventTarget,
     setEventTargetData,

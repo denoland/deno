@@ -13,6 +13,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
 use crate::flags::TypeCheckMode;
+use crate::fmt_errors::PrettyJsError;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -31,6 +32,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
@@ -92,7 +94,7 @@ pub enum TestOutput {
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(String),
+  Failed(Box<JsError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -108,15 +110,15 @@ pub struct TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<String>),
-  Pending(Option<String>),
+  Failed(Option<Box<JsError>>),
+  Pending(Option<Box<JsError>>),
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&str> {
+  fn error(&self) -> Option<&JsError> {
     match self {
-      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
-      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      TestStepResult::Failed(Some(error)) => Some(error),
+      TestStepResult::Pending(Some(error)) => Some(error),
       _ => None,
     }
   }
@@ -154,7 +156,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, String)>,
+  pub failures: Vec<(TestDescription, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -251,10 +253,14 @@ impl PrettyTestReporter {
   fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
     let url = Url::parse(path_or_url).unwrap();
     if url.scheme() == "file" {
-      self.cwd.make_relative(&url).unwrap()
-    } else {
-      path_or_url.to_string()
+      if let Some(mut r) = self.cwd.make_relative(&url) {
+        if !r.starts_with("../") {
+          r = format!("./{}", r);
+        }
+        return r;
+      }
     }
+    path_or_url.to_string()
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
@@ -294,8 +300,9 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
-    if let Some(error_text) = result.error() {
-      for line in error_text.lines() {
+    if let Some(js_error) = result.error() {
+      let err_string = format_test_error(js_error);
+      for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
     }
@@ -445,7 +452,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
+      for (description, js_error) in &summary.failures {
         println!(
           "{} {} {}",
           colors::gray(
@@ -454,7 +461,7 @@ impl TestReporter for PrettyTestReporter {
           colors::gray(">"),
           description.name
         );
-        println!("{}", error);
+        println!("{}", format_test_error(js_error));
         println!();
       }
 
@@ -509,6 +516,65 @@ impl TestReporter for PrettyTestReporter {
         format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
+}
+
+fn abbreviate_test_error(js_error: &JsError) -> JsError {
+  let mut js_error = js_error.clone();
+  let frames = std::mem::take(&mut js_error.frames);
+
+  // check if there are any stack frames coming from user code
+  let should_filter = frames.iter().any(|f| {
+    if let Some(file_name) = &f.file_name {
+      !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
+    } else {
+      true
+    }
+  });
+
+  if should_filter {
+    let mut frames = frames
+      .into_iter()
+      .rev()
+      .skip_while(|f| {
+        if let Some(file_name) = &f.file_name {
+          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+        } else {
+          false
+        }
+      })
+      .into_iter()
+      .collect::<Vec<_>>();
+    frames.reverse();
+    js_error.frames = frames;
+  } else {
+    js_error.frames = frames;
+  }
+
+  js_error.cause = js_error
+    .cause
+    .as_ref()
+    .map(|e| Box::new(abbreviate_test_error(e)));
+  js_error.aggregated = js_error
+    .aggregated
+    .as_ref()
+    .map(|es| es.iter().map(abbreviate_test_error).collect());
+  js_error
+}
+
+// This function maps JsError to PrettyJsError and applies some changes
+// specifically for test runner purposes:
+//
+// - filter out stack frames:
+//   - if stack trace consists of mixed user and internal code, the frames
+//     below the first user code frame are filtered out
+//   - if stack trace consists only of internal code it is preserved as is
+pub fn format_test_error(js_error: &JsError) -> String {
+  let mut js_error = abbreviate_test_error(js_error);
+  js_error.exception_message = js_error
+    .exception_message
+    .trim_start_matches("Uncaught ")
+    .to_string();
+  PrettyJsError::create(js_error).to_string()
 }
 
 fn create_reporter(

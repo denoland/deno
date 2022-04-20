@@ -180,11 +180,14 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
   output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
 });
 
-itest!(ops_sanitizer_missing_details {
-  args: "test --allow-write --allow-read test/ops_sanitizer_missing_details.ts",
-  exit_code: 1,
-  output: "test/ops_sanitizer_missing_details.out",
-});
+// TODO(@littledivy): re-enable this test, recent optimizations made output non deterministic.
+// https://github.com/denoland/deno/issues/14268
+//
+// itest!(ops_sanitizer_missing_details {
+//  args: "test --allow-write --allow-read test/ops_sanitizer_missing_details.ts",
+//  exit_code: 1,
+//  output: "test/ops_sanitizer_missing_details.out",
+// });
 
 itest!(ops_sanitizer_nexttick {
   args: "test test/ops_sanitizer_nexttick.ts",
@@ -288,13 +291,31 @@ itest!(steps_output_within {
 });
 
 itest!(no_prompt_by_default {
-  args: "test test/no_prompt_by_default.ts",
+  args: "test --quiet test/no_prompt_by_default.ts",
   exit_code: 1,
   output: "test/no_prompt_by_default.out",
 });
 
 itest!(no_prompt_with_denied_perms {
-  args: "test --allow-read test/no_prompt_with_denied_perms.ts",
+  args: "test --quiet --allow-read test/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "test/no_prompt_with_denied_perms.out",
 });
+
+#[test]
+fn recursive_permissions_pledge() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("test")
+    .arg("test/recursive_permissions_pledge.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(String::from_utf8(output.stderr).unwrap().contains(
+    "pledge test permissions called before restoring previous pledge"
+  ));
+}
