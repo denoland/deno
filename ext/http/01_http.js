@@ -32,7 +32,8 @@
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
-  const { Deferred, getReadableStreamRid } = window.__bootstrap.streams;
+  const { Deferred, getReadableStreamRid, readableStreamClose } =
+    window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
@@ -279,7 +280,7 @@
               streamRid,
               resourceRid,
             );
-            await reader.close(); // Release JS lock.
+            readableStreamClose(respBody); // Release JS lock.
           } else {
             const reader = respBody.getReader();
             while (true) {

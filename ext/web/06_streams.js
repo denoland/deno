@@ -5879,6 +5879,7 @@
     errorReadableStream,
     createProxy,
     writableStreamClose,
+    readableStreamClose,
     readableStreamForRid,
     getReadableStreamRid,
     Deferred,
