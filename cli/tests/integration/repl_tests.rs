@@ -761,3 +761,21 @@ fn eval_file_flag_multiple_files() {
   assert!(out.contains("helloFOO"));
   assert!(err.contains("Download"));
 }
+
+#[test]
+fn pty_clear_function() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log('hello');");
+    console.write_line("clear();");
+    console.write_line("const clear = 1 + 2;");
+    console.write_line("clear;");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("hello"));
+    assert!(output.contains("[1;1H"));
+    assert!(output.contains("undefined"));
+    assert!(output.contains("const clear = 1 + 2;"));
+    assert!(output.contains('3'));
+  });
+}
