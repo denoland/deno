@@ -140,7 +140,7 @@ pub async fn format(
       &deno_dir.fmt_incremental_cache_db_file_path(),
       &fmt_options,
       &paths,
-    )?);
+    ));
     if check {
       check_source_files(paths, fmt_options, incremental_cache.clone()).await?;
     } else {

@@ -159,7 +159,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         names
       },
       &paths,
-    )?);
+    ));
     let target_files_len = paths.len();
     let reporter_kind = reporter_kind.clone();
     let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));

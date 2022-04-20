@@ -10,20 +10,65 @@ use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Serialize;
 use tokio::task::JoinHandle;
 
+/// Cache used to skip formatting/linting a file again when we
+/// know it is already formatted or has no lint diagnostics.
+pub struct IncrementalCache(Option<IncrementalCacheInner>);
+
+impl IncrementalCache {
+  pub fn new<TState: Serialize>(
+    db_file_path: &Path,
+    state: &TState,
+    initial_file_paths: &[PathBuf],
+  ) -> Self {
+    // if creating the incremental cache fails, then we
+    // treat it as not having a cache
+    let result =
+      IncrementalCacheInner::new(db_file_path, state, initial_file_paths);
+    IncrementalCache(match result {
+      Ok(inner) => Some(inner),
+      Err(err) => {
+        log::debug!("Creating the incremental cache failed.\n{:#}", err);
+        // Maybe the cache file is corrupt. Attempt to remove
+        // the cache file for next time
+        let _ = std::fs::remove_file(db_file_path);
+        None
+      }
+    })
+  }
+
+  pub fn is_file_same(&self, file_path: &Path, file_text: &str) -> bool {
+    if let Some(inner) = &self.0 {
+      inner.is_file_same(file_path, file_text)
+    } else {
+      false
+    }
+  }
+
+  pub fn update_file(&self, file_path: &Path, file_text: &str) {
+    if let Some(inner) = &self.0 {
+      inner.update_file(file_path, file_text)
+    }
+  }
+
+  pub async fn wait_completion(&self) {
+    if let Some(inner) = &self.0 {
+      inner.wait_completion().await;
+    }
+  }
+}
+
 enum ReceiverMessage {
   Update(PathBuf, u64),
   Exit,
 }
 
-/// Cache used to skip formatting/linting a file again when we
-/// know it is already formatted or has no lint diagnostics.
-pub struct IncrementalCache {
+struct IncrementalCacheInner {
   previous_hashes: HashMap<PathBuf, u64>,
   sender: tokio::sync::mpsc::UnboundedSender<ReceiverMessage>,
   handle: Mutex<Option<JoinHandle<()>>>,
 }
 
-impl IncrementalCache {
+impl IncrementalCacheInner {
   pub fn new<TState: Serialize>(
     db_file_path: &Path,
     state: &TState,
@@ -64,7 +109,7 @@ impl IncrementalCache {
       }
     });
 
-    IncrementalCache {
+    IncrementalCacheInner {
       previous_hashes,
       sender,
       handle: Mutex::new(Some(handle)),
@@ -78,16 +123,16 @@ impl IncrementalCache {
     }
   }
 
-  pub fn update_file(&self, path: &Path, file_text: &str) {
+  pub fn update_file(&self, file_path: &Path, file_text: &str) {
     let hash = fast_insecure_hash(file_text.as_bytes());
-    if let Some(previous_hash) = self.previous_hashes.get(path) {
+    if let Some(previous_hash) = self.previous_hashes.get(file_path) {
       if *previous_hash == hash {
         return; // do not bother updating the db file because nothing has changed
       }
     }
     let _ = self
       .sender
-      .send(ReceiverMessage::Update(path.to_path_buf(), hash));
+      .send(ReceiverMessage::Update(file_path.to_path_buf(), hash));
   }
 
   pub async fn wait_completion(&self) {
@@ -312,7 +357,7 @@ mod test {
     let file_text = "test";
     let file_hash = fast_insecure_hash(file_text.as_bytes());
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
-    let cache = IncrementalCache::from_sql_incremental_cache(
+    let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,
       &[file_path.clone()],
     );
