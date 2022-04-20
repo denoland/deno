@@ -121,15 +121,6 @@ checksum = "4361135be9122e0870de935d7c439aef945b9f9ddd4199a553b5270b49c82a27"
 
 [[package]]
 name = "arrayvec"
-version = "0.4.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
-dependencies = [
- "nodrop",
-]
-
-[[package]]
-name = "arrayvec"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
@@ -442,6 +433,7 @@ dependencies = [
  "atty",
  "bitflags",
  "indexmap",
+ "lazy_static",
  "os_str_bytes",
  "strsim 0.10.0",
  "termcolor",
@@ -769,10 +761,10 @@ dependencies = [
  "jsonc-parser",
  "libc",
  "log",
+ "mitata",
  "nix",
  "node_resolver",
  "notify",
- "num-format",
  "once_cell",
  "os_pipe",
  "percent-encoding",
@@ -2452,6 +2444,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mitata"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "975d43e4088e68e8b18c81e866185c71d1682d3cf923ed6e98be0c6173d80f77"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "naga"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2521,12 +2522,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nodrop"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
-
-[[package]]
 name = "notify"
 version = "5.0.0-pre.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2581,16 +2576,6 @@ dependencies = [
  "rand",
  "smallvec",
  "zeroize",
-]
-
-[[package]]
-name = "num-format"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bafe4179722c2894288ee77a9f044f02811c86af699344c498b0840c698a2465"
-dependencies = [
- "arrayvec 0.4.12",
- "itoa 0.4.8",
 ]
 
 [[package]]
@@ -5086,7 +5071,7 @@ version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4688c000eb841ca55f7b35db659b78d6e1cd77d7caf8fb929f4e181f754047d"
 dependencies = [
- "arrayvec 0.7.2",
+ "arrayvec",
  "bitflags",
  "cfg_aliases",
  "codespan-reporting",
@@ -5110,7 +5095,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62fa524903bf336b51a399f0d586f3c30af94101149588678ef147c30be89e53"
 dependencies = [
- "arrayvec 0.7.2",
+ "arrayvec",
  "ash",
  "bit-set",
  "bitflags",

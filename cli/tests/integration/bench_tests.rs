@@ -111,6 +111,12 @@ itest!(finally_timeout {
   output: "bench/finally_timeout.out",
 });
 
+itest!(group_baseline {
+  args: "bench --unstable bench/group_baseline.ts",
+  exit_code: 0,
+  output: "bench/group_baseline.out",
+});
+
 itest!(unresolved_promise {
   args: "bench --unstable bench/unresolved_promise.ts",
   exit_code: 1,
