@@ -31,6 +31,7 @@ pub fn benchmark(
   // res.insert("deno_udp".to_string(), deno_udp(deno_exe)?);
   res.insert("deno_http".to_string(), deno_http(deno_exe)?);
   res.insert("deno_http_native".to_string(), deno_http_native(deno_exe)?);
+  res.insert("deno_file_server".to_string(), deno_file_server(deno_exe)?);
   // "core_http_json_ops" previously had a "bin op" counterpart called "core_http_bin_ops",
   // which was previously also called "deno_core_http_bench", "deno_core_single"
   res.insert(
@@ -40,6 +41,7 @@ pub fn benchmark(
   // "node_http" was once called "node"
   res.insert("node_http".to_string(), node_http()?);
   res.insert("node_tcp".to_string(), node_tcp()?);
+  res.insert("node_file_server".to_string(), node_file_server()?);
   res.insert("hyper".to_string(), hyper_http(hyper_hello_exe)?);
 
   Ok(res)
@@ -176,6 +178,25 @@ fn deno_http_native(deno_exe: &str) -> Result<HttpBenchmarkResult> {
   )
 }
 
+fn deno_file_server(deno_exe: &str) -> Result<HttpBenchmarkResult> {
+  let port = get_port();
+  println!("http_benchmark testing DENO using file server");
+  run(
+    &[
+      deno_exe,
+      "run",
+      "-A",
+      "--reload",
+      "--unstable",
+      "cli/bench/deno_file_server.js",
+      &server_addr(port),
+    ],
+    port,
+    None,
+    None,
+  )
+}
+
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {
   println!("http_benchmark testing CORE http_bench_json_ops");
   run(&[exe], 4544, None, None)
@@ -186,6 +207,17 @@ fn node_http() -> Result<HttpBenchmarkResult> {
   println!("http_benchmark testing NODE.");
   run(
     &["node", "cli/bench/node_http.js", &port.to_string()],
+    port,
+    None,
+    None,
+  )
+}
+
+fn node_file_server() -> Result<HttpBenchmarkResult> {
+  let port = get_port();
+  println!("file server http_benchmark testing NODE.");
+  run(
+    &["node", "cli/bench/node_file_server.js", &port.to_string()],
     port,
     None,
     None,
