@@ -250,7 +250,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: false } },
-  async function commandPermissions() {
+  async function spawnPermissions() {
     await assertRejects(async () => {
       await Deno.spawn(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
@@ -261,7 +261,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: false } },
-  function commandSyncPermissions() {
+  function spawnSyncPermissions() {
     assertThrows(() => {
       Deno.spawnSync(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
@@ -272,7 +272,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandSuccess() {
+  async function spawnSuccess() {
     const { status } = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
     });
@@ -285,7 +285,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncSuccess() {
+  function spawnSyncSuccess() {
     const { status } = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
     });
@@ -298,7 +298,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandUrl() {
+  async function spawnUrl() {
     const { status, stdout } = await Deno.spawn(
       new URL(`file:///${Deno.execPath()}`),
       {
@@ -316,7 +316,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncUrl() {
+  function spawnSyncUrl() {
     const { status, stdout } = Deno.spawnSync(
       new URL(`file:///${Deno.execPath()}`),
       {
@@ -332,14 +332,14 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { run: true } }, async function commandNotFound() {
+Deno.test({ permissions: { run: true } }, async function spawnNotFound() {
   await assertRejects(
     () => Deno.spawn("this file hopefully doesn't exist"),
     Deno.errors.NotFound,
   );
 });
 
-Deno.test({ permissions: { run: true } }, function commandSyncNotFound() {
+Deno.test({ permissions: { run: true } }, function spawnSyncNotFound() {
   assertThrows(
     () => Deno.spawnSync("this file hopefully doesn't exist"),
     Deno.errors.NotFound,
@@ -348,7 +348,7 @@ Deno.test({ permissions: { run: true } }, function commandSyncNotFound() {
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandFailedWithCode() {
+  async function spawnFailedWithCode() {
     const { status } = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "Deno.exit(41 + 1)"],
     });
@@ -360,7 +360,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncFailedWithCode() {
+  function spawnSyncFailedWithCode() {
     const { status } = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "Deno.exit(41 + 1)"],
     });
@@ -374,7 +374,7 @@ Deno.test(
   {
     permissions: { run: true, read: true },
   },
-  async function commandFailedWithSignal() {
+  async function spawnFailedWithSignal() {
     const { status } = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
     });
@@ -393,7 +393,7 @@ Deno.test(
   {
     permissions: { run: true, read: true },
   },
-  function commandSyncFailedWithSignal() {
+  function spawnSyncFailedWithSignal() {
     const { status } = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
     });
@@ -410,7 +410,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandOutput() {
+  async function spawnOutput() {
     const { stdout } = await Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -425,7 +425,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncOutput() {
+  function spawnSyncOutput() {
     const { stdout } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -440,7 +440,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandStderrOutput() {
+  async function spawnStderrOutput() {
     const { stderr } = await Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -455,7 +455,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncStderrOutput() {
+  function spawnSyncStderrOutput() {
     const { stderr } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -470,7 +470,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandOverrideStdio() {
+  async function spawnOverrideStdio() {
     const { stdout, stderr } = await Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -490,7 +490,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandSyncOverrideStdio() {
+  function spawnSyncOverrideStdio() {
     const { stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -510,7 +510,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function commandEnv() {
+  async function spawnEnv() {
     const { stdout } = await Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -528,7 +528,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function commandEnv() {
+  function spawnEnv() {
     const { stdout } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -546,7 +546,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
-  async function commandClearEnv() {
+  async function spawnClearEnv() {
     const { stdout } = await Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
@@ -571,7 +571,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
-  function commandSyncClearEnv() {
+  function spawnSyncClearEnv() {
     const { stdout } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -599,7 +599,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  async function commandUid() {
+  async function spawnUid() {
     const { stdout } = await Deno.spawn("id", {
       args: ["-u"],
     });
@@ -622,7 +622,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  function commandSyncUid() {
+  function spawnSyncUid() {
     const { stdout } = Deno.spawnSync("id", {
       args: ["-u"],
     });
@@ -645,7 +645,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  async function commandGid() {
+  async function spawnGid() {
     const { stdout } = await Deno.spawn("id", {
       args: ["-g"],
     });
@@ -668,7 +668,7 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
-  function commandSyncGid() {
+  function spawnSyncGid() {
     const { stdout } = Deno.spawnSync("id", {
       args: ["-g"],
     });
