@@ -698,8 +698,8 @@ async fn op_http_write_resource(
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
   let resource = state.borrow().resource_table.get_any(stream)?;
   loop {
-    let body_tx = match &mut *wr {
-      HttpResponseWriter::Body(body_tx) => body_tx,
+    let body_writer = match &mut *wr {
+      HttpResponseWriter::Body(body_writer) => body_writer,
       HttpResponseWriter::Headers(_) => {
         return Err(http_error("no response headers"))
       }
@@ -714,13 +714,17 @@ async fn op_http_write_resource(
     if nread == 0 {
       break;
     }
-    let bytes = Bytes::from(buf.to_temp());
-    match body_tx.send_data(bytes).await {
+
+    let mut res = body_writer.write_all(&buf).await;
+    if res.is_ok() {
+      res = body_writer.flush().await;
+    }
+    match res {
       Ok(_) => {}
       Err(err) => {
-        // Don't return "channel closed", that's an implementation detail.
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        // Don't return "broken pipe", that's an implementation detail.
         // Pull up the failure associated with the transport connection instead.
-        assert!(err.is_closed());
         http_stream.conn.closed().await?;
         // If there was no connection error, drop body_tx.
         *wr = HttpResponseWriter::Closed;
@@ -728,7 +732,19 @@ async fn op_http_write_resource(
     }
   }
 
-  take(&mut *wr);
+  let wr = take(&mut *wr);
+  if let HttpResponseWriter::Body(mut body_writer) = wr {
+    match body_writer.shutdown().await {
+      Ok(_) => {}
+      Err(err) => {
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        // Don't return "broken pipe", that's an implementation detail.
+        // Pull up the failure associated with the transport connection instead.
+        http_stream.conn.closed().await?;
+      }
+    }
+  }
+
   Ok(())
 }
 
