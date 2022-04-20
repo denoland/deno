@@ -275,8 +275,6 @@ Deno.test(
   async function commandSuccess() {
     const { status } = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
-      stderr: "null",
-      stdout: "null",
     });
 
     assertEquals(status.success, true);
@@ -290,8 +288,6 @@ Deno.test(
   function commandSyncSuccess() {
     const { status } = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
-      stderr: "null",
-      stdout: "null",
     });
 
     assertEquals(status.success, true);
@@ -303,12 +299,14 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandUrl() {
-    const { status } = await Deno.spawn(
+    const { status, stdout } = await Deno.spawn(
       new URL(`file:///${Deno.execPath()}`),
       {
         args: ["eval", "console.log('hello world')"],
       },
     );
+
+    assertEquals(new TextDecoder().decode(stdout), "hello world\n");
 
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
@@ -319,9 +317,14 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   function commandSyncUrl() {
-    const { status } = Deno.spawnSync(new URL(`file:///${Deno.execPath()}`), {
-      args: ["eval", "console.log('hello world')"],
-    });
+    const { status, stdout } = Deno.spawnSync(
+      new URL(`file:///${Deno.execPath()}`),
+      {
+        args: ["eval", "console.log('hello world')"],
+      },
+    );
+
+    assertEquals(new TextDecoder().decode(stdout), "hello world\n");
 
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
@@ -462,6 +465,46 @@ Deno.test(
 
     const s = new TextDecoder().decode(stderr);
     assertEquals(s, "error");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function commandOverrideStdio() {
+    const { stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+      args: [
+        "eval",
+        "console.log('hello'); console.error('world')",
+      ],
+      stdin: "piped",
+      stdout: "null",
+      stderr: "null",
+    });
+
+    // @ts-ignore: for testing
+    assertEquals(new TextDecoder().decode(stdout), "hello\n");
+    // @ts-ignore: for testing
+    assertEquals(new TextDecoder().decode(stderr), "world\n");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  function commandSyncOverrideStdio() {
+    const { stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+      args: [
+        "eval",
+        "console.log('hello'); console.error('world')",
+      ],
+      stdin: "piped",
+      stdout: "null",
+      stderr: "null",
+    });
+
+    // @ts-ignore: for testing
+    assertEquals(new TextDecoder().decode(stdout), "hello\n");
+    // @ts-ignore: for testing
+    assertEquals(new TextDecoder().decode(stderr), "world\n");
   },
 );
 

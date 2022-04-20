@@ -66,11 +66,12 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "umask",
   "utime",
   "utimeSync",
-  "CommandOptions",
-  "ProcessIoOptions",
-  "Command",
+  "spawnChild",
   "Child",
-  "CommandOutput",
+  "spawn",
+  "spawnSync",
+  "ChildStatus",
+  "SpawnOutput",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {

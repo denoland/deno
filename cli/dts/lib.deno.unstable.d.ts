@@ -1399,14 +1399,22 @@ declare namespace Deno {
   /**
    * Spawns a child process.
    *
+   * If stdin is set to "piped", the stdin WritableStream needs to be closed manually.
+   *
    * ```ts
    * const child = Deno.spawnChild(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('Hello World')",
    *   ],
+   *   stdin: "piped",
    * });
    *
+   * // open a file and pipe the subprocess output to it.
+   * child.stdout.pipeTo(Deno.open("output").writable);
+   *
+   * // manually close stdin
+   * child.stdin.close();
    * const status = await child.status;
    * ```
    */
@@ -1434,16 +1442,20 @@ declare namespace Deno {
   }
 
   /**
-   * Executes a subprocess, waiting for it to finish and collecting all of its output.
+   * Executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * The stdio options are ignored.
    *
    * ```ts
-   * const { stdout } = await Deno.spawn(Deno.execPath(), {
+   * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
    *   args: [
    *     "eval",
-   *     "console.log('Hello World')",
+   *        "console.log('hello'); console.error('world')",
    *   ],
    * });
-   * console.assert("Hello World" === new TextDecoder().decode(stdout));
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    */
   export function spawn<T extends SpawnOptions = SpawnOptions>(
@@ -1452,16 +1464,20 @@ declare namespace Deno {
   ): Promise<SpawnOutput<T>>;
 
   /**
-   * Synchronously executes a subprocess, waiting for it to finish and collecting all of its output.
+   * Synchronously executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * The stdio options are ignored.
    *
-   * ```ts
-   * const { stdout } = Deno.spawnSync(Deno.execPath(), {
+   * * ```ts
+   * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
-   *     "console.log('Hello World')",
+   *       "console.log('hello'); console.error('world')",
    *   ],
    * });
-   * console.assert("Hello World" === new TextDecoder().decode(stdout));
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    */
   export function spawnSync<T extends SpawnOptions = SpawnOptions>(
