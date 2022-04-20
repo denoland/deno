@@ -1411,7 +1411,7 @@ declare namespace Deno {
    * });
    *
    * // open a file and pipe the subprocess output to it.
-   * child.stdout.pipeTo(Deno.open("output").writable);
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
    *
    * // manually close stdin
    * child.stdin.close();
