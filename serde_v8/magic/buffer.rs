@@ -29,14 +29,6 @@ impl MagicBuffer {
   pub fn new_temp(vec: Vec<u8>) -> Self {
     MagicBuffer::Temp(vec)
   }
-
-  // TODO(@littledivy): Temporary, this needs a refactor.
-  pub fn to_temp(self) -> Vec<u8> {
-    match self {
-      MagicBuffer::Temp(vec) => vec,
-      _ => unreachable!(),
-    }
-  }
 }
 
 impl Clone for MagicBuffer {

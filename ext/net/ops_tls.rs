@@ -674,11 +674,11 @@ impl TlsStreamResource {
   pub async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  ) -> Result<usize, AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
     let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
-    Ok((nread, buf))
+    Ok(nread)
   }
 
   pub async fn write(
@@ -722,10 +722,7 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.read(buf))
   }
 

@@ -174,13 +174,13 @@ where
   async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  ) -> Result<usize, AnyError> {
     let mut rd = self.borrow_mut().await;
     let nread = rd
       .read(&mut buf)
       .try_or_cancel(self.cancel_handle())
       .await?;
-    Ok((nread, buf))
+    Ok(nread)
   }
 
   pub fn into_inner(self) -> S {
@@ -211,10 +211,7 @@ impl Resource for ChildStdoutResource {
     "childStdout".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.read(buf))
   }
 
@@ -230,10 +227,7 @@ impl Resource for ChildStderrResource {
     "childStderr".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.read(buf))
   }
 
@@ -277,17 +271,16 @@ impl StdFileResource {
   async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  ) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
       let fs_file = self.fs_file.as_ref().unwrap();
       let std_file = fs_file.0.as_ref().unwrap().clone();
-      tokio::task::spawn_blocking(
-        move || -> Result<(usize, ZeroCopyBuf), AnyError> {
-          let mut std_file = std_file.lock().unwrap();
-          Ok((std_file.read(&mut buf)?, buf))
-        },
-      )
+      tokio::task::spawn_blocking(move || {
+        let mut std_file = std_file.lock().unwrap();
+        std_file.read(&mut buf)
+      })
       .await?
+      .map_err(AnyError::from)
     } else {
       Err(resource_unavailable())
     }
@@ -337,10 +330,7 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.read(buf))
   }
 

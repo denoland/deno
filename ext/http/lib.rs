@@ -688,13 +688,16 @@ async fn op_http_write_resource(
       }
     };
 
-    let vec = vec![0u8; 64 * 1024]; // 64KB
+    let mut vec = vec![0u8; 64 * 1024];
+    let vec_ptr = vec.as_mut_ptr();
     let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
+    let nread = resource.clone().read(buf).await?;
     if nread == 0 {
       break;
     }
-    let bytes = Bytes::from(buf.to_temp());
+    // SAFETY: ZeroCopyBuf keeps the Vec<u8> alive.
+    let bytes =
+      Bytes::from_static(unsafe { std::slice::from_raw_parts(vec_ptr, nread) });
     match body_tx.send_data(bytes).await {
       Ok(_) => {}
       Err(err) => {
