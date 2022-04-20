@@ -151,5 +151,9 @@
     funlockSync: __bootstrap.fs.funlockSync,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    Child: __bootstrap.spawn.Child,
+    spawnChild: __bootstrap.spawn.spawnChild,
+    spawn: __bootstrap.spawn.spawn,
+    spawnSync: __bootstrap.spawn.spawnSync,
   };
 })(this);

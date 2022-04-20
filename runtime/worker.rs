@@ -132,6 +132,7 @@ impl MainWorker {
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
       ),
+      ops::spawn::init(),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),
