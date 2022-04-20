@@ -103,14 +103,14 @@ impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
 }
 
 // implements tower_http::compression's Predicate
-fn not_uncompressible(
+fn should_compress(
   _status: hyper::StatusCode,
   _version: hyper::Version,
   headers: &hyper::HeaderMap,
   _exts: &hyper::http::Extensions,
 ) -> bool {
   // skip compression if the cache-control header value is set to "no-transform" or not utf8
-  fn cache_control(headers: &hyper::HeaderMap) -> Option<bool> {
+  fn cache_control_no_transform(headers: &hyper::HeaderMap) -> Option<bool> {
     let v = headers.get(hyper::header::CACHE_CONTROL)?;
     let s = match std::str::from_utf8(v.as_bytes()) {
       Ok(s) => s,
@@ -124,9 +124,9 @@ fn not_uncompressible(
   // with the user code and we can't compress the response
   let content_range = headers.contains_key(hyper::header::CONTENT_RANGE);
 
-  content_range
-    || cache_control(headers).unwrap_or_default()
-    || !headers
+  !content_range
+    && !cache_control_no_transform(headers).unwrap_or_default()
+    && headers
       .get(hyper::header::CONTENT_ENCODING)
       .map(is_content_compressible)
       .unwrap_or_default()
@@ -149,7 +149,7 @@ impl HttpConnResource {
     let service = HttpService::new(acceptors_rx);
 
     // Compression
-    let predicate = DefaultPredicate::new().and(not_uncompressible);
+    let predicate = DefaultPredicate::new().and(should_compress);
     let service = Compression::new(service).compress_when(predicate);
 
     let conn_fut = Http::new()
