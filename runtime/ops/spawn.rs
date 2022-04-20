@@ -207,9 +207,7 @@ fn op_spawn_child(
     .take()
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  let child_rid = state
-    .resource_table
-    .add(ChildResource(child));
+  let child_rid = state.resource_table.add(ChildResource(child));
 
   Ok(Child {
     rid: child_rid,
@@ -229,7 +227,15 @@ async fn op_spawn_wait(
     .borrow_mut()
     .resource_table
     .take::<ChildResource>(rid)?;
-  Ok(Rc::try_unwrap(resource).ok().unwrap().0.wait().await?.into())
+  Ok(
+    Rc::try_unwrap(resource)
+      .ok()
+      .unwrap()
+      .0
+      .wait()
+      .await?
+      .into(),
+  )
 }
 
 #[op]
