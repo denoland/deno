@@ -908,7 +908,8 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(ps.flags.as_ref(), fmt_flags, maybe_fmt_config).await?;
+  tools::fmt::format(ps.flags.as_ref(), fmt_flags, maybe_fmt_config, &ps.dir)
+    .await?;
   Ok(0)
 }
 
@@ -929,7 +930,7 @@ async fn repl_command(
   }
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&ps, worker, repl_flags.eval).await
+  tools::repl::run(&ps, worker, repl_flags.eval_files, repl_flags.eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {

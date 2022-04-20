@@ -77,6 +77,7 @@ pub fn init() -> Extension {
       op_http_read::decl(),
       op_http_write_headers::decl(),
       op_http_write::decl(),
+      op_http_write_resource::decl(),
       op_http_shutdown::decl(),
       op_http_websocket_accept_header::decl(),
       op_http_upgrade_websocket::decl(),
@@ -682,6 +683,53 @@ async fn op_http_write_headers(
       Err(http_error("connection closed while sending response"))
     }
   }
+}
+
+#[op]
+async fn op_http_write_resource(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  stream: ResourceId,
+) -> Result<(), AnyError> {
+  let http_stream = state
+    .borrow()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?;
+  let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
+  let resource = state.borrow().resource_table.get_any(stream)?;
+  loop {
+    let body_tx = match &mut *wr {
+      HttpResponseWriter::Body(body_tx) => body_tx,
+      HttpResponseWriter::Headers(_) => {
+        return Err(http_error("no response headers"))
+      }
+      HttpResponseWriter::Closed => {
+        return Err(http_error("response already completed"))
+      }
+    };
+
+    let vec = vec![0u8; 64 * 1024]; // 64KB
+    let buf = ZeroCopyBuf::new_temp(vec);
+    let (nread, buf) = resource.clone().read_return(buf).await?;
+    if nread == 0 {
+      break;
+    }
+    let bytes = Bytes::from(buf.to_temp());
+    match body_tx.send_data(bytes).await {
+      Ok(_) => {}
+      Err(err) => {
+        // Don't return "channel closed", that's an implementation detail.
+        // Pull up the failure associated with the transport connection instead.
+        assert!(err.is_closed());
+        http_stream.conn.closed().await?;
+        // If there was no connection error, drop body_tx.
+        *wr = HttpResponseWriter::Closed;
+      }
+    }
+  }
+
+  take(&mut *wr);
+  Ok(())
 }
 
 #[op]
