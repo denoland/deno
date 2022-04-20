@@ -6,10 +6,8 @@ use super::io::ChildStdoutResource;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::AsyncRefCell;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -28,14 +26,14 @@ use std::os::unix::process::CommandExt;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_command_spawn::decl(),
-      op_command_wait::decl(),
-      op_command_sync::decl(),
+      op_spawn_child::decl(),
+      op_spawn_wait::decl(),
+      op_spawn_sync::decl(),
     ])
     .build()
 }
 
-struct ChildResource(AsyncRefCell<tokio::process::Child>);
+struct ChildResource(tokio::process::Child);
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<str> {
@@ -61,7 +59,7 @@ fn subprocess_stdio_map(s: &Stdio) -> Result<std::process::Stdio, AnyError> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandArgs {
+pub struct SpawnArgs {
   cmd: String,
   args: Vec<String>,
   cwd: Option<String>,
@@ -73,12 +71,12 @@ pub struct CommandArgs {
   uid: Option<u32>,
 
   #[serde(flatten)]
-  stdio: CommandStdio,
+  stdio: ChildStdio,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandStdio {
+pub struct ChildStdio {
   stdin: Stdio,
   stdout: Stdio,
   stderr: Stdio,
@@ -86,13 +84,13 @@ pub struct CommandStdio {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandStatus {
+pub struct ChildStatus {
   success: bool,
   code: i32,
   signal: Option<i32>,
 }
 
-impl From<std::process::ExitStatus> for CommandStatus {
+impl From<std::process::ExitStatus> for ChildStatus {
   fn from(status: ExitStatus) -> Self {
     let code = status.code();
     #[cfg(unix)]
@@ -101,7 +99,7 @@ impl From<std::process::ExitStatus> for CommandStatus {
     let signal = None;
 
     if let Some(signal) = signal {
-      CommandStatus {
+      ChildStatus {
         success: false,
         code: 128 + signal,
         signal: Some(signal),
@@ -109,7 +107,7 @@ impl From<std::process::ExitStatus> for CommandStatus {
     } else {
       let code = code.expect("Should have either an exit code or a signal.");
 
-      CommandStatus {
+      ChildStatus {
         success: code == 0,
         code,
         signal: None,
@@ -120,15 +118,15 @@ impl From<std::process::ExitStatus> for CommandStatus {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandOutput {
-  status: CommandStatus,
+pub struct SpawnOutput {
+  status: ChildStatus,
   stdout: Option<ZeroCopyBuf>,
   stderr: Option<ZeroCopyBuf>,
 }
 
 fn create_command(
   state: &mut OpState,
-  args: CommandArgs,
+  args: SpawnArgs,
 ) -> Result<std::process::Command, AnyError> {
   super::check_unstable(state, "Deno.spawn");
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
@@ -147,12 +145,12 @@ fn create_command(
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
-    super::check_unstable(state, "Deno.Command.gid");
+    super::check_unstable(state, "Deno.spawn.gid");
     command.gid(gid);
   }
   #[cfg(unix)]
   if let Some(uid) = args.uid {
-    super::check_unstable(state, "Deno.Command.uid");
+    super::check_unstable(state, "Deno.spawn.uid");
     command.uid(uid);
   }
   #[cfg(unix)]
@@ -181,9 +179,9 @@ struct Child {
 }
 
 #[op]
-fn op_command_spawn(
+fn op_spawn_child(
   state: &mut OpState,
-  args: CommandArgs,
+  args: SpawnArgs,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(create_command(state, args)?);
   // TODO(@crowlkats): allow detaching processes.
@@ -211,7 +209,7 @@ fn op_command_spawn(
 
   let child_rid = state
     .resource_table
-    .add(ChildResource(AsyncRefCell::new(child)));
+    .add(ChildResource(child));
 
   Ok(Child {
     rid: child_rid,
@@ -223,28 +221,27 @@ fn op_command_spawn(
 }
 
 #[op]
-async fn op_command_wait(
+async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<CommandStatus, AnyError> {
+) -> Result<ChildStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .take::<ChildResource>(rid)?;
-  let mut child = RcRef::map(resource, |r| &r.0).borrow_mut().await;
-  Ok(child.wait().await?.into())
+  Ok(Rc::try_unwrap(resource).ok().unwrap().0.wait().await?.into())
 }
 
 #[op]
-fn op_command_sync(
+fn op_spawn_sync(
   state: &mut OpState,
-  args: CommandArgs,
-) -> Result<CommandOutput, AnyError> {
+  args: SpawnArgs,
+) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
   let output = create_command(state, args)?.output()?;
 
-  Ok(CommandOutput {
+  Ok(SpawnOutput {
     status: output.status.into(),
     stdout: if stdout {
       Some(output.stdout.into())

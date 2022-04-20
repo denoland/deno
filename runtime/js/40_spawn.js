@@ -27,7 +27,7 @@
     stdout = "piped",
     stderr = "piped",
   } = {}) {
-    const child = core.opSync("op_command_spawn", {
+    const child = core.opSync("op_spawn_child", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -119,7 +119,7 @@
         this.#stderr = readableStreamForRid(stderrRid);
       }
 
-      this.#status = core.opAsync("op_command_wait", this.#rid).then((res) => {
+      this.#status = core.opAsync("op_spawn_wait", this.#rid).then((res) => {
         this.#rid = null;
         return res;
       });
@@ -183,7 +183,7 @@
     uid = undefined,
     gid = undefined,
   } = {}) { // TODO(@crowlKats): more options (like input)?
-    return core.opSync("op_command_sync", {
+    return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -197,7 +197,7 @@
     });
   }
 
-  window.__bootstrap.command = {
+  window.__bootstrap.spawn = {
     Child,
     spawnChild,
     spawn,
