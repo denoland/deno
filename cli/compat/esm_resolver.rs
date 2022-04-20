@@ -261,7 +261,8 @@ fn finalize_resolution(
     ));
   }
 
-  Ok(resolved)
+  // OK to unwrap, path came from to_file_path
+  Ok(ModuleSpecifier::from_file_path(path.canonicalize()?).unwrap())
 }
 
 fn throw_import_not_defined(
