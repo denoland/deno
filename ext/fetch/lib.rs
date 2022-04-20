@@ -485,12 +485,15 @@ impl Resource for FetchResponseBodyResource {
     "fetchResponseBody".into()
   }
 
-  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(async move {
       let mut reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
-      Ok(read)
+      Ok((read, buf))
     })
   }
 
