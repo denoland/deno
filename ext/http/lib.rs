@@ -740,19 +740,16 @@ async fn op_http_shutdown(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let wr = take(&mut *wr);
-  match wr {
-    HttpResponseWriter::Body(mut body_writer) => {
-      match body_writer.shutdown().await {
-        Ok(_) => {}
-        Err(err) => {
-          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-          // Don't return "broken pipe", that's an implementation detail.
-          // Pull up the failure associated with the transport connection instead.
-          stream.conn.closed().await?;
-        }
+  if let HttpResponseWriter::Body(mut body_writer) = wr {
+    match body_writer.shutdown().await {
+      Ok(_) => {}
+      Err(err) => {
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        // Don't return "broken pipe", that's an implementation detail.
+        // Pull up the failure associated with the transport connection instead.
+        stream.conn.closed().await?;
       }
     }
-    _ => {}
   }
   Ok(())
 }

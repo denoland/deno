@@ -1234,7 +1234,6 @@ Deno.test({
   },
 });
 
-
 Deno.test({
   name: "http server compresses body - check body",
   permissions: { net: true, run: true },
@@ -1725,7 +1724,6 @@ Deno.test({
     await Promise.all([server(), client()]);
   },
 });
-
 
 Deno.test({
   name: "http server compresses streamed bodies - check body",
