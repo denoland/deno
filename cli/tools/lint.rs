@@ -34,6 +34,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use super::incremental_cache::IncrementalCache;
+
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
 #[derive(Clone, Debug)]
@@ -147,6 +149,17 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   };
 
   let operation = |paths: Vec<PathBuf>| async {
+    let incremental_cache = Arc::new(IncrementalCache::new(
+      &ps.dir.lint_incremental_cache_db_file_path(),
+      // use a hash of the rule names in order to bust the cache
+      &{
+        // ensure this is stable by sorting it
+        let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
+        names.sort_unstable();
+        names
+      },
+      &paths,
+    ));
     let target_files_len = paths.len();
     let reporter_kind = reporter_kind.clone();
     let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
@@ -154,8 +167,23 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let has_error = has_error.clone();
       let lint_rules = lint_rules.clone();
       let reporter_lock = reporter_lock.clone();
+      let incremental_cache = incremental_cache.clone();
       move |file_path| {
-        let r = lint_file(file_path.clone(), lint_rules.clone());
+        let file_text = fs::read_to_string(&file_path)?;
+
+        // don't bother rechecking this file if it didn't have any diagnostics before
+        if incremental_cache.is_file_same(&file_path, &file_text) {
+          return Ok(());
+        }
+
+        let r = lint_file(file_path.clone(), file_text, lint_rules.clone());
+        if let Ok((file_diagnostics, file_text)) = &r {
+          if file_diagnostics.is_empty() {
+            // update the incremental cache if there were no diagnostics
+            incremental_cache.update_file(&file_path, file_text)
+          }
+        }
+
         handle_lint_result(
           &file_path.to_string_lossy(),
           r,
@@ -167,6 +195,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       }
     })
     .await?;
+    incremental_cache.wait_completion().await;
     reporter_lock.lock().unwrap().close(target_files_len);
 
     Ok(())
@@ -262,10 +291,10 @@ pub fn create_linter(
 
 fn lint_file(
   file_path: PathBuf,
+  source_code: String,
   lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
 
   let linter = create_linter(media_type, lint_rules);
