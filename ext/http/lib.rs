@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod compressible;
+
+use crate::compressible::is_content_compressible;
 use bytes::Bytes;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
@@ -21,7 +24,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
 use deno_core::op;
-
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -59,14 +61,9 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::task::spawn_local;
-use tower_http::compression::{
-  predicate::{DefaultPredicate, Predicate},
-  Compression,
-};
-
-use crate::compressible::is_content_compressible;
-
-mod compressible;
+use tower_http::compression::Compression;
+use tower_http::compression::DefaultPredicate;
+use tower_http::compression::Predicate; // For Fn impl
 
 pub fn init() -> Extension {
   Extension::builder()
