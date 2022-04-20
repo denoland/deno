@@ -908,7 +908,8 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(ps.flags.as_ref(), fmt_flags, maybe_fmt_config).await?;
+  tools::fmt::format(ps.flags.as_ref(), fmt_flags, maybe_fmt_config, &ps.dir)
+    .await?;
   Ok(0)
 }
 
