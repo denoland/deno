@@ -776,6 +776,6 @@ fn pty_clear_function() {
     assert!(output.contains("[1;1H"));
     assert!(output.contains("undefined"));
     assert!(output.contains("const clear = 1 + 2;"));
-    assert!(output.contains("3"));
+    assert!(output.contains('3'));
   });
 }
