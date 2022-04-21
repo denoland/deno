@@ -166,13 +166,8 @@
     }
   }
 
-  function spawn(command, options) { // TODO(@crowlKats): more options (like input)?
-    return spawnChild(command, {
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
-      ...options,
-    }).output();
+  function spawn(command, options) {
+    return spawnChild(command, options).output();
   }
 
   function spawnSync(command, {
@@ -185,7 +180,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
-  } = {}) { // TODO(@crowlKats): more options (like input)?
+  } = {}) {
     return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
