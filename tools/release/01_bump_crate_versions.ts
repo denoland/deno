@@ -101,12 +101,10 @@ async function updateStdVersion() {
   const text = Deno.readTextFileSync(compatFilePath);
   const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
   const stdVersionText = versionRe.exec(text)?.[1];
-  const stdVersion = stdVersionText == null
-    ? undefined
-    : semver.parse(stdVersionText);
-  if (stdVersion == null) {
+  if (stdVersionText == null) {
     throw new Error(`Could not find the deno_std version in ${compatFilePath}`);
   }
+  const stdVersion = semver.parse(stdVersionText)!;
   const newStdVersion = stdVersion.inc("minor");
   Deno.writeTextFileSync(
     compatFilePath,
