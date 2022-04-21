@@ -594,14 +594,13 @@ async fn op_http_write_headers(
     builder = builder.header("etag", value.as_slice());
   }
 
+  // Drop 'content-length' header. Hyper will update it using compressed body.
+  if let Some(headers) = builder.headers_mut() {
+    headers.remove("content-length");
+  }
   match data {
     Some(data) => {
       if should_compress {
-        // Drop 'content-length' header. Hyper will update it using compressed body.
-        if let Some(headers) = builder.headers_mut() {
-          headers.remove("content-length");
-        }
-
         match *stream.accept_encoding.borrow() {
           Encoding::Brotli => {
             builder = builder.header("content-encoding", "br");
