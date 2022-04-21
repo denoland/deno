@@ -185,10 +185,6 @@ where
     }
   };
 
-  if clear_screen {
-    eprint!("{}", CLEAR_SCREEN);
-  }
-
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
