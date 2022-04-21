@@ -36,16 +36,22 @@ Before starting the process write a message in company's #general channel:
    it.
 
    <details><summary>❌ Failure Steps</summary>
-   <p>
-   1. Checkout the latest main.
-   2. Manually run `./_tools/release/01_bump_version.ts --minor`
-      1. Ensure the version in `version.ts` is updated correctly.
-      2. Ensure `Releases.md` is updated correctly.
-      3. Ensure all the tests pass with the latest build
-         - Use `../deno/target/release/deno test -A --unstable` and NOT
-            `deno task test`
-   3. Open a PR with the changes and continue with the steps below.
-   </p>
+   <ol>
+     <li>Checkout the latest main.</li>
+     <li>Manually run `./_tools/release/01_bump_version.ts --minor`
+       <ol>
+         <li>Ensure the version in `version.ts` is updated correctly.</li>
+         <li>Ensure `Releases.md` is updated correctly.</li>
+         <li>Ensure all the tests pass with the latest build
+           <ul>
+             <li>Use `../deno/target/release/deno test -A --unstable` and NOT
+            `deno task test`</li>
+           </ul>
+         </li>
+       </ol>
+     </li>
+     <li>Open a PR with the changes and continue with the steps below.</li>
+   </ol>
    </details>
 
 4. Merge the PR.
