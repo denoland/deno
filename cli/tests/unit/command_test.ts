@@ -470,46 +470,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function spawnOverrideStdio() {
-    const { stdout, stderr } = await Deno.spawn(Deno.execPath(), {
-      args: [
-        "eval",
-        "console.log('hello'); console.error('world')",
-      ],
-      stdin: "piped",
-      stdout: "null",
-      stderr: "null",
-    });
-
-    // @ts-ignore: for testing
-    assertEquals(new TextDecoder().decode(stdout), "hello\n");
-    // @ts-ignore: for testing
-    assertEquals(new TextDecoder().decode(stderr), "world\n");
-  },
-);
-
-Deno.test(
-  { permissions: { run: true, read: true } },
-  function spawnSyncOverrideStdio() {
-    const { stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
-      args: [
-        "eval",
-        "console.log('hello'); console.error('world')",
-      ],
-      stdin: "piped",
-      stdout: "null",
-      stderr: "null",
-    });
-
-    // @ts-ignore: for testing
-    assertEquals(new TextDecoder().decode(stdout), "hello\n");
-    // @ts-ignore: for testing
-    assertEquals(new TextDecoder().decode(stderr), "world\n");
-  },
-);
-
-Deno.test(
-  { permissions: { run: true, read: true } },
   async function spawnEnv() {
     const { stdout } = await Deno.spawn(Deno.execPath(), {
       args: [
