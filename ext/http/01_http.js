@@ -274,13 +274,26 @@
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }
-            const _reader = respBody.getReader(); // Aquire JS lock.
-            await core.opAsync(
-              "op_http_write_resource",
-              streamRid,
-              resourceRid,
-            );
-            readableStreamClose(respBody); // Release JS lock.
+            const reader = respBody.getReader(); // Aquire JS lock.
+            try {
+              await core.opAsync(
+                "op_http_write_resource",
+                streamRid,
+                resourceRid,
+              );
+              readableStreamClose(respBody); // Release JS lock.
+            } catch (error) {
+              const connError = httpConn[connErrorSymbol];
+              if (
+                ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+                connError != null
+              ) {
+                // deno-lint-ignore no-ex-assign
+                error = new connError.constructor(connError.message);
+              }
+              await reader.cancel(error);
+              throw error;
+            }
           } else {
             const reader = respBody.getReader();
             while (true) {
