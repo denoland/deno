@@ -964,6 +964,7 @@ dependencies = [
 name = "deno_http"
 version = "0.42.0"
 dependencies = [
+ "async-compression",
  "base64 0.13.0",
  "brotli",
  "bytes",
