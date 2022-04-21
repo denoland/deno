@@ -1466,7 +1466,7 @@ declare namespace Deno {
    * collecting all of its output.
    * The stdio options are ignored.
    *
-   * * ```ts
+   * ```ts
    * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
