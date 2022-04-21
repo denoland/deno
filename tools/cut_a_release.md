@@ -53,12 +53,12 @@ Before starting the process write a message in company's #general channel:
 5. Wait for the CI run to complete which will tag the repo and create a draft
    release. Review the draft release and then publish it.
 
-   <details><summary>❌ Failure Steps</summary>
-   <p>
+   <details>
+     <summary>❌ Failure Steps</summary>
+
    1. Tag the repo manually in the format `x.x.x`
    2. Draft a new GH release by copying and pasting the release notes from
       `Releases.md`
-   </p>
    </details>
 
 ## Updating the main repo
@@ -91,15 +91,15 @@ verify on GitHub that everything looks correct.
 3. Wait for the workflow to complete and for a pull request to be automatically
    opened.
 
-   <details><summary>❌ Failure Steps</summary>
-   <p>
+   <details>
+     <summary>❌ Failure Steps</summary>
+
    1. Checkout the branch the release is being made on.
    2. Manually run `./tools/release/01_bump_crate_versions.ts`
       1. Ensure the crate versions were bumped correctly
       2. Ensure deno_std version was updated correctly in `cli/compat/mod.rs`
       3. Ensure `Releases.md` was updated correctly
    3. Open a PR with the changes and continue with the steps below.
-   </p>
    </details>
 
 4. Review the pull request and make any necessary changes.
@@ -113,8 +113,9 @@ verify on GitHub that everything looks correct.
 
 2. Run it on the same branch that you used before and wait for it to complete.
 
-   <details><summary>❌ Failure Steps</summary>
-   <p>
+   <details>
+     <summary>❌ Failure Steps</summary>
+
    1. The workflow was designed to be restartable. Try restarting it.
    2. If that doesn't work, then do the following:
       1. Checkout the branch the release is occurring on.
@@ -122,9 +123,7 @@ verify on GitHub that everything looks correct.
          `./tools/release/03_publish_crates.ts`
          - Note that you will need access to crates.io so it might fail.
       3. If `cargo publish` succeeded and a release tag wasn't created, then
-         manually create and push one for the release branch with a leading
-         `v`.
-   </p>
+         manually create and push one for the release branch with a leading `v`.
    </details>
 
 3. This CI run create a tag which triggers a second CI run that publishes the
