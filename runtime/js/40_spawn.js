@@ -168,10 +168,10 @@
 
   function spawn(command, options) { // TODO(@crowlKats): more options (like input)?
     return spawnChild(command, {
-      ...options,
       stdin: "null",
       stdout: "piped",
       stderr: "piped",
+      ...options,
     }).output();
   }
 
@@ -182,6 +182,9 @@
     env = {},
     uid = undefined,
     gid = undefined,
+    stdin = "null",
+    stdout = "piped",
+    stderr = "piped",
   } = {}) { // TODO(@crowlKats): more options (like input)?
     return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
@@ -191,9 +194,9 @@
       env: ObjectEntries(env),
       uid,
       gid,
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
+      stdin,
+      stdout,
+      stderr,
     });
   }
 
