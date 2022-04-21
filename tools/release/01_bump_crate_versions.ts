@@ -98,7 +98,7 @@ async function getGitLog() {
 
 async function updateStdVersion() {
   const compatFilePath = path.join(cliCrate.folderPath, "compat/mod.rs");
-  const text = Deno.readTextFileSync(compatFilePath);
+  const text = await Deno.readTextFile(compatFilePath);
   const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
   const stdVersionText = versionRe.exec(text)?.[1];
   if (stdVersionText == null) {
@@ -106,7 +106,7 @@ async function updateStdVersion() {
   }
   const stdVersion = semver.parse(stdVersionText)!;
   const newStdVersion = stdVersion.inc("minor");
-  Deno.writeTextFileSync(
+  await Deno.writeTextFile(
     compatFilePath,
     text.replace(versionRe, `std@${newStdVersion}`),
   );
