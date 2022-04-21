@@ -14,7 +14,6 @@ description = "HTTP server implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-async-compression = { version = "0.3.1", features = ["tokio", "brotli", "gzip"] }
 base64 = "0.13.0"
 brotli = "3.3.3"
 bytes = "1"

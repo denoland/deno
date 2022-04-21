@@ -83,18 +83,13 @@ struct TcpStream {
 }
 
 impl TcpStream {
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), Error> {
+  async fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> Result<usize, Error> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel = RcRef::map(self, |r| &r.cancel);
-    let nread = rd
-      .read(&mut buf)
+    rd.read(&mut buf)
       .try_or_cancel(cancel)
       .await
-      .map_err(Error::from)?;
-    Ok((nread, buf))
+      .map_err(Error::from)
   }
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, Error> {
@@ -104,10 +99,7 @@ impl TcpStream {
 }
 
 impl Resource for TcpStream {
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.read(buf))
   }
 
