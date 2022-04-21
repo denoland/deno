@@ -1401,7 +1401,9 @@ fn lsp_hover_change_mbc() {
               },
               "end": {
                 "line": 1,
-                "character": 13
+                // the LSP uses utf16 encoded characters indexes, so
+                // after the deno emoiji is character index 15
+                "character": 15
               }
             },
             "text": ""
@@ -1425,7 +1427,7 @@ fn lsp_hover_change_mbc() {
         },
         "position": {
           "line": 2,
-          "character": 14
+          "character": 15
         }
       }),
     )
@@ -1444,11 +1446,11 @@ fn lsp_hover_change_mbc() {
       "range": {
         "start": {
           "line": 2,
-          "character": 13,
+          "character": 15,
         },
         "end": {
           "line": 2,
-          "character": 14,
+          "character": 16,
         },
       }
     }))
@@ -4284,7 +4286,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert_eq!(res.averages.len(), 14);
+    assert_eq!(res.averages.len(), 13);
   } else {
     panic!("unexpected result");
   }
