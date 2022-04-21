@@ -97,24 +97,19 @@ async function getGitLog() {
 }
 
 async function updateStdVersion() {
-  const newStdVersion = await getLatestStdVersion();
   const compatFilePath = path.join(cliCrate.folderPath, "compat/mod.rs");
   const text = Deno.readTextFileSync(compatFilePath);
+  const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
+  const stdVersionText = versionRe.exec(text)?.[1];
+  const stdVersion = stdVersionText == null
+    ? undefined
+    : semver.parse(stdVersionText);
+  if (stdVersion == null) {
+    throw new Error(`Could not find the deno_std version in ${compatFilePath}`);
+  }
+  const newStdVersion = stdVersion.inc("minor");
   Deno.writeTextFileSync(
     compatFilePath,
-    text.replace(/std@[0-9]+\.[0-9]+\.[0-9]+/, `std@${newStdVersion}`),
+    text.replace(versionRe, `std@${newStdVersion}`),
   );
-}
-
-async function getLatestStdVersion() {
-  const url =
-    "https://raw.githubusercontent.com/denoland/deno_std/main/version.ts";
-  const result = await fetch(url);
-  const text = await result.text();
-  const version = /"([0-9]+\.[0-9]+\.[0-9]+)"/.exec(text);
-  if (version == null) {
-    throw new Error(`Could not find version in text: ${text}`);
-  } else {
-    return version[1];
-  }
 }
