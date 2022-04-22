@@ -1442,6 +1442,7 @@ declare namespace Deno {
   /**
    * Executes a subprocess, waiting for it to finish and
    * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
    *
    * ```ts
    * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
@@ -1463,6 +1464,7 @@ declare namespace Deno {
   /**
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
    *
    * ```ts
    * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {

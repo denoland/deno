@@ -167,6 +167,9 @@
   }
 
   function spawn(command, options) {
+    if (options.stdin === "piped") {
+      throw new TypeError("Piped stdin is not supported, see 'spawnChild()'");
+    }
     return spawnChild(command, options).output();
   }
 
@@ -181,6 +184,9 @@
     stdout = "piped",
     stderr = "piped",
   } = {}) {
+    if (stdin === "piped") {
+      throw new TypeError("Piped stdin is not supported, see 'spawnChild()'");
+    }
     return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
