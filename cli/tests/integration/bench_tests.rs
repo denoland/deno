@@ -76,7 +76,7 @@ itest!(only {
 });
 
 itest!(multifile_summary {
-  args: "bench --unstable bench/pass.ts bench/group_baseline.ts",
+  args: "bench --unstable bench/group_baseline.ts bench/pass.ts bench/group_baseline.ts",
   exit_code: 0,
   output: "bench/multifile_summary.out",
 });
