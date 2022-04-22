@@ -718,29 +718,23 @@ async fn op_http_write_resource(
 
     match &mut *wr {
       HttpResponseWriter::Body(body) => {
-        match body.write_all(&buf[..nread]).await {
-          Ok(_) => (),
-          Err(err) => {
-            assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-            // Don't return "broken pipe", that's an implementation detail.
-            // Pull up the failure associated with the transport connection instead.
-            http_stream.conn.closed().await?;
-            // If there was no connection error, drop body_tx.
-            *wr = HttpResponseWriter::Closed;
-          }
+        if let Err(err) = body.write_all(&buf[..nread]).await {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          http_stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        match body.send_data(Bytes::from(buf.to_temp())).await {
-          Err(err) => {
-            assert!(err.is_closed());
-            // Don't return "broken pipe", that's an implementation detail.
-            // Pull up the failure associated with the transport connection instead.
-            http_stream.conn.closed().await?;
-            // If there was no connection error, drop body_tx.
-            *wr = HttpResponseWriter::Closed;
-          }
-          Ok(_) => {}
+        if let Err(err) = body.send_data(Bytes::from(buf.to_temp())).await {
+          assert!(err.is_closed());
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          http_stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
         }
       }
       _ => unreachable!(),
