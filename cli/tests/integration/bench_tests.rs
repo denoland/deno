@@ -75,6 +75,12 @@ itest!(only {
   output: "bench/only.out",
 });
 
+itest!(multifile_summary {
+  args: "bench --unstable bench/pass.ts bench/group_baseline.ts",
+  exit_code: 0,
+  output: "bench/multifile_summary.out",
+});
+
 itest!(no_check {
   args: "bench --unstable --no-check bench/no_check.ts",
   exit_code: 1,
