@@ -772,7 +772,6 @@ fn pty_clear_function() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    eprintln!("{:?}", output);
     if cfg!(windows) {
       // Windows will overwrite what's in the console buffer before
       // we read from it. It contains this string repeated many times
