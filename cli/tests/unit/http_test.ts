@@ -1254,7 +1254,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1359,7 +1359,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1413,7 +1413,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1464,7 +1464,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1518,7 +1518,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1575,7 +1575,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1632,7 +1632,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1686,7 +1686,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1745,7 +1745,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1869,7 +1869,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
