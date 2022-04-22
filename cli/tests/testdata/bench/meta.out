@@ -1,7 +1,9 @@
 Check [WILDCARD]/bench/meta.ts
 import.meta.main: false
 import.meta.url: [WILDCARD]/bench/meta.ts
-running 0 benches from [WILDCARD]/bench/meta.ts
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
 
-bench result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
-
+[WILDCARD]/bench/meta.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------

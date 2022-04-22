@@ -709,3 +709,73 @@ fn eval_flag_runtime_error() {
   assert!(out.contains("2500")); // should not prevent input
   assert!(err.is_empty());
 }
+
+#[test]
+fn eval_file_flag_valid_input() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=./001_hello.js"],
+    None,
+    None,
+    false,
+  );
+  assert!(out.contains("Hello World"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_file_flag_call_defined_function() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=./tsc/d.ts"],
+    Some(vec!["v4()"]),
+    None,
+    false,
+  );
+  assert!(out.contains("hello"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_file_flag_http_input() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=http://127.0.0.1:4545/tsc/d.ts"],
+    Some(vec!["v4()"]),
+    None,
+    true,
+  );
+  assert!(out.contains("hello"));
+  assert!(err.contains("Download"));
+}
+
+#[test]
+fn eval_file_flag_multiple_files() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=http://127.0.0.1:4545/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
+    None,
+    true,
+  );
+  assert!(out.contains("helloFOO"));
+  assert!(err.contains("Download"));
+}
+
+#[test]
+fn pty_clear_function() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log('hello');");
+    console.write_line("clear();");
+    console.write_line("const clear = 1 + 2;");
+    console.write_line("clear;");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("hello"));
+    assert!(output.contains("[1;1H"));
+    assert!(output.contains("undefined"));
+    assert!(output.contains("const clear = 1 + 2;"));
+    assert!(output.contains('3'));
+  });
+}

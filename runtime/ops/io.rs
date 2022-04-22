@@ -134,6 +134,10 @@ where
     stream.shutdown().await?;
     Ok(())
   }
+
+  pub fn into_inner(self) -> S {
+    self.stream.into_inner()
+  }
 }
 
 #[derive(Debug)]
@@ -177,6 +181,10 @@ where
       .try_or_cancel(self.cancel_handle())
       .await?;
     Ok(nread)
+  }
+
+  pub fn into_inner(self) -> S {
+    self.stream.into_inner()
   }
 }
 

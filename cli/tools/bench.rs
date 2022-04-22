@@ -5,7 +5,6 @@ use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
-use crate::display;
 use crate::emit;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -35,15 +34,11 @@ use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
-use num_format::Locale;
-use num_format::ToFormattedString;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -51,14 +46,6 @@ use tokio::sync::mpsc::UnboundedSender;
 struct BenchSpecifierOptions {
   compat_mode: bool,
   filter: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
-#[serde(rename_all = "camelCase")]
-pub struct BenchDescription {
-  pub origin: String,
-  pub name: String,
-  pub iterations: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -69,198 +56,294 @@ pub enum BenchOutput {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum BenchResult {
-  Ok,
-  Ignored,
-  Failed(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct BenchPlan {
-  pub origin: String,
   pub total: usize,
-  pub filtered_out: usize,
+  pub origin: String,
   pub used_only: bool,
+  pub names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchEvent {
   Plan(BenchPlan),
-  Wait(BenchDescription),
   Output(BenchOutput),
-  IterationTime(u64),
-  Result(BenchDescription, BenchResult, u64),
+  Wait(BenchMetadata),
+  Result(String, BenchResult),
 }
 
-#[derive(Debug, Clone)]
-pub struct BenchMeasures {
-  pub iterations: u64,
-  pub current_start: Instant,
-  pub measures: Vec<u128>,
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BenchResult {
+  Ok(BenchMeasurement),
+  Failed(BenchFailure),
 }
 
-#[derive(Debug, Clone)]
-pub struct BenchSummary {
+#[derive(Debug, Clone, Serialize)]
+pub struct BenchReport {
   pub total: usize,
-  pub passed: usize,
   pub failed: usize,
-  pub ignored: usize,
-  pub filtered_out: usize,
-  pub measured: usize,
-  pub measures: Vec<BenchMeasures>,
-  pub current_bench: BenchMeasures,
-  pub failures: Vec<(BenchDescription, String)>,
+  pub failures: Vec<BenchFailure>,
+  pub measurements: Vec<BenchMeasurement>,
 }
 
-impl BenchSummary {
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+pub struct BenchMetadata {
+  pub name: String,
+  pub origin: String,
+  pub baseline: bool,
+  pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BenchMeasurement {
+  pub name: String,
+  pub baseline: bool,
+  pub stats: BenchStats,
+  pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BenchFailure {
+  pub name: String,
+  pub error: String,
+  pub baseline: bool,
+  pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BenchStats {
+  pub n: u64,
+  pub min: f64,
+  pub max: f64,
+  pub avg: f64,
+  pub p75: f64,
+  pub p99: f64,
+  pub p995: f64,
+  pub p999: f64,
+}
+
+impl BenchReport {
   pub fn new() -> Self {
     Self {
       total: 0,
-      passed: 0,
       failed: 0,
-      ignored: 0,
-      filtered_out: 0,
-      measured: 0,
-      measures: Vec::new(),
-      current_bench: BenchMeasures {
-        iterations: 0,
-        current_start: Instant::now(),
-        measures: vec![],
-      },
       failures: Vec::new(),
+      measurements: Vec::new(),
     }
   }
+}
 
-  fn has_failed(&self) -> bool {
-    self.failed > 0 || !self.failures.is_empty()
-  }
-
-  fn has_pending(&self) -> bool {
-    self.total - self.passed - self.failed - self.ignored > 0
-  }
+fn create_reporter(show_output: bool) -> Box<dyn BenchReporter + Send> {
+  Box::new(ConsoleReporter::new(show_output))
 }
 
 pub trait BenchReporter {
+  fn report_group_summary(&mut self);
   fn report_plan(&mut self, plan: &BenchPlan);
-  fn report_wait(&mut self, description: &BenchDescription);
+  fn report_end(&mut self, report: &BenchReport);
+  fn report_wait(&mut self, wait: &BenchMetadata);
   fn report_output(&mut self, output: &BenchOutput);
-  fn report_result(
-    &mut self,
-    description: &BenchDescription,
-    result: &BenchResult,
-    elapsed: u64,
-    current_bench: &BenchMeasures,
-  );
-  fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration);
+  fn report_result(&mut self, result: &BenchResult);
 }
 
-struct PrettyBenchReporter {
-  echo_output: bool,
+struct ConsoleReporter {
+  name: String,
+  show_output: bool,
+  has_ungrouped: bool,
+  group: Option<String>,
+  baseline: Option<BenchMeasurement>,
+  group_measurements: Vec<BenchMeasurement>,
+  options: Option<mitata::reporter::Options>,
 }
 
-impl PrettyBenchReporter {
-  fn new(echo_output: bool) -> Self {
-    Self { echo_output }
-  }
-
-  fn force_report_wait(&mut self, description: &BenchDescription) {
-    print!(
-      "bench {} ... {} iterations ",
-      description.name, description.iterations
-    );
-    // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
+impl ConsoleReporter {
+  fn new(show_output: bool) -> Self {
+    Self {
+      show_output,
+      group: None,
+      options: None,
+      baseline: None,
+      name: String::new(),
+      has_ungrouped: false,
+      group_measurements: Vec::new(),
+    }
   }
 }
 
-impl BenchReporter for PrettyBenchReporter {
+impl BenchReporter for ConsoleReporter {
+  #[cold]
   fn report_plan(&mut self, plan: &BenchPlan) {
-    let inflection = if plan.total == 1 { "bench" } else { "benches" };
-    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    static FIRST_PLAN: AtomicBool = AtomicBool::new(true);
+
+    self.options = Some(mitata::reporter::Options::new(
+      &plan.names.iter().map(|x| x.as_str()).collect::<Vec<&str>>(),
+    ));
+
+    let options = self.options.as_mut().unwrap();
+
+    options.percentiles = true;
+    options.colors = colors::use_color();
+
+    if FIRST_PLAN
+      .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+      .is_ok()
+    {
+      println!("{}", colors::gray(format!("cpu: {}", mitata::cpu::name())));
+      println!(
+        "{}\n",
+        colors::gray(format!(
+          "runtime: deno {} ({})",
+          crate::version::deno(),
+          env!("TARGET")
+        ))
+      );
+    } else {
+      println!();
+    }
+
+    println!(
+      "{}\n{}\n{}",
+      colors::gray(&plan.origin),
+      mitata::reporter::header(options),
+      mitata::reporter::br(options)
+    );
   }
 
-  fn report_wait(&mut self, description: &BenchDescription) {
-    self.force_report_wait(description);
+  fn report_wait(&mut self, wait: &BenchMetadata) {
+    self.name = wait.name.clone();
+
+    match &wait.group {
+      None => {
+        self.has_ungrouped = true;
+      }
+
+      Some(group) => {
+        if self.group.is_none()
+          && self.has_ungrouped
+          && self.group_measurements.is_empty()
+        {
+          println!();
+        }
+
+        if None == self.group || group != self.group.as_ref().unwrap() {
+          self.report_group_summary();
+        }
+
+        if (self.group.is_none() && self.has_ungrouped)
+          || (self.group.is_some() && self.group_measurements.is_empty())
+        {
+          println!();
+        }
+
+        self.group = Some(group.clone());
+      }
+    }
   }
 
   fn report_output(&mut self, output: &BenchOutput) {
-    if self.echo_output {
+    if self.show_output {
       match output {
-        BenchOutput::Console(line) => print!("{}", line),
+        BenchOutput::Console(line) => {
+          print!("{} {}", colors::gray(format!("{}:", self.name)), line)
+        }
       }
     }
   }
 
-  fn report_result(
-    &mut self,
-    _description: &BenchDescription,
-    result: &BenchResult,
-    elapsed: u64,
-    current_bench: &BenchMeasures,
-  ) {
-    let status = match result {
-      BenchResult::Ok => {
-        let ns_op = current_bench.measures.iter().sum::<u128>()
-          / current_bench.iterations as u128;
-        let min_op = current_bench.measures.iter().min().unwrap_or(&0);
-        let max_op = current_bench.measures.iter().max().unwrap_or(&0);
-        format!(
-          "{} ns/iter ({}..{} ns/iter) {}",
-          ns_op.to_formatted_string(&Locale::en),
-          min_op.to_formatted_string(&Locale::en),
-          max_op.to_formatted_string(&Locale::en),
-          colors::green("ok")
+  fn report_result(&mut self, result: &BenchResult) {
+    let options = self.options.as_ref().unwrap();
+
+    match result {
+      BenchResult::Ok(bench) => {
+        let mut bench = bench.to_owned();
+
+        if bench.baseline && self.baseline.is_none() {
+          self.baseline = Some(bench.clone());
+        } else {
+          bench.baseline = false;
+        }
+
+        self.group_measurements.push(bench.clone());
+
+        println!(
+          "{}",
+          mitata::reporter::benchmark(
+            &bench.name,
+            &mitata::reporter::BenchmarkStats {
+              avg: bench.stats.avg,
+              min: bench.stats.min,
+              max: bench.stats.max,
+              p75: bench.stats.p75,
+              p99: bench.stats.p99,
+              p995: bench.stats.p995,
+            },
+            options
+          )
+        );
+      }
+
+      BenchResult::Failed(failure) => {
+        println!(
+          "{}",
+          mitata::reporter::benchmark_error(
+            &failure.name,
+            &mitata::reporter::Error {
+              stack: None,
+              message: failure.error.clone(),
+            },
+            options
+          )
         )
       }
-      BenchResult::Ignored => colors::yellow("ignored").to_string(),
-      BenchResult::Failed(_) => colors::red("FAILED").to_string(),
     };
-
-    println!(
-      "{} {}",
-      status,
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    );
   }
 
-  fn report_summary(&mut self, summary: &BenchSummary, elapsed: &Duration) {
-    if !summary.failures.is_empty() {
-      println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
-        println!("{}", description.name);
-        println!("{}", error);
-        println!();
-      }
+  fn report_group_summary(&mut self) {
+    let options = match self.options.as_ref() {
+      None => return,
+      Some(options) => options,
+    };
 
-      println!("failures:\n");
-      for (description, _) in &summary.failures {
-        println!("\t{}", description.name);
-      }
+    if 2 <= self.group_measurements.len()
+      && (self.group.is_some()
+        || (self.group.is_none() && self.baseline.is_some()))
+    {
+      println!(
+        "\n{}",
+        mitata::reporter::summary(
+          &self
+            .group_measurements
+            .iter()
+            .map(|b| mitata::reporter::GroupBenchmark {
+              name: b.name.clone(),
+              baseline: b.baseline,
+              group: b.group.as_deref().unwrap_or("").to_owned(),
+
+              stats: mitata::reporter::BenchmarkStats {
+                avg: b.stats.avg,
+                min: b.stats.min,
+                max: b.stats.max,
+                p75: b.stats.p75,
+                p99: b.stats.p99,
+                p995: b.stats.p995,
+              },
+            })
+            .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
+          options
+        )
+      );
     }
 
-    let status = if summary.has_failed() || summary.has_pending() {
-      colors::red("FAILED").to_string()
-    } else {
-      colors::green("ok").to_string()
-    };
-
-    println!(
-      "\nbench result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
-      status,
-      summary.passed,
-      summary.failed,
-      summary.ignored,
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(format!("({})", display::human_elapsed(elapsed.as_millis()))),
-    );
+    self.baseline = None;
+    self.group_measurements.clear();
   }
-}
 
-fn create_reporter(echo_output: bool) -> Box<dyn BenchReporter + Send> {
-  Box::new(PrettyBenchReporter::new(echo_output))
+  fn report_end(&mut self, _: &BenchReport) {
+    self.report_group_summary();
+  }
 }
 
 /// Type check a collection of module and document specifiers.
@@ -367,20 +450,16 @@ async fn bench_specifiers(
     .buffer_unordered(1)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(log_level != Some(Level::Error));
-
   let handler = {
     tokio::task::spawn(async move {
-      let earlier = Instant::now();
-      let mut summary = BenchSummary::new();
       let mut used_only = false;
+      let mut report = BenchReport::new();
+      let mut reporter = create_reporter(log_level != Some(Level::Error));
 
       while let Some(event) = receiver.recv().await {
         match event {
           BenchEvent::Plan(plan) => {
-            summary.total += plan.total;
-            summary.filtered_out += plan.filtered_out;
-
+            report.total += plan.total;
             if plan.used_only {
               used_only = true;
             }
@@ -388,51 +467,32 @@ async fn bench_specifiers(
             reporter.report_plan(&plan);
           }
 
-          BenchEvent::Wait(description) => {
-            reporter.report_wait(&description);
-            summary.current_bench = BenchMeasures {
-              iterations: description.iterations,
-              current_start: Instant::now(),
-              measures: Vec::with_capacity(
-                description.iterations.try_into().unwrap(),
-              ),
-            };
+          BenchEvent::Wait(metadata) => {
+            reporter.report_wait(&metadata);
           }
 
           BenchEvent::Output(output) => {
             reporter.report_output(&output);
           }
 
-          BenchEvent::IterationTime(iter_time) => {
-            summary.current_bench.measures.push(iter_time.into())
-          }
-
-          BenchEvent::Result(description, result, elapsed) => {
+          BenchEvent::Result(_origin, result) => {
             match &result {
-              BenchResult::Ok => {
-                summary.passed += 1;
+              BenchResult::Ok(bench) => {
+                report.measurements.push(bench.clone());
               }
-              BenchResult::Ignored => {
-                summary.ignored += 1;
-              }
-              BenchResult::Failed(error) => {
-                summary.failed += 1;
-                summary.failures.push((description.clone(), error.clone()));
-              }
-            }
 
-            reporter.report_result(
-              &description,
-              &result,
-              elapsed,
-              &summary.current_bench,
-            );
+              BenchResult::Failed(failure) => {
+                report.failed += 1;
+                report.failures.push(failure.clone());
+              }
+            };
+
+            reporter.report_result(&result);
           }
         }
       }
 
-      let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&summary, &elapsed);
+      reporter.report_end(&report);
 
       if used_only {
         return Err(generic_error(
@@ -440,7 +500,7 @@ async fn bench_specifiers(
         ));
       }
 
-      if summary.failed > 0 {
+      if report.failed > 0 {
         return Err(generic_error("Bench failed"));
       }
 
