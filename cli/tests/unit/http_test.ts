@@ -854,6 +854,47 @@ Deno.test({ permissions: { net: true } }, async function httpServerPanic() {
   listener.close();
 });
 
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerClosedStream() {
+    const listener = Deno.listen({ port: 4502 });
+
+    const client = await Deno.connect({ port: 4502 });
+    await client.write(new TextEncoder().encode(
+      `GET / HTTP/1.0\r\n\r\n`,
+    ));
+
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const ev = await httpConn.nextRequest();
+    const { respondWith } = ev!;
+
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    await file.write(new TextEncoder().encode("hello"));
+
+    const reader = await file.readable.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
+
+    let didThrow = false;
+    try {
+      await respondWith(new Response(file.readable));
+    } catch {
+      // pass
+      didThrow = true;
+    }
+
+    assert(didThrow);
+    httpConn.close();
+    listener.close();
+    client.close();
+  },
+);
+
 // https://github.com/denoland/deno/issues/11595
 Deno.test(
   { permissions: { net: true } },
