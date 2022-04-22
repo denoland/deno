@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype } = core;
-  const { ReadableStream, WritableStream } = window.__bootstrap.streams;
+  const { WritableStream, readableStreamForRid } = window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -65,40 +65,12 @@
     return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
 
-  const DEFAULT_CHUNK_SIZE = 64 * 1024;
-
   function tryClose(rid) {
     try {
       core.close(rid);
     } catch {
       // Ignore errors
     }
-  }
-
-  function readableStreamForRid(rid) {
-    return new ReadableStream({
-      type: "bytes",
-      async pull(controller) {
-        const v = controller.byobRequest.view;
-        try {
-          const bytesRead = await read(rid, v);
-          if (bytesRead === null) {
-            tryClose(rid);
-            controller.close();
-            controller.byobRequest.respond(0);
-          } else {
-            controller.byobRequest.respond(bytesRead);
-          }
-        } catch (e) {
-          controller.error(e);
-          tryClose(rid);
-        }
-      },
-      cancel() {
-        tryClose(rid);
-      },
-      autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
-    });
   }
 
   function writableStreamForRid(rid) {

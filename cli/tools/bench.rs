@@ -178,6 +178,10 @@ impl BenchReporter for ConsoleReporter {
     use std::sync::atomic::Ordering;
     static FIRST_PLAN: AtomicBool = AtomicBool::new(true);
 
+    self.group = None;
+    self.baseline = None;
+    self.name = String::new();
+    self.group_measurements.clear();
     self.options = Some(mitata::reporter::Options::new(
       &plan.names.iter().map(|x| x.as_str()).collect::<Vec<&str>>(),
     ));
