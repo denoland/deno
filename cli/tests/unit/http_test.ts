@@ -880,13 +880,15 @@ Deno.test(
       assert(value);
     }
 
+    let didThrow = false;
     try {
       await respondWith(new Response(file.readable));
-      fail("The stream should've been locked");
     } catch {
       // pass
+      didThrow = true;
     }
 
+    assert(didThrow);
     httpConn.close();
     listener.close();
     client.close();

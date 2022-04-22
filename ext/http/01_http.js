@@ -281,7 +281,6 @@
                 streamRid,
                 resourceRid,
               );
-              readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -293,6 +292,8 @@
               }
               await reader.cancel(error);
               throw error;
+            } finally {
+              readableStreamClose(respBody); // Release JS lock.
             }
           } else {
             const reader = respBody.getReader();
