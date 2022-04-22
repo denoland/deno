@@ -167,8 +167,10 @@
   }
 
   function spawn(command, options) {
-    if (options.stdin === "piped") {
-      throw new TypeError("Piped stdin is not supported, see 'spawnChild()'");
+    if (options?.stdin === "piped") {
+      throw new TypeError(
+        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+      );
     }
     return spawnChild(command, options).output();
   }
@@ -185,7 +187,9 @@
     stderr = "piped",
   } = {}) {
     if (stdin === "piped") {
-      throw new TypeError("Piped stdin is not supported, see 'spawnChild()'");
+      throw new TypeError(
+        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+      );
     }
     return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
