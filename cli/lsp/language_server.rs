@@ -1435,7 +1435,7 @@ impl Inner {
           LspError::internal_error()
         })?
       } else {
-        combined_code_actions.changes.clone()
+        combined_code_actions.changes
       };
       let mut code_action = params.clone();
       code_action.edit = ts_changes_to_edit(&changes, self).map_err(|err| {

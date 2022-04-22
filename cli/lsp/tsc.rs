@@ -1329,7 +1329,7 @@ impl FileTextChanges {
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
+        uri: specifier,
         version: asset_or_doc.document_lsp_version(),
       },
       edits,
@@ -1373,7 +1373,7 @@ impl FileTextChanges {
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
+        uri: specifier,
         version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
