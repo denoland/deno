@@ -1444,7 +1444,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
     Err(error) => {
       let error_string = match error.downcast_ref::<JsError>() {
         Some(e) => format_js_error(e),
-        None =>  format!("{:?}", error),
+        None => format!("{:?}", error),
       };
       eprintln!(
         "{}: {}",
