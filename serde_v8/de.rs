@@ -7,7 +7,7 @@ use crate::keys::{v8_struct_key, KeyCache};
 use crate::magic::transl8::FromV8;
 use crate::magic::transl8::{visit_magic, MagicType};
 use crate::payload::ValueType;
-use crate::{magic, Buffer, ByteString, DetachedBuffer, U16String};
+use crate::{magic, ByteString, DetachedBuffer, U16String, ZeroCopyBuf};
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -143,7 +143,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       // Map to Vec<u8> when deserialized via deserialize_any
       // e.g: for untagged enums or StringOrBuffer
       ValueType::ArrayBufferView | ValueType::ArrayBuffer => {
-        magic::zero_copy_buf::ZeroCopyBuf::from_v8(&mut *self.scope, self.input)
+        magic::v8slice::V8Slice::from_v8(&mut *self.scope, self.input)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
     }
@@ -347,8 +347,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     match name {
-      Buffer::MAGIC_NAME => {
-        visit_magic(visitor, Buffer::from_v8(self.scope, self.input)?)
+      ZeroCopyBuf::MAGIC_NAME => {
+        visit_magic(visitor, ZeroCopyBuf::from_v8(self.scope, self.input)?)
       }
       DetachedBuffer::MAGIC_NAME => {
         visit_magic(visitor, DetachedBuffer::from_v8(self.scope, self.input)?)

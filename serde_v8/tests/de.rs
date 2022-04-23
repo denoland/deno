@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_v8::utils::{js_exec, v8_do};
 use serde_v8::ByteString;
 use serde_v8::Error;
-use serde_v8::{Buffer, U16String};
+use serde_v8::{U16String, ZeroCopyBuf};
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -204,20 +204,20 @@ fn de_string_or_buffer() {
 fn de_buffers() {
   // ArrayBufferView
   dedo("new Uint8Array([97])", |scope, v| {
-    let buf: Buffer = serde_v8::from_v8(scope, v).unwrap();
+    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
     assert_eq!(&*buf, &[97]);
   });
 
   // ArrayBuffer
   dedo("(new Uint8Array([97])).buffer", |scope, v| {
-    let buf: Buffer = serde_v8::from_v8(scope, v).unwrap();
+    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
     assert_eq!(&*buf, &[97]);
   });
 
   dedo(
     "(Uint8Array.from([0x68, 0x65, 0x6C, 0x6C, 0x6F]))",
     |scope, v| {
-      let buf: Buffer = serde_v8::from_v8(scope, v).unwrap();
+      let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
