@@ -10,4 +10,4 @@ error: Uncaught (in worker "") Error: foo
   colno: 9
 }
 error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at Worker.#pollControl (deno:runtime/js/11_workers.js:170:21)
+    at [WILDCARD]
