@@ -261,7 +261,8 @@ impl Inner {
     }
   }
 
-  /// Searches assets and open documents erroring if it doesn't exist.
+  /// Searches assets and documents for the provided
+  /// specifier erroring if it doesn't exist.
   pub fn get_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
@@ -277,7 +278,7 @@ impl Inner {
     )
   }
 
-  /// Searches assets and open documents.
+  /// Searches assets and documents for the provided specifier.
   pub fn get_maybe_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
