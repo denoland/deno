@@ -5,6 +5,7 @@ use crate::js;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::run_basic;
+use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
@@ -22,7 +23,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
-use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -324,8 +324,8 @@ pub struct WebWorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -406,6 +406,7 @@ impl WebWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
+        options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init().enabled(options.use_deno_namespace),
@@ -443,7 +444,6 @@ impl WebWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       source_map_getter: options.source_map_getter,
-      js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -644,7 +644,18 @@ impl WebWorker {
   }
 }
 
-fn print_worker_error(error_str: String, name: &str) {
+fn print_worker_error(
+  error: &AnyError,
+  name: &str,
+  format_js_error_fn: Option<&FormatJsErrorFn>,
+) {
+  let error_str = match format_js_error_fn {
+    Some(format_js_error_fn) => match error.downcast_ref::<JsError>() {
+      Some(js_error) => format_js_error_fn(js_error),
+      None => error.to_string(),
+    },
+    None => error.to_string(),
+  };
   eprintln!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
@@ -660,6 +671,7 @@ pub fn run_web_worker(
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
   preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
@@ -673,7 +685,7 @@ pub fn run_web_worker(
     let mut worker = match result {
       Ok(worker) => worker,
       Err(e) => {
-        print_worker_error(e.to_string(), &name);
+        print_worker_error(&e, &name, format_js_error_fn.as_deref());
         internal_handle
           .post_event(WorkerControlEvent::TerminalError(e))
           .expect("Failed to post message to host");
@@ -713,7 +725,7 @@ pub fn run_web_worker(
     };
 
     if let Err(e) = result {
-      print_worker_error(e.to_string(), &name);
+      print_worker_error(&e, &name, format_js_error_fn.as_deref());
       internal_handle
         .post_event(WorkerControlEvent::TerminalError(e))
         .expect("Failed to post message to host");

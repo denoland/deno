@@ -134,17 +134,14 @@
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        lineno: e.lineNumber ? e.lineNumber : undefined,
+        colno: e.columnNumber ? e.columnNumber : undefined,
         filename: e.fileName,
         error: null,
       });
 
       this.dispatchEvent(event);
       // Don't bubble error event to window for loader errors (`!e.fileName`).
-      // TODO(nayeemrmn): Currently these are never bubbled because worker
-      // error event fields aren't populated correctly and `e.fileName` is
-      // always empty.
       if (e.fileName && !event.defaultPrevented) {
         window.dispatchEvent(event);
       }
