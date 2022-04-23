@@ -1,7 +1,27 @@
+Check [WILDCARD]/bench/group_baseline.ts
 Check [WILDCARD]/bench/pass.ts
 Check [WILDCARD]/bench/group_baseline.ts
 cpu: [WILDCARD]
 runtime: deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/bench/group_baseline.ts
+benchmark         time (avg)             (min … max)       p75       p99      p995
+---------------------------------------------------- -----------------------------
+noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+summary
+  noo[WILDCARD]
+   [WILDCARD]x times [WILDCARD] than noo[WILDCARD]
+
+noop3 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+parse url 2x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+parse url 6x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+summary
+  parse url 2x
+   [WILDCARD]x times slower than noop3
+   [WILDCARD]x times faster than parse url 6x
 
 [WILDCARD]/bench/pass.ts
 benchmark      time (avg)             (min … max)       p75       p99      p995
