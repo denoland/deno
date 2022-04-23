@@ -112,10 +112,10 @@ fn standalone_error() {
   assert!(stderr.contains("error: Uncaught Error: boom!"));
   assert!(stderr.contains("throw new Error(\"boom!\");"));
   assert!(stderr.contains("\n    at boom (file://"));
-  assert!(stderr.contains("standalone_error.ts:2:9"));
+  assert!(stderr.contains("standalone_error.ts:2:11"));
   assert!(stderr.contains("at foo (file://"));
-  assert!(stderr.contains("standalone_error.ts:6:3"));
-  assert!(stderr.contains("standalone_error.ts:9:1"));
+  assert!(stderr.contains("standalone_error.ts:5:5"));
+  assert!(stderr.contains("standalone_error.ts:7:1"));
 }
 
 #[test]
