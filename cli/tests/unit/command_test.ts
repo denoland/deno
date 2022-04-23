@@ -645,3 +645,25 @@ Deno.test(
     }
   },
 );
+
+Deno.test(async function spawnStdinPipedFails() {
+  assertRejects(
+    () =>
+      Deno.spawn("id", {
+        stdin: "piped",
+      }),
+    TypeError,
+    "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+  );
+});
+
+Deno.test(async function spawnSyncStdinPipedFails() {
+  assertThrows(
+    () =>
+      Deno.spawnSync("id", {
+        stdin: "piped",
+      }),
+    TypeError,
+    "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+  );
+});
