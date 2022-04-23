@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::flags::Flags;
+use crate::fmt_errors::format_js_error;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
@@ -292,8 +293,8 @@ pub async fn run(
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
     seed: metadata.seed,
-    format_js_error_fn: None,
-    source_map_getter: None,
+    source_map_getter: Some(Box::new(ps.clone())),
+    format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
     maybe_inspector_server: None,
