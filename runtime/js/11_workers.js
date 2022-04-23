@@ -142,6 +142,8 @@
 
       this.dispatchEvent(event);
       // Don't bubble error event to window for loader errors (`!e.fileName`).
+      // TODO(nayeemrmn): It's not correct to use `e.fileName` to detect user
+      // errors. It won't be there for non-awaited async ops for example.
       if (e.fileName && !event.defaultPrevented) {
         window.dispatchEvent(event);
       }
