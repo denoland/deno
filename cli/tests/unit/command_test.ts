@@ -647,7 +647,7 @@ Deno.test(
 );
 
 Deno.test(async function spawnStdinPipedFails() {
-  assertRejects(
+  await assertRejects(
     () =>
       Deno.spawn("id", {
         stdin: "piped",
@@ -657,7 +657,7 @@ Deno.test(async function spawnStdinPipedFails() {
   );
 });
 
-Deno.test(async function spawnSyncStdinPipedFails() {
+Deno.test(function spawnSyncStdinPipedFails() {
   assertThrows(
     () =>
       Deno.spawnSync("id", {
