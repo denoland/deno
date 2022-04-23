@@ -730,7 +730,6 @@ async fn op_http_write_resource(
       HttpResponseWriter::BodyUncompressed(body) => {
         if let Err(err) = body.send_data(Bytes::from(buf.to_temp())).await {
           assert!(err.is_closed());
-          // Don't return "broken pipe", that's an implementation detail.
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
           // If there was no connection error, drop body_tx.
@@ -799,7 +798,6 @@ async fn op_http_write(
           Ok(_) => break Ok(()),
           Err(err) => {
             assert!(err.is_closed());
-            // Don't return "broken pipe", that's an implementation detail.
             // Pull up the failure associated with the transport connection instead.
             stream.conn.closed().await?;
             // If there was no connection error, drop body_tx.
