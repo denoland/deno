@@ -93,7 +93,10 @@ impl Serialize for WorkerControlEvent {
       | WorkerControlEvent::Error(error) => {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
-            let frame = js_error.frames.first();
+            let frame = js_error.frames.iter().find(|f| match &f.file_name {
+              Some(s) => !s.trim_start_matches('[').starts_with("deno:"),
+              None => false,
+            });
             json!({
               "message": js_error.exception_message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
