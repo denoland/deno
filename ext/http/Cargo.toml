@@ -13,6 +13,10 @@ description = "HTTP server implementation for Deno"
 [lib]
 path = "lib.rs"
 
+[[bench]]
+name = "compressible"
+harness = false
+
 [dependencies]
 async-compression = { version = "0.3.1", features = ["tokio", "brotli", "gzip"] }
 base64 = "0.13.0"
@@ -30,3 +34,6 @@ ring = "0.16.20"
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.17", features = ["full"] }
 tokio-util = { version = "0.7.0", features = ["io"] }
+
+[dev-dependencies]
+bencher = "0.1"

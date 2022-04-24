@@ -65,7 +65,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::task::spawn_local;
 use tokio_util::io::ReaderStream;
 
-mod compressible;
+pub mod compressible;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -542,8 +542,9 @@ async fn op_http_write_headers(
   }
 
   if headers_allow_compression {
-    body_compressible =
-      compressible::is_content_compressible(content_type_header);
+    body_compressible = content_type_header
+      .map(compressible::is_content_compressible)
+      .unwrap_or_default();
   }
 
   let body: Response<Body>;
