@@ -15,7 +15,6 @@ use deno_core::ZeroCopyBuf;
 
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::ResourceId;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
@@ -32,7 +31,6 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use tokio::io::AsyncSeekExt;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
@@ -172,8 +170,7 @@ fn op_open_sync(
   let std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
-  let tokio_file = tokio::fs::File::from_std(std_file);
-  let resource = StdFileResource::fs_file(tokio_file);
+  let resource = StdFileResource::fs_file(std_file);
   let rid = state.resource_table.add(resource);
   Ok(rid)
 }
@@ -184,14 +181,13 @@ async fn op_open_async(
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), &args)?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(&path)
-    .await
-    .map_err(|err| {
+  let std_file = tokio::task::spawn_blocking(move || {
+    open_options.open(path.clone()).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-    })?;
-
-  let resource = StdFileResource::fs_file(tokio_file);
+    })
+  })
+  .await?;
+  let resource = StdFileResource::fs_file(std_file?);
   let rid = state.borrow_mut().resource_table.add(resource);
   Ok(rid)
 }
@@ -342,12 +338,15 @@ async fn op_seek_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let pos = (*fs_file).0.as_mut().unwrap().seek(seek_from).await?;
-  Ok(pos)
+  tokio::task::spawn_blocking(move || {
+    let mut std_file = std_file.lock().unwrap();
+    std_file.seek(seek_from)
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[op]
@@ -376,12 +375,15 @@ async fn op_fdatasync_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  (*fs_file).0.as_mut().unwrap().sync_data().await?;
-  Ok(())
+  tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.sync_data()
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[op]
@@ -407,12 +409,15 @@ async fn op_fsync_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  (*fs_file).0.as_mut().unwrap().sync_all().await?;
-  Ok(())
+  tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.sync_all()
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[op]
@@ -441,11 +446,15 @@ async fn op_fstat_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
+  let metadata = tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.metadata()
+  })
+  .await?
+  .map_err(AnyError::from)?;
   Ok(get_stat(metadata))
 }
 
@@ -489,19 +498,11 @@ async fn op_flock_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    let std_file = std_file.lock().unwrap();
     if exclusive {
       std_file.lock_exclusive()?;
     } else {
@@ -546,19 +547,11 @@ async fn op_funlock_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    let std_file = std_file.lock().unwrap();
     std_file.unlock()?;
     Ok(())
   })
@@ -1642,12 +1635,15 @@ async fn op_ftruncate_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  (*fs_file).0.as_mut().unwrap().set_len(len).await?;
-  Ok(())
+  tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.set_len(len)
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[derive(Deserialize)]
@@ -1941,20 +1937,10 @@ async fn op_futime_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
   tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
     filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
     Ok(())
   })

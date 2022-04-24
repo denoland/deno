@@ -36,7 +36,7 @@ function getPrBody() {
     `Please ensure:\n` +
     `- [ ] Target branch is correct\n` +
     `- [ ] Crate versions are bumped correctly\n` +
-    `- [ ] deno_std version is incremented in the code\n` +
+    `- [ ] deno_std version is incremented in the code (see \`cli/compat/mod.rs\`)\n` +
     `- [ ] Releases.md is updated correctly\n\n` +
     `To make edits to this PR:\n` +
     "```shell\n" +

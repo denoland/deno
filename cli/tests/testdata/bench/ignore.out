@@ -1,15 +1,7 @@
 Check [WILDCARD]/bench/ignore.ts
-running 10 benches from [WILDCARD]/bench/ignore.ts
-bench bench0 ... 1000 iterations ignored ([WILDCARD])
-bench bench1 ... 1000 iterations ignored ([WILDCARD])
-bench bench2 ... 1000 iterations ignored ([WILDCARD])
-bench bench3 ... 1000 iterations ignored ([WILDCARD])
-bench bench4 ... 1000 iterations ignored ([WILDCARD])
-bench bench5 ... 1000 iterations ignored ([WILDCARD])
-bench bench6 ... 1000 iterations ignored ([WILDCARD])
-bench bench7 ... 1000 iterations ignored ([WILDCARD])
-bench bench8 ... 1000 iterations ignored ([WILDCARD])
-bench bench9 ... 1000 iterations ignored ([WILDCARD])
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
 
-bench result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out ([WILDCARD])
-
+[WILDCARD]/bench/ignore.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------

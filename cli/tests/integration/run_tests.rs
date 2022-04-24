@@ -2754,6 +2754,22 @@ fn deno_no_prompt_environment_variable() {
   assert!(output.status.success());
 }
 
+itest!(report_error {
+  args: "run --quiet report_error.ts",
+  output: "report_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(report_error_handled {
+  args: "run --quiet report_error_handled.ts",
+  output: "report_error_handled.ts.out",
+});
+
+itest!(spawn_stdout_inherit {
+  args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
+  output: "spawn_stdout_inherit.ts.out",
+});
+
 itest!(allow_run_allowlist_resolution {
   args: "run --quiet -A allow_run_allowlist_resolution.ts",
   output: "allow_run_allowlist_resolution.ts.out",
