@@ -579,7 +579,7 @@ pub enum DnsReturnRecord {
     preference: u16,
     exchange: String,
   },
-  NS(String),
+  Ns(String),
   Ptr(String),
   Srv {
     priority: u16,
@@ -731,7 +731,7 @@ fn rdata_to_return_record(
         preference: mx.preference(),
         exchange: mx.exchange().to_string(),
       }),
-      NS => r.as_ns().map(ToString::to_string).map(DnsReturnRecord::NS),
+      NS => r.as_ns().map(ToString::to_string).map(DnsReturnRecord::Ns),
       PTR => r
         .as_ptr()
         .map(ToString::to_string)
@@ -823,7 +823,7 @@ mod tests {
   fn rdata_to_return_record_ns() {
     let func = rdata_to_return_record(RecordType::NS);
     let rdata = RData::NS(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::NS("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ns("".to_string())));
   }
 
   #[test]
