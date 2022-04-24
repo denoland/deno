@@ -3568,7 +3568,6 @@ dependencies = [
  "bencher",
  "derive_more",
  "serde",
- "serde_bytes",
  "serde_json",
  "v8",
 ]
