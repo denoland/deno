@@ -392,7 +392,6 @@
 
   function createRequestBodyStream(streamRid) {
     return new ReadableStream({
-      type: "bytes",
       async pull(controller) {
         try {
           // This is the largest possible size for a single packet on a TLS

@@ -320,8 +320,6 @@
       webidl.assertBranded(this, BlobPrototype);
       const partIterator = toIterator(this[_parts]);
       const stream = new ReadableStream({
-        type: "bytes",
-        /** @param {ReadableByteStreamController} controller */
         async pull(controller) {
           while (true) {
             const { value, done } = await partIterator.next();
