@@ -787,9 +787,10 @@
     level,
     inspectOptions,
   ) {
-    const abbreviateSize = typeof inspectOptions.strAbbreviateSize === "undefined"
-      ? STR_ABBREVIATE_SIZE
-      : inspectOptions.strAbbreviateSize;
+    const abbreviateSize =
+      typeof inspectOptions.strAbbreviateSize === "undefined"
+        ? STR_ABBREVIATE_SIZE
+        : inspectOptions.strAbbreviateSize;
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string": {
