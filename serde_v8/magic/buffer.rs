@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Mutex;
@@ -20,6 +21,12 @@ pub enum MagicBuffer {
 }
 
 impl_magic!(MagicBuffer);
+
+impl Debug for MagicBuffer {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_list().entries(self.as_ref().iter()).finish()
+  }
+}
 
 impl MagicBuffer {
   pub fn empty() -> Self {
