@@ -1154,7 +1154,7 @@ impl Inner {
         Some(Err(err)) => Err(anyhow!("{}", err)),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, document.content().as_str(), fmt_options)
+          format_file(&file_path, document.content().as_str(), &fmt_options)
         }
       };
 

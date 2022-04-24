@@ -75,6 +75,12 @@ itest!(only {
   output: "bench/only.out",
 });
 
+itest!(multifile_summary {
+  args: "bench --unstable bench/group_baseline.ts bench/pass.ts bench/group_baseline.ts",
+  exit_code: 0,
+  output: "bench/multifile_summary.out",
+});
+
 itest!(no_check {
   args: "bench --unstable --no-check bench/no_check.ts",
   exit_code: 1,
@@ -111,6 +117,12 @@ itest!(finally_timeout {
   output: "bench/finally_timeout.out",
 });
 
+itest!(group_baseline {
+  args: "bench --unstable bench/group_baseline.ts",
+  exit_code: 0,
+  output: "bench/group_baseline.out",
+});
+
 itest!(unresolved_promise {
   args: "bench --unstable bench/unresolved_promise.ts",
   exit_code: 1,
@@ -130,13 +142,14 @@ itest!(filter {
 });
 
 itest!(no_prompt_by_default {
-  args: "bench --unstable bench/no_prompt_by_default.ts",
+  args: "bench --quiet --unstable bench/no_prompt_by_default.ts",
   exit_code: 1,
   output: "bench/no_prompt_by_default.out",
 });
 
 itest!(no_prompt_with_denied_perms {
-  args: "bench --unstable --allow-read bench/no_prompt_with_denied_perms.ts",
+  args:
+    "bench --quiet --unstable --allow-read bench/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "bench/no_prompt_with_denied_perms.out",
 });
