@@ -8,7 +8,9 @@ use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
 use crate::magic::transl8::MAGIC_FIELD;
 use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
-use crate::{magic, Buffer, ByteString, DetachedBuffer, U16String};
+use crate::{
+  magic, Buffer, ByteString, DetachedBuffer, StringOrBuffer, U16String,
+};
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -264,6 +266,7 @@ pub enum StructSerializers<'a, 'b, 'c> {
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
+  MagicStringOrBuffer(MagicalSerializer<'a, 'b, 'c, StringOrBuffer>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -282,6 +285,9 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
       StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::MagicU16String(s) => s.serialize_field(key, value),
+      StructSerializers::MagicStringOrBuffer(s) => {
+        s.serialize_field(key, value)
+      }
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
@@ -293,6 +299,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::MagicDetached(s) => s.end(),
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
+      StructSerializers::MagicStringOrBuffer(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
@@ -534,6 +541,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       DetachedBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<DetachedBuffer>::new(self.scope);
         Ok(StructSerializers::MagicDetached(m))
+      }
+      StringOrBuffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<StringOrBuffer>::new(self.scope);
+        Ok(StructSerializers::MagicStringOrBuffer(m))
       }
       magic::Value::MAGIC_NAME => {
         let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
