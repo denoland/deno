@@ -12,6 +12,7 @@ use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::ByteString;
+use deno_core::CancelHandle;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -107,6 +108,7 @@ pub fn init<P: TimersPermission + 'static>(
       compression::op_compression_finish::decl(),
       op_now::decl::<P>(),
       op_timer_handle::decl(),
+      op_cancel_handle::decl(),
       op_sleep::decl(),
       op_sleep_sync::decl::<P>(),
     ])
@@ -350,6 +352,13 @@ fn op_encoding_encode_into(
     read: input[..boundary].encode_utf16().count(),
     written: boundary,
   })
+}
+
+/// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
+#[op]
+pub fn op_cancel_handle(state: &mut OpState) -> Result<ResourceId, AnyError> {
+  let rid = state.resource_table.add(CancelHandle::new());
+  Ok(rid)
 }
 
 pub fn get_declaration() -> PathBuf {

@@ -273,7 +273,6 @@ pub async fn run(
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
-      apply_source_maps: false,
       args: metadata.argv,
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
@@ -293,6 +292,7 @@ pub async fn run(
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
     seed: metadata.seed,
+    source_map_getter: None,
     js_error_create_fn: None,
     create_web_worker_cb,
     web_worker_preload_module_cb,

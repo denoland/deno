@@ -20,7 +20,6 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::source_maps::SourceMapGetter;
 use crate::version;
 
 use deno_ast::MediaType;
@@ -38,6 +37,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
