@@ -38,6 +38,7 @@ use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
+use hyper::body::Bytes;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
@@ -612,7 +613,7 @@ async fn op_http_write_headers(
             // (~4MB)
             let mut writer =
               brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
-            writer.write_all(&data.into_bytes())?;
+            writer.write_all(&data)?;
             body = builder.body(writer.into_inner().into())?;
           }
           _ => {
@@ -623,14 +624,14 @@ async fn op_http_write_headers(
             // 1.
             // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
             let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
-            writer.write_all(&data.into_bytes())?;
+            writer.write_all(&data)?;
             body = builder.body(writer.finish()?.into())?;
           }
         }
       } else {
         // If a buffer was passed, but isn't compressible, we use it to
         // construct a response body.
-        body = builder.body(data.into_bytes().into())?;
+        body = builder.body(Bytes::copy_from_slice(&data).into())?;
       }
       new_wr = HttpResponseWriter::Closed;
     }
