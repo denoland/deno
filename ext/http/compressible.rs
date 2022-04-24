@@ -1,10 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use phf::phf_set;
 use std::str::FromStr;
 
 // Data obtained from https://github.com/jshttp/mime-db/blob/fa5e4ef3cc8907ec3c5ec5b85af0c63d7059a5cd/db.json
 // Important! Keep this list sorted alphabetically.
-const CONTENT_TYPES: &[&[u8]] = &[
+static CONTENT_TYPES: phf::Set<&'static [u8]> = phf_set! {
   b"application/3gpdash-qoe-report+xml",
   b"application/3gpp-ims+xml",
   b"application/3gpphal+json",
@@ -617,10 +618,10 @@ const CONTENT_TYPES: &[&[u8]] = &[
   b"text/yaml",
   b"x-shader/x-fragment",
   b"x-shader/x-vertex",
-];
+};
 
 fn known_compressible(ct: &[u8]) -> bool {
-  CONTENT_TYPES.binary_search(&ct).is_ok()
+  CONTENT_TYPES.contains(ct)
 }
 
 fn known_mime(ct: &[u8]) -> Option<bool> {
@@ -643,6 +644,7 @@ mod tests {
   #[test]
   fn non_compressible_content_type() {
     assert!(!is_content_compressible("application/vnd.deno+json"));
+    assert!(!is_content_compressible("text/fake"));
   }
 
   #[test]
