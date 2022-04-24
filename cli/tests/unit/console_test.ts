@@ -1938,3 +1938,51 @@ Deno.test(function inspectColors() {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
 });
+
+Deno.test(function inspectEmptyArray() {
+  const arr: string[] = [];
+
+  assertEquals(
+    Deno.inspect(arr, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "[]",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const map = new Map();
+
+  assertEquals(
+    Deno.inspect(map, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Map {}",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const set = new Set();
+
+  assertEquals(
+    Deno.inspect(set, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Set {}",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const typedArray = new Uint8Array(0);
+
+  assertEquals(
+    Deno.inspect(typedArray, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Uint8Array(0) []",
+  );
+});

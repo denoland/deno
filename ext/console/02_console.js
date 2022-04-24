@@ -478,9 +478,10 @@
       iContent = entries.length === 0
         ? ""
         : ` ${ArrayPrototypeJoin(entries, ", ")} `;
+      const compact = entriesLength === 0 ? true : inspectOptions.compact;
       if (
         colors.stripColor(iContent).length > LINE_BREAKING_LENGTH ||
-        !inspectOptions.compact
+        !compact
       ) {
         iContent = `${initIndentation}${
           ArrayPrototypeJoin(entries, entryIndentation)
