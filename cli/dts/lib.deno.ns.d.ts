@@ -2953,6 +2953,7 @@ declare namespace Deno {
     | "ANAME"
     | "CNAME"
     | "MX"
+    | "NS"
     | "PTR"
     | "SRV"
     | "TXT";

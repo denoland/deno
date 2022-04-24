@@ -910,6 +910,15 @@ async fn test_resolve_dns() {
           record_set,
         );
 
+        // Inserts NS record
+        let rdata = RData::NS(Name::from_str("ns1.ns.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::NS),
+          record_set,
+        );
+
         // Inserts PTR record
         let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
         let record = Record::from_rdata(
@@ -1003,6 +1012,7 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    println!("{}", err);
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
