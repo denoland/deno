@@ -859,7 +859,7 @@ Deno.test(
   async function httpServerCorrectSizeResponse() {
     const tmpFile = await Deno.makeTempFile();
     const file = await Deno.open(tmpFile, { write: true, read: true });
-    let nread = await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
+    await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
     file.close();
     const promise = (async () => {
       const listener = Deno.listen({ port: 4503 });
