@@ -2003,3 +2003,22 @@ Deno.test(function inspectEmptyMap() {
     "Uint8Array(0) [\n]",
   );
 });
+
+Deno.test(function inspectStringAbbreviation() {
+  const LONG_STRING =
+    "This is a really long string which will be abbreviated with ellipsis.";
+  const obj = {
+    str: LONG_STRING,
+  };
+  const arr = [LONG_STRING];
+
+  assertEquals(
+    Deno.inspect(obj, { strAbbreviateSize: 10 }),
+    '{ str: "This is a ..." }',
+  );
+
+  assertEquals(
+    Deno.inspect(arr, { strAbbreviateSize: 10 }),
+    '[ "This is a ..." ]',
+  );
+});

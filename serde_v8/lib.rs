@@ -11,7 +11,7 @@ pub mod utils;
 pub use de::{from_v8, from_v8_cached, Deserializer};
 pub use error::{Error, Result};
 pub use keys::KeyCache;
-pub use magic::buffer::MagicBuffer as Buffer;
+pub use magic::buffer::ZeroCopyBuf;
 pub use magic::bytestring::ByteString;
 pub use magic::detached_buffer::DetachedBuffer;
 pub use magic::string_or_buffer::StringOrBuffer;
