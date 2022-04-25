@@ -5,7 +5,6 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
 use crate::permissions::Permissions;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
@@ -290,6 +289,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
 
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
   use winapi::shared::minwindef::DWORD;
