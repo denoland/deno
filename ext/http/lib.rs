@@ -729,7 +729,9 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        if let Err(err) = body.send_data(Bytes::from(buf.to_temp())).await {
+        let mut buf = buf.to_temp();
+        buf.truncate(nread);
+        if let Err(err) = body.send_data(Bytes::from(buf)).await {
           assert!(err.is_closed());
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
