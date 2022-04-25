@@ -2419,11 +2419,7 @@ impl State {
   ) -> Option<AssetOrDocument> {
     let snapshot = &self.state_snapshot;
     if specifier.scheme() == "asset" {
-      snapshot
-        .assets
-        .get_cached(specifier)
-        .flatten()
-        .map(AssetOrDocument::Asset)
+      snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
     } else {
       snapshot
         .documents
