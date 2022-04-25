@@ -11,7 +11,6 @@
     ArrayPrototypeMap,
     ArrayPrototypeSlice,
     TypeError,
-    isNaN,
     ObjectEntries,
     String,
   } = window.__bootstrap.primordials;
