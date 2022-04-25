@@ -4,6 +4,7 @@ use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::process::Stdio;
+use super::process::StdioOrRid;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -147,8 +148,14 @@ fn create_command(
   }
 
   command.stdin(args.stdio.stdin.as_stdio());
-  command.stdout(args.stdio.stdout.as_stdio());
-  command.stderr(args.stdio.stderr.as_stdio());
+  command.stdout(match args.stdio.stdout {
+    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
+    value => value.as_stdio(),
+  });
+  command.stderr(match args.stdio.stderr {
+    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
+    value => value.as_stdio(),
+  });
 
   Ok(command)
 }

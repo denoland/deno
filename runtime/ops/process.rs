@@ -186,8 +186,20 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
 
   // TODO: make this work with other resources, eg. sockets
   c.stdin(run_args.stdin.as_stdio(state)?);
-  c.stdout(run_args.stdout.as_stdio(state)?);
-  c.stderr(run_args.stderr.as_stdio(state)?);
+  c.stdout(
+    match run_args.stdout {
+      StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1),
+      value => value,
+    }
+    .as_stdio(state)?,
+  );
+  c.stderr(
+    match run_args.stderr {
+      StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2),
+      value => value,
+    }
+    .as_stdio(state)?,
+  );
 
   // We want to kill child when it's closed
   c.kill_on_drop(true);
