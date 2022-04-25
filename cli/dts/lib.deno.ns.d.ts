@@ -2491,6 +2491,8 @@ declare namespace Deno {
     getters?: boolean;
     /** Show an object's non-enumerable properties. Defaults to false. */
     showHidden?: boolean;
+    /** The maximum length of a string before it is truncated with an ellipsis */
+    strAbbreviateSize?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by
