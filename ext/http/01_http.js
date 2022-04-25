@@ -318,13 +318,13 @@
                 throw error;
               }
             }
+          }
 
-            try {
-              await core.opAsync("op_http_shutdown", streamRid);
-            } catch (error) {
-              await reader.cancel(error);
-              throw error;
-            }
+          try {
+            await core.opAsync("op_http_shutdown", streamRid);
+          } catch (error) {
+            await reader.cancel(error);
+            throw error;
           }
         }
 

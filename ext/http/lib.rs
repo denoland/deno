@@ -729,7 +729,9 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        if let Err(err) = body.send_data(Bytes::from(buf.to_temp())).await {
+        let mut buf = buf.to_temp();
+        buf.truncate(nread);
+        if let Err(err) = body.send_data(Bytes::from(buf)).await {
           assert!(err.is_closed());
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
@@ -739,19 +741,6 @@ async fn op_http_write_resource(
       }
       _ => unreachable!(),
     };
-  }
-
-  let wr = take(&mut *wr);
-  if let HttpResponseWriter::Body(mut body_writer) = wr {
-    match body_writer.shutdown().await {
-      Ok(_) => {}
-      Err(err) => {
-        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-        // Don't return "broken pipe", that's an implementation detail.
-        // Pull up the failure associated with the transport connection instead.
-        http_stream.conn.closed().await?;
-      }
-    }
   }
   Ok(())
 }

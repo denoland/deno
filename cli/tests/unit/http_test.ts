@@ -856,6 +856,32 @@ Deno.test({ permissions: { net: true } }, async function httpServerPanic() {
 
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
+  async function httpServerCorrectSizeResponse() {
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
+    file.close();
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4503 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const ev = await httpConn.nextRequest();
+      const { respondWith } = ev!;
+      const f = await Deno.open(tmpFile, { read: true });
+      await respondWith(new Response(f.readable, { status: 200 }));
+      httpConn.close();
+      listener.close();
+      f.close();
+    })();
+    const resp = await fetch("http://127.0.0.1:4503/");
+    const body = await resp.arrayBuffer();
+    assertEquals(body.byteLength, 70 * 1024);
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
   async function httpServerClosedStream() {
     const listener = Deno.listen({ port: 4502 });
 
