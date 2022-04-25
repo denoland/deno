@@ -962,10 +962,11 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.43.0"
+version = "0.43.1"
 dependencies = [
  "async-compression",
  "base64 0.13.0",
+ "bencher",
  "brotli",
  "bytes",
  "cache_control",
@@ -976,6 +977,7 @@ dependencies = [
  "hyper",
  "mime",
  "percent-encoding",
+ "phf",
  "ring",
  "serde",
  "tokio",
