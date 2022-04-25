@@ -966,6 +966,7 @@ version = "0.43.0"
 dependencies = [
  "async-compression",
  "base64 0.13.0",
+ "bencher",
  "brotli",
  "bytes",
  "cache_control",
@@ -976,6 +977,7 @@ dependencies = [
  "hyper",
  "mime",
  "percent-encoding",
+ "phf",
  "ring",
  "serde",
  "tokio",
@@ -3568,7 +3570,6 @@ dependencies = [
  "bencher",
  "derive_more",
  "serde",
- "serde_bytes",
  "serde_json",
  "v8",
 ]
