@@ -1947,7 +1947,24 @@ Deno.test(function inspectEmptyArray() {
       compact: false,
       trailingComma: true,
     }),
-    "[]",
+    "[\n]",
+  );
+});
+
+Deno.test(function inspectDeepEmptyArray() {
+  const obj = {
+    arr: [],
+  };
+
+  assertEquals(
+    Deno.inspect(obj, {
+      compact: false,
+      trailingComma: true,
+    }),
+    `{
+  arr: [
+  ],
+}`,
   );
 });
 
@@ -1959,7 +1976,7 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Map {}",
+    "Map {\n}",
   );
 });
 
@@ -1971,7 +1988,7 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Set {}",
+    "Set {\n}",
   );
 });
 
@@ -1983,6 +2000,6 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Uint8Array(0) []",
+    "Uint8Array(0) [\n]",
   );
 });
