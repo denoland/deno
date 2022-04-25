@@ -166,13 +166,13 @@
     }
   }
 
-  function spawn(command, options) { // TODO(@crowlKats): more options (like input)?
-    return spawnChild(command, {
-      ...options,
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
+  function spawn(command, options) {
+    if (options?.stdin === "piped") {
+      throw new TypeError(
+        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+      );
+    }
+    return spawnChild(command, options).output();
   }
 
   function spawnSync(command, {
@@ -182,7 +182,15 @@
     env = {},
     uid = undefined,
     gid = undefined,
-  } = {}) { // TODO(@crowlKats): more options (like input)?
+    stdin = "null",
+    stdout = "piped",
+    stderr = "piped",
+  } = {}) {
+    if (stdin === "piped") {
+      throw new TypeError(
+        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+      );
+    }
     return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
@@ -191,9 +199,9 @@
       env: ObjectEntries(env),
       uid,
       gid,
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
+      stdin,
+      stdout,
+      stderr,
     });
   }
 

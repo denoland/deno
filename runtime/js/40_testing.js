@@ -438,27 +438,6 @@
     };
   }
 
-  function assertExitSync(fn, isTest) {
-    return function exitSanitizer(...params) {
-      setExitHandler((exitCode) => {
-        assert(
-          false,
-          `${
-            isTest ? "Test case" : "Bench"
-          } attempted to exit with exit code: ${exitCode}`,
-        );
-      });
-
-      try {
-        fn(...new SafeArrayIterator(params));
-      } catch (err) {
-        throw err;
-      } finally {
-        setExitHandler(null);
-      }
-    };
-  }
-
   function assertTestStepScopes(fn) {
     /** @param step {TestStep} */
     return async function testStepSanitizer(step) {
@@ -535,18 +514,18 @@
     };
   }
 
+  function pledgePermissions(permissions) {
+    return core.opSync(
+      "op_pledge_test_permissions",
+      serializePermissions(permissions),
+    );
+  }
+
+  function restorePermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
+  }
+
   function withPermissions(fn, permissions) {
-    function pledgePermissions(permissions) {
-      return core.opSync(
-        "op_pledge_test_permissions",
-        serializePermissions(permissions),
-      );
-    }
-
-    function restorePermissions(token) {
-      core.opSync("op_restore_test_permissions", token);
-    }
-
     return async function applyPermissions(...params) {
       const token = pledgePermissions(permissions);
 
@@ -748,11 +727,6 @@
 
     const AsyncFunction = (async () => {}).constructor;
     benchDef.async = AsyncFunction === benchDef.fn.constructor;
-
-    benchDef.fn = wrapBenchFnWithSanitizers(
-      benchDef.fn,
-      benchDef,
-    );
 
     ArrayPrototypePush(benches, benchDef);
   }
@@ -989,10 +963,16 @@
 
     try {
       if (bench.permissions) {
-        token = core.opSync(
-          "op_pledge_test_permissions",
-          serializePermissions(bench.permissions),
-        );
+        token = pledgePermissions(bench.permissions);
+      }
+
+      if (bench.sanitizeExit) {
+        setExitHandler((exitCode) => {
+          assert(
+            false,
+            `Bench attempted to exit with exit code: ${exitCode}`,
+          );
+        });
       }
 
       const benchTimeInMs = 500;
@@ -1003,7 +983,8 @@
     } catch (error) {
       return { failed: { ...bench, error: formatError(error) } };
     } finally {
-      if (token !== null) core.opSync("op_restore_test_permissions", token);
+      if (bench.sanitizeExit) setExitHandler(null);
+      if (token !== null) restorePermissions(token);
     }
   }
 
@@ -1541,21 +1522,6 @@
       testFn = assertExit(testFn, true);
     }
     return testFn;
-  }
-
-  /**
-   * @template T {Function}
-   * @param fn {T}
-   * @param opts {{
-   *   sanitizeExit: boolean,
-   * }}
-   * @returns {T}
-   */
-  function wrapBenchFnWithSanitizers(fn, opts) {
-    if (opts.sanitizeExit) {
-      fn = opts.async ? assertExit(fn, false) : assertExitSync(fn, false);
-    }
-    return fn;
   }
 
   /**

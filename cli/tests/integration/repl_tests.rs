@@ -767,15 +767,22 @@ fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('hello');");
     console.write_line("clear();");
-    console.write_line("const clear = 1 + 2;");
+    console.write_line("const clear = 1234 + 2000;");
     console.write_line("clear;");
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("hello"));
-    assert!(output.contains("[1;1H"));
+    if cfg!(windows) {
+      // Windows will overwrite what's in the console buffer before
+      // we read from it. It contains this string repeated many times
+      // to clear the screen.
+      assert!(output.contains("\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K"));
+    } else {
+      assert!(output.contains("hello"));
+      assert!(output.contains("[1;1H"));
+    }
     assert!(output.contains("undefined"));
-    assert!(output.contains("const clear = 1 + 2;"));
-    assert!(output.contains('3'));
+    assert!(output.contains("const clear = 1234 + 2000;"));
+    assert!(output.contains("3234"));
   });
 }
