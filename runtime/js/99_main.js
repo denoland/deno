@@ -222,10 +222,6 @@ delete Object.prototype.__proto__;
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
     const prepareStackTrace = core.createPrepareStackTrace(
-      // TODO(bartlomieju): a very crude way to disable
-      // source mapping of errors. This condition is true
-      // only for compiled standalone binaries.
-      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
       errorStack.opFormatFileName,
     );
     // deno-lint-ignore prefer-primordials
@@ -559,6 +555,7 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
+    defineEventHandler(window, "error");
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
     defineEventHandler(window, "unhandledrejection");

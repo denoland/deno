@@ -854,6 +854,47 @@ Deno.test({ permissions: { net: true } }, async function httpServerPanic() {
   listener.close();
 });
 
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerClosedStream() {
+    const listener = Deno.listen({ port: 4502 });
+
+    const client = await Deno.connect({ port: 4502 });
+    await client.write(new TextEncoder().encode(
+      `GET / HTTP/1.0\r\n\r\n`,
+    ));
+
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const ev = await httpConn.nextRequest();
+    const { respondWith } = ev!;
+
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    await file.write(new TextEncoder().encode("hello"));
+
+    const reader = await file.readable.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
+
+    let didThrow = false;
+    try {
+      await respondWith(new Response(file.readable));
+    } catch {
+      // pass
+      didThrow = true;
+    }
+
+    assert(didThrow);
+    httpConn.close();
+    listener.close();
+    client.close();
+  },
+);
+
 // https://github.com/denoland/deno/issues/11595
 Deno.test(
   { permissions: { net: true } },
@@ -1185,26 +1226,25 @@ Deno.test(
 const decoder = new TextDecoder();
 
 Deno.test({
-  name: "http server compresses body",
+  name: "http server compresses body - check headers",
   permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
+    const listener = Deno.listen({ hostname, port });
+
+    const data = { hello: "deno", now: "with", compressed: "body" };
 
     async function server() {
-      const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
       const httpConn = Deno.serveHttp(tcpConn);
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
       assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
-      const response = new Response(
-        JSON.stringify({ hello: "deno", now: "with", compressed: "body" }),
-        {
-          headers: { "content-type": "application/json" },
-        },
-      );
+      const response = new Response(JSON.stringify(data), {
+        headers: { "content-type": "application/json" },
+      });
       await respondWith(response);
       httpConn.close();
       listener.close();
@@ -1214,7 +1254,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1228,6 +1268,60 @@ Deno.test({
       const output = decoder.decode(await proc.output());
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+});
+
+Deno.test({
+  name: "http server compresses body - check body",
+  permissions: { net: true, run: true },
+  async fn() {
+    const hostname = "localhost";
+    const port = 4501;
+    const listener = Deno.listen({ hostname, port });
+
+    const data = { hello: "deno", now: "with", compressed: "body" };
+
+    async function server() {
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      const response = new Response(JSON.stringify(data), {
+        headers: { "content-type": "application/json" },
+      });
+      await respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = [
+        "curl",
+        "--request",
+        "GET",
+        "--url",
+        url,
+        "--header",
+        "Accept-Encoding: gzip, deflate, br",
+      ];
+      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      const stdout = proc.stdout!.readable
+        .pipeThrough(new DecompressionStream("gzip"))
+        .pipeThrough(new TextDecoderStream());
+      let body = "";
+      for await (const chunk of stdout) {
+        body += chunk;
+      }
+      assertEquals(JSON.parse(body), data);
       proc.close();
     }
 
@@ -1265,7 +1359,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1319,7 +1413,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1370,7 +1464,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1424,7 +1518,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1481,7 +1575,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1538,7 +1632,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1592,7 +1686,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1614,15 +1708,18 @@ Deno.test({
 });
 
 Deno.test({
-  name: "http server doesn't compress streamed bodies",
+  name: "http server compresses streamed bodies - check headers",
   permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
     const port = 4501;
 
+    const encoder = new TextEncoder();
+    const listener = Deno.listen({ hostname, port });
+
+    const data = { hello: "deno", now: "with", compressed: "body" };
+
     async function server() {
-      const encoder = new TextEncoder();
-      const listener = Deno.listen({ hostname, port });
       const tcpConn = await listener.accept();
       const httpConn = Deno.serveHttp(tcpConn);
       const e = await httpConn.nextRequest();
@@ -1631,23 +1728,13 @@ Deno.test({
       assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
       const bodyInit = new ReadableStream({
         start(controller) {
-          controller.enqueue(
-            encoder.encode(
-              JSON.stringify({
-                hello: "deno",
-                now: "with",
-                compressed: "body",
-              }),
-            ),
-          );
+          controller.enqueue(encoder.encode(JSON.stringify(data)));
           controller.close();
         },
       });
       const response = new Response(
         bodyInit,
-        {
-          headers: { "content-type": "application/json", vary: "Accept" },
-        },
+        { headers: { "content-type": "application/json" } },
       );
       await respondWith(response);
       httpConn.close();
@@ -1658,7 +1745,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1670,8 +1757,71 @@ Deno.test({
       const status = await proc.status();
       assert(status.success);
       const output = decoder.decode(await proc.output());
-      assert(output.includes("vary: Accept\r\n"));
-      assert(!output.includes("content-encoding: "));
+      assert(output.includes("vary: Accept-Encoding\r\n"));
+      assert(output.includes("content-encoding: gzip\r\n"));
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+});
+
+Deno.test({
+  name: "http server compresses streamed bodies - check body",
+  permissions: { net: true, run: true },
+  async fn() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    const encoder = new TextEncoder();
+    const listener = Deno.listen({ hostname, port });
+
+    const data = { hello: "deno", now: "with", compressed: "body" };
+
+    async function server() {
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      const bodyInit = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify(data)));
+          controller.close();
+        },
+      });
+      const response = new Response(
+        bodyInit,
+        { headers: { "content-type": "application/json" } },
+      );
+      await respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = [
+        "curl",
+        "--request",
+        "GET",
+        "--url",
+        url,
+        "--header",
+        "Accept-Encoding: gzip, deflate, br",
+      ];
+      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      const stdout = proc.stdout.readable
+        .pipeThrough(new DecompressionStream("gzip"))
+        .pipeThrough(new TextDecoderStream());
+      let body = "";
+      for await (const chunk of stdout) {
+        body += chunk;
+      }
+      assertEquals(JSON.parse(body), data);
       proc.close();
     }
 
@@ -1719,7 +1869,7 @@ Deno.test({
       const url = `http://${hostname}:${port}/`;
       const cmd = [
         "curl",
-        "-I",
+        "-i",
         "--request",
         "GET",
         "--url",
@@ -1736,8 +1886,6 @@ Deno.test({
       // Ensure the content-length header is updated.
       assert(!output.includes(`content-length: ${contentLength}\r\n`));
       assert(output.includes("content-length: 72\r\n"));
-      console.log(output);
-
       proc.close();
     }
 

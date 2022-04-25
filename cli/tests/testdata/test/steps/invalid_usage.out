@@ -1,5 +1,5 @@
 [WILDCARD]
-running 7 tests from test/steps/invalid_usage.ts
+running 7 tests from ./test/steps/invalid_usage.ts
 capturing ...
   some step ... ok ([WILDCARD])
 FAILED ([WILDCARD])
@@ -10,44 +10,44 @@ inner missing await ...
   step ...
     inner ... pending ([WILDCARD])
       Error: Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
-          at postValidation [WILDCARD]
-          at testStepSanitizer [WILDCARD]
+          at [WILDCARD]
+          at async TestContext.step [WILDCARD]
   FAILED ([WILDCARD])
     Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
-        at postValidation [WILDCARD]
-        at testStepSanitizer [WILDCARD]
+        await t.step("step", (t) => {
+        ^
+        at [WILDCARD]
         at async fn ([WILDCARD]/invalid_usage.ts:[WILDCARD])
-        at async Object.testStepSanitizer [WILDCARD]
 FAILED ([WILDCARD])
 parallel steps with sanitizers ...
   step 1 ... pending ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps with sanitizers > step 1
-        at preValidation ([WILDCARD])
-        at testStepSanitizer ([WILDCARD])
-        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+      await t.step("step 2", () => {});
+              ^
         at [WILDCARD]
+        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
 FAILED ([WILDCARD])
 parallel steps when first has sanitizer ...
   step 1 ... pending ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps when first has sanitizer > step 1
-        at preValidation ([WILDCARD])
-        at testStepSanitizer ([WILDCARD])
-        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+      await t.step({
+              ^
         at [WILDCARD]
+        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
 FAILED ([WILDCARD])
 parallel steps when second has sanitizer ...
   step 1 ... ok ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step with sanitizers while another test step is running.
      * parallel steps when second has sanitizer > step 1
-        at preValidation ([WILDCARD])
-        at testStepSanitizer ([WILDCARD])
-        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+      await t.step({
+              ^
         at [WILDCARD]
+        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
 FAILED ([WILDCARD])
 parallel steps where only inner tests have sanitizers ...
   step 1 ...
@@ -57,49 +57,51 @@ parallel steps where only inner tests have sanitizers ...
     step inner ... FAILED ([WILDCARD])
       Error: Cannot start test step with sanitizers while another test step is running.
        * parallel steps where only inner tests have sanitizers > step 1
-          at preValidation ([WILDCARD])
-          at testStepSanitizer ([WILDCARD])
+            await t.step({
+                    ^
+          at [WILDCARD]
           at [WILDCARD]/invalid_usage.ts:[WILDCARD]
   FAILED ([WILDCARD])
 FAILED ([WILDCARD])
 
 failures:
 
-test/steps/invalid_usage.ts > capturing
+./test/steps/invalid_usage.ts > capturing
 Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
+  await capturedContext.step("next step", () => {});
+                        ^
     at TestContext.step ([WILDCARD])
     at [WILDCARD]/invalid_usage.ts:[WILDCARD]
-    at [WILDCARD]
 
-test/steps/invalid_usage.ts > top level missing await
+./test/steps/invalid_usage.ts > top level missing await
 Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
     at postValidation [WILDCARD]
     at testStepSanitizer ([WILDCARD])
     [WILDCARD]
 
-test/steps/invalid_usage.ts > inner missing await
+./test/steps/invalid_usage.ts > inner missing await
 Error: 1 test step failed.
     at [WILDCARD]
 
-test/steps/invalid_usage.ts > parallel steps with sanitizers
+./test/steps/invalid_usage.ts > parallel steps with sanitizers
 Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
     at postValidation [WILDCARD]
     at testStepSanitizer ([WILDCARD])
     [WILDCARD]
 
-test/steps/invalid_usage.ts > parallel steps when first has sanitizer
+./test/steps/invalid_usage.ts > parallel steps when first has sanitizer
 Error: 1 test step failed.
     at runTest ([WILDCARD])
     at [WILDCARD]
 
-test/steps/invalid_usage.ts > parallel steps when second has sanitizer
+./test/steps/invalid_usage.ts > parallel steps when second has sanitizer
 Error: 1 test step failed.
     at runTest ([WILDCARD])
     at [WILDCARD]
 
 failures:
 
-	test/steps/invalid_usage.ts
+	./test/steps/invalid_usage.ts
 	capturing
 	top level missing await
 	inner missing await

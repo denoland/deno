@@ -9,6 +9,8 @@
   const colors = window.__bootstrap.colors;
   const {
     ArrayBufferIsView,
+    AggregateErrorPrototype,
+    ArrayPrototypeUnshift,
     isNaN,
     DataViewPrototype,
     DatePrototype,
@@ -107,6 +109,7 @@
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
+    ReflectHas,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -295,6 +298,7 @@
     colors: false,
     getters: false,
     showHidden: false,
+    strAbbreviateSize: 100,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -327,7 +331,10 @@
 
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    if (customInspect in value && typeof value[customInspect] === "function") {
+    if (
+      ReflectHas(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
       return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
@@ -780,11 +787,15 @@
     level,
     inspectOptions,
   ) {
+    const abbreviateSize =
+      typeof inspectOptions.strAbbreviateSize === "undefined"
+        ? STR_ABBREVIATE_SIZE
+        : inspectOptions.strAbbreviateSize;
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string": {
-        const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
+        const trunc = value.length > abbreviateSize
+          ? StringPrototypeSlice(value, 0, abbreviateSize) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }
@@ -943,16 +954,50 @@
     }
     ArrayPrototypeShift(causes);
 
-    return (MapPrototypeGet(refMap, value) ?? "") + value.stack +
-      ArrayPrototypeJoin(
+    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+
+    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
+      const stackLines = StringPrototypeSplit(value.stack, "\n");
+      while (true) {
+        const line = ArrayPrototypeShift(stackLines);
+        if (RegExpPrototypeTest(/\s+at/, line)) {
+          ArrayPrototypeUnshift(stackLines, line);
+          break;
+        }
+
+        finalMessage += line;
+        finalMessage += "\n";
+      }
+      const aggregateMessage = ArrayPrototypeJoin(
         ArrayPrototypeMap(
-          causes,
-          (cause) =>
-            "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-            (cause?.stack ?? cause),
+          value.errors,
+          (error) =>
+            StringPrototypeReplace(
+              inspectArgs([error]),
+              /^(?!\s*$)/gm,
+              StringPrototypeRepeat(" ", 4),
+            ),
         ),
-        "",
+        "\n",
       );
+      finalMessage += aggregateMessage;
+      finalMessage += "\n";
+      finalMessage += ArrayPrototypeJoin(stackLines, "\n");
+    } else {
+      finalMessage += value.stack;
+    }
+
+    finalMessage += ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        causes,
+        (cause) =>
+          "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
+          (cause?.stack ?? cause),
+      ),
+      "",
+    );
+
+    return finalMessage;
   }
 
   function inspectStringObject(value, inspectOptions) {
@@ -1203,7 +1248,10 @@
     inspectOptions,
     proxyDetails,
   ) {
-    if (customInspect in value && typeof value[customInspect] === "function") {
+    if (
+      ReflectHas(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
       return String(value[customInspect](inspect));
     }
     // This non-unique symbol is used to support op_crates, ie.
@@ -1212,7 +1260,7 @@
     // Internal only, shouldn't be used by users.
     const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
     if (
-      privateCustomInspect in value &&
+      ReflectHas(value, privateCustomInspect) &&
       typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
@@ -2048,8 +2096,8 @@
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
           for (const k of keys) {
-            if (!primitive && k in valueObj) {
-              if (!(k in objectValues)) {
+            if (!primitive && ReflectHas(valueObj, k)) {
+              if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
               }
               objectValues[k][idx] = stringifyValue(valueObj[k]);
