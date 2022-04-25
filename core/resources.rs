@@ -36,7 +36,17 @@ pub trait Resource: Any + 'static {
   }
 
   /// Resources may implement `read()` to be a readable stream
-  fn read(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let (nread, _) = self.read_return(buf).await?;
+      Ok(nread)
+    })
+  }
+
+  fn read_return(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(futures::future::err(not_supported()))
   }
 
