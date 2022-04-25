@@ -714,7 +714,6 @@ async fn op_http_write_resource(
     let buf = ZeroCopyBuf::new_temp(vec);
     let (nread, buf) = resource.clone().read_return(buf).await?;
     if nread == 0 {
-      *wr = HttpResponseWriter::Closed;
       break;
     }
 
