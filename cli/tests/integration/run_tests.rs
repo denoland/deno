@@ -2774,8 +2774,3 @@ itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
 });
-
-itest!(worker_terminate_doesnt_block {
-  args: "run worker_terminate_doesnt_block.js",
-  output_str: Some(""),
-});
