@@ -714,6 +714,7 @@ async fn op_http_write_resource(
     let buf = ZeroCopyBuf::new_temp(vec);
     let (nread, buf) = resource.clone().read_return(buf).await?;
     if nread == 0 {
+      *wr = HttpResponseWriter::Closed;
       break;
     }
 
@@ -741,19 +742,6 @@ async fn op_http_write_resource(
       }
       _ => unreachable!(),
     };
-  }
-
-  let wr = take(&mut *wr);
-  if let HttpResponseWriter::Body(mut body_writer) = wr {
-    match body_writer.shutdown().await {
-      Ok(_) => {}
-      Err(err) => {
-        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-        // Don't return "broken pipe", that's an implementation detail.
-        // Pull up the failure associated with the transport connection instead.
-        http_stream.conn.closed().await?;
-      }
-    }
   }
   Ok(())
 }
