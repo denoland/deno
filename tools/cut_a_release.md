@@ -35,10 +35,31 @@ Before starting the process write a message in company's #general channel:
 3. A PR will be automatically created. Follow the checklist in the PR and review
    it.
 
+   <details>
+     <summary>❌ Failure Steps</summary>
+
+   1. Checkout the latest main.
+   2. Manually run `./_tools/release/01_bump_version.ts --minor`
+      1. Ensure the version in `version.ts` is updated correctly.
+      2. Ensure `Releases.md` is updated correctly.
+      3. Ensure all the tests pass with the latest build
+         - Use `../deno/target/release/deno test -A --unstable` and NOT
+           `deno task test`
+   3. Open a PR with the changes and continue with the steps below.
+   </details>
+
 4. Merge the PR.
 
 5. Wait for the CI run to complete which will tag the repo and create a draft
    release. Review the draft release and then publish it.
+
+   <details>
+     <summary>❌ Failure Steps</summary>
+
+   1. Tag the repo manually in the format `x.x.x`
+   2. Draft a new GH release by copying and pasting the release notes from
+      `Releases.md`
+   </details>
 
 ## Updating the main repo
 
@@ -70,6 +91,17 @@ verify on GitHub that everything looks correct.
 3. Wait for the workflow to complete and for a pull request to be automatically
    opened.
 
+   <details>
+     <summary>❌ Failure Steps</summary>
+
+   1. Checkout the branch the release is being made on.
+   2. Manually run `./tools/release/01_bump_crate_versions.ts`
+      1. Ensure the crate versions were bumped correctly
+      2. Ensure deno_std version was updated correctly in `cli/compat/mod.rs`
+      3. Ensure `Releases.md` was updated correctly
+   3. Open a PR with the changes and continue with the steps below.
+   </details>
+
 4. Review the pull request and make any necessary changes.
 
 5. Merge it.
@@ -80,6 +112,19 @@ verify on GitHub that everything looks correct.
    https://github.com/denoland/deno/actions/workflows/cargo_publish.yml
 
 2. Run it on the same branch that you used before and wait for it to complete.
+
+   <details>
+     <summary>❌ Failure Steps</summary>
+
+   1. The workflow was designed to be restartable. Try restarting it.
+   2. If that doesn't work, then do the following:
+      1. Checkout the branch the release is occurring on.
+      2. If `cargo publish` hasn't completed then run
+         `./tools/release/03_publish_crates.ts`
+         - Note that you will need access to crates.io so it might fail.
+      3. If `cargo publish` succeeded and a release tag wasn't created, then
+         manually create and push one for the release branch with a leading `v`.
+   </details>
 
 3. This CI run create a tag which triggers a second CI run that publishes the
    GitHub draft release.

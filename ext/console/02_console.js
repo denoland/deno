@@ -298,6 +298,7 @@
     colors: false,
     getters: false,
     showHidden: false,
+    strAbbreviateSize: 100,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -786,11 +787,15 @@
     level,
     inspectOptions,
   ) {
+    const abbreviateSize =
+      typeof inspectOptions.strAbbreviateSize === "undefined"
+        ? STR_ABBREVIATE_SIZE
+        : inspectOptions.strAbbreviateSize;
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string": {
-        const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
+        const trunc = value.length > abbreviateSize
+          ? StringPrototypeSlice(value, 0, abbreviateSize) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }

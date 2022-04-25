@@ -2726,3 +2726,46 @@ itest!(complex_error {
   output: "complex_error.ts.out",
   exit_code: 1,
 });
+
+// Regression test for https://github.com/denoland/deno/issues/12143.
+itest!(js_root_with_ts_check {
+  args: "run --quiet js_root_with_ts_check.js",
+  output: "js_root_with_ts_check.js.out",
+  exit_code: 1,
+});
+
+itest!(no_prompt_flag {
+  args: "run --quiet --unstable --no-prompt no_prompt.ts",
+  output_str: Some(""),
+});
+
+#[test]
+fn deno_no_prompt_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("no_prompt.ts")
+    .env("DENO_NO_PROMPT", "1")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+itest!(report_error {
+  args: "run --quiet report_error.ts",
+  output: "report_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(report_error_handled {
+  args: "run --quiet report_error_handled.ts",
+  output: "report_error_handled.ts.out",
+});
+
+itest!(spawn_stdout_inherit {
+  args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
+  output: "spawn_stdout_inherit.ts.out",
+});

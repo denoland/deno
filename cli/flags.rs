@@ -12,6 +12,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
+use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -143,6 +144,7 @@ pub struct LintFlags {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ReplFlags {
+  pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
 }
 
@@ -215,7 +217,10 @@ pub enum DenoSubcommand {
 
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
-    DenoSubcommand::Repl(ReplFlags { eval: None })
+    DenoSubcommand::Repl(ReplFlags {
+      eval_files: None,
+      eval: None,
+    })
   }
 }
 
@@ -474,7 +479,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_FUTURE_CHECK    Opt-in to the upcoming behavior of the `deno run` 
+    DENO_NO_PROMPT       Set to disable permission prompts on access
+                         (alternative to passing --no-prompt on invocation)
+    DENO_FUTURE_CHECK    Opt-in to the upcoming behavior of the `deno run`
                          subcommand that doesn't perform type-checking by default.
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     HTTP_PROXY           Proxy address for HTTP requests
@@ -553,7 +560,13 @@ where
     Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
     Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
     Some(("vendor", m)) => vendor_parse(&mut flags, m),
-    _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
+    _ => handle_repl_flags(
+      &mut flags,
+      ReplFlags {
+        eval_files: None,
+        eval: None,
+      },
+    ),
   }
 
   Ok(flags)
@@ -1357,6 +1370,16 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("repl"), false, true)
     .about("Read Eval Print Loop")
+    .arg(
+      Arg::new("eval-file")
+        .long("eval-file")
+        .min_values(1)
+        .takes_value(true)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs.")
+        .value_hint(ValueHint::AnyPath),
+    )
     .arg(
       Arg::new("eval")
         .long("eval")
@@ -2443,9 +2466,15 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.type_check_mode = TypeCheckMode::None;
   runtime_args_parse(flags, matches, false, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
+
+  let eval_files: Option<Vec<String>> = matches
+    .values_of("eval-file")
+    .map(|values| values.map(String::from).collect());
+
   handle_repl_flags(
     flags,
     ReplFlags {
+      eval_files,
       eval: matches.value_of("eval").map(ToOwned::to_owned),
     },
   );
@@ -2705,7 +2734,11 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  if matches.is_present("no-prompt") {
+  #[cfg(not(test))]
+  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
+  #[cfg(test)]
+  let has_no_prompt_env = false;
+  if has_no_prompt_env || matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }
@@ -3877,7 +3910,10 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl(ReplFlags { eval: None }),
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
+          eval: None
+        }),
         allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: None,
         allow_env: Some(vec![]),
@@ -3899,7 +3935,10 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl(ReplFlags { eval: None }),
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
+          eval: None
+        }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -3935,7 +3974,37 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
           eval: Some("console.log('hello');".to_string()),
+        }),
+        allow_net: Some(vec![]),
+        allow_env: Some(vec![]),
+        allow_run: Some(vec![]),
+        allow_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        allow_ffi: Some(vec![]),
+        allow_hrtime: true,
+        type_check_mode: TypeCheckMode::None,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn repl_with_eval_file_flag() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://examples.deno.land/hello-world.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        repl: true,
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: Some(vec![
+            "./a.js".to_string(),
+            "./b.ts".to_string(),
+            "https://examples.deno.land/hello-world.ts".to_string()
+          ]),
+          eval: None,
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4583,6 +4652,7 @@ mod tests {
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
           eval: Some("console.log('hello');".to_string()),
         }),
         unsafely_ignore_certificate_errors: Some(vec![]),
@@ -4656,7 +4726,10 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl(ReplFlags { eval: None }),
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
+          eval: None
+        }),
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
