@@ -19,5 +19,5 @@ Deno.test("output", async () => {
     stdout: "inherit",
     stderr: "inherit",
   });
-  const status = await c.status;
+  await c.status;
 });
