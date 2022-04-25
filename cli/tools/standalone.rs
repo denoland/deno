@@ -4,8 +4,9 @@ use crate::deno_dir::DenoDir;
 use crate::flags::CompileFlags;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
+use crate::flags::FutureTypeCheckMode;
 use crate::flags::RunFlags;
-use crate::flags::TypecheckMode;
+use crate::flags::TypeCheckMode;
 use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
@@ -274,7 +275,9 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    typecheck_mode: TypecheckMode::All,
+    type_check_mode: TypeCheckMode::All,
+    future_type_check_mode: FutureTypeCheckMode::None,
+    has_check_flag: false,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors

@@ -480,7 +480,7 @@ pub struct LintConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
   Always,
@@ -488,7 +488,7 @@ pub enum ProseWrap {
   Preserve,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
   pub use_tabs: Option<bool>,

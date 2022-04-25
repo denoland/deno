@@ -117,7 +117,6 @@ fn lint_watch_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
@@ -176,7 +175,6 @@ fn lint_watch_without_args_test() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
@@ -265,7 +263,6 @@ fn fmt_watch_test() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Fmt started");
   assert_contains!(
     skip_restarting_line(&mut stderr_lines),
@@ -314,7 +311,6 @@ fn fmt_watch_without_args_test() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Fmt started");
   assert_contains!(
     skip_restarting_line(&mut stderr_lines),
@@ -407,7 +403,6 @@ fn bundle_js_watch() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
@@ -459,7 +454,6 @@ fn bundle_watch_not_exit() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
@@ -633,6 +627,7 @@ fn run_watch_load_unload_events() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -659,7 +654,6 @@ fn run_watch_load_unload_events() {
 
   // Wait for the restart
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
 
@@ -688,6 +682,7 @@ fn run_watch_not_exit() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -695,7 +690,6 @@ fn run_watch_not_exit() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Process failed");
@@ -748,13 +742,13 @@ fn run_watch_with_import_map_and_relative_paths() {
     .arg(&import_map_path)
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Process finished");
   assert_contains!(stdout_lines.next().unwrap(), "Hello world");
@@ -971,13 +965,13 @@ fn test_watch_module_graph_error_referrer() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
   let line1 = stderr_lines.next().unwrap();
-  assert_contains!(&line1, CLEAR_SCREEN);
   assert_contains!(&line1, "Process started");
   let line2 = stderr_lines.next().unwrap();
   assert_contains!(&line2, "error: Module not found");
@@ -1004,6 +998,7 @@ fn watch_with_no_clear_screen_flag() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()

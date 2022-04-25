@@ -11,8 +11,8 @@ use regex::Regex;
 use serde::de;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::{json, to_value};
 use std::io;
 use std::io::Write;
 use std::path::Path;
@@ -324,12 +324,20 @@ impl LspClient {
     V: Serialize,
     R: de::DeserializeOwned,
   {
-    let value = json!({
-      "jsonrpc": "2.0",
-      "id": self.request_id,
-      "method": method.as_ref(),
-      "params": params,
-    });
+    let value = if to_value(&params).unwrap().is_null() {
+      json!({
+        "jsonrpc": "2.0",
+        "id": self.request_id,
+        "method": method.as_ref(),
+      })
+    } else {
+      json!({
+        "jsonrpc": "2.0",
+        "id": self.request_id,
+        "method": method.as_ref(),
+        "params": params,
+      })
+    };
     self.write(value)?;
 
     self.reader.read_message(|msg| match msg {

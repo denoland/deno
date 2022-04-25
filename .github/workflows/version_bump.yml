@@ -33,6 +33,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
         with:
+          token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
@@ -49,7 +50,7 @@ jobs:
 
       - name: Create PR
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: |
           git config user.email "${{ github.actor }}@users.noreply.github.com"

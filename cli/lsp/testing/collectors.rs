@@ -163,8 +163,7 @@ fn check_call_expr(
                       ast::Expr::Tpl(tpl) => {
                         if tpl.quasis.len() == 1 {
                           if let Some(tpl_element) = tpl.quasis.get(0) {
-                            maybe_name =
-                              Some(tpl_element.raw.value.to_string());
+                            maybe_name = Some(tpl_element.raw.to_string());
                           }
                         }
                       }

@@ -20,10 +20,10 @@ use deno_core::serde::Serialize;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());

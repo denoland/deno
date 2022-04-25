@@ -14,6 +14,7 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::ops;
+use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state;
 use crate::tools::test;
 
@@ -28,7 +29,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -36,6 +36,7 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types as lsp;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -183,11 +184,17 @@ async fn test_specifier(
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
+    let (stdout_writer, stderr_writer) =
+      create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
-      vec![ops::testing::init(channel.clone())],
+      vec![ops::testing::init(
+        channel.clone(),
+        stdout_writer,
+        stderr_writer,
+      )],
     );
 
     worker
@@ -752,16 +759,20 @@ impl test::TestReporter for LspTestReporter {
         .get(origin)
         .and_then(|v| v.last().map(|td| td.into()))
     });
-    match output {
-      test::TestOutput::Console(value) => {
-        self.progress(lsp_custom::TestRunProgressMessage::Output {
-          value: value.replace('\n', "\r\n"),
-          test,
-          // TODO(@kitsonk) test output should include a location
-          location: None,
-        })
+    let value = match output {
+      test::TestOutput::PrintStdout(value)
+      | test::TestOutput::PrintStderr(value) => value.replace('\n', "\r\n"),
+      test::TestOutput::Stdout(bytes) | test::TestOutput::Stderr(bytes) => {
+        String::from_utf8_lossy(bytes).replace('\n', "\r\n")
       }
-    }
+    };
+
+    self.progress(lsp_custom::TestRunProgressMessage::Output {
+      value,
+      test,
+      // TODO(@kitsonk) test output should include a location
+      location: None,
+    })
   }
 
   fn report_result(
@@ -786,10 +797,11 @@ impl test::TestReporter for LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestResult::Failed(message) => {
+      test::TestResult::Failed(js_error) => {
+        let err_string = test::format_test_error(js_error);
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages: as_test_messages(message, false),
+          messages: as_test_messages(err_string, false),
           duration: Some(elapsed as u32),
         })
       }
@@ -828,9 +840,10 @@ impl test::TestReporter for LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestStepResult::Failed(message) => {
-        let messages = if let Some(message) = message {
-          as_test_messages(message, false)
+      test::TestStepResult::Failed(js_error) => {
+        let messages = if let Some(js_error) = js_error {
+          let err_string = test::format_test_error(js_error);
+          as_test_messages(err_string, false)
         } else {
           vec![]
         };
