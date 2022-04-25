@@ -34,8 +34,33 @@ fn core_import() -> TokenStream2 {
   }
 }
 
+#[derive(Debug)]
+struct MacroArgs {
+  is_unstable: bool,
+}
+
+impl syn::parse::Parse for MacroArgs {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let vars =
+      syn::punctuated::Punctuated::<Ident, syn::Token![,]>::parse_terminated(
+        input,
+      )?;
+    let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
+    let vars: Vec<_> = vars.iter().map(String::as_str).collect();
+    match vars[..] {
+      ["unstable"] => Ok(Self { is_unstable: true }),
+      [] => Ok(Self { is_unstable: false }),
+      _ => Err(syn::Error::new(
+        input.span(),
+        "Ops expect #[op] or #[op(unstable)]",
+      )),
+    }
+  }
+}
+
 #[proc_macro_attribute]
-pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
+  let MacroArgs { is_unstable } = syn::parse_macro_input!(attr as MacroArgs);
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
@@ -85,10 +110,12 @@ pub fn op(_attr: TokenStream, item: TokenStream) -> TokenStream {
           v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
           enabled: true,
           is_async: #is_async,
+          is_unstable: #is_unstable,
         }
       }
 
       #[inline]
+      #[allow(clippy::too_many_arguments)]
       #original_func
 
       pub fn v8_func #generics (
@@ -112,17 +139,19 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     quote! {}
   };
   let rust_i0 = if uses_opstate { 1 } else { 0 };
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 2);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let type_params = &f.sig.generics.params;
 
   quote! {
     use #core::futures::FutureExt;
-    // SAFETY: Called from Deno.core.opAsync. Which retrieves the index using opId table.
-    let op_id = unsafe {
-      #core::v8::Local::<#core::v8::Integer>::cast(args.get(0))
-    }.value() as usize;
+    // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+    let ctx = unsafe {
+      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
+      as *const #core::_ops::OpCtx)
+    };
+    let op_id = ctx.id;
 
-    let promise_id = args.get(1);
+    let promise_id = args.get(0);
     let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
       .map(|l| l.value() as #core::PromiseId)
       .map_err(#core::anyhow::Error::from);
@@ -137,18 +166,8 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
     #arg_decls
 
-    // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
-    let state_refcell_raw = unsafe {
-      #core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked())
-    }.value();
+    let state = ctx.state.clone();
 
-    // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-    let state = unsafe {
-      let ptr = state_refcell_raw as *const std::cell::RefCell<#core::OpState>;
-      // Increment so it will later be decremented/dropped by the underlaying func it is moved to
-      std::rc::Rc::increment_strong_count(ptr);
-      std::rc::Rc::from_raw(ptr)
-    };
     // Track async call & get copy of get_error_class_fn
     let get_class = {
       let state = state.borrow();
@@ -173,30 +192,23 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     quote! {}
   };
   let rust_i0 = if uses_opstate { 1 } else { 0 };
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
 
   quote! {
-    // SAFETY: Called from Deno.core.opSync. Which retrieves the index using opId table.
-    let op_id = unsafe {
-      #core::v8::Local::<#core::v8::Integer>::cast(args.get(0)).value()
-    } as usize;
+    // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+    let ctx = unsafe {
+      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
+      as *const #core::_ops::OpCtx)
+    };
 
     #arg_decls
 
-    // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
-    let state_refcell_raw = unsafe {
-      #core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked())
-    }.value();
-
-    // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-    let state = unsafe { &*(state_refcell_raw as *const std::cell::RefCell<#core::OpState>) };
-
-    let op_state = &mut state.borrow_mut();
+    let op_state = &mut ctx.state.borrow_mut();
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    op_state.tracker.track_sync(op_id);
+    op_state.tracker.track_sync(ctx.id);
 
     #ret
   }

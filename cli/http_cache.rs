@@ -188,11 +188,11 @@ mod tests {
   use super::*;
   use std::collections::HashMap;
   use std::io::Read;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn test_create_cache() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new();
     let mut cache_path = dir.path().to_owned();
     cache_path.push("foobar");
     // HttpCache should be created lazily on first use:
@@ -219,7 +219,7 @@ mod tests {
 
   #[test]
   fn test_get_set() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new();
     let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();

@@ -2,6 +2,7 @@
 
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
+use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
@@ -58,9 +59,24 @@ async fn read_line_and_poll(
   }
 }
 
+async fn read_eval_file(
+  ps: &ProcState,
+  eval_file: &str,
+) -> Result<String, AnyError> {
+  let specifier = deno_core::resolve_url_or_path(eval_file)?;
+
+  let file = ps
+    .file_fetcher
+    .fetch(&specifier, &mut Permissions::allow_all())
+    .await?;
+
+  Ok((*file.source).clone())
+}
+
 pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
+  maybe_eval_files: Option<Vec<String>>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
@@ -73,6 +89,25 @@ pub async fn run(
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
+
+  if let Some(eval_files) = maybe_eval_files {
+    for eval_file in eval_files {
+      match read_eval_file(ps, &eval_file).await {
+        Ok(eval_source) => {
+          let output = repl_session
+            .evaluate_line_and_get_output(&eval_source)
+            .await?;
+          // only output errors
+          if let EvaluationOutput::Error(error_text) = output {
+            println!("error in --eval-file file {}. {}", eval_file, error_text);
+          }
+        }
+        Err(e) => {
+          println!("error in --eval-file file {}. {}", eval_file, e);
+        }
+      }
+    }
+  }
 
   if let Some(eval) = maybe_eval {
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;

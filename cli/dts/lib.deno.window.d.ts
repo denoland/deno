@@ -7,10 +7,15 @@
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 
+interface WindowEventMap {
+  "error": ErrorEvent;
+}
+
 declare class Window extends EventTarget {
   new(): Window;
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
+  onerror: ((this: Window, ev: ErrorEvent) => any) | null;
   onload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   close: () => void;
@@ -25,10 +30,38 @@ declare class Window extends EventTarget {
   location: Location;
   localStorage: Storage;
   sessionStorage: Storage;
+
+  addEventListener<K extends keyof WindowEventMap>(
+    type: K,
+    listener: (
+      this: Window,
+      ev: WindowEventMap[K],
+    ) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof WindowEventMap>(
+    type: K,
+    listener: (
+      this: Window,
+      ev: WindowEventMap[K],
+    ) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
 }
 
 declare var window: Window & typeof globalThis;
 declare var self: Window & typeof globalThis;
+declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 declare var onload: ((this: Window, ev: Event) => any) | null;
 declare var onunload: ((this: Window, ev: Event) => any) | null;
 declare var localStorage: Storage;
@@ -77,10 +110,17 @@ declare function prompt(message?: string, defaultValue?: string): string | null;
  * dispatchEvent(new Event('unload'));
  * ```
  */
+declare function addEventListener<
+  K extends keyof WindowEventMap,
+>(
+  type: K,
+  listener: (this: Window, ev: WindowEventMap[K]) => any,
+  options?: boolean | AddEventListenerOptions,
+): void;
 declare function addEventListener(
   type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | AddEventListenerOptions,
 ): void;
 
 /** Remove a previously registered event listener from the global scope
@@ -91,10 +131,17 @@ declare function addEventListener(
  * removeEventListener('load', listener);
  * ```
  */
+declare function removeEventListener<
+  K extends keyof WindowEventMap,
+>(
+  type: K,
+  listener: (this: Window, ev: WindowEventMap[K]) => any,
+  options?: boolean | EventListenerOptions,
+): void;
 declare function removeEventListener(
   type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | EventListenerOptions,
 ): void;
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.

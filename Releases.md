@@ -6,6 +6,64 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.21.0 / 2022.04.20
+
+- feat(bench): update API, new console reporter (#14305)
+- feat(cli/fmt): ignore .git folder when formatting files (#14138)
+- feat(core): Add initial support for realms (#14019)
+- feat(ext/net): Deno.upgradeHttp handles unix connections (#13987)
+- feat(ext/web): add globalThis.reportError() (#13799)
+- feat(repl): Don't type check when importing modules (#14112)
+- feat(repl): add "--eval-file" flag to execute a script file on startup
+  (#14247)
+- feat(repl): add global clear() function (#14332)
+- feat(runtime): two-tier subprocess API (#11618)
+- feat(test): Add "name", "origin" and "parent" to "Deno.TestContext" (#14007)
+- feat(test): Improve testing report output (#14255)
+- feat(test): format user code output (#14271)
+- feat(test): skip internal stack frames for errors (#14302)
+- feat(test): use structured data for JavaScript errors in tests (#14287)
+- feat: Add "deno check" subcommand for type checking (#14072)
+- feat: Add DENO_NO_PROMPT variable (#14209)
+- feat: Better formatting for AggregateError (#14285)
+- fix(cli/emit): Check JS roots with // @ts-check (#14090)
+- fix(cli/tools/test): Prefix test module paths with "./" (#14301)
+- fix(fmt): regression where some short if stmt headers being split on multiple
+  lines (#14292)
+- fix(permissions): fallback to denied access if the permission prompt fails
+  (#14235)
+- fix: `--watch` was losing items (#14317)
+- fix: panic when trying to pledge permissions before restoring previous pledge
+  (#14306)
+- perf(fmt/lint): incremental formatting and linting (#14314)
+- perf(runtime): bypass tokio file and bump op buffer size to 64K (#14319)
+- perf: move `Deno.writeTextFile` and like functions to Rust (#14221)
+- upgrade: rusty_v8 0.42.0 (#14334)
+
+### 1.20.6 / 2022.04.14
+
+- fix(serde_v8): more robust number deserialization (#14216)
+- fix(test): Don't error on missing op details (#14184)
+- fix: upgrade to swc_ecmascript 0.143 (#14238)
+
+### 1.20.5 / 2022.04.07
+
+- feat(lsp/unstable): add experimental testing API (#13798)
+- feat(lsp/unstable): support tasks in the config file (#14139)
+- feat(unstable): add ref/unref to Listener (#13961)
+- fix(cli/install): preserve compat flag (#14223)
+- fix(ext/crypto): check extractable in exportKey (#14222)
+
+### 1.20.4 / 2022.03.31
+
+- fix(compile): follow redirects when resolving (#14161)
+- fix(ext/fetch): extend deprecated fetch() overload with `string | Request`
+  (#14134)
+- fix(lsp): watch .jsonc files (#14135)
+- fix(runtime/ops/signal.rs): Add Solaris signals (#13931)
+- fix(task): handle `PATHEXT` with trailing semi-colon (#14140)
+- perf: micro-optimize core.encode (#14120)
+
 ### 1.20.3 / 2022.03.25
 
 - fix(ext/fetch): deprecate URL as the first arg in types (#14113)

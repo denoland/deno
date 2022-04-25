@@ -13,6 +13,7 @@
     ObjectFromEntries,
     ObjectEntries,
     ReflectGet,
+    ReflectHas,
     Proxy,
   } = window.__bootstrap.primordials;
 
@@ -55,10 +56,7 @@
         context: "Argument 2",
       });
 
-      core.opSync("op_webstorage_set", {
-        keyName: key,
-        keyValue: value,
-      }, this[_persistent]);
+      core.opSync("op_webstorage_set", key, value, this[_persistent]);
     }
 
     getItem(key) {
@@ -116,7 +114,7 @@
       },
       get(target, key) {
         if (typeof key == "symbol") return target[key];
-        if (key in target) {
+        if (ReflectHas(target, key)) {
           return ReflectGet(...new SafeArrayIterator(arguments));
         } else {
           return target.getItem(key) ?? undefined;
@@ -144,7 +142,7 @@
         if (arguments.length === 1) {
           return undefined;
         }
-        if (key in target) {
+        if (ReflectHas(target, key)) {
           return undefined;
         }
         const value = target.getItem(key);

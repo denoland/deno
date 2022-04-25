@@ -3,8 +3,8 @@
 use flaky_test::flaky_test;
 use std::fs::write;
 use std::io::BufRead;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 const CLEAR_SCREEN: &str = r#"[2J"#;
 
@@ -88,7 +88,7 @@ fn child_lines(
 
 #[test]
 fn lint_watch_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let badly_linted_original =
     util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_output =
@@ -117,7 +117,6 @@ fn lint_watch_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
@@ -147,7 +146,7 @@ fn lint_watch_test() {
 
 #[test]
 fn lint_watch_without_args_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let badly_linted_original =
     util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_output =
@@ -176,7 +175,6 @@ fn lint_watch_without_args_test() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
@@ -206,7 +204,7 @@ fn lint_watch_without_args_test() {
 
 #[test]
 fn lint_all_files_on_each_change_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let badly_linted_fixed0 =
     util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_fixed1 =
@@ -245,7 +243,7 @@ fn lint_all_files_on_each_change_test() {
 
 #[test]
 fn fmt_watch_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let fixed = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original =
     util::testdata_path().join("badly_formatted.mjs");
@@ -265,7 +263,6 @@ fn fmt_watch_test() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Fmt started");
   assert_contains!(
     skip_restarting_line(&mut stderr_lines),
@@ -295,7 +292,7 @@ fn fmt_watch_test() {
 
 #[test]
 fn fmt_watch_without_args_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let fixed = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original =
     util::testdata_path().join("badly_formatted.mjs");
@@ -314,7 +311,6 @@ fn fmt_watch_without_args_test() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Fmt started");
   assert_contains!(
     skip_restarting_line(&mut stderr_lines),
@@ -343,7 +339,7 @@ fn fmt_watch_without_args_test() {
 
 #[test]
 fn fmt_check_all_files_on_each_change_test() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let badly_formatted_original =
     util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted_1 = t.path().join("badly_formatted_1.js");
@@ -384,11 +380,11 @@ fn fmt_check_all_files_on_each_change_test() {
 fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.ts");
   write(&file_to_watch, "console.log('Hello world');").unwrap();
   assert!(file_to_watch.is_file());
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -407,7 +403,6 @@ fn bundle_js_watch() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
@@ -439,7 +434,7 @@ fn bundle_js_watch() {
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
 fn bundle_watch_not_exit() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.ts");
   write(&file_to_watch, "syntax error ^^").unwrap();
   let target_file = t.path().join("target.js");
@@ -459,7 +454,6 @@ fn bundle_watch_not_exit() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
@@ -485,7 +479,7 @@ fn bundle_watch_not_exit() {
 
 #[flaky_test::flaky_test]
 fn run_watch() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "console.log('Hello world');").unwrap();
 
@@ -568,7 +562,7 @@ fn run_watch() {
 
 #[test]
 fn run_watch_external_watch_files() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "console.log('Hello world');").unwrap();
 
@@ -609,7 +603,7 @@ fn run_watch_external_watch_files() {
 
 #[test]
 fn run_watch_load_unload_events() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(
     &file_to_watch,
@@ -633,6 +627,7 @@ fn run_watch_load_unload_events() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -659,7 +654,6 @@ fn run_watch_load_unload_events() {
 
   // Wait for the restart
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
 
@@ -677,7 +671,7 @@ fn run_watch_load_unload_events() {
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
 fn run_watch_not_exit() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "syntax error ^^").unwrap();
 
@@ -688,6 +682,7 @@ fn run_watch_not_exit() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -695,7 +690,6 @@ fn run_watch_not_exit() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Process failed");
@@ -727,7 +721,7 @@ fn run_watch_with_import_map_and_relative_paths() {
     assert!(relative_path.is_relative());
     relative_path
   }
-  let temp_directory = TempDir::new_in(util::testdata_path()).unwrap();
+  let temp_directory = TempDir::new_in(&util::testdata_path());
   let file_to_watch = create_relative_tmp_file(
     &temp_directory,
     "file_to_watch.js",
@@ -748,13 +742,13 @@ fn run_watch_with_import_map_and_relative_paths() {
     .arg(&import_map_path)
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Process finished");
   assert_contains!(stdout_lines.next().unwrap(), "Hello world");
@@ -764,7 +758,7 @@ fn run_watch_with_import_map_and_relative_paths() {
 
 #[flaky_test]
 fn test_watch() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -908,7 +902,7 @@ fn test_watch() {
 
 #[flaky_test]
 fn test_watch_doc() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -961,7 +955,7 @@ fn test_watch_doc() {
 
 #[test]
 fn test_watch_module_graph_error_referrer() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "import './nonexistent.js';").unwrap();
   let mut child = util::deno_cmd()
@@ -971,13 +965,13 @@ fn test_watch_module_graph_error_referrer() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
   let line1 = stderr_lines.next().unwrap();
-  assert_contains!(&line1, CLEAR_SCREEN);
   assert_contains!(&line1, "Process started");
   let line2 = stderr_lines.next().unwrap();
   assert_contains!(&line2, "error: Module not found");
@@ -991,7 +985,7 @@ fn test_watch_module_graph_error_referrer() {
 
 #[test]
 fn watch_with_no_clear_screen_flag() {
-  let t = TempDir::new().unwrap();
+  let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "export const foo = 0;").unwrap();
 
@@ -1004,6 +998,7 @@ fn watch_with_no_clear_screen_flag() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
