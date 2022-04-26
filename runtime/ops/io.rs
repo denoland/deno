@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -329,6 +330,16 @@ impl StdFileResource {
       Some(r) => f(Ok(&mut r.as_ref().lock().unwrap())),
       None => Err(resource_unavailable()),
     }
+  }
+
+  pub fn clone_file(
+    state: &mut OpState,
+    rid: ResourceId,
+  ) -> Result<std::fs::File, AnyError> {
+    Self::with(state, rid, move |r| match r {
+      Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
+      Err(_) => Err(bad_resource_id()),
+    })
   }
 }
 
