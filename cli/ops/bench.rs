@@ -63,6 +63,10 @@ pub fn op_pledge_test_permissions(
   let worker_permissions = create_child_permissions(parent_permissions, args)?;
   let parent_permissions = parent_permissions.clone();
 
+  if state.try_take::<PermissionsHolder>().is_some() {
+    panic!("pledge test permissions called before restoring previous pledge");
+  }
+
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker

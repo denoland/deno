@@ -56,6 +56,8 @@ mod bench;
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "check_tests.rs"]
+mod check;
 #[path = "compat_tests.rs"]
 mod compat;
 #[path = "compile_tests.rs"]
@@ -293,7 +295,9 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&ats)
     .output()
     .expect("failed to spawn script");
@@ -315,7 +319,9 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&ats)
     .output()
     .expect("failed to spawn script");
@@ -338,9 +344,11 @@ fn ts_no_recheck_on_redirect() {
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
+  cmd.env("DENO_FUTURE_CHECK", "1");
   let mut initial = cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(redirect_ts.clone())
     .spawn()
     .expect("failed to span script");
@@ -350,9 +358,11 @@ fn ts_no_recheck_on_redirect() {
 
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
+  cmd.env("DENO_FUTURE_CHECK", "1");
   let output = cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(redirect_ts)
     .output()
     .expect("failed to spawn script");
@@ -652,7 +662,9 @@ fn cafile_bundle_remote_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
+    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
+    .arg("--check")
     .arg(&test)
     .output()
     .expect("failed to spawn script");
@@ -741,7 +753,10 @@ fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
+// TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
+// test hangs then. https://github.com/denoland/deno/issues/14283
 #[test]
+#[ignore]
 fn websocket_server_idletimeout() {
   let script = util::testdata_path().join("websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -975,7 +990,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("--allow-net")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
@@ -1000,7 +1017,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
@@ -1025,7 +1044,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("--allow-net=deno.land")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
@@ -1047,7 +1068,9 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
+      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
+      .arg("--check")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
