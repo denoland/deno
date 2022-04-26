@@ -302,10 +302,10 @@ itest!(no_prompt_with_denied_perms {
   output: "test/no_prompt_with_denied_perms.out",
 });
 
-itest!(captured_subprocess_output {
-  args: "test --allow-run --allow-read --unstable test/captured_subprocess_output.ts",
+itest!(captured_output {
+  args: "test --allow-run --allow-read --unstable test/captured_output.ts",
   exit_code: 0,
-  output: "test/captured_subprocess_output.out",
+  output: "test/captured_output.out",
 });
 
 #[test]

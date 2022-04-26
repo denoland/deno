@@ -123,7 +123,10 @@ fn create_web_worker_preload_module_callback(
   })
 }
 
-fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
+fn create_web_worker_callback(
+  ps: ProcState,
+  stdio: deno_runtime::ops::io::Stdio,
+) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
@@ -131,7 +134,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       ps.clone(),
       args.parent_permissions.clone(),
     );
-    let create_web_worker_cb = create_web_worker_callback(ps.clone());
+    let create_web_worker_cb =
+      create_web_worker_callback(ps.clone(), stdio.clone());
     let preload_module_cb =
       create_web_worker_preload_module_callback(ps.clone());
 
@@ -177,6 +181,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       maybe_exit_code: args.maybe_exit_code,
+      stdio: stdio.clone(),
     };
 
     WebWorker::bootstrap_from_options(
@@ -194,13 +199,15 @@ pub fn create_main_worker(
   main_module: ModuleSpecifier,
   permissions: Permissions,
   mut custom_extensions: Vec<Extension>,
+  stdio: deno_runtime::ops::io::Stdio,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
   let should_break_on_first_statement = ps.flags.inspect_brk.is_some();
 
-  let create_web_worker_cb = create_web_worker_callback(ps.clone());
+  let create_web_worker_cb =
+    create_web_worker_callback(ps.clone(), stdio.clone());
   let web_worker_preload_module_cb =
     create_web_worker_preload_module_callback(ps.clone());
 
@@ -269,6 +276,7 @@ pub fn create_main_worker(
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
+    stdio,
   };
 
   MainWorker::bootstrap_from_options(main_module, permissions, options)
@@ -510,8 +518,13 @@ async fn install_command(
     Permissions::from_options(&preload_flags.permissions_options());
   let ps = ProcState::build(Arc::new(preload_flags)).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
-  let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
+  let mut worker = create_main_worker(
+    &ps,
+    main_module.clone(),
+    permissions,
+    vec![],
+    Default::default(),
+  );
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module, true).await?;
   tools::installer::install(flags, install_flags)?;
@@ -605,8 +618,13 @@ async fn eval_command(
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
   let permissions = Permissions::from_options(&flags.permissions_options());
   let ps = ProcState::build(Arc::new(flags)).await?;
-  let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
+  let mut worker = create_main_worker(
+    &ps,
+    main_module.clone(),
+    permissions,
+    vec![],
+    Default::default(),
+  );
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -920,8 +938,13 @@ async fn repl_command(
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.permissions_options());
   let ps = ProcState::build(Arc::new(flags)).await?;
-  let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
+  let mut worker = create_main_worker(
+    &ps,
+    main_module.clone(),
+    permissions,
+    vec![],
+    Default::default(),
+  );
   if ps.flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
@@ -937,8 +960,13 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&ps.flags.permissions_options());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
-  let mut worker =
-    create_main_worker(&ps.clone(), main_module.clone(), permissions, vec![]);
+  let mut worker = create_main_worker(
+    &ps.clone(),
+    main_module.clone(),
+    permissions,
+    vec![],
+    Default::default(),
+  );
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -1125,7 +1153,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
-        create_main_worker(&ps, main_module.clone(), permissions, vec![]),
+        create_main_worker(
+          &ps,
+          main_module.clone(),
+          permissions,
+          vec![],
+          Default::default(),
+        ),
         flags.compat,
       );
 
@@ -1168,8 +1202,13 @@ async fn run_command(
   let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
   let permissions = Permissions::from_options(&ps.flags.permissions_options());
-  let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
+  let mut worker = create_main_worker(
+    &ps,
+    main_module.clone(),
+    permissions,
+    vec![],
+    Default::default(),
+  );
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = ps.coverage_dir {

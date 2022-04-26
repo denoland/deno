@@ -3,6 +3,7 @@
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
+use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -65,6 +66,7 @@ pub struct WorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub stdio: Stdio,
 }
 
 impl MainWorker {
@@ -136,7 +138,7 @@ impl MainWorker {
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),
-      ops::io::init_stdio(),
+      ops::io::init_stdio(options.stdio),
       deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
@@ -390,6 +392,7 @@ mod tests {
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
+      stdio: Default::default(),
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

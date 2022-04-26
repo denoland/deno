@@ -305,6 +305,7 @@ pub async fn run(
     broadcast_channel,
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
+    stdio: Default::default(),
   };
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
