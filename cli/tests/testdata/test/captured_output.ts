@@ -20,4 +20,16 @@ Deno.test("output", async () => {
     stderr: "inherit",
   });
   await c.status;
+  const worker = new Worker(
+    new URL("./captured_output.worker.js", import.meta.url).href,
+    { type: "module" },
+  );
+
+  // ensure worker output is captured
+  const response = new Promise<void>((resolve) =>
+    worker.onmessage = () => resolve()
+  );
+  worker.postMessage({});
+  await response;
+  worker.terminate();
 });

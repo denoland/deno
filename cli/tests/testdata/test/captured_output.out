@@ -1,5 +1,5 @@
 [WILDCARD]
-running 1 test from [WILDCARD]/captured_subprocess_output.ts
+running 1 test from [WILDCARD]/captured_output.ts
 output ...
 ------- output -------
 1
@@ -10,6 +10,8 @@ output ...
 6
 7
 8
+9
+10
 ----- output end -----
 ok ([WILDCARD]s)
 

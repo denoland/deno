@@ -57,6 +57,7 @@ async fn main() -> Result<(), AnyError> {
     broadcast_channel: InMemoryBroadcastChannel::default(),
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
+    stdio: Default::default(),
   };
 
   let js_path =
