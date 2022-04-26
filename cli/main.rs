@@ -63,7 +63,7 @@ use crate::flags::TypeCheckMode;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::flags::VendorFlags;
-use crate::fmt_errors::PrettyJsError;
+use crate::fmt_errors::format_js_error;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
 use crate::module_loader::CliModuleLoader;
@@ -73,6 +73,7 @@ use crate::resolver::JsxResolver;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::future::LocalFutureObj;
 use deno_core::futures::Future;
@@ -102,7 +103,6 @@ use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::Arc;
 
 fn create_web_worker_preload_module_callback(
@@ -170,8 +170,8 @@ fn create_web_worker_callback(
       module_loader,
       create_web_worker_cb,
       preload_module_cb,
+      format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(ps.clone())),
-      js_error_create_fn: Some(Rc::new(PrettyJsError::create)),
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
@@ -264,7 +264,7 @@ pub fn create_main_worker(
     user_agent: version::get_user_agent(),
     seed: ps.flags.seed,
     source_map_getter: Some(Box::new(ps.clone())),
-    js_error_create_fn: Some(Rc::new(PrettyJsError::create)),
+    format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
     maybe_inspector_server,
@@ -1481,10 +1481,14 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
+      let error_string = match error.downcast_ref::<JsError>() {
+        Some(e) => format_js_error(e),
+        None => format!("{:?}", error),
+      };
       eprintln!(
         "{}: {}",
         colors::red_bold("error"),
-        format!("{:?}", error).trim_start_matches("error: ")
+        error_string.trim_start_matches("error: ")
       );
       std::process::exit(1);
     }

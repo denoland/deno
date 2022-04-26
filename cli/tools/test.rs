@@ -13,7 +13,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
 use crate::flags::TypeCheckMode;
-use crate::fmt_errors::PrettyJsError;
+use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -557,8 +557,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   js_error
 }
 
-// This function maps JsError to PrettyJsError and applies some changes
-// specifically for test runner purposes:
+// This function prettifies `JsError` and applies some changes specifically for
+// test runner purposes:
 //
 // - filter out stack frames:
 //   - if stack trace consists of mixed user and internal code, the frames
@@ -570,7 +570,7 @@ pub fn format_test_error(js_error: &JsError) -> String {
     .exception_message
     .trim_start_matches("Uncaught ")
     .to_string();
-  PrettyJsError::create(js_error).to_string()
+  format_js_error(&js_error)
 }
 
 fn create_reporter(
