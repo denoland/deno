@@ -187,11 +187,16 @@ macro_rules! include_js_files {
       $((
         concat!($prefix, "/", $file),
         Box::new(|| {
-          let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-          let path = c.join($file);
-          println!("cargo:rerun-if-changed={}", path.display());
-          let src = std::fs::read_to_string(path)?;
-          Ok(src)
+          if cfg!(feature = "standalone"){
+            let src = include_str!(concat!( env!("CARGO_MANIFEST_DIR"), "/", $file )).to_string();
+            Ok(src)
+          }else{
+            let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let path = c.join($file);
+            println!("cargo:rerun-if-changed={}", path.display());
+            let src = std::fs::read_to_string(path)?;
+            Ok(src)
+          }
         }),
       ),)+
     ]
