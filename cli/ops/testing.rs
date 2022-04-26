@@ -79,12 +79,8 @@ pub fn create_stdout_stderr_pipes(
   let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
   let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
 
-  start_output_redirect_thread(stdout_reader, sender.clone(), |bytes| {
-    TestOutput::Stdout(bytes)
-  });
-  start_output_redirect_thread(stderr_reader, sender, |bytes| {
-    TestOutput::Stderr(bytes)
-  });
+  start_output_redirect_thread(stdout_reader, sender.clone());
+  start_output_redirect_thread(stderr_reader, sender);
 
   (stdout_writer, stderr_writer)
 }
@@ -92,7 +88,6 @@ pub fn create_stdout_stderr_pipes(
 fn start_output_redirect_thread(
   mut pipe_reader: os_pipe::PipeReader,
   sender: UnboundedSender<TestEvent>,
-  map_test_output: impl Fn(Vec<u8>) -> TestOutput + Send + 'static,
 ) {
   tokio::task::spawn_blocking(move || loop {
     let mut buffer = [0; 512];
@@ -101,7 +96,9 @@ fn start_output_redirect_thread(
       Ok(size) => size,
     };
     if sender
-      .send(TestEvent::Output(map_test_output(buffer[0..size].to_vec())))
+      .send(TestEvent::Output(TestOutput::Bytes(
+        buffer[0..size].to_vec(),
+      )))
       .is_err()
     {
       break;
@@ -170,14 +167,10 @@ fn op_dispatch_test_event(
 pub fn op_print(
   state: &mut OpState,
   msg: String,
-  is_err: bool,
+  _is_err: bool,
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
-  let msg = if is_err {
-    TestOutput::PrintStderr(msg)
-  } else {
-    TestOutput::PrintStdout(msg)
-  };
+  let msg = TestOutput::String(msg);
   sender.send(TestEvent::Output(msg)).ok();
   Ok(())
 }

@@ -760,9 +760,8 @@ impl test::TestReporter for LspTestReporter {
         .and_then(|v| v.last().map(|td| td.into()))
     });
     let value = match output {
-      test::TestOutput::PrintStdout(value)
-      | test::TestOutput::PrintStderr(value) => value.replace('\n', "\r\n"),
-      test::TestOutput::Stdout(bytes) | test::TestOutput::Stderr(bytes) => {
+      test::TestOutput::String(value) => value.replace('\n', "\r\n"),
+      test::TestOutput::Bytes(bytes) => {
         String::from_utf8_lossy(bytes).replace('\n', "\r\n")
       }
     };

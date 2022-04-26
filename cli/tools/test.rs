@@ -83,10 +83,8 @@ pub struct TestDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
-  PrintStdout(String),
-  PrintStderr(String),
-  Stdout(Vec<u8>),
-  Stderr(Vec<u8>),
+  String(String),
+  Bytes(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -351,17 +349,13 @@ impl TestReporter for PrettyTestReporter {
       println!("{}", colors::gray("------- output -------"));
     }
     match output {
-      TestOutput::PrintStdout(line) => {
+      TestOutput::String(line) => {
+        // output everything to stdout in order to prevent
+        // stdout and stderr racing
         print!("{}", line)
       }
-      TestOutput::PrintStderr(line) => {
-        eprint!("{}", line)
-      }
-      TestOutput::Stdout(bytes) => {
+      TestOutput::Bytes(bytes) => {
         std::io::stdout().write_all(bytes).unwrap();
-      }
-      TestOutput::Stderr(bytes) => {
-        std::io::stderr().write_all(bytes).unwrap();
       }
     }
   }
