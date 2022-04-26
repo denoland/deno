@@ -3,6 +3,7 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
+use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::run_basic;
 use crate::BootstrapOptions;
@@ -335,6 +336,7 @@ pub struct WebWorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub maybe_exit_code: Option<Arc<AtomicI32>>,
+  pub stdio: Stdio,
 }
 
 impl WebWorker {
@@ -411,7 +413,7 @@ impl WebWorker {
       ops::fs_events::init().enabled(options.use_deno_namespace),
       ops::fs::init().enabled(options.use_deno_namespace),
       ops::io::init(),
-      ops::io::init_stdio().enabled(options.use_deno_namespace),
+      ops::io::init_stdio(options.stdio).enabled(options.use_deno_namespace),
       deno_tls::init().enabled(options.use_deno_namespace),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),

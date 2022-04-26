@@ -22,7 +22,6 @@ use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
-use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -41,6 +40,8 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
+use deno_runtime::ops::io::Stdio;
+use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -52,6 +53,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -588,17 +590,17 @@ async fn test_specifier(
   channel: UnboundedSender<TestEvent>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let (stdout_writer, stderr_writer) =
-    create_stdout_stderr_pipes(channel.clone());
+  let (stdout, stderr) = create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(
-      channel.clone(),
-      stdout_writer,
-      stderr_writer,
-    )],
+    vec![ops::testing::init(channel.clone())],
+    Stdio {
+      stdin: StdioPipe::Inherit,
+      stdout: StdioPipe::File(stdout),
+      stderr: StdioPipe::File(stderr),
+    },
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
@@ -1451,4 +1453,57 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
+}
+
+/// Creates the stdout and stderr pipes and returns the writers for stdout and stderr.
+pub fn create_stdout_stderr_pipes(
+  sender: UnboundedSender<TestEvent>,
+) -> (std::fs::File, std::fs::File) {
+  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
+  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+
+  start_output_redirect_thread(stdout_reader, sender.clone());
+  start_output_redirect_thread(stderr_reader, sender);
+
+  (
+    pipe_writer_to_file(stdout_writer),
+    pipe_writer_to_file(stderr_writer),
+  )
+}
+
+#[cfg(windows)]
+fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::windows::prelude::FromRawHandle;
+  use std::os::windows::prelude::IntoRawHandle;
+  // SAFETY: Requires consuming ownership of the provided handle
+  unsafe { std::fs::File::from_raw_handle(writer.into_raw_handle()) }
+}
+
+#[cfg(unix)]
+fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::unix::io::FromRawFd;
+  use std::os::unix::io::IntoRawFd;
+  // SAFETY: Requires consuming ownership of the provided handle
+  unsafe { std::fs::File::from_raw_fd(writer.into_raw_fd()) }
+}
+
+fn start_output_redirect_thread(
+  mut pipe_reader: os_pipe::PipeReader,
+  sender: UnboundedSender<TestEvent>,
+) {
+  tokio::task::spawn_blocking(move || loop {
+    let mut buffer = [0; 512];
+    let size = match pipe_reader.read(&mut buffer) {
+      Ok(0) | Err(_) => break,
+      Ok(size) => size,
+    };
+    if sender
+      .send(TestEvent::Output(TestOutput::Bytes(
+        buffer[0..size].to_vec(),
+      )))
+      .is_err()
+    {
+      break;
+    }
+  });
 }
