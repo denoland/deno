@@ -303,7 +303,7 @@ itest!(no_prompt_with_denied_perms {
 });
 
 itest!(captured_subprocess_output {
-  args: "test --allow-run=deno --unstable test/captured_subprocess_output.ts",
+  args: "test --allow-run --allow-read --unstable test/captured_subprocess_output.ts",
   exit_code: 0,
   output: "test/captured_subprocess_output.out",
 });
