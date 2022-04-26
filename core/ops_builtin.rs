@@ -101,12 +101,20 @@ pub fn op_metrics(
 /// Builtin utility to print to stdout/stderr
 #[op]
 pub fn op_print(msg: String, is_err: bool) -> Result<(), Error> {
-  if is_err {
-    stderr().write_all(msg.as_bytes())?;
-    stderr().flush().unwrap();
+  if cfg!(target_os = "android") {
+    if is_err {
+      log::error!("{}", msg);
+    } else {
+      log::info!("{}", msg);
+    }
   } else {
-    stdout().write_all(msg.as_bytes())?;
-    stdout().flush().unwrap();
+    if is_err {
+      stderr().write_all(msg.as_bytes())?;
+      stderr().flush().unwrap();
+    } else {
+      stdout().write_all(msg.as_bytes())?;
+      stdout().flush().unwrap();
+    }
   }
   Ok(())
 }
