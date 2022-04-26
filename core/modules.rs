@@ -1,12 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
-use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
-use crate::runtime::exception_to_err_result;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -494,12 +492,12 @@ impl RecursiveModuleLoad {
     scope: &mut v8::HandleScope,
     module_request: &ModuleRequest,
     module_source: &ModuleSource,
-  ) -> Result<(), Error> {
+  ) -> Result<(), ModuleError> {
     if module_request.expected_module_type != module_source.module_type {
-      return Err(generic_error(format!(
+      return Err(ModuleError::Other(generic_error(format!(
         "Expected a \"{}\" module but loaded a \"{}\" module.",
         module_request.expected_module_type, module_source.module_type,
-      )));
+      ))));
     }
 
     // Register the module in the module map unless it's already there. If the
@@ -711,6 +709,12 @@ enum SymbolicModule {
   Mod(ModuleId),
 }
 
+#[derive(Debug)]
+pub(crate) enum ModuleError {
+  Exception(v8::Global<v8::Value>),
+  Other(Error),
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
@@ -778,7 +782,7 @@ impl ModuleMap {
     scope: &mut v8::HandleScope,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, Error> {
+  ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, strip_bom(source)).unwrap();
 
@@ -789,9 +793,8 @@ impl ModuleMap {
       None => {
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
-        let err = exception_to_err_result(tc_scope, exception, false)
-          .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
-        return err;
+        let exception = v8::Global::new(tc_scope, exception);
+        return Err(ModuleError::Exception(exception));
       }
     };
 
@@ -820,7 +823,7 @@ impl ModuleMap {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, Error> {
+  ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
 
@@ -833,8 +836,9 @@ impl ModuleMap {
 
     if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
-      let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e, false);
+      let exception = tc_scope.exception().unwrap();
+      let exception = v8::Global::new(tc_scope, exception);
+      return Err(ModuleError::Exception(exception));
     }
 
     let module = maybe_module.unwrap();
@@ -862,12 +866,16 @@ impl ModuleMap {
       // is thrown here
       validate_import_assertions(tc_scope, &assertions);
       if tc_scope.has_caught() {
-        let e = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, e, false);
+        let exception = tc_scope.exception().unwrap();
+        let exception = v8::Global::new(tc_scope, exception);
+        return Err(ModuleError::Exception(exception));
       }
 
       let module_specifier =
-        self.loader.resolve(&import_specifier, name, false)?;
+        match self.loader.resolve(&import_specifier, name, false) {
+          Ok(s) => s,
+          Err(e) => return Err(ModuleError::Other(e)),
+        };
       let expected_module_type = get_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
         specifier: module_specifier,
@@ -879,11 +887,11 @@ impl ModuleMap {
     if main {
       let maybe_main_module = self.info.values().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
-        return Err(generic_error(
+        return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
           name,
           main_module.name,
-        )));
+        ))));
       }
     }
 
