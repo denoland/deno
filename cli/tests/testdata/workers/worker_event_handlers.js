@@ -10,6 +10,7 @@ self.addEventListener("message", (evt) => {
 });
 
 self.onerror = (...args) => {
+  args = args.map((v) => typeof v == "string" ? v.slice(-100) : v);
   console.log("Arguments from self.onerror:", args);
   return true;
 };
