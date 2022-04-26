@@ -323,14 +323,13 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub async fn ts_changes_to_edit(
+pub fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit =
-      change.to_text_document_edit(language_server).await?;
+    let text_document_edit = change.to_text_document_edit(language_server)?;
     text_document_edits.push(text_document_edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
@@ -539,7 +538,7 @@ impl CodeActionCollection {
   }
 
   /// Add a TypeScript code fix action to the code actions collection.
-  pub async fn add_ts_fix_action(
+  pub fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
@@ -561,7 +560,7 @@ impl CodeActionCollection {
     }
     let action =
       fix_ts_import_action(specifier, action, &language_server.documents)?;
-    let edit = ts_changes_to_edit(&action.changes, language_server).await?;
+    let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
