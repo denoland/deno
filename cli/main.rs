@@ -162,6 +162,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         runtime_version: version::deno(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
+        user_agent: version::get_user_agent(),
       },
       extensions,
       unsafely_ignore_certificate_errors: ps
@@ -263,6 +264,7 @@ pub fn create_main_worker(
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
+      user_agent: version::get_user_agent(),
     },
     extensions,
     unsafely_ignore_certificate_errors: ps

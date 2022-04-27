@@ -286,6 +286,7 @@ pub async fn run(
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
+      user_agent: version::get_user_agent(),
     },
     extensions: ops::cli_exts(ps.clone(), true),
     user_agent: version::get_user_agent(),
