@@ -15,6 +15,7 @@ export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
 async function getFilesFromGit(baseDir, args) {
   const { status, stdout } = await Deno.spawn("git", {
+    stderr: "inherit",
     args,
   });
   const output = new TextDecoder().decode(stdout);

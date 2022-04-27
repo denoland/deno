@@ -149,6 +149,8 @@ export async function cargoBuild() {
   const { status } = await Deno.spawn("cargo", {
     args: ["build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
+    stdout: "inherit",
+    stderr: "inherit",
   });
   assert(status.success, "cargo build failed");
 }
@@ -174,6 +176,7 @@ export async function generateRunInfo(): Promise<unknown> {
   const proc = await Deno.spawn("git", {
     args: ["rev-parse", "HEAD"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
+    stderr: "inherit",
   });
   const revision = (new TextDecoder().decode(proc.stdout)).trim();
   const proc2 = await Deno.spawn(denoBinary(), {

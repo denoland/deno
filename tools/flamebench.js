@@ -24,6 +24,7 @@ async function bashThrough(subcmd, opts = {}) {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
+    stderr: "inherit",
   });
 
   // Exit process on failure

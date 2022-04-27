@@ -22,6 +22,7 @@ async function main() {
   if (Deno.args.includes("--check")) {
     const { status, stdout } = await Deno.spawn("git", {
       args: ["status", "-uno", "--porcelain", "--ignore-submodules"],
+      stderr: "inherit",
     });
 
     if (!status.success) {

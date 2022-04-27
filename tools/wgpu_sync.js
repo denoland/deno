@@ -14,6 +14,7 @@ async function bash(subcmd, opts = {}) {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
+    sdterr: "inherit",
   });
 
   // Exit process on failure

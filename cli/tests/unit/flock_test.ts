@@ -158,7 +158,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     await reader.read(new Uint8Array(1));
     reader.releaseLock();
   };
-  const  signal = async () => {
+  const signal = async () => {
     const writer = process.stdin.getWriter();
     await writer.write(new Uint8Array(1));
     writer.releaseLock();
