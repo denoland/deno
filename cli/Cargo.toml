@@ -38,7 +38,7 @@ deno_websocket = { version = "0.54.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.44.0", path = "../ext/webstorage" }
 regex = "=1.5.5"
 serde = { version = "=1.0.136", features = ["derive"] }
-zstd = '0.11.1'
+zstd = '=0.11.1'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"
