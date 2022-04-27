@@ -757,42 +757,38 @@ async fn op_http_write(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
-  loop {
-    match &mut *wr {
-      HttpResponseWriter::Headers(_) => {
-        break Err(http_error("no response headers"))
+  match &mut *wr {
+    HttpResponseWriter::Headers(_) => Err(http_error("no response headers")),
+    HttpResponseWriter::Closed => Err(http_error("response already completed")),
+    HttpResponseWriter::Body(body) => {
+      let mut result = body.write_all(&buf).await;
+      if result.is_ok() {
+        result = body.flush().await;
       }
-      HttpResponseWriter::Closed => {
-        break Err(http_error("response already completed"))
-      }
-      HttpResponseWriter::Body(body) => {
-        let mut result = body.write_all(&buf).await;
-        if result.is_ok() {
-          result = body.flush().await;
-        }
-        match result {
-          Ok(_) => break Ok(()),
-          Err(err) => {
-            assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-            // Don't return "broken pipe", that's an implementation detail.
-            // Pull up the failure associated with the transport connection instead.
-            stream.conn.closed().await?;
-            // If there was no connection error, drop body_tx.
-            *wr = HttpResponseWriter::Closed;
-          }
+      match result {
+        Ok(_) => Ok(()),
+        Err(err) => {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+          Err(http_error("response already completed"))
         }
       }
-      HttpResponseWriter::BodyUncompressed(body) => {
-        let bytes = Bytes::from(buf);
-        match body.send_data(bytes).await {
-          Ok(_) => break Ok(()),
-          Err(err) => {
-            assert!(err.is_closed());
-            // Pull up the failure associated with the transport connection instead.
-            stream.conn.closed().await?;
-            // If there was no connection error, drop body_tx.
-            *wr = HttpResponseWriter::Closed;
-          }
+    }
+    HttpResponseWriter::BodyUncompressed(body) => {
+      let bytes = Bytes::from(buf);
+      match body.send_data(bytes).await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+          assert!(err.is_closed());
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+          Err(http_error("response already completed"))
         }
       }
     }
