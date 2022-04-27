@@ -9,3 +9,5 @@ Available tasks:
     echo $(echo 10 ; exit 2) && exit 5
 - strings
     deno run main.ts && deno eval "console.log(\"test\")"
+- wait_exit
+    temp_deno_task_wait_exit run -A --quiet wait_exit.js
