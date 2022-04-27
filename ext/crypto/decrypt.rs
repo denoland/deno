@@ -1,6 +1,10 @@
 use crate::shared::*;
-use aes::BlockEncrypt;
-use aes::NewBlockCipher;
+use aes::cipher::BlockCipher;
+use aes::cipher::BlockEncrypt;
+use aes::cipher::KeyInit;
+use aes::cipher::BlockDecryptMut;
+use aes::cipher::KeyIvInit;
+use aes::cipher::block_padding::Pkcs7;
 use aes_gcm::aead::generic_array::typenum::U12;
 use aes_gcm::aead::generic_array::typenum::U16;
 use aes_gcm::aead::generic_array::ArrayLength;
@@ -153,42 +157,51 @@ fn decrypt_aes_cbc(
   let plaintext = match length {
     128 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-      type Aes128Cbc =
-        block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
-      let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
+      type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
+      let cipher = Aes128CbcDec::new_from_slices(&key, &iv).map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Invalid key or iv".to_string())
+      })?;
 
-      cipher.decrypt_vec(data).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Decryption failed".to_string(),
-        )
-      })?
+      cipher
+        .decrypt_padded_vec_mut::<Pkcs7>(data)
+        .map_err(|_| {
+          custom_error(
+            "DOMExceptionOperationError",
+            "Decryption failed".to_string(),
+          )
+        })?
     }
     192 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-      type Aes192Cbc =
-        block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
-      let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
+      type Aes192CbcDec = cbc::Decryptor<aes::Aes192>;
+      let cipher = Aes192CbcDec::new_from_slices(&key, &iv).map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Invalid key or iv".to_string())
+      })?;
 
-      cipher.decrypt_vec(data).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Decryption failed".to_string(),
-        )
-      })?
+      cipher
+        .decrypt_padded_vec_mut::<Pkcs7>(data)
+        .map_err(|_| {
+          custom_error(
+            "DOMExceptionOperationError",
+            "Decryption failed".to_string(),
+          )
+        })?
     }
     256 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-      type Aes256Cbc =
-        block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
-      let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
+      type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
+      let cipher = Aes256CbcDec::new_from_slices(&key, &iv).map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Invalid key or iv".to_string())
+      })?;
 
-      cipher.decrypt_vec(data).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Decryption failed".to_string(),
-        )
-      })?
+      cipher
+        .decrypt_padded_vec_mut::<Pkcs7>(data)
+        .map_err(|_| {
+          custom_error(
+            "DOMExceptionOperationError",
+            "Decryption failed".to_string(),
+          )
+        })?
     }
     _ => unreachable!(),
   };
@@ -203,7 +216,7 @@ fn decrypt_aes_ctr_gen<B, F>(
   data: &[u8],
 ) -> Result<Vec<u8>, AnyError>
 where
-  B: BlockEncrypt + NewBlockCipher,
+  B: BlockEncrypt + BlockCipher,
   F: CtrFlavor<B::BlockSize>,
 {
   let mut cipher = Ctr::<B, F>::new(key.into(), counter.into());

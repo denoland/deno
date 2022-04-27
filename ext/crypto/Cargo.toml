@@ -14,12 +14,13 @@ description = "Web Cryptography API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-aes = "0.7.5"
+aes = "0.8.1"
 aes-gcm = "0.9.4"
-aes-kw = { version = "0.1", features = ["alloc"] }
+aes-kw = { version = "0.2.1", features = ["alloc"] }
 base64 = "0.13.0"
 block-modes = "0.8.1"
 ctr = "0.8.0"
+cbc = { version = "0.1.2", features = ["alloc"] }
 deno_core = { version = "0.131.0", path = "../../core" }
 deno_web = { version = "0.80.0", path = "../web" }
 elliptic-curve = { version = "0.10.6", features = ["std", "pem"] }

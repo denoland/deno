@@ -1,8 +1,7 @@
 use crate::shared::*;
 
-use aes::cipher::NewCipher;
-use aes::BlockEncrypt;
-use aes::NewBlockCipher;
+use aes::cipher::BlockCipher;
+use aes::cipher::BlockEncrypt;
 use aes_gcm::aead::generic_array::typenum::U12;
 use aes_gcm::aead::generic_array::typenum::U16;
 use aes_gcm::aead::generic_array::ArrayLength;
@@ -156,8 +155,7 @@ fn encrypt_aes_cbc(
   let ciphertext = match length {
     128 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-      type Aes128Cbc =
-        block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
+      type Aes128CbcEnc = cbc::Encryptor<::Aes128, block_modes::block_padding::Pkcs7>;
 
       let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
       cipher.encrypt_vec(data)
@@ -266,7 +264,7 @@ fn encrypt_aes_ctr_gen<B, F>(
   data: &[u8],
 ) -> Result<Vec<u8>, AnyError>
 where
-  B: BlockEncrypt + NewBlockCipher,
+  B: BlockEncrypt + BlockCipher,
   F: CtrFlavor<B::BlockSize>,
 {
   let mut cipher = Ctr::<B, F>::new(key.into(), counter.into());
