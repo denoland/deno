@@ -456,6 +456,9 @@ pub async fn op_ws_next_event(
     },
     Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
     Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
+    Some(Ok(Message::Frame(_))) => {
+      NextEventResponse::Error("received unexpected frame".into())
+    }
     Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();

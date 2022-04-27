@@ -52,7 +52,7 @@ fn create_snapshot(
     );
 
     vec.extend_from_slice(
-      &zstd::block::compress(snapshot_slice, 22)
+      &zstd::bulk::compress(snapshot_slice, 22)
         .expect("snapshot compression failed"),
     );
 
