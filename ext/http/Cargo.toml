@@ -13,6 +13,9 @@ description = "HTTP server implementation for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+standalone = ["deno_core/standalone"]
+
 [[bench]]
 name = "compressible"
 harness = false

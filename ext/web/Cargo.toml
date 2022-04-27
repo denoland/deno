@@ -13,6 +13,9 @@ description = "Collection of Web APIs"
 [lib]
 path = "lib.rs"
 
+[features]
+standalone = ["deno_core/standalone"]
+
 [dependencies]
 async-trait = "0.1.51"
 base64 = "0.13.0"

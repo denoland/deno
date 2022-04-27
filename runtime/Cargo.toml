@@ -12,6 +12,24 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+standalone = [
+    "deno_broadcast_channel/standalone",
+    "deno_console/standalone",
+    "deno_core/standalone",
+    "deno_crypto/standalone",
+    "deno_fetch/standalone",
+    "deno_ffi/standalone",
+    "deno_http/standalone",
+    "deno_net/standalone",
+    "deno_tls/standalone",
+    "deno_url/standalone",
+    "deno_web/standalone",
+    "deno_webgpu/standalone",
+    "deno_webidl/standalone",
+    "deno_websocket/standalone",
+    "deno_webstorage/standalone",
+]
+
 
 [lib]
 name = "deno_runtime"
@@ -67,7 +85,13 @@ encoding_rs = "0.8.29"
 filetime = "0.2.15"
 fs3 = "0.5.0"
 http = "0.2.4"
-hyper = { version = "0.14.12", features = ["server", "stream", "http1", "http2", "runtime"] }
+hyper = { version = "0.14.12", features = [
+    "server",
+    "stream",
+    "http1",
+    "http2",
+    "runtime",
+] }
 libc = "0.2.121"
 log = "0.4.14"
 lzzzz = '=0.8.0'
@@ -85,7 +109,17 @@ uuid = { version = "0.8.2", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"
-winapi = { version = "0.3.9", features = ["commapi", "knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { version = "0.3.9", features = [
+    "commapi",
+    "knownfolders",
+    "mswsock",
+    "objbase",
+    "shlobj",
+    "tlhelp32",
+    "winbase",
+    "winerror",
+    "winsock2",
+] }
 
 [target.'cfg(unix)'.dependencies]
 nix = "=0.23.0"

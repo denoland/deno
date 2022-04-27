@@ -13,6 +13,9 @@ description = "Implementation of WebStorage API for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+standalone = ["deno_core/standalone"]
+
 [dependencies]
 deno_core = { version = "0.132.0", path = "../../core" }
 deno_web = { version = "0.81.0", path = "../web" }

@@ -13,6 +13,9 @@ description = "Implementation of BroadcastChannel API for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+standalone = ["deno_core/standalone"]
+
 [dependencies]
 async-trait = "0.1"
 deno_core = { version = "0.132.0", path = "../../core" }

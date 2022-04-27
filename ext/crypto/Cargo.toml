@@ -13,6 +13,9 @@ description = "Web Cryptography API implementation for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+standalone = ["deno_core/standalone"]
+
 [dependencies]
 aes = "0.7.5"
 aes-gcm = "0.9.4"

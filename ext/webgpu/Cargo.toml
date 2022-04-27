@@ -10,6 +10,9 @@ readme = "README.md"
 repository = "https://github.com/gfx-rs/wgpu"
 description = "WebGPU implementation for Deno"
 
+[features]
+standalone = ["deno_core/standalone"]
+
 [dependencies]
 deno_core = { version = "0.132.0", path = "../../core" }
 serde = { version = "1.0", features = ["derive"] }
