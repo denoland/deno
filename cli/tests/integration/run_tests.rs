@@ -1610,6 +1610,11 @@ itest!(worker_drop_handle_race {
   exit_code: 1,
 });
 
+itest!(worker_drop_handle_race_terminate {
+  args: "run --unstable worker_drop_handle_race_terminate.js",
+  output: "worker_drop_handle_race_terminate.js.out",
+});
+
 itest!(worker_close_nested {
   args: "run --quiet --reload --allow-read worker_close_nested.js",
   output: "worker_close_nested.js.out",
