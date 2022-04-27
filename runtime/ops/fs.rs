@@ -2050,16 +2050,16 @@ async fn op_readfile_async(
     let path = Path::new(&path);
     Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
   });
-  match cancel_rid {
-    Some(cancel_rid) => {
-      let cancel_handle = state
-        .borrow_mut()
-        .resource_table
-        .get::<CancelHandle>(cancel_rid)?;
-      fut.or_cancel(cancel_handle).await??
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
     }
-    None => fut.await?,
   }
+  fut.await?
 }
 
 #[op]
@@ -2077,14 +2077,14 @@ async fn op_readfile_text_async(
     let path = Path::new(&path);
     Ok(String::from_utf8(std::fs::read(path)?)?)
   });
-  match cancel_rid {
-    Some(cancel_rid) => {
-      let cancel_handle = state
-        .borrow_mut()
-        .resource_table
-        .get::<CancelHandle>(cancel_rid)?;
-      fut.or_cancel(cancel_handle).await??
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
     }
-    None => fut.await?,
   }
+  fut.await?
 }
