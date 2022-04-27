@@ -1356,6 +1356,66 @@ Deno.test({
 });
 
 Deno.test({
+  name: "http server compresses streaming body - check body",
+  permissions: { net: true, run: true, read: true, write: true },
+  async fn() {
+    const hostname = "localhost";
+    const port = 4509;
+    const listener = Deno.listen({ hostname, port });
+
+    const data = { hello: "deno", now: "with", compressed: "body" };
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    await file.write(new TextEncoder().encode(JSON.stringify(data)));
+    file.close();
+
+    async function server() {
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      const f = await Deno.open(tmpFile, { read: true });
+      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      const response = new Response(f.readable, {
+        headers: { "content-type": "application/json" },
+      });
+      await respondWith(response);
+      httpConn.close();
+      listener.close();
+      f.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = [
+        "curl",
+        "--request",
+        "GET",
+        "--url",
+        url,
+        "--header",
+        "Accept-Encoding: gzip, deflate, br",
+      ];
+      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      const stdout = proc.stdout!.readable
+        .pipeThrough(new DecompressionStream("gzip"))
+        .pipeThrough(new TextDecoderStream());
+      let body = "";
+      for await (const chunk of stdout) {
+        body += chunk;
+      }
+      assertEquals(JSON.parse(body), data);
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+});
+
+Deno.test({
   name: "http server doesn't compress small body",
   permissions: { net: true, run: true },
   async fn() {
