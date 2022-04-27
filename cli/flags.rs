@@ -512,14 +512,10 @@ To evaluate code in the shell:
 ";
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec<I, T>(args: I) -> clap::Result<Flags>
-where
-  I: IntoIterator<Item = T>,
-  T: Into<std::ffi::OsString> + Clone,
-{
+pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
   let app = clap_root(&version);
-  let matches = app.clone().try_get_matches_from(args)?;
+  let matches = app.clone().try_get_matches_from(&args)?;
 
   let mut flags = Flags::default();
 
@@ -554,7 +550,7 @@ where
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     Some(("repl", m)) => repl_parse(&mut flags, m),
     Some(("run", m)) => run_parse(&mut flags, m),
-    Some(("task", m)) => task_parse(&mut flags, m),
+    Some(("task", m)) => task_parse(&mut flags, m, &args),
     Some(("test", m)) => test_parse(&mut flags, m),
     Some(("types", m)) => types_parse(&mut flags, m),
     Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
@@ -2500,20 +2496,25 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
-fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn task_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  raw_args: &[String],
+) {
   config_arg_parse(flags, matches);
 
   let mut task_name = "".to_string();
   if let Some(task) = matches.value_of("task") {
     task_name = task.to_string();
 
-    let task_args: Vec<String> = matches
-      .values_of("task_args")
-      .unwrap_or_default()
-      .map(String::from)
-      .collect();
-    for v in task_args {
-      flags.argv.push(v);
+    if let Some(task_args) = matches.values_of("task_args") {
+      // forward the `--` to the deno task
+      if let Some(index) = matches.index_of("task_args") {
+        if raw_args[index] == "--" {
+          flags.argv.push("--".to_string());
+        }
+      }
+      flags.argv.extend(task_args.map(String::from));
     }
   }
 
@@ -2961,6 +2962,7 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -5492,8 +5494,7 @@ mod tests {
 
   #[test]
   fn task_subcommand() {
-    let r =
-      flags_from_vec(svec!["deno", "task", "build", "--", "hello", "world",]);
+    let r = flags_from_vec(svec!["deno", "task", "build", "hello", "world",]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5518,8 +5519,33 @@ mod tests {
   }
 
   #[test]
+  fn task_subcommand_double_hyphen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "task",
+      "-c",
+      "deno.json",
+      "build",
+      "--",
+      "hello",
+      "world",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["--", "hello", "world"],
+        config_path: Some("deno.json".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn task_subcommand_empty() {
-    let r = flags_from_vec(svec!["deno", "task",]);
+    let r = flags_from_vec(svec!["deno", "task"]);
     assert_eq!(
       r.unwrap(),
       Flags {
