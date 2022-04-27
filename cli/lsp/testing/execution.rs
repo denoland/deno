@@ -300,7 +300,8 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags::flags_from_vec(args)?;
+    let flags =
+      flags::flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(Arc::new(flags)).await?;
     let permissions =
       Permissions::from_options(&ps.flags.permissions_options());
