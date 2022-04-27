@@ -110,7 +110,7 @@ fn task_subprocess_kill() {
   // give task some time to start up
   let mut stdout = child.stdout.take().unwrap();
   let mut buf = [0; 7];
-  stdout.read(&mut buf).unwrap();
+  stdout.read_exact(&mut buf).unwrap();
   assert_eq!(std::str::from_utf8(&buf).unwrap(), "started");
 
   // now kill it
