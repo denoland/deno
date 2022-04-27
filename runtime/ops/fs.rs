@@ -95,6 +95,10 @@ pub fn init() -> Extension {
       op_futime_async::decl(),
       op_utime_sync::decl(),
       op_utime_async::decl(),
+      op_readfile_sync::decl(),
+      op_readfile_text_sync::decl(),
+      op_readfile_async::decl(),
+      op_readfile_text_async::decl(),
     ])
     .build()
 }
@@ -2007,4 +2011,80 @@ fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
     .check_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
+}
+
+#[op]
+fn op_readfile_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(path)?;
+  Ok(std::fs::read(path)?.into())
+}
+
+#[op]
+fn op_readfile_text_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<String, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(path)?;
+  Ok(std::fs::read_to_string(path)?)
+}
+
+#[op]
+async fn op_readfile_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+  cancel_rid: Option<ResourceId>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  {
+    let path = Path::new(&path);
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
+  let fut = tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
+  });
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
+    }
+  }
+  fut.await?
+}
+
+#[op]
+async fn op_readfile_text_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+  cancel_rid: Option<ResourceId>,
+) -> Result<String, AnyError> {
+  {
+    let path = Path::new(&path);
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
+  let fut = tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(String::from_utf8(std::fs::read(path)?)?)
+  });
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
+    }
+  }
+  fut.await?
 }
