@@ -26,6 +26,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::ops::io::Stdio;
+use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use std::collections::HashMap;
@@ -183,11 +185,17 @@ async fn test_specifier(
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
+    let (stdout, stderr) = test::create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
       vec![ops::testing::init(channel.clone())],
+      Stdio {
+        stdin: StdioPipe::Inherit,
+        stdout: StdioPipe::File(stdout),
+        stderr: StdioPipe::File(stderr),
+      },
     );
 
     worker
@@ -752,16 +760,19 @@ impl test::TestReporter for LspTestReporter {
         .get(origin)
         .and_then(|v| v.last().map(|td| td.into()))
     });
-    match output {
-      test::TestOutput::Console(value) => {
-        self.progress(lsp_custom::TestRunProgressMessage::Output {
-          value: value.replace('\n', "\r\n"),
-          test,
-          // TODO(@kitsonk) test output should include a location
-          location: None,
-        })
+    let value = match output {
+      test::TestOutput::String(value) => value.replace('\n', "\r\n"),
+      test::TestOutput::Bytes(bytes) => {
+        String::from_utf8_lossy(bytes).replace('\n', "\r\n")
       }
-    }
+    };
+
+    self.progress(lsp_custom::TestRunProgressMessage::Output {
+      value,
+      test,
+      // TODO(@kitsonk) test output should include a location
+      location: None,
+    })
   }
 
   fn report_result(
@@ -786,10 +797,11 @@ impl test::TestReporter for LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestResult::Failed(message) => {
+      test::TestResult::Failed(js_error) => {
+        let err_string = test::format_test_error(js_error);
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages: as_test_messages(message, false),
+          messages: as_test_messages(err_string, false),
           duration: Some(elapsed as u32),
         })
       }
@@ -828,9 +840,10 @@ impl test::TestReporter for LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestStepResult::Failed(message) => {
-        let messages = if let Some(message) = message {
-          as_test_messages(message, false)
+      test::TestStepResult::Failed(js_error) => {
+        let messages = if let Some(js_error) = js_error {
+          let err_string = test::format_test_error(js_error);
+          as_test_messages(err_string, false)
         } else {
           vec![]
         };

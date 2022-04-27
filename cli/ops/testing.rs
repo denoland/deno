@@ -1,4 +1,8 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestOutput;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -19,6 +23,10 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
       op_get_test_origin::decl(),
       op_dispatch_test_event::decl(),
     ])
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
+    })
     .state(move |state| {
       state.put(sender.clone());
       Ok(())
@@ -39,6 +47,9 @@ pub fn op_pledge_test_permissions(
   let worker_permissions = create_child_permissions(parent_permissions, args)?;
   let parent_permissions = parent_permissions.clone();
 
+  if state.try_take::<PermissionsHolder>().is_some() {
+    panic!("pledge test permissions called before restoring previous pledge");
+  }
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
@@ -77,6 +88,17 @@ fn op_dispatch_test_event(
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
   sender.send(event).ok();
+  Ok(())
+}
 
+#[op]
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  _is_err: bool,
+) -> Result<(), AnyError> {
+  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
+  let msg = TestOutput::String(msg);
+  sender.send(TestEvent::Output(msg)).ok();
   Ok(())
 }

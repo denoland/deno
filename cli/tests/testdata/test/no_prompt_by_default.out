@@ -1,16 +1,15 @@
-Check [WILDCARD]/no_prompt_by_default.ts
-running 1 test from test/no_prompt_by_default.ts
+running 1 test from ./test/no_prompt_by_default.ts
 no prompt ... FAILED ([WILDCARD]ms)
 
 failures:
 
-test/no_prompt_by_default.ts > no prompt
+./test/no_prompt_by_default.ts > no prompt
 PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
 
 failures:
 
-	test/no_prompt_by_default.ts
+	./test/no_prompt_by_default.ts
 	no prompt
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD]ms)

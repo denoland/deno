@@ -11,6 +11,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
+use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
@@ -53,6 +54,9 @@ pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<W
 /// value if type aliases have the same underlying type
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+
+#[derive(Clone)]
+pub struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 /// A holder for callback that can used to preload some modules into a WebWorker
 /// before actual worker code is executed. It's a struct instead of a type
@@ -106,6 +110,7 @@ pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 pub fn init(
   create_web_worker_cb: Arc<CreateWebWorkerCb>,
   preload_module_cb: Arc<PreloadModuleCb>,
+  format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Extension {
   Extension::builder()
     .state(move |state| {
@@ -118,6 +123,9 @@ pub fn init(
       let preload_module_cb_holder =
         PreloadModuleCbHolder(preload_module_cb.clone());
       state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
+      let format_js_error_fn_holder =
+        FormatJsErrorFnHolder(format_js_error_fn.clone());
+      state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
 
       Ok(())
     })
@@ -193,6 +201,8 @@ fn op_create_worker(
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
   let preload_module_cb = state.take::<PreloadModuleCbHolder>();
   state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
+  let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
+  state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
@@ -238,6 +248,7 @@ fn op_create_worker(
       module_specifier,
       maybe_source_code,
       preload_module_cb.0,
+      format_js_error_fn.0,
     )
   })?;
 

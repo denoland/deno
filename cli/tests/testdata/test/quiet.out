@@ -1,4 +1,4 @@
-running 4 tests from test/quiet.ts
+running 4 tests from ./test/quiet.ts
 console.log ... ok ([WILDCARD])
 console.error ... ok ([WILDCARD])
 console.info ... ok ([WILDCARD])
