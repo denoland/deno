@@ -9,16 +9,24 @@
     return core.opSync("op_readfile_sync", pathFromURL(path));
   }
 
-  function readFile(path, _options) {
-    return core.opAsync("op_readfile_async", pathFromURL(path));
+  function readFile(path, options) {
+    return core.opAsync(
+      "op_readfile_async",
+      pathFromURL(path),
+      options?.signal ?? null,
+    );
   }
 
   function readTextFileSync(path) {
     return core.opSync("op_readfile_text_sync", pathFromURL(path));
   }
 
-  function readTextFile(path, _options) {
-    return core.opAsync("op_readfile_text_async", pathFromURL(path));
+  function readTextFile(path, options) {
+    return core.opAsync(
+      "op_readfile_text_async",
+      pathFromURL(path),
+      options?.signal ?? null,
+    );
   }
 
   window.__bootstrap.readFile = {

@@ -2039,32 +2039,52 @@ fn op_readfile_text_sync(
 async fn op_readfile_async(
   state: Rc<RefCell<OpState>>,
   path: String,
+  cancel_rid: Option<ResourceId>,
 ) -> Result<ZeroCopyBuf, AnyError> {
   {
     let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().read.check(path)?;
   }
-  tokio::task::spawn_blocking(move || {
+  let fut = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
     Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
-  })
-  .await?
+  });
+  match cancel_rid {
+    Some(cancel_rid) => {
+      let cancel_handle = state
+        .borrow_mut()
+        .resource_table
+        .get::<CancelHandle>(cancel_rid)?;
+      fut.or_cancel(cancel_handle).await??
+    }
+    None => fut.await?,
+  }
 }
 
 #[op]
 async fn op_readfile_text_async(
   state: Rc<RefCell<OpState>>,
   path: String,
+  cancel_rid: Option<ResourceId>,
 ) -> Result<String, AnyError> {
   {
     let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().read.check(path)?;
   }
-  tokio::task::spawn_blocking(move || {
+  let fut = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
     Ok(String::from_utf8(std::fs::read(path)?)?)
-  })
-  .await?
+  });
+  match cancel_rid {
+    Some(cancel_rid) => {
+      let cancel_handle = state
+        .borrow_mut()
+        .resource_table
+        .get::<CancelHandle>(cancel_rid)?;
+      fut.or_cancel(cancel_handle).await??
+    }
+    None => fut.await?,
+  }
 }
