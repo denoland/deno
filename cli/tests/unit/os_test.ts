@@ -129,7 +129,7 @@ Deno.test(
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
     const { stdout } = await Deno.spawn(Deno.execPath(), {
-      args: [ "eval", "-p", "--unstable", "Deno.ppid"],
+      args: ["eval", "-p", "--unstable", "Deno.ppid"],
       env: { NO_COLOR: "true" },
     });
 

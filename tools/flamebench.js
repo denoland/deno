@@ -20,7 +20,11 @@ async function bashOut(subcmd) {
 }
 
 async function bashThrough(subcmd, opts = {}) {
-  const { status } = Deno.spawn("bash", { ...opts, args: ["-c", subcmd] });
+  const { status } = await Deno.spawn("bash", {
+    ...opts,
+    args: ["-c", subcmd],
+    stdout: "inherit",
+  });
 
   // Exit process on failure
   if (!status.success) {

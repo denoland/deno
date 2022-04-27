@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { delay, join, TextLineStream, ROOT_PATH, toFileUrl } from "../util.js";
+import { delay, join, ROOT_PATH, TextLineStream, toFileUrl } from "../util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
@@ -121,7 +121,9 @@ export async function runSingleTest(
 
     let harnessStatus = null;
 
-    const lines = proc.stderr.pipeThrough(new TextDecoderStream()).pipeThrough(new TextLineStream());
+    const lines = proc.stderr.pipeThrough(new TextDecoderStream()).pipeThrough(
+      new TextLineStream(),
+    );
     for await (const line of lines) {
       if (line.startsWith("{")) {
         const data = JSON.parse(line);

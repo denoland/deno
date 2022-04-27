@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
-import { readAll } from "../../../test_util/std/io/util.ts";
 
 Deno.test(
   { permissions: { read: true, run: true, hrtime: true } },
@@ -155,11 +154,11 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
   });
 
   const waitSignal = async () => {
-    const reader = process.stdout.getReader();
+    const reader = process.stdout.getReader({ mode: "byob" });
     await reader.read(new Uint8Array(1));
     reader.releaseLock();
-  }
-  const signal = () => async () => {
+  };
+  const  signal = async () => {
     const writer = process.stdin.getWriter();
     await writer.write(new Uint8Array(1));
     writer.releaseLock();
@@ -190,6 +189,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     },
     close: async () => {
       await process.status;
+      await process.stdin.close();
     },
   };
 }

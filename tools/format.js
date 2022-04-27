@@ -7,6 +7,8 @@ async function dprint() {
   const execPath = getPrebuiltToolPath("dprint");
   const { status } = await Deno.spawn(execPath, {
     args: ["fmt", "--config=" + configFile],
+    stdout: "inherit",
+    stderr: "inherit",
   });
   if (!status.success) {
     throw new Error("dprint failed");

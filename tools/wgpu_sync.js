@@ -13,6 +13,7 @@ async function bash(subcmd, opts = {}) {
   const { status } = await Deno.spawn("bash", {
     ...opts,
     args: ["-c", subcmd],
+    stdout: "inherit",
   });
 
   // Exit process on failure

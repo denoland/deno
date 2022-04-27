@@ -120,12 +120,14 @@ export function assert(condition: unknown, message: string): asserts condition {
 
 export function runPy<T extends Deno.SpawnOptions>(
   args: string[],
-  options: Omit<Omit<T, "cmd">, "cwd">,
+  options: Omit<T, "cwd">,
 ): Deno.Child<T> {
   const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
   return Deno.spawnChild(cmd, {
     args,
     cwd: join(ROOT_PATH, "./test_util/wpt/"),
+    stdout: "inherit",
+    stderr: "inherit",
     ...options,
   });
 }
@@ -144,7 +146,7 @@ export async function checkPy3Available() {
 
 export async function cargoBuild() {
   if (binary) return;
-  const { status } = Deno.spawn("cargo", {
+  const { status } = await Deno.spawn("cargo", {
     args: ["build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
   });

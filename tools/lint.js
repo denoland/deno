@@ -41,6 +41,7 @@ async function dlint() {
   for (const chunk of chunks) {
     const { status } = await Deno.spawn(execPath, {
       args: ["run", "--config=" + configFile, ...chunk],
+      stdout: "inherit",
     });
     if (!status.success) {
       throw new Error("dlint failed");
@@ -70,6 +71,7 @@ async function dlintPreferPrimordials() {
   for (const chunk of chunks) {
     const { status } = await Deno.spawn(execPath, {
       args: ["run", "--rule", "prefer-primordials", ...chunk],
+      stdout: "inherit",
     });
     if (!status.success) {
       throw new Error("prefer-primordials failed");
@@ -112,6 +114,7 @@ async function clippy() {
       "-D",
       "clippy::await_holding_refcell_ref",
     ],
+    stdout: "inherit",
   });
   if (!status.success) {
     throw new Error("clippy failed");

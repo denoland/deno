@@ -4,7 +4,10 @@ new Worker("data:,setTimeout(() => Deno.exit(2), 200)", {
 });
 
 try {
-  await Deno.spawn("ps");
+  await Deno.spawn("ps", {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
 } catch {
   Deno.exit(0);
 }

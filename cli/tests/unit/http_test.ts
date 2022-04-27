@@ -1167,7 +1167,11 @@ Deno.test(
     async function client() {
       const url = `http://${hostname}:${port}/`;
       const args = ["-X", "DELETE", url];
-      const { status } = await Deno.spawn("curl", { args, stdout: "null", stderr: "null" });
+      const { status } = await Deno.spawn("curl", {
+        args,
+        stdout: "null",
+        stderr: "null",
+      });
       assert(status.success);
     }
 
@@ -1285,7 +1289,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1385,7 +1392,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout).toLocaleLowerCase();
       assert(output.includes("vary: accept-encoding\r\n"));
@@ -1436,7 +1446,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip;q=0.8, br;q=1.0, *;q=0.1",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1484,7 +1497,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding, Accept\r\n"));
@@ -1536,7 +1552,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1590,7 +1609,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1644,7 +1666,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1695,7 +1720,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1752,7 +1780,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
@@ -1871,7 +1902,10 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", { args, stderr: "null" });
+      const { status, stdout } = await Deno.spawn("curl", {
+        args,
+        stderr: "null",
+      });
       assert(status.success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));

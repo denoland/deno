@@ -7,5 +7,6 @@ try {
 const { status } = await Deno.spawn("curl", {
   args: ["--help"],
   stdout: "null",
+  stderr: "inherit",
 });
 console.log(status.success);
