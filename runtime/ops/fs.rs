@@ -16,7 +16,6 @@ use deno_core::ZeroCopyBuf;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
 use log::debug;
@@ -2041,12 +2040,16 @@ async fn op_readfile_async(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let path = Path::new(&path);
   {
+    let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().read.check(path)?;
   }
-  Ok(tokio::fs::read(path).await?.into())
+  tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
+  })
+  .await?
 }
 
 #[op]
@@ -2054,10 +2057,14 @@ async fn op_readfile_text_async(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<String, AnyError> {
-  let path = Path::new(&path);
   {
+    let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().read.check(path)?;
   }
-  Ok(String::from_utf8(tokio::fs::read(path).await?)?)
+  tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(String::from_utf8(std::fs::read(path)?)?)
+  })
+  .await?
 }
