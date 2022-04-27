@@ -3,7 +3,9 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
+use std::rc::Rc;
 
+use super::rawbytes;
 use super::transl8::FromV8;
 
 /// A V8Slice encapsulates a slice that's been borrowed from a JavaScript
@@ -102,4 +104,50 @@ impl AsMut<[u8]> for V8Slice {
   fn as_mut(&mut self) -> &mut [u8] {
     self.as_slice_mut()
   }
+}
+
+// Implement V8Slice -> bytes::Bytes
+impl V8Slice {
+  fn rc_into_bytes(self: Rc<Self>) -> bytes::Bytes {
+    let (ptr, len) = {
+      let slice = self.as_ref();
+      (slice.as_ptr(), slice.len())
+    };
+    let rc_raw = Rc::into_raw(self);
+    let data = rc_raw as *mut V8Slice;
+    rawbytes::RawBytes::new_raw(ptr, len, data.cast(), &V8SLICE_VTABLE)
+  }
+}
+
+impl From<V8Slice> for bytes::Bytes {
+  fn from(v8slice: V8Slice) -> Self {
+    Rc::new(v8slice).rc_into_bytes()
+  }
+}
+
+// NOTE: in the limit we could avoid extra-indirection and use the C++ shared_ptr
+// but we can't store both the underlying data ptr & ctrl ptr ... so instead we
+// use a shared rust ptr (Rc/Arc) that itself controls the C++ shared_ptr
+const V8SLICE_VTABLE: rawbytes::Vtable = rawbytes::Vtable {
+  clone: v8slice_clone,
+  drop: v8slice_drop,
+};
+
+unsafe fn v8slice_clone(
+  data: &rawbytes::AtomicPtr<()>,
+  _ptr: *const u8,
+  _len: usize,
+) -> bytes::Bytes {
+  let rc = Rc::from_raw(*data as *const V8Slice);
+  let b = rc.clone().rc_into_bytes();
+  std::mem::forget(rc);
+  b
+}
+
+unsafe fn v8slice_drop(
+  data: &mut rawbytes::AtomicPtr<()>,
+  _: *const u8,
+  _: usize,
+) {
+  drop(Rc::from_raw(*data as *const V8Slice))
 }

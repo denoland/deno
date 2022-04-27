@@ -633,7 +633,7 @@ async fn op_http_write_headers(
       } else {
         // If a buffer was passed, but isn't compressible, we use it to
         // construct a response body.
-        body = builder.body(Bytes::copy_from_slice(&data).into())?;
+        body = builder.body(Bytes::from(data).into())?;
       }
       new_wr = HttpResponseWriter::Closed;
     }
@@ -783,7 +783,7 @@ async fn op_http_write(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        let bytes = Bytes::copy_from_slice(&buf[..]);
+        let bytes = Bytes::from(buf);
         match body.send_data(bytes).await {
           Ok(_) => break Ok(()),
           Err(err) => {
