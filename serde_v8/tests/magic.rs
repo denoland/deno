@@ -136,7 +136,7 @@ fn magic_buffer() {
       serde_v8::from_v8(scope, v8_array).unwrap();
     let buf: bytes::Bytes = zbuf.into();
     assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
-    assert_eq!(buf.clone(), bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
+    assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
   })
 }
 
