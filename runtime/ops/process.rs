@@ -5,11 +5,10 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
 use crate::permissions::Permissions;
-use deno_core::error::bad_resource_id;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
@@ -33,22 +32,72 @@ pub fn init() -> Extension {
     .build()
 }
 
-fn clone_file(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<std::fs::File, AnyError> {
-  StdFileResource::with(state, rid, move |r| match r {
-    Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
-    Err(_) => Err(bad_resource_id()),
-  })
+#[derive(Copy, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Stdio {
+  Inherit,
+  Piped,
+  Null,
 }
 
-fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
-  match s {
-    "inherit" => Ok(std::process::Stdio::inherit()),
-    "piped" => Ok(std::process::Stdio::piped()),
-    "null" => Ok(std::process::Stdio::null()),
-    _ => Err(type_error("Invalid resource for stdio")),
+impl Stdio {
+  pub fn as_stdio(&self) -> std::process::Stdio {
+    match &self {
+      Stdio::Inherit => std::process::Stdio::inherit(),
+      Stdio::Piped => std::process::Stdio::piped(),
+      Stdio::Null => std::process::Stdio::null(),
+    }
+  }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum StdioOrRid {
+  Stdio(Stdio),
+  Rid(ResourceId),
+}
+
+impl<'de> Deserialize<'de> for StdioOrRid {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    use serde_json::Value;
+    let value = Value::deserialize(deserializer)?;
+    match value {
+      Value::String(val) => match val.as_str() {
+        "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
+        "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
+        "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
+        val => Err(serde::de::Error::unknown_variant(
+          val,
+          &["inherit", "piped", "null"],
+        )),
+      },
+      Value::Number(val) => match val.as_u64() {
+        Some(val) if val <= ResourceId::MAX as u64 => {
+          Ok(StdioOrRid::Rid(val as ResourceId))
+        }
+        _ => Err(serde::de::Error::custom("Expected a positive integer")),
+      },
+      _ => Err(serde::de::Error::custom(
+        r#"Expected a resource id, "inherit", "piped", or "null""#,
+      )),
+    }
+  }
+}
+
+impl StdioOrRid {
+  pub fn as_stdio(
+    &self,
+    state: &mut OpState,
+  ) -> Result<std::process::Stdio, AnyError> {
+    match &self {
+      StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
+      StdioOrRid::Rid(rid) => {
+        let file = StdFileResource::clone_file(state, *rid)?;
+        Ok(file.into())
+      }
+    }
   }
 }
 
@@ -63,12 +112,9 @@ pub struct RunArgs {
   gid: Option<u32>,
   #[cfg(unix)]
   uid: Option<u32>,
-  stdin: String,
-  stdout: String,
-  stderr: String,
-  stdin_rid: ResourceId,
-  stdout_rid: ResourceId,
-  stderr_rid: ResourceId,
+  stdin: StdioOrRid,
+  stdout: StdioOrRid,
+  stderr: StdioOrRid,
 }
 
 struct ChildResource {
@@ -139,26 +185,21 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   }
 
   // TODO: make this work with other resources, eg. sockets
-  if !run_args.stdin.is_empty() {
-    c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
-  } else {
-    let file = clone_file(state, run_args.stdin_rid)?;
-    c.stdin(file);
-  }
-
-  if !run_args.stdout.is_empty() {
-    c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
-  } else {
-    let file = clone_file(state, run_args.stdout_rid)?;
-    c.stdout(file);
-  }
-
-  if !run_args.stderr.is_empty() {
-    c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
-  } else {
-    let file = clone_file(state, run_args.stderr_rid)?;
-    c.stderr(file);
-  }
+  c.stdin(run_args.stdin.as_stdio(state)?);
+  c.stdout(
+    match run_args.stdout {
+      StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1),
+      value => value,
+    }
+    .as_stdio(state)?,
+  );
+  c.stderr(
+    match run_args.stderr {
+      StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2),
+      value => value,
+    }
+    .as_stdio(state)?,
+  );
 
   // We want to kill child when it's closed
   c.kill_on_drop(true);
@@ -260,6 +301,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
 
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
   use winapi::shared::minwindef::DWORD;

@@ -14,7 +14,6 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::ops;
-use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state;
 use crate::tools::test;
 
@@ -27,6 +26,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::ops::io::Stdio;
+use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use std::collections::HashMap;
@@ -184,17 +185,17 @@ async fn test_specifier(
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
-    let (stdout_writer, stderr_writer) =
-      create_stdout_stderr_pipes(channel.clone());
+    let (stdout, stderr) = test::create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
-      vec![ops::testing::init(
-        channel.clone(),
-        stdout_writer,
-        stderr_writer,
-      )],
+      vec![ops::testing::init(channel.clone())],
+      Stdio {
+        stdin: StdioPipe::Inherit,
+        stdout: StdioPipe::File(stdout),
+        stderr: StdioPipe::File(stderr),
+      },
     );
 
     worker
@@ -760,9 +761,8 @@ impl test::TestReporter for LspTestReporter {
         .and_then(|v| v.last().map(|td| td.into()))
     });
     let value = match output {
-      test::TestOutput::PrintStdout(value)
-      | test::TestOutput::PrintStderr(value) => value.replace('\n', "\r\n"),
-      test::TestOutput::Stdout(bytes) | test::TestOutput::Stderr(bytes) => {
+      test::TestOutput::String(value) => value.replace('\n', "\r\n"),
+      test::TestOutput::Bytes(bytes) => {
         String::from_utf8_lossy(bytes).replace('\n', "\r\n")
       }
     };

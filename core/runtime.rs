@@ -1,14 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
-use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
-use crate::error::ErrWithV8Handle;
+use crate::error::to_v8_type_error;
 use crate::error::JsError;
 use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
@@ -162,7 +162,6 @@ pub(crate) struct JsRuntimeState {
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
@@ -231,11 +230,6 @@ pub struct RuntimeOptions {
   /// Source map reference for errors.
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
 
-  /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JsError into an error. By default this callback
-  /// is set to `JsError::create()`.
-  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -293,10 +287,6 @@ impl JsRuntime {
     DENO_INIT.call_once(move || v8_init(v8_platform));
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
-
-    let js_error_create_fn = options
-      .js_error_create_fn
-      .unwrap_or_else(|| Rc::new(JsError::create));
 
     // Add builtins extension
     options
@@ -387,7 +377,6 @@ impl JsRuntime {
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
-      js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -652,9 +641,7 @@ impl JsRuntime {
   ///
   /// The same `name` value can be used for multiple executions.
   ///
-  /// `Error` can be downcast to a type that exposes additional information
-  /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  /// `Error` can usually be downcast to `JsError`.
   pub fn execute_script(
     &mut self,
     name: &str,
@@ -666,9 +653,7 @@ impl JsRuntime {
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
-  /// `Error` can be downcast to a type that exposes additional information
-  /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  /// `Error` can usually be downcast to `JsError`.
   pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
 
@@ -730,9 +715,7 @@ impl JsRuntime {
 
     if module.get_status() == v8::ModuleStatus::Errored {
       let exception = module.get_exception();
-      let err = exception_to_err_result(scope, exception, false)
-        .map_err(|err| attach_handle_to_error(scope, err, exception));
-      return err;
+      return exception_to_err_result(scope, exception, false);
     }
 
     assert!(matches!(
@@ -1068,14 +1051,13 @@ pub(crate) fn exception_to_err_result<'s, T>(
       js_error.exception_message.trim_start_matches("Uncaught ")
     );
   }
-  let js_error = (state_rc.borrow().js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
     scope.terminate_execution();
   }
 
-  Err(js_error)
+  Err(js_error.into())
 }
 
 // Related to module loading
@@ -1083,7 +1065,7 @@ impl JsRuntime {
   pub(crate) fn instantiate_module(
     &mut self,
     id: ModuleId,
-  ) -> Result<(), Error> {
+  ) -> Result<(), v8::Global<v8::Value>> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1095,10 +1077,7 @@ impl JsRuntime {
       .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      let exception = module.get_exception();
-      let err = exception_to_err_result(tc_scope, exception, false)
-        .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
-      return err;
+      return Err(v8::Global::new(tc_scope, module.get_exception()));
     }
 
     // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
@@ -1109,9 +1088,7 @@ impl JsRuntime {
 
     if instantiate_result.is_none() {
       let exception = tc_scope.exception().unwrap();
-      let err = exception_to_err_result(tc_scope, exception, false)
-        .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
-      return err;
+      return Err(v8::Global::new(tc_scope, exception));
     }
 
     Ok(())
@@ -1203,9 +1180,7 @@ impl JsRuntime {
   /// Implementors must manually call `run_event_loop()` to drive module
   /// evaluation future.
   ///
-  /// `Error` can be downcast to a type that exposes additional information
-  /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  /// `Error` can usually be downcast to `JsError`.
   ///
   /// This function panics if module has not been instantiated.
   pub fn mod_evaluate(
@@ -1287,7 +1262,11 @@ impl JsRuntime {
     receiver
   }
 
-  fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: Error) {
+  fn dynamic_import_reject(
+    &mut self,
+    id: ModuleLoadId,
+    exception: v8::Global<v8::Value>,
+  ) {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -1298,19 +1277,11 @@ impl JsRuntime {
       .expect("Invalid dynamic import id");
     let resolver = resolver_handle.open(scope);
 
-    let exception = err
-      .downcast_ref::<ErrWithV8Handle>()
-      .map(|err| err.get_handle(scope))
-      .unwrap_or_else(|| {
-        let message = err.to_string();
-        let message = v8::String::new(scope, &message).unwrap();
-        v8::Exception::type_error(scope, message)
-      });
-
     // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
     // rejecting the promise might initiate another `import()` which will
     // in turn call `bindings::host_import_module_dynamically_callback` which
     // will reach into `ModuleMap` from within the isolate.
+    let exception = v8::Local::new(scope, exception);
     resolver.reject(scope, exception).unwrap();
     scope.perform_microtask_checkpoint();
   }
@@ -1375,7 +1346,8 @@ impl JsRuntime {
               .push(load.into_future());
           }
           Err(err) => {
-            self.dynamic_import_reject(dyn_import_id, err);
+            let exception = to_v8_type_error(&mut self.handle_scope(), err);
+            self.dynamic_import_reject(dyn_import_id, exception);
           }
         }
         // Continue polling for more prepared dynamic imports.
@@ -1425,14 +1397,23 @@ impl JsRuntime {
                     .pending_dynamic_imports
                     .push(load.into_future());
                 }
-                Err(err) => self.dynamic_import_reject(dyn_import_id, err),
+                Err(err) => {
+                  let exception = match err {
+                    ModuleError::Exception(e) => e,
+                    ModuleError::Other(e) => {
+                      to_v8_type_error(&mut self.handle_scope(), e)
+                    }
+                  };
+                  self.dynamic_import_reject(dyn_import_id, exception)
+                }
               }
             }
             Err(err) => {
               // A non-javascript error occurred; this could be due to a an invalid
               // module specifier, or a problem with the source map, or a failure
               // to fetch the module source code.
-              self.dynamic_import_reject(dyn_import_id, err)
+              let exception = to_v8_type_error(&mut self.handle_scope(), err);
+              self.dynamic_import_reject(dyn_import_id, exception);
             }
           }
         } else {
@@ -1441,8 +1422,8 @@ impl JsRuntime {
           let module_id =
             load.root_module_id.expect("Root module should be loaded");
           let result = self.instantiate_module(module_id);
-          if let Err(err) = result {
-            self.dynamic_import_reject(dyn_import_id, err);
+          if let Err(exception) = result {
+            self.dynamic_import_reject(dyn_import_id, exception);
           }
           self.dynamic_import_module_evaluate(dyn_import_id, module_id)?;
         }
@@ -1499,11 +1480,10 @@ impl JsRuntime {
       v8::PromiseState::Rejected => {
         let exception = promise.result(scope);
         scope.perform_microtask_checkpoint();
-        let err1 = exception_to_err_result::<()>(scope, exception, false)
-          .map_err(|err| attach_handle_to_error(scope, err, exception))
-          .unwrap_err();
         // Receiver end might have been already dropped, ignore the result
-        let _ = module_evaluation.sender.send(Err(err1));
+        let _ = module_evaluation
+          .sender
+          .send(exception_to_err_result(scope, exception, false));
       }
     }
   }
@@ -1532,10 +1512,8 @@ impl JsRuntime {
           }
           v8::PromiseState::Rejected => {
             let exception = promise.result(scope);
-            let err1 = exception_to_err_result::<()>(scope, exception, false)
-              .map_err(|err| attach_handle_to_error(scope, err, exception))
-              .unwrap_err();
-            Some(Err((pending_dyn_evaluate.load_id, err1)))
+            let exception = v8::Global::new(scope, exception);
+            Some(Err((pending_dyn_evaluate.load_id, exception)))
           }
         }
       };
@@ -1545,8 +1523,8 @@ impl JsRuntime {
           Ok((dyn_import_id, module_id)) => {
             self.dynamic_import_resolve(dyn_import_id, module_id);
           }
-          Err((dyn_import_id, err1)) => {
-            self.dynamic_import_reject(dyn_import_id, err1);
+          Err((dyn_import_id, exception)) => {
+            self.dynamic_import_reject(dyn_import_id, exception);
           }
         }
       }
@@ -1568,13 +1546,23 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_es_module(
-        &mut self.handle_scope(),
-        // main module
-        true,
-        specifier.as_str(),
-        &code,
-      )?;
+      let scope = &mut self.handle_scope();
+      module_map_rc
+        .borrow_mut()
+        .new_es_module(
+          scope,
+          // main module
+          true,
+          specifier.as_str(),
+          &code,
+        )
+        .map_err(|e| match e {
+          ModuleError::Exception(exception) => {
+            let exception = v8::Local::new(scope, exception);
+            exception_to_err_result::<()>(scope, exception, false).unwrap_err()
+          }
+          ModuleError::Other(error) => error,
+        })?;
     }
 
     let mut load =
@@ -1583,11 +1571,23 @@ impl JsRuntime {
     while let Some(load_result) = load.next().await {
       let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &request, &info)?;
+      load.register_and_recurse(scope, &request, &info).map_err(
+        |e| match e {
+          ModuleError::Exception(exception) => {
+            let exception = v8::Local::new(scope, exception);
+            exception_to_err_result::<()>(scope, exception, false).unwrap_err()
+          }
+          ModuleError::Other(error) => error,
+        },
+      )?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
-    self.instantiate_module(root_id)?;
+    self.instantiate_module(root_id).map_err(|e| {
+      let scope = &mut self.handle_scope();
+      let exception = v8::Local::new(scope, e);
+      exception_to_err_result::<()>(scope, exception, false).unwrap_err()
+    })?;
     Ok(root_id)
   }
 
@@ -1605,13 +1605,23 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_es_module(
-        &mut self.handle_scope(),
-        // not main module
-        false,
-        specifier.as_str(),
-        &code,
-      )?;
+      let scope = &mut self.handle_scope();
+      module_map_rc
+        .borrow_mut()
+        .new_es_module(
+          scope,
+          // not main module
+          false,
+          specifier.as_str(),
+          &code,
+        )
+        .map_err(|e| match e {
+          ModuleError::Exception(exception) => {
+            let exception = v8::Local::new(scope, exception);
+            exception_to_err_result::<()>(scope, exception, false).unwrap_err()
+          }
+          ModuleError::Other(error) => error,
+        })?;
     }
 
     let mut load =
@@ -1620,11 +1630,23 @@ impl JsRuntime {
     while let Some(load_result) = load.next().await {
       let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &request, &info)?;
+      load.register_and_recurse(scope, &request, &info).map_err(
+        |e| match e {
+          ModuleError::Exception(exception) => {
+            let exception = v8::Local::new(scope, exception);
+            exception_to_err_result::<()>(scope, exception, false).unwrap_err()
+          }
+          ModuleError::Other(error) => error,
+        },
+      )?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
-    self.instantiate_module(root_id)?;
+    self.instantiate_module(root_id).map_err(|e| {
+      let scope = &mut self.handle_scope();
+      let exception = v8::Local::new(scope, e);
+      exception_to_err_result::<()>(scope, exception, false).unwrap_err()
+    })?;
     Ok(root_id)
   }
 
@@ -1827,9 +1849,7 @@ impl JsRealm {
   ///
   /// The same `name` value can be used for multiple executions.
   ///
-  /// `Error` can be downcast to a type that exposes additional information
-  /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  /// `Error` can usually be downcast to `JsError`.
   pub fn execute_script(
     &self,
     runtime: &mut JsRuntime,

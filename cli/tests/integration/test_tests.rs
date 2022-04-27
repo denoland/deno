@@ -302,6 +302,12 @@ itest!(no_prompt_with_denied_perms {
   output: "test/no_prompt_with_denied_perms.out",
 });
 
+itest!(captured_output {
+  args: "test --allow-run --allow-read --unstable test/captured_output.ts",
+  exit_code: 0,
+  output: "test/captured_output.out",
+});
+
 #[test]
 fn recursive_permissions_pledge() {
   let output = util::deno_cmd()

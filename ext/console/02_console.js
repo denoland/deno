@@ -465,12 +465,18 @@
     const entryIndentation = `,\n${
       StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
     }`;
-    const closingIndentation = `${inspectOptions.trailingComma ? "," : ""}\n${
-      StringPrototypeRepeat(DEFAULT_INDENT, level)
-    }`;
+    const closingDelimIndentation = StringPrototypeRepeat(
+      DEFAULT_INDENT,
+      level,
+    );
+    const closingIndentation = `${
+      inspectOptions.trailingComma ? "," : ""
+    }\n${closingDelimIndentation}`;
 
     let iContent;
-    if (options.group && entries.length > MIN_GROUP_LENGTH) {
+    if (entries.length === 0 && !inspectOptions.compact) {
+      iContent = `\n${closingDelimIndentation}`;
+    } else if (options.group && entries.length > MIN_GROUP_LENGTH) {
       const groups = groupEntries(entries, level, value);
       iContent = `${initIndentation}${
         ArrayPrototypeJoin(groups, entryIndentation)

@@ -3,16 +3,17 @@
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
+use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
-use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleId;
@@ -31,6 +32,8 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -55,8 +58,8 @@ pub struct WorkerOptions {
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -65,6 +68,7 @@ pub struct WorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub stdio: Stdio,
 }
 
 impl MainWorker {
@@ -131,12 +135,13 @@ impl MainWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
+        options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),
-      ops::io::init_stdio(),
+      ops::io::init_stdio(options.stdio),
       deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
@@ -159,7 +164,6 @@ impl MainWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       source_map_getter: options.source_map_getter,
-      js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -377,8 +381,8 @@ mod tests {
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
+      format_js_error_fn: None,
       source_map_getter: None,
-      js_error_create_fn: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
@@ -390,6 +394,7 @@ mod tests {
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
+      stdio: Default::default(),
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)
