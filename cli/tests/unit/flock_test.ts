@@ -103,8 +103,8 @@ async function checkFirstBlocksSecond(opts: {
     const secondPsTimes = await secondProcess.getTimes();
     return firstPsTimes.exitTime < secondPsTimes.enterTime;
   } finally {
-    firstProcess.close();
-    secondProcess.close();
+    await firstProcess.close();
+    await secondProcess.close();
   }
 }
 
@@ -149,14 +149,21 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     console.log(JSON.stringify({ enterTime, exitTime }));
 `;
 
-  const process = Deno.run({
-    cmd: [Deno.execPath(), "eval", "--unstable", scriptText],
-    stdout: "piped",
+  const process = Deno.spawnChild(Deno.execPath(), {
+    args: ["eval", "--unstable", scriptText],
     stdin: "piped",
   });
 
-  const waitSignal = () => process.stdout.read(new Uint8Array(1));
-  const signal = () => process.stdin.write(new Uint8Array(1));
+  const waitSignal = async () => {
+    const reader = process.stdout.getReader();
+    await reader.read(new Uint8Array(1));
+    reader.releaseLock();
+  }
+  const signal = () => async () => {
+    const writer = process.stdin.getWriter();
+    await writer.write(new Uint8Array(1));
+    writer.releaseLock();
+  };
 
   return {
     async waitStartup() {
@@ -174,17 +181,15 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
       await waitSignal();
     },
     getTimes: async () => {
-      const outputBytes = await readAll(process.stdout);
-      const text = new TextDecoder().decode(outputBytes);
+      const { stdout } = await process.output();
+      const text = new TextDecoder().decode(stdout);
       return JSON.parse(text) as {
         enterTime: number;
         exitTime: number;
       };
     },
-    close: () => {
-      process.stdout.close();
-      process.stdin.close();
-      process.close();
+    close: async () => {
+      await process.status;
     },
   };
 }

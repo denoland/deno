@@ -4,7 +4,7 @@ new Worker("data:,setTimeout(() => Deno.exit(2), 200)", {
 });
 
 try {
-  await Deno.run({ cmd: ["ps"] });
+  await Deno.spawn("ps");
 } catch {
   Deno.exit(0);
 }
