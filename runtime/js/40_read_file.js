@@ -3,21 +3,22 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { pathFromURL } = window.__bootstrap.util;
 
   function readFileSync(path) {
-    return core.opSync("op_readfile_sync", path);
+    return core.opSync("op_readfile_sync", pathFromURL(path));
   }
 
   function readFile(path, _options) {
-    return core.opAsync("op_readfile_async", path);
+    return core.opAsync("op_readfile_async", pathFromURL(path));
   }
 
   function readTextFileSync(path) {
-    return core.opSync("op_readfile_text_sync", path);
+    return core.opSync("op_readfile_text_sync", pathFromURL(path));
   }
 
   function readTextFile(path, _options) {
-    return core.opAsync("op_readfile_text_async", path);
+    return core.opAsync("op_readfile_text_async", pathFromURL(path));
   }
 
   window.__bootstrap.readFile = {
