@@ -2970,7 +2970,7 @@ declare namespace Deno {
     };
   }
 
-  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  /** If `resolveDns` is called with "SOA" record type specified, it will return an array of this interface. */
   export interface MXRecord {
     preference: number;
     exchange: string;
