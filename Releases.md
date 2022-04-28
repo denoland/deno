@@ -14,7 +14,7 @@ https://github.com/denoland/deno_install
   (#14384)
 - fix(ext/console): Compact empty iterables when calling Deno.inspect with
   compact false (#14387)
-- feat: change shade of "gray" color in eye-catchers (#14309)
+- fix: change shade of "gray" color in eye-catchers (#14309)
 - fix(bench): eliminate sanitizeExit overhead (#14361)
 - fix(bench): report pending summary before clearing (#14369)
 - fix(bench): reset reporter context (#14360)
