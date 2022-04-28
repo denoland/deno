@@ -953,7 +953,7 @@ async fn test_resolve_dns() {
 
       let authority = Box::new(Arc::new(RwLock::new(
         InMemoryAuthority::new(
-          Name::from_str("com").unwrap(),
+          Name::new(),
           records,
           ZoneType::Primary,
           false,
@@ -966,7 +966,7 @@ async fn test_resolve_dns() {
     };
 
     let mut server_fut = ServerFuture::new(catalog);
-    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+    let socket_addr = SocketAddr::from(([0, 0, 0, 0], DNS_PORT));
     let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
     let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
     server_fut.register_socket(udp_socket);
@@ -1003,6 +1003,7 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    println!("{}",err);
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 

@@ -1,12 +1,13 @@
 const nameServer = { nameServer: { ipAddr: "127.0.0.1", port: 4553 } };
 
-const [a, aaaa, aname, cname, mx, ptr, srv, txt] = await Promise.all([
+const [a, aaaa, aname, cname, mx, ptr, soa, srv, txt] = await Promise.all([
   Deno.resolveDns("www.example.com", "A", nameServer),
   Deno.resolveDns("www.example.com", "AAAA", nameServer),
   Deno.resolveDns("www.example.com", "ANAME", nameServer),
   Deno.resolveDns("foo", "CNAME", nameServer),
   Deno.resolveDns("www.example.com", "MX", nameServer),
   Deno.resolveDns("5.6.7.8", "PTR", nameServer),
+  Deno.resolveDns("example.com", "SOA", nameServer),
   Deno.resolveDns("_Service._TCP.example.com", "SRV", nameServer),
   Deno.resolveDns("www.example.com", "TXT", nameServer),
 ]);
@@ -28,6 +29,9 @@ console.log(JSON.stringify(mx));
 
 console.log("PTR");
 console.log(JSON.stringify(ptr));
+
+console.log("SOA");
+console.log(JSON.stringify(soa));
 
 console.log("SRV");
 console.log(JSON.stringify(srv));
