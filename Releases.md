@@ -12,7 +12,7 @@ https://github.com/denoland/deno_install
 - Reland "perf(http): optimize ReadableStreams backed by a resource" (#14346)
 - feat(ext/console): Add string abbreviation size option for "Deno.inspect"
   (#14384)
-- feat(ext/console): Compact empty iterables when calling Deno.inspect with
+- fix(ext/console): Compact empty iterables when calling Deno.inspect with
   compact false (#14387)
 - feat: change shade of "gray" color in eye-catchers (#14309)
 - fix(bench): eliminate sanitizeExit overhead (#14361)
