@@ -21,6 +21,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use dns_lookup::getnameinfo;
+use dns_lookup::LookupErrorKind;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -61,6 +63,7 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
     op_dns_resolve::decl::<P>(),
     op_set_nodelay::decl::<P>(),
     op_set_keepalive::decl::<P>(),
+    op_dns_resolve_name_info::decl::<P>(),
   ]
 }
 
@@ -819,6 +822,52 @@ fn rdata_to_return_record(
       _ => todo!(),
     }
   }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NameInfoRecord {
+  pub hostname: String,
+  pub service: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveNameInfoArgs {
+  ip: String,
+  port: u16,
+}
+
+#[op]
+pub fn op_dns_resolve_name_info<NP>(
+  state: Rc<RefCell<OpState>>,
+  args: ResolveNameInfoArgs,
+) -> Result<NameInfoRecord, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  {
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<NP>()
+      .check_net(&(&args.ip, Some(args.port)))?;
+  }
+
+  let ip: std::net::IpAddr = args
+    .ip
+    .parse()
+    .map_err(|_| generic_error("Invalid IP address syntax"))?;
+  let socket: SocketAddr = (ip, args.port).into();
+
+  let (hostname, service) = getnameinfo(&socket, 0).map_err(|e| {
+    let message = format!("{:?}", e);
+
+    match e.kind() {
+      LookupErrorKind::NoName => custom_error("NotFound", message),
+      _ => generic_error(message),
+    }
+  })?;
+
+  Ok(NameInfoRecord { hostname, service })
 }
 
 #[cfg(test)]

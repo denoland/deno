@@ -15,6 +15,7 @@ Following ops are provided:
 - "op_dgram_recv"
 - "op_dgram_send"
 - "op_dns_resolve"
+- "op_dns_resolve_name_info"
 - "op_tls_start"
 - "op_tls_connect"
 - "op_tls_listen"

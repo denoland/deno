@@ -1020,6 +1020,7 @@ version = "0.44.0"
 dependencies = [
  "deno_core",
  "deno_tls",
+ "dns-lookup",
  "log",
  "serde",
  "socket2",
@@ -1258,6 +1259,18 @@ dependencies = [
  "libc",
  "quote 0.6.13",
  "syn 0.15.44",
+]
+
+[[package]]
+name = "dns-lookup"
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53ecafc952c4528d9b51a458d1a8904b81783feff9fde08ab6ed2545ff396872"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "socket2",
+ "winapi 0.3.9",
 ]
 
 [[package]]

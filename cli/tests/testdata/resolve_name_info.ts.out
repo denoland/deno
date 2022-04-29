@@ -1,0 +1,7 @@
+SSH
+{"hostname":"localhost","service":"ssh"}
+HTTP
+{"hostname":"localhost","service":"http"}
+HTTPS
+{"hostname":"localhost","service":"https"}
+Error Error thrown for not-an-ip

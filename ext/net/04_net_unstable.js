@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const net = window.__bootstrap.net;
 
   function listen(options) {
@@ -51,10 +52,15 @@
     }
   }
 
+  function resolveNameInfo(ip, port) {
+    return core.opSync("op_dns_resolve_name_info", { ip, port });
+  }
+
   window.__bootstrap.netUnstable = {
     connect,
     listenDatagram,
     listen,
     Listener,
+    resolveNameInfo,
   };
 })(this);

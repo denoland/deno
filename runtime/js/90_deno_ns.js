@@ -132,6 +132,7 @@
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
     Listener: __bootstrap.netUnstable.Listener,
+    resolveNameInfo: __bootstrap.netUnstable.resolveNameInfo,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,

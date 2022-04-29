@@ -1075,6 +1075,27 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
+   * Hostname and service record provided by `resolveNameInfo` */
+  export interface NameInfoRecord {
+    hostname: string;
+    service: string;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Retrieve the hostname and service for a given ip and port, in a protocol
+   * independent manner.
+   *
+   * ```ts
+   * const { hostname, service } = Deno.resolveNameInfo("127.0.0.1", 22);
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function resolveNameInfo(ip: string, port: number): NameInfoRecord;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
    * SleepSync puts the main thread to sleep synchronously for a given amount of
    * time in milliseconds.
    *
