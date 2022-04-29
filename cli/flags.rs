@@ -1434,6 +1434,7 @@ fn task_subcommand<'a>() -> Command<'a> {
       Arg::new("task_args")
         .multiple_values(true)
         .multiple_occurrences(true)
+        .allow_hyphen_values(true)
         .help("Additional arguments passed to the task"),
     )
     .about("Run a task defined in the configuration file")
@@ -5539,6 +5540,21 @@ mod tests {
         }),
         argv: svec!["--", "hello", "world"],
         config_path: Some("deno.json".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_following_arg() {
+    let r = flags_from_vec(svec!["deno", "task", "build", "-1", "--test"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["-1", "--test"],
         ..Flags::default()
       }
     );
