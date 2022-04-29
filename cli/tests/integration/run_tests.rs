@@ -991,6 +991,11 @@ itest!(lib_dom_asynciterable {
   output: "lib_dom_asynciterable.ts.out",
 });
 
+itest!(lib_dom_extras {
+  args: "run --quiet --unstable --reload lib_dom_extras.ts",
+  output: "lib_dom_extras.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
