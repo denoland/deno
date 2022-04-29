@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -11,10 +12,9 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
-use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
+pub fn init(sender: TestEventSender) -> Extension {
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
@@ -81,7 +81,7 @@ fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
+  let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
   Ok(())
 }

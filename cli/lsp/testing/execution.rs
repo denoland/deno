@@ -16,6 +16,7 @@ use crate::lsp::logging::lsp_log;
 use crate::ops;
 use crate::proc_state;
 use crate::tools::test;
+use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -180,21 +181,20 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
-  channel: mpsc::UnboundedSender<test::TestEvent>,
+  sender: TestEventSender,
   token: CancellationToken,
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
-    let (stdout, stderr) = test::create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
-      vec![ops::testing::init(channel.clone())],
+      vec![ops::testing::init(sender.clone())],
       Stdio {
         stdin: StdioPipe::Inherit,
-        stdout: StdioPipe::File(stdout),
-        stderr: StdioPipe::File(stderr),
+        stdout: StdioPipe::File(sender.stdout()),
+        stderr: StdioPipe::File(sender.stderr()),
       },
     );
 
@@ -318,6 +318,7 @@ impl TestRun {
     .await?;
 
     let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
+    let sender = TestEventSender::new(sender);
 
     let (concurrent_jobs, fail_fast) =
       if let flags::DenoSubcommand::Test(test_flags) = &ps.flags.subcommand {

@@ -36,6 +36,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -581,19 +582,18 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: UnboundedSender<TestEvent>,
+  sender: TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let (stdout, stderr) = create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(sender.clone())],
     Stdio {
       stdin: StdioPipe::Inherit,
-      stdout: StdioPipe::File(stdout),
-      stderr: StdioPipe::File(stderr),
+      stdout: StdioPipe::File(sender.stdout()),
+      stderr: StdioPipe::File(sender.stderr()),
     },
   );
 
@@ -945,6 +945,7 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -1449,20 +1450,96 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
-/// Creates the stdout and stderr pipes and returns the writers for stdout and stderr.
-pub fn create_stdout_stderr_pipes(
+// use a string that if it ends up in the output won't affect how things are displayed
+const ZERO_WIDTH_SPACE: &str = "\u{200B}";
+
+pub struct TestEventSender {
   sender: UnboundedSender<TestEvent>,
-) -> (std::fs::File, std::fs::File) {
-  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
-  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+  stdout_writer: os_pipe::PipeWriter,
+  stderr_writer: os_pipe::PipeWriter,
+  stdout_flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+  stderr_flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+}
 
-  start_output_redirect_thread(stdout_reader, sender.clone());
-  start_output_redirect_thread(stderr_reader, sender);
+impl Clone for TestEventSender {
+  fn clone(&self) -> Self {
+    Self {
+      sender: self.sender.clone(),
+      stdout_writer: self.stdout_writer.try_clone().unwrap(),
+      stderr_writer: self.stderr_writer.try_clone().unwrap(),
+      stdout_flush_state: self.stdout_flush_state.clone(),
+      stderr_flush_state: self.stderr_flush_state.clone(),
+    }
+  }
+}
 
-  (
-    pipe_writer_to_file(stdout_writer),
-    pipe_writer_to_file(stderr_writer),
-  )
+impl TestEventSender {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
+    let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+    let stdout_flush_state = Arc::new(Mutex::new(None));
+    let stderr_flush_state = Arc::new(Mutex::new(None));
+
+    start_output_redirect_thread(
+      stdout_reader,
+      sender.clone(),
+      stdout_flush_state.clone(),
+    );
+    start_output_redirect_thread(
+      stderr_reader,
+      sender.clone(),
+      stderr_flush_state.clone(),
+    );
+
+    Self {
+      sender,
+      stdout_writer,
+      stderr_writer,
+      stdout_flush_state,
+      stderr_flush_state,
+    }
+  }
+
+  pub fn stdout(&self) -> std::fs::File {
+    pipe_writer_to_file(self.stdout_writer.try_clone().unwrap())
+  }
+
+  pub fn stderr(&self) -> std::fs::File {
+    pipe_writer_to_file(self.stderr_writer.try_clone().unwrap())
+  }
+
+  pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
+    // for any event that finishes collecting output, we need to
+    // ensure that the collected stdout and stderr pipes are flushed
+    if matches!(
+      message,
+      TestEvent::Result(_, _, _)
+        | TestEvent::StepWait(_)
+        | TestEvent::StepResult(_, _, _)
+    ) {
+      self.flush_stdout_and_stderr();
+    }
+
+    self.sender.send(message)?;
+    Ok(())
+  }
+
+  fn flush_stdout_and_stderr(&mut self) {
+    Self::flush_pipe(&mut self.stdout_writer, self.stdout_flush_state.clone());
+    Self::flush_pipe(&mut self.stderr_writer, self.stderr_flush_state.clone());
+  }
+
+  fn flush_pipe(
+    writer: &mut os_pipe::PipeWriter,
+    shared_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+  ) {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    shared_state.lock().replace(sender);
+    // send a zero width space in order to wake the thread up
+    writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
+    writer.flush().unwrap();
+    receiver.recv().unwrap();
+  }
 }
 
 #[cfg(windows)]
@@ -1484,18 +1561,26 @@ fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
 fn start_output_redirect_thread(
   mut pipe_reader: os_pipe::PipeReader,
   sender: UnboundedSender<TestEvent>,
+  flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 ) {
-  tokio::task::spawn_blocking(move || loop {
+  std::thread::spawn(move || loop {
     let mut buffer = [0; 512];
     let size = match pipe_reader.read(&mut buffer) {
       Ok(0) | Err(_) => break,
       Ok(size) => size,
     };
-    if sender
-      .send(TestEvent::Output(buffer[0..size].to_vec()))
-      .is_err()
+    let oneshot_sender = flush_state.lock().take();
+    let data = &buffer[0..size];
+    let was_zero_width_space = data == ZERO_WIDTH_SPACE.as_bytes();
+    // don't bother sending an event for a single zero width space as it's
+    // used to help flush the data in this pipe
+    if !was_zero_width_space
+      && sender.send(TestEvent::Output(data.to_vec())).is_err()
     {
       break;
+    }
+    if let Some(sender) = oneshot_sender {
+      let _ignore = sender.send(());
     }
   });
 }
