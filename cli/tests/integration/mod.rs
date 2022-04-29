@@ -951,7 +951,7 @@ async fn test_resolve_dns() {
         map
       };
 
-      let authority = Box::new(Arc::new(RwLock::new(
+      let authority = Box::new(Arc::new(
         InMemoryAuthority::new(
           Name::new(),
           records,
@@ -959,14 +959,14 @@ async fn test_resolve_dns() {
           false,
         )
         .unwrap(),
-      )));
+      ));
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
       c
     };
 
     let mut server_fut = ServerFuture::new(catalog);
-    let socket_addr = SocketAddr::from(([0, 0, 0, 0], DNS_PORT));
+    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
     let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
     let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
     server_fut.register_socket(udp_socket);
