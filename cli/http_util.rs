@@ -57,7 +57,7 @@ pub type HeadersMap = HashMap<String, String>;
 /// This is heavily influenced by
 /// https://github.com/kornelski/rusty-http-cache-semantics which is BSD
 /// 2-Clause Licensed and copyright Kornel Lesiński
-pub(crate) struct CacheSemantics {
+pub struct CacheSemantics {
   cache_control: CacheControl,
   cached: SystemTime,
   headers: HashMap<String, String>,
@@ -593,6 +593,7 @@ mod tests {
   // TODO(@justinmchase): Windows should verify certs too and fail to make this request without ca certs
   #[cfg(not(windows))]
   #[tokio::test]
+  #[ignore] // https://github.com/denoland/deno/issues/12561
   async fn test_fetch_with_empty_certificate_store() {
     use deno_runtime::deno_tls::rustls::RootCertStore;
 

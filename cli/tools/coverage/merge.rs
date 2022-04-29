@@ -190,17 +190,14 @@ impl<'a> StartEventQueue<'a> {
     }
   }
 
-  pub(crate) fn set_pending_offset(&mut self, offset: usize) {
+  pub fn set_pending_offset(&mut self, offset: usize) {
     self.pending = Some(StartEvent {
       offset,
       trees: Vec::new(),
     });
   }
 
-  pub(crate) fn push_pending_tree(
-    &mut self,
-    tree: (usize, &'a mut RangeTree<'a>),
-  ) {
+  pub fn push_pending_tree(&mut self, tree: (usize, &'a mut RangeTree<'a>)) {
     self.pending = self.pending.take().map(|mut start_event| {
       start_event.trees.push(tree);
       start_event

@@ -611,12 +611,17 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getAsset": {
-        const sourceFile = host.getSourceFile(
-          request.specifier,
-          ts.ScriptTarget.ESNext,
-        );
-        return respond(id, sourceFile && sourceFile.text);
+      case "getAssets": {
+        const assets = [];
+        for (const sourceFile of sourceFileCache.values()) {
+          if (sourceFile.fileName.startsWith(ASSETS)) {
+            assets.push({
+              specifier: sourceFile.fileName,
+              text: sourceFile.text,
+            });
+          }
+        }
+        return respond(id, assets);
       }
       case "getApplicableRefactors": {
         return respond(
@@ -921,6 +926,7 @@ delete Object.prototype.__proto__;
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
+
   const { buildSpecifier, libs } = core.opSync("op_build_info", {});
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;

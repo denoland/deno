@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
+  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -221,10 +222,6 @@ delete Object.prototype.__proto__;
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
     const prepareStackTrace = core.createPrepareStackTrace(
-      // TODO(bartlomieju): a very crude way to disable
-      // source mapping of errors. This condition is true
-      // only for compiled standalone binaries.
-      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
       errorStack.opFormatFileName,
     );
     // deno-lint-ignore prefer-primordials
@@ -557,6 +554,7 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
+    defineEventHandler(window, "error");
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
 
@@ -705,7 +703,7 @@ delete Object.prototype.__proto__;
       ObjectFreeze(globalThis.Deno.core);
     } else {
       delete globalThis.Deno;
-      util.assert(globalThis.Deno === undefined);
+      infra.assert(globalThis.Deno === undefined);
     }
   }
 

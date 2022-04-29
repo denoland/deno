@@ -1,0 +1,19 @@
+[WILDCARD]
+running 1 test from [WILDCARD]/captured_output.ts
+output ...
+------- output -------
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+----- output end -----
+ok ([WILDCARD]s)
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD]s)
+[WILDCARD]

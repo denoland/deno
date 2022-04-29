@@ -7,6 +7,7 @@
   __bootstrap.denoNs = {
     metrics: core.metrics,
     test: __bootstrap.testing.test,
+    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -108,6 +109,7 @@
     serveHttp: __bootstrap.http.serveHttp,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    upgradeHttp: __bootstrap.http.upgradeHttp,
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
@@ -130,6 +132,7 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
+    Listener: __bootstrap.netUnstable.Listener,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
@@ -148,5 +151,9 @@
     funlockSync: __bootstrap.fs.funlockSync,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    Child: __bootstrap.spawn.Child,
+    spawnChild: __bootstrap.spawn.spawnChild,
+    spawn: __bootstrap.spawn.spawn,
+    spawnSync: __bootstrap.spawn.spawnSync,
   };
 })(this);

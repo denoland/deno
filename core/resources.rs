@@ -36,7 +36,17 @@ pub trait Resource: Any + 'static {
   }
 
   /// Resources may implement `read()` to be a readable stream
-  fn read(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let (nread, _) = self.read_return(buf).await?;
+      Ok(nread)
+    })
+  }
+
+  fn read_return(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(futures::future::err(not_supported()))
   }
 
@@ -145,6 +155,16 @@ impl ResourceTable {
       .get(&rid)
       .map(Clone::clone)
       .ok_or_else(bad_resource_id)
+  }
+
+  /// Replaces a resource with a new resource.
+  ///
+  /// Panics if the resource does not exist.
+  pub fn replace<T: Resource>(&mut self, rid: ResourceId, resource: T) {
+    let result = self
+      .index
+      .insert(rid, Rc::new(resource) as Rc<dyn Resource>);
+    assert!(result.is_some());
   }
 
   /// Removes a resource of type `T` from the resource table and returns it.

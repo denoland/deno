@@ -6,7 +6,6 @@
   const {
     ArrayPrototypePush,
     ArrayPrototypeShift,
-    Error,
     FunctionPrototypeCall,
     Map,
     MapPrototypeDelete,
@@ -22,25 +21,8 @@
     TypeError,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
-
-  // Shamelessly cribbed from extensions/fetch/11_streams.js
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  /**
-   * @param {unknown} cond
-   * @param {string=} msg
-   * @returns {asserts cond}
-   */
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
-    }
-  }
+  const { reportException } = window.__bootstrap.event;
+  const { assert } = window.__bootstrap.infra;
 
   function opNow() {
     return core.opSync("op_now");
@@ -158,13 +140,16 @@
 
         // 2.
         // 3.
-        // TODO(@andreubotella): Error handling.
         if (typeof callback === "function") {
-          FunctionPrototypeCall(
-            callback,
-            globalThis,
-            ...new SafeArrayIterator(args),
-          );
+          try {
+            FunctionPrototypeCall(
+              callback,
+              globalThis,
+              ...new SafeArrayIterator(args),
+            );
+          } catch (error) {
+            reportException(error);
+          }
         } else {
           // TODO(@andreubotella): eval doesn't seem to have a primordial, but
           // it can be redefined in the global scope.

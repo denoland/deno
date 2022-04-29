@@ -15,7 +15,7 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeEsmResolver {
+pub struct NodeEsmResolver {
   maybe_import_map_resolver: Option<ImportMapResolver>,
 }
 
@@ -98,7 +98,7 @@ fn node_resolve(
 
     if protocol == "node" {
       let split_specifier = url.as_str().split(':');
-      let specifier = split_specifier.skip(1).collect::<Vec<_>>().join("");
+      let specifier = split_specifier.skip(1).collect::<String>();
       if let Some(resolved) =
         crate::compat::try_resolve_builtin_module(&specifier)
       {
@@ -1155,6 +1155,7 @@ fn legacy_main_resolve(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::compat::STD_URL_STR;
 
   fn testdir(name: &str) -> PathBuf {
     let c = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1233,8 +1234,10 @@ mod tests {
   fn builtin_http() {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
-    let expected =
-      Url::parse("https://deno.land/std@0.129.0/node/http.ts").unwrap();
+    let expected = Url::parse(STD_URL_STR)
+      .unwrap()
+      .join("node/http.ts")
+      .unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     assert!(matches!(actual, ResolveResponse::Esm(_)));

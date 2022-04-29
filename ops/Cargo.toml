@@ -1,0 +1,17 @@
+[package]
+name = "deno_ops"
+version = "0.10.0"
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "Proc macro for writing Deno Ops"
+
+[lib]
+path = "./lib.rs"
+proc-macro = true
+
+[dependencies]
+proc-macro-crate = "1.1.3"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "1", features = ["full", "extra-traits"] }

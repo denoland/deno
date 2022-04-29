@@ -30,16 +30,19 @@
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
+  const { TcpConn, UnixConn } = window.__bootstrap.net;
+  const { TlsConn } = window.__bootstrap.tls;
+  const { Deferred, getReadableStreamRid, readableStreamClose } =
+    window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
+    Error,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeHas,
     SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
@@ -53,10 +56,13 @@
   } = window.__bootstrap.primordials;
 
   const connErrorSymbol = Symbol("connError");
+  const _deferred = Symbol("upgradeHttpDeferred");
 
   class HttpConn {
     #rid = 0;
     #closed = false;
+    #remoteAddr;
+    #localAddr;
 
     // This set holds resource ids of resources
     // that were created during lifecycle of this request.
@@ -64,8 +70,10 @@
     // as well.
     managedResources = new Set();
 
-    constructor(rid) {
+    constructor(rid, remoteAddr, localAddr) {
       this.#rid = rid;
+      this.#remoteAddr = remoteAddr;
+      this.#localAddr = localAddr;
     }
 
     /** @returns {number} */
@@ -125,7 +133,13 @@
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");
 
-      const respondWith = createRespondWith(this, streamRid);
+      const respondWith = createRespondWith(
+        this,
+        streamRid,
+        request,
+        this.#remoteAddr,
+        this.#localAddr,
+      );
 
       return { request, respondWith };
     }
@@ -159,13 +173,16 @@
     return core.opAsync("op_http_read", streamRid, buf);
   }
 
-  function createRespondWith(httpConn, streamRid) {
+  function createRespondWith(
+    httpConn,
+    streamRid,
+    request,
+    remoteAddr,
+    localAddr,
+  ) {
     return async function respondWith(resp) {
       try {
-        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-          resp = await resp;
-        }
-
+        resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
@@ -219,11 +236,12 @@
           typeof respBody === "string" ||
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
-
         try {
           await core.opAsync(
             "op_http_write_headers",
-            [streamRid, innerResp.status ?? 200, innerResp.headerList],
+            streamRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
             isStreamingResponseBody ? null : respBody,
           );
         } catch (error) {
@@ -251,16 +269,19 @@
           ) {
             throw new TypeError("Unreachable");
           }
-          const reader = respBody.getReader();
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
-              await reader.cancel(new TypeError("Value not a Uint8Array"));
-              break;
+          const resourceRid = getReadableStreamRid(respBody);
+          if (resourceRid) {
+            if (respBody.locked) {
+              throw new TypeError("ReadableStream is locked.");
             }
+            const reader = respBody.getReader(); // Aquire JS lock.
             try {
-              await core.opAsync("op_http_write", streamRid, value);
+              await core.opAsync(
+                "op_http_write_resource",
+                streamRid,
+                resourceRid,
+              );
+              readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -273,7 +294,32 @@
               await reader.cancel(error);
               throw error;
             }
+          } else {
+            const reader = respBody.getReader();
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+                await reader.cancel(new TypeError("Value not a Uint8Array"));
+                break;
+              }
+              try {
+                await core.opAsync("op_http_write", streamRid, value);
+              } catch (error) {
+                const connError = httpConn[connErrorSymbol];
+                if (
+                  ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+                  connError != null
+                ) {
+                  // deno-lint-ignore no-ex-assign
+                  error = new connError.constructor(connError.message);
+                }
+                await reader.cancel(error);
+                throw error;
+              }
+            }
           }
+
           try {
             await core.opAsync("op_http_shutdown", streamRid);
           } catch (error) {
@@ -282,6 +328,22 @@
           }
         }
 
+        const deferred = request[_deferred];
+        if (deferred) {
+          const res = await core.opAsync("op_http_upgrade", streamRid);
+          let conn;
+          if (res.connType === "tcp") {
+            conn = new TcpConn(res.connRid, remoteAddr, localAddr);
+          } else if (res.connType === "tls") {
+            conn = new TlsConn(res.connRid, remoteAddr, localAddr);
+          } else if (res.connType === "unix") {
+            conn = new UnixConn(res.connRid, remoteAddr, localAddr);
+          } else {
+            throw new Error("unreachable");
+          }
+
+          deferred.resolve([conn, res.readBuf]);
+        }
         const ws = resp[_ws];
         if (ws) {
           const wsRid = await core.opAsync(
@@ -294,7 +356,7 @@
           httpConn.close();
 
           if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", { rid: wsRid });
+            await core.opAsync("op_ws_close", wsRid);
 
             ws[_readyState] = WebSocket.CLOSED;
 
@@ -321,8 +383,7 @@
           }
         }
       } finally {
-        if (SetPrototypeHas(httpConn.managedResources, streamRid)) {
-          SetPrototypeDelete(httpConn.managedResources, streamRid);
+        if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
           core.close(streamRid);
         }
       }
@@ -425,8 +486,14 @@
     return { response, socket };
   }
 
+  function upgradeHttp(req) {
+    req[_deferred] = new Deferred();
+    return req[_deferred].promise;
+  }
+
   window.__bootstrap.http = {
     HttpConn,
     upgradeWebSocket,
+    upgradeHttp,
   };
 })(this);

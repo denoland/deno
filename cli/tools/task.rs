@@ -23,9 +23,9 @@ fn get_tasks_config(
           bail!("Configuration file task names cannot be empty");
         } else if !key
           .chars()
-          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
         {
-          bail!("Configuration file task names must only contain alpha-numeric characters, underscores (_), or dashes (-). Task: {}", key);
+          bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
         } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
           bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
         }
@@ -52,6 +52,10 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
+  log::warn!(
+    "{} deno task is unstable and may drastically change in the future",
+    crate::colors::yellow("Warning"),
+  );
   let flags = Arc::new(flags);
   let ps = ProcState::build(flags.clone()).await?;
   let tasks_config = get_tasks_config(ps.maybe_config_file.as_ref())?;
@@ -81,7 +85,14 @@ pub async fn execute_script(
       .collect::<Vec<_>>()
       .join(" ");
     let script = format!("{} {}", script, additional_args);
-    let seq_list = deno_task_shell::parser::parse(&script)
+    let script = script.trim();
+    log::info!(
+      "{} {} {}",
+      colors::green("Task"),
+      colors::cyan(&task_name),
+      script,
+    );
+    let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
     let exit_code = deno_task_shell::execute(seq_list, env_vars, cwd).await;
@@ -116,7 +127,7 @@ mod test {
       }"#,
       concat!(
         "Configuration file task names must only contain alpha-numeric ",
-        "characters, underscores (_), or dashes (-). Task: some%test",
+        "characters, colons (:), underscores (_), or dashes (-). Task: some%test",
       ),
     );
   }

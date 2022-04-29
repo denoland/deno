@@ -25,15 +25,15 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -127,7 +127,7 @@ impl TlsStream {
     Self::new(tcp, Connection::Server(tls))
   }
 
-  fn into_split(self) -> (ReadHalf, WriteHalf) {
+  pub fn into_split(self) -> (ReadHalf, WriteHalf) {
     let shared = Shared::new(self);
     let rd = ReadHalf {
       shared: shared.clone(),
@@ -156,11 +156,7 @@ impl TlsStream {
   }
 
   fn get_alpn_protocol(&mut self) -> Option<ByteString> {
-    self
-      .inner_mut()
-      .tls
-      .alpn_protocol()
-      .map(|s| ByteString(s.to_owned()))
+    self.inner_mut().tls.alpn_protocol().map(|s| s.into())
   }
 }
 
@@ -642,13 +638,13 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
-    ("op_tls_start", op_async(op_tls_start::<P>)),
-    ("op_tls_connect", op_async(op_tls_connect::<P>)),
-    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
-    ("op_tls_accept", op_async(op_tls_accept)),
-    ("op_tls_handshake", op_async(op_tls_handshake)),
+    op_tls_start::decl::<P>(),
+    op_tls_connect::decl::<P>(),
+    op_tls_listen::decl::<P>(),
+    op_tls_accept::decl(),
+    op_tls_handshake::decl(),
   ]
 }
 
@@ -678,11 +674,11 @@ impl TlsStreamResource {
   pub async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
     let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
-    Ok(nread)
+    Ok((nread, buf))
   }
 
   pub async fn write(
@@ -726,7 +722,10 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
@@ -765,10 +764,10 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -857,10 +856,10 @@ where
   })
 }
 
+#[op]
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1016,10 +1015,10 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1112,10 +1111,10 @@ where
   })
 }
 
+#[op]
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<OpConn, AnyError> {
   let resource = state
     .borrow()
@@ -1163,10 +1162,10 @@ pub async fn op_tls_accept(
   })
 }
 
+#[op]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()

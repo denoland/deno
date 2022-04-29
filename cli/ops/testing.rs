@@ -1,7 +1,11 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestOutput;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -14,17 +18,15 @@ use uuid::Uuid;
 pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
   Extension::builder()
     .ops(vec![
-      (
-        "op_pledge_test_permissions",
-        op_sync(op_pledge_test_permissions),
-      ),
-      (
-        "op_restore_test_permissions",
-        op_sync(op_restore_test_permissions),
-      ),
-      ("op_get_test_origin", op_sync(op_get_test_origin)),
-      ("op_dispatch_test_event", op_sync(op_dispatch_test_event)),
+      op_pledge_test_permissions::decl(),
+      op_restore_test_permissions::decl(),
+      op_get_test_origin::decl(),
+      op_dispatch_test_event::decl(),
     ])
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
+    })
     .state(move |state| {
       state.put(sender.clone());
       Ok(())
@@ -35,16 +37,19 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, Permissions);
 
+#[op]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: ChildPermissionsArg,
-  _: (),
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<Permissions>();
   let worker_permissions = create_child_permissions(parent_permissions, args)?;
   let parent_permissions = parent_permissions.clone();
 
+  if state.try_take::<PermissionsHolder>().is_some() {
+    panic!("pledge test permissions called before restoring previous pledge");
+  }
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
@@ -53,10 +58,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
-  _: (),
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -71,21 +76,29 @@ pub fn op_restore_test_permissions(
   }
 }
 
-fn op_get_test_origin(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_get_test_origin(state: &mut OpState) -> Result<String, AnyError> {
   Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
+#[op]
 fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
-  _: (),
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
   sender.send(event).ok();
+  Ok(())
+}
 
+#[op]
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  _is_err: bool,
+) -> Result<(), AnyError> {
+  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
+  let msg = TestOutput::String(msg);
+  sender.send(TestEvent::Output(msg)).ok();
   Ok(())
 }

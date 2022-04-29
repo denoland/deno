@@ -4,11 +4,14 @@ use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::Extension;
+#[cfg(unix)]
 use deno_core::OpState;
+#[cfg(unix)]
 use std::cell::RefCell;
+#[cfg(unix)]
 use std::rc::Rc;
 
 #[cfg(unix)]
@@ -31,9 +34,9 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_signal_bind", op_sync(op_signal_bind)),
-      ("op_signal_unbind", op_sync(op_signal_unbind)),
-      ("op_signal_poll", op_async(op_signal_poll)),
+      op_signal_bind::decl(),
+      op_signal_unbind::decl(),
+      op_signal_poll::decl(),
     ])
     .build()
 }
@@ -173,11 +176,61 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
+#[cfg(any(target_os = "solaris", target_os = "illumos"))]
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGUSR1" => Ok(16),
+    "SIGUSR2" => Ok(17),
+    "SIGCLD" => Ok(18),
+    "SIGCHLD" => Ok(18),
+    "SIGPWR" => Ok(19),
+    "SIGWINCH" => Ok(20),
+    "SIGURG" => Ok(21),
+    "SIGPOLL" => Ok(22),
+    "SIGIO" => Ok(22),
+    "SIGSTOP" => Ok(23),
+    "SIGTSTP" => Ok(24),
+    "SIGCONT" => Ok(25),
+    "SIGTTIN" => Ok(26),
+    "SIGTTOU" => Ok(27),
+    "SIGVTALRM" => Ok(28),
+    "SIGPROF" => Ok(29),
+    "SIGXCPU" => Ok(30),
+    "SIGXFSZ" => Ok(31),
+    "SIGWAITING" => Ok(32),
+    "SIGLWP" => Ok(33),
+    "SIGFREEZE" => Ok(34),
+    "SIGTHAW" => Ok(35),
+    "SIGCANCEL" => Ok(36),
+    "SIGLOST" => Ok(37),
+    "SIGXRES" => Ok(38),
+    "SIGJVM1" => Ok(39),
+    "SIGJVM2" => Ok(40),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
 #[cfg(unix)]
+#[op]
 fn op_signal_bind(
   state: &mut OpState,
   sig: String,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
@@ -195,10 +248,10 @@ fn op_signal_bind(
 }
 
 #[cfg(unix)]
+#[op]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<bool, AnyError> {
   let resource = state
     .borrow_mut()
@@ -214,38 +267,29 @@ async fn op_signal_poll(
 }
 
 #[cfg(unix)]
+#[op]
 pub fn op_signal_unbind(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
   state.resource_table.close(rid)?;
   Ok(())
 }
 
 #[cfg(not(unix))]
-pub fn op_signal_bind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+pub fn op_signal_bind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
-fn op_signal_unbind(
-  _state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+fn op_signal_unbind() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
-async fn op_signal_poll(
-  _state: Rc<RefCell<OpState>>,
-  _: (),
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+async fn op_signal_poll() -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
 }

@@ -6,7 +6,7 @@ use crate::itest;
 // These tests are intended to only test integration.
 
 itest!(task_no_args {
-  args: "task --config task/deno.json",
+  args: "task -q --config task/deno.json",
   output: "task/task_no_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
@@ -20,12 +20,12 @@ itest!(task_non_existent {
 });
 
 itest!(task_boolean_logic {
-  args: "task --config task/deno.json boolean_logic",
+  args: "task -q --config task/deno.json boolean_logic",
   output: "task/task_boolean_logic.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
-itest!(task_exit_code_1 {
+itest!(task_exit_code_5 {
   args: "task --config task/deno.json exit_code_5",
   output: "task/task_exit_code_5.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
@@ -33,13 +33,20 @@ itest!(task_exit_code_1 {
 });
 
 itest!(task_additional_args {
-  args: "task --config task/deno.json echo 2",
+  args: "task -q --config task/deno.json echo 2",
   output: "task/task_additional_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
 itest!(task_additional_args_no_shell_expansion {
-  args_vec: vec!["task", "--config", "task/deno.json", "echo", "$(echo 5)"],
+  args_vec: vec![
+    "task",
+    "-q",
+    "--config",
+    "task/deno.json",
+    "echo",
+    "$(echo 5)"
+  ],
   output: "task/task_additional_args_no_shell_expansion.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
@@ -47,6 +54,7 @@ itest!(task_additional_args_no_shell_expansion {
 itest!(task_additional_args_nested_strings {
   args_vec: vec![
     "task",
+    "-q",
     "--config",
     "task/deno.json",
     "echo",
@@ -59,6 +67,7 @@ itest!(task_additional_args_nested_strings {
 itest!(task_additional_args_no_logic {
   args_vec: vec![
     "task",
+    "-q",
     "--config",
     "task/deno.json",
     "echo",

@@ -25,7 +25,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_graph::Resolved;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -36,6 +35,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([(
@@ -96,7 +96,7 @@ impl deno_graph::SourceParser for SourceParser {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LanguageId {
+pub enum LanguageId {
   JavaScript,
   Jsx,
   TypeScript,
@@ -527,7 +527,7 @@ impl Document {
   }
 }
 
-pub(crate) fn to_hover_text(result: &Resolved) -> String {
+pub fn to_hover_text(result: &Resolved) -> String {
   match result {
     Resolved::Ok { specifier, .. } => match specifier.scheme() {
       "data" => "_(a data url)_".to_string(),
@@ -544,7 +544,7 @@ pub(crate) fn to_hover_text(result: &Resolved) -> String {
   }
 }
 
-pub(crate) fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -697,7 +697,7 @@ fn get_document_path(
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Documents {
+pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
   /// A flag that indicates that stated data is potentially invalid and needs to
@@ -1134,10 +1134,9 @@ impl Documents {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
-  fn setup() -> (Documents, PathBuf) {
-    let temp_dir = TempDir::new().unwrap();
+  fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
     let documents = Documents::new(&location);
     (documents, location)
@@ -1145,7 +1144,8 @@ mod tests {
 
   #[test]
   fn test_documents_open() {
-    let (mut documents, _) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1161,7 +1161,8 @@ console.log(b);
 
   #[test]
   fn test_documents_change() {
-    let (mut documents, _) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1207,7 +1208,8 @@ console.log(b, "hello deno");
   fn test_documents_ensure_no_duplicates() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let (mut documents, documents_path) = setup();
+    let temp_dir = TempDir::new();
+    let (mut documents, documents_path) = setup(&temp_dir);
     let file_path = documents_path.join("file.ts");
     let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
     fs::create_dir_all(&documents_path).unwrap();

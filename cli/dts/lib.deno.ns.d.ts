@@ -117,12 +117,12 @@ declare namespace Deno {
   export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
 
   export interface PermissionOptionsObject {
-    /** Specifies if the `net` permission should be requested or revoked.
+    /** Specifies if the `env` permission should be requested or revoked.
      * If set to `"inherit"`, the current `env` permission will be inherited.
-     * If set to `true`, the global `net` permission will be requested.
-     * If set to `false`, the global `net` permission will be revoked.
+     * If set to `true`, the global `env` permission will be requested.
+     * If set to `false`, the global `env` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     env?: "inherit" | boolean | string[];
 
@@ -131,7 +131,7 @@ declare namespace Deno {
      * If set to `true`, the global `hrtime` permission will be requested.
      * If set to `false`, the global `hrtime` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     hrtime?: "inherit" | boolean;
 
@@ -142,7 +142,7 @@ declare namespace Deno {
      * if set to `string[]`, the `net` permission will be requested with the
      * specified host strings with the format `"<host>[:<port>]`.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      *
      * Examples:
      *
@@ -213,7 +213,7 @@ declare namespace Deno {
      * If set to `true`, the global `ffi` permission will be requested.
      * If set to `false`, the global `ffi` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     ffi?: "inherit" | boolean | Array<string | URL>;
 
@@ -224,7 +224,7 @@ declare namespace Deno {
      * If set to `Array<string | URL>`, the `read` permission will be requested with the
      * specified file paths.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     read?: "inherit" | boolean | Array<string | URL>;
 
@@ -233,7 +233,7 @@ declare namespace Deno {
      * If set to `true`, the global `run` permission will be requested.
      * If set to `false`, the global `run` permission will be revoked.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     run?: "inherit" | boolean | Array<string | URL>;
 
@@ -244,12 +244,25 @@ declare namespace Deno {
      * If set to `Array<string | URL>`, the `write` permission will be requested with the
      * specified file paths.
      *
-     * Defaults to "inherit".
+     * Defaults to `false`.
      */
     write?: "inherit" | boolean | Array<string | URL>;
   }
 
   export interface TestContext {
+    /**
+     * The current test name.
+     */
+    name: string;
+    /**
+     * File Uri of the current test code.
+     */
+    origin: string;
+    /**
+     * Parent test context.
+     */
+    parent?: TestContext;
+
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
      * The returned promise never rejects unless the arguments are invalid.
@@ -270,6 +283,9 @@ declare namespace Deno {
 
   export interface TestStepDefinition {
     fn: (t: TestContext) => void | Promise<void>;
+    /**
+     * The current test name.
+     */
     name: string;
     ignore?: boolean;
     /** Check that the number of async completed ops after the test step is the same
@@ -287,6 +303,9 @@ declare namespace Deno {
 
   export interface TestDefinition {
     fn: (t: TestContext) => void | Promise<void>;
+    /**
+     * The current test name.
+     */
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -457,6 +476,7 @@ declare namespace Deno {
     options: Omit<TestDefinition, "fn" | "name">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
+
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
@@ -2397,7 +2417,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[] | [URL, ...string[]];
+    cmd: readonly string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;
@@ -2471,6 +2491,8 @@ declare namespace Deno {
     getters?: boolean;
     /** Show an object's non-enumerable properties. Defaults to false. */
     showHidden?: boolean;
+    /** The maximum length of a string before it is truncated with an ellipsis */
+    strAbbreviateSize?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by

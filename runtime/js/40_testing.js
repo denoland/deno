@@ -6,19 +6,23 @@
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
-  const { assert } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     AggregateErrorPrototype,
+    ArrayFrom,
     ArrayPrototypeFilter,
     ArrayPrototypeJoin,
+    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSome,
+    ArrayPrototypeSort,
     DateNow,
     Error,
     FunctionPrototype,
     Map,
     MapPrototypeHas,
+    MathCeil,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     Promise,
@@ -82,7 +86,7 @@
     "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
     "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
-    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"], 
+    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"],
     "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
     "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
     "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
@@ -173,13 +177,16 @@
           preOp.opsCompletedAsync;
 
         if (dispatchedDiff > completedDiff) {
-          const [name, hint] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = dispatchedDiff - completedDiff;
           let message = `${count} async operation${
             count === 1 ? "" : "s"
           } to ${name} ${
             count === 1 ? "was" : "were"
-          } started in this test, but never completed. This is often caused by not ${hint}.`;
+          } started in this test, but never completed.`;
+          if (hint) {
+            message += ` This is often caused by not ${hint}.`;
+          }
           const traces = [];
           for (const [id, { opName, stack }] of postTraces) {
             if (opName !== key) continue;
@@ -195,7 +202,7 @@
           }
           ArrayPrototypePush(details, message);
         } else if (dispatchedDiff < completedDiff) {
-          const [name] = OP_DETAILS[key];
+          const [name, hint] = OP_DETAILS[key] || [key, null];
           const count = completedDiff - dispatchedDiff;
           ArrayPrototypePush(
             details,
@@ -203,7 +210,8 @@
               count === 1 ? "was" : "were"
             } started before this test, but ${
               count === 1 ? "was" : "were"
-            } completed during the test. Async operations should not complete in a test if they were not started in that test.`,
+            } completed during the test. Async operations should not complete in a test if they were not started in that test.
+            ${hint ? `This is often caused by not ${hint}.` : ""}`,
           );
         }
       }
@@ -409,12 +417,14 @@
 
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
-  function assertExit(fn) {
+  function assertExit(fn, isTest) {
     return async function exitSanitizer(...params) {
       setExitHandler((exitCode) => {
         assert(
           false,
-          `Test case attempted to exit with exit code: ${exitCode}`,
+          `${
+            isTest ? "Test case" : "Bench"
+          } attempted to exit with exit code: ${exitCode}`,
         );
       });
 
@@ -504,18 +514,18 @@
     };
   }
 
+  function pledgePermissions(permissions) {
+    return core.opSync(
+      "op_pledge_test_permissions",
+      serializePermissions(permissions),
+    );
+  }
+
+  function restorePermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
+  }
+
   function withPermissions(fn, permissions) {
-    function pledgePermissions(permissions) {
-      return core.opSync(
-        "op_pledge_test_permissions",
-        serializePermissions(permissions),
-      );
-    }
-
-    function restorePermissions(token) {
-      core.opSync("op_restore_test_permissions", token);
-    }
-
     return async function applyPermissions(...params) {
       const token = pledgePermissions(permissions);
 
@@ -528,6 +538,7 @@
   }
 
   const tests = [];
+  const benches = [];
 
   // Main test function provided by Deno.
   function test(
@@ -627,6 +638,99 @@
     ArrayPrototypePush(tests, testDef);
   }
 
+  // Main bench function provided by Deno.
+  function bench(
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
+  ) {
+    core.opSync("op_bench_check_unstable");
+    let benchDef;
+    const defaults = {
+      ignore: false,
+      only: false,
+      sanitizeOps: true,
+      sanitizeResources: true,
+      sanitizeExit: true,
+      permissions: null,
+    };
+
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
+        throw new TypeError("The bench name can't be empty");
+      }
+      if (typeof optionsOrFn === "function") {
+        benchDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing bench function");
+        }
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, bench function is already provided as the third argument.",
+          );
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError(
+            "Unexpected 'name' field in options, bench name is already provided as the first argument.",
+          );
+        }
+        benchDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The bench function must have a name");
+      }
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Unexpected second argument to Deno.bench()");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Unexpected third argument to Deno.bench()");
+      }
+      benchDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
+    } else {
+      let fn;
+      let name;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, bench function is already provided as the second argument.",
+          );
+        }
+        name = nameOrFnOrOptions.name ?? fn.name;
+      } else {
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a bench function.",
+          );
+        }
+        fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
+      }
+      if (!name) {
+        throw new TypeError("The bench name can't be empty");
+      }
+      benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
+    }
+
+    const AsyncFunction = (async () => {}).constructor;
+    benchDef.async = AsyncFunction === benchDef.fn.constructor;
+
+    ArrayPrototypePush(benches, benchDef);
+  }
+
   function formatError(error) {
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
       const message = error
@@ -642,23 +746,37 @@
     return inspectArgs([error]);
   }
 
+  /**
+   * @param {string | { include?: string[], exclude?: string[] }} filter
+   * @returns {(def: { name: string }) => boolean}
+   */
   function createTestFilter(filter) {
+    if (!filter) {
+      return () => true;
+    }
+
+    const regex =
+      typeof filter === "string" && StringPrototypeStartsWith(filter, "/") &&
+        StringPrototypeEndsWith(filter, "/")
+        ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
+        : undefined;
+
+    const filterIsObject = filter != null && typeof filter === "object";
+
     return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
-        }
-
-        return StringPrototypeIncludes(def.name, filter);
+      if (regex) {
+        return RegExpPrototypeTest(regex, def.name);
       }
-
-      return true;
+      if (filterIsObject) {
+        if (filter.include && !filter.include.includes(def.name)) {
+          return false;
+        } else if (filter.exclude && filter.exclude.includes(def.name)) {
+          return false;
+        } else {
+          return true;
+        }
+      }
+      return StringPrototypeIncludes(def.name, filter);
     };
   }
 
@@ -670,6 +788,7 @@
     const step = new TestStep({
       name: test.name,
       parent: undefined,
+      parentContext: undefined,
       rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
@@ -680,7 +799,7 @@
       await test.fn(step);
       const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
-        "failed": formatError(
+        "failed": core.destructureError(
           new Error(
             `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
           ),
@@ -688,7 +807,7 @@
       };
     } catch (error) {
       return {
-        "failed": formatError(error),
+        "failed": core.destructureError(error),
       };
     } finally {
       step.finalized = true;
@@ -699,19 +818,187 @@
     }
   }
 
+  function compareMeasurements(a, b) {
+    if (a > b) return 1;
+    if (a < b) return -1;
+
+    return 0;
+  }
+
+  function benchStats(n, highPrecision, avg, min, max, all) {
+    return {
+      n,
+      min,
+      max,
+      p75: all[MathCeil(n * (75 / 100)) - 1],
+      p99: all[MathCeil(n * (99 / 100)) - 1],
+      p995: all[MathCeil(n * (99.5 / 100)) - 1],
+      p999: all[MathCeil(n * (99.9 / 100)) - 1],
+      avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
+    };
+  }
+
+  async function benchMeasure(timeBudget, fn, step, sync) {
+    let n = 0;
+    let avg = 0;
+    let wavg = 0;
+    const all = [];
+    let min = Infinity;
+    let max = -Infinity;
+    const lowPrecisionThresholdInNs = 1e4;
+
+    // warmup step
+    let c = 0;
+    step.warmup = true;
+    let iterations = 20;
+    let budget = 10 * 1e6;
+
+    if (sync) {
+      while (budget > 0 || iterations-- > 0) {
+        const t1 = benchNow();
+
+        fn();
+        const iterationTime = benchNow() - t1;
+
+        c++;
+        wavg += iterationTime;
+        budget -= iterationTime;
+      }
+    } else {
+      while (budget > 0 || iterations-- > 0) {
+        const t1 = benchNow();
+
+        await fn();
+        const iterationTime = benchNow() - t1;
+
+        c++;
+        wavg += iterationTime;
+        budget -= iterationTime;
+      }
+    }
+
+    wavg /= c;
+
+    // measure step
+    step.warmup = false;
+
+    if (wavg > lowPrecisionThresholdInNs) {
+      let iterations = 10;
+      let budget = timeBudget * 1e6;
+
+      if (sync) {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+
+          fn();
+          const iterationTime = benchNow() - t1;
+
+          n++;
+          avg += iterationTime;
+          budget -= iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+        }
+      } else {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+
+          await fn();
+          const iterationTime = benchNow() - t1;
+
+          n++;
+          avg += iterationTime;
+          budget -= iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+        }
+      }
+    } else {
+      let iterations = 10;
+      let budget = timeBudget * 1e6;
+
+      if (sync) {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+          for (let c = 0; c < lowPrecisionThresholdInNs; c++) fn();
+          const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
+
+          n++;
+          avg += iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+          budget -= iterationTime * lowPrecisionThresholdInNs;
+        }
+      } else {
+        while (budget > 0 || iterations-- > 0) {
+          const t1 = benchNow();
+          for (let c = 0; c < lowPrecisionThresholdInNs; c++) await fn();
+          const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
+
+          n++;
+          avg += iterationTime;
+          all.push(iterationTime);
+          if (iterationTime < min) min = iterationTime;
+          if (iterationTime > max) max = iterationTime;
+          budget -= iterationTime * lowPrecisionThresholdInNs;
+        }
+      }
+    }
+
+    all.sort(compareMeasurements);
+    return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
+  }
+
+  async function runBench(bench) {
+    const step = new BenchStep({
+      name: bench.name,
+      sanitizeExit: bench.sanitizeExit,
+      warmup: false,
+    });
+
+    let token = null;
+
+    try {
+      if (bench.permissions) {
+        token = pledgePermissions(bench.permissions);
+      }
+
+      if (bench.sanitizeExit) {
+        setExitHandler((exitCode) => {
+          assert(
+            false,
+            `Bench attempted to exit with exit code: ${exitCode}`,
+          );
+        });
+      }
+
+      const benchTimeInMs = 500;
+      const fn = bench.fn.bind(null, step);
+      const stats = await benchMeasure(benchTimeInMs, fn, step, !bench.async);
+
+      return { ok: { stats, ...bench } };
+    } catch (error) {
+      return { failed: { ...bench, error: formatError(error) } };
+    } finally {
+      if (bench.sanitizeExit) setExitHandler(null);
+      if (token !== null) restorePermissions(token);
+    }
+  }
+
   function getTestOrigin() {
     return core.opSync("op_get_test_origin");
+  }
+
+  function getBenchOrigin() {
+    return core.opSync("op_get_bench_origin");
   }
 
   function reportTestPlan(plan) {
     core.opSync("op_dispatch_test_event", {
       plan,
-    });
-  }
-
-  function reportTestConsoleOutput(console) {
-    core.opSync("op_dispatch_test_event", {
-      output: { console },
     });
   }
 
@@ -739,6 +1026,34 @@
     });
   }
 
+  function reportBenchPlan(plan) {
+    core.opSync("op_dispatch_bench_event", {
+      plan,
+    });
+  }
+
+  function reportBenchConsoleOutput(console) {
+    core.opSync("op_dispatch_bench_event", {
+      output: { console },
+    });
+  }
+
+  function reportBenchWait(description) {
+    core.opSync("op_dispatch_bench_event", {
+      wait: description,
+    });
+  }
+
+  function reportBenchResult(origin, result) {
+    core.opSync("op_dispatch_bench_event", {
+      result: [origin, result],
+    });
+  }
+
+  function benchNow() {
+    return core.opSync("op_bench_now");
+  }
+
   async function runTests({
     filter = null,
     shuffle = null,
@@ -746,9 +1061,6 @@
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
-    const originalConsole = globalThis.console;
-
-    globalThis.console = new Console(reportTestConsoleOutput);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
@@ -795,6 +1107,53 @@
 
       reportTestResult(description, result, elapsed);
     }
+  }
+
+  async function runBenchmarks({
+    filter = null,
+  } = {}) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+
+    const origin = getBenchOrigin();
+    const originalConsole = globalThis.console;
+
+    globalThis.console = new Console(reportBenchConsoleOutput);
+
+    const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
+    const filtered = ArrayPrototypeFilter(
+      only.length > 0 ? only : benches,
+      createTestFilter(filter),
+    );
+
+    let groups = new Set();
+    const benchmarks = ArrayPrototypeFilter(filtered, (bench) => !bench.ignore);
+
+    // make sure ungrouped benchmarks are placed above grouped
+    groups.add(undefined);
+
+    for (const bench of benchmarks) {
+      bench.group ||= undefined;
+      groups.add(bench.group);
+    }
+
+    groups = ArrayFrom(groups);
+    ArrayPrototypeSort(
+      benchmarks,
+      (a, b) => groups.indexOf(a.group) - groups.indexOf(b.group),
+    );
+
+    reportBenchPlan({
+      origin,
+      total: benchmarks.length,
+      usedOnly: only.length > 0,
+      names: ArrayPrototypeMap(benchmarks, (bench) => bench.name),
+    });
+
+    for (const bench of benchmarks) {
+      bench.baseline = !!bench.baseline;
+      reportBenchWait({ origin, ...bench });
+      reportBenchResult(origin, await runBench(bench));
+    }
 
     globalThis.console = originalConsole;
   }
@@ -810,8 +1169,9 @@
    * }} TestStepDefinition
    *
    * @typedef {{
-   *   name: string;
+   *   name: string,
    *   parent: TestStep | undefined,
+   *   parentContext: TestContext | undefined,
    *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -843,6 +1203,10 @@
 
     get parent() {
       return this.#params.parent;
+    }
+
+    get parentContext() {
+      return this.#params.parentContext;
     }
 
     get rootTestDescription() {
@@ -961,11 +1325,11 @@
           return "ignored";
         case "pending":
           return {
-            "pending": this.error && formatError(this.error),
+            "pending": this.error && core.destructureError(this.error),
           };
         case "failed":
           return {
-            "failed": this.error && formatError(this.error),
+            "failed": this.error && core.destructureError(this.error),
           };
         default:
           throw new Error(`Unhandled status: ${this.status}`);
@@ -989,10 +1353,43 @@
     }
   }
 
+  /**
+   * @typedef {{
+   *   name: string;
+   *   sanitizeExit: boolean,
+   *   warmup: boolean,
+   * }} BenchStepParams
+   */
+  class BenchStep {
+    /** @type {BenchStepParams} */
+    #params;
+
+    /** @param params {BenchStepParams} */
+    constructor(params) {
+      this.#params = params;
+    }
+
+    get name() {
+      return this.#params.name;
+    }
+  }
+
   /** @param parentStep {TestStep} */
   function createTestContext(parentStep) {
     return {
       [SymbolToStringTag]: "TestContext",
+      /**
+       * The current test name.
+       */
+      name: parentStep.name,
+      /**
+       * Parent test context.
+       */
+      parent: parentStep.parentContext ?? undefined,
+      /**
+       * File Uri of the test code.
+       */
+      origin: parentStep.rootTestDescription.origin,
       /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}
@@ -1009,6 +1406,7 @@
         const subStep = new TestStep({
           name: definition.name,
           parent: parentStep,
+          parentContext: this,
           rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,
@@ -1051,7 +1449,7 @@
               subStep.status = "ok";
             }
           } catch (error) {
-            subStep.error = formatError(error);
+            subStep.error = error;
             subStep.status = "failed";
           }
 
@@ -1121,7 +1519,7 @@
       testFn = assertResources(testFn);
     }
     if (opts.sanitizeExit) {
-      testFn = assertExit(testFn);
+      testFn = assertExit(testFn, true);
     }
     return testFn;
   }
@@ -1139,9 +1537,11 @@
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    runBenchmarks,
   };
 
   window.__bootstrap.testing = {
     test,
+    bench,
   };
 })(this);

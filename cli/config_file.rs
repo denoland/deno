@@ -23,7 +23,7 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub(crate) type MaybeImportsResult =
+pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
 /// The transpile options that are significant out of a user provided tsconfig
@@ -480,7 +480,7 @@ pub struct LintConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
   Always,
@@ -488,7 +488,7 @@ pub enum ProseWrap {
   Preserve,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
   pub use_tabs: Option<bool>,
@@ -647,6 +647,25 @@ impl ConfigFile {
     } else {
       Ok(None)
     }
+  }
+
+  /// Return any tasks that are defined in the configuration file as a sequence
+  /// of JSON objects providing the name of the task and the arguments of the
+  /// task in a detail field.
+  pub fn to_lsp_tasks(&self) -> Option<Value> {
+    let value = self.json.tasks.clone()?;
+    let tasks: BTreeMap<String, String> = serde_json::from_value(value).ok()?;
+    Some(
+      tasks
+        .into_iter()
+        .map(|(key, value)| {
+          json!({
+            "name": key,
+            "detail": value,
+          })
+        })
+        .collect(),
+    )
   }
 
   pub fn to_tasks_config(
