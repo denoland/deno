@@ -2509,14 +2509,10 @@ fn task_parse(
   if let Some(task) = matches.value_of("task") {
     task_name = task.to_string();
 
-    if let Some(task_args) = matches.values_of("task_args") {
-      // forward the `--` to the deno task
-      if let Some(index) = matches.index_of("task_args") {
-        if raw_args[index] == "--" {
-          flags.argv.push("--".to_string());
-        }
-      }
-      flags.argv.extend(task_args.map(String::from));
+    if let Some(index) = matches.index_of("task") {
+      flags
+        .argv
+        .extend(raw_args[index + 2..].iter().map(String::from));
     }
   }
 
@@ -5540,6 +5536,22 @@ mod tests {
         }),
         argv: svec!["--", "hello", "world"],
         config_path: Some("deno.json".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_double_hyphen_only() {
+    // edge case, but it should forward
+    let r = flags_from_vec(svec!["deno", "task", "build", "--"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["--"],
         ..Flags::default()
       }
     );
