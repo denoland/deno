@@ -5,10 +5,10 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::sec1::ToEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
-use rsa::pkcs1::FromRsaPrivateKey;
-use rsa::pkcs1::ToRsaPublicKey;
 use rsa::RsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs8::DecodePrivateKey;
+use rsa::pkcs1::EncodeRsaPublicKey;
 use serde::Deserialize;
 use serde::Serialize;
 

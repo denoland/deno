@@ -23,18 +23,18 @@ ctr = "0.9.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
 deno_core = { version = "0.131.0", path = "../../core" }
 deno_web = { version = "0.80.0", path = "../web" }
-elliptic-curve = { version = "0.10.6", features = ["std", "pem"] }
+elliptic-curve = { version = "0.11.12", features = ["std", "pem"] }
+spki = "0.5.2"
 num-traits = "0.2.14"
 once_cell = "1.10.0"
-p256 = { version = "0.9.0", features = ["ecdh"] }
-p384 = "0.8.0"
+p256 = { version = "0.10.1", features = ["ecdh"] }
+p384 = "0.9.0"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }
-rsa = { version = "0.5.0", default-features = false, features = ["std"] }
+rsa = { version = "0.6.1", default-features = false, features = ["std"] }
 serde = { version = "1.0.129", features = ["derive"] }
 serde_bytes = "0.11"
 sha-1 = "0.9.7"
 sha2 = "0.9.5"
-spki = "0.4.1"
 tokio = { version = "1.17", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }

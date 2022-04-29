@@ -42,6 +42,11 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs8::der::asn1;
+use rsa::pkcs8::der::TagMode;
+use rsa::pkcs8::DecodePrivateKey;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -709,19 +714,19 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG)?
+        .context_specific(HASH_ALGORITHM_TAG, TagMode::Explicit)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
       let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG)?
+        .context_specific(MASK_GEN_ALGORITHM_TAG, TagMode::Explicit)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
       let salt_length = decoder
-        .context_specific(SALT_LENGTH_TAG)?
+        .context_specific(SALT_LENGTH_TAG, TagMode::Explicit)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(20);
@@ -759,19 +764,19 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG)?
+        .context_specific(HASH_ALGORITHM_TAG, TagMode::Explicit)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
       let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG)?
+        .context_specific(MASK_GEN_ALGORITHM_TAG, TagMode::Explicit)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
       let p_source_algorithm = decoder
-        .context_specific(P_SOURCE_ALGORITHM_TAG)?
+        .context_specific(P_SOURCE_ALGORITHM_TAG, TagMode::Explicit)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*P_SPECIFIED_EMPTY);
