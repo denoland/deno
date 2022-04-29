@@ -935,8 +935,8 @@ dependencies = [
  "rsa",
  "serde",
  "serde_bytes",
- "sha-1 0.9.8",
- "sha2 0.9.9",
+ "sha-1 0.10.0",
+ "sha2 0.10.2",
  "spki",
  "tokio",
  "uuid",
@@ -1260,13 +1260,12 @@ dependencies = [
 
 [[package]]
 name = "digest"
-version = "0.10.1"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b697d66081d42af4fba142d56918a3cb21dc8eb63372c6b85d14f44fb9c5979b"
+checksum = "f2fb860ca6fafa5552fb6d0e816a69c8e49f0908bf524e30a90d97c85892d506"
 dependencies = [
  "block-buffer 0.10.0",
  "crypto-common",
- "generic-array",
 ]
 
 [[package]]
@@ -1494,7 +1493,7 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
- "sha2 0.10.1",
+ "sha2 0.10.2",
  "thiserror",
  "tokio",
  "url",
@@ -3346,7 +3345,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cf22754c49613d2b3b119f0e5d46e34a2c628a937e3024b8762de4e7d8c710b"
 dependencies = [
  "byteorder",
- "digest 0.10.1",
+ "digest 0.10.3",
  "num-bigint-dig",
  "num-integer",
  "num-iter",
@@ -3682,7 +3681,7 @@ checksum = "028f48d513f9678cda28f6e4064755b3fbb2af6acd672f2c209b62323f7aea0f"
 dependencies = [
  "cfg-if",
  "cpufeatures",
- "digest 0.10.1",
+ "digest 0.10.3",
 ]
 
 [[package]]
@@ -3700,13 +3699,13 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99c3bd8169c58782adad9290a9af5939994036b76187f7b4f0e6de91dbbfc0ec"
+checksum = "55deaec60f81eefe3cce0dc50bda92d6d8e88f2a27df7c5033b42afeb1ed2676"
 dependencies = [
  "cfg-if",
  "cpufeatures",
- "digest 0.10.1",
+ "digest 0.10.3",
 ]
 
 [[package]]

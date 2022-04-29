@@ -34,7 +34,7 @@ ring = { version = "0.16.20", features = ["std"] }
 rsa = { version = "0.6.1", default-features = false, features = ["std"] }
 serde = { version = "1.0.129", features = ["derive"] }
 serde_bytes = "0.11"
-sha-1 = "0.9.7"
-sha2 = "0.9.5"
+sha-1 = "0.10.0"
+sha2 = "0.10.2"
 tokio = { version = "1.17", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }

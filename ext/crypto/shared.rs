@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use spki::der::Document;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;

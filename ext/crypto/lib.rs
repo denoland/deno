@@ -20,7 +20,6 @@ use shared::operation_error;
 use std::num::NonZeroU32;
 
 use p256::elliptic_curve::sec1::FromEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -39,8 +38,6 @@ use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
-use rsa::pkcs1::FromRsaPrivateKey;
-use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::TagMode;
 use rsa::pkcs8::DecodePrivateKey;
@@ -542,11 +539,10 @@ pub async fn op_crypto_derive_bits(
                   type_error("Unexpected error decoding private key")
                 })?;
 
-              let pk: Option<p256::PublicKey> =
-                p256::PublicKey::from_encoded_point(&point);
-
-              if let Some(pk) = pk {
-                pk
+              let pk = p256::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
               } else {
                 return Err(type_error(
                   "Unexpected error decoding private key",
@@ -557,7 +553,7 @@ pub async fn op_crypto_derive_bits(
           };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_secret_scalar(),
+            secret_key.to_nonzero_scalar(),
             public_key.as_affine(),
           );
 
