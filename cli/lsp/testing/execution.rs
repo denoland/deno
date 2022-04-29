@@ -754,19 +754,14 @@ impl test::TestReporter for LspTestReporter {
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
-  fn report_output(&mut self, output: &test::TestOutput) {
+  fn report_output(&mut self, output: &[u8]) {
     let test = self.current_origin.as_ref().and_then(|origin| {
       self
         .stack
         .get(origin)
         .and_then(|v| v.last().map(|td| td.into()))
     });
-    let value = match output {
-      test::TestOutput::String(value) => value.replace('\n', "\r\n"),
-      test::TestOutput::Bytes(bytes) => {
-        String::from_utf8_lossy(bytes).replace('\n', "\r\n")
-      }
-    };
+    let value = String::from_utf8_lossy(output).replace('\n', "\r\n");
 
     self.progress(lsp_custom::TestRunProgressMessage::Output {
       value,

@@ -138,7 +138,7 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
-  Output(TestOutput),
+  Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
@@ -198,7 +198,7 @@ impl TestSummary {
 pub trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_output(&mut self, output: &TestOutput);
+  fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -340,7 +340,7 @@ impl TestReporter for PrettyTestReporter {
     self.in_test_count += 1;
   }
 
-  fn report_output(&mut self, output: &TestOutput) {
+  fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
     }
@@ -350,16 +350,10 @@ impl TestReporter for PrettyTestReporter {
       println!();
       println!("{}", colors::gray("------- output -------"));
     }
-    match output {
-      TestOutput::String(line) => {
-        // output everything to stdout in order to prevent
-        // stdout and stderr racing
-        print!("{}", line)
-      }
-      TestOutput::Bytes(bytes) => {
-        std::io::stdout().write_all(bytes).unwrap();
-      }
-    }
+
+    // output everything to stdout in order to prevent
+    // stdout and stderr racing
+    std::io::stdout().write_all(output).unwrap();
   }
 
   fn report_result(
@@ -1498,9 +1492,7 @@ fn start_output_redirect_thread(
       Ok(size) => size,
     };
     if sender
-      .send(TestEvent::Output(TestOutput::Bytes(
-        buffer[0..size].to_vec(),
-      )))
+      .send(TestEvent::Output(buffer[0..size].to_vec()))
       .is_err()
     {
       break;
