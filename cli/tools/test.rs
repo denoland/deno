@@ -1497,16 +1497,12 @@ impl TestEventSender {
         | TestEvent::StepWait(_)
         | TestEvent::StepResult(_, _, _)
     ) {
-      self.flush_stdout_and_stderr();
+      self.stdout_writer.flush().unwrap();
+      self.stderr_writer.flush().unwrap();
     }
 
     self.sender.send(message)?;
     Ok(())
-  }
-
-  fn flush_stdout_and_stderr(&mut self) {
-    self.stdout_writer.flush().unwrap();
-    self.stderr_writer.flush().unwrap();
   }
 }
 
