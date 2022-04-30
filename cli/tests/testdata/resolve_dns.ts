@@ -7,7 +7,7 @@ const [a, aaaa, aname, cname, mx, ptr, soa, srv, txt] = await Promise.all([
   Deno.resolveDns("foo", "CNAME", nameServer),
   Deno.resolveDns("www.example.com", "MX", nameServer),
   Deno.resolveDns("5.6.7.8", "PTR", nameServer),
-  Deno.resolveDns("www.example.com", "SOA", nameServer),
+  Deno.resolveDns("soa.record", "SOA", nameServer),
   Deno.resolveDns("_Service._TCP.example.com", "SRV", nameServer),
   Deno.resolveDns("www.example.com", "TXT", nameServer),
 ]);

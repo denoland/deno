@@ -670,8 +670,19 @@ where
     .map_err(|e| {
       let message = format!("{}", e);
       match e.kind() {
-        ResolveErrorKind::NoRecordsFound { .. } => {
-          custom_error("NotFound", message)
+        ResolveErrorKind::NoRecordsFound { soa, .. } => {
+          match (soa, record_type) {
+            (Some(soa), RecordType::SOA) => custom_error(
+              "NotFoundWithAuthoritative",
+              format!(
+                "{} but has authoritative response \n\tmname: {}\n\trname: {}",
+                message,
+                soa.mname().to_string(),
+                soa.rname().to_string()
+              ),
+            ),
+            (_, _) => custom_error("NotFound", message),
+          }
         }
         ResolveErrorKind::Message("No connections available") => {
           custom_error("NotConnected", message)

@@ -10,6 +10,8 @@ MX
 [{"preference":0,"exchange":"mx.com."}]
 PTR
 ["ptr.com."]
+SOA
+[{"mname":"net.soa.record.","rname":"admin.soa.record."}]
 SRV
 [{"priority":0,"weight":100,"port":1234,"target":"srv.com."}]
 TXT

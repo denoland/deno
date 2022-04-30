@@ -6,6 +6,8 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
+use trust_dns_client::serialize::txt::Lexer;
+use trust_dns_client::serialize::txt::Parser;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -817,7 +819,6 @@ async fn test_resolve_dns() {
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
-  use std::sync::RwLock;
   use std::time::Duration;
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
@@ -856,7 +857,7 @@ async fn test_resolve_dns() {
           i32::MAX,
           i32::MAX,
           i32::MAX,
-          0,
+          1,
         );
         let rdata = RData::SOA(soa);
         let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
@@ -952,16 +953,40 @@ async fn test_resolve_dns() {
       };
 
       let authority = Box::new(Arc::new(
-        InMemoryAuthority::new(
-          Name::new(),
-          records,
-          ZoneType::Primary,
-          false,
-        )
-        .unwrap(),
+        InMemoryAuthority::new(Name::new(), records, ZoneType::Primary, false)
+          .unwrap(),
       ));
+
+      let lexer = Lexer::new(
+        r###"
+@   IN  SOA     net      admin (
+                            20     ; SERIAL
+                            7200   ; REFRESH
+                            600    ; RETRY
+                            3600000; EXPIRE
+                            60)    ; MINIMUM
+        A       127.0.0.1
+"###,
+      );
+
+      let records = Parser::new().parse(
+        lexer,
+        Some(Name::from_str("soa.record").unwrap()),
+        None,
+      );
+
+      let (origin, records) = records.unwrap();
+
+      let authority2 = Box::new(Arc::new(InMemoryAuthority::new(
+        origin,
+        records,
+        ZoneType::Primary,
+        false
+      ).unwrap()));
+
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
+      c.upsert(Name::from_str("soa.record").unwrap().into(), authority2);
       c
     };
 
@@ -1003,6 +1028,7 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    println!("{}", err);
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
