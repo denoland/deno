@@ -146,8 +146,9 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
     use #core::futures::FutureExt;
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
-      as *const #core::_ops::OpCtx)
+      let f64ptr = #core::v8::Local::<#core::v8::Number>::cast(args.data().unwrap_unchecked()).value();
+      let ptr = std::mem::transmute::<f64, *mut #core::_ops::OpCtx>(f64ptr);
+      std::ptr::NonNull::new_unchecked(ptr).as_ref()
     };
     let op_id = ctx.id;
 
@@ -199,8 +200,9 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
   quote! {
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
-      as *const #core::_ops::OpCtx)
+      let f64ptr = #core::v8::Local::<#core::v8::Number>::cast(args.data().unwrap_unchecked()).value();
+      let ptr = std::mem::transmute::<f64, *mut #core::_ops::OpCtx>(f64ptr);
+      std::ptr::NonNull::new_unchecked(ptr).as_ref()
     };
 
     #arg_decls

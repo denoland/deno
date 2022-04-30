@@ -297,7 +297,8 @@ pub fn set_func_raw(
   external_data: *const c_void,
 ) {
   let key = v8::String::new(scope, name).unwrap();
-  let external = v8::External::new(scope, external_data as *mut c_void);
+  let f64ptr = unsafe { std::mem::transmute(external_data) };
+  let external = v8::Number::new(scope, f64ptr);
   let val = v8::Function::builder_raw(callback)
     .data(external.into())
     .build(scope)
