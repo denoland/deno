@@ -188,10 +188,10 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
   let (rust_i0, args_head) = match arg0 {
     Some(arg0) if is_rc_refcell_opstate(arg0) => {
       (1, quote! { ctx.state.clone(), })
-    },
+    }
     Some(arg0) if is_mut_ref_opstate(arg0) => {
       (1, quote! { &mut ctx.state.borrow_mut(), })
-    },
+    }
     _ => (0, quote! {}),
   };
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
