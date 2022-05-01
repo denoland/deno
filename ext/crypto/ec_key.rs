@@ -22,9 +22,7 @@ const PUBLIC_KEY_TAG: TagNumber = TagNumber::new(1);
 
 pub struct ECPrivateKey<'a, C: elliptic_curve::Curve> {
   pub algorithm: AlgorithmIdentifier<'a>,
-
   pub private_d: elliptic_curve::FieldBytes<C>,
-
   pub encoded_point: &'a [u8],
 }
 
@@ -53,27 +51,40 @@ where
     Ok(parameters.oid().unwrap())
   }
 
+  fn fields<F, T>(&self, f: F) -> der::Result<T>
+  where
+    F: FnOnce(&[&dyn der::Encodable]) -> der::Result<T>,
+  {
+    f(&[
+      &VERSION,
+      &self.algorithm,
+      &OctetString::new(&self.private_d)?,
+      &ContextSpecific {
+        tag_number: PUBLIC_KEY_TAG,
+        tag_mode: der::TagMode::Implicit,
+        value: BitString::from_bytes(&self.encoded_point)?,
+      },
+    ])
+  }
+
   fn internal_to_pkcs8_der(&self) -> der::Result<Vec<u8>> {
-    // Shamelessly copied from pkcs8 crate and modified so as
-    // to not require Arithmetic trait currently missing from p384
-    let secret_key_field = OctetString::new(&self.private_d)?;
-    let public_key_bytes = &self.encoded_point;
-    let public_key_field = ContextSpecific {
-      tag_number: PUBLIC_KEY_TAG,
-      value: BitString::new(public_key_bytes)?.into(),
-    };
-
-    let der_message_fields: &[&dyn Encodable] =
-      &[&VERSION, &secret_key_field, &public_key_field];
-
-    let encoded_len =
-      der::message::encoded_len(der_message_fields)?.try_into()?;
-    let mut der_message = Zeroizing::new(vec![0u8; encoded_len]);
+    let expected_len = self.fields(|fields| {
+      fields.iter().fold(Ok(der::Length::ZERO), |len, field| {
+        len + field.encoded_len()?
+      })
+    })?;
+    let mut der_message =
+      Zeroizing::new(vec![0u8; usize::try_from(expected_len)?]);
     let mut encoder = der::Encoder::new(&mut der_message);
-    encoder.message(der_message_fields)?;
-    encoder.finish()?;
+    self.fields(|fields| {
+      for &field in fields {
+        field.encode(&mut encoder)?;
+      }
 
-    Ok(der_message.to_vec())
+      Ok(())
+    });
+    encoder.finish()?;
+    Ok(der_message.to_vec()?)
   }
 
   pub fn to_pkcs8_der(&self) -> Result<PrivateKeyDocument, AnyError> {
@@ -84,7 +95,7 @@ where
     let pki =
       pkcs8::PrivateKeyInfo::new(C::algorithm_identifier(), pkcs8_der.as_ref());
 
-    Ok(pki.to_der())
+    Ok(pki.to_der()?)
   }
 }
 
@@ -117,7 +128,7 @@ impl<'a, C: elliptic_curve::Curve> TryFrom<PrivateKeyInfo<'a>>
 
     any
       .sequence(|decoder| {
-        // ver
+        // version
         if decoder.uint8()? != VERSION {
           return Err(der::Tag::Integer.value_error());
         }
@@ -131,15 +142,21 @@ impl<'a, C: elliptic_curve::Curve> TryFrom<PrivateKeyInfo<'a>>
         private_d.copy_from_slice(priv_key);
 
         let public_key = decoder
-          .context_specific(PUBLIC_KEY_TAG)?
-          .ok_or_else(|| {
-            der::Tag::ContextSpecific(PUBLIC_KEY_TAG).value_error()
-          })?
-          .bit_string()?;
+          .context_specific::<BitString<'_>>(
+            PUBLIC_KEY_TAG,
+            der::TagMode::Explicit,
+          )?
+          .map(|bs| bs.as_bytes());
+        if public_key.is_none() {
+          return Err(decoder.value_error(der::Tag::ContextSpecific {
+            constructed: true,
+            number: PUBLIC_KEY_TAG,
+          }));
+        }
 
         Ok(Self {
           private_d,
-          encoded_point: public_key.as_bytes(),
+          encoded_point: public_key.unwrap(),
           algorithm: pk_info.algorithm,
         })
       })
