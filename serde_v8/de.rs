@@ -211,7 +211,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     if self.input.is_string() {
       let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
-      let string = v8_string.to_rust_string_lossy(self.scope);
+      let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
@@ -660,4 +660,58 @@ fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
     .map(|(i, w)| (*w as f64) * 2.0f64.powi(64 * i as i32))
     .sum();
   sign * x
+}
+
+pub fn to_utf8(
+  s: v8::Local<v8::String>,
+  scope: &mut v8::HandleScope,
+) -> std::string::String {
+  if let Some(s) = to_utf8_fast(s, scope) {
+    return s;
+  }
+  to_utf8_slow(s, scope)
+}
+
+fn to_utf8_fast(
+  s: v8::Local<v8::String>,
+  scope: &mut v8::HandleScope,
+) -> Option<std::string::String> {
+  // Over-allocate by 20% to avoid checking string twice
+  let len = s.length();
+  let capacity = (s.length() as f64 * 1.2) as usize;
+  let mut buf = Vec::with_capacity(capacity);
+  let mut nchars = 0;
+  let data = buf.as_mut_ptr();
+  let length = s.write_utf8(
+    scope,
+    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    Some(&mut nchars),
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  );
+  unsafe {
+    buf.set_len(length);
+  }
+  if nchars < len {
+    return None;
+  }
+  Some(unsafe { std::string::String::from_utf8_unchecked(buf) })
+}
+
+fn to_utf8_slow(
+  s: v8::Local<v8::String>,
+  scope: &mut v8::HandleScope,
+) -> std::string::String {
+  let capacity = s.utf8_length(scope);
+  let mut string = std::string::String::with_capacity(capacity);
+  let data = string.as_mut_ptr();
+  std::mem::forget(string);
+  let length = s.write_utf8(
+    scope,
+    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    None,
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  );
+  unsafe { std::string::String::from_raw_parts(data, length, capacity) }
 }
