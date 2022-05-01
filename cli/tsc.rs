@@ -88,6 +88,7 @@ pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
         inc!("lib.dom.asynciterable.d.ts"),
       ),
       ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
       ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
       ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
       ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
