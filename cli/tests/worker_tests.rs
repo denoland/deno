@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
+mod integration;
 
 itest!(workers {
   args: "test --reload --location http://127.0.0.1:4545/ -A --unstable workers/test.ts",

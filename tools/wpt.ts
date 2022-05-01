@@ -28,6 +28,7 @@ import {
   quiet,
   rest,
   runPy,
+  shard,
   updateManifest,
   wptreport,
 } from "./wpt/utils.ts";
@@ -152,12 +153,16 @@ async function run() {
     expectation,
   );
   assertAllExpectationsHaveTests(expectation, tests, rest);
-  console.log(`Going to run ${tests.length} test files.`);
+
+  const testsToRun = tests
+    .filter((_, i) => (i % shard.total) === (shard.index - 1));
+
+  console.log(`Going to run ${testsToRun.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
     const results = [];
 
-    for (const test of tests) {
+    for (const test of testsToRun) {
       console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
       const result = await runSingleTest(
         test.url,
@@ -710,6 +715,8 @@ function discoverTestsToRun(
     }
   }
   walk(manifestFolder, expectation, "");
+
+  testsToRun.sort((a, b) => a.path.localeCompare(b.path));
 
   return testsToRun;
 }

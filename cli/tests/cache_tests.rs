@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
+mod integration;
 
 itest!(_036_import_map_fetch {
   args:

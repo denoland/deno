@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod integration;
+
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use std::io::Read;
@@ -1853,7 +1855,10 @@ fn dont_cache_on_check_fail() {
 mod permissions {
   use test_util as util;
 
+  use super::itest;
+
   // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
+
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {

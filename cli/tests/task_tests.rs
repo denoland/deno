@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
+mod integration;
 
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.

@@ -14,11 +14,25 @@ export const {
   ["auto-config"]: autoConfig,
   ["inspect-brk"]: inspectBrk,
   binary,
+  shard: shardStr,
 } = parse(Deno.args, {
   "--": true,
   boolean: ["quiet", "release", "no-interactive", "inspect-brk"],
-  string: ["json", "wptreport", "binary"],
+  string: ["json", "wptreport", "binary", "shard"],
 });
+
+export const shard = shardStr
+  ? (() => {
+    const [index, total] = shardStr.split("/");
+    return {
+      index: Number(index),
+      total: Number(total),
+    };
+  })()
+  : {
+    index: 1,
+    total: 1,
+  };
 
 export function denoBinary() {
   if (binary) {
