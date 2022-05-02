@@ -82,7 +82,7 @@ where
       }
 
       Ok(())
-    });
+    })?;
     encoder.finish()?;
     Ok(der_message.to_vec()?)
   }
@@ -146,7 +146,13 @@ impl<'a, C: elliptic_curve::Curve> TryFrom<PrivateKeyInfo<'a>>
             PUBLIC_KEY_TAG,
             der::TagMode::Explicit,
           )?
-          .map(|bs| bs.as_bytes());
+          .map(|bs| bs.as_bytes())
+          .ok_or_else(|| {
+            decoder.value_error(der::Tag::ContextSpecific {
+              constructed: true,
+              number: PUBLIC_KEY_TAG,
+            })
+          })?;
         if public_key.is_none() {
           return Err(decoder.value_error(der::Tag::ContextSpecific {
             constructed: true,

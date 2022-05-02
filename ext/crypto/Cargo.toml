@@ -15,16 +15,17 @@ path = "lib.rs"
 
 [dependencies]
 aes = "0.8.1"
-aes-gcm = "0.10.0-pre" # TODO(@littledivy): Move to stable release
+# TODO(@littledivy): Move to stable release
+# https://github.com/RustCrypto/AEADs/issues/411
+aes-gcm = "0.10.0-pre"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
 base64 = "0.13.0"
 block-modes = "0.8.1"
-ctr = "0.9.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
+ctr = "0.9.1"
 deno_core = { version = "0.131.0", path = "../../core" }
 deno_web = { version = "0.80.0", path = "../web" }
 elliptic-curve = { version = "0.11.12", features = ["std", "pem"] }
-spki = "0.5.2"
 num-traits = "0.2.14"
 once_cell = "1.10.0"
 p256 = { version = "0.10.1", features = ["ecdh"] }
@@ -36,5 +37,6 @@ serde = { version = "1.0.129", features = ["derive"] }
 serde_bytes = "0.11"
 sha-1 = "0.10.0"
 sha2 = "0.10.2"
+spki = "0.5.2"
 tokio = { version = "1.17", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }

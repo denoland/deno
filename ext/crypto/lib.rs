@@ -40,9 +40,7 @@ use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
-use rsa::pkcs8::der::TagMode;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -700,6 +698,19 @@ static P_SPECIFIED_EMPTY: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
     }
   });
 
+fn decode_content_tag<'a, T>(
+  decoder: &mut rsa::pkcs8::der::Decoder<'a>,
+  tag: rsa::pkcs8::der::TagNumber,
+) -> rsa::pkcs8::der::Result<Option<T>>
+where
+  T: rsa::pkcs8::der::Decodable<'a>,
+{
+  Ok(
+    rsa::pkcs8::der::asn1::ContextSpecific::<T>::decode_explicit(decoder, tag)?
+      .map(|field| field.value),
+  )
+}
+
 impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   for PssPrivateKeyParameters<'a>
 {
@@ -709,20 +720,23 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
     any: rsa::pkcs8::der::asn1::Any<'a>,
   ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG, TagMode::Explicit)?
+      let hash_algorithm =
+        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
+          decoder,
+          HASH_ALGORITHM_TAG,
+        )?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG, TagMode::Explicit)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+      let mask_gen_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, MASK_GEN_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
-      let salt_length = decoder
-        .context_specific(SALT_LENGTH_TAG, TagMode::Explicit)?
+      let salt_length = decode_content_tag::<u32>(decoder, SALT_LENGTH_TAG)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(20);
@@ -759,23 +773,28 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
     any: rsa::pkcs8::der::asn1::Any<'a>,
   ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG, TagMode::Explicit)?
+      let hash_algorithm =
+        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
+          decoder,
+          HASH_ALGORITHM_TAG,
+        )?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG, TagMode::Explicit)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+      let mask_gen_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, MASK_GEN_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
-      let p_source_algorithm = decoder
-        .context_specific(P_SOURCE_ALGORITHM_TAG, TagMode::Explicit)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*P_SPECIFIED_EMPTY);
+      let p_source_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, P_SOURCE_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*P_SPECIFIED_EMPTY);
 
       Ok(Self {
         hash_algorithm,
