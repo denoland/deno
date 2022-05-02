@@ -2093,9 +2093,9 @@ async fn op_readfile_text_async(
 // Like String::from_utf8_lossy but operates on owned values
 fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
   match String::from_utf8_lossy(&buf) {
-    // buf contained not utf8 characters than have been patched
+    // buf contained non-utf8 chars than have been patched
     Cow::Owned(s) => s,
-    // SAFETY: if Borrowed then the buf only contains utf8,
+    // SAFETY: if Borrowed then the buf only contains utf8 chars,
     // we do this instead of .into_owned() to avoid copying the input buf
     Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
   }
