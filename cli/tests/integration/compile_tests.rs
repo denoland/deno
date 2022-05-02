@@ -105,9 +105,12 @@ fn standalone_error() {
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
   let stderr = String::from_utf8(output.stderr).unwrap();
+  let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Error: boom!\n    at boom (file://"));
+  assert!(stderr.contains("error: Uncaught Error: boom!"));
+  assert!(stderr.contains("throw new Error(\"boom!\");"));
+  assert!(stderr.contains("\n    at boom (file://"));
   assert!(stderr.contains("standalone_error.ts:2:11"));
   assert!(stderr.contains("at foo (file://"));
   assert!(stderr.contains("standalone_error.ts:5:5"));
@@ -148,9 +151,12 @@ fn standalone_error_module_with_imports() {
   println!("{:#?}", &output);
   assert_eq!(output.stdout, b"hello\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
+  let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Error: boom!\n    at file://"));
+  assert!(stderr.contains("error: Uncaught Error: boom!"));
+  assert!(stderr.contains("throw new Error(\"boom!\");"));
+  assert!(stderr.contains("\n    at file://"));
   assert!(stderr.contains("standalone_error_module_with_imports_2.ts:2:7"));
 }
 

@@ -232,7 +232,7 @@ fn format_markdown(
 
 /// Formats JSON and JSONC using the rules provided by .deno()
 /// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
-/// See <https://git.io/Jt4ht> for configuration.
+/// See <https://github.com/dprint/dprint-plugin-json/blob/cfa1052dbfa0b54eb3d814318034cdc514c813d7/src/configuration/builder.rs#L87> for configuration.
 pub fn format_json(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,

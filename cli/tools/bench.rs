@@ -385,6 +385,7 @@ async fn bench_specifier(
     specifier.clone(),
     permissions,
     vec![ops::bench::init(channel.clone(), ps.flags.unstable)],
+    Default::default(),
   );
 
   if options.compat_mode {
