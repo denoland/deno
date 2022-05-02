@@ -148,7 +148,6 @@ fn export_key_rsa(
       // version is 0 when publickey is None
 
       let pk_info = rsa::pkcs8::PrivateKeyInfo {
-        attributes: None,
         public_key: None,
         algorithm: rsa::pkcs8::AlgorithmIdentifier {
           // rsaEncryption(1)

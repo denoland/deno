@@ -164,7 +164,6 @@ fn import_key_rsa_jwk(
       jwt_b64_int_or_err!(coefficient, &qi, "invalid CRT coefficient");
 
       let private_key = rsa::pkcs1::RsaPrivateKey {
-        version: rsa::pkcs1::Version::TwoPrime,
         modulus,
         public_exponent,
         private_exponent,
@@ -173,6 +172,7 @@ fn import_key_rsa_jwk(
         exponent1,
         exponent2,
         coefficient,
+        other_prime_infos: None,
       };
 
       let data = private_key
@@ -204,7 +204,7 @@ fn validate_mask_gen(
   let parameters = mask_gen_algorithm
     .parameters_any()
     .map_err(|_| not_supported_error("unsupported parameters"))?;
-  let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+  let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters.value())
     .map_err(|_| not_supported_error("unsupported parameters"))?;
 
   // The hash function on which MGF1 is based.
@@ -957,7 +957,7 @@ fn import_key_ec(
       }
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(encoded_key.to_vec().into()),
+        raw_data: RawKeyData::Public(encoded_key.to_vec()?.into()),
       })
     }
     KeyData::JwkPublicEc { .. } | KeyData::JwkPrivateEc { .. } => {
