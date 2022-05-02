@@ -26,6 +26,12 @@ Shell (Mac, Linux):
 curl -fsSL https://deno.land/install.sh | sh
 ```
 
+[Pacman](https://archlinux.org/packages/community/x86_64/deno/) (Arch Linux and Arch Based distros):
+
+```sh
+sudo pacman -S deno
+```
+
 PowerShell (Windows):
 
 ```powershell
