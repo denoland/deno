@@ -555,23 +555,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Format an array of diagnostic items and return them as a single string in a
-   * user friendly format. If there are no diagnostics then it will return an
-   * empty string.
-   *
-   * ```ts
-   * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
-   * console.table(diagnostics);  // Prints raw diagnostic data
-   * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
-   * console.log(Deno.formatDiagnostics([]));  // An empty string
-   * ```
-   *
-   * @param diagnostics An array of diagnostic items to format
-   */
-  export function formatDiagnostics(diagnostics: Diagnostic[]): string;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
    * A specific subset TypeScript compiler options that can be supported by the
    * Deno TypeScript compiler. */
   export interface CompilerOptions {
@@ -802,98 +785,6 @@ declare namespace Deno {
      * `false`. */
     useDefineForClassFields?: boolean;
   }
-
-  interface ImportMap {
-    imports: Record<string, string>;
-    scopes?: Record<string, Record<string, string>>;
-  }
-
-  /**
-   * **UNSTABLE**: new API, yet to be vetted.
-   *
-   * The options for `Deno.emit()` API.
-   */
-  export interface EmitOptions {
-    /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is a single ES module (`"module"`) or a single
-     * file self contained script executed in an immediately invoked function
-     * when loaded (`"classic"`). */
-    bundle?: "module" | "classic";
-    /** If `true` then the sources will be typed checked, returning any
-     * diagnostic errors in the result.  If `false` type checking will be
-     * skipped.  Defaults to `true`.
-     *
-     * *Note* by default, only TypeScript will be type checked, just like on
-     * the command line.  Use the `compilerOptions` options of `checkJs` to
-     * enable type checking of JavaScript. */
-    check?: boolean;
-    /** A set of options that are aligned to TypeScript compiler options that
-     * are supported by Deno. */
-    compilerOptions?: CompilerOptions;
-    /** An [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps)
-     * which will be applied to the imports. */
-    importMap?: ImportMap;
-    /** An absolute path to an [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps).
-     * Required to be specified if an `importMap` is specified to be able to
-     * determine resolution of relative paths. If a `importMap` is not
-     * specified, then it will assumed the file path points to an import map on
-     * disk and will be attempted to be loaded based on current runtime
-     * permissions.
-     */
-    importMapPath?: string;
-    /** A record of sources to use when doing the emit.  If provided, Deno will
-     * use these sources instead of trying to resolve the modules externally. */
-    sources?: Record<string, string>;
-  }
-
-  /**
-   * **UNSTABLE**: new API, yet to be vetted.
-   *
-   * The result of `Deno.emit()` API.
-   */
-  export interface EmitResult {
-    /** Diagnostic messages returned from the type checker (`tsc`).
-     *
-     * Can be used with `Deno.formatDiagnostics` to display a user
-     * friendly string. */
-    diagnostics: Diagnostic[];
-    /** Any emitted files.  If bundled, then the JavaScript will have the
-     * key of `deno:///bundle.js` with an optional map (based on
-     * `compilerOptions`) in `deno:///bundle.js.map`. */
-    files: Record<string, string>;
-    /** An optional array of any compiler options that were ignored by Deno. */
-    ignoredOptions?: string[];
-    /** An array of internal statistics related to the emit, for diagnostic
-     * purposes. */
-    stats: Array<[string, number]>;
-  }
-
-  /**
-   * **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Similar to the command line functionality of `deno run` or `deno cache`,
-   * `Deno.emit()` provides a way to provide Deno arbitrary JavaScript
-   * or TypeScript and have it return JavaScript based on the options and
-   * settings provided. The source code can either be provided or the modules
-   * can be fetched and resolved in line with the behavior of the command line.
-   *
-   * Requires `allow-read` and/or `allow-net` if sources are not provided.
-   *
-   * @param rootSpecifier The specifier that will be used as the entry point.
-   *                      If no sources are provided, then the specifier would
-   *                      be the same as if you typed it on the command line for
-   *                      `deno run`. If sources are provided, it should match
-   *                      one of the names of the sources.
-   * @param options  A set of options to be used with the emit.
-   *
-   * @returns The result of the emit. If diagnostics are found, they can be used
-   * with `Deno.formatDiagnostics` to construct a user friendly string, which
-   * has the same format as CLI diagnostics.
-   */
-  export function emit(
-    rootSpecifier: string | URL,
-    options?: EmitOptions,
-  ): Promise<EmitResult>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
