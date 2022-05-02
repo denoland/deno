@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
+use deno_core::url::Url;
 use test_util as util;
 
 #[test]
@@ -350,4 +351,20 @@ fn recursive_permissions_pledge() {
   assert!(String::from_utf8(output.stderr).unwrap().contains(
     "pledge test permissions called before restoring previous pledge"
   ));
+}
+
+#[test]
+fn file_protocol() {
+  let file_url =
+    Url::from_file_path(util::testdata_path().join("test/file_protocol.ts"))
+      .unwrap()
+      .to_string();
+
+  (util::CheckOutputIntegrationTest {
+    args_vec: vec!["test", &file_url],
+    exit_code: 0,
+    output: "test/file_protocol.out",
+    ..Default::default()
+  })
+  .run();
 }

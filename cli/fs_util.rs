@@ -253,6 +253,7 @@ where
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
+      || lowercase_path.starts_with("file://")
     {
       let url = ModuleSpecifier::parse(&path)?;
       prepared.push(url);
