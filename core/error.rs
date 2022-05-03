@@ -435,28 +435,22 @@ pub(crate) fn is_instance_of_error<'s>(
 const DATA_URL_ABBREV_THRESHOLD: usize = 150;
 
 pub fn format_file_name(file_name: &str) -> String {
-  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
-    if let Ok(url) = Url::parse(file_name) {
-      if url.scheme() == "data" {
-        let data_path = url.path();
-        if let Some(data_pieces) = data_path.split_once(',') {
-          let data_length = data_pieces.1.len();
-          if let Some(data_start) = data_pieces.1.get(0..20) {
-            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
-              return format!(
-                "{}:{},{}......{}",
-                url.scheme(),
-                data_pieces.0,
-                data_start,
-                data_end
-              );
-            }
-          }
-        }
-      }
-    }
+  abbrev_file_name(file_name).unwrap_or_else(|| file_name.to_string())
+}
+
+fn abbrev_file_name(file_name: &str) -> Option<String> {
+  if file_name.len() <= DATA_URL_ABBREV_THRESHOLD {
+    return None;
   }
-  file_name.to_string()
+  let url = Url::parse(file_name).ok()?;
+  if url.scheme() != "data" {
+    return None;
+  }
+  let (head, tail) = url.path().split_once(',')?;
+  let len = tail.len();
+  let start = tail.get(0..20)?;
+  let end = tail.get(len - 20..)?;
+  Some(format!("{}:{},{}......{}", url.scheme(), head, start, end))
 }
 
 #[cfg(test)]
