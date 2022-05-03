@@ -8,12 +8,7 @@
     return core.opSync("op_format_diagnostic", diagnostics);
   }
 
-  function opFormatFileName(location) {
-    return core.opSync("op_format_file_name", location);
-  }
-
   window.__bootstrap.errorStack = {
     opFormatDiagnostics,
-    opFormatFileName,
   };
 })(this);
