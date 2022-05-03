@@ -114,6 +114,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: apply_source_map.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: format_location_filename.map_fn_to(),
+      },
     ])
   });
 
@@ -243,6 +246,12 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "destructureError", destructure_error);
   set_func(scope, core_val, "terminate", terminate);
   set_func(scope, core_val, "applySourceMap", apply_source_map);
+  set_func(
+    scope,
+    core_val,
+    "formatLocationFilename",
+    format_location_filename,
+  );
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -1363,6 +1372,22 @@ fn apply_source_map(
   } else {
     rv.set(args.get(0));
   }
+}
+
+fn format_location_filename(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  match serde_v8::from_v8::<String>(scope, args.get(0)) {
+    Ok(filename) => {
+      let formatted_filename = crate::error::format_file_name(&filename);
+      rv.set(serde_v8::to_v8(scope, formatted_filename).unwrap());
+    }
+    Err(_) => {
+      throw_type_error(scope, "Invalid argument");
+    }
+  };
 }
 
 fn create_host_object(

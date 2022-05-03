@@ -2,6 +2,7 @@
 
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
+use crate::url::Url;
 use anyhow::Error;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -429,6 +430,33 @@ pub(crate) fn is_instance_of_error<'s>(
       .and_then(|o| o.get_prototype(scope));
   }
   false
+}
+
+const DATA_URL_ABBREV_THRESHOLD: usize = 150;
+
+pub fn format_file_name(file_name: &str) -> String {
+  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
+    if let Ok(url) = Url::parse(file_name) {
+      if url.scheme() == "data" {
+        let data_path = url.path();
+        if let Some(data_pieces) = data_path.split_once(',') {
+          let data_length = data_pieces.1.len();
+          if let Some(data_start) = data_pieces.1.get(0..20) {
+            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
+              return format!(
+                "{}:{},{}......{}",
+                url.scheme(),
+                data_pieces.0,
+                data_start,
+                data_end
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+  file_name.to_string()
 }
 
 #[cfg(test)]
