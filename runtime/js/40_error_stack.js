@@ -12,13 +12,8 @@
     return core.opSync("op_format_file_name", location);
   }
 
-  function opApplySourceMap(location) {
-    return core.applySourceMap(location);
-  }
-
   window.__bootstrap.errorStack = {
     opFormatDiagnostics,
     opFormatFileName,
-    opApplySourceMap,
   };
 })(this);
