@@ -25,10 +25,10 @@
     ObjectAssign,
     SymbolFor,
   } = window.__bootstrap.primordials;
-  const ops = window.Deno.core.ops;
+  const ops = Deno.core.ops;
 
   // Available on start due to bindings.
-  const { refOp_, unrefOp_ } = window.Deno.core;
+  const { refOp_, unrefOp_ } = Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
