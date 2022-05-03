@@ -144,15 +144,10 @@ impl<'a, C: elliptic_curve::Curve> TryFrom<PrivateKeyInfo<'a>>
         let public_key = decoder
           .context_specific::<BitString<'_>>(
             PUBLIC_KEY_TAG,
-            der::TagMode::Explicit,
+            der::TagMode::Implicit,
           )?
           .map(|bs| bs.as_bytes())
-          .ok_or_else(|| {
-            decoder.value_error(der::Tag::ContextSpecific {
-              constructed: true,
-              number: PUBLIC_KEY_TAG,
-            })
-          })?;
+          .unwrap();
         if public_key.is_none() {
           return Err(decoder.value_error(der::Tag::ContextSpecific {
             constructed: true,
@@ -160,6 +155,7 @@ impl<'a, C: elliptic_curve::Curve> TryFrom<PrivateKeyInfo<'a>>
           }));
         }
 
+        println!("{:?}", public_key);
         Ok(Self {
           private_d,
           encoded_point: public_key.unwrap(),
