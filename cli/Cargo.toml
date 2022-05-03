@@ -111,8 +111,8 @@ flaky_test = "=0.1.0"
 os_pipe = "=1.0.1"
 pretty_assertions = "=1.2.0"
 test_util = { path = "../test_util" }
-trust-dns-client = "=0.20.3"
-trust-dns-server = "=0.20.3"
+trust-dns-client = "0.21.2"
+trust-dns-server = "0.21.2"
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = "=0.23.0"
