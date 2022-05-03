@@ -8,12 +8,7 @@
     return core.opSync("op_format_diagnostic", diagnostics);
   }
 
-  function opApplySourceMap(location) {
-    return core.applySourceMap(location);
-  }
-
   window.__bootstrap.errorStack = {
     opFormatDiagnostics,
-    opApplySourceMap,
   };
 })(this);
