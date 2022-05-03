@@ -506,7 +506,9 @@ async fn op_http_write_headers(
   let mut etag_header = None;
   let mut content_type_header = None;
 
-  builder.headers_mut().unwrap().reserve(headers.len());
+  if let Some(h) = builder.headers_mut() {
+    h.reserve(headers.len())
+  };
   for (key, value) in &headers {
     if key.eq_ignore_ascii_case(b"cache-control") {
       if let Ok(value) = std::str::from_utf8(value) {
