@@ -4,11 +4,10 @@ use crate::proc_state::ProcState;
 use deno_core::Extension;
 
 pub mod bench;
-mod errors;
 pub mod testing;
 
 pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
-  vec![init_proc_state(ps), errors::init()]
+  vec![init_proc_state(ps)]
 }
 
 fn init_proc_state(ps: ProcState) -> Extension {
