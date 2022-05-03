@@ -81,7 +81,7 @@
     const fileName = callSite.getFileName();
 
     if (fileName) {
-      result += core.formatLocationFilename(fileName);
+      result += core.opSync("op_format_file_name", fileName);
     } else {
       if (callSite.isEval()) {
         const evalOrigin = callSite.getEvalOrigin();

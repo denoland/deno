@@ -1,3 +1,4 @@
+use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::include_js_files;
 use crate::ops_metrics::OpMetrics;
@@ -34,6 +35,7 @@ pub(crate) fn init_builtins() -> Extension {
       op_write::decl(),
       op_shutdown::decl(),
       op_metrics::decl(),
+      op_format_file_name::decl(),
     ])
     .build()
 }
@@ -182,4 +184,9 @@ async fn op_shutdown(
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   resource.shutdown().await
+}
+
+#[op]
+fn op_format_file_name(file_name: String) -> Result<String, Error> {
+  Ok(format_file_name(&file_name))
 }
