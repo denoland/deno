@@ -6,8 +6,6 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
-use trust_dns_client::serialize::txt::Lexer;
-use trust_dns_client::serialize::txt::Parser;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -17,6 +15,8 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use trust_dns_client::serialize::txt::Lexer;
+use trust_dns_client::serialize::txt::Parser;
 
 #[macro_export]
 macro_rules! itest(
@@ -977,12 +977,10 @@ async fn test_resolve_dns() {
 
       let (origin, records) = records.unwrap();
 
-      let authority2 = Box::new(Arc::new(InMemoryAuthority::new(
-        origin,
-        records,
-        ZoneType::Primary,
-        false
-      ).unwrap()));
+      let authority2 = Box::new(Arc::new(
+        InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
+          .unwrap(),
+      ));
 
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);

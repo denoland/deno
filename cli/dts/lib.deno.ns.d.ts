@@ -2978,8 +2978,8 @@ declare namespace Deno {
 
   /** If `resolveDns` is called with "SOA" record type specified, it will return an array of this interface. */
   export interface SOARecord {
-    mname: string
-    rname: string
+    mname: string;
+    rname: string;
   }
 
   /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
