@@ -138,7 +138,7 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
-  Output(TestOutput),
+  Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
@@ -198,7 +198,7 @@ impl TestSummary {
 pub trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_output(&mut self, output: &TestOutput);
+  fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -340,7 +340,7 @@ impl TestReporter for PrettyTestReporter {
     self.in_test_count += 1;
   }
 
-  fn report_output(&mut self, output: &TestOutput) {
+  fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
     }
@@ -350,16 +350,10 @@ impl TestReporter for PrettyTestReporter {
       println!();
       println!("{}", colors::gray("------- output -------"));
     }
-    match output {
-      TestOutput::String(line) => {
-        // output everything to stdout in order to prevent
-        // stdout and stderr racing
-        print!("{}", line)
-      }
-      TestOutput::Bytes(bytes) => {
-        std::io::stdout().write_all(bytes).unwrap();
-      }
-    }
+
+    // output everything to stdout in order to prevent
+    // stdout and stderr racing
+    std::io::stdout().write_all(output).unwrap();
   }
 
   fn report_result(
@@ -587,19 +581,18 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: UnboundedSender<TestEvent>,
+  sender: TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let (stdout, stderr) = create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(sender.clone())],
     Stdio {
       stdin: StdioPipe::Inherit,
-      stdout: StdioPipe::File(stdout),
-      stderr: StdioPipe::File(stderr),
+      stdout: StdioPipe::File(sender.stdout()),
+      stderr: StdioPipe::File(sender.stderr()),
     },
   );
 
@@ -951,6 +944,7 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -1455,20 +1449,61 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
-/// Creates the stdout and stderr pipes and returns the writers for stdout and stderr.
-pub fn create_stdout_stderr_pipes(
+pub struct TestEventSender {
   sender: UnboundedSender<TestEvent>,
-) -> (std::fs::File, std::fs::File) {
-  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
-  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+  stdout_writer: os_pipe::PipeWriter,
+  stderr_writer: os_pipe::PipeWriter,
+}
 
-  start_output_redirect_thread(stdout_reader, sender.clone());
-  start_output_redirect_thread(stderr_reader, sender);
+impl Clone for TestEventSender {
+  fn clone(&self) -> Self {
+    Self {
+      sender: self.sender.clone(),
+      stdout_writer: self.stdout_writer.try_clone().unwrap(),
+      stderr_writer: self.stderr_writer.try_clone().unwrap(),
+    }
+  }
+}
 
-  (
-    pipe_writer_to_file(stdout_writer),
-    pipe_writer_to_file(stderr_writer),
-  )
+impl TestEventSender {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
+    let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+
+    start_output_redirect_thread(stdout_reader, sender.clone());
+    start_output_redirect_thread(stderr_reader, sender.clone());
+
+    Self {
+      sender,
+      stdout_writer,
+      stderr_writer,
+    }
+  }
+
+  pub fn stdout(&self) -> std::fs::File {
+    pipe_writer_to_file(self.stdout_writer.try_clone().unwrap())
+  }
+
+  pub fn stderr(&self) -> std::fs::File {
+    pipe_writer_to_file(self.stderr_writer.try_clone().unwrap())
+  }
+
+  pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
+    // for any event that finishes collecting output, we need to
+    // ensure that the collected stdout and stderr pipes are flushed
+    if matches!(
+      message,
+      TestEvent::Result(_, _, _)
+        | TestEvent::StepWait(_)
+        | TestEvent::StepResult(_, _, _)
+    ) {
+      self.stdout_writer.flush().unwrap();
+      self.stderr_writer.flush().unwrap();
+    }
+
+    self.sender.send(message)?;
+    Ok(())
+  }
 }
 
 #[cfg(windows)]
@@ -1497,10 +1532,9 @@ fn start_output_redirect_thread(
       Ok(0) | Err(_) => break,
       Ok(size) => size,
     };
+
     if sender
-      .send(TestEvent::Output(TestOutput::Bytes(
-        buffer[0..size].to_vec(),
-      )))
+      .send(TestEvent::Output(buffer[0..size].to_vec()))
       .is_err()
     {
       break;
