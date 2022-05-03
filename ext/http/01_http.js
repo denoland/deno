@@ -282,7 +282,7 @@
                 resourceRid,
               );
               readableStreamClose(respBody); // Release JS lock.
-              core.close(resourceRid);
+              core.tryClose(resourceRid);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
