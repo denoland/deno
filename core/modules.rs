@@ -190,7 +190,7 @@ impl std::fmt::Display for ModuleType {
 // intermediate redirects from file loader.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSource {
-  pub code: Vec<u8>,
+  pub code: Box<[u8]>,
   pub module_type: ModuleType,
   pub module_url_specified: String,
   pub module_url_found: String,
@@ -317,7 +317,7 @@ impl ModuleLoader for FsModuleLoader {
 
       let code = std::fs::read(path)?;
       let module = ModuleSource {
-        code,
+        code: code.into_boxed_slice(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
@@ -1265,7 +1265,7 @@ import "/a.js";
       }
       match mock_source_code(&inner.url) {
         Some(src) => Poll::Ready(Ok(ModuleSource {
-          code: src.0.as_bytes().to_vec(),
+          code: src.0.as_bytes().to_vec().into_boxed_slice(),
           module_type: ModuleType::JavaScript,
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
@@ -1699,7 +1699,9 @@ import "/a.js";
       let info = ModuleSource {
         module_url_specified: specifier.to_string(),
         module_url_found: specifier.to_string(),
-        code: b"export function b() { return 'b' }".to_vec(),
+        code: b"export function b() { return 'b' }"
+          .to_vec()
+          .into_boxed_slice(),
         module_type: ModuleType::JavaScript,
       };
       async move { Ok(info) }.boxed()
@@ -1843,7 +1845,7 @@ import "/a.js";
         let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
-          code: code.as_bytes().to_vec(),
+          code: code.as_bytes().to_vec().into_boxed_slice(),
           module_type: ModuleType::JavaScript,
         };
         async move { Ok(info) }.boxed()
@@ -2191,13 +2193,17 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
           "file:///main_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///main_module.js".to_string(),
             module_url_found: "file:///main_module.js".to_string(),
-            code: b"if (!import.meta.main) throw Error();".to_vec(),
+            code: b"if (!import.meta.main) throw Error();"
+              .to_vec()
+              .into_boxed_slice(),
             module_type: ModuleType::JavaScript,
           }),
           "file:///side_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///side_module.js".to_string(),
             module_url_found: "file:///side_module.js".to_string(),
-            code: b"if (import.meta.main) throw Error();".to_vec(),
+            code: b"if (import.meta.main) throw Error();"
+              .to_vec()
+              .into_boxed_slice(),
             module_type: ModuleType::JavaScript,
           }),
           _ => unreachable!(),

@@ -592,7 +592,7 @@ impl ProcState {
           }
         };
         Ok(ModuleSource {
-          code: code.as_bytes().to_vec(),
+          code: code.as_bytes().to_vec().into_boxed_slice(),
           module_url_specified: specifier.to_string(),
           module_url_found: found.to_string(),
           module_type: match media_type {
@@ -646,7 +646,7 @@ impl SourceMapGetter for ProcState {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None, false) {
-        let code = String::from_utf8(source.code).unwrap();
+        let code = String::from_utf8(source.code.to_vec()).unwrap();
         source_map_from_code(code)
       } else {
         None

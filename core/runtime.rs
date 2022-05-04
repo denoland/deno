@@ -3022,7 +3022,7 @@ assertEquals(1, notify_return_value);
       ) -> Pin<Box<ModuleSourceFuture>> {
         async move {
           Ok(ModuleSource {
-            code: b"console.log('hello world');".to_vec(),
+            code: b"console.log('hello world');".to_vec().into_boxed_slice(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,

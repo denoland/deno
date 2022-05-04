@@ -170,7 +170,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     async move {
       if let Some((ref source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
-          code: source.as_bytes().to_vec(),
+          code: source.as_bytes().to_vec().into_boxed_slice(),
           module_type: deno_core::ModuleType::JavaScript,
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
@@ -184,7 +184,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .to_owned();
 
       Ok(deno_core::ModuleSource {
-        code: code.as_bytes().to_vec(),
+        code: code.as_bytes().to_vec().into_boxed_slice(),
         module_type: match module.kind {
           eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
           eszip::ModuleKind::Json => deno_core::ModuleType::Json,
