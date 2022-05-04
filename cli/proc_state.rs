@@ -592,7 +592,7 @@ impl ProcState {
           }
         };
         Ok(ModuleSource {
-          code: code.as_bytes().to_vec().into_boxed_slice(),
+          code: code.into_bytes().into_boxed_slice(),
           module_url_specified: specifier.to_string(),
           module_url_found: found.to_string(),
           module_type: match media_type {
