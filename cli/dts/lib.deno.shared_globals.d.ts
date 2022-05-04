@@ -450,6 +450,7 @@ declare class Worker extends EventTarget {
 declare type PerformanceEntryList = PerformanceEntry[];
 
 declare class Performance {
+  readonly timeOrigin: number;
   constructor();
 
   /** Removes the stored timestamp with the associated name. */
