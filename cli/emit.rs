@@ -779,11 +779,12 @@ pub fn bundle(
       cm.build_source_map_with_config(&mut srcmap, None, source_map_config)
         .to_writer(&mut buf)?;
       if emit_options.inline_source_map {
-        let encoded_map = format!(
-          "//# sourceMappingURL=data:application/json;base64,{}\n",
-          base64::encode(buf)
+        code.push_str("//# sourceMappingURL=data:application/json;base64,");
+        base64::encode_config_buf(
+          buf,
+          base64::Config::new(base64::CharacterSet::Standard, true),
+          &mut code,
         );
-        code.push_str(&encoded_map);
       } else if emit_options.source_map {
         maybe_map = Some(String::from_utf8(buf)?);
       }
