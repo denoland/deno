@@ -530,6 +530,7 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    // deno-lint-ignore prefer-primordials
     performance.setTimeOrigin(Date.now());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
