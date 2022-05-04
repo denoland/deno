@@ -635,6 +635,25 @@
       );
     }
 
+    testDef.location = undefined;
+    const jsError = Deno.core.destructureError(new Error());
+    for (const frame of jsError.frames) {
+      if (
+        typeof frame.fileName == "string" &&
+        !StringPrototypeStartsWith(frame.fileName, "deno:") &&
+        !StringPrototypeStartsWith(frame.fileName, "[deno:") &&
+        typeof frame.lineNumber == "number" &&
+        typeof frame.columnNumber == "number"
+      ) {
+        testDef.location = {
+          fileName: frame.fileName,
+          lineNumber: frame.lineNumber,
+          columnNumber: frame.columnNumber,
+        };
+        break;
+      }
+    }
+
     ArrayPrototypePush(tests, testDef);
   }
 
@@ -1097,6 +1116,7 @@
       const description = {
         origin,
         name: test.name,
+        location: test.location,
       };
       const earlier = DateNow();
 

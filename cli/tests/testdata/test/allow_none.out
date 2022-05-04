@@ -10,43 +10,42 @@ hrtime ... FAILED [WILDCARD]
 
 failures:
 
-./test/allow_none.ts > read
-PermissionDenied: Can't escalate parent thread permissions
+read => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-./test/allow_none.ts > write
-PermissionDenied: Can't escalate parent thread permissions
+write => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-./test/allow_none.ts > net
-PermissionDenied: Can't escalate parent thread permissions
+net => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-./test/allow_none.ts > env
-PermissionDenied: Can't escalate parent thread permissions
+env => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-./test/allow_none.ts > run
-PermissionDenied: Can't escalate parent thread permissions
+run => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-./test/allow_none.ts > ffi
-PermissionDenied: Can't escalate parent thread permissions
+ffi => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-./test/allow_none.ts > hrtime
-PermissionDenied: Can't escalate parent thread permissions
+hrtime => ./test/allow_none.ts:[WILDCARD]
+error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 failures:
 
-	./test/allow_none.ts
-	read
-	write
-	net
-	env
-	run
-	ffi
-	hrtime
+read => ./test/allow_none.ts:[WILDCARD]
+write => ./test/allow_none.ts:[WILDCARD]
+net => ./test/allow_none.ts:[WILDCARD]
+env => ./test/allow_none.ts:[WILDCARD]
+run => ./test/allow_none.ts:[WILDCARD]
+ffi => ./test/allow_none.ts:[WILDCARD]
+hrtime => ./test/allow_none.ts:[WILDCARD]
 
 test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
