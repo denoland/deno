@@ -6,4 +6,5 @@ function app() {
     return React.createElement("div", null, React.createElement("h2", null, "asdf"));
 }
 console.log(app);
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImpzeF9pbXBvcnRfZnJvbV90cy5BcHAuanN4IiwianN4X2ltcG9ydF9mcm9tX3RzLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7Ozs7QUFBQSxNQUFNLEtBQUssR0FBRztJQUNaLGFBQWEsSUFBRyxFQUFFO0NBQ25CLEFBQUM7QUFFYSxTQUFTLEdBQUcsR0FBRztJQUM1QixPQUNFLG9CQUFDLEtBQUcsUUFDRixvQkFBQyxJQUFFLFFBQUMsTUFBSSxDQUFLLENBQ1QsQ0FDTjtDQUNIO0FDUkQsT0FBTyxDQUFDLEdBQUcsS0FBSyxDQUFDIn0=
 

@@ -3,4 +3,5 @@ const a = "a";
 export { a as test1 };
 export { a as test2 };
 console.log(a);
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImZpbGVfdGVzdHMtZml4dHVyZTE2XzIudHMiLCJmaWxlX3Rlc3RzLWZpeHR1cmUxNi50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7O0FBQ08sTUFBTSxDQUFDLEdBQUcsR0FBRyxBQUFDO0FDQXJCLFNBQVMsS0FBSyxLQUFLLEdBQXNDO0FBQ3pELFNBQVMsS0FBSyxLQUFLLEdBQXNDO0FBR3pELE9BQU8sQ0FBQyxHQUFHLEdBQUcsQ0FBQyJ9
 

@@ -631,26 +631,33 @@ impl ProcState {
   }
 }
 
-// TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
-// else, like a refactored file_fetcher.
 impl SourceMapGetter for ProcState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      match specifier.scheme() {
-        // we should only be looking for emits for schemes that denote external
-        // modules, which the disk_cache supports
-        "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
-        _ => return None,
-      }
-      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        let code = String::from_utf8(code).unwrap();
-        source_map_from_code(code).or(maybe_map)
-      } else if let Ok(source) = self.load(specifier, None, false) {
-        source_map_from_code(source.code)
-      } else {
-        None
-      }
+    let specifier = resolve_url(file_name).ok()?;
+    // we should only be looking for emits for schemes that denote external
+    // modules, which the disk_cache supports
+    if !matches!(
+      specifier.scheme(),
+      "wasm" | "file" | "http" | "https" | "data" | "blob"
+    ) {
+      return None;
+    }
+    if let Some((code, maybe_map)) = self.get_emit(&specifier) {
+      let code = String::from_utf8(code).unwrap();
+      source_map_from_code(code).or(maybe_map)
     } else {
+      let graph_data = self.graph_data.read();
+      if let Some(value) = graph_data.source_maps.get(&specifier) {
+        return Some(value.to_string().as_bytes().into());
+      }
+      if let Some(source_map_specifier) =
+        graph_data.source_map_urls.get(&specifier)
+      {
+        return self
+          .file_fetcher
+          .get_source(source_map_specifier)
+          .map(|file| file.source.as_bytes().into());
+      }
       None
     }
   }
@@ -660,23 +667,20 @@ impl SourceMapGetter for ProcState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      self.file_fetcher.get_source(&specifier).map(|out| {
-        // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using_terminator() instead of .split())
-        let lines: Vec<&str> = out.source.split('\n').collect();
-        if line_number >= lines.len() {
-          format!(
-            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-            crate::colors::yellow("Warning"), line_number + 1,
-          )
-        } else {
-          lines[line_number].to_string()
-        }
-      })
-    } else {
-      None
-    }
+    let specifier = resolve_url(file_name).ok()?;
+    self.file_fetcher.get_source(&specifier).map(|out| {
+      // Do NOT use .lines(): it skips the terminating empty line.
+      // (due to internally using_terminator() instead of .split())
+      let lines: Vec<&str> = out.source.split('\n').collect();
+      if line_number >= lines.len() {
+        format!(
+          "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+          crate::colors::yellow("Warning"), line_number + 1,
+        )
+      } else {
+        lines[line_number].to_string()
+      }
+    })
   }
 }
 

@@ -5,6 +5,7 @@ use crate::emit::TypeLib;
 use crate::errors::get_error_class_name;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_graph::MediaType;
@@ -62,6 +63,8 @@ pub struct GraphData {
   referrer_map: HashMap<ModuleSpecifier, Range>,
   configurations: HashSet<ModuleSpecifier>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
+  pub source_maps: HashMap<ModuleSpecifier, Value>,
+  pub source_map_urls: HashMap<ModuleSpecifier, ModuleSpecifier>,
 }
 
 impl GraphData {
@@ -152,6 +155,16 @@ impl GraphData {
             maybe_types,
           };
           self.modules.insert(specifier, module_entry);
+          if let Some(value) = &module.maybe_source_map {
+            self
+              .source_maps
+              .insert(module.specifier.clone(), value.clone());
+          }
+          if let Some(url) = &module.maybe_source_map_url {
+            self
+              .source_map_urls
+              .insert(module.specifier.clone(), url.clone());
+          }
         }
         Err(error) => {
           let module_entry = ModuleEntry::Error(error);
@@ -278,6 +291,8 @@ impl GraphData {
       referrer_map,
       configurations: self.configurations.clone(),
       cjs_esm_translations: Default::default(),
+      source_maps: self.source_maps.clone(),
+      source_map_urls: self.source_map_urls.clone(),
     })
   }
 

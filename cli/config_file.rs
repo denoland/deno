@@ -116,6 +116,37 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "useDefineForClassFields",
 ];
 
+/// A static slice of all the compiler options that should be ignored that
+/// either have no effect on the compilation or would cause the bundle not to
+/// work.
+pub const IGNORED_BUNDLE_COMPILER_OPTIONS: &[&str] = &[
+  "allowSyntheticDefaultImports",
+  "allowUmdGlobalAccess",
+  "baseUrl",
+  "declaration",
+  "declarationMap",
+  "downlevelIteration",
+  "esModuleInterop",
+  "emitDeclarationOnly",
+  "importHelpers",
+  "module",
+  "noEmitHelpers",
+  "noErrorTruncation",
+  "noLib",
+  "noResolve",
+  "outDir",
+  "paths",
+  "preserveConstEnums",
+  "reactNamespace",
+  "resolveJsonModule",
+  "rootDir",
+  "rootDirs",
+  "skipLibCheck",
+  "sourceRoot",
+  "target",
+  "useDefineForClassFields",
+];
+
 pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
   "build",
@@ -278,19 +309,35 @@ pub fn resolve_import_map_specifier(
   Ok(None)
 }
 
+pub enum CompilerOptionsKind {
+  Emit,
+  Bundle,
+  RuntimeEmit,
+}
+
+fn is_ignored_option(key: &str, kind: &CompilerOptionsKind) -> bool {
+  match kind {
+    CompilerOptionsKind::Emit => IGNORED_COMPILER_OPTIONS.contains(&key),
+    CompilerOptionsKind::Bundle => {
+      IGNORED_BUNDLE_COMPILER_OPTIONS.contains(&key)
+    }
+    CompilerOptionsKind::RuntimeEmit => {
+      IGNORED_RUNTIME_COMPILER_OPTIONS.contains(&key)
+    }
+  }
+}
+
 fn parse_compiler_options(
   compiler_options: &HashMap<String, Value>,
   maybe_specifier: Option<ModuleSpecifier>,
-  is_runtime: bool,
+  kind: CompilerOptionsKind,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   let mut filtered: HashMap<String, Value> = HashMap::new();
   let mut items: Vec<String> = Vec::new();
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if (!is_runtime && IGNORED_COMPILER_OPTIONS.contains(&key))
-      || IGNORED_RUNTIME_COMPILER_OPTIONS.contains(&key)
-    {
+    if is_ignored_option(key, &kind) {
       items.push(key.to_string());
     } else {
       filtered.insert(key.to_string(), value.to_owned());
@@ -356,9 +403,11 @@ impl TsConfig {
   pub fn merge_tsconfig_from_config_file(
     &mut self,
     maybe_config_file: Option<&ConfigFile>,
+    kind: CompilerOptionsKind,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
     if let Some(config_file) = maybe_config_file {
-      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
+      let (value, maybe_ignored_options) =
+        config_file.to_compiler_options(kind)?;
       self.merge(&value);
       Ok(maybe_ignored_options)
     } else {
@@ -372,9 +421,10 @@ impl TsConfig {
   pub fn merge_user_config(
     &mut self,
     user_options: &HashMap<String, Value>,
+    kind: CompilerOptionsKind,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
     let (value, maybe_ignored_options) =
-      parse_compiler_options(user_options, None, true)?;
+      parse_compiler_options(user_options, None, kind)?;
     self.merge(&value);
     Ok(maybe_ignored_options)
   }
@@ -624,12 +674,13 @@ impl ConfigFile {
   /// The result also contains any options that were ignored.
   pub fn to_compiler_options(
     &self,
+    kind: CompilerOptionsKind,
   ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
     if let Some(compiler_options) = self.json.compiler_options.clone() {
       let options: HashMap<String, Value> =
         serde_json::from_value(compiler_options)
           .context("compilerOptions should be an object")?;
-      parse_compiler_options(&options, Some(self.specifier.to_owned()), false)
+      parse_compiler_options(&options, Some(self.specifier.to_owned()), kind)
     } else {
       Ok((json!({}), None))
     }
@@ -826,8 +877,9 @@ mod tests {
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, ignored) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, ignored) = config_file
+      .to_compiler_options(CompilerOptionsKind::RuntimeEmit)
+      .expect("error parsing");
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));
@@ -896,8 +948,9 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file
+      .to_compiler_options(CompilerOptionsKind::Emit)
+      .expect("error parsing");
     assert!(options_value.is_object());
   }
 
@@ -907,8 +960,9 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file
+      .to_compiler_options(CompilerOptionsKind::Emit)
+      .expect("error parsing");
     assert!(options_value.is_object());
   }
 
@@ -943,7 +997,7 @@ mod tests {
     }))
     .expect("could not convert to hashmap");
     let maybe_ignored_options = tsconfig
-      .merge_user_config(&user_options)
+      .merge_user_config(&user_options, CompilerOptionsKind::RuntimeEmit)
       .expect("could not merge options");
     assert_eq!(
       tsconfig.0,

@@ -34,7 +34,7 @@ pub fn apply_source_map<G: SourceMapGetter + ?Sized>(
 
   let default_pos = (file_name.clone(), line_number, column_number, None);
   let maybe_source_map = get_mappings(&file_name, mappings_map, getter);
-  let (file_name, line_number, column_number, source_line) =
+  let (mapped_file_name, line_number, column_number, mut source_line) =
     match maybe_source_map {
       None => default_pos,
       Some(source_map) => {
@@ -44,14 +44,17 @@ pub fn apply_source_map<G: SourceMapGetter + ?Sized>(
           Some(token) => match token.get_source() {
             None => default_pos,
             Some(source_file_name) => {
-              // The `source_file_name` written by tsc in the source map is
-              // sometimes only the basename of the URL, or has unwanted `<`/`>`
-              // around it. Use the `file_name` we get from V8 if
-              // `source_file_name` does not parse as a URL.
-              let file_name = match resolve_url(source_file_name) {
-                Ok(m) if m.scheme() == "blob" => file_name,
-                Ok(m) => m.to_string(),
-                Err(_) => file_name,
+              // sometimes source files are relative, in this case, we will use
+              // the file_name as a base and the source_file_name joined on to
+              // it, if this doesn't work
+              let file_name = match resolve_url(&file_name) {
+                // we preserve the blob URLs
+                Ok(s) if s.scheme() == "blob" => file_name.clone(),
+                Ok(s) => s
+                  .join(source_file_name)
+                  .map(|u| u.to_string())
+                  .unwrap_or_else(|_| file_name.clone()),
+                _ => file_name.clone(),
               };
               let source_line =
                 if let Some(source_view) = token.get_source_view() {
@@ -72,9 +75,17 @@ pub fn apply_source_map<G: SourceMapGetter + ?Sized>(
         }
       }
     };
-  let source_line = source_line
-    .or_else(|| getter.get_source_line(&file_name, line_number as usize));
-  (file_name, line_number + 1, column_number + 1, source_line)
+  if file_name != mapped_file_name {
+    source_line = source_line.or_else(|| {
+      getter.get_source_line(&mapped_file_name, line_number as usize)
+    });
+  }
+  (
+    mapped_file_name,
+    line_number + 1,
+    column_number + 1,
+    source_line,
+  )
 }
 
 fn get_mappings<'a, G: SourceMapGetter + ?Sized>(

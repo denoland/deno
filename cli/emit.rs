@@ -158,12 +158,12 @@ pub fn get_ts_config(
   maybe_config_file: Option<&ConfigFile>,
   maybe_user_config: Option<&HashMap<String, Value>>,
 ) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
-  let mut ts_config = match config_type {
+  let mut ts_config = match &config_type {
     ConfigType::Bundle => TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
+      "inlineSourceMap": true,
       "inlineSources": false,
       "sourceMap": false,
       "jsx": "react",
@@ -188,7 +188,7 @@ pub fn get_ts_config(
         // TODO(@kitsonk) remove for Deno 2.0
         "useUnknownInCatchVariables": false,
       }));
-      if tsc_emit {
+      if *tsc_emit {
         ts_config.merge(&json!({
           "emitDecoratorMetadata": false,
           "importsNotUsedAsValues": "remove",
@@ -242,7 +242,7 @@ pub fn get_ts_config(
         // TODO(@kitsonk) remove for Deno 2.0
         "useUnknownInCatchVariables": false,
       }));
-      if tsc_emit {
+      if *tsc_emit {
         ts_config.merge(&json!({
           "importsNotUsedAsValues": "remove",
           "outDir": "deno://",
@@ -255,10 +255,18 @@ pub fn get_ts_config(
       ts_config
     }
   };
+  let options_kind = match &config_type {
+    ConfigType::Bundle => config_file::CompilerOptionsKind::Bundle,
+    ConfigType::RuntimeEmit { .. } => {
+      config_file::CompilerOptionsKind::RuntimeEmit
+    }
+    _ => config_file::CompilerOptionsKind::Emit,
+  };
   let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
-    ts_config.merge_user_config(user_options)?
+    ts_config.merge_user_config(user_options, options_kind)?
   } else {
-    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
+    ts_config
+      .merge_tsconfig_from_config_file(maybe_config_file, options_kind)?
   };
   Ok((ts_config, maybe_ignored_options))
 }
@@ -696,6 +704,36 @@ impl swc::bundler::Resolve for BundleResolver<'_> {
   }
 }
 
+/// TODO(@kitsonk) remove once updated in deno_ast
+#[derive(Debug)]
+pub struct SourceMapConfig {
+  pub inline_sources: bool,
+  /// When a base is provided, when mapping source names in the source map, the
+  /// name will be relative to the base.
+  pub maybe_base: Option<ModuleSpecifier>,
+}
+
+impl deno_ast::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
+  fn file_name_to_source(&self, f: &FileName) -> String {
+    match f {
+      FileName::Url(specifier) => self
+        .maybe_base
+        .as_ref()
+        .and_then(|base| base.make_relative(specifier))
+        .unwrap_or_else(|| f.to_string()),
+      _ => f.to_string(),
+    }
+  }
+
+  fn inline_sources_content(&self, f: &FileName) -> bool {
+    match f {
+      FileName::Real(..) | FileName::Custom(..) => false,
+      FileName::Url(..) => self.inline_sources,
+      _ => true,
+    }
+  }
+}
+
 /// Given a module graph, generate and return a bundle of the graph and
 /// optionally its source map. Unlike emitting with `check_and_maybe_emit` and
 /// `emit`, which store the emitted modules in the cache, this function simply
@@ -707,8 +745,9 @@ pub fn bundle(
   let globals = swc::common::Globals::new();
   deno_ast::swc::common::GLOBALS.set(&globals, || {
     let emit_options: deno_ast::EmitOptions = options.ts_config.into();
-    let source_map_config = deno_ast::SourceMapConfig {
+    let source_map_config = SourceMapConfig {
       inline_sources: emit_options.inline_sources,
+      maybe_base: Some(graph.roots[0].0.clone().join("./")?),
     };
 
     let cm = Rc::new(swc::common::SourceMap::new(

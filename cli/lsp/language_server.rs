@@ -54,6 +54,7 @@ use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
+use crate::config_file::CompilerOptionsKind;
 use crate::config_file::ConfigFile;
 use crate::config_file::FmtConfig;
 use crate::config_file::LintConfig;
@@ -405,7 +406,8 @@ impl Inner {
     tsconfig: &mut TsConfig,
   ) -> Result<(), AnyError> {
     if let Some(config_file) = self.maybe_config_file.as_ref() {
-      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
+      let (value, maybe_ignored_options) =
+        config_file.to_compiler_options(CompilerOptionsKind::Emit)?;
       tsconfig.merge(&value);
       if let Some(ignored_options) = maybe_ignored_options {
         // TODO(@kitsonk) turn these into diagnostics that can be sent to the
