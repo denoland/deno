@@ -21,7 +21,7 @@ fn final_blankline() {
 
 #[test]
 fn no_snaps() {
-  no_snaps_included();
+  no_snaps_included("no_snaps_included", "ts");
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
@@ -183,7 +183,7 @@ fn multifile_coverage() {
   assert!(output.status.success());
 }
 
-fn no_snaps_included() {
+fn no_snaps_included(test_name: &str, extension: &str) {
   let deno_dir = TempDir::new();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
@@ -192,13 +192,15 @@ fn no_snaps_included() {
     .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
-    .arg("--allow-read")
-    .arg("--allow-write")
     .arg("--unstable")
+    .arg("--allow-read")
     .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg("coverage/no_snaps_included/")
+    .arg(format!(
+      "coverage/no_snaps_included/{}_test.{}",
+      test_name, extension
+    ))
     .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
+    .stderr(std::process::Stdio::piped())
     .status()
     .unwrap();
 
