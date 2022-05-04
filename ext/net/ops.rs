@@ -677,8 +677,8 @@ where
               format!(
                 "{} but has authoritative response \n\tmname: {}\n\trname: {}",
                 message,
-                soa.mname().to_string(),
-                soa.rname().to_string()
+                soa.mname(),
+                soa.rname()
               ),
             ),
             (_, _) => custom_error("NotFound", message),
@@ -750,8 +750,8 @@ fn rdata_to_return_record(
         .map(ToString::to_string)
         .map(DnsReturnRecord::Ptr),
       SOA => r.as_soa().map(|soa| DnsReturnRecord::Soa {
-        mname: soa.mname().to_string(),
         rname: soa.rname().to_string(),
+        mname: soa.mname().to_string(),
       }),
       SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
