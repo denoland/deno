@@ -87,7 +87,7 @@ pub struct TestLocation {
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
-  pub location: Option<TestLocation>,
+  pub location: TestLocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -453,19 +453,17 @@ impl TestReporter for PrettyTestReporter {
       let mut failure_titles = vec![];
       println!("\nfailures:\n");
       for (description, js_error) in &summary.failures {
-        let mut failure_title = String::new();
-        failure_title.push_str(&description.name);
-        if let Some(location) = &description.location {
-          failure_title.push_str(
-            &colors::gray(&format!(
-              " => {}:{}:{}",
-              self.to_relative_path_or_remote_url(&location.file_name),
-              location.line_number,
-              location.column_number
-            ))
-            .to_string(),
-          );
-        }
+        let failure_title = format!(
+          "{} {}",
+          &description.name,
+          colors::gray(format!(
+            "=> {}:{}:{}",
+            self
+              .to_relative_path_or_remote_url(&description.location.file_name),
+            description.location.line_number,
+            description.location.column_number
+          ))
+        );
         println!("{}", &failure_title);
         println!(
           "{}: {}",

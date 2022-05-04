@@ -635,24 +635,15 @@
       );
     }
 
-    testDef.location = undefined;
     const jsError = Deno.core.destructureError(new Error());
-    for (const frame of jsError.frames) {
-      if (
-        typeof frame.fileName == "string" &&
-        !StringPrototypeStartsWith(frame.fileName, "deno:") &&
-        !StringPrototypeStartsWith(frame.fileName, "[deno:") &&
-        typeof frame.lineNumber == "number" &&
-        typeof frame.columnNumber == "number"
-      ) {
-        testDef.location = {
-          fileName: frame.fileName,
-          lineNumber: frame.lineNumber,
-          columnNumber: frame.columnNumber,
-        };
-        break;
-      }
-    }
+    // Note: There might pop up a case where one of the filename, line number or
+    // column number from the caller isn't defined. We assume never for now.
+    // Make `TestDescription::location` optional if such a case is found.
+    testDef.location = {
+      fileName: jsError.frames[1].fileName,
+      lineNumber: jsError.frames[1].lineNumber,
+      columnNumber: jsError.frames[1].columnNumber,
+    };
 
     ArrayPrototypePush(tests, testDef);
   }
