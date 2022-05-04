@@ -1728,18 +1728,18 @@ pub fn run_powershell_script_file(
 }
 
 #[derive(Debug, Default)]
-pub struct CheckOutputIntegrationTest {
-  pub args: &'static str,
-  pub args_vec: Vec<&'static str>,
-  pub output: &'static str,
-  pub input: Option<&'static str>,
-  pub output_str: Option<&'static str>,
+pub struct CheckOutputIntegrationTest<'a> {
+  pub args: &'a str,
+  pub args_vec: Vec<&'a str>,
+  pub output: &'a str,
+  pub input: Option<&'a str>,
+  pub output_str: Option<&'a str>,
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
 }
 
-impl CheckOutputIntegrationTest {
+impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn run(&self) {
     let args = if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())

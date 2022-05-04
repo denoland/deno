@@ -111,6 +111,10 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
   let stdio = Rc::new(RefCell::new(Some(stdio)));
 
   Extension::builder()
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
+    })
     .state(move |state| {
       let stdio = stdio
         .borrow_mut()
@@ -417,6 +421,24 @@ impl Resource for StdFileResource {
     // TODO: do not cancel file I/O when file is writable.
     self.cancel.cancel()
   }
+}
+
+// override op_print to use the stdout and stderr in the resource table
+#[op]
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  is_err: bool,
+) -> Result<(), AnyError> {
+  let rid = if is_err { 2 } else { 1 };
+  StdFileResource::with(state, rid, move |r| match r {
+    Ok(std_file) => {
+      std_file.write_all(msg.as_bytes())?;
+      std_file.flush().unwrap();
+      Ok(())
+    }
+    Err(_) => Err(not_supported()),
+  })
 }
 
 #[op]
