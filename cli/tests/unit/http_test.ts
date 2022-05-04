@@ -871,7 +871,6 @@ Deno.test(
       await respondWith(new Response(f.readable, { status: 200 }));
       httpConn.close();
       listener.close();
-      f.close();
     })();
     const resp = await fetch("http://127.0.0.1:4503/");
     const body = await resp.arrayBuffer();
