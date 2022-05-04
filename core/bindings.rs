@@ -357,6 +357,12 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   }
 }
 
+pub fn host_create_shadow_realm_context_callback<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Option<v8::Local<'s, v8::Context>> {
+  Some(v8::Context::new(scope))
+}
+
 /// This binding should be used if there's a custom console implementation
 /// available. Using it will make sure that proper stack frames are displayed
 /// in the inspector console.

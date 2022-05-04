@@ -225,6 +225,7 @@ fn v8_init(
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
+    " --harmony-shadow-realm"
   );
 
   if predictable {
@@ -484,6 +485,9 @@ impl JsRuntime {
     );
     isolate.set_host_import_module_dynamically_callback(
       bindings::host_import_module_dynamically_callback,
+    );
+    isolate.set_host_create_shadow_realm_context_callback(
+      bindings::host_create_shadow_realm_context_callback,
     );
     isolate
   }
