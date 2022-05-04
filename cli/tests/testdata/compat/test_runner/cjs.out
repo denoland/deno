@@ -4,8 +4,8 @@ Failed assertion ... FAILED ([WILDCARD])
 
 failures:
 
-./compat/test_runner/cjs.js > Failed assertion
-AssertionError: Values are not strictly equal:
+Failed assertion => ./compat/test_runner/cjs.js:[WILDCARD]
+error: AssertionError: Values are not strictly equal:
 
 
     [Diff] Actual / Expected
@@ -20,8 +20,7 @@ AssertionError: Values are not strictly equal:
 
 failures:
 
-	./compat/test_runner/cjs.js
-	Failed assertion
+Failed assertion => ./compat/test_runner/cjs.js:[WILDCARD]
 
 test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

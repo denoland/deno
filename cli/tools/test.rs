@@ -51,7 +51,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Read;
@@ -78,9 +77,18 @@ pub enum TestMode {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
+pub struct TestLocation {
+  pub file_name: String,
+  pub line_number: u32,
+  pub column_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
+  pub location: TestLocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -303,6 +311,7 @@ impl PrettyTestReporter {
 
     if let Some(js_error) = result.error() {
       let err_string = format_test_error(js_error);
+      let err_string = format!("{}: {}", colors::red_bold("error"), err_string);
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
@@ -442,38 +451,33 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
+      let mut failure_titles = vec![];
       println!("\nfailures:\n");
       for (description, js_error) in &summary.failures {
-        println!(
-          "{} {} {}",
-          colors::gray(
-            self.to_relative_path_or_remote_url(&description.origin)
-          ),
-          colors::gray(">"),
-          description.name
+        let failure_title = format!(
+          "{} {}",
+          &description.name,
+          colors::gray(format!(
+            "=> {}:{}:{}",
+            self
+              .to_relative_path_or_remote_url(&description.location.file_name),
+            description.location.line_number,
+            description.location.column_number
+          ))
         );
-        println!("{}", format_test_error(js_error));
+        println!("{}", &failure_title);
+        println!(
+          "{}: {}",
+          colors::red_bold("error"),
+          format_test_error(js_error)
+        );
         println!();
-      }
-
-      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
-        BTreeMap::default();
-      for (description, _) in &summary.failures {
-        let test_names = grouped_by_origin
-          .entry(description.origin.clone())
-          .or_default();
-        test_names.push(description.name.clone());
+        failure_titles.push(failure_title);
       }
 
       println!("failures:\n");
-      for (origin, test_names) in &grouped_by_origin {
-        println!(
-          "\t{}",
-          colors::gray(self.to_relative_path_or_remote_url(origin))
-        );
-        for test_name in test_names {
-          println!("\t{}", test_name);
-        }
+      for failure_title in failure_titles {
+        println!("{}", failure_title);
       }
     }
 

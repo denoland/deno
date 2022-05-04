@@ -4,8 +4,8 @@ test 1 ... FAILED [WILDCARD]
 
 failures:
 
-./test/ops_sanitizer_missing_details.ts > test 1
-Test case is leaking async ops.
+test 1 => ./test/ops_sanitizer_missing_details.ts:[WILDCARD]
+error: Test case is leaking async ops.
 
 - 1 async operation to op_write was started in this test, but never completed.
 
@@ -13,8 +13,7 @@ To get more details where ops were leaked, run again with --trace-ops flag.
 
 failures:
 
-	./test/ops_sanitizer_missing_details.ts
-	test 1
+test 1 => ./test/ops_sanitizer_missing_details.ts:[WILDCARD]
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
 
