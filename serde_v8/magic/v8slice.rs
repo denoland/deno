@@ -6,26 +6,26 @@ use std::ops::Range;
 
 use super::transl8::FromV8;
 
-/// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
+/// A V8Slice encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
-/// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
+/// but the existence of a V8Slice inhibits this until it is dropped. It
 /// behaves much like an Arc<[u8]>.
 ///
 /// # Cloning
-/// Cloning a ZeroCopyBuf does not clone the contents of the buffer,
+/// Cloning a V8Slice does not clone the contents of the buffer,
 /// it creates a new reference to that buffer.
 ///
 /// To actually clone the contents of the buffer do
 /// `let copy = Vec::from(&*zero_copy_buf);`
 #[derive(Clone)]
-pub struct ZeroCopyBuf {
+pub struct V8Slice {
   pub(crate) store: v8::SharedRef<v8::BackingStore>,
   pub(crate) range: Range<usize>,
 }
 
-unsafe impl Send for ZeroCopyBuf {}
+unsafe impl Send for V8Slice {}
 
-impl ZeroCopyBuf {
+impl V8Slice {
   pub fn from_buffer(
     buffer: v8::Local<v8::ArrayBuffer>,
     range: Range<usize>,
@@ -68,7 +68,7 @@ pub(crate) fn to_ranged_buffer<'s>(
   Ok((b, 0..b.byte_length()))
 }
 
-impl FromV8 for ZeroCopyBuf {
+impl FromV8 for V8Slice {
   fn from_v8(
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
@@ -79,26 +79,26 @@ impl FromV8 for ZeroCopyBuf {
   }
 }
 
-impl Deref for ZeroCopyBuf {
+impl Deref for V8Slice {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
     self.as_slice()
   }
 }
 
-impl DerefMut for ZeroCopyBuf {
+impl DerefMut for V8Slice {
   fn deref_mut(&mut self) -> &mut [u8] {
     self.as_slice_mut()
   }
 }
 
-impl AsRef<[u8]> for ZeroCopyBuf {
+impl AsRef<[u8]> for V8Slice {
   fn as_ref(&self) -> &[u8] {
     self.as_slice()
   }
 }
 
-impl AsMut<[u8]> for ZeroCopyBuf {
+impl AsMut<[u8]> for V8Slice {
   fn as_mut(&mut self) -> &mut [u8] {
     self.as_slice_mut()
   }

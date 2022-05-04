@@ -482,7 +482,8 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
     DENO_FUTURE_CHECK    Opt-in to the upcoming behavior of the `deno run`
-                         subcommand that doesn't perform type-checking by default.
+                         subcommand that doesn't perform type-checking by
+                         default.
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
@@ -512,14 +513,10 @@ To evaluate code in the shell:
 ";
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec<I, T>(args: I) -> clap::Result<Flags>
-where
-  I: IntoIterator<Item = T>,
-  T: Into<std::ffi::OsString> + Clone,
-{
+pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
   let app = clap_root(&version);
-  let matches = app.clone().try_get_matches_from(args)?;
+  let matches = app.clone().try_get_matches_from(&args)?;
 
   let mut flags = Flags::default();
 
@@ -554,7 +551,7 @@ where
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     Some(("repl", m)) => repl_parse(&mut flags, m),
     Some(("run", m)) => run_parse(&mut flags, m),
-    Some(("task", m)) => task_parse(&mut flags, m),
+    Some(("task", m)) => task_parse(&mut flags, m, &args),
     Some(("test", m)) => test_parse(&mut flags, m),
     Some(("types", m)) => types_parse(&mut flags, m),
     Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
@@ -1437,6 +1434,7 @@ fn task_subcommand<'a>() -> Command<'a> {
       Arg::new("task_args")
         .multiple_values(true)
         .multiple_occurrences(true)
+        .allow_hyphen_values(true)
         .help("Additional arguments passed to the task"),
     )
     .about("Run a task defined in the configuration file")
@@ -2500,20 +2498,21 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
-fn task_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn task_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  raw_args: &[String],
+) {
   config_arg_parse(flags, matches);
 
   let mut task_name = "".to_string();
   if let Some(task) = matches.value_of("task") {
     task_name = task.to_string();
 
-    let task_args: Vec<String> = matches
-      .values_of("task_args")
-      .unwrap_or_default()
-      .map(String::from)
-      .collect();
-    for v in task_args {
-      flags.argv.push(v);
+    if let Some(index) = matches.index_of("task") {
+      flags
+        .argv
+        .extend(raw_args[index + 2..].iter().map(String::from));
     }
   }
 
@@ -2961,6 +2960,7 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -5492,8 +5492,7 @@ mod tests {
 
   #[test]
   fn task_subcommand() {
-    let r =
-      flags_from_vec(svec!["deno", "task", "build", "--", "hello", "world",]);
+    let r = flags_from_vec(svec!["deno", "task", "build", "hello", "world",]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5518,8 +5517,64 @@ mod tests {
   }
 
   #[test]
+  fn task_subcommand_double_hyphen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "task",
+      "-c",
+      "deno.json",
+      "build",
+      "--",
+      "hello",
+      "world",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["--", "hello", "world"],
+        config_path: Some("deno.json".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_double_hyphen_only() {
+    // edge case, but it should forward
+    let r = flags_from_vec(svec!["deno", "task", "build", "--"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["--"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_following_arg() {
+    let r = flags_from_vec(svec!["deno", "task", "build", "-1", "--test"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["-1", "--test"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn task_subcommand_empty() {
-    let r = flags_from_vec(svec!["deno", "task",]);
+    let r = flags_from_vec(svec!["deno", "task"]);
     assert_eq!(
       r.unwrap(),
       Flags {

@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -76,13 +77,71 @@ pub fn init() -> Extension {
     .build()
 }
 
-pub fn init_stdio() -> Extension {
+pub enum StdioPipe {
+  Inherit,
+  File(StdFile),
+}
+
+impl Default for StdioPipe {
+  fn default() -> Self {
+    Self::Inherit
+  }
+}
+
+impl Clone for StdioPipe {
+  fn clone(&self) -> Self {
+    match self {
+      StdioPipe::Inherit => StdioPipe::Inherit,
+      StdioPipe::File(pipe) => StdioPipe::File(pipe.try_clone().unwrap()),
+    }
+  }
+}
+
+/// Specify how stdin, stdout, and stderr are piped.
+/// By default, inherits from the process.
+#[derive(Clone, Default)]
+pub struct Stdio {
+  pub stdin: StdioPipe,
+  pub stdout: StdioPipe,
+  pub stderr: StdioPipe,
+}
+
+pub fn init_stdio(stdio: Stdio) -> Extension {
+  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
+  let stdio = Rc::new(RefCell::new(Some(stdio)));
+
   Extension::builder()
-    .state(|state| {
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
+    })
+    .state(move |state| {
+      let stdio = stdio
+        .borrow_mut()
+        .take()
+        .expect("Extension only supports being used once.");
       let t = &mut state.resource_table;
-      t.add(StdFileResource::stdio(&STDIN_HANDLE, "stdin"));
-      t.add(StdFileResource::stdio(&STDOUT_HANDLE, "stdout"));
-      t.add(StdFileResource::stdio(&STDERR_HANDLE, "stderr"));
+      t.add(StdFileResource::stdio(
+        match &stdio.stdin {
+          StdioPipe::Inherit => &STDIN_HANDLE,
+          StdioPipe::File(pipe) => pipe,
+        },
+        "stdin",
+      ));
+      t.add(StdFileResource::stdio(
+        match &stdio.stdout {
+          StdioPipe::Inherit => &STDOUT_HANDLE,
+          StdioPipe::File(pipe) => pipe,
+        },
+        "stdout",
+      ));
+      t.add(StdFileResource::stdio(
+        match &stdio.stderr {
+          StdioPipe::Inherit => &STDERR_HANDLE,
+          StdioPipe::File(pipe) => pipe,
+        },
+        "stderr",
+      ));
       Ok(())
     })
     .build()
@@ -330,6 +389,16 @@ impl StdFileResource {
       None => Err(resource_unavailable()),
     }
   }
+
+  pub fn clone_file(
+    state: &mut OpState,
+    rid: ResourceId,
+  ) -> Result<std::fs::File, AnyError> {
+    Self::with(state, rid, move |r| match r {
+      Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
+      Err(_) => Err(bad_resource_id()),
+    })
+  }
 }
 
 impl Resource for StdFileResource {
@@ -352,6 +421,24 @@ impl Resource for StdFileResource {
     // TODO: do not cancel file I/O when file is writable.
     self.cancel.cancel()
   }
+}
+
+// override op_print to use the stdout and stderr in the resource table
+#[op]
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  is_err: bool,
+) -> Result<(), AnyError> {
+  let rid = if is_err { 2 } else { 1 };
+  StdFileResource::with(state, rid, move |r| match r {
+    Ok(std_file) => {
+      std_file.write_all(msg.as_bytes())?;
+      std_file.flush().unwrap();
+      Ok(())
+    }
+    Err(_) => Err(not_supported()),
+  })
 }
 
 #[op]

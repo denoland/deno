@@ -45,7 +45,7 @@ async fn main() -> Result<(), AnyError> {
     user_agent: "hello_runtime".to_string(),
     seed: None,
     source_map_getter: None,
-    js_error_create_fn: None,
+    format_js_error_fn: None,
     web_worker_preload_module_cb,
     create_web_worker_cb,
     maybe_inspector_server: None,
@@ -57,6 +57,7 @@ async fn main() -> Result<(), AnyError> {
     broadcast_channel: InMemoryBroadcastChannel::default(),
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
+    stdio: Default::default(),
   };
 
   let js_path =
