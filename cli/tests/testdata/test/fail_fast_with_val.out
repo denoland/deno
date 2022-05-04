@@ -3,7 +3,7 @@ running 10 tests from [WILDCARD]/test/fail_fast_with_val.ts
 test test 1 ... FAILED ([WILDCARD])
 test test 2 ... FAILED ([WILDCARD])
 
-failures:
+ ERRORS 
 
 test 1 => ./test/fail_fast_with_val.ts:[WILDCARD]
 error: Error
@@ -15,7 +15,7 @@ error: Error
     at [WILDCARD]/test/fail_fast_with_val.ts:5:9
     at [WILDCARD]
 
-failures:
+ FAILURES 
 
 test 1 => ./test/fail_fast_with_val.ts:[WILDCARD]
 test 2 => ./test/fail_fast_with_val.ts:[WILDCARD]
