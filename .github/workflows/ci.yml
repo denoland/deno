@@ -65,7 +65,7 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           # Use depth > 1, because sometimes we need to rebuild main and if
           # other commits have landed it will become impossible to rebuild if
@@ -87,17 +87,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install clippy and rustfmt
-        if: matrix.job == 'lint'
-        run: |
-          rustup component add clippy
-          rustup component add rustfmt
-
       - name: Install Deno
         if: matrix.job == 'lint'
-        run: |
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.13.2
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.19.3
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -148,8 +142,6 @@ jobs:
           export_default_credentials: true
 
       - name: Error on warning
-        # TODO(piscisaureus): enable this on Windows again.
-        if: "!startsWith(matrix.os, 'windows')"
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
@@ -244,7 +236,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 5-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 1-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -260,14 +252,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            1-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
         # TODO(kt3k): Change the version to the released version
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
-        if: github.ref != 'refs/heads/main'
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         with:
           path: |
             ./target
@@ -276,13 +268,13 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            1-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
         run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
         shell: bash
-        if: github.ref != 'refs/heads/main'
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
 
       - name: Apply and update mtime cache
         if: matrix.profile == 'release'
@@ -444,9 +436,11 @@ jobs:
         run: |
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts setup
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json              \
                           ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
 
       - name: Run web platform tests (release)
@@ -458,15 +452,18 @@ jobs:
         run: |
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts setup
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
+                          --lock=tools/deno.lock.json                      \
                           ./tools/wpt.ts run --quiet --release             \
                                              --binary="$DENO_BIN"          \
                                              --json=wpt.json               \
                                              --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&
@@ -481,6 +478,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Upload wpt results to wpt.fyi
+        continue-on-error: true
         if: |
           runner.os == 'Linux' &&
           matrix.job == 'test' &&
@@ -492,7 +490,7 @@ jobs:
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          ./target/release/deno run --allow-all \
+          ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks
@@ -560,6 +558,17 @@ jobs:
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
           gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
+      - name: Create release notes
+        shell: bash
+        if: |
+          matrix.job == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/')
+        run: |
+          export PATH=$PATH:$(pwd)/target/release
+          ./tools/release/05_create_release_notes.ts
+
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
@@ -576,6 +585,7 @@ jobs:
             target/release/deno-x86_64-apple-darwin.zip
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
+          body_path: target/release/release-notes.md
           draft: true
 
   publish-canary:

@@ -1,12 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
-use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
-use crate::runtime::exception_to_err_result;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -494,12 +492,12 @@ impl RecursiveModuleLoad {
     scope: &mut v8::HandleScope,
     module_request: &ModuleRequest,
     module_source: &ModuleSource,
-  ) -> Result<(), Error> {
+  ) -> Result<(), ModuleError> {
     if module_request.expected_module_type != module_source.module_type {
-      return Err(generic_error(format!(
+      return Err(ModuleError::Other(generic_error(format!(
         "Expected a \"{}\" module but loaded a \"{}\" module.",
         module_request.expected_module_type, module_source.module_type,
-      )));
+      ))));
     }
 
     // Register the module in the module map unless it's already there. If the
@@ -711,6 +709,12 @@ enum SymbolicModule {
   Mod(ModuleId),
 }
 
+#[derive(Debug)]
+pub(crate) enum ModuleError {
+  Exception(v8::Global<v8::Value>),
+  Other(Error),
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
@@ -778,7 +782,7 @@ impl ModuleMap {
     scope: &mut v8::HandleScope,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, Error> {
+  ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, strip_bom(source)).unwrap();
 
@@ -789,9 +793,8 @@ impl ModuleMap {
       None => {
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
-        let err = exception_to_err_result(tc_scope, exception, false)
-          .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
-        return err;
+        let exception = v8::Global::new(tc_scope, exception);
+        return Err(ModuleError::Exception(exception));
       }
     };
 
@@ -820,7 +823,7 @@ impl ModuleMap {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, Error> {
+  ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
 
@@ -833,8 +836,9 @@ impl ModuleMap {
 
     if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
-      let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e, false);
+      let exception = tc_scope.exception().unwrap();
+      let exception = v8::Global::new(tc_scope, exception);
+      return Err(ModuleError::Exception(exception));
     }
 
     let module = maybe_module.unwrap();
@@ -862,12 +866,16 @@ impl ModuleMap {
       // is thrown here
       validate_import_assertions(tc_scope, &assertions);
       if tc_scope.has_caught() {
-        let e = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, e, false);
+        let exception = tc_scope.exception().unwrap();
+        let exception = v8::Global::new(tc_scope, exception);
+        return Err(ModuleError::Exception(exception));
       }
 
       let module_specifier =
-        self.loader.resolve(&import_specifier, name, false)?;
+        match self.loader.resolve(&import_specifier, name, false) {
+          Ok(s) => s,
+          Err(e) => return Err(ModuleError::Other(e)),
+        };
       let expected_module_type = get_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
         specifier: module_specifier,
@@ -879,11 +887,11 @@ impl ModuleMap {
     if main {
       let maybe_main_module = self.info.values().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
-        return Err(generic_error(
+        return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
           name,
           main_module.name,
-        )));
+        ))));
       }
     }
 
@@ -1073,13 +1081,11 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ops::OpCall;
-  use crate::serialize_op_result;
+  use crate::error::AnyError;
   use crate::Extension;
   use crate::JsRuntime;
-  use crate::Op;
-  use crate::OpPayload;
   use crate::RuntimeOptions;
+  use deno_ops::op;
   use futures::future::FutureExt;
   use parking_lot::Mutex;
   use std::fmt;
@@ -1088,6 +1094,10 @@ mod tests {
   use std::path::PathBuf;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
+  // deno_ops macros generate code assuming deno_core in scope.
+  mod deno_core {
+    pub use crate::*;
+  }
 
   // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
   // even though we are only using poll() in these tests and not Tokio, we must
@@ -1401,20 +1411,16 @@ import "/a.js";
     let loader = Rc::new(ModsLoader::default());
 
     let resolve_count = loader.count.clone();
-    let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let dispatch_count_ = dispatch_count.clone();
+    static DISPATCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    let op_test = move |state, payload: OpPayload| -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      let (control, _): (u8, ()) = payload.deserialize().unwrap();
+    #[op]
+    fn op_test(_: &mut OpState, control: u8) -> Result<u8, AnyError> {
+      DISPATCH_COUNT.fetch_add(1, Ordering::Relaxed);
       assert_eq!(control, 42);
-      let resp = (0, 1, serialize_op_result(Ok(43), state));
-      Op::Async(OpCall::ready(resp))
-    };
+      Ok(43)
+    }
 
-    let ext = Extension::builder()
-      .ops(vec![("op_test", Box::new(op_test))])
-      .build();
+    let ext = Extension::builder().ops(vec![op_test::decl()]).build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
@@ -1435,7 +1441,7 @@ import "/a.js";
       )
       .unwrap();
 
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
     let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
 
@@ -1452,12 +1458,12 @@ import "/a.js";
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
-          Deno.core.opAsync("op_test", control);
+          Deno.core.opSync("op_test", control);
         "#,
         )
         .unwrap();
 
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+      assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
       let imports = module_map.get_requested_modules(mod_a);
       assert_eq!(
         imports,
@@ -1481,14 +1487,14 @@ import "/a.js";
     };
 
     runtime.instantiate_module(mod_b).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     runtime.instantiate_module(mod_a).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
     let _ = runtime.mod_evaluate(mod_a);
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+    assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
   }
 
   #[test]
@@ -1766,7 +1772,6 @@ import "/a.js";
         module_loader: Some(loader),
         ..Default::default()
       });
-      runtime.sync_ops_cache();
       runtime
         .execute_script(
           "file:///dyn_import3.js",

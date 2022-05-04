@@ -152,6 +152,19 @@ pub fn is_supported_test_path(path: &Path) -> bool {
   }
 }
 
+/// Checks if the path has a basename and extension Deno supports for benches.
+pub fn is_supported_bench_path(path: &Path) -> bool {
+  if let Some(name) = path.file_stem() {
+    let basename = name.to_string_lossy();
+    (basename.ends_with("_bench")
+      || basename.ends_with(".bench")
+      || basename == "bench")
+      && is_supported_ext(path)
+  } else {
+    false
+  }
+}
+
 /// Checks if the path has an extension Deno supports for tests.
 pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
@@ -240,6 +253,7 @@ where
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
+      || lowercase_path.starts_with("file://")
     {
       let url = ModuleSpecifier::parse(&path)?;
       prepared.push(url);
@@ -393,7 +407,7 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn resolve_from_cwd_child() {
@@ -535,7 +549,7 @@ mod tests {
     //     ├── g.d.ts
     //     └── .gitignore
 
-    let t = TempDir::new().expect("tempdir fail");
+    let t = TempDir::new();
 
     let root_dir_path = t.path().join("dir.ts");
     let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
@@ -596,7 +610,7 @@ mod tests {
     //     ├── g.d.ts
     //     └── .gitignore
 
-    let t = TempDir::new().expect("tempdir fail");
+    let t = TempDir::new();
 
     let root_dir_path = t.path().join("dir.ts");
     let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];

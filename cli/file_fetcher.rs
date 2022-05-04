@@ -169,7 +169,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
 
 /// Create and populate a root cert store based on the passed options and
 /// environment.
-pub(crate) fn get_root_cert_store(
+pub fn get_root_cert_store(
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_file: Option<String>,
@@ -314,7 +314,7 @@ pub struct FileFetcher {
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
-  pub(crate) http_cache: HttpCache,
+  pub http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
   download_log_level: log::Level,
@@ -392,7 +392,7 @@ impl FileFetcher {
   /// Fetch cached remote file.
   ///
   /// This is a recursive operation if source file has redirections.
-  pub(crate) fn fetch_cached(
+  pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
     redirect_limit: i64,
@@ -745,13 +745,12 @@ mod tests {
   use deno_core::resolve_url_or_path;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
-  use std::rc::Rc;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn setup(
     cache_setting: CacheSetting,
-    maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>) {
+    maybe_temp_dir: Option<TempDir>,
+  ) -> (FileFetcher, TempDir) {
     let (file_fetcher, temp_dir, _) =
       setup_with_blob_store(cache_setting, maybe_temp_dir);
     (file_fetcher, temp_dir)
@@ -759,10 +758,9 @@ mod tests {
 
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
-    maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
-    let temp_dir =
-      maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new().unwrap()));
+    maybe_temp_dir: Option<TempDir>,
+  ) -> (FileFetcher, TempDir, BlobStore) {
+    let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
@@ -1227,7 +1225,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
@@ -1397,7 +1395,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
@@ -1526,7 +1524,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
@@ -1551,7 +1549,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
@@ -1618,7 +1616,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_revalidates() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =
@@ -1645,7 +1643,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_still_fresh() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =

@@ -41,6 +41,8 @@ Object.defineProperty(globalThis, "_error", {
    console.log("Last thrown error is no longer saved to _error.");
   },
 });
+
+globalThis.clear = console.clear.bind(console);
 "#;
 
 pub enum EvaluationOutput {

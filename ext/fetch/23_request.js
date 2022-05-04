@@ -18,7 +18,7 @@
   const { guardFromHeaders } = window.__bootstrap.headers;
   const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
-  const mimesniff = window.__bootstrap.mimesniff;
+  const { extractMimeType } = window.__bootstrap.mimesniff;
   const { blobFromObjectUrl } = window.__bootstrap.file;
   const {
     headersFromHeaderList,
@@ -32,9 +32,6 @@
     ArrayPrototypeMap,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    MapPrototypeHas,
-    MapPrototypeGet,
-    MapPrototypeSet,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
@@ -174,41 +171,11 @@
     /** @type {AbortSignal} */
     [_signal];
     get [_mimeType]() {
-      let charset = null;
-      let essence = null;
-      let mimeType = null;
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
         "Content-Type",
       );
-      if (values === null) return null;
-      for (const value of values) {
-        const temporaryMimeType = mimesniff.parseMimeType(value);
-        if (
-          temporaryMimeType === null ||
-          mimesniff.essence(temporaryMimeType) == "*/*"
-        ) {
-          continue;
-        }
-        mimeType = temporaryMimeType;
-        if (mimesniff.essence(mimeType) !== essence) {
-          charset = null;
-          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
-          if (newCharset !== undefined) {
-            charset = newCharset;
-          }
-          essence = mimesniff.essence(mimeType);
-        } else {
-          if (
-            MapPrototypeHas(mimeType.parameters, "charset") === null &&
-            charset !== null
-          ) {
-            MapPrototypeSet(mimeType.parameters, "charset", charset);
-          }
-        }
-      }
-      if (mimeType === null) return null;
-      return mimeType;
+      return extractMimeType(values);
     }
     get [_body]() {
       return this[_request].body;
@@ -434,7 +401,7 @@
         return webidl.converters["Request"](V, opts);
       }
     }
-    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    // Passed to new URL(...) which implicitly converts DOMString -> USVString
     return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(

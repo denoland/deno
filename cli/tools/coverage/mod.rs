@@ -5,7 +5,6 @@ use crate::flags::CoverageFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
-use crate::source_maps::SourceMapGetter;
 use crate::tools::fmt::format_json;
 
 use deno_ast::MediaType;
@@ -14,10 +13,11 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::SourceMapGetter;
 use regex::Regex;
-use sourcemap::SourceMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
@@ -126,8 +126,10 @@ impl CoverageCollector {
 
       let mut out = BufWriter::new(File::create(filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formated_coverage =
-        format_json(&coverage, &Default::default()).unwrap_or(coverage);
+      let formated_coverage = format_json(&coverage, &Default::default())
+        .ok()
+        .flatten()
+        .unwrap_or(coverage);
 
       out.write_all(formated_coverage.as_bytes())?;
       out.flush()?;
@@ -581,7 +583,8 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("deno:")
         || e.url.ends_with("__anonymous__")
-        || e.url.ends_with("$deno$test.js");
+        || e.url.ends_with("$deno$test.js")
+        || e.url.ends_with(".snap");
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));

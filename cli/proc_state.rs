@@ -20,7 +20,6 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::source_maps::SourceMapGetter;
 use crate::version;
 
 use deno_ast::MediaType;
@@ -38,10 +37,12 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -250,15 +251,48 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
-  pub(crate) async fn prepare_module_load(
+  pub async fn prepare_module_load(
     &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
+
+    // NOTE(@bartlomieju):
+    // Even though `roots` are fully resolved at this point, we are going
+    // to resolve them through `maybe_resolver` to get module kind for the graph
+    // or default to ESM.
+    //
+    // One might argue that this is a code smell, and I would agree. However
+    // due to flux in "Node compatibility" it's not clear where it should be
+    // decided what `ModuleKind` is decided for root specifier.
+    let roots = roots
+      .into_iter()
+      .map(|r| {
+        if let Some(resolver) = &maybe_resolver {
+          let response =
+            resolver.resolve(r.as_str(), &Url::parse("unused:").unwrap());
+          // TODO(bartlomieju): this should be implemented in `deno_graph`
+          match response {
+            ResolveResponse::CommonJs(_) => (r, ModuleKind::CommonJs),
+            ResolveResponse::Err(_) => unreachable!(),
+            _ => (r, ModuleKind::Esm),
+          }
+        } else {
+          (r, ModuleKind::Esm)
+        }
+      })
+      .collect();
+
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
     let roots = if self.flags.compat {
@@ -270,12 +304,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.check == flags::CheckFlag::None
+      if self.flags.type_check_mode == flags::TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.check != flags::CheckFlag::None,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -290,12 +324,6 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports()?;
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -329,6 +357,7 @@ impl ProcState {
       graph_data: self.graph_data.clone(),
       reload: reload_on_watch,
     };
+
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -388,18 +417,23 @@ impl ProcState {
         .map(|cf| cf.get_check_js())
         .unwrap_or(false);
       graph_data
-        .check(&roots, self.flags.check != flags::CheckFlag::None, check_js)
+        .check(
+          &roots,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
+          check_js,
+        )
         .unwrap()?;
     }
 
-    let config_type = if self.flags.check == flags::CheckFlag::None {
-      emit::ConfigType::Emit
-    } else {
-      emit::ConfigType::Check {
-        tsc_emit: true,
-        lib: lib.clone(),
-      }
-    };
+    let config_type =
+      if self.flags.type_check_mode == flags::TypeCheckMode::None {
+        emit::ConfigType::Emit
+      } else {
+        emit::ConfigType::Check {
+          tsc_emit: true,
+          lib: lib.clone(),
+        }
+      };
 
     let (ts_config, maybe_ignored_options) =
       emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
@@ -408,7 +442,7 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.check == flags::CheckFlag::None {
+    if self.flags.type_check_mode == flags::TypeCheckMode::None {
       let options = emit::EmitOptions {
         ts_config,
         reload: self.flags.reload,
@@ -422,7 +456,7 @@ impl ProcState {
         .as_ref()
         .map(|cf| cf.specifier.clone());
       let options = emit::CheckOptions {
-        check: self.flags.check.clone(),
+        type_check_mode: self.flags.type_check_mode.clone(),
         debug: self.flags.log_level == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -443,7 +477,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.check != flags::CheckFlag::None {
+    if self.flags.type_check_mode != flags::TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, &lib);
     }
@@ -457,7 +491,7 @@ impl ProcState {
     Ok(())
   }
 
-  pub(crate) fn resolve(
+  pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,

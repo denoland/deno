@@ -8,8 +8,8 @@ use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -191,6 +191,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
+#[op]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   url: String,
@@ -213,15 +214,6 @@ where
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateArgs {
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
@@ -230,10 +222,13 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+#[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  args: CreateArgs,
-  _: (),
+  url: String,
+  protocols: String,
+  cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -241,13 +236,13 @@ where
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&args.url)?)
+      .check_net_url(&url::Url::parse(&url)?)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
   }
 
-  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+  let cancel_resource = if let Some(cancel_rid) = cancel_handle {
     let r = state
       .borrow_mut()
       .resource_table
@@ -263,16 +258,16 @@ where
     .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
-  let uri: Uri = args.url.parse()?;
+  let uri: Uri = url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
   request = request.header("User-Agent", user_agent);
 
-  if !args.protocols.is_empty() {
-    request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  if !protocols.is_empty() {
+    request = request.header("Sec-WebSocket-Protocol", protocols);
   }
 
-  if let Some(headers) = args.headers {
+  if let Some(headers) = headers {
     for (key, value) in headers {
       let name = HeaderName::from_bytes(&key)
         .map_err(|err| type_error(err.to_string()))?;
@@ -338,7 +333,7 @@ where
       ))
     })?;
 
-  if let Some(cancel_rid) = args.cancel_handle {
+  if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
@@ -379,6 +374,7 @@ pub enum SendValue {
   Ping,
 }
 
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -399,23 +395,17 @@ pub async fn op_ws_send(
   Ok(())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CloseArgs {
+#[op]
+pub async fn op_ws_close(
+  state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   code: Option<u16>,
   reason: Option<String>,
-}
-
-pub async fn op_ws_close(
-  state: Rc<RefCell<OpState>>,
-  args: CloseArgs,
-  _: (),
 ) -> Result<(), AnyError> {
-  let rid = args.rid;
-  let msg = Message::Close(args.code.map(|c| CloseFrame {
+  let rid = rid;
+  let msg = Message::Close(code.map(|c| CloseFrame {
     code: CloseCode::from(c),
-    reason: match args.reason {
+    reason: match reason {
       Some(reason) => Cow::from(reason),
       None => Default::default(),
     },
@@ -441,10 +431,10 @@ pub enum NextEventResponse {
   Closed,
 }
 
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()
@@ -487,14 +477,11 @@ pub fn init<P: WebSocketPermissions + 'static>(
       "02_websocketstream.js",
     ))
     .ops(vec![
-      (
-        "op_ws_check_permission_and_cancel_handle",
-        op_sync(op_ws_check_permission_and_cancel_handle::<P>),
-      ),
-      ("op_ws_create", op_async(op_ws_create::<P>)),
-      ("op_ws_send", op_async(op_ws_send)),
-      ("op_ws_close", op_async(op_ws_close)),
-      ("op_ws_next_event", op_async(op_ws_next_event)),
+      op_ws_check_permission_and_cancel_handle::decl::<P>(),
+      op_ws_create::decl::<P>(),
+      op_ws_send::decl(),
+      op_ws_close::decl(),
+      op_ws_next_event::decl(),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));

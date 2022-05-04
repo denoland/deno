@@ -104,3 +104,9 @@ itest!(worker_terminate_tla_crash {
   args: "run --quiet --reload workers/terminate_tla_crash.js",
   output: "workers/terminate_tla_crash.js.out",
 });
+
+itest!(worker_error_event {
+  args: "run --quiet -A workers/error_event.ts",
+  output: "workers/error_event.ts.out",
+  exit_code: 1,
+});

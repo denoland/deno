@@ -5,13 +5,15 @@ use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
+use crate::display;
 use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
+use crate::flags::TypeCheckMode;
+use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -29,13 +31,17 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
+use deno_runtime::ops::io::Stdio;
+use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -44,20 +50,22 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
-enum TestMode {
+pub enum TestMode {
   /// Test as documentation, type-checking fenced code blocks.
   Documentation,
   /// Test as an executable module, loading the module into the isolate and running each test it
@@ -77,8 +85,8 @@ pub struct TestDescription {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
-  // TODO(caspervonb): add stdout and stderr redirection.
-  Console(String),
+  String(String),
+  Bytes(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -86,7 +94,7 @@ pub enum TestOutput {
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(String),
+  Failed(Box<JsError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -102,15 +110,15 @@ pub struct TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<String>),
-  Pending(Option<String>),
+  Failed(Option<Box<JsError>>),
+  Pending(Option<Box<JsError>>),
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&str> {
+  fn error(&self) -> Option<&JsError> {
     match self {
-      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
-      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      TestStepResult::Failed(Some(error)) => Some(error),
+      TestStepResult::Pending(Some(error)) => Some(error),
       _ => None,
     }
   }
@@ -130,7 +138,7 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
-  Output(TestOutput),
+  Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
@@ -148,7 +156,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, String)>,
+  pub failures: Vec<(TestDescription, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -162,7 +170,7 @@ struct TestSpecifierOptions {
 }
 
 impl TestSummary {
-  fn new() -> TestSummary {
+  pub fn new() -> TestSummary {
     TestSummary {
       total: 0,
       passed: 0,
@@ -187,10 +195,10 @@ impl TestSummary {
   }
 }
 
-trait TestReporter {
+pub trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_output(&mut self, output: &TestOutput);
+  fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -216,7 +224,10 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  in_test_count: usize,
   last_wait_output_level: usize,
+  cwd: Url,
+  did_have_user_output: bool,
 }
 
 impl PrettyTestReporter {
@@ -224,27 +235,40 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      in_test_count: 0,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
+      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      did_have_user_output: false,
     }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
-    print!("test {} ...", description.name);
+    print!("{} ...", description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
   }
 
+  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
+    let url = Url::parse(path_or_url).unwrap();
+    if url.scheme() == "file" {
+      if let Some(mut r) = self.cwd.make_relative(&url) {
+        if !r.starts_with("../") {
+          r = format!("./{}", r);
+        }
+        return r;
+      }
+    }
+    path_or_url.to_string()
+  }
+
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    if self.last_wait_output_level < description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level < description.level {
       println!();
     }
-    print!(
-      "{}test {} ...",
-      "  ".repeat(description.level),
-      description.name
-    );
+    print!("{}{} ...", "  ".repeat(description.level), description.name);
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = description.level;
@@ -263,56 +287,73 @@ impl PrettyTestReporter {
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    if self.last_wait_output_level == description.level {
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == description.level {
       print!(" ");
     } else {
       print!("{}", "  ".repeat(description.level));
     }
 
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
 
-    if let Some(error_text) = result.error() {
-      for line in error_text.lines() {
+    if let Some(js_error) = result.error() {
+      let err_string = format_test_error(js_error);
+      for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
     }
   }
-}
 
-/// A function that converts a milisecond elapsed time to a string that
-/// represents a human readable version of that time.
-fn human_elapsed(elapsed: u128) -> String {
-  if elapsed < 1_000 {
-    return format!("({}ms)", elapsed);
+  fn write_output_end(&mut self) -> bool {
+    if self.did_have_user_output {
+      println!("{}", colors::gray("----- output end -----"));
+      self.did_have_user_output = false;
+      true
+    } else {
+      false
+    }
   }
-  if elapsed < 1_000 * 60 {
-    return format!("({}s)", elapsed / 1000);
-  }
-
-  let seconds = elapsed / 1_000;
-  let minutes = seconds / 60;
-  let seconds_remainder = seconds % 60;
-  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
-    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+    println!(
+      "{}",
+      colors::gray(format!(
+        "running {} {} from {}",
+        plan.total,
+        inflection,
+        self.to_relative_path_or_remote_url(&plan.origin)
+      ))
+    );
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       self.force_report_wait(description);
     }
+    self.in_test_count += 1;
   }
 
-  fn report_output(&mut self, output: &TestOutput) {
-    if self.echo_output {
-      match output {
-        TestOutput::Console(line) => println!("{}", line),
-      }
+  fn report_output(&mut self, output: &[u8]) {
+    if !self.echo_output {
+      return;
     }
+
+    if !self.did_have_user_output && self.in_test_count > 0 {
+      self.did_have_user_output = true;
+      println!();
+      println!("{}", colors::gray("------- output -------"));
+    }
+
+    // output everything to stdout in order to prevent
+    // stdout and stderr racing
+    std::io::stdout().write_all(output).unwrap();
   }
 
   fn report_result(
@@ -321,6 +362,8 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    self.in_test_count -= 1;
+
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -345,17 +388,22 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
+    let wrote_user_output = self.write_output_end();
+    if !wrote_user_output && self.last_wait_output_level == 0 {
+      print!(" ");
+    }
+
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
       TestResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
-    if self.last_wait_output_level == 0 {
-      print!(" ");
-    }
-
-    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
@@ -394,15 +442,37 @@ impl TestReporter for PrettyTestReporter {
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (description, error) in &summary.failures {
-        println!("{}", description.name);
-        println!("{}", error);
+      for (description, js_error) in &summary.failures {
+        println!(
+          "{} {} {}",
+          colors::gray(
+            self.to_relative_path_or_remote_url(&description.origin)
+          ),
+          colors::gray(">"),
+          description.name
+        );
+        println!("{}", format_test_error(js_error));
         println!();
       }
 
-      println!("failures:\n");
+      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
+        BTreeMap::default();
       for (description, _) in &summary.failures {
-        println!("\t{}", description.name);
+        let test_names = grouped_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        test_names.push(description.name.clone());
+      }
+
+      println!("failures:\n");
+      for (origin, test_names) in &grouped_by_origin {
+        println!(
+          "\t{}",
+          colors::gray(self.to_relative_path_or_remote_url(origin))
+        );
+        for test_name in test_names {
+          println!("\t{}", test_name);
+        }
       }
     }
 
@@ -432,9 +502,69 @@ impl TestReporter for PrettyTestReporter {
       get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
-      colors::gray(human_elapsed(elapsed.as_millis())),
+      colors::gray(
+        format!("({})", display::human_elapsed(elapsed.as_millis()))),
     );
   }
+}
+
+fn abbreviate_test_error(js_error: &JsError) -> JsError {
+  let mut js_error = js_error.clone();
+  let frames = std::mem::take(&mut js_error.frames);
+
+  // check if there are any stack frames coming from user code
+  let should_filter = frames.iter().any(|f| {
+    if let Some(file_name) = &f.file_name {
+      !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
+    } else {
+      true
+    }
+  });
+
+  if should_filter {
+    let mut frames = frames
+      .into_iter()
+      .rev()
+      .skip_while(|f| {
+        if let Some(file_name) = &f.file_name {
+          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+        } else {
+          false
+        }
+      })
+      .into_iter()
+      .collect::<Vec<_>>();
+    frames.reverse();
+    js_error.frames = frames;
+  } else {
+    js_error.frames = frames;
+  }
+
+  js_error.cause = js_error
+    .cause
+    .as_ref()
+    .map(|e| Box::new(abbreviate_test_error(e)));
+  js_error.aggregated = js_error
+    .aggregated
+    .as_ref()
+    .map(|es| es.iter().map(abbreviate_test_error).collect());
+  js_error
+}
+
+// This function prettifies `JsError` and applies some changes specifically for
+// test runner purposes:
+//
+// - filter out stack frames:
+//   - if stack trace consists of mixed user and internal code, the frames
+//     below the first user code frame are filtered out
+//   - if stack trace consists only of internal code it is preserved as is
+pub fn format_test_error(js_error: &JsError) -> String {
+  let mut js_error = abbreviate_test_error(js_error);
+  js_error.exception_message = js_error
+    .exception_message
+    .trim_start_matches("Uncaught ")
+    .to_string();
+  format_js_error(&js_error)
 }
 
 fn create_reporter(
@@ -451,14 +581,19 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: Sender<TestEvent>,
+  sender: TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(sender.clone())],
+    Stdio {
+      stdin: StdioPipe::Inherit,
+      stdout: StdioPipe::File(sender.stdout()),
+      stderr: StdioPipe::File(sender.stderr()),
+    },
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
@@ -549,6 +684,10 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
+      if block.get(1) == None {
+        return None;
+      }
+
       let maybe_attributes: Option<Vec<_>> = block
         .get(1)
         .map(|attributes| attributes.as_str().split(' ').collect());
@@ -669,7 +808,12 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
+  // The pattern matches code blocks as well as anything in HTML comment syntax,
+  // but it stores the latter without any capturing groups. This way, a simple
+  // check can be done to see if a block is inside a comment (and skip typechecking)
+  // or not by checking for the presence of capturing groups in the matches.
+  let blocks_regex =
+    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
@@ -715,7 +859,7 @@ async fn fetch_inline_files(
 }
 
 /// Type check a collection of module and document specifiers.
-async fn check_specifiers(
+pub async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
@@ -739,7 +883,7 @@ async fn check_specifiers(
   if !inline_files.is_empty() {
     let specifiers = inline_files
       .iter()
-      .map(|file| (file.specifier.clone(), ModuleKind::Esm))
+      .map(|file| file.specifier.clone())
       .collect();
 
     for file in inline_files {
@@ -761,7 +905,7 @@ async fn check_specifiers(
     .iter()
     .filter_map(|(specifier, mode)| {
       if *mode != TestMode::Documentation {
-        Some((specifier.clone(), ModuleKind::Esm))
+        Some(specifier.clone())
       } else {
         None
       }
@@ -799,7 +943,8 @@ async fn test_specifiers(
     specifiers_with_mode
   };
 
-  let (sender, receiver) = channel::<TestEvent>();
+  let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -813,14 +958,10 @@ async fn test_specifiers(
       let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let join_handle = std::thread::spawn(move || {
-          let future =
-            test_specifier(ps, permissions, specifier, mode, sender, options);
+        let future =
+          test_specifier(ps, permissions, specifier, mode, sender, options);
 
-          run_basic(future)
-        });
-
-        join_handle.join().unwrap()
+        run_basic(future)
       })
     });
 
@@ -832,12 +973,12 @@ async fn test_specifiers(
     create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
 
   let handler = {
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn(async move {
       let earlier = Instant::now();
       let mut summary = TestSummary::new();
       let mut used_only = false;
 
-      for event in receiver.iter() {
+      while let Some(event) = receiver.recv().await {
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
@@ -1076,7 +1217,7 @@ pub async fn run_tests_with_watch(
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.check == CheckFlag::None;
+  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
@@ -1308,18 +1449,95 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
+pub struct TestEventSender {
+  sender: UnboundedSender<TestEvent>,
+  stdout_writer: os_pipe::PipeWriter,
+  stderr_writer: os_pipe::PipeWriter,
+}
 
-  #[test]
-  fn test_human_elapsed() {
-    assert_eq!(human_elapsed(1), "(1ms)");
-    assert_eq!(human_elapsed(256), "(256ms)");
-    assert_eq!(human_elapsed(1000), "(1s)");
-    assert_eq!(human_elapsed(1001), "(1s)");
-    assert_eq!(human_elapsed(1020), "(1s)");
-    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
-    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
+impl Clone for TestEventSender {
+  fn clone(&self) -> Self {
+    Self {
+      sender: self.sender.clone(),
+      stdout_writer: self.stdout_writer.try_clone().unwrap(),
+      stderr_writer: self.stderr_writer.try_clone().unwrap(),
+    }
   }
+}
+
+impl TestEventSender {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
+    let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+
+    start_output_redirect_thread(stdout_reader, sender.clone());
+    start_output_redirect_thread(stderr_reader, sender.clone());
+
+    Self {
+      sender,
+      stdout_writer,
+      stderr_writer,
+    }
+  }
+
+  pub fn stdout(&self) -> std::fs::File {
+    pipe_writer_to_file(self.stdout_writer.try_clone().unwrap())
+  }
+
+  pub fn stderr(&self) -> std::fs::File {
+    pipe_writer_to_file(self.stderr_writer.try_clone().unwrap())
+  }
+
+  pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
+    // for any event that finishes collecting output, we need to
+    // ensure that the collected stdout and stderr pipes are flushed
+    if matches!(
+      message,
+      TestEvent::Result(_, _, _)
+        | TestEvent::StepWait(_)
+        | TestEvent::StepResult(_, _, _)
+    ) {
+      self.stdout_writer.flush().unwrap();
+      self.stderr_writer.flush().unwrap();
+    }
+
+    self.sender.send(message)?;
+    Ok(())
+  }
+}
+
+#[cfg(windows)]
+fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::windows::prelude::FromRawHandle;
+  use std::os::windows::prelude::IntoRawHandle;
+  // SAFETY: Requires consuming ownership of the provided handle
+  unsafe { std::fs::File::from_raw_handle(writer.into_raw_handle()) }
+}
+
+#[cfg(unix)]
+fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::unix::io::FromRawFd;
+  use std::os::unix::io::IntoRawFd;
+  // SAFETY: Requires consuming ownership of the provided handle
+  unsafe { std::fs::File::from_raw_fd(writer.into_raw_fd()) }
+}
+
+fn start_output_redirect_thread(
+  mut pipe_reader: os_pipe::PipeReader,
+  sender: UnboundedSender<TestEvent>,
+) {
+  tokio::task::spawn_blocking(move || loop {
+    let mut buffer = [0; 512];
+    let size = match pipe_reader.read(&mut buffer) {
+      Ok(0) | Err(_) => break,
+      Ok(size) => size,
+    };
+
+    if sender
+      .send(TestEvent::Output(buffer[0..size].to_vec()))
+      .is_err()
+    {
+      break;
+    }
+  });
 }

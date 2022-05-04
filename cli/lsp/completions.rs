@@ -20,10 +20,10 @@ use deno_core::serde::Serialize;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
@@ -124,7 +124,7 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-pub(crate) async fn get_import_completions(
+pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
@@ -578,7 +578,7 @@ mod tests {
   use std::collections::HashMap;
   use std::path::Path;
   use std::sync::Arc;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn mock_documents(
     fixtures: &[(&str, &str, i32, LanguageId)],
@@ -612,10 +612,10 @@ mod tests {
   }
 
   fn setup(
+    temp_dir: &TempDir,
     documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
   ) -> Documents {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     mock_documents(documents, sources, &location)
   }
@@ -717,7 +717,7 @@ mod tests {
 
   #[test]
   fn test_get_local_completions() {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let temp_dir = TempDir::new();
     let fixtures = temp_dir.path().join("fixtures");
     std::fs::create_dir(&fixtures).expect("could not create");
     let dir_a = fixtures.join("a");
@@ -776,7 +776,9 @@ mod tests {
         character: 21,
       },
     };
+    let temp_dir = TempDir::new();
     let documents = setup(
+      &temp_dir,
       &[
         (
           "file:///a/b/c.ts",

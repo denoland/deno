@@ -984,29 +984,43 @@
 
       const algorithmName = key[_algorithm].name;
 
+      let result;
+
       switch (algorithmName) {
         case "HMAC": {
-          return exportKeyHMAC(format, key, innerKey);
+          result = exportKeyHMAC(format, key, innerKey);
+          break;
         }
         case "RSASSA-PKCS1-v1_5":
         case "RSA-PSS":
         case "RSA-OAEP": {
-          return exportKeyRSA(format, key, innerKey);
+          result = exportKeyRSA(format, key, innerKey);
+          break;
         }
         case "ECDH":
         case "ECDSA": {
-          return exportKeyEC(format, key, innerKey);
+          result = exportKeyEC(format, key, innerKey);
+          break;
         }
         case "AES-CTR":
         case "AES-CBC":
         case "AES-GCM":
         case "AES-KW": {
-          return exportKeyAES(format, key, innerKey);
+          result = exportKeyAES(format, key, innerKey);
+          break;
         }
-        // TODO(@littledivy): ECDSA
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
+
+      if (key.extractable === false) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
+      return result;
     }
 
     /**
@@ -2697,27 +2711,27 @@
     "RSASSA-PKCS1-v1_5": {
       public: ["verify"],
       private: ["sign"],
-      jwtUse: "sig",
+      jwkUse: "sig",
     },
     "RSA-PSS": {
       public: ["verify"],
       private: ["sign"],
-      jwtUse: "sig",
+      jwkUse: "sig",
     },
     "RSA-OAEP": {
       public: ["encrypt", "wrapKey"],
       private: ["decrypt", "unwrapKey"],
-      jwtUse: "enc",
+      jwkUse: "enc",
     },
     "ECDSA": {
       public: ["verify"],
       private: ["sign"],
-      jwtUse: "sig",
+      jwkUse: "sig",
     },
     "ECDH": {
       public: [],
       private: ["deriveKey", "deriveBits"],
-      jwtUse: "enc",
+      jwkUse: "enc",
     },
   };
 
@@ -2864,11 +2878,11 @@
         if (
           keyUsages.length > 0 && jwk.use !== undefined &&
           StringPrototypeToLowerCase(jwk.use) !==
-            SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+            SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwkUse
         ) {
           throw new DOMException(
             `'use' property of JsonWebKey must be '${
-              SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+              SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwkUse
             }'`,
             "DataError",
           );

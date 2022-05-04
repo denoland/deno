@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::flags::Flags;
+use crate::fmt_errors::format_js_error;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
@@ -135,7 +136,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let referrer = deno_core::resolve_url_or_path(referrer).unwrap();
+    // Try to follow redirects when resolving.
+    let referrer = match self.eszip.get_module(referrer) {
+      Some(eszip::Module { ref specifier, .. }) => {
+        deno_core::resolve_url_or_path(specifier)?
+      }
+      None => deno_core::resolve_url_or_path(referrer)?,
+    };
+
     self.maybe_import_map_resolver.as_ref().map_or_else(
       || {
         deno_core::resolve_import(specifier, referrer.as_str())
@@ -154,7 +162,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let module_specifier = module_specifier.clone();
 
     let is_data_uri = get_source_from_data_url(&module_specifier).ok();
-
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
@@ -267,7 +274,6 @@ pub async fn run(
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
-      apply_source_maps: false,
       args: metadata.argv,
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
@@ -287,7 +293,8 @@ pub async fn run(
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
     seed: metadata.seed,
-    js_error_create_fn: None,
+    source_map_getter: None,
+    format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
     maybe_inspector_server: None,
@@ -299,6 +306,7 @@ pub async fn run(
     broadcast_channel,
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
+    stdio: Default::default(),
   };
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

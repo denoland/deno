@@ -1,0 +1,2 @@
+Check [WILDCARD]/bench/unresolved_promise.ts
+error: Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.
