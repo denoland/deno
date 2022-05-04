@@ -2491,6 +2491,8 @@ declare namespace Deno {
     getters?: boolean;
     /** Show an object's non-enumerable properties. Defaults to false. */
     showHidden?: boolean;
+    /** The maximum length of a string before it is truncated with an ellipsis */
+    strAbbreviateSize?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by
@@ -2953,6 +2955,7 @@ declare namespace Deno {
     | "ANAME"
     | "CNAME"
     | "MX"
+    | "NS"
     | "PTR"
     | "SOA"
     | "SRV"
@@ -2992,7 +2995,7 @@ declare namespace Deno {
 
   export function resolveDns(
     query: string,
-    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
 

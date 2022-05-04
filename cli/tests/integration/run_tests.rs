@@ -991,6 +991,11 @@ itest!(lib_dom_asynciterable {
   output: "lib_dom_asynciterable.ts.out",
 });
 
+itest!(lib_dom_extras {
+  args: "run --quiet --unstable --reload lib_dom_extras.ts",
+  output: "lib_dom_extras.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
@@ -1608,6 +1613,11 @@ itest!(worker_drop_handle_race {
   args: "run --quiet --reload --allow-read worker_drop_handle_race.js",
   output: "worker_drop_handle_race.js.out",
   exit_code: 1,
+});
+
+itest!(worker_drop_handle_race_terminate {
+  args: "run --unstable worker_drop_handle_race_terminate.js",
+  output: "worker_drop_handle_race_terminate.js.out",
 });
 
 itest!(worker_close_nested {
@@ -2763,4 +2773,9 @@ itest!(report_error {
 itest!(report_error_handled {
   args: "run --quiet report_error_handled.ts",
   output: "report_error_handled.ts.out",
+});
+
+itest!(spawn_stdout_inherit {
+  args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
+  output: "spawn_stdout_inherit.ts.out",
 });

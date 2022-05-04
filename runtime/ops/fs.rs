@@ -21,6 +21,7 @@ use deno_crypto::rand::Rng;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
@@ -95,6 +96,10 @@ pub fn init() -> Extension {
       op_futime_async::decl(),
       op_utime_sync::decl(),
       op_utime_async::decl(),
+      op_readfile_sync::decl(),
+      op_readfile_text_sync::decl(),
+      op_readfile_async::decl(),
+      op_readfile_text_async::decl(),
     ])
     .build()
 }
@@ -2007,4 +2012,91 @@ fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
     .check_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
+}
+
+#[op]
+fn op_readfile_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(path)?;
+  Ok(std::fs::read(path)?.into())
+}
+
+#[op]
+fn op_readfile_text_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<String, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(path)?;
+  Ok(string_from_utf8_lossy(std::fs::read(path)?))
+}
+
+#[op]
+async fn op_readfile_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+  cancel_rid: Option<ResourceId>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  {
+    let path = Path::new(&path);
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
+  let fut = tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
+  });
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
+    }
+  }
+  fut.await?
+}
+
+#[op]
+async fn op_readfile_text_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+  cancel_rid: Option<ResourceId>,
+) -> Result<String, AnyError> {
+  {
+    let path = Path::new(&path);
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
+  let fut = tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(string_from_utf8_lossy(std::fs::read(path)?))
+  });
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
+    }
+  }
+  fut.await?
+}
+
+// Like String::from_utf8_lossy but operates on owned values
+fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
+  match String::from_utf8_lossy(&buf) {
+    // buf contained non-utf8 chars than have been patched
+    Cow::Owned(s) => s,
+    // SAFETY: if Borrowed then the buf only contains utf8 chars,
+    // we do this instead of .into_owned() to avoid copying the input buf
+    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
+  }
 }

@@ -911,6 +911,15 @@ async fn test_resolve_dns() {
           record_set,
         );
 
+        // Inserts NS record
+        let rdata = RData::NS(Name::from_str("ns1.ns.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::NS),
+          record_set,
+        );
+
         // Inserts PTR record
         let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
         let record = Record::from_rdata(
@@ -981,7 +990,7 @@ async fn test_resolve_dns() {
         InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
           .unwrap(),
       ));
-
+      
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
       c.upsert(Name::from_str("soa.record").unwrap().into(), authority2);

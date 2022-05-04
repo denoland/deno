@@ -45,9 +45,9 @@
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.67.1.wasm",
-    "https://plugins.dprint.dev/json-0.15.1.wasm",
-    "https://plugins.dprint.dev/markdown-0.13.1.wasm",
+    "https://plugins.dprint.dev/typescript-0.68.2.wasm",
+    "https://plugins.dprint.dev/json-0.15.2.wasm",
+    "https://plugins.dprint.dev/markdown-0.13.2.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
     "https://plugins.dprint.dev/exec-0.2.1.exe-plugin@0a89a91810a212d9413e26d8946d41fbab3e2b5400362d764a1523839c4d78ea"
   ]

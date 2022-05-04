@@ -115,6 +115,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
       }
 
       #[inline]
+      #[allow(clippy::too_many_arguments)]
       #original_func
 
       pub fn v8_func #generics (

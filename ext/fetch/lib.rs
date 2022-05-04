@@ -174,18 +174,6 @@ pub trait FetchPermissions {
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchArgs {
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
-  has_body: bool,
-  body_length: Option<u64>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -197,13 +185,18 @@ pub struct FetchReturn {
 #[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  args: FetchArgs,
+  method: ByteString,
+  url: String,
+  headers: Vec<(ByteString, ByteString)>,
+  client_rid: Option<u32>,
+  has_body: bool,
+  body_length: Option<u64>,
   data: Option<ZeroCopyBuf>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  let client = if let Some(rid) = args.client_rid {
+  let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
@@ -211,8 +204,8 @@ where
     client.clone()
   };
 
-  let method = Method::from_bytes(&args.method)?;
-  let url = Url::parse(&args.url)?;
+  let method = Method::from_bytes(&method)?;
+  let url = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
@@ -251,7 +244,7 @@ where
 
       let mut request = client.request(method.clone(), url);
 
-      let request_body_rid = if args.has_body {
+      let request_body_rid = if has_body {
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
@@ -259,7 +252,7 @@ where
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
-            if let Some(body_size) = args.body_length {
+            if let Some(body_size) = body_length {
               request =
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
@@ -289,7 +282,7 @@ where
         None
       };
 
-      for (key, value) in args.headers {
+      for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)
           .map_err(|err| type_error(err.to_string()))?;
         let v = HeaderValue::from_bytes(&value)

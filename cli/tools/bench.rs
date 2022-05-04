@@ -178,6 +178,8 @@ impl BenchReporter for ConsoleReporter {
     use std::sync::atomic::Ordering;
     static FIRST_PLAN: AtomicBool = AtomicBool::new(true);
 
+    self.report_group_summary();
+
     self.group = None;
     self.baseline = None;
     self.name = String::new();
@@ -383,6 +385,7 @@ async fn bench_specifier(
     specifier.clone(),
     permissions,
     vec![ops::bench::init(channel.clone(), ps.flags.unstable)],
+    Default::default(),
   );
 
   if options.compat_mode {
