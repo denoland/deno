@@ -32,7 +32,6 @@ delete Object.prototype.__proto__;
   const location = window.__bootstrap.location;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
-  const errorStack = window.__bootstrap.errorStack;
   const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
   const base64 = window.__bootstrap.base64;
@@ -221,11 +220,8 @@ delete Object.prototype.__proto__;
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
-    const prepareStackTrace = core.createPrepareStackTrace(
-      errorStack.opFormatFileName,
-    );
     // deno-lint-ignore prefer-primordials
-    Error.prepareStackTrace = prepareStackTrace;
+    Error.prepareStackTrace = core.prepareStackTrace;
   }
 
   function registerErrors() {

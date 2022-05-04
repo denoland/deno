@@ -13,7 +13,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::flags::TestFlags;
 use crate::flags::TypeCheckMode;
-use crate::fmt_errors::PrettyJsError;
+use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -22,7 +22,6 @@ use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
-use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -37,10 +36,13 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
+use deno_runtime::ops::io::Stdio;
+use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -52,6 +54,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -136,7 +139,7 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
-  Output(TestOutput),
+  Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
@@ -196,7 +199,7 @@ impl TestSummary {
 pub trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_output(&mut self, output: &TestOutput);
+  fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -338,7 +341,7 @@ impl TestReporter for PrettyTestReporter {
     self.in_test_count += 1;
   }
 
-  fn report_output(&mut self, output: &TestOutput) {
+  fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
     }
@@ -348,16 +351,10 @@ impl TestReporter for PrettyTestReporter {
       println!();
       println!("{}", colors::gray("------- output -------"));
     }
-    match output {
-      TestOutput::String(line) => {
-        // output everything to stdout in order to prevent
-        // stdout and stderr racing
-        print!("{}", line)
-      }
-      TestOutput::Bytes(bytes) => {
-        std::io::stdout().write_all(bytes).unwrap();
-      }
-    }
+
+    // output everything to stdout in order to prevent
+    // stdout and stderr racing
+    std::io::stdout().write_all(output).unwrap();
   }
 
   fn report_result(
@@ -555,8 +552,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   js_error
 }
 
-// This function maps JsError to PrettyJsError and applies some changes
-// specifically for test runner purposes:
+// This function prettifies `JsError` and applies some changes specifically for
+// test runner purposes:
 //
 // - filter out stack frames:
 //   - if stack trace consists of mixed user and internal code, the frames
@@ -568,7 +565,7 @@ pub fn format_test_error(js_error: &JsError) -> String {
     .exception_message
     .trim_start_matches("Uncaught ")
     .to_string();
-  PrettyJsError::create(js_error).to_string()
+  format_js_error(&js_error)
 }
 
 fn create_reporter(
@@ -585,20 +582,19 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: UnboundedSender<TestEvent>,
+  sender: TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let (stdout_writer, stderr_writer) =
-    create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(
-      channel.clone(),
-      stdout_writer,
-      stderr_writer,
-    )],
+    vec![ops::testing::init(sender.clone())],
+    Stdio {
+      stdin: StdioPipe::Inherit,
+      stdout: StdioPipe::File(sender.stdout()),
+      stderr: StdioPipe::File(sender.stderr()),
+    },
   );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
@@ -949,6 +945,7 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -1451,4 +1448,144 @@ pub async fn run_tests_with_watch(
   .await?;
 
   Ok(())
+}
+
+#[derive(Clone)]
+pub struct TestEventSender {
+  sender: UnboundedSender<TestEvent>,
+  stdout_writer: TestOutputPipe,
+  stderr_writer: TestOutputPipe,
+}
+
+impl TestEventSender {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    Self {
+      stdout_writer: TestOutputPipe::new(sender.clone()),
+      stderr_writer: TestOutputPipe::new(sender.clone()),
+      sender,
+    }
+  }
+
+  pub fn stdout(&self) -> std::fs::File {
+    self.stdout_writer.as_file()
+  }
+
+  pub fn stderr(&self) -> std::fs::File {
+    self.stderr_writer.as_file()
+  }
+
+  pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
+    // for any event that finishes collecting output, we need to
+    // ensure that the collected stdout and stderr pipes are flushed
+    if matches!(
+      message,
+      TestEvent::Result(_, _, _)
+        | TestEvent::StepWait(_)
+        | TestEvent::StepResult(_, _, _)
+    ) {
+      self.flush_stdout_and_stderr();
+    }
+
+    self.sender.send(message)?;
+    Ok(())
+  }
+
+  fn flush_stdout_and_stderr(&mut self) {
+    self.stdout_writer.flush();
+    self.stderr_writer.flush();
+  }
+}
+
+// use a string that if it ends up in the output won't affect how things are displayed
+const ZERO_WIDTH_SPACE: &str = "\u{200B}";
+
+struct TestOutputPipe {
+  writer: os_pipe::PipeWriter,
+  state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+}
+
+impl Clone for TestOutputPipe {
+  fn clone(&self) -> Self {
+    Self {
+      writer: self.writer.try_clone().unwrap(),
+      state: self.state.clone(),
+    }
+  }
+}
+
+impl TestOutputPipe {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (reader, writer) = os_pipe::pipe().unwrap();
+    let state = Arc::new(Mutex::new(None));
+
+    start_output_redirect_thread(reader, sender, state.clone());
+
+    Self { writer, state }
+  }
+
+  pub fn flush(&mut self) {
+    // We want to wake up the other thread and have it respond back
+    // that it's done clearing out its pipe before returning.
+    let (sender, receiver) = std::sync::mpsc::channel();
+    self.state.lock().replace(sender);
+    // Bit of a hack in order to send a zero width space in order
+    // to wake the thread up. It seems that sending zero bytes
+    // does not work here on windows.
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
+    self.writer.flush().unwrap();
+    receiver.recv().unwrap();
+  }
+
+  pub fn as_file(&self) -> std::fs::File {
+    pipe_writer_to_file(self.writer.try_clone().unwrap())
+  }
+}
+
+#[cfg(windows)]
+fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::windows::prelude::FromRawHandle;
+  use std::os::windows::prelude::IntoRawHandle;
+  // SAFETY: Requires consuming ownership of the provided handle
+  unsafe { std::fs::File::from_raw_handle(writer.into_raw_handle()) }
+}
+
+#[cfg(unix)]
+fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
+  use std::os::unix::io::FromRawFd;
+  use std::os::unix::io::IntoRawFd;
+  // SAFETY: Requires consuming ownership of the provided handle
+  unsafe { std::fs::File::from_raw_fd(writer.into_raw_fd()) }
+}
+
+fn start_output_redirect_thread(
+  mut pipe_reader: os_pipe::PipeReader,
+  sender: UnboundedSender<TestEvent>,
+  flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+) {
+  tokio::task::spawn_blocking(move || loop {
+    let mut buffer = [0; 512];
+    let size = match pipe_reader.read(&mut buffer) {
+      Ok(0) | Err(_) => break,
+      Ok(size) => size,
+    };
+    let oneshot_sender = flush_state.lock().take();
+    let mut data = &buffer[0..size];
+    if data.ends_with(ZERO_WIDTH_SPACE.as_bytes()) {
+      data = &data[0..data.len() - ZERO_WIDTH_SPACE.len()];
+    }
+
+    if !data.is_empty()
+      && sender
+        .send(TestEvent::Output(buffer[0..size].to_vec()))
+        .is_err()
+    {
+      break;
+    }
+
+    // Always respond back if this was set. Ideally we would also check to
+    // ensure the pipe reader is empty before sending back this response.
+    if let Some(sender) = oneshot_sender {
+      let _ignore = sender.send(());
+    }
+  });
 }

@@ -243,6 +243,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "destructureError", destructure_error);
   set_func(scope, core_val, "terminate", terminate);
   set_func(scope, core_val, "applySourceMap", apply_source_map);
+
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 

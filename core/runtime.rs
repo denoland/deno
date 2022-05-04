@@ -162,7 +162,6 @@ pub(crate) struct JsRuntimeState {
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
@@ -231,11 +230,6 @@ pub struct RuntimeOptions {
   /// Source map reference for errors.
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
 
-  /// Allows a callback to be set whenever a V8 exception is made. This allows
-  /// the caller to wrap the JsError into an error. By default this callback
-  /// is set to `JsError::create()`.
-  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -293,10 +287,6 @@ impl JsRuntime {
     DENO_INIT.call_once(move || v8_init(v8_platform));
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
-
-    let js_error_create_fn = options
-      .js_error_create_fn
-      .unwrap_or_else(|| Rc::new(JsError::create));
 
     // Add builtins extension
     options
@@ -387,7 +377,6 @@ impl JsRuntime {
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
-      js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -1062,14 +1051,13 @@ pub(crate) fn exception_to_err_result<'s, T>(
       js_error.exception_message.trim_start_matches("Uncaught ")
     );
   }
-  let js_error = (state_rc.borrow().js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
     scope.terminate_execution();
   }
 
-  Err(js_error)
+  Err(js_error.into())
 }
 
 // Related to module loading

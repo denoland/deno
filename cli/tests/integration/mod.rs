@@ -817,7 +817,6 @@ async fn test_resolve_dns() {
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
-  use std::sync::RwLock;
   use std::time::Duration;
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
@@ -910,6 +909,15 @@ async fn test_resolve_dns() {
           record_set,
         );
 
+        // Inserts NS record
+        let rdata = RData::NS(Name::from_str("ns1.ns.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::NS),
+          record_set,
+        );
+
         // Inserts PTR record
         let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
         let record = Record::from_rdata(
@@ -951,7 +959,7 @@ async fn test_resolve_dns() {
         map
       };
 
-      let authority = Box::new(Arc::new(RwLock::new(
+      let authority = Box::new(Arc::new(
         InMemoryAuthority::new(
           Name::from_str("com").unwrap(),
           records,
@@ -959,7 +967,7 @@ async fn test_resolve_dns() {
           false,
         )
         .unwrap(),
-      )));
+      ));
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
       c
