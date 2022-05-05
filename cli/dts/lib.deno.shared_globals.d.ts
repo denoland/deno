@@ -12,6 +12,7 @@
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="dom.extras" />
 
 declare namespace WebAssembly {
   /**
@@ -450,7 +451,7 @@ declare class Worker extends EventTarget {
 declare type PerformanceEntryList = PerformanceEntry[];
 
 declare class Performance {
-  readonly timeOrigin: number;
+  readonly timeOrigin: DOMHighResTimeStamp;
   constructor();
 
   /** Removes the stored timestamp with the associated name. */
