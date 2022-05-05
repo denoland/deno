@@ -50,8 +50,8 @@ impl V8Slice {
   fn as_slice_mut(&mut self) -> &mut [u8] {
     // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
     // it points to a fixed continuous slice of bytes on the heap.
-    // It's safe-ish to mutate concurrently because it can not be,
-    // shrunk/grown/moved/reallocated thus avoiding dangling refs (unlike a Vec).
+    // It's safe-ish to mutate concurrently because it can not be
+    // shrunk/grown/moved/reallocated, thus avoiding dangling refs (unlike a Vec).
     // Concurrent writes can't lead to meaningful structural invalidation
     // since we treat them as opaque "bags of bytes",
     // concurrent mutation is simply an accepted fact of life.
