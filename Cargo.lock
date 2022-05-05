@@ -4937,8 +4937,7 @@ dependencies = [
 [[package]]
 name = "urlpattern"
 version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c2761073dd27e1b88de9aa082bbc085c35fae2b848379cedfafefc40a54f809"
+source = "git+https://github.com/lucacasonato/rust-urlpattern?branch=fast_matcher#22257d8fe8e0c415e66b3a2ab5091b5f4199a19c"
 dependencies = [
  "derive_more",
  "regex",

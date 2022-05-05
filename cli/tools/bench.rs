@@ -402,7 +402,7 @@ async fn bench_specifier(
         &specifier.to_file_path().unwrap().display().to_string(),
         false,
       )?;
-      worker.run_event_loop(false).await?;
+      worker.run_event_loop(true).await?;
     }
   } else {
     // We execute the module module as a side module so that import.meta.main is not set.
@@ -424,6 +424,8 @@ async fn bench_specifier(
   worker.js_runtime.resolve_value(bench_result).await?;
 
   worker.dispatch_unload_event(&located_script_name!())?;
+
+  worker.js_runtime.run_event_loop(true).await?;
 
   Ok(())
 }

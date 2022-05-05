@@ -13,12 +13,13 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const {
-    ArrayPrototypeMap,
     ObjectKeys,
-    ObjectFromEntries,
     RegExp,
     RegExpPrototypeExec,
-    RegExpPrototypeTest,
+    StringPrototypeEndsWith,
+    StringPrototypeIncludes,
+    StringPrototypeStartsWith,
+    StringPrototypeSubstring,
     Symbol,
     SymbolFor,
     TypeError,
@@ -42,8 +43,31 @@
    * @typedef Component
    * @property {string} patternString
    * @property {RegExp} regexp
+   * @property {Matcher} matcher
    * @property {string[]} groupNameList
    */
+
+  const PARTS = [
+    "protocol",
+    "username",
+    "password",
+    "hostname",
+    "port",
+    "pathname",
+    "search",
+    "hash",
+  ];
+
+  const PARTS_OBJ = {
+    protocol: {},
+    username: {},
+    password: {},
+    hostname: {},
+    port: {},
+    pathname: {},
+    search: {},
+    hash: {},
+  };
 
   class URLPattern {
     /** @type {Components} */
@@ -76,6 +100,7 @@
             components[key].regexpString,
             "u",
           );
+          components[key].matcher = matcherFromDef(components[key].matcher);
         } catch (e) {
           throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
         }
@@ -155,8 +180,8 @@
 
       const [values] = res;
 
-      for (const key of ObjectKeys(values)) {
-        if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
+      for (const key of PARTS) {
+        if (!this[_components][key].matcher.match(values[key], [])) {
           return false;
         }
       }
@@ -199,26 +224,32 @@
       }
 
       /** @type {URLPatternResult} */
-      const result = { inputs };
+      const result = {
+        inputs,
+        protocol: { input: values.protocol, groups: {} },
+        username: { input: values.username, groups: {} },
+        password: { input: values.password, groups: {} },
+        hostname: { input: values.hostname, groups: {} },
+        port: { input: values.port, groups: {} },
+        pathname: { input: values.pathname, groups: {} },
+        search: { input: values.search, groups: {} },
+        hash: { input: values.hash, groups: {} },
+      };
 
       /** @type {string} */
-      for (const key of ObjectKeys(values)) {
+      for (const key of PARTS) {
         /** @type {Component} */
         const component = this[_components][key];
-        const input = values[key];
-        const match = RegExpPrototypeExec(component.regexp, input);
-        if (match === null) {
+        const { input, groups } = result[key];
+        /** @type {string[]} */
+        const captures = [];
+        const match = component.matcher.match(input, captures);
+        if (!match) {
           return null;
         }
-        const groupEntries = ArrayPrototypeMap(
-          component.groupNameList,
-          (name, i) => [name, match[i + 1] ?? ""],
-        );
-        const groups = ObjectFromEntries(groupEntries);
-        result[key] = {
-          input,
-          groups,
-        };
+        for (let i = 0; i < component.groupNameList.length; i++) {
+          groups[component.groupNameList[i]] = captures[i] ?? "";
+        }
       }
 
       return result;
@@ -237,6 +268,175 @@
           hash: this.hash,
         })
       }`;
+    }
+  }
+
+  /**
+   * @typedef MatcherRaw
+   * @property {string} prefix
+   * @property {string} suffix
+   */
+
+  /** @typedef {MatcherInnerLiteral | MatcherInnerSingleCapture | MatcherInnerRegExp} MatcherInner */
+
+  /**
+   * @typedef MatcherInnerLiteral
+   * @property {"literal"} kind
+   * @property {string} literal
+   */
+
+  /**
+   * @typedef MatcherInnerSingleCapture
+   * @property {"singleCapture"} kind
+   * @property {string | null} filter
+   * @property {boolean} allowEmpty
+   */
+
+  /**
+   * @typedef MatcherInnerRegExp
+   * @property {"regExp"} kind
+   * @property {string} regexp
+   */
+
+  class Matcher {
+    /** @type {string} */
+    prefix;
+    /** @type {string} */
+    suffix;
+    /** @type {number} */
+    prefixSuffixLength;
+
+    /** @param {MatcherRaw} def */
+    constructor(def) {
+      this.prefix = def.prefix;
+      this.suffix = def.suffix;
+      this.prefixSuffixLength = this.prefix.length + this.suffix.length;
+    }
+
+    /**
+     * @param {string} input
+     * @param {string[]} match
+     * @returns {boolean}
+     */
+    match(input, match) {
+      if (this.prefixSuffixLength > 0) {
+        // The input must be at least as long as the prefix and suffix combined,
+        // because these must both be present, and not overlap.
+        if (input.length < this.prefixSuffixLength) {
+          return false;
+        }
+        if (
+          !StringPrototypeStartsWith(input, this.prefix) ||
+          !StringPrototypeEndsWith(input, this.suffix)
+        ) {
+          return false;
+        }
+        const start = this.prefix.length;
+        const end = input.length - this.suffix.length;
+        input = StringPrototypeSubstring(input, start, end);
+      }
+      return this.matchInner(input, match);
+    }
+
+    /**
+     * @param {string} _input
+     * @param {string[]} _match
+     * @returns {boolean}
+     */
+    matchInner(_input, _match) {
+      return true;
+    }
+  }
+
+  class MatcherLiteral extends Matcher {
+    /** @type {string} */
+    literal;
+
+    /** @param {MatcherRaw & MatcherInnerLiteral} def */
+    constructor(def) {
+      super(def);
+      this.literal = def.literal;
+    }
+
+    /**
+     * @param {string} input
+     * @param {string[]} _match
+     * @returns {boolean}
+     */
+    matchInner(input, _match) {
+      return input === this.literal;
+    }
+  }
+
+  class MatcherSingleCapture extends Matcher {
+    /** @type {string | null} */
+    filter;
+    /** @type {boolean} */
+    allowEmpty;
+
+    /** @param {MatcherRaw & MatcherInnerSingleCapture} def */
+    constructor(def) {
+      super(def);
+      this.filter = def.filter;
+      this.allowEmpty = def.allowEmpty;
+    }
+
+    /**
+     * @param {string} input
+     * @param {string[]} match
+     * @returns {boolean}
+     */
+    matchInner(input, match) {
+      if (input.length === 0 && !this.allowEmpty) {
+        return false;
+      }
+      if (this.filter !== null && StringPrototypeIncludes(input, this.filter)) {
+        return false;
+      }
+      match.push(input);
+      return true;
+    }
+  }
+
+  class MatcherRegExp extends Matcher {
+    /** @type {RegExp} */
+    regexp;
+
+    /** @param {MatcherRaw & MatcherInnerRegExp} def */
+    constructor(def) {
+      super(def);
+      this.regexp = new RegExp(def.regexp);
+    }
+
+    /**
+     * @param {string} input
+     * @param {string[]} match
+     * @returns {boolean}
+     */
+    matchInner(input, match) {
+      const matches = RegExpPrototypeExec(this.regexp, input);
+      if (matches === null) {
+        return false;
+      }
+      for (let i = 1; i < matches.length; i++) {
+        match.push(matches[i] ?? "");
+      }
+      return true;
+    }
+  }
+
+  /**
+   * @param {MatcherRaw & MatcherInner} def
+   * @returns {Matcher}
+   */
+  function matcherFromDef(def) {
+    switch (def.kind) {
+      case "literal":
+        return new MatcherLiteral(def);
+      case "singleCapture":
+        return new MatcherSingleCapture(def);
+      case "regExp":
+        return new MatcherRegExp(def);
     }
   }
 

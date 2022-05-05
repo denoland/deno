@@ -638,7 +638,7 @@ fn clap_root(version: &str) -> Command {
 }
 
 fn bench_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("bench"), true, false)
+  runtime_args(Command::new("bench"), true, true)
     .trailing_var_arg(true)
     .arg(
       Arg::new("ignore")
@@ -2090,7 +2090,7 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
 }
 
 fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, false);
+  runtime_args_parse(flags, matches, true, true);
 
   // NOTE: `deno bench` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
