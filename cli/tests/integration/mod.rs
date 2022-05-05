@@ -990,7 +990,7 @@ async fn test_resolve_dns() {
         InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
           .unwrap(),
       ));
-      
+
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
       c.upsert(Name::from_str("soa.record").unwrap().into(), authority2);
