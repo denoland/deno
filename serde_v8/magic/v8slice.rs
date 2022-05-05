@@ -53,7 +53,7 @@ impl V8Slice {
     // It's safe-ish to mutate concurrently because it can not be
     // shrunk/grown/moved/reallocated, thus avoiding dangling refs (unlike a Vec).
     // Concurrent writes can't lead to meaningful structural invalidation
-    // since we treat them as an opaque buffer / "bags of bytes",
+    // since we treat them as opaque buffers / "bags of bytes",
     // concurrent mutation is simply an accepted fact of life.
     // And in practice V8Slices also do not have overallping read/write phases.
     // TLDR: permissive interior mutability on slices of bytes is "fine"
