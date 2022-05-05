@@ -564,6 +564,7 @@ delete Object.prototype.__proto__;
     window.addEventListener("unload", () => {
       window[isUnloadDispatched] = true;
     });
+
     runtimeStart(runtimeOptions);
     const {
       args,
