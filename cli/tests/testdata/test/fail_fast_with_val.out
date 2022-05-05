@@ -3,7 +3,7 @@ running 10 tests from [WILDCARD]/test/fail_fast_with_val.ts
 test test 1 ... FAILED ([WILDCARD])
 test test 2 ... FAILED ([WILDCARD])
 
- ERRORS 
+  ERRORS  
 
 test 1 => ./test/fail_fast_with_val.ts:[WILDCARD]
 error: Error

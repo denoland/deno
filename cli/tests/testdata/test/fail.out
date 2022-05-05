@@ -11,7 +11,7 @@ test 7 ... FAILED ([WILDCARD])
 test 8 ... FAILED ([WILDCARD])
 test 9 ... FAILED ([WILDCARD])
 
- ERRORS 
+  ERRORS  
 
 test 0 => ./test/fail.ts:1:6
 error: Error

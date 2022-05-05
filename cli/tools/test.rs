@@ -452,7 +452,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       let mut failure_titles = vec![];
-      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+      println!("\n{}\n", colors::white_bold_on_red("  ERRORS  "));
       for (description, js_error) in &summary.failures {
         let failure_title = format!(
           "{} {}",
