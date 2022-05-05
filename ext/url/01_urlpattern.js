@@ -25,6 +25,18 @@
   } = window.__bootstrap.primordials;
 
   const _components = Symbol("components");
+  const _patterns = Symbol("components");
+
+  const PARTS = [
+    "protocol",
+    "username",
+    "password",
+    "hostname",
+    "port",
+    "pathname",
+    "search",
+    "hash",
+  ];
 
   /**
    * @typedef Components
@@ -243,6 +255,150 @@
   webidl.configurePrototype(URLPattern);
   const URLPatternPrototype = URLPattern.prototype;
 
+  class URLPatternList {
+    /** @type {URLPattern[]} patterns */
+    [_patterns] = [];
+
+    /**
+     * @param {URLPattern[]} patterns
+     */
+    constructor(patterns) {
+      const prefix = "Failed to construct 'URLPatternList'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      patterns = webidl.converters["sequence<URLPattern>"](patterns, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      this[_patterns] = patterns;
+      this[webidl.brand] = webidl.brand;
+    }
+
+    /**
+     * @param {URLPatternInput} input
+     * @param {string} [baseURL]
+     * @returns {boolean}
+     */
+    test(input, baseURL = undefined) {
+      webidl.assertBranded(this, URLPatternListPrototype);
+      const prefix = "Failed to execute 'test' on 'URLPatternList'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      input = webidl.converters.URLPatternInput(input, {
+        prefix,
+        context: "Argument 1",
+      });
+      if (baseURL !== undefined) {
+        baseURL = webidl.converters.USVString(baseURL, {
+          prefix,
+          context: "Argument 2",
+        });
+      }
+
+      const res = core.opSync(
+        "op_urlpattern_process_match_input",
+        input,
+        baseURL,
+      );
+      if (res === null) {
+        return false;
+      }
+
+      const [values] = res;
+
+      outer:
+      for (const pattern of this[_patterns]) {
+        for (const key of PARTS) {
+          if (
+            !RegExpPrototypeTest(pattern[key].regexp, values[key])
+          ) {
+            break outer;
+          }
+        }
+        return true;
+      }
+
+      return false;
+    }
+
+    /**
+     * @param {URLPatternInput} input
+     * @param {string} [baseURL]
+     * @returns {URLPatternResult | null}
+     */
+    exec(input, baseURL = undefined) {
+      webidl.assertBranded(this, URLPatternListPrototype);
+      const prefix = "Failed to execute 'exec' on 'URLPatternList'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      input = webidl.converters.URLPatternInput(input, {
+        prefix,
+        context: "Argument 1",
+      });
+      if (baseURL !== undefined) {
+        baseURL = webidl.converters.USVString(baseURL, {
+          prefix,
+          context: "Argument 2",
+        });
+      }
+
+      const res = core.opSync(
+        "op_urlpattern_process_match_input",
+        input,
+        baseURL,
+      );
+      if (res === null) {
+        return null;
+      }
+
+      const [values, inputs] = res;
+      if (inputs[1] === null) {
+        inputs.pop();
+      }
+
+      outer:
+      for (const pattern of this[_patterns]) {
+        /** @type {URLPatternResult} */
+        const result = { inputs, pattern };
+
+        /** @type {string} */
+        for (const key of ObjectKeys(values)) {
+          /** @type {Component} */
+          const component = pattern[_components][key];
+          const input = values[key];
+          const match = RegExpPrototypeExec(component.regexp, input);
+          if (match === null) {
+            break outer;
+          }
+          const groupEntries = ArrayPrototypeMap(
+            component.groupNameList,
+            (name, i) => [name, match[i + 1] ?? ""],
+          );
+          const groups = ObjectFromEntries(groupEntries);
+          result[key] = { input, groups };
+        }
+
+        return result;
+      }
+
+      return null;
+    }
+
+    [SymbolFor("Deno.customInspect")]() {
+      return `URLPatternList {}`;
+    }
+  }
+
+  webidl.configurePrototype(URLPatternList);
+  const URLPatternListPrototype = URLPatternList.prototype;
+
+  webidl.converters.URLPattern = webidl.createInterfaceConverter(
+    "URLPattern",
+    URLPatternPrototype,
+  );
+
+  webidl.converters["sequence<URLPattern>"] = webidl.createSequenceConverter(
+    webidl.converters.URLPattern,
+  );
+
   webidl.converters.URLPatternInit = webidl
     .createDictionaryConverter("URLPatternInit", [
       { key: "protocol", converter: webidl.converters.USVString },
@@ -266,5 +422,6 @@
 
   window.__bootstrap.urlPattern = {
     URLPattern,
+    URLPatternList,
   };
 })(globalThis);

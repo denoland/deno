@@ -395,6 +395,7 @@ delete Object.prototype.__proto__;
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLPattern: util.nonEnumerable(urlPattern.URLPattern),
+    URLPatternList: util.nonEnumerable(urlPattern.URLPatternList),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
