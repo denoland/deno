@@ -12,7 +12,7 @@
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.broadcast_channel" />
-/// <reference lib="dom.extras" />
+/// <reference lib="dom" />
 
 declare namespace WebAssembly {
   /**
