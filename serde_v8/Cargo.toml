@@ -14,7 +14,7 @@ path = "lib.rs"
 
 [dependencies]
 derive_more = "0.99.17"
-serde = { version = "1.0.130", features = ["derive"] }
+serde = { version = "1.0.136", features = ["derive"] }
 v8 = "0.42.0"
 
 [dev-dependencies]

@@ -17,8 +17,8 @@ path = "lib.rs"
 deno_core = { version = "0.132.0", path = "../../core" }
 once_cell = "1.10.0"
 rustls = { version = "0.20", features = ["dangerous_configuration"] }
-rustls-native-certs = "0.6.1"
-rustls-pemfile = "0.3"
-serde = { version = "1.0.129", features = ["derive"] }
+rustls-native-certs = "0.6.2"
+rustls-pemfile = "1.0.0"
+serde = { version = "1.0.136", features = ["derive"] }
 webpki = "0.22"
 webpki-roots = "0.22"
