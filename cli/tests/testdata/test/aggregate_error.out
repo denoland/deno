@@ -1,7 +1,7 @@
 running 1 test from ./test/aggregate_error.ts
 aggregate ... FAILED ([WILDCARD])
 
-  ERRORS  
+ ERRORS 
 
 aggregate => ./test/aggregate_error.ts:[WILDCARD]
 error: AggregateError

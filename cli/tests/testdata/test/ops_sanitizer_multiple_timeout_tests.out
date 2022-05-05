@@ -3,7 +3,7 @@ running 2 tests from ./test/ops_sanitizer_multiple_timeout_tests.ts
 test 1 ... FAILED ([WILDCARD])
 test 2 ... FAILED ([WILDCARD])
 
-  ERRORS  
+ ERRORS 
 
 test 1 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
 error: Test case is leaking async ops.
