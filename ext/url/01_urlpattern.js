@@ -58,17 +58,6 @@
     "hash",
   ];
 
-  const PARTS_OBJ = {
-    protocol: {},
-    username: {},
-    password: {},
-    hostname: {},
-    port: {},
-    pathname: {},
-    search: {},
-    hash: {},
-  };
-
   class URLPattern {
     /** @type {Components} */
     [_components];
