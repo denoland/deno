@@ -5,8 +5,8 @@ test 2 ... FAILED ([WILDCARD])
 
 failures:
 
-./test/ops_sanitizer_multiple_timeout_tests.ts > test 1
-Test case is leaking async ops.
+test 1 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+error: Test case is leaking async ops.
 
 - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
     at [WILDCARD]
@@ -21,8 +21,8 @@ Test case is leaking async ops.
     at [WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:8:27
     at [WILDCARD]
 
-./test/ops_sanitizer_multiple_timeout_tests.ts > test 2
-Test case is leaking async ops.
+test 2 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+error: Test case is leaking async ops.
 
 - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
     at [WILDCARD]
@@ -39,9 +39,8 @@ Test case is leaking async ops.
 
 failures:
 
-	./test/ops_sanitizer_multiple_timeout_tests.ts
-	test 1
-	test 2
+test 1 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+test 2 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
 
 test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

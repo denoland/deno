@@ -185,13 +185,15 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
   let arg0 = f.sig.inputs.first();
-  let uses_opstate = arg0.map(is_mut_ref_opstate).unwrap_or_default();
-  let args_head = if uses_opstate {
-    quote! { op_state, }
-  } else {
-    quote! {}
+  let (rust_i0, args_head) = match arg0 {
+    Some(arg0) if is_rc_refcell_opstate(arg0) => {
+      (1, quote! { ctx.state.clone(), })
+    }
+    Some(arg0) if is_mut_ref_opstate(arg0) => {
+      (1, quote! { &mut ctx.state.borrow_mut(), })
+    }
+    _ => (0, quote! {}),
   };
-  let rust_i0 = if uses_opstate { 1 } else { 0 };
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
@@ -205,9 +207,9 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
     #arg_decls
 
-    let op_state = &mut ctx.state.borrow_mut();
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
+    let op_state = &mut ctx.state.borrow();
     op_state.tracker.track_sync(ctx.id);
 
     #ret

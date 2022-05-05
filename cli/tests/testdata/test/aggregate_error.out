@@ -3,8 +3,8 @@ aggregate ... FAILED ([WILDCARD])
 
 failures:
 
-./test/aggregate_error.ts > aggregate
-AggregateError
+aggregate => ./test/aggregate_error.ts:[WILDCARD]
+error: AggregateError
     Error: Error 1
         at [WILDCARD]/testdata/test/aggregate_error.ts:2:18
     Error: Error 2
@@ -15,8 +15,7 @@ AggregateError
 
 failures:
 
-	./test/aggregate_error.ts
-	aggregate
+aggregate => ./test/aggregate_error.ts:[WILDCARD]
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
