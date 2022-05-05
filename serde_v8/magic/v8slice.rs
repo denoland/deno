@@ -59,7 +59,7 @@ impl V8Slice {
     // TLDR: permissive interior mutability on slices of bytes is "fine"
     #[allow(clippy::cast_ref_to_mut)]
     unsafe {
-      &mut *(&mut self.store[self.range.clone()] as *const _ as *mut [u8])
+      &mut *(&self.store[self.range.clone()] as *const _ as *mut [u8])
     }
   }
 }
