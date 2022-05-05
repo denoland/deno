@@ -624,6 +624,7 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
