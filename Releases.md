@@ -8,6 +8,9 @@ https://github.com/denoland/deno_install
 
 ### 1.21.2 / 2022.05.05
 
+- chore: fix flaky steps_output_within test (#14479)
+- chore: update deps (#14416)
+- chore(serde_v8): V8Slice SAFETY (#14493)
 - fix(cli): add dom.extras lib (#14430)
 - fix(coverage): exclude .snap files (#14480)
 - fix(ext/http): explicitly close resource after reading (#14471)
@@ -19,6 +22,9 @@ https://github.com/denoland/deno_install
 - fix(vendor): do not panic on relative specifier with scheme-like folder name
   (#14453)
 - fix: improve formatting jsdocs with asterisk as first char on line (#14446)
+- refactor: add core.formatLocationFilename, remove op_format_filename (#14474)
+- refactor(core): use Box<u8> for ModuleSource.code instead of a String (#14487)
+- test: Manually truncate path string (#14407)
 
 ### 1.21.1 / 2022.04.28
 
