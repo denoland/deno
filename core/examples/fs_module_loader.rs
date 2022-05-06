@@ -4,7 +4,9 @@ use deno_core::anyhow::Error;
 use deno_core::FsModuleLoader;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
+use deno_core::*;
 use std::rc::Rc;
+use std::time::Duration;
 
 fn main() -> Result<(), Error> {
   let args: Vec<String> = std::env::args().collect();
@@ -15,8 +17,11 @@ fn main() -> Result<(), Error> {
   let main_url = args[1].clone();
   println!("Run {}", main_url);
 
+  let ext = Extension::builder().ops(vec![op_sleep::decl()]).build();
+
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(FsModuleLoader)),
+    extensions: vec![ext],
     ..Default::default()
   });
 
@@ -33,4 +38,10 @@ fn main() -> Result<(), Error> {
     Ok(())
   };
   runtime.block_on(future)
+}
+
+#[op]
+async fn op_sleep() -> Result<(), Error> {
+  tokio::time::sleep(Duration::from_secs(1)).await;
+  Ok(())
 }

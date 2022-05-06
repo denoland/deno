@@ -178,17 +178,17 @@ fn wasm_module_evaluation_steps<'a>(
   let synthetic_module_promise_resolver = v8::Global::new(tc_scope, resolver);
   let mut imported_modules_promises = vec![];
 
-  let imports = v8::Object::new(tc_scope);
+  let mut imports = vec![];
   {
     for (relative, resolved) in &import_specifiers {
-      let module = {
+      let global_module = {
         let module_map = module_map.borrow();
         let id = module_map
           .get_id(resolved.as_str(), AssertedModuleType::JavaScriptOrWasm)
           .unwrap();
         module_map.get_handle(id).unwrap()
       };
-      let module = module.open(tc_scope);
+      let module = global_module.open(tc_scope);
 
       if module.get_status() == v8::ModuleStatus::Uninstantiated {
         // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
@@ -227,22 +227,19 @@ fn wasm_module_evaluation_steps<'a>(
         imported_modules_promises.push(promise_global);
       }
 
-      let namespace = module.get_module_namespace();
-      let specifier_str = v8::String::new(tc_scope, &relative).unwrap();
-      imports.set(tc_scope, specifier_str.into(), namespace.into());
+      imports.push((relative.to_string(), global_module));
 
       assert!(!tc_scope.has_caught());
     }
   }
 
   let pending_evaluation = PendingWasmEvaluation {
-    done: false,
     module_handle,
     module_global: v8::Global::new(tc_scope, module),
     synthetic_module_promise_resolver,
     imported_modules_promises,
     export_names,
-    imports_obj: v8::Global::new(tc_scope, imports),
+    imports,
   };
 
   module_map
@@ -854,20 +851,15 @@ pub(crate) enum ModuleError {
 }
 
 pub(crate) struct PendingWasmEvaluation {
-  done: bool,
   module_handle: v8::Global<v8::Object>,
   module_global: v8::Global<v8::Module>,
   synthetic_module_promise_resolver: v8::Global<v8::PromiseResolver>,
   imported_modules_promises: Vec<v8::Global<v8::Promise>>,
   export_names: Vec<v8::Global<v8::String>>,
-  imports_obj: v8::Global<v8::Object>,
+  imports: Vec<(String, v8::Global<v8::Module>)>,
 }
 
 impl PendingWasmEvaluation {
-  pub fn is_done(&self) -> bool {
-    self.done
-  }
-
   pub fn check_if_imported_modules_resolved(
     &self,
     scope: &mut v8::HandleScope,
@@ -875,6 +867,8 @@ impl PendingWasmEvaluation {
     for module_promise in &self.imported_modules_promises {
       let promise = module_promise.open(scope);
       let promise_state = promise.state();
+
+      println!("promise {:?}", promise_state);
 
       match promise_state {
         v8::PromiseState::Pending => {
@@ -920,15 +914,12 @@ impl PendingWasmEvaluation {
     // }
   }
 
-  pub fn complete(&mut self, scope: &mut v8::HandleScope) {
+  pub fn complete(&self, scope: &mut v8::HandleScope) {
     eprintln!("completing wasm evaluation");
-    self.done = true;
     let context = scope.get_current_context();
 
     let tc_scope = &mut v8::TryCatch::new(scope);
     let global = context.global(tc_scope);
-
-    let imports = v8::Local::new(tc_scope, self.imports_obj.clone());
 
     let wasm_str = v8::String::new(tc_scope, "WebAssembly").unwrap();
     let wasm = global
@@ -945,8 +936,18 @@ impl PendingWasmEvaluation {
 
     let module_local = v8::Local::new(tc_scope, self.module_handle.clone());
 
+    let imports_obj = v8::Object::new(tc_scope);
+    for (name, module) in &self.imports {
+      let module = module.open(tc_scope);
+      let namespace = module.get_module_namespace();
+      let specifier = v8::String::new(tc_scope, &name).unwrap();
+      imports_obj
+        .set(tc_scope, specifier.into(), namespace.into())
+        .unwrap();
+    }
+
     let instance = instance_constructor
-      .new_instance(tc_scope, &[module_local.into(), imports.into()])
+      .new_instance(tc_scope, &[module_local.into(), imports_obj.into()])
       .unwrap();
     assert!(!tc_scope.has_caught());
 
@@ -971,6 +972,8 @@ impl PendingWasmEvaluation {
     let undefined = v8::undefined(tc_scope);
     let resolver = self.synthetic_module_promise_resolver.open(tc_scope);
     resolver.resolve(tc_scope, undefined.into());
+    tc_scope.perform_microtask_checkpoint();
+    assert!(!tc_scope.has_caught());
   }
 }
 

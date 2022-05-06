@@ -1,5 +1,8 @@
-await new Promise((_resolve) => {
-});
+Deno.core.print("import_inner_inner.js before\n");
+
+await Deno.core.opAsync("op_sleep");
+
+Deno.core.print("import_inner_inner.js after\n");
 
 const abc = 1 + 2;
 export function add(a, b) {

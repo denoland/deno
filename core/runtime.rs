@@ -1375,43 +1375,19 @@ impl JsRuntime {
       return;
     }
 
-    let scope = &mut self.handle_scope();
-    for pending_wasm_evaluation in &mut module_map.pending_wasm_evaluations {
-      if pending_wasm_evaluation.is_done() {
-        continue;
-      }
+    let pending_evaluations =
+      std::mem::take(&mut module_map.pending_wasm_evaluations);
 
+    let scope = &mut self.handle_scope();
+    for pending_wasm_evaluation in pending_evaluations {
       if pending_wasm_evaluation.check_if_imported_modules_resolved(scope) {
         pending_wasm_evaluation.complete(scope);
+      } else {
+        module_map
+          .pending_wasm_evaluations
+          .push(pending_wasm_evaluation);
       }
     }
-
-    // let module_evaluation = maybe_module_evaluation.unwrap();
-    // let scope = &mut self.handle_scope();
-
-    // let promise = module_evaluation.promise.open(scope);
-    // let promise_state = promise.state();
-
-    // match promise_state {
-    //   v8::PromiseState::Pending => {
-    //     // NOTE: `poll_event_loop` will decide if
-    //     // runtime would be woken soon
-    //     state_rc.borrow_mut().pending_mod_evaluate = Some(module_evaluation);
-    //   }
-    //   v8::PromiseState::Fulfilled => {
-    //     scope.perform_microtask_checkpoint();
-    //     // Receiver end might have been already dropped, ignore the result
-    //     let _ = module_evaluation.sender.send(Ok(()));
-    //   }
-    //   v8::PromiseState::Rejected => {
-    //     let exception = promise.result(scope);
-    //     scope.perform_microtask_checkpoint();
-    //     // Receiver end might have been already dropped, ignore the result
-    //     let _ = module_evaluation
-    //       .sender
-    //       .send(exception_to_err_result(scope, exception, false));
-    //   }
-    // }
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
@@ -1626,6 +1602,7 @@ impl JsRuntime {
     while let Some(load_result) = load.next().await {
       let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
+      println!("request {:#?}", request);
       load.register_and_recurse(scope, &request, &info).map_err(
         |e| match e {
           ModuleError::Exception(exception) => {
@@ -1637,6 +1614,7 @@ impl JsRuntime {
       )?;
     }
 
+    println!("done ");
     let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id).map_err(|e| {
       let scope = &mut self.handle_scope();
