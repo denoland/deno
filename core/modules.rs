@@ -145,11 +145,7 @@ fn json_module_evaluation_steps<'a>(
   );
   assert!(!tc_scope.has_caught());
 
-  // Since TLA is active we need to return a promise.
-  let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
-  let undefined = v8::undefined(tc_scope);
-  resolver.resolve(tc_scope, undefined.into());
-  Some(resolver.get_promise(tc_scope).into())
+  Some(v8::undefined(tc_scope).into())
 }
 
 /// A type of module to be executed.
