@@ -648,7 +648,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  sender: TestEventSender,
+  sender: &TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
@@ -1031,7 +1031,7 @@ async fn test_specifiers(
           permissions,
           specifier,
           mode,
-          sender.clone(),
+          &sender,
           options,
         ));
         if let Err(error) = file_result {
