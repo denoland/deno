@@ -917,6 +917,8 @@ impl JsRuntime {
       .as_ref()
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
+    let has_pending_wasm_evaluation =
+      !module_map.pending_wasm_evaluations.is_empty();
 
     if !has_pending_refed_ops
       && !has_pending_dyn_imports
@@ -925,6 +927,7 @@ impl JsRuntime {
       && !has_pending_background_tasks
       && !has_tick_scheduled
       && !maybe_scheduling
+      && !has_pending_wasm_evaluation
     {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
@@ -948,7 +951,7 @@ impl JsRuntime {
       state.waker.wake();
     }
 
-    if has_pending_module_evaluation {
+    if has_pending_module_evaluation || has_pending_wasm_evaluation {
       if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_dyn_module_evaluation

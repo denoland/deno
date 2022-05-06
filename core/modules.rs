@@ -241,7 +241,6 @@ fn wasm_module_evaluation_steps<'a>(
     module_global: v8::Global::new(tc_scope, module),
     synthetic_module_promise_resolver,
     imported_modules_promises,
-    import_specifiers,
     export_names,
     imports_obj: v8::Global::new(tc_scope, imports),
   };
@@ -860,7 +859,6 @@ pub(crate) struct PendingWasmEvaluation {
   module_global: v8::Global<v8::Module>,
   synthetic_module_promise_resolver: v8::Global<v8::PromiseResolver>,
   imported_modules_promises: Vec<v8::Global<v8::Promise>>,
-  import_specifiers: Vec<(String, ModuleSpecifier)>,
   export_names: Vec<v8::Global<v8::String>>,
   imports_obj: v8::Global<v8::Object>,
 }
@@ -880,6 +878,7 @@ impl PendingWasmEvaluation {
 
       match promise_state {
         v8::PromiseState::Pending => {
+          eprintln!("promise is pending, aborting");
           return false;
         }
         // TODO: handle rejected promises
@@ -890,6 +889,7 @@ impl PendingWasmEvaluation {
       }
     }
 
+    eprintln!("all promises resolved");
     scope.perform_microtask_checkpoint();
     true
 
@@ -921,6 +921,7 @@ impl PendingWasmEvaluation {
   }
 
   pub fn complete(&mut self, scope: &mut v8::HandleScope) {
+    eprintln!("completing wasm evaluation");
     self.done = true;
     let context = scope.get_current_context();
 
