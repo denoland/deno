@@ -689,14 +689,9 @@ pub(crate) enum AssertedModuleType {
   Json,
 }
 
-// NOTE(bartlomieju): we actually want to have `Into` implementation, instead
-// of `From`, because this operation shouldn't work two-ways, ie. you shouldn't
-// be able to go from `ModuleType` into `AssertedModuleType`. This should
-// probably be removed once WASM module support lands.
-#[allow(clippy::from_over_into)]
-impl Into<AssertedModuleType> for ModuleType {
-  fn into(self) -> AssertedModuleType {
-    match self {
+impl From<ModuleType> for AssertedModuleType {
+  fn from(module_type: ModuleType) -> AssertedModuleType {
+    match module_type {
       ModuleType::JavaScript => AssertedModuleType::JavaScriptOrWasm,
       ModuleType::Json => AssertedModuleType::Json,
     }
@@ -712,9 +707,10 @@ impl std::fmt::Display for AssertedModuleType {
   }
 }
 
-/// Describes what is the expected type of module, usually
-/// it's `ModuleType::JavaScript`, but if there were import assertions
-/// it might be `ModuleType::Json`.
+/// Describes a request for a module as parsed from the source code.
+/// Usually executable (`JavaScriptOrWasm`) is used, except when an
+/// import assertions explicitly constrains an import to JSON, in
+/// which case this will have a `AssertedModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
