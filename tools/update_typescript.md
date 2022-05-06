@@ -84,6 +84,12 @@ contextual awareness, it is the author's opinion that it is best to spend the
      - We add `lib.dom.asynciterables.d.ts` because for some reason TypeScript
        has not built these into the libraries. (See:
        https://github.com/microsoft/TypeScript/issues/29867)
+     - We add `lib.dom.extras.d.ts` because TypeScript is often behind
+       supporting some DOM standards that Deno supports and when people use
+       `lib: ["dom", "deno.ns"]` they will get error messages that are confusing
+       when using libraries that take advantage of these standards. We add the
+       library to `lib.dom.d.ts`, so it is automatically included when using the
+       `dom` lib under Deno.
 
 7. Based on the changes to the lib files, you will need to edit the map of lib
    names to files in the TypeScript compiler (`deno/cli/tsc/00_typescript.js`).
@@ -104,7 +110,7 @@ contextual awareness, it is the author's opinion that it is best to spend the
    maps `esnext.*` values to the ratified version of them to ensure they are
    less "breaking" so you will want to make sure, like for `esnext.array` that
    it points at `lib.esnext.array.d.ts`. You will also want to revert the
-   deletion of `dom.asynciterables`.
+   deletion of `dom.asynciterables` and `dom.extras`.
 
 8. For any new lib files that were added, but not included in the snapshot (e.g.
    `lib.es####.full.d.ts`) add them to `STATIC_ASSETS` in `deno/cli/tsc.rs`.

@@ -619,6 +619,55 @@ mod test {
     );
   }
 
+  #[tokio::test]
+  async fn remote_relative_specifier_with_scheme_like_folder_name() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add("/mod.ts", "import 'https://localhost/mod.ts';")
+          .add(
+            "https://localhost/mod.ts",
+            "import './npm:test@1.0.0/test/test!cjs';",
+          )
+          .add_with_headers(
+            "https://localhost/npm:test@1.0.0/test/test!cjs",
+            "console.log(5);",
+            &[("content-type", "application/javascript")],
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/"
+        },
+        "scopes": {
+          "./localhost/": {
+            "./localhost/npm:test@1.0.0/test/test!cjs": "./localhost/npm_test@1.0.0/test/test!cjs.js"
+          }
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        (
+          "/vendor/localhost/mod.ts",
+          "import './npm:test@1.0.0/test/test!cjs';"
+        ),
+        (
+          "/vendor/localhost/npm_test@1.0.0/test/test!cjs.js",
+          "console.log(5);"
+        ),
+      ]),
+    );
+  }
+
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {
     items
       .iter()

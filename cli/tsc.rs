@@ -59,7 +59,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
     static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
       include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 
-    zstd::block::decompress(
+    zstd::bulk::decompress(
       &COMPRESSED_COMPILER_SNAPSHOT[4..],
       u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
         as usize,
@@ -88,6 +88,7 @@ pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
         inc!("lib.dom.asynciterable.d.ts"),
       ),
       ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
       ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
       ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
       ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),

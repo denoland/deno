@@ -114,7 +114,7 @@ pub fn bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
 
 pub fn gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(8)));
+  style_spec.set_fg(Some(Ansi256(245)));
   style(s, style_spec)
 }
 

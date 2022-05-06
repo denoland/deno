@@ -895,45 +895,6 @@ declare namespace Deno {
     options?: EmitOptions,
   ): Promise<EmitResult>;
 
-  /** **UNSTABLE**: Should not have same name as `window.location` type. */
-  interface Location {
-    /** The full url for the module, e.g. `file://some/file.ts` or
-     * `https://some/file.ts`. */
-    fileName: string;
-    /** The line number in the file. It is assumed to be 1-indexed. */
-    lineNumber: number;
-    /** The column number in the file. It is assumed to be 1-indexed. */
-    columnNumber: number;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Given a current location in a module, lookup the source location and return
-   * it.
-   *
-   * When Deno transpiles code, it keep source maps of the transpiled code. This
-   * function can be used to lookup the original location. This is
-   * automatically done when accessing the `.stack` of an error, or when an
-   * uncaught error is logged. This function can be used to perform the lookup
-   * for creating better error handling.
-   *
-   * **Note:** `lineNumber` and `columnNumber` are 1 indexed, which matches display
-   * expectations, but is not typical of most index numbers in Deno.
-   *
-   * An example:
-   *
-   * ```ts
-   * const origin = Deno.applySourceMap({
-   *   fileName: "file://my/module.ts",
-   *   lineNumber: 5,
-   *   columnNumber: 15
-   * });
-   *
-   * console.log(`${origin.fileName}:${origin.lineNumber}:${origin.columnNumber}`);
-   * ```
-   */
-  export function applySourceMap(location: Location): Location;
-
   export type SetRawOptions = {
     cbreak: boolean;
   };

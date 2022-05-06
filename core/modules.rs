@@ -1,12 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
-use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
-use crate::runtime::exception_to_err_result;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -28,14 +26,14 @@ use std::task::Poll;
 pub type ModuleId = i32;
 pub(crate) type ModuleLoadId = i32;
 
-pub const BOM_CHAR: char = '\u{FEFF}';
+pub const BOM_CHAR: &[u8] = &[0xef, 0xbb, 0xbf];
 
 /// Strips the byte order mark from the provided text if it exists.
-fn strip_bom(text: &str) -> &str {
-  if text.starts_with(BOM_CHAR) {
-    &text[BOM_CHAR.len_utf8()..]
+fn strip_bom(source_code: &[u8]) -> &[u8] {
+  if source_code.starts_with(BOM_CHAR) {
+    &source_code[BOM_CHAR.len()..]
   } else {
-    text
+    source_code
   }
 }
 
@@ -192,7 +190,7 @@ impl std::fmt::Display for ModuleType {
 // intermediate redirects from file loader.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSource {
-  pub code: String,
+  pub code: Box<[u8]>,
   pub module_type: ModuleType,
   pub module_url_specified: String,
   pub module_url_found: String,
@@ -317,9 +315,9 @@ impl ModuleLoader for FsModuleLoader {
         ModuleType::JavaScript
       };
 
-      let code = std::fs::read_to_string(path)?;
+      let code = std::fs::read(path)?;
       let module = ModuleSource {
-        code,
+        code: code.into_boxed_slice(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
@@ -494,12 +492,12 @@ impl RecursiveModuleLoad {
     scope: &mut v8::HandleScope,
     module_request: &ModuleRequest,
     module_source: &ModuleSource,
-  ) -> Result<(), Error> {
+  ) -> Result<(), ModuleError> {
     if module_request.expected_module_type != module_source.module_type {
-      return Err(generic_error(format!(
+      return Err(ModuleError::Other(generic_error(format!(
         "Expected a \"{}\" module but loaded a \"{}\" module.",
         module_request.expected_module_type, module_source.module_type,
-      )));
+      ))));
     }
 
     // Register the module in the module map unless it's already there. If the
@@ -711,6 +709,12 @@ enum SymbolicModule {
   Mod(ModuleId),
 }
 
+#[derive(Debug)]
+pub(crate) enum ModuleError {
+  Exception(v8::Global<v8::Value>),
+  Other(Error),
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
@@ -777,10 +781,15 @@ impl ModuleMap {
     &mut self,
     scope: &mut v8::HandleScope,
     name: &str,
-    source: &str,
-  ) -> Result<ModuleId, Error> {
+    source: &[u8],
+  ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
-    let source_str = v8::String::new(scope, strip_bom(source)).unwrap();
+    let source_str = v8::String::new_from_utf8(
+      scope,
+      strip_bom(source),
+      v8::NewStringType::Normal,
+    )
+    .unwrap();
 
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -789,9 +798,8 @@ impl ModuleMap {
       None => {
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
-        let err = exception_to_err_result(tc_scope, exception, false)
-          .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
-        return err;
+        let exception = v8::Global::new(tc_scope, exception);
+        return Err(ModuleError::Exception(exception));
       }
     };
 
@@ -819,10 +827,12 @@ impl ModuleMap {
     scope: &mut v8::HandleScope,
     main: bool,
     name: &str,
-    source: &str,
-  ) -> Result<ModuleId, Error> {
+    source: &[u8],
+  ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
-    let source_str = v8::String::new(scope, source).unwrap();
+    let source_str =
+      v8::String::new_from_utf8(scope, source, v8::NewStringType::Normal)
+        .unwrap();
 
     let origin = bindings::module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, Some(&origin));
@@ -833,8 +843,9 @@ impl ModuleMap {
 
     if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
-      let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e, false);
+      let exception = tc_scope.exception().unwrap();
+      let exception = v8::Global::new(tc_scope, exception);
+      return Err(ModuleError::Exception(exception));
     }
 
     let module = maybe_module.unwrap();
@@ -862,12 +873,16 @@ impl ModuleMap {
       // is thrown here
       validate_import_assertions(tc_scope, &assertions);
       if tc_scope.has_caught() {
-        let e = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, e, false);
+        let exception = tc_scope.exception().unwrap();
+        let exception = v8::Global::new(tc_scope, exception);
+        return Err(ModuleError::Exception(exception));
       }
 
       let module_specifier =
-        self.loader.resolve(&import_specifier, name, false)?;
+        match self.loader.resolve(&import_specifier, name, false) {
+          Ok(s) => s,
+          Err(e) => return Err(ModuleError::Other(e)),
+        };
       let expected_module_type = get_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
         specifier: module_specifier,
@@ -879,11 +894,11 @@ impl ModuleMap {
     if main {
       let maybe_main_module = self.info.values().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
-        return Err(generic_error(
+        return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
           name,
           main_module.name,
-        )));
+        ))));
       }
     }
 
@@ -1250,7 +1265,7 @@ import "/a.js";
       }
       match mock_source_code(&inner.url) {
         Some(src) => Poll::Ready(Ok(ModuleSource {
-          code: src.0.to_owned(),
+          code: src.0.as_bytes().to_vec().into_boxed_slice(),
           module_type: ModuleType::JavaScript,
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
@@ -1446,7 +1461,7 @@ import "/a.js";
           scope,
           true,
           &specifier_a,
-          r#"
+          br#"
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
@@ -1470,7 +1485,7 @@ import "/a.js";
           scope,
           false,
           "file:///b.js",
-          "export function b() { return 'b' }",
+          b"export function b() { return 'b' }",
         )
         .unwrap();
       let imports = module_map.get_requested_modules(mod_b).unwrap();
@@ -1553,7 +1568,7 @@ import "/a.js";
           scope,
           true,
           &specifier_a,
-          r#"
+          br#"
             import jsonData from './b.json' assert {type: "json"};
             assert(jsonData.a == "b");
             assert(jsonData.c.d == 10);
@@ -1574,7 +1589,7 @@ import "/a.js";
         .new_json_module(
           scope,
           "file:///b.json",
-          "{\"a\": \"b\", \"c\": {\"d\": 10}}",
+          b"{\"a\": \"b\", \"c\": {\"d\": 10}}",
         )
         .unwrap();
       let imports = module_map.get_requested_modules(mod_b).unwrap();
@@ -1684,7 +1699,9 @@ import "/a.js";
       let info = ModuleSource {
         module_url_specified: specifier.to_string(),
         module_url_found: specifier.to_string(),
-        code: "export function b() { return 'b' }".to_owned(),
+        code: b"export function b() { return 'b' }"
+          .to_vec()
+          .into_boxed_slice(),
         module_type: ModuleType::JavaScript,
       };
       async move { Ok(info) }.boxed()
@@ -1828,7 +1845,7 @@ import "/a.js";
         let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
-          code: code.to_owned(),
+          code: code.as_bytes().to_vec().into_boxed_slice(),
           module_type: ModuleType::JavaScript,
         };
         async move { Ok(info) }.boxed()
@@ -2176,13 +2193,17 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
           "file:///main_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///main_module.js".to_string(),
             module_url_found: "file:///main_module.js".to_string(),
-            code: "if (!import.meta.main) throw Error();".to_owned(),
+            code: b"if (!import.meta.main) throw Error();"
+              .to_vec()
+              .into_boxed_slice(),
             module_type: ModuleType::JavaScript,
           }),
           "file:///side_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///side_module.js".to_string(),
             module_url_found: "file:///side_module.js".to_string(),
-            code: "if (import.meta.main) throw Error();".to_owned(),
+            code: b"if (import.meta.main) throw Error();"
+              .to_vec()
+              .into_boxed_slice(),
             module_type: ModuleType::JavaScript,
           }),
           _ => unreachable!(),
