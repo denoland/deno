@@ -172,26 +172,15 @@ fn wasm_module_evaluation_steps<'a>(
     .wasm_value_store
     .remove(&handle)
     .unwrap();
-  let module_local = v8::Local::new(tc_scope, module_handle);
 
-  let global = context.global(tc_scope);
+  let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
+  let promise = resolver.get_promise(tc_scope);
+  let synthetic_module_promise_resolver = v8::Global::new(tc_scope, resolver);
+  let mut imported_modules_promises = vec![];
 
-  let wasm_str = v8::String::new(tc_scope, "WebAssembly").unwrap();
-  let wasm = global
-    .get(tc_scope, wasm_str.into())
-    .unwrap()
-    .to_object(tc_scope)
-    .unwrap();
-  let instance_str = v8::String::new(tc_scope, "Instance").unwrap();
-  let instance_constructor: v8::Local<v8::Function> = wasm
-    .get(tc_scope, instance_str.into())
-    .unwrap()
-    .try_into()
-    .unwrap();
 
-  let imports = v8::Object::new(tc_scope);
   {
-    for (relative, resolved) in import_specifiers {
+    for (_relative, resolved) in &import_specifiers {
       let module = {
         let module_map = module_map.borrow();
         let id = module_map
@@ -222,39 +211,42 @@ fn wasm_module_evaluation_steps<'a>(
         return Some(resolver.get_promise(tc_scope).into());
       }
 
-      let namespace = module.get_module_namespace();
-      let specifier_str = v8::String::new(tc_scope, &relative).unwrap();
-      imports.set(tc_scope, specifier_str.into(), namespace.into());
+      // evaluate the module
+      {
+        let maybe_value = module.evaluate(tc_scope);
+        assert!(maybe_value.is_some());
+        let value = maybe_value.unwrap();
+        let status = module.get_status();
+        assert!(
+          status == v8::ModuleStatus::Evaluated
+            || status == v8::ModuleStatus::Errored
+        );
+        let promise = v8::Local::<v8::Promise>::try_from(value)
+          .expect("Expected to get promise as module evaluation result");
+        let promise_global = v8::Global::new(tc_scope, promise);
+        imported_modules_promises.push(promise_global);
+      }
+
       assert!(!tc_scope.has_caught());
     }
   }
-  let instance = instance_constructor
-    .new_instance(tc_scope, &[module_local.into(), imports.into()])
-    .unwrap();
-  assert!(!tc_scope.has_caught());
 
-  let exports_str = v8::String::new(tc_scope, "exports").unwrap();
-  let exports = instance
-    .get(tc_scope, exports_str.into())
-    .unwrap()
-    .to_object(tc_scope)
-    .unwrap();
-  assert!(!tc_scope.has_caught());
+  let pending_evaluation = PendingWasmEvaluation {
+    module_handle,
+    module_global: v8::Global::new(tc_scope, module),
+    synthetic_module_promise_resolver,
+    imported_modules_promises,
+    import_specifiers,
+    export_names,
+  };
 
-  for name in export_names {
-    let name = v8::Local::new(tc_scope, name);
-    let value = exports.get(tc_scope, name.into()).unwrap();
-    assert!(
-      module.set_synthetic_module_export(tc_scope, name, value) == Some(true)
-    );
-  }
-  assert!(!tc_scope.has_caught());
+  module_map
+    .borrow_mut()
+    .pending_wasm_evaluations
+    .push(pending_evaluation);
 
-  // Since TLA is active we need to return a promise.
-  let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
-  let undefined = v8::undefined(tc_scope);
-  resolver.resolve(tc_scope, undefined.into());
-  Some(resolver.get_promise(tc_scope).into())
+
+  Some(promise.into())
 }
 
 /// A type of module to be executed.
@@ -857,6 +849,68 @@ pub(crate) enum ModuleError {
   Other(Error),
 }
 
+pub(crate) struct PendingWasmEvaluation {
+  module_handle: v8::Global<v8::Object>,
+  module_global: v8::Global<v8::Module>,
+  synthetic_module_promise_resolver: v8::Global<v8::PromiseResolver>,
+  imported_modules_promises: Vec<v8::Global<v8::Promise>>,
+  import_specifiers: Vec<(String, ModuleSpecifier)>,
+  export_names: Vec<v8::Global<v8::String>>,
+}
+
+impl PendingWasmEvaluation {
+  fn complete(&self, scope: &mut v8::HandleScope) {
+    let context = scope.get_current_context();
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let global = context.global(tc_scope);
+
+    let imports = v8::Object::new(tc_scope);
+
+    let wasm_str = v8::String::new(tc_scope, "WebAssembly").unwrap();
+    let wasm = global
+      .get(tc_scope, wasm_str.into())
+      .unwrap()
+      .to_object(tc_scope)
+      .unwrap();
+    let instance_str = v8::String::new(tc_scope, "Instance").unwrap();
+    let instance_constructor: v8::Local<v8::Function> = wasm
+      .get(tc_scope, instance_str.into())
+      .unwrap()
+      .try_into()
+      .unwrap();
+
+    let module_local = v8::Local::new(tc_scope, self.module_handle.clone());
+
+    let instance = instance_constructor
+      .new_instance(tc_scope, &[module_local.into(), imports.into()])
+      .unwrap();
+    assert!(!tc_scope.has_caught());
+
+    let exports_str = v8::String::new(tc_scope, "exports").unwrap();
+    let exports = instance
+      .get(tc_scope, exports_str.into())
+      .unwrap()
+      .to_object(tc_scope)
+      .unwrap();
+    assert!(!tc_scope.has_caught());
+
+    let module = self.module_global.open(tc_scope);
+    for name in &self.export_names {
+      let name = v8::Local::new(tc_scope, name);
+      let value = exports.get(tc_scope, name.into()).unwrap();
+      assert!(
+        module.set_synthetic_module_export(tc_scope, name, value) == Some(true)
+      );
+    }
+    assert!(!tc_scope.has_caught());
+    // Since TLA is active we need to return a promise.
+    // let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
+    // let undefined = v8::undefined(tc_scope);
+    // resolver.resolve(tc_scope, undefined.into());
+  }
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
@@ -890,6 +944,8 @@ pub(crate) struct ModuleMap {
       Vec<v8::Global<v8::String>>,
     ),
   >,
+
+  pub(crate) pending_wasm_evaluations: Vec<PendingWasmEvaluation>,
 }
 
 impl ModuleMap {
@@ -911,6 +967,7 @@ impl ModuleMap {
       pending_dynamic_imports: FuturesUnordered::new(),
       json_value_store: HashMap::new(),
       wasm_value_store: HashMap::new(),
+      pending_wasm_evaluations: vec![],
     }
   }
 

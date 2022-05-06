@@ -1,3 +1,3 @@
 import { exported_add } from "./import.wasm";
 
-Deno.core.print(String(exported_add()));
+Deno.core.print(`${exported_add()}\n`);
