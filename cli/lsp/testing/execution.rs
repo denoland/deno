@@ -20,6 +20,7 @@ use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
@@ -403,6 +404,9 @@ impl TestRun {
               }
 
               reporter.report_result(&description, &result, elapsed);
+            }
+            test::TestEvent::UncaughtError(origin, error) => {
+              summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepWait(description) => {
               reporter.report_step_wait(&description);
@@ -803,6 +807,10 @@ impl test::TestReporter for LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_uncaught_error(&mut self, _origin: &str, _error: &JsError) {
+    // TODO(nayeemrmn)
   }
 
   fn report_step_wait(&mut self, desc: &test::TestStepDescription) {
