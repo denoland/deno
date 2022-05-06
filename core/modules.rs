@@ -178,9 +178,9 @@ fn wasm_module_evaluation_steps<'a>(
   let synthetic_module_promise_resolver = v8::Global::new(tc_scope, resolver);
   let mut imported_modules_promises = vec![];
 
-
+  let imports = v8::Object::new(tc_scope);
   {
-    for (_relative, resolved) in &import_specifiers {
+    for (relative, resolved) in &import_specifiers {
       let module = {
         let module_map = module_map.borrow();
         let id = module_map
@@ -227,24 +227,29 @@ fn wasm_module_evaluation_steps<'a>(
         imported_modules_promises.push(promise_global);
       }
 
+      let namespace = module.get_module_namespace();
+      let specifier_str = v8::String::new(tc_scope, &relative).unwrap();
+      imports.set(tc_scope, specifier_str.into(), namespace.into());
+
       assert!(!tc_scope.has_caught());
     }
   }
 
   let pending_evaluation = PendingWasmEvaluation {
+    done: false,
     module_handle,
     module_global: v8::Global::new(tc_scope, module),
     synthetic_module_promise_resolver,
     imported_modules_promises,
     import_specifiers,
     export_names,
+    imports_obj: v8::Global::new(tc_scope, imports),
   };
 
   module_map
     .borrow_mut()
     .pending_wasm_evaluations
     .push(pending_evaluation);
-
 
   Some(promise.into())
 }
@@ -850,22 +855,79 @@ pub(crate) enum ModuleError {
 }
 
 pub(crate) struct PendingWasmEvaluation {
+  done: bool,
   module_handle: v8::Global<v8::Object>,
   module_global: v8::Global<v8::Module>,
   synthetic_module_promise_resolver: v8::Global<v8::PromiseResolver>,
   imported_modules_promises: Vec<v8::Global<v8::Promise>>,
   import_specifiers: Vec<(String, ModuleSpecifier)>,
   export_names: Vec<v8::Global<v8::String>>,
+  imports_obj: v8::Global<v8::Object>,
 }
 
 impl PendingWasmEvaluation {
-  fn complete(&self, scope: &mut v8::HandleScope) {
+  pub fn is_done(&self) -> bool {
+    self.done
+  }
+
+  pub fn check_if_imported_modules_resolved(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> bool {
+    for module_promise in &self.imported_modules_promises {
+      let promise = module_promise.open(scope);
+      let promise_state = promise.state();
+
+      match promise_state {
+        v8::PromiseState::Pending => {
+          return false;
+        }
+        // TODO: handle rejected promises
+        v8::PromiseState::Rejected => {
+          todo!()
+        }
+        _ => {}
+      }
+    }
+
+    scope.perform_microtask_checkpoint();
+    true
+
+    // let module_evaluation = maybe_module_evaluation.unwrap();
+
+    // let promise = module_evaluation.promise.open(scope);
+    // let promise_state = promise.state();
+
+    // match promise_state {
+    //   v8::PromiseState::Pending => {
+    //     // NOTE: `poll_event_loop` will decide if
+    //     // runtime would be woken soon
+    //     state_rc.borrow_mut().pending_mod_evaluate = Some(module_evaluation);
+    //   }
+    //   v8::PromiseState::Fulfilled => {
+    //     scope.perform_microtask_checkpoint();
+    //     // Receiver end might have been already dropped, ignore the result
+    //     let _ = module_evaluation.sender.send(Ok(()));
+    //   }
+    //   v8::PromiseState::Rejected => {
+    //     let exception = promise.result(scope);
+    //     scope.perform_microtask_checkpoint();
+    //     // Receiver end might have been already dropped, ignore the result
+    //     let _ = module_evaluation
+    //       .sender
+    //       .send(exception_to_err_result(scope, exception, false));
+    //   }
+    // }
+  }
+
+  pub fn complete(&mut self, scope: &mut v8::HandleScope) {
+    self.done = true;
     let context = scope.get_current_context();
 
     let tc_scope = &mut v8::TryCatch::new(scope);
     let global = context.global(tc_scope);
 
-    let imports = v8::Object::new(tc_scope);
+    let imports = v8::Local::new(tc_scope, self.imports_obj.clone());
 
     let wasm_str = v8::String::new(tc_scope, "WebAssembly").unwrap();
     let wasm = global
@@ -904,10 +966,10 @@ impl PendingWasmEvaluation {
       );
     }
     assert!(!tc_scope.has_caught());
-    // Since TLA is active we need to return a promise.
-    // let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
-    // let undefined = v8::undefined(tc_scope);
-    // resolver.resolve(tc_scope, undefined.into());
+
+    let undefined = v8::undefined(tc_scope);
+    let resolver = self.synthetic_module_promise_resolver.open(tc_scope);
+    resolver.resolve(tc_scope, undefined.into());
   }
 }
 

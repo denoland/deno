@@ -881,6 +881,10 @@ impl JsRuntime {
       self.check_promise_exceptions()?;
     }
 
+    {
+      self.poll_pending_wasm_evaluations();
+    }
+
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
@@ -1362,11 +1366,23 @@ impl JsRuntime {
   fn poll_pending_wasm_evaluations(&mut self) {
     let module_map_rc = Self::module_map(self.v8_isolate());
 
-    if module_map_rc.borrow().pending_wasm_evaluations.is_empty() {
+    let mut module_map = module_map_rc.borrow_mut();
+
+    if module_map.pending_wasm_evaluations.is_empty() {
       return;
     }
 
-    todo!()
+    let scope = &mut self.handle_scope();
+    for pending_wasm_evaluation in &mut module_map.pending_wasm_evaluations {
+      if pending_wasm_evaluation.is_done() {
+        continue;
+      }
+
+      if pending_wasm_evaluation.check_if_imported_modules_resolved(scope) {
+        pending_wasm_evaluation.complete(scope);
+      }
+    }
+
     // let module_evaluation = maybe_module_evaluation.unwrap();
     // let scope = &mut self.handle_scope();
 
