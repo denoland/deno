@@ -1,8 +1,8 @@
-Uncaught error from ./compat/test_runner/top_level_fail_esm.mjs FAILED
+Uncaught error from./compat/test_runner/top_level_fail_esm.mjs FAILE (uncaught error)
 
 failures:
 
-[./compat/test_runner/top_level_fail_esm.mjs]
+./compat/test_runner/top_level_fail_esm.mjs (uncaught error)
 error: AssertionError: Values are not strictly equal:
 
 
@@ -20,7 +20,7 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 
 failures:
 
-[./compat/test_runner/top_level_fail_esm.mjs]
+./compat/test_runner/top_level_fail_esm.mjs (uncaught error)
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

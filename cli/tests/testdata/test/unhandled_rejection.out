@@ -3,7 +3,7 @@ Uncaught error from ./test/unhandled_rejection.ts FAILED
 
 failures:
 
-[./test/unhandled_rejection.ts]
+./test/unhandled_rejection.ts (uncaught error)
 error: (in promise) Error: rejection
   reject(new Error("rejection"));
          ^
@@ -15,7 +15,7 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 
 failures:
 
-[./test/unhandled_rejection.ts]
+./test/unhandled_rejection.ts (uncaught error)
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

@@ -522,8 +522,10 @@ impl TestReporter for PrettyTestReporter {
           failure_titles.push(failure_title);
         }
         if let Some(js_error) = uncaught_error {
-          let failure_title =
-            format!("[{}]", self.to_relative_path_or_remote_url(&origin));
+          let failure_title = format!(
+            "{} (uncaught error)",
+            self.to_relative_path_or_remote_url(&origin)
+          );
           println!("{}", &failure_title);
           println!(
             "{}: {}",

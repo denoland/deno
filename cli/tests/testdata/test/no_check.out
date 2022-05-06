@@ -2,7 +2,7 @@ Uncaught error from ./test/no_check.ts FAILED
 
 failures:
 
-[./test/no_check.ts]
+./test/no_check.ts (uncaught error)
 error: TypeError: Cannot read properties of undefined (reading 'fn')
 Deno.test();
      ^
@@ -12,7 +12,7 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 
 failures:
 
-[./test/no_check.ts]
+./test/no_check.ts (uncaught error)
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
