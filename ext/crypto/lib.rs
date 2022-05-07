@@ -792,8 +792,8 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
     let mut bytes = [0u8; 16];
     seeded_rng.fill(&mut bytes);
     uuid::Builder::from_bytes(bytes)
-      .set_version(uuid::Version::Random)
-      .build()
+      .with_version(uuid::Version::Random)
+      .into_uuid()
   } else {
     uuid::Uuid::new_v4()
   };

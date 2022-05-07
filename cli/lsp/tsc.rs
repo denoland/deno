@@ -43,7 +43,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
-use log::error;
 use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -215,7 +214,7 @@ impl AssetDocument {
   }
 }
 
-type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
+type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
 fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
   let assets = tsc::STATIC_ASSETS
@@ -224,7 +223,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
       let url_str = format!("asset:///{}", k);
       let specifier = resolve_url(&url_str).unwrap();
       let asset = AssetDocument::new(specifier.clone(), v);
-      (specifier, Some(asset))
+      (specifier, asset)
     })
     .collect();
   Arc::new(Mutex::new(assets))
@@ -245,10 +244,7 @@ impl AssetsSnapshot {
     self.0.lock().contains_key(k)
   }
 
-  pub fn get_cached(
-    &self,
-    k: &ModuleSpecifier,
-  ) -> Option<Option<AssetDocument>> {
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<AssetDocument> {
     self.0.lock().get(k).cloned()
   }
 }
@@ -269,47 +265,25 @@ impl Assets {
     }
   }
 
+  /// Initializes with the assets in the isolate.
+  pub async fn intitialize(&self, state_snapshot: Arc<StateSnapshot>) {
+    let assets = get_isolate_assets(&self.ts_server, state_snapshot).await;
+    let mut assets_map = self.assets.lock();
+    for asset in assets {
+      if !assets_map.contains_key(asset.specifier()) {
+        assets_map.insert(asset.specifier().clone(), asset);
+      }
+    }
+  }
+
   pub fn snapshot(&self) -> AssetsSnapshot {
     // it's ok to not make a complete copy for snapshotting purposes
     // because assets are static
     AssetsSnapshot(self.assets.clone())
   }
 
-  pub fn get_cached(
-    &self,
-    k: &ModuleSpecifier,
-  ) -> Option<Option<AssetDocument>> {
-    self.assets.lock().get(k).cloned()
-  }
-
-  pub async fn get(
-    &self,
-    specifier: &ModuleSpecifier,
-    // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
-    // a constructor dependency
-    get_snapshot: impl Fn() -> Arc<StateSnapshot>,
-  ) -> LspResult<Option<AssetDocument>> {
-    // Race conditions are ok to happen here since the assets are static
-    if let Some(maybe_asset) = self.get_cached(specifier) {
-      Ok(maybe_asset)
-    } else {
-      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot())
-        .await
-        .map_err(|err| {
-          error!("Error getting asset {}: {}", specifier, err);
-          LspError::internal_error()
-        })?;
-      // if another thread has inserted into the cache, return the asset
-      // that already exists in the cache so that we don't store duplicate
-      // assets in memory anywhere
-      let mut assets = self.assets.lock();
-      if let Some(maybe_asset) = assets.get(specifier) {
-        Ok(maybe_asset.clone())
-      } else {
-        assets.insert(specifier.clone(), maybe_asset.clone());
-        Ok(maybe_asset)
-      }
-    }
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<AssetDocument> {
+    self.assets.lock().get(specifier).cloned()
   }
 
   pub fn cache_navigation_tree(
@@ -318,38 +292,44 @@ impl Assets {
     navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
     let mut assets = self.assets.lock();
-    let maybe_doc = assets
+    let doc = assets
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
-    let doc = maybe_doc
-      .as_mut()
-      .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
     *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
 }
 
-/// Optionally returns an internal asset, first checking for any static assets
-/// in Rust, then checking any previously retrieved static assets from the
-/// isolate, and then finally, the tsc isolate itself.
-async fn get_asset(
-  specifier: &ModuleSpecifier,
+/// Get all the assets stored in the tsc isolate.
+async fn get_isolate_assets(
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
-) -> Result<Option<AssetDocument>, AnyError> {
-  let specifier_str = specifier.to_string().replace("asset:///", "");
-  if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument::new(specifier.clone(), text));
-    Ok(maybe_asset)
-  } else {
-    let res = ts_server
-      .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
-      .await?;
-    let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset =
-      maybe_text.map(|text| AssetDocument::new(specifier.clone(), text));
-    Ok(maybe_asset)
+) -> Vec<AssetDocument> {
+  let res: Value = ts_server
+    .request(state_snapshot, RequestMethod::GetAssets)
+    .await
+    .unwrap();
+  let response_assets = match res {
+    Value::Array(value) => value,
+    _ => unreachable!(),
+  };
+  let mut assets = Vec::with_capacity(response_assets.len());
+
+  for asset in response_assets {
+    let mut obj = match asset {
+      Value::Object(obj) => obj,
+      _ => unreachable!(),
+    };
+    let specifier_str = obj.get("specifier").unwrap().as_str().unwrap();
+    let specifier = ModuleSpecifier::parse(specifier_str).unwrap();
+    let text = match obj.remove("text").unwrap() {
+      Value::String(text) => text,
+      _ => unreachable!(),
+    };
+    assets.push(AssetDocument::new(specifier, text));
   }
+
+  assets
 }
 
 fn get_tag_body_text(
@@ -829,16 +809,14 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub async fn to_link(
+  pub fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
     let target_uri = language_server
       .url_map
@@ -883,7 +861,7 @@ impl DocumentSpan {
   ) -> Option<ModuleSpecifier> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
     let asset_or_doc =
-      language_server.get_maybe_cached_asset_or_document(&specifier)?;
+      language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
     let mut target = language_server
@@ -927,15 +905,13 @@ pub struct NavigateToItem {
 }
 
 impl NavigateToItem {
-  pub async fn to_symbol_information(
+  pub fn to_symbol_information(
     &self,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
-    let asset_or_doc = language_server
-      .get_asset_or_document(&specifier)
-      .await
-      .ok()?;
+    let asset_or_doc =
+      language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
     let uri = language_server
       .url_map
@@ -1148,15 +1124,12 @@ impl ImplementationLocation {
     }
   }
 
-  pub async fn to_link(
+  pub fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    self
-      .document_span
-      .to_link(line_index, language_server)
-      .await
+    self.document_span.to_link(line_index, language_server)
   }
 }
 
@@ -1185,8 +1158,7 @@ impl RenameLocations {
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
-      let asset_or_doc =
-        language_server.get_asset_or_document(&specifier).await?;
+      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -1276,7 +1248,6 @@ impl DefinitionInfoAndBoundSpan {
         if let Some(link) = di
           .document_span
           .to_link(line_index.clone(), language_server)
-          .await
         {
           location_links.push(link);
         }
@@ -1345,13 +1316,12 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub async fn to_text_document_edit(
+  pub fn to_text_document_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
-    let asset_or_doc =
-      language_server.get_asset_or_document(&specifier).await?;
+    let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
     let edits = self
       .text_changes
       .iter()
@@ -1359,22 +1329,21 @@ impl FileTextChanges {
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
+        uri: specifier,
         version: asset_or_doc.document_lsp_version(),
       },
       edits,
     })
   }
 
-  pub async fn to_text_document_change_ops(
+  pub fn to_text_document_change_ops(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
     let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
-      let asset_or_doc =
-        language_server.get_asset_or_document(&specifier).await?;
+      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
       Some(asset_or_doc)
     } else {
       None
@@ -1404,7 +1373,7 @@ impl FileTextChanges {
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
+        uri: specifier,
         version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
@@ -1609,7 +1578,7 @@ impl RefactorEditInfo {
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
-      let ops = edit.to_text_document_change_ops(language_server).await?;
+      let ops = edit.to_text_document_change_ops(language_server)?;
       all_ops.extend(ops);
     }
 
@@ -1700,16 +1669,14 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
-  pub async fn try_resolve_call_hierarchy_item(
+  pub fn try_resolve_call_hierarchy_item(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
 
     Some(self.to_call_hierarchy_item(
       target_asset_or_doc.line_index(),
@@ -1801,16 +1768,14 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
-  pub async fn try_resolve_call_hierarchy_incoming_call(
+  pub fn try_resolve_call_hierarchy_incoming_call(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
 
     Some(lsp::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
@@ -1835,17 +1800,15 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
-  pub async fn try_resolve_call_hierarchy_outgoing_call(
+  pub fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
 
     Some(lsp::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
@@ -2612,9 +2575,7 @@ fn op_get_length(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(Some(asset)) =
-    state.state_snapshot.assets.get_cached(&specifier)
-  {
+  let r = if let Some(asset) = state.state_snapshot.assets.get(&specifier) {
     Ok(asset.length())
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
@@ -2645,8 +2606,8 @@ fn op_get_text(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
-  let content = if let Some(Some(content)) = &maybe_asset {
+  let maybe_asset = state.state_snapshot.assets.get(&specifier);
+  let content = if let Some(content) = &maybe_asset {
     content.text_str()
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
@@ -2978,8 +2939,7 @@ pub enum RequestMethod {
     find_in_comments: bool,
     provide_prefix_and_suffix_text_for_rename: bool,
   },
-  /// Retrieve the text of an assets that exists in memory in the isolate.
-  GetAsset(ModuleSpecifier),
+  GetAssets,
   /// Retrieve the possible refactor info for a range of a file.
   GetApplicableRefactors((ModuleSpecifier, TextSpan, String)),
   /// Retrieve the refactor edit info for a range.
@@ -3060,10 +3020,9 @@ impl RequestMethod {
           "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
-      RequestMethod::GetAsset(specifier) => json!({
+      RequestMethod::GetAssets => json!({
         "id": id,
-        "method": "getAsset",
-        "specifier": specifier,
+        "method": "getAssets",
       }),
       RequestMethod::GetApplicableRefactors((specifier, span, kind)) => json!({
         "id": id,
@@ -3743,31 +3702,32 @@ mod tests {
   }
 
   #[test]
-  fn test_request_asset() {
+  fn test_request_assets() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
-      &temp_dir,
-      false,
-      json!({
-        "target": "esnext",
-        "module": "esnext",
-        "lib": ["deno.ns", "deno.window"],
-        "noEmit": true,
-      }),
-      &[],
-    );
-    let specifier =
-      resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
+    let (mut runtime, state_snapshot, _) =
+      setup(&temp_dir, false, json!({}), &[]);
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetAsset(specifier),
+      RequestMethod::GetAssets,
       Default::default(),
-    );
-    assert!(result.is_ok());
-    let response: Option<String> =
-      serde_json::from_value(result.unwrap()).unwrap();
-    assert!(response.is_some());
+    )
+    .unwrap();
+    let assets = result.as_array().unwrap();
+
+    // You might have found this assertion starts failing after upgrading TypeScript.
+    // Just update the new number of assets (declaration files) for this number.
+    assert_eq!(assets.len(), 66);
+
+    // get some notification when the size of the assets grows
+    let mut total_size = 0;
+    for asset in assets {
+      let obj = asset.as_object().unwrap();
+      let text = obj.get("text").unwrap().as_str().unwrap();
+      total_size += text.len();
+    }
+    assert!(total_size > 0);
+    assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB
   }
 
   #[test]

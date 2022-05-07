@@ -6,6 +6,86 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.21.2 / 2022.05.05
+
+- fix(cli): add dom.extras lib (#14430)
+- fix(coverage): exclude .snap files (#14480)
+- fix(ext/http): explicitly close resource after reading (#14471)
+- fix(runtime): lossy utf8 readTextFile (#14456)
+- fix(task): allow hyphen values after task name (#14434)
+- fix(task): support forwarding lone double hyphen (#14436)
+- fix(test): actually capture stdout and stderr in workers (#14435)
+- fix(test/bench): accept file protocol module specifier CLI args (#14429)
+- fix(vendor): do not panic on relative specifier with scheme-like folder name
+  (#14453)
+- fix: improve formatting jsdocs with asterisk as first char on line (#14446)
+
+### 1.21.1 / 2022.04.28
+
+- Reland "feat(ext/http): stream auto resp body compression" (#14345)
+- Reland "perf(http): optimize ReadableStreams backed by a resource" (#14346)
+- feat(ext/console): Add string abbreviation size option for "Deno.inspect"
+  (#14384)
+- fix(ext/console): Compact empty iterables when calling Deno.inspect with
+  compact false (#14387)
+- fix: change shade of "gray" color in eye-catchers (#14309)
+- fix(bench): eliminate sanitizeExit overhead (#14361)
+- fix(bench): report pending summary before clearing (#14369)
+- fix(bench): reset reporter context (#14360)
+- fix(cli): wrap long line of the env variables help (#14422)
+- fix(ext/http): truncate read bytes when streaming bodies (#14389)
+- fix(runtime/js/spawn): Pass stdio options for spawn() and spawnSync() (#14358)
+- fix(test): capture inherited stdout and stderr for subprocesses in test output
+  (#14395)
+- fix(test): capture worker stdout and stderr in test output (#14410)
+- fix(watcher): don't clear screen on start (#14351)
+- fix(workers): Make `worker.terminate()` not block the current thread (#13941)
+- fix: `deno task` forward double hyphen (#14419)
+- perf(ext/http): fast path for uncompressed bodies (#14366)
+- perf(ext/http): faster is_content_compressible (#14383)
+- perf(runtime): read entire files in single ops (#14261)
+- perf(serde_v8): zero-copy StringOrBuffer (#14381)
+
+### 1.21.0 / 2022.04.20
+
+- feat(bench): update API, new console reporter (#14305)
+- feat(cli/fmt): ignore .git folder when formatting files (#14138)
+- feat(core): Add initial support for realms (#14019)
+- feat(ext/net): Deno.upgradeHttp handles unix connections (#13987)
+- feat(ext/web): add globalThis.reportError() (#13799)
+- feat(repl): Don't type check when importing modules (#14112)
+- feat(repl): add "--eval-file" flag to execute a script file on startup
+  (#14247)
+- feat(repl): add global clear() function (#14332)
+- feat(runtime): two-tier subprocess API (#11618)
+- feat(test): Add "name", "origin" and "parent" to "Deno.TestContext" (#14007)
+- feat(test): Improve testing report output (#14255)
+- feat(test): format user code output (#14271)
+- feat(test): skip internal stack frames for errors (#14302)
+- feat(test): use structured data for JavaScript errors in tests (#14287)
+- feat: Add "deno check" subcommand for type checking (#14072)
+- feat: Add DENO_NO_PROMPT variable (#14209)
+- feat: Better formatting for AggregateError (#14285)
+- fix(cli/emit): Check JS roots with // @ts-check (#14090)
+- fix(cli/tools/test): Prefix test module paths with "./" (#14301)
+- fix(fmt): regression where some short if stmt headers being split on multiple
+  lines (#14292)
+- fix(permissions): fallback to denied access if the permission prompt fails
+  (#14235)
+- fix: `--watch` was losing items (#14317)
+- fix: panic when trying to pledge permissions before restoring previous pledge
+  (#14306)
+- perf(fmt/lint): incremental formatting and linting (#14314)
+- perf(runtime): bypass tokio file and bump op buffer size to 64K (#14319)
+- perf: move `Deno.writeTextFile` and like functions to Rust (#14221)
+- upgrade: rusty_v8 0.42.0 (#14334)
+
+### 1.20.6 / 2022.04.14
+
+- fix(serde_v8): more robust number deserialization (#14216)
+- fix(test): Don't error on missing op details (#14184)
+- fix: upgrade to swc_ecmascript 0.143 (#14238)
+
 ### 1.20.5 / 2022.04.07
 
 - feat(lsp/unstable): add experimental testing API (#13798)

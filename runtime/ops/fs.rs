@@ -9,26 +9,29 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::ZeroCopyBuf;
 
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::ResourceId;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
+use std::io::Write;
 use std::io::{Error, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use tokio::io::AsyncSeekExt;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
@@ -40,6 +43,8 @@ pub fn init() -> Extension {
     .ops(vec![
       op_open_sync::decl(),
       op_open_async::decl(),
+      op_write_file_sync::decl(),
+      op_write_file_async::decl(),
       op_seek_sync::decl(),
       op_seek_async::decl(),
       op_fdatasync_sync::decl(),
@@ -91,6 +96,10 @@ pub fn init() -> Extension {
       op_futime_async::decl(),
       op_utime_sync::decl(),
       op_utime_async::decl(),
+      op_readfile_sync::decl(),
+      op_readfile_text_sync::decl(),
+      op_readfile_async::decl(),
+      op_readfile_text_async::decl(),
     ])
     .build()
 }
@@ -117,7 +126,7 @@ pub struct OpenOptions {
 
 fn open_helper(
   state: &mut OpState,
-  args: OpenArgs,
+  args: &OpenArgs,
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
 
@@ -136,7 +145,7 @@ fn open_helper(
   }
 
   let permissions = state.borrow_mut::<Permissions>();
-  let options = args.options;
+  let options = &args.options;
 
   if options.read {
     permissions.read.check(&path)?;
@@ -162,12 +171,11 @@ fn op_open_sync(
   state: &mut OpState,
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(state, args)?;
+  let (path, open_options) = open_helper(state, &args)?;
   let std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
-  let tokio_file = tokio::fs::File::from_std(std_file);
-  let resource = StdFileResource::fs_file(tokio_file);
+  let resource = StdFileResource::fs_file(std_file);
   let rid = state.resource_table.add(resource);
   Ok(rid)
 }
@@ -177,16 +185,109 @@ async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(&path)
-    .await
-    .map_err(|err| {
+  let (path, open_options) = open_helper(&mut state.borrow_mut(), &args)?;
+  let std_file = tokio::task::spawn_blocking(move || {
+    open_options.open(path.clone()).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-    })?;
-  let resource = StdFileResource::fs_file(tokio_file);
+    })
+  })
+  .await?;
+  let resource = StdFileResource::fs_file(std_file?);
   let rid = state.borrow_mut().resource_table.add(resource);
   Ok(rid)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileArgs {
+  path: String,
+  mode: Option<u32>,
+  append: bool,
+  create: bool,
+  data: ZeroCopyBuf,
+  cancel_rid: Option<ResourceId>,
+}
+
+impl WriteFileArgs {
+  fn into_open_args_and_data(self) -> (OpenArgs, ZeroCopyBuf) {
+    (
+      OpenArgs {
+        path: self.path,
+        mode: self.mode,
+        options: OpenOptions {
+          read: false,
+          write: true,
+          create: self.create,
+          truncate: !self.append,
+          append: self.append,
+          create_new: false,
+        },
+      },
+      self.data,
+    )
+  }
+}
+
+#[op]
+fn op_write_file_sync(
+  state: &mut OpState,
+  args: WriteFileArgs,
+) -> Result<(), AnyError> {
+  let (open_args, data) = args.into_open_args_and_data();
+  let (path, open_options) = open_helper(state, &open_args)?;
+  write_file(&path, open_options, &open_args, data)
+}
+
+#[op]
+async fn op_write_file_async(
+  state: Rc<RefCell<OpState>>,
+  args: WriteFileArgs,
+) -> Result<(), AnyError> {
+  let cancel_handle = match args.cancel_rid {
+    Some(cancel_rid) => state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid)
+      .ok(),
+    None => None,
+  };
+  let (open_args, data) = args.into_open_args_and_data();
+  let (path, open_options) = open_helper(&mut *state.borrow_mut(), &open_args)?;
+  let write_future = tokio::task::spawn_blocking(move || {
+    write_file(&path, open_options, &open_args, data)
+  });
+  if let Some(cancel_handle) = cancel_handle {
+    write_future.or_cancel(cancel_handle).await???;
+  } else {
+    write_future.await??;
+  }
+  Ok(())
+}
+
+fn write_file(
+  path: &Path,
+  open_options: std::fs::OpenOptions,
+  _open_args: &OpenArgs,
+  data: ZeroCopyBuf,
+) -> Result<(), AnyError> {
+  let mut std_file = open_options.open(path).map_err(|err| {
+    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+  })?;
+
+  // need to chmod the file if it already exists and a mode is specified
+  #[cfg(unix)]
+  if let Some(mode) = &_open_args.mode {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = PermissionsExt::from_mode(mode & 0o777);
+    std_file
+      .set_permissions(permissions)
+      .map_err(|err: Error| {
+        Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
+      })?;
+  }
+
+  std_file.write_all(&data)?;
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -242,12 +343,15 @@ async fn op_seek_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let pos = (*fs_file).0.as_mut().unwrap().seek(seek_from).await?;
-  Ok(pos)
+  tokio::task::spawn_blocking(move || {
+    let mut std_file = std_file.lock().unwrap();
+    std_file.seek(seek_from)
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[op]
@@ -276,12 +380,15 @@ async fn op_fdatasync_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  (*fs_file).0.as_mut().unwrap().sync_data().await?;
-  Ok(())
+  tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.sync_data()
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[op]
@@ -307,12 +414,15 @@ async fn op_fsync_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  (*fs_file).0.as_mut().unwrap().sync_all().await?;
-  Ok(())
+  tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.sync_all()
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[op]
@@ -341,11 +451,15 @@ async fn op_fstat_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
+  let metadata = tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.metadata()
+  })
+  .await?
+  .map_err(AnyError::from)?;
   Ok(get_stat(metadata))
 }
 
@@ -389,19 +503,11 @@ async fn op_flock_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    let std_file = std_file.lock().unwrap();
     if exclusive {
       std_file.lock_exclusive()?;
     } else {
@@ -446,19 +552,11 @@ async fn op_funlock_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    let std_file = std_file.lock().unwrap();
     std_file.unlock()?;
     Ok(())
   })
@@ -571,28 +669,12 @@ pub struct ChmodArgs {
 
 #[op]
 fn op_chmod_sync(state: &mut OpState, args: ChmodArgs) -> Result<(), AnyError> {
-  let path = Path::new(&args.path).to_path_buf();
+  let path = Path::new(&args.path);
   let mode = args.mode & 0o777;
-  let err_mapper = |err: Error| {
-    Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
-  };
 
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    let permissions = PermissionsExt::from_mode(mode);
-    std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
-    Ok(())
-  }
-  // TODO Implement chmod for Windows (#4357)
-  #[cfg(not(unix))]
-  {
-    // Still check file/dir exists on Windows
-    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
-    Err(generic_error("Not implemented"))
-  }
+  raw_chmod(path, mode)
 }
 
 #[op]
@@ -610,26 +692,30 @@ async fn op_chmod_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_chmod_async {} {:o}", path.display(), mode);
-    let err_mapper = |err: Error| {
-      Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
-    };
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::PermissionsExt;
-      let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
-      Ok(())
-    }
-    // TODO Implement chmod for Windows (#4357)
-    #[cfg(not(unix))]
-    {
-      // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
-      Err(not_supported())
-    }
+    raw_chmod(&path, mode)
   })
   .await
   .unwrap()
+}
+
+fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
+  };
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = PermissionsExt::from_mode(_raw_mode);
+    std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
+    Ok(())
+  }
+  // TODO Implement chmod for Windows (#4357)
+  #[cfg(not(unix))]
+  {
+    // Still check file/dir exists on Windows
+    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
+    Err(not_supported())
+  }
 }
 
 #[derive(Deserialize)]
@@ -1554,12 +1640,15 @@ async fn op_ftruncate_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
 
-  (*fs_file).0.as_mut().unwrap().set_len(len).await?;
-  Ok(())
+  tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
+    std_file.set_len(len)
+  })
+  .await?
+  .map_err(AnyError::from)
 }
 
 #[derive(Deserialize)]
@@ -1853,20 +1942,10 @@ async fn op_futime_async(
     return Err(bad_resource_id());
   }
 
-  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
-    .borrow_mut()
-    .await;
-
-  let std_file = (*fs_file)
-    .0
-    .as_mut()
-    .unwrap()
-    .try_clone()
-    .await?
-    .into_std()
-    .await;
-
+  let fs_file = resource.fs_file.as_ref().unwrap();
+  let std_file = fs_file.0.as_ref().unwrap().clone();
   tokio::task::spawn_blocking(move || {
+    let std_file = std_file.lock().unwrap();
     filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
     Ok(())
   })
@@ -1933,4 +2012,91 @@ fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
     .check_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
+}
+
+#[op]
+fn op_readfile_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(path)?;
+  Ok(std::fs::read(path)?.into())
+}
+
+#[op]
+fn op_readfile_text_sync(
+  state: &mut OpState,
+  path: String,
+) -> Result<String, AnyError> {
+  let permissions = state.borrow_mut::<Permissions>();
+  let path = Path::new(&path);
+  permissions.read.check(path)?;
+  Ok(string_from_utf8_lossy(std::fs::read(path)?))
+}
+
+#[op]
+async fn op_readfile_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+  cancel_rid: Option<ResourceId>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  {
+    let path = Path::new(&path);
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
+  let fut = tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
+  });
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
+    }
+  }
+  fut.await?
+}
+
+#[op]
+async fn op_readfile_text_async(
+  state: Rc<RefCell<OpState>>,
+  path: String,
+  cancel_rid: Option<ResourceId>,
+) -> Result<String, AnyError> {
+  {
+    let path = Path::new(&path);
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(path)?;
+  }
+  let fut = tokio::task::spawn_blocking(move || {
+    let path = Path::new(&path);
+    Ok(string_from_utf8_lossy(std::fs::read(path)?))
+  });
+  if let Some(cancel_rid) = cancel_rid {
+    let cancel_handle = state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(cancel_rid);
+    if let Ok(cancel_handle) = cancel_handle {
+      return fut.or_cancel(cancel_handle).await??;
+    }
+  }
+  fut.await?
+}
+
+// Like String::from_utf8_lossy but operates on owned values
+fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
+  match String::from_utf8_lossy(&buf) {
+    // buf contained non-utf8 chars than have been patched
+    Cow::Owned(s) => s,
+    // SAFETY: if Borrowed then the buf only contains utf8 chars,
+    // we do this instead of .into_owned() to avoid copying the input buf
+    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
+  }
 }

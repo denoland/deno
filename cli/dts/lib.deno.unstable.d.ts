@@ -8,14 +8,12 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    /** Specify number of iterations benchmark should perform. Defaults to 1000. */
-    n?: number;
-    /** Specify number of warmup iterations benchmark should perform. Defaults
-     * to 1000.
-     *
-     * These iterations are not measured. It allows the code to be optimized
-     * by JIT compiler before measuring its performance. */
-    warmup?: number;
+    /** Group name for the benchmark.
+     * Grouped benchmarks produce a time summary */
+    group?: string;
+    /** Benchmark should be used as the baseline for other benchmarks
+     * If there are multiple baselines in a group, the first one is used as the baseline */
+    baseline?: boolean;
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to true and fail the bench suite. */
     only?: boolean;
@@ -897,45 +895,6 @@ declare namespace Deno {
     options?: EmitOptions,
   ): Promise<EmitResult>;
 
-  /** **UNSTABLE**: Should not have same name as `window.location` type. */
-  interface Location {
-    /** The full url for the module, e.g. `file://some/file.ts` or
-     * `https://some/file.ts`. */
-    fileName: string;
-    /** The line number in the file. It is assumed to be 1-indexed. */
-    lineNumber: number;
-    /** The column number in the file. It is assumed to be 1-indexed. */
-    columnNumber: number;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Given a current location in a module, lookup the source location and return
-   * it.
-   *
-   * When Deno transpiles code, it keep source maps of the transpiled code. This
-   * function can be used to lookup the original location. This is
-   * automatically done when accessing the `.stack` of an error, or when an
-   * uncaught error is logged. This function can be used to perform the lookup
-   * for creating better error handling.
-   *
-   * **Note:** `lineNumber` and `columnNumber` are 1 indexed, which matches display
-   * expectations, but is not typical of most index numbers in Deno.
-   *
-   * An example:
-   *
-   * ```ts
-   * const origin = Deno.applySourceMap({
-   *   fileName: "file://my/module.ts",
-   *   lineNumber: 5,
-   *   columnNumber: 15
-   * });
-   *
-   * console.log(`${origin.fileName}:${origin.lineNumber}:${origin.columnNumber}`);
-   * ```
-   */
-  export function applySourceMap(location: Location): Location;
-
   export type SetRawOptions = {
     cbreak: boolean;
   };
@@ -1363,6 +1322,145 @@ declare namespace Deno {
   export function upgradeHttp(
     request: Request,
   ): Promise<[Deno.Conn, Uint8Array]>;
+
+  export interface SpawnOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     * If not specified, the cwd of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     * Doesn't guarantee that only `opt.env` variables are present,
+     * as the OS may set environmental variables for processes.
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call
+     * in the child process. Failure in the setuid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+
+    /** Defaults to "null". */
+    stdin?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stdout?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  /**
+   * Spawns a child process.
+   *
+   * If stdin is set to "piped", the stdin WritableStream needs to be closed manually.
+   *
+   * ```ts
+   * const child = Deno.spawnChild(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   *
+   * // open a file and pipe the subprocess output to it.
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * child.stdin.close();
+   * const status = await child.status;
+   * ```
+   */
+  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Child<T>;
+
+  export class Child<T extends SpawnOptions> {
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<ChildStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and status. */
+    output(): Promise<SpawnOutput<T>>;
+    /** Kills the process with given Signal. */
+    kill(signo: Signal): void;
+  }
+
+  /**
+   * Executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * ```ts
+   * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *        "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   */
+  export function spawn<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Promise<SpawnOutput<T>>;
+
+  /**
+   * Synchronously executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * ```ts
+   * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *       "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   */
+  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): SpawnOutput<T>;
+
+  export type ChildStatus =
+    | {
+      success: true;
+      code: 0;
+      signal: null;
+    }
+    | {
+      success: false;
+      code: number;
+      signal: number | null;
+    };
+
+  export interface SpawnOutput<T extends SpawnOptions> {
+    status: ChildStatus;
+    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
+    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
+  }
 }
 
 declare function fetch(

@@ -7,7 +7,9 @@ use crate::keys::{v8_struct_key, KeyCache};
 use crate::magic::transl8::FromV8;
 use crate::magic::transl8::{visit_magic, MagicType};
 use crate::payload::ValueType;
-use crate::{magic, Buffer, ByteString, DetachedBuffer, U16String};
+use crate::{
+  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
+};
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -75,14 +77,19 @@ macro_rules! deserialize_signed {
     where
       V: Visitor<'de>,
     {
-      let value: $t = match self.input.is_big_int() {
-        true => {
-          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
-          bigint.unwrap().i64_value().0 as $t
-        }
-        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
-      };
-      visitor.$vmethod(value)
+      visitor.$vmethod(
+        if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+          x.value() as $t
+        } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+          x.i64_value().0 as $t
+        } else if let Some(x) = self.input.number_value(self.scope) {
+          x as $t
+        } else if let Some(x) = self.input.to_big_int(self.scope) {
+          x.i64_value().0 as $t
+        } else {
+          return Err(Error::ExpectedInteger);
+        },
+      )
     }
   };
 }
@@ -93,14 +100,19 @@ macro_rules! deserialize_unsigned {
     where
       V: Visitor<'de>,
     {
-      let value: $t = match self.input.is_big_int() {
-        true => {
-          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
-          bigint.unwrap().u64_value().0 as $t
-        }
-        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
-      };
-      visitor.$vmethod(value)
+      visitor.$vmethod(
+        if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+          x.value() as $t
+        } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+          x.u64_value().0 as $t
+        } else if let Some(x) = self.input.number_value(self.scope) {
+          x as $t
+        } else if let Some(x) = self.input.to_big_int(self.scope) {
+          x.u64_value().0 as $t
+        } else {
+          return Err(Error::ExpectedInteger);
+        },
+      )
     }
   };
 }
@@ -133,7 +145,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       // Map to Vec<u8> when deserialized via deserialize_any
       // e.g: for untagged enums or StringOrBuffer
       ValueType::ArrayBufferView | ValueType::ArrayBuffer => {
-        magic::zero_copy_buf::ZeroCopyBuf::from_v8(&mut *self.scope, self.input)
+        magic::v8slice::V8Slice::from_v8(&mut *self.scope, self.input)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
     }
@@ -162,14 +174,26 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    visitor.visit_f32(self.input.number_value(self.scope).unwrap() as f32)
+    self.deserialize_f64(visitor)
   }
 
   fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
   where
     V: Visitor<'de>,
   {
-    visitor.visit_f64(self.input.number_value(self.scope).unwrap())
+    visitor.visit_f64(
+      if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
+        x.value() as f64
+      } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
+        bigint_to_f64(x)
+      } else if let Some(x) = self.input.number_value(self.scope) {
+        x as f64
+      } else if let Some(x) = self.input.to_big_int(self.scope) {
+        bigint_to_f64(x)
+      } else {
+        return Err(Error::ExpectedNumber);
+      },
+    )
   }
 
   wip!(deserialize_char);
@@ -325,8 +349,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     match name {
-      Buffer::MAGIC_NAME => {
-        visit_magic(visitor, Buffer::from_v8(self.scope, self.input)?)
+      ZeroCopyBuf::MAGIC_NAME => {
+        visit_magic(visitor, ZeroCopyBuf::from_v8(self.scope, self.input)?)
       }
       DetachedBuffer::MAGIC_NAME => {
         visit_magic(visitor, DetachedBuffer::from_v8(self.scope, self.input)?)
@@ -336,6 +360,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       U16String::MAGIC_NAME => {
         visit_magic(visitor, U16String::from_v8(self.scope, self.input)?)
+      }
+      StringOrBuffer::MAGIC_NAME => {
+        visit_magic(visitor, StringOrBuffer::from_v8(self.scope, self.input)?)
       }
       magic::Value::MAGIC_NAME => {
         visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
@@ -618,4 +645,23 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
     let mut d = Deserializer::new(self.scope, self.value, None);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
   }
+}
+
+fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
+  // log2(f64::MAX) == log2(1.7976931348623157e+308) == 1024
+  let mut words: [u64; 16] = [0; 16]; // 1024/64 => 16 64bit words
+  let (neg, words) = b.to_words_array(&mut words);
+  if b.word_count() > 16 {
+    return match neg {
+      true => f64::NEG_INFINITY,
+      false => f64::INFINITY,
+    };
+  }
+  let sign = if neg { -1.0 } else { 1.0 };
+  let x: f64 = words
+    .iter()
+    .enumerate()
+    .map(|(i, w)| (*w as f64) * 2.0f64.powi(64 * i as i32))
+    .sum();
+  sign * x
 }

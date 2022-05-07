@@ -6,6 +6,6 @@ pub mod resource;
 pub mod string_or_buffer;
 pub mod transl8;
 pub mod u16string;
+pub mod v8slice;
 mod value;
-pub mod zero_copy_buf;
 pub use value::Value;
