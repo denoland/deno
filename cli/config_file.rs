@@ -531,6 +531,7 @@ pub struct ConfigFileJson {
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
+  pub permissions: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -647,6 +648,10 @@ impl ConfigFile {
     } else {
       Ok(None)
     }
+  }
+
+  pub fn to_permissions(&self) -> Result<(), AnyError> {
+    todo!()
   }
 
   /// Return any tasks that are defined in the configuration file as a sequence
@@ -821,6 +826,13 @@ mod tests {
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
         "server": "deno run --allow-net --allow-read server.ts"
+      },
+      "permissions": {
+        "read": true,
+        "write": ["some/dir", "file.ts"],
+        "env": false,
+        "ffi": false,
+        "run": ["deno", "echo"]
       }
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
@@ -887,6 +899,28 @@ mod tests {
     assert_eq!(
       tasks_config["server"],
       "deno run --allow-net --allow-read server.ts"
+    );
+
+    let permissions_config = config_file.json.permissions.unwrap();
+    assert_eq!(
+      permissions_config["read"],
+      true,
+    );
+    assert_eq!(
+      permissions_config["write"].as_array().unwrap(),
+      &["some/dir", "file.ts"],
+    );
+    assert_eq!(
+      permissions_config["env"],
+      false,
+    );
+    assert_eq!(
+      permissions_config["ffi"],
+      false,
+    );
+    assert_eq!(
+      permissions_config["run"].as_array().unwrap(),
+      &["deno", "echo"],
     );
   }
 
