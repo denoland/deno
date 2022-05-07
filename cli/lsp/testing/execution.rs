@@ -182,7 +182,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
-  sender: TestEventSender,
+  sender: &TestEventSender,
   token: CancellationToken,
   options: Option<Value>,
 ) -> Result<(), AnyError> {
@@ -338,22 +338,32 @@ impl TestRun {
       let specifier = specifier.clone();
       let ps = ps.clone();
       let permissions = permissions.clone();
-      let sender = sender.clone();
+      let mut sender = sender.clone();
       let options = self.filters.get(&specifier).map(|f| f.as_test_options());
       let token = self.token.clone();
 
       tokio::task::spawn_blocking(move || {
-        let future = test_specifier(
+        let origin = specifier.to_string();
+        let file_result = run_basic(test_specifier(
           ps,
           permissions,
           specifier,
           test::TestMode::Executable,
-          sender,
+          &sender,
           token,
           options,
-        );
-
-        run_basic(future)
+        ));
+        if let Err(error) = file_result {
+          if error.is::<JsError>() {
+            sender.send(test::TestEvent::UncaughtError(
+              origin,
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ))?;
+          } else {
+            return Err(error);
+          }
+        }
+        Ok(())
       })
     });
 
@@ -406,6 +416,8 @@ impl TestRun {
               reporter.report_result(&description, &result, elapsed);
             }
             test::TestEvent::UncaughtError(origin, error) => {
+              reporter.report_uncaught_error(&origin, &error);
+              summary.failed += 1;
               summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepWait(description) => {
