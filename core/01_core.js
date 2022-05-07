@@ -211,11 +211,11 @@
   }
 
   function close2(rid) {
-    opSync("op_close_2", rid);
+    // opSync("op_close_2", rid);
   }
 
   function tryClose2(rid) {
-    opSync("op_try_close_2", rid);
+    // opSync("op_try_close_2", rid);
   }
 
   function print(str, isErr = false) {

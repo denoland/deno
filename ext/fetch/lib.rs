@@ -189,7 +189,7 @@ pub fn op_fetch<FP>(
   method: ByteString,
   url: String,
   headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
+  client_rid: Option<Resource<HttpClientResource>>,
   has_body: bool,
   body_length: Option<u64>,
   data: Option<ZeroCopyBuf>,

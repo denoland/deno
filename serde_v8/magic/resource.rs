@@ -171,6 +171,7 @@ impl<T> ToV8 for Resource<T> {
       wrap,
       // finalizer
       Box::new(move |isolate| {
+        println!("Finalizer called");
         // SAFETY: 1. The finalizer is guaranteed by V8 to run on the isolate thread.
         // 2. The backing memory for WeakData is initialized immediately after callback is registered.
         // 3. The second-pass callback calls finalizer before attempting to drop the WeakData.
@@ -184,6 +185,7 @@ impl<T> ToV8 for Resource<T> {
           // It decrements the strong count and is the sole owner of the resource data.
           return;
         }
+        println!("Dropping Rc<T>");
         // SAFETY: We own the Rc<T>, no other Resource can hold the pointer
         // to it. Here, we say bye-bye to the object.
         unsafe {
