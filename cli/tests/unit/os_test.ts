@@ -212,3 +212,13 @@ Deno.test({ permissions: { env: true } }, function getUid() {
     assert(uid > 0);
   }
 });
+
+Deno.test({ permissions: { env: true } }, function getGid() {
+  if (Deno.build.os === "windows") {
+    assertEquals(Deno.getGid(), null);
+  } else {
+    const gid = Deno.getGid();
+    assert(typeof gid === "number");
+    assert(gid > 0);
+  }
+});

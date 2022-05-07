@@ -228,6 +228,22 @@ fn op_system_memory_info(
 
 #[cfg(not(windows))]
 #[op]
+fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getGid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  unsafe { Ok(Some(libc::getgid())) }
+}
+
+#[cfg(windows)]
+#[op]
+fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getGid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(None)
+}
+
+#[cfg(not(windows))]
+#[op]
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
   state.borrow_mut::<Permissions>().env.check_all()?;

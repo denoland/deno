@@ -28,6 +28,10 @@
     return core.opSync("op_network_interfaces");
   }
 
+  function getGid() {
+    return core.opSync("op_getgid");
+  }
+
   function getUid() {
     return core.opSync("op_getuid");
   }
@@ -92,6 +96,7 @@
     env,
     execPath,
     exit,
+    getGid,
     getUid,
     hostname,
     loadavg,

@@ -125,6 +125,7 @@
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
+    getGid: __bootstrap.os.getGid,
     getUid: __bootstrap.os.getUid,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     sleepSync: __bootstrap.timers.sleepSync,
