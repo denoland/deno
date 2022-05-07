@@ -809,8 +809,35 @@ impl test::TestReporter for LspTestReporter {
     }
   }
 
-  fn report_uncaught_error(&mut self, _origin: &str, _error: &JsError) {
-    // TODO(nayeemrmn)
+  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+    if self.current_origin == Some(origin.to_string()) {
+      self.current_origin = None;
+    }
+    let stack = self.stack.remove(origin).unwrap_or_default();
+    let err_string = format!(
+      "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
+      origin,
+      test::format_test_error(js_error)
+    );
+    let messages = as_test_messages(err_string, false);
+    for t in stack.iter().rev() {
+      match t {
+        TestOrTestStepDescription::TestDescription(desc) => {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: desc.into(),
+            messages: messages.clone(),
+            duration: None,
+          });
+        }
+        TestOrTestStepDescription::TestStepDescription(desc) => {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: desc.into(),
+            messages: messages.clone(),
+            duration: None,
+          });
+        }
+      }
+    }
   }
 
   fn report_step_wait(&mut self, desc: &test::TestStepDescription) {
