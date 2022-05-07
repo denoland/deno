@@ -386,8 +386,7 @@ declare namespace Deno {
     : never;
 
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
-    : T extends StaticNativeBigIntType ? bigint
-    : T extends StaticNativeNumberType ? number | bigint
+    : T extends StaticNativeNumberType | StaticNativeBigIntType ? number | bigint
     : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
     : unknown;
 
