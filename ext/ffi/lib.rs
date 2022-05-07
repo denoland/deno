@@ -656,16 +656,24 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
     }
     NativeType::U64 => {
-      json!(U32x2::from(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) }))
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<u64>(symbol.ptr, &call_args)
+      }))
     }
     NativeType::I64 => {
-      json!(U32x2::from(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) } as u64))
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<i64>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::USize => {
-      json!(U32x2::from(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) } as u64))
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<usize>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::ISize => {
-      json!(U32x2::from(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) } as u64))
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<isize>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::F32 => {
       json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
