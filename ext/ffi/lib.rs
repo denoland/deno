@@ -313,7 +313,7 @@ impl NativeValue {
 fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
   if value.is_array() {
     let value = U32x2::try_from(value)?;
-    return T::try_from(u64::from(value)).or(Err(type_error(format!("Found U32x2 FFI argument but it could not be converted to an unsigned integer, got {:?}", value))));
+    return T::try_from(u64::from(value)).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to an unsigned integer, got {:?}", value)));
   }
 
   match value.as_u64().and_then(|v| T::try_from(v).ok()) {
@@ -328,7 +328,7 @@ fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
 fn value_as_int<T: TryFrom<i64>>(value: Value) -> Result<T, AnyError> {
   if value.is_array() {
     let value = U32x2::try_from(value)?;
-    return T::try_from(u64::from(value) as i64).or(Err(type_error(format!("Found U32x2 FFI argument but it could not be converted to a signed integer, got {:?}", value))));
+    return T::try_from(u64::from(value) as i64).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to a signed integer, got {:?}", value)));
   }
 
   match value.as_i64().and_then(|v| T::try_from(v).ok()) {
