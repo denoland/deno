@@ -36,6 +36,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -50,7 +51,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Read;
@@ -77,9 +77,18 @@ pub enum TestMode {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
+pub struct TestLocation {
+  pub file_name: String,
+  pub line_number: u32,
+  pub column_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
+  pub location: TestLocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -302,6 +311,7 @@ impl PrettyTestReporter {
 
     if let Some(js_error) = result.error() {
       let err_string = format_test_error(js_error);
+      let err_string = format!("{}: {}", colors::red_bold("error"), err_string);
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
@@ -441,38 +451,33 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
+      let mut failure_titles = vec![];
       println!("\nfailures:\n");
       for (description, js_error) in &summary.failures {
-        println!(
-          "{} {} {}",
-          colors::gray(
-            self.to_relative_path_or_remote_url(&description.origin)
-          ),
-          colors::gray(">"),
-          description.name
+        let failure_title = format!(
+          "{} {}",
+          &description.name,
+          colors::gray(format!(
+            "=> {}:{}:{}",
+            self
+              .to_relative_path_or_remote_url(&description.location.file_name),
+            description.location.line_number,
+            description.location.column_number
+          ))
         );
-        println!("{}", format_test_error(js_error));
+        println!("{}", &failure_title);
+        println!(
+          "{}: {}",
+          colors::red_bold("error"),
+          format_test_error(js_error)
+        );
         println!();
-      }
-
-      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
-        BTreeMap::default();
-      for (description, _) in &summary.failures {
-        let test_names = grouped_by_origin
-          .entry(description.origin.clone())
-          .or_default();
-        test_names.push(description.name.clone());
+        failure_titles.push(failure_title);
       }
 
       println!("failures:\n");
-      for (origin, test_names) in &grouped_by_origin {
-        println!(
-          "\t{}",
-          colors::gray(self.to_relative_path_or_remote_url(origin))
-        );
-        for test_name in test_names {
-          println!("\t{}", test_name);
-        }
+      for failure_title in failure_titles {
+        println!("{}", failure_title);
       }
     }
 
@@ -1449,43 +1454,28 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
+#[derive(Clone)]
 pub struct TestEventSender {
   sender: UnboundedSender<TestEvent>,
-  stdout_writer: os_pipe::PipeWriter,
-  stderr_writer: os_pipe::PipeWriter,
-}
-
-impl Clone for TestEventSender {
-  fn clone(&self) -> Self {
-    Self {
-      sender: self.sender.clone(),
-      stdout_writer: self.stdout_writer.try_clone().unwrap(),
-      stderr_writer: self.stderr_writer.try_clone().unwrap(),
-    }
-  }
+  stdout_writer: TestOutputPipe,
+  stderr_writer: TestOutputPipe,
 }
 
 impl TestEventSender {
   pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
-    let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
-    let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
-
-    start_output_redirect_thread(stdout_reader, sender.clone());
-    start_output_redirect_thread(stderr_reader, sender.clone());
-
     Self {
+      stdout_writer: TestOutputPipe::new(sender.clone()),
+      stderr_writer: TestOutputPipe::new(sender.clone()),
       sender,
-      stdout_writer,
-      stderr_writer,
     }
   }
 
   pub fn stdout(&self) -> std::fs::File {
-    pipe_writer_to_file(self.stdout_writer.try_clone().unwrap())
+    self.stdout_writer.as_file()
   }
 
   pub fn stderr(&self) -> std::fs::File {
-    pipe_writer_to_file(self.stderr_writer.try_clone().unwrap())
+    self.stderr_writer.as_file()
   }
 
   pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
@@ -1497,12 +1487,61 @@ impl TestEventSender {
         | TestEvent::StepWait(_)
         | TestEvent::StepResult(_, _, _)
     ) {
-      self.stdout_writer.flush().unwrap();
-      self.stderr_writer.flush().unwrap();
+      self.flush_stdout_and_stderr();
     }
 
     self.sender.send(message)?;
     Ok(())
+  }
+
+  fn flush_stdout_and_stderr(&mut self) {
+    self.stdout_writer.flush();
+    self.stderr_writer.flush();
+  }
+}
+
+// use a string that if it ends up in the output won't affect how things are displayed
+const ZERO_WIDTH_SPACE: &str = "\u{200B}";
+
+struct TestOutputPipe {
+  writer: os_pipe::PipeWriter,
+  state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+}
+
+impl Clone for TestOutputPipe {
+  fn clone(&self) -> Self {
+    Self {
+      writer: self.writer.try_clone().unwrap(),
+      state: self.state.clone(),
+    }
+  }
+}
+
+impl TestOutputPipe {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (reader, writer) = os_pipe::pipe().unwrap();
+    let state = Arc::new(Mutex::new(None));
+
+    start_output_redirect_thread(reader, sender, state.clone());
+
+    Self { writer, state }
+  }
+
+  pub fn flush(&mut self) {
+    // We want to wake up the other thread and have it respond back
+    // that it's done clearing out its pipe before returning.
+    let (sender, receiver) = std::sync::mpsc::channel();
+    self.state.lock().replace(sender);
+    // Bit of a hack in order to send a zero width space in order
+    // to wake the thread up. It seems that sending zero bytes
+    // does not work here on windows.
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
+    self.writer.flush().unwrap();
+    receiver.recv().unwrap();
+  }
+
+  pub fn as_file(&self) -> std::fs::File {
+    pipe_writer_to_file(self.writer.try_clone().unwrap())
   }
 }
 
@@ -1525,6 +1564,7 @@ fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
 fn start_output_redirect_thread(
   mut pipe_reader: os_pipe::PipeReader,
   sender: UnboundedSender<TestEvent>,
+  flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 ) {
   tokio::task::spawn_blocking(move || loop {
     let mut buffer = [0; 512];
@@ -1532,12 +1572,24 @@ fn start_output_redirect_thread(
       Ok(0) | Err(_) => break,
       Ok(size) => size,
     };
+    let oneshot_sender = flush_state.lock().take();
+    let mut data = &buffer[0..size];
+    if data.ends_with(ZERO_WIDTH_SPACE.as_bytes()) {
+      data = &data[0..data.len() - ZERO_WIDTH_SPACE.len()];
+    }
 
-    if sender
-      .send(TestEvent::Output(buffer[0..size].to_vec()))
-      .is_err()
+    if !data.is_empty()
+      && sender
+        .send(TestEvent::Output(buffer[0..size].to_vec()))
+        .is_err()
     {
       break;
+    }
+
+    // Always respond back if this was set. Ideally we would also check to
+    // ensure the pipe reader is empty before sending back this response.
+    if let Some(sender) = oneshot_sender {
+      let _ignore = sender.send(());
     }
   });
 }
