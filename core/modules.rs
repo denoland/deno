@@ -5,6 +5,7 @@ use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -1136,6 +1137,85 @@ impl ModuleMap {
 
     None
   }
+
+  pub(crate) fn instantiate_module(
+    module_map_rc: Rc<RefCell<ModuleMap>>,
+    scope: &mut v8::HandleScope,
+    id: ModuleId,
+  ) -> Result<(), v8::Global<v8::Value>> {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let module = module_map_rc
+      .borrow()
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
+
+    if module.get_status() == v8::ModuleStatus::Errored {
+      return Err(v8::Global::new(tc_scope, module.get_exception()));
+    }
+
+    // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
+    // `module_resolve_callback` will be calling into `ModuleMap` from within
+    // the isolate.
+    let instantiate_result =
+      module.instantiate_module(tc_scope, module_resolve_callback);
+
+    if instantiate_result.is_none() {
+      let exception = tc_scope.exception().unwrap();
+      return Err(v8::Global::new(tc_scope, exception));
+    }
+
+    Ok(())
+  }
+}
+
+/// Called by V8 during `ModuleMap::instantiate_module`.
+///
+/// This function borrows `ModuleMap` from the isolate slot,
+/// so it is crucial to ensure there are no existing borrows
+/// of `ModuleMap` when `ModuleMap::instantiate_module` is called.
+pub fn module_resolve_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  specifier: v8::Local<'s, v8::String>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
+  referrer: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Module>> {
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+
+  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map = module_map_rc.borrow();
+
+  let referrer_global = v8::Global::new(scope, referrer);
+
+  let referrer_info = module_map
+    .get_info(&referrer_global)
+    .expect("ModuleInfo not found");
+  let referrer_name = referrer_info.name.to_string();
+
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::StaticImport,
+  );
+  let maybe_module = module_map.resolve_callback(
+    scope,
+    &specifier_str,
+    &referrer_name,
+    assertions,
+  );
+  if let Some(module) = maybe_module {
+    return Some(module);
+  }
+
+  let msg = format!(
+    r#"Cannot resolve module "{}" from "{}""#,
+    specifier_str, referrer_name
+  );
+  bindings::throw_type_error(scope, msg);
+  None
 }
 
 #[cfg(test)]

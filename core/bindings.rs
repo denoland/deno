@@ -1379,54 +1379,6 @@ fn create_host_object(
   };
 }
 
-/// Called by V8 during `JsRuntime::instantiate_module`.
-///
-/// This function borrows `ModuleMap` from the isolate slot,
-/// so it is crucial to ensure there are no existing borrows
-/// of `ModuleMap` when `JsRuntime::instantiate_module` is called.
-pub fn module_resolve_callback<'s>(
-  context: v8::Local<'s, v8::Context>,
-  specifier: v8::Local<'s, v8::String>,
-  import_assertions: v8::Local<'s, v8::FixedArray>,
-  referrer: v8::Local<'s, v8::Module>,
-) -> Option<v8::Local<'s, v8::Module>> {
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
-  let module_map_rc = JsRuntime::module_map(scope);
-  let module_map = module_map_rc.borrow();
-
-  let referrer_global = v8::Global::new(scope, referrer);
-
-  let referrer_info = module_map
-    .get_info(&referrer_global)
-    .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.to_string();
-
-  let specifier_str = specifier.to_rust_string_lossy(scope);
-
-  let assertions = parse_import_assertions(
-    scope,
-    import_assertions,
-    ImportAssertionsKind::StaticImport,
-  );
-  let maybe_module = module_map.resolve_callback(
-    scope,
-    &specifier_str,
-    &referrer_name,
-    assertions,
-  );
-  if let Some(module) = maybe_module {
-    return Some(module);
-  }
-
-  let msg = format!(
-    r#"Cannot resolve module "{}" from "{}""#,
-    specifier_str, referrer_name
-  );
-  throw_type_error(scope, msg);
-  None
-}
-
 // Returns promise details or throw TypeError, if argument passed isn't a Promise.
 // Promise details is a js_two elements array.
 // promise_details = [State, Result]
