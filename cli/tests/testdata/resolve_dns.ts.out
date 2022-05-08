@@ -12,6 +12,8 @@ NS
 ["ns1.ns.com."]
 PTR
 ["ptr.com."]
+SOA
+[{"mname":"sns.dns.icann.org.","rname":"noc.dns.icann.org."}]
 SRV
 [{"priority":0,"weight":100,"port":1234,"target":"srv.com."}]
 TXT

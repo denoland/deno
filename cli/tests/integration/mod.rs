@@ -15,6 +15,7 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use trust_dns_client::rr::DNSClass;
 
 #[macro_export]
 macro_rules! itest(
@@ -968,8 +969,36 @@ async fn test_resolve_dns() {
         )
         .unwrap(),
       ));
+
+      let origin: Name = Name::parse("soa.com.", None).unwrap();
+      let mut authority2 =
+        InMemoryAuthority::empty(origin.clone(), ZoneType::Primary, false);
+
+      authority2.upsert_mut(
+        Record::new()
+          .set_name(origin)
+          .set_ttl(3600)
+          .set_rr_type(RecordType::SOA)
+          .set_dns_class(DNSClass::IN)
+          .set_data(Some(RData::SOA(SOA::new(
+            Name::parse("sns.dns.icann.org.", None).unwrap(),
+            Name::parse("noc.dns.icann.org.", None).unwrap(),
+            0,
+            i32::MAX,
+            i32::MAX,
+            i32::MAX,
+            0,
+          ))))
+          .clone(),
+        0,
+      );
+
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
+      c.upsert(
+        Name::from_str("soa.com").unwrap().into(),
+        Box::new(Arc::new(authority2)),
+      );
       c
     };
 
