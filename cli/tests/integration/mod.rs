@@ -819,6 +819,7 @@ async fn test_resolve_dns() {
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
+  use std::sync::RwLock;
   use std::time::Duration;
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
@@ -961,10 +962,10 @@ async fn test_resolve_dns() {
         map
       };
 
-      let authority = Box::new(Arc::new(
+      let authority = Box::new(Arc::new(RwLock::new(
         InMemoryAuthority::new(Name::new(), records, ZoneType::Primary, false)
           .unwrap(),
-      ));
+      )));
 
       let lexer = Lexer::new(
         r###"
@@ -986,10 +987,10 @@ async fn test_resolve_dns() {
 
       let (origin, records) = records.unwrap();
 
-      let authority2 = Box::new(Arc::new(
+      let authority2 = Box::new(Arc::new(RwLock::new(
         InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
           .unwrap(),
-      ));
+      )));
 
       let mut c = Catalog::new();
       c.upsert(Name::root().into(), authority);
