@@ -6,8 +6,6 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
-use trust_dns_client::serialize::txt::Lexer;
-use trust_dns_client::serialize::txt::Parser;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -17,6 +15,8 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use trust_dns_client::serialize::txt::Lexer;
+use trust_dns_client::serialize::txt::Parser;
 
 #[macro_export]
 macro_rules! itest(
@@ -830,16 +830,25 @@ async fn test_resolve_dns() {
 
   // Setup DNS server for testing
   async fn run_dns_server(tx: oneshot::Sender<()>) {
-    let zone_file = fs::read_to_string(util::testdata_path().join("resolve_dns.zone.in")).unwrap();
+    let zone_file =
+      fs::read_to_string(util::testdata_path().join("resolve_dns.zone.in"))
+        .unwrap();
     let lexer = Lexer::new(&zone_file);
-    let records = Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()), None);
+    let records = Parser::new().parse(
+      lexer,
+      Some(Name::from_str("example.com").unwrap()),
+      None,
+    );
     if records.is_err() {
-        panic!("failed to parse: {:?}", records.err())
+      panic!("failed to parse: {:?}", records.err())
     }
     let (origin, records) = records.unwrap();
-    let authority = Box::new(Arc::new(InMemoryAuthority::new(origin, records, ZoneType::Primary, false).unwrap()));
+    let authority = Box::new(Arc::new(
+      InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
+        .unwrap(),
+    ));
     let mut catalog: Catalog = Catalog::new();
-    catalog.upsert(Name::root().into(),authority );
+    catalog.upsert(Name::root().into(), authority);
 
     let mut server_fut = ServerFuture::new(catalog);
     let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
