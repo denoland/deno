@@ -5,8 +5,8 @@ leak interval ... FAILED ([WILDCARD])
 
 failures:
 
-./test/ops_sanitizer_unstable.ts > leak interval
-Test case is leaking async ops.
+leak interval => ./test/ops_sanitizer_unstable.ts:[WILDCARD]
+error: Test case is leaking async ops.
 
 - 1 async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
     at [WILDCARD]
@@ -16,8 +16,7 @@ Test case is leaking async ops.
 
 failures:
 
-	./test/ops_sanitizer_unstable.ts
-	leak interval
+leak interval => ./test/ops_sanitizer_unstable.ts:[WILDCARD]
 
 test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

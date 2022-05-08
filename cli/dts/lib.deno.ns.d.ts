@@ -2955,6 +2955,7 @@ declare namespace Deno {
     | "ANAME"
     | "CNAME"
     | "MX"
+    | "NS"
     | "PTR"
     | "SRV"
     | "TXT";
@@ -2987,7 +2988,7 @@ declare namespace Deno {
 
   export function resolveDns(
     query: string,
-    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
 

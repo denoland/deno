@@ -3,7 +3,7 @@ running 3 tests from ./test/steps/failing_steps.ts
 nested failure ...
   step 1 ...
     inner 1 ... FAILED ([WILDCARD])
-      Error: Failed.
+      error: Error: Failed.
             throw new Error("Failed.");
                   ^
           at [WILDCARD]/failing_steps.ts:[WILDCARD]
@@ -13,12 +13,12 @@ nested failure ...
 FAILED ([WILDCARD])
 multiple test step failures ...
   step 1 ... FAILED ([WILDCARD])
-    Error: Fail.
+    error: Error: Fail.
         throw new Error("Fail.");
               ^
         [WILDCARD]
   step 2 ... FAILED ([WILDCARD])
-    Error: Fail.
+    error: Error: Fail.
       await t.step("step 2", () => Promise.reject(new Error("Fail.")));
                                                   ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
@@ -26,7 +26,7 @@ multiple test step failures ...
 FAILED ([WILDCARD])
 failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
-    Error: Fail.
+    error: Error: Fail.
         throw new Error("Fail.");
               ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
@@ -35,28 +35,27 @@ FAILED ([WILDCARD])
 
 failures:
 
-./test/steps/failing_steps.ts > nested failure
-Error: 1 test step failed.
+nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
+error: Error: 1 test step failed.
     at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
     at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
 
-./test/steps/failing_steps.ts > multiple test step failures
-Error: 2 test steps failed.
+multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
+error: Error: 2 test steps failed.
     at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
     at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
 
-./test/steps/failing_steps.ts > failing step in failing test
-Error: Fail test.
+failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
+error: Error: Fail test.
   throw new Error("Fail test.");
         ^
     at [WILDCARD]/failing_steps.ts:[WILDCARD]
 
 failures:
 
-	./test/steps/failing_steps.ts
-	nested failure
-	multiple test step failures
-	failing step in failing test
+nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
+multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
+failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
 
 test result: FAILED. 0 passed (1 step); 3 failed (5 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
