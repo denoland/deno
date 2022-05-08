@@ -22,6 +22,7 @@ pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
       op_exit::decl(),
       op_delete_env::decl(),
       op_get_env::decl(),
+      op_getgid::decl(),
       op_getuid::decl(),
       op_hostname::decl(),
       op_loadavg::decl(),
