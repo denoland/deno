@@ -134,9 +134,7 @@
     }
 
     static of(typedArray) {
-      return new UnsafePointer(
-        unpackU64(core.opSync("op_ffi_ptr_of", typedArray)),
-      );
+      return new UnsafePointer(core.opSync("op_ffi_ptr_of", typedArray));
     }
 
     valueOf() {
@@ -202,7 +200,7 @@
         });
 
         if (this.definition.result === "pointer") {
-          return promise.then((value) => new UnsafePointer(unpackU64(value)));
+          return promise.then((value) => new UnsafePointer(value));
         }
 
         return promise;
@@ -215,7 +213,7 @@
         });
 
         if (this.definition.result === "pointer") {
-          return new UnsafePointer(unpackU64(result));
+          return new UnsafePointer(result);
         }
 
         return result;
@@ -248,11 +246,10 @@
               type,
             },
           );
-          if (type === "pointer" || type === "u64") {
+          if (type === "pointer") {
+            value = new UnsafePointer(value);
+          } else if (type === "u64") {
             value = unpackU64(value);
-            if (type === "pointer") {
-              value = new UnsafePointer(value);
-            }
           } else if (type === "i64") {
             value = unpackI64(value);
           }
@@ -272,6 +269,7 @@
         const types = symbols[symbol].parameters;
 
         const fn = (...args) => {
+          return core.opSync("op_ffi_call", this.#rid, symbol, args);
           const { parameters, buffers } = prepareArgs(types, args);
 
           if (isNonBlocking) {
@@ -284,7 +282,7 @@
 
             if (symbols[symbol].result === "pointer") {
               return promise.then((value) =>
-                new UnsafePointer(unpackU64(value))
+                new UnsafePointer(value),
               );
             }
 
@@ -298,7 +296,7 @@
             });
 
             if (symbols[symbol].result === "pointer") {
-              return new UnsafePointer(unpackU64(result));
+              return new UnsafePointer(result);
             }
 
             return result;
