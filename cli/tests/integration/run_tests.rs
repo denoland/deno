@@ -2781,7 +2781,7 @@ itest!(spawn_stdout_inherit {
 });
 
 itest!(error_name_non_string {
-  args: "run --quiet --unstable -A error_name_non_string.js",
+  args: "run --quiet error_name_non_string.js",
   output: "error_name_non_string.js.out",
   exit_code: 1,
 });
