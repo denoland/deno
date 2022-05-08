@@ -238,7 +238,6 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
-  in_test_count: usize,
   in_new_line: bool,
   last_wait_output_level: usize,
   cwd: Url,
@@ -250,7 +249,6 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
-      in_test_count: 0,
       in_new_line: true,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
@@ -359,7 +357,6 @@ impl TestReporter for PrettyTestReporter {
     if !self.concurrent {
       self.force_report_wait(description);
     }
-    self.in_test_count += 1;
   }
 
   fn report_output(&mut self, output: &[u8]) {
@@ -367,7 +364,7 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
 
-    if !self.did_have_user_output && self.in_test_count > 0 {
+    if !self.did_have_user_output {
       self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("------- output -------"));
@@ -385,8 +382,6 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
-    self.in_test_count -= 1;
-
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -439,7 +434,6 @@ impl TestReporter for PrettyTestReporter {
       self.to_relative_path_or_remote_url(origin),
       colors::red("FAILED")
     );
-    self.in_test_count = 0;
     self.in_new_line = true;
     self.last_wait_output_level = 0;
     self.did_have_user_output = false;
