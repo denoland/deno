@@ -138,7 +138,6 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
-      ops::pty::init(),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),

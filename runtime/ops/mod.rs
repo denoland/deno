@@ -7,7 +7,6 @@ pub mod io;
 pub mod os;
 pub mod permissions;
 pub mod process;
-pub mod pty;
 pub mod runtime;
 pub mod signal;
 pub mod spawn;
