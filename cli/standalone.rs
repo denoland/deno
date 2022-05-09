@@ -168,9 +168,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .ok_or_else(|| type_error("Module not found"));
 
     async move {
-      if let Some((ref source, _)) = is_data_uri {
+      if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
-          code: source.to_owned(),
+          code: source.into_bytes().into_boxed_slice(),
           module_type: deno_core::ModuleType::JavaScript,
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
@@ -184,7 +184,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .to_owned();
 
       Ok(deno_core::ModuleSource {
-        code,
+        code: code.into_bytes().into_boxed_slice(),
         module_type: match module.kind {
           eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
           eszip::ModuleKind::Json => deno_core::ModuleType::Json,

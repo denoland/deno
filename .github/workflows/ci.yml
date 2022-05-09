@@ -236,7 +236,11 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
+<<<<<<< HEAD
           key: 2-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+=======
+          key: 11-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+>>>>>>> main
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -252,7 +256,11 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
+<<<<<<< HEAD
             2-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+=======
+            11-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+>>>>>>> main
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -268,7 +276,11 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
+<<<<<<< HEAD
             2-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+=======
+            11-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+>>>>>>> main
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
