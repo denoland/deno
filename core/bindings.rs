@@ -343,7 +343,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       resolver.reject(tc_scope, e);
     }
   }
-  let expected_module_type =
+  let asserted_module_type =
     get_asserted_module_type_from_assertions(&assertions);
 
   let resolver_handle = v8::Global::new(scope, resolver);
@@ -359,7 +359,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
-      expected_module_type,
+      asserted_module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();

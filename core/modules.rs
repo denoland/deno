@@ -456,6 +456,7 @@ pub(crate) struct RecursiveModuleLoad {
   pub root_module_id: Option<ModuleId>,
   init: LoadInit,
   root_asserted_module_type: Option<AssertedModuleType>,
+  root_module_type: Option<ModuleType>,
   state: LoadState,
   module_map_rc: Rc<RefCell<ModuleMap>>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
@@ -515,6 +516,7 @@ impl RecursiveModuleLoad {
       id,
       root_module_id: None,
       root_asserted_module_type: None,
+      root_module_type: None,
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
@@ -532,6 +534,13 @@ impl RecursiveModuleLoad {
       {
         load.root_module_id = Some(module_id);
         load.root_asserted_module_type = Some(asserted_module_type);
+        load.root_module_type = Some(
+          module_map_rc
+            .borrow()
+            .get_info_by_id(&module_id)
+            .unwrap()
+            .module_type,
+        );
       }
     }
     load
@@ -595,8 +604,8 @@ impl RecursiveModuleLoad {
     module_request: &ModuleRequest,
     module_source: &ModuleSource,
   ) -> Result<(), ModuleError> {
-    let asserted_module_type = module_source.module_type.into();
-    if module_request.asserted_module_type != asserted_module_type {
+    let expected_asserted_module_type = module_source.module_type.into();
+    if module_request.asserted_module_type != expected_asserted_module_type {
       return Err(ModuleError::Other(generic_error(format!(
         "Expected a \"{}\" module but loaded a \"{}\" module.",
         module_request.asserted_module_type, module_source.module_type,
@@ -608,14 +617,14 @@ impl RecursiveModuleLoad {
     if module_source.module_url_specified != module_source.module_url_found {
       self.module_map_rc.borrow_mut().alias(
         &module_source.module_url_specified,
-        asserted_module_type,
+        expected_asserted_module_type,
         &module_source.module_url_found,
       );
     }
-    let maybe_module_id = self
-      .module_map_rc
-      .borrow()
-      .get_id(&module_source.module_url_found, asserted_module_type);
+    let maybe_module_id = self.module_map_rc.borrow().get_id(
+      &module_source.module_url_found,
+      expected_asserted_module_type,
+    );
     let module_id = match maybe_module_id {
       Some(id) => {
         debug!(
@@ -733,10 +742,11 @@ impl Stream for RecursiveModuleLoad {
           // like the bottom of `RecursiveModuleLoad::register_and_recurse()`.
           // But the module map cannot be borrowed here. Instead fake a load
           // event so it gets passed to that function and recursed eventually.
-          let module_type = inner.root_asserted_module_type.unwrap();
+          let asserted_module_type = inner.root_asserted_module_type.unwrap();
+          let module_type = inner.root_module_type.unwrap();
           let module_request = ModuleRequest {
             specifier: module_specifier.clone(),
-            asserted_module_type: module_type,
+            asserted_module_type,
           };
           let module_source = ModuleSource {
             module_url_specified: module_specifier.to_string(),
@@ -744,9 +754,7 @@ impl Stream for RecursiveModuleLoad {
             // The code will be discarded, since this module is already in the
             // module map.
             code: Default::default(),
-            // This module source is not actually used for anything, so the
-            // module type doesn't matter.
-            module_type: ModuleType::JavaScript,
+            module_type,
           };
           futures::future::ok((module_request, module_source)).boxed()
         } else {
@@ -796,9 +804,9 @@ pub(crate) enum AssertedModuleType {
   Json,
 }
 
-impl Into<AssertedModuleType> for ModuleType {
-  fn into(self) -> AssertedModuleType {
-    match self {
+impl From<ModuleType> for AssertedModuleType {
+  fn from(module_type: ModuleType) -> AssertedModuleType {
+    match module_type {
       ModuleType::JavaScript => AssertedModuleType::JavaScriptOrWasm,
       ModuleType::Json => AssertedModuleType::Json,
       ModuleType::Wasm => AssertedModuleType::JavaScriptOrWasm,
@@ -815,9 +823,10 @@ impl std::fmt::Display for AssertedModuleType {
   }
 }
 
-/// Describes what is the expected type of module, usually
-/// it's `ModuleType::JavaScript`, but if there were import assertions
-/// it might be `ModuleType::Json`.
+/// Describes a request for a module as parsed from the source code.
+/// Usually executable (`JavaScriptOrWasm`) is used, except when an
+/// import assertions explicitly constrains an import to JSON, in
+/// which case this will have a `AssertedModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
@@ -940,9 +949,9 @@ impl PendingWasmEvaluation {
     for (name, module) in &self.imports {
       let module = module.open(tc_scope);
       let namespace = module.get_module_namespace();
-      let specifier = v8::String::new(tc_scope, &name).unwrap();
+      let specifier = v8::String::new(tc_scope, name).unwrap();
       imports_obj
-        .set(tc_scope, specifier.into(), namespace.into())
+        .set(tc_scope, specifier.into(), namespace)
         .unwrap();
     }
 

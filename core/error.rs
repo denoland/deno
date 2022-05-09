@@ -164,7 +164,7 @@ fn get_property<'a>(
   object.get(scope, key.into())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Default, serde::Deserialize)]
 pub(crate) struct NativeJsError {
   pub name: Option<String>,
   pub message: Option<String>,
@@ -196,7 +196,7 @@ impl JsError {
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
       let cause = get_property(scope, exception, "cause");
       let e: NativeJsError =
-        serde_v8::from_v8(scope, exception.into()).unwrap();
+        serde_v8::from_v8(scope, exception.into()).unwrap_or_default();
       // Get the message by formatting error.name and error.message.
       let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
       let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
