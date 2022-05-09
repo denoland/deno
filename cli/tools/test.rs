@@ -312,6 +312,10 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
+    if wrote_user_output {
+      print!("{} ... ", description.name);
+    }
+
     println!(
       "{} {}",
       status,
@@ -412,6 +416,10 @@ impl TestReporter for PrettyTestReporter {
     let wrote_user_output = self.write_output_end();
     if !wrote_user_output && self.last_wait_output_level == 0 {
       print!(" ");
+    }
+
+    if wrote_user_output {
+      print!("{} ... ", description.name);
     }
 
     let status = match result {
