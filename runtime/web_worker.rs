@@ -434,6 +434,7 @@ impl WebWorker {
       ops::permissions::init().enabled(options.use_deno_namespace),
       ops::process::init().enabled(options.use_deno_namespace),
       ops::spawn::init().enabled(options.use_deno_namespace),
+      ops::pty::init().enabled(options.use_deno_namespace),
       ops::signal::init().enabled(options.use_deno_namespace),
       ops::tty::init().enabled(options.use_deno_namespace),
       deno_http::init().enabled(options.use_deno_namespace),
