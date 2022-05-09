@@ -1958,8 +1958,8 @@ Deno.test({
         "GET",
         "--url",
         url,
-        "--compressed",
-        "--header", // included for clarity although implied by --compressed
+        // "--compressed", // Windows curl does not support --compressed
+        "--header",
         "Accept-Encoding: deflate, gzip",
       ];
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
