@@ -170,7 +170,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         .unsafely_ignore_certificate_errors
         .clone(),
       root_cert_store: ps.root_cert_store.clone(),
-      user_agent: version::get_user_agent(),
+      //user_agent: version::get_user_agent(),
       seed: ps.flags.seed,
       module_loader,
       create_web_worker_cb,
@@ -272,7 +272,7 @@ pub fn create_main_worker(
       .unsafely_ignore_certificate_errors
       .clone(),
     root_cert_store: ps.root_cert_store.clone(),
-    user_agent: version::get_user_agent(),
+    //user_agent: version::get_user_agent(),
     seed: ps.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
