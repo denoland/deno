@@ -249,6 +249,27 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { run: true, read: true } },
+  async function spawnAbort() {
+    const ac = new AbortController();
+    const child = Deno.spawnChild(Deno.execPath(), {
+      args: [
+        "eval",
+        "setTimeout(console.log, 1e8)",
+      ],
+      signal: ac.signal,
+      stdout: "null",
+      stderr: "null",
+    });
+    queueMicrotask(() => ac.abort());
+    const status = await child.status;
+    assertEquals(status.success, false);
+    assertEquals(status.code, 143);
+    assertEquals(status.signal, 15);
+  },
+);
+
+Deno.test(
   { permissions: { read: true, run: false } },
   async function spawnPermissions() {
     await assertRejects(async () => {
