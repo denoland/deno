@@ -35,6 +35,14 @@ static LONG_VERSION: Lazy<String> = Lazy::new(|| {
   )
 });
 
+static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
+  crate::version::deno()
+    .split('+')
+    .next()
+    .unwrap()
+    .to_string()
+});
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
@@ -513,7 +521,7 @@ To evaluate code in the shell:
 
   deno eval \"console.log(30933 + 404)\"
 ",
-    crate::version::deno()
+    SHORT_VERSION.as_str()
   )
 });
 
@@ -1274,7 +1282,7 @@ go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
 https://deno.land/manual@v{}/getting_started/setup_your_environment#editors-and-ides",
-    crate::version::deno()
+    SHORT_VERSION.as_str()
   )
 });
 
@@ -1861,7 +1869,7 @@ static IMPORT_MAP_HELP: Lazy<String> = Lazy::new(|| {
   Docs: https://deno.land/manual@v{}/linking_to_external_code/import_maps
   Specification: https://wicg.github.io/import-maps/
   Examples: https://github.com/WICG/import-maps#the-import-map",
-    crate::version::deno()
+    SHORT_VERSION.as_str()
   )
 });
 
@@ -1967,7 +1975,7 @@ fn seed_arg<'a>() -> Arg<'a> {
 static COMPAT_HELP: Lazy<String> = Lazy::new(|| {
   format!(
     "See https://deno.land/manual@v{}/node/compatibility_mode",
-    crate::version::deno()
+    SHORT_VERSION.as_str()
   )
 });
 
@@ -2084,7 +2092,7 @@ static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
       configuration file will be called `deno.json` or `deno.jsonc` and \
       automatically detected; in that case this flag is not necessary. \
       See https://deno.land/manual@v{}/getting_started/configuration_file",
-    crate::version::deno()
+    SHORT_VERSION.as_str()
   )
 });
 
