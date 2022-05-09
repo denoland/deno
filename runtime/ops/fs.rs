@@ -343,7 +343,7 @@ async fn op_seek_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   tokio::task::spawn_blocking(move || {
     let mut std_file = std_file.lock().unwrap();
@@ -375,7 +375,7 @@ async fn op_fdatasync_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   tokio::task::spawn_blocking(move || {
     let std_file = std_file.lock().unwrap();
@@ -404,7 +404,7 @@ async fn op_fsync_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   tokio::task::spawn_blocking(move || {
     let std_file = std_file.lock().unwrap();
@@ -436,7 +436,7 @@ async fn op_fstat_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   let metadata = tokio::task::spawn_blocking(move || {
     let std_file = std_file.lock().unwrap();
@@ -483,7 +483,7 @@ async fn op_flock_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
     let std_file = std_file.lock().unwrap();
@@ -527,7 +527,7 @@ async fn op_funlock_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
     let std_file = std_file.lock().unwrap();
@@ -1610,7 +1610,7 @@ async fn op_ftruncate_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
 
   tokio::task::spawn_blocking(move || {
     let std_file = std_file.lock().unwrap();
@@ -1907,7 +1907,7 @@ async fn op_futime_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  let std_file = resource.std_file();
+  let std_file = resource.std_file()?;
   tokio::task::spawn_blocking(move || {
     let std_file = std_file.lock().unwrap();
     filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;

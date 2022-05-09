@@ -89,7 +89,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       return Err(deno_core::error::not_supported());
     }
 
-    let std_file = resource.std_file();
+    let std_file = resource.std_file()?;
     let std_file = std_file.lock().unwrap(); // hold the lock
     let handle = std_file.as_raw_handle();
 
@@ -120,7 +120,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     use std::os::unix::io::AsRawFd;
 
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    let std_file = resource.std_file();
+    let std_file = resource.std_file()?;
     let raw_fd = std_file.lock().unwrap().as_raw_fd();
     let mut meta_data = resource.metadata_mut();
     let maybe_tty_mode = &mut meta_data.tty.mode;
