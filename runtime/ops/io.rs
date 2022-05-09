@@ -305,7 +305,7 @@ type MaybeSharedStdFile = Option<Arc<Mutex<StdFile>>>;
 
 #[derive(Default)]
 pub struct StdFileResource {
-  pub fs_file: Option<(MaybeSharedStdFile, Option<RefCell<FileMetadata>>)>,
+  fs_file: (MaybeSharedStdFile, Option<RefCell<FileMetadata>>),
   cancel: CancelHandle,
   name: String,
 }
@@ -313,10 +313,10 @@ pub struct StdFileResource {
 impl StdFileResource {
   pub fn stdio(std_file: &StdFile, name: &str) -> Self {
     Self {
-      fs_file: Some((
+      fs_file: (
         std_file.try_clone().map(|s| Arc::new(Mutex::new(s))).ok(),
         Some(RefCell::new(FileMetadata::default())),
-      )),
+      ),
       name: name.to_string(),
       ..Default::default()
     }
@@ -324,47 +324,41 @@ impl StdFileResource {
 
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
-      fs_file: Some((
+      fs_file: (
         Some(Arc::new(Mutex::new(fs_file))),
         Some(RefCell::new(FileMetadata::default())),
-      )),
+      ),
       name: "fsFile".to_string(),
       ..Default::default()
     }
+  }
+
+  pub fn std_file(&self) -> Arc<Mutex<StdFile>> {
+    self.fs_file.0.as_ref().unwrap().clone()
   }
 
   async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
-    if self.fs_file.is_some() {
-      let fs_file = self.fs_file.as_ref().unwrap();
-      let std_file = fs_file.0.as_ref().unwrap().clone();
-      tokio::task::spawn_blocking(
-        move || -> Result<(usize, ZeroCopyBuf), AnyError> {
-          let mut std_file = std_file.lock().unwrap();
-          Ok((std_file.read(&mut buf)?, buf))
-        },
-      )
-      .await?
-    } else {
-      Err(resource_unavailable())
-    }
+    let std_file = self.fs_file.0.as_ref().unwrap().clone();
+    tokio::task::spawn_blocking(
+      move || -> Result<(usize, ZeroCopyBuf), AnyError> {
+        let mut std_file = std_file.lock().unwrap();
+        Ok((std_file.read(&mut buf)?, buf))
+      },
+    )
+    .await?
   }
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
-    if self.fs_file.is_some() {
-      let fs_file = self.fs_file.as_ref().unwrap();
-      let std_file = fs_file.0.as_ref().unwrap().clone();
-      tokio::task::spawn_blocking(move || {
-        let mut std_file = std_file.lock().unwrap();
-        std_file.write(&buf)
-      })
-      .await?
-      .map_err(AnyError::from)
-    } else {
-      Err(resource_unavailable())
-    }
+    let std_file = self.fs_file.0.as_ref().unwrap().clone();
+    tokio::task::spawn_blocking(move || {
+      let mut std_file = std_file.lock().unwrap();
+      std_file.write(&buf)
+    })
+    .await?
+    .map_err(AnyError::from)
   }
 
   pub fn with<F, R>(
@@ -376,14 +370,8 @@ impl StdFileResource {
     F: FnMut(Result<&mut std::fs::File, ()>) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    // TODO(@AaronO): does this make sense ?
-    // Sync write only works for FsFile. It doesn't make sense to do this
-    // for non-blocking sockets. So we error out if not FsFile.
-    if resource.fs_file.is_none() {
-      return f(Err(()));
-    }
 
-    let (r, _) = resource.fs_file.as_ref().unwrap();
+    let (r, _) = &resource.fs_file;
     match r {
       Some(r) => f(Ok(&mut r.as_ref().lock().unwrap())),
       None => Err(resource_unavailable()),
