@@ -305,7 +305,7 @@ type MaybeSharedStdFile = Option<Arc<Mutex<StdFile>>>;
 
 #[derive(Default)]
 pub struct StdFileResource {
-  fs_file: (MaybeSharedStdFile, Option<RefCell<FileMetadata>>),
+  fs_file: (MaybeSharedStdFile, RefCell<FileMetadata>),
   cancel: CancelHandle,
   name: String,
 }
@@ -315,7 +315,7 @@ impl StdFileResource {
     Self {
       fs_file: (
         std_file.try_clone().map(|s| Arc::new(Mutex::new(s))).ok(),
-        Some(RefCell::new(FileMetadata::default())),
+        RefCell::new(FileMetadata::default()),
       ),
       name: name.to_string(),
       ..Default::default()
@@ -326,7 +326,7 @@ impl StdFileResource {
     Self {
       fs_file: (
         Some(Arc::new(Mutex::new(fs_file))),
-        Some(RefCell::new(FileMetadata::default())),
+        RefCell::new(FileMetadata::default()),
       ),
       name: "fsFile".to_string(),
       ..Default::default()
@@ -335,6 +335,10 @@ impl StdFileResource {
 
   pub fn std_file(&self) -> Arc<Mutex<StdFile>> {
     self.fs_file.0.as_ref().unwrap().clone()
+  }
+
+  pub fn metadata_mut(&self) -> std::cell::RefMut<FileMetadata> {
+    self.fs_file.1.borrow_mut()
   }
 
   async fn read(

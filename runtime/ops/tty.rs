@@ -2,7 +2,6 @@
 
 use super::io::StdFileResource;
 use deno_core::error::bad_resource_id;
-use deno_core::error::not_supported;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
@@ -87,7 +86,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
 
     if cbreak {
-      return Err(not_supported());
+      return Err(deno_core::error::not_supported());
     }
 
     let std_file = resource.std_file();
@@ -121,20 +120,10 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     use std::os::unix::io::AsRawFd;
 
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
-
-    if resource.fs_file.is_none() {
-      return Err(not_supported());
-    }
-
-    let (fs_file, meta) =
-      resource.fs_file.as_ref().ok_or_else(resource_unavailable)?;
-
-    if fs_file.is_none() {
-      return Err(resource_unavailable());
-    }
-
-    let raw_fd = fs_file.as_ref().unwrap().lock().unwrap().as_raw_fd();
-    let maybe_tty_mode = &mut meta.as_ref().unwrap().borrow_mut().tty.mode;
+    let std_file = resource.std_file();
+    let raw_fd = std_file.lock().unwrap().as_raw_fd();
+    let mut meta_data = resource.metadata_mut();
+    let maybe_tty_mode = &mut meta_data.tty.mode;
 
     if is_raw {
       if maybe_tty_mode.is_none() {
