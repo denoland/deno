@@ -167,7 +167,11 @@ fn wasm_module_evaluation_steps<'a>(
     .clone();
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
-  let (module_handle, import_specifiers, export_names) = module_map
+  let StoredWasmData {
+    module_handle,
+    import_specifiers,
+    export_names,
+  } = module_map
     .borrow_mut()
     .wasm_value_store
     .remove(&handle)
@@ -859,6 +863,12 @@ pub(crate) enum ModuleError {
   Other(Error),
 }
 
+struct StoredWasmData {
+  module_handle: v8::Global<v8::Object>,
+  import_specifiers: Vec<(String, ModuleSpecifier)>,
+  export_names: Vec<v8::Global<v8::String>>,
+}
+
 pub(crate) struct PendingWasmEvaluation {
   module_handle: v8::Global<v8::Object>,
   module_global: v8::Global<v8::Module>,
@@ -1011,14 +1021,7 @@ pub(crate) struct ModuleMap {
   json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
   // This store is used temporarly, to forward parsed WASM modules from
   // `new_wasm_module` to `wasm_module_evaluation_steps`
-  wasm_value_store: HashMap<
-    v8::Global<v8::Module>,
-    (
-      v8::Global<v8::Object>,
-      Vec<(String, ModuleSpecifier)>,
-      Vec<v8::Global<v8::String>>,
-    ),
-  >,
+  wasm_value_store: HashMap<v8::Global<v8::Module>, StoredWasmData>,
 
   pub(crate) pending_wasm_evaluations: Vec<PendingWasmEvaluation>,
 }
@@ -1246,9 +1249,14 @@ impl ModuleMap {
 
     let handle = v8::Global::<v8::Module>::new(scope, module);
     let value_handle = v8::Global::<v8::Object>::new(scope, wasm_module);
-    self
-      .wasm_value_store
-      .insert(handle.clone(), (value_handle, imports, export_names));
+    self.wasm_value_store.insert(
+      handle.clone(),
+      StoredWasmData {
+        module_handle: value_handle,
+        import_specifiers: imports,
+        export_names,
+      },
+    );
 
     let id =
       self.create_module_info(name, ModuleType::Wasm, handle, false, requests);
