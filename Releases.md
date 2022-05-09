@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.21.2 / 2022.05.05
+
+- fix(cli): add dom.extras lib (#14430)
+- fix(coverage): exclude .snap files (#14480)
+- fix(ext/http): explicitly close resource after reading (#14471)
+- fix(runtime): lossy utf8 readTextFile (#14456)
+- fix(task): allow hyphen values after task name (#14434)
+- fix(task): support forwarding lone double hyphen (#14436)
+- fix(test): actually capture stdout and stderr in workers (#14435)
+- fix(test/bench): accept file protocol module specifier CLI args (#14429)
+- fix(vendor): do not panic on relative specifier with scheme-like folder name
+  (#14453)
+- fix: improve formatting jsdocs with asterisk as first char on line (#14446)
+
+### 1.21.1 / 2022.04.28
+
+- Reland "feat(ext/http): stream auto resp body compression" (#14345)
+- Reland "perf(http): optimize ReadableStreams backed by a resource" (#14346)
+- feat(ext/console): Add string abbreviation size option for "Deno.inspect"
+  (#14384)
+- fix(ext/console): Compact empty iterables when calling Deno.inspect with
+  compact false (#14387)
+- fix: change shade of "gray" color in eye-catchers (#14309)
+- fix(bench): eliminate sanitizeExit overhead (#14361)
+- fix(bench): report pending summary before clearing (#14369)
+- fix(bench): reset reporter context (#14360)
+- fix(cli): wrap long line of the env variables help (#14422)
+- fix(ext/http): truncate read bytes when streaming bodies (#14389)
+- fix(runtime/js/spawn): Pass stdio options for spawn() and spawnSync() (#14358)
+- fix(test): capture inherited stdout and stderr for subprocesses in test output
+  (#14395)
+- fix(test): capture worker stdout and stderr in test output (#14410)
+- fix(watcher): don't clear screen on start (#14351)
+- fix(workers): Make `worker.terminate()` not block the current thread (#13941)
+- fix: `deno task` forward double hyphen (#14419)
+- perf(ext/http): fast path for uncompressed bodies (#14366)
+- perf(ext/http): faster is_content_compressible (#14383)
+- perf(runtime): read entire files in single ops (#14261)
+- perf(serde_v8): zero-copy StringOrBuffer (#14381)
+
 ### 1.21.0 / 2022.04.20
 
 - feat(bench): update API, new console reporter (#14305)

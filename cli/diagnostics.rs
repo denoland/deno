@@ -39,7 +39,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixConnectOptions",
   "UnixListenOptions",
   "addSignalListener",
-  "applySourceMap",
   "bench",
   "connect",
   "consoleSize",
