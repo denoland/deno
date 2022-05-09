@@ -450,6 +450,7 @@ declare class Worker extends EventTarget {
 declare type PerformanceEntryList = PerformanceEntry[];
 
 declare class Performance {
+  /** Returns a timestamp representing the start of the performance measurement. */
   readonly timeOrigin: number;
   constructor();
 
@@ -490,6 +491,9 @@ declare class Performance {
    * ```
    */
   now(): number;
+
+  /** Returns a JSON representation of the performance object. */
+  toJSON(): any;
 }
 
 declare var performance: Performance;
