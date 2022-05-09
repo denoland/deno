@@ -313,12 +313,7 @@ pub fn kill(pid: i32, signal: super::signal::Signal) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if !matches!(
-    signal,
-    super::signal::Signal::SIGKILL | super::signal::Signal::SIGTERM
-  ) {
-    Err(type_error(format!("Invalid signal: {:?}", signal)))
-  } else if pid <= 0 {
+  if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };

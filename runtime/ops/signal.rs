@@ -220,6 +220,13 @@ pub enum Signal {
   SIGJVM2 = 40,
 }
 
+#[cfg(target_os = "windows")]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum Signal {
+  SIGKILL,
+  SIGTERM,
+}
+
 #[cfg(unix)]
 #[op]
 fn op_signal_bind(
