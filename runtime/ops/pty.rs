@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::spawn::ChildStatus;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::AsyncResult;
@@ -13,6 +14,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize, PtySystem};
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
@@ -27,7 +29,7 @@ pub struct PtyWrapper(pub Box<dyn PtySystem>);
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![op_pty_open::decl()])
+    .ops(vec![op_pty_open::decl(), op_pty_wait::decl()])
     .state(move |state| {
       state.put(PtyWrapper(native_pty_system()));
       Ok(())
@@ -131,4 +133,17 @@ fn op_pty_open(
   });
 
   Ok(PtyChild { rid, pid })
+}
+
+#[op]
+async fn op_pty_wait(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<bool, AnyError> {
+  let resource = state.borrow_mut().resource_table.take::<PtyResource>(rid)?;
+  let mut child = Rc::try_unwrap(resource).ok().unwrap().child;
+  tokio::task::spawn_blocking(move || -> Result<bool, AnyError> {
+    Ok(child.wait()?.success())
+  })
+  .await?
 }

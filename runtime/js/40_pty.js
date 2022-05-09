@@ -33,6 +33,12 @@
 
       this.readable = readableStreamForRid(rid);
       this.writable = writableStreamForRid(rid);
+
+      this.success = core.opAsync("op_pty_wait", rid).then((res) => {
+        console.log(res);
+        this.#rid = null;
+        return res;
+      });
     }
   }
 
