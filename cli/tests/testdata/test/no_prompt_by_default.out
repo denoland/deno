@@ -1,13 +1,13 @@
 running 1 test from ./test/no_prompt_by_default.ts
 no prompt ... FAILED ([WILDCARD]ms)
 
-failures:
+ ERRORS 
 
 no prompt => ./test/no_prompt_by_default.ts:[WILDCARD]
 error: PermissionDenied: Requires read access to "./some_file.txt", run again with the --allow-read flag
 [WILDCARD]
 
-failures:
+ FAILURES 
 
 no prompt => ./test/no_prompt_by_default.ts:[WILDCARD]
 
