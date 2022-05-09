@@ -35,10 +35,9 @@ use tokio::process;
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
-use {
-  std::os::windows::io::FromRawHandle,
-  winapi::um::{processenv::GetStdHandle, winbase},
-};
+use std::os::windows::io::FromRawHandle;
+#[cfg(windows)]
+use std::os::windows::prelude::AsRawHandle;
 
 #[cfg(unix)]
 static STDIN_HANDLE: Lazy<StdFile> =
@@ -60,15 +59,15 @@ static STDERR_HANDLE: Lazy<StdFile> =
 // TODO(ry) It should be possible to close stdout.
 #[cfg(windows)]
 static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
-  StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE))
+  StdFile::from_raw_handle(std::io::stdin().as_raw_handle())
 });
 #[cfg(windows)]
 static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
-  StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE))
+  StdFile::from_raw_handle(std::io::stdout().as_raw_handle())
 });
 #[cfg(windows)]
 static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
-  StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE))
+  StdFile::from_raw_handle(std::io::stderr().as_raw_handle())
 });
 
 pub fn init() -> Extension {
