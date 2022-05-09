@@ -1201,7 +1201,20 @@ async fn run_command(
   // probably call `ProcState::resolve` instead
   let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+
+  let mut permissions =
+    Permissions::from_options(&ps.flags.permissions_options());
+
+  if let Some(config_file) = &ps.maybe_config_file {
+    if let Some(cf_perms) = config_file.to_permissions(!ps.flags.no_prompt)? {
+      if ps.flags.has_any_permission_flag() {
+        log::warn!("⚠️ Config file contains \"permissions\" object and --allow-* flags were passed on the CLI.
+The flags will be ignored.")
+      }
+      permissions = cf_perms;
+    }
+  }
+
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),

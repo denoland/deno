@@ -453,6 +453,16 @@ impl Flags {
     }
   }
 
+  pub fn has_any_permission_flag(&self) -> bool {
+    self.allow_env.is_some()
+      || self.allow_net.is_some()
+      || self.allow_ffi.is_some()
+      || self.allow_read.is_some()
+      || self.allow_run.is_some()
+      || self.allow_write.is_some()
+      || self.allow_hrtime
+  }
+
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
       allow_env: self.allow_env.clone(),
