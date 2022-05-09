@@ -27,7 +27,7 @@ itest!(overloads {
 });
 
 itest!(meta {
-  args: "test test/meta.ts",
+  args: "test --quiet test/meta.ts",
   exit_code: 0,
   output: "test/meta.out",
 });
