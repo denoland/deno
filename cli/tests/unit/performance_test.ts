@@ -20,6 +20,13 @@ Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
   assert(totalTime >= 10);
 });
 
+Deno.test(function timeOrigin() {
+  const origin = performance.timeOrigin;
+
+  assert(origin > 0);
+  assert(Date.now() >= origin);
+});
+
 Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);

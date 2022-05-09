@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.21.2 / 2022.05.05
+
+- fix(cli): add dom.extras lib (#14430)
+- fix(coverage): exclude .snap files (#14480)
+- fix(ext/http): explicitly close resource after reading (#14471)
+- fix(runtime): lossy utf8 readTextFile (#14456)
+- fix(task): allow hyphen values after task name (#14434)
+- fix(task): support forwarding lone double hyphen (#14436)
+- fix(test): actually capture stdout and stderr in workers (#14435)
+- fix(test/bench): accept file protocol module specifier CLI args (#14429)
+- fix(vendor): do not panic on relative specifier with scheme-like folder name
+  (#14453)
+- fix: improve formatting jsdocs with asterisk as first char on line (#14446)
+
 ### 1.21.1 / 2022.04.28
 
 - Reland "feat(ext/http): stream auto resp body compression" (#14345)

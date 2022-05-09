@@ -2779,3 +2779,9 @@ itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
 });
+
+itest!(error_name_non_string {
+  args: "run --quiet error_name_non_string.js",
+  output: "error_name_non_string.js.out",
+  exit_code: 1,
+});
