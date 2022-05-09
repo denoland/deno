@@ -242,6 +242,7 @@ struct PrettyTestReporter {
   last_wait_output_level: usize,
   cwd: Url,
   did_have_user_output: bool,
+  started_tests: bool,
 }
 
 impl PrettyTestReporter {
@@ -254,6 +255,7 @@ impl PrettyTestReporter {
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
+      started_tests: false,
     }
   }
 
@@ -357,6 +359,7 @@ impl TestReporter for PrettyTestReporter {
     if !self.concurrent {
       self.force_report_wait(description);
     }
+    self.started_tests = true;
   }
 
   fn report_output(&mut self, output: &[u8]) {
@@ -364,7 +367,7 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
 
-    if !self.did_have_user_output {
+    if !self.did_have_user_output && self.started_tests {
       self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("------- output -------"));
