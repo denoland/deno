@@ -494,7 +494,7 @@ impl TestReporter for PrettyTestReporter {
           failures_by_origin.entry(origin.clone()).or_default();
         let _ = uncaught_error.insert(js_error.as_ref());
       }
-      println!("\nfailures:\n");
+      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
         for (description, js_error) in failures {
           let failure_title = format!(
@@ -535,7 +535,7 @@ impl TestReporter for PrettyTestReporter {
           failure_titles.push(failure_title);
         }
       }
-      println!("failures:\n");
+      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for failure_title in failure_titles {
         println!("{}", failure_title);
       }
