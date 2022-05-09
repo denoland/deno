@@ -1669,6 +1669,118 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
   }
 }
 
+pub fn create_permissions_from_config(
+  child_permissions_arg: ChildPermissionsArg,
+  prompt: bool,
+) -> Permissions {
+  let mut worker_perms = Permissions::default();
+
+  match child_permissions_arg.env {
+    ChildUnaryPermissionArg::Granted => {
+      worker_perms.env.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {
+      worker_perms.env.global_state = PermissionState::Denied;
+    }
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.env.granted_list =
+        Permissions::new_env(&Some(granted_list), false).granted_list;
+    }
+    _ => {}
+  }
+  worker_perms.env.prompt = prompt;
+  match child_permissions_arg.hrtime {
+    ChildUnitPermissionArg::Granted => {
+      worker_perms.hrtime.state = PermissionState::Granted;
+    }
+    ChildUnitPermissionArg::NotGranted => {
+      worker_perms.hrtime.state = PermissionState::Denied;
+    }
+    _ => {}
+  }
+  worker_perms.hrtime.prompt = prompt;
+  match child_permissions_arg.net {
+    ChildUnaryPermissionArg::Granted => {
+      worker_perms.net.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {
+      worker_perms.net.global_state = PermissionState::Denied;
+    }
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.net.granted_list =
+        Permissions::new_net(&Some(granted_list), false).granted_list;
+    }
+    _ => {}
+  }
+  worker_perms.net.prompt = prompt;
+  match child_permissions_arg.ffi {
+    ChildUnaryPermissionArg::Granted => {
+      worker_perms.ffi.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {
+      worker_perms.ffi.global_state = PermissionState::Denied;
+    }
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.ffi.granted_list = Permissions::new_ffi(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        false,
+      )
+      .granted_list;
+    }
+    _ => {}
+  }
+  worker_perms.ffi.prompt = prompt;
+  match child_permissions_arg.read {
+    ChildUnaryPermissionArg::Granted => {
+      worker_perms.read.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {
+      worker_perms.read.global_state = PermissionState::Denied;
+    }
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.read.granted_list = Permissions::new_read(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        false,
+      )
+      .granted_list;
+    }
+    _ => {}
+  }
+  worker_perms.read.prompt = prompt;
+  match child_permissions_arg.run {
+    ChildUnaryPermissionArg::Granted => {
+      worker_perms.run.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {
+      worker_perms.run.global_state = PermissionState::Denied;
+    }
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.run.granted_list =
+        Permissions::new_run(&Some(granted_list), false).granted_list;
+    }
+    _ => {}
+  }
+  worker_perms.run.prompt = prompt;
+  match child_permissions_arg.write {
+    ChildUnaryPermissionArg::Granted => {
+      worker_perms.write.global_state = PermissionState::Granted;
+    }
+    ChildUnaryPermissionArg::NotGranted => {
+      worker_perms.write.global_state = PermissionState::Denied;
+    }
+    ChildUnaryPermissionArg::GrantedList(granted_list) => {
+      worker_perms.write.granted_list = Permissions::new_write(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        false,
+      )
+      .granted_list;
+    }
+    _ => {}
+  }
+  worker_perms.write.prompt = prompt;
+  worker_perms
+}
+
 pub fn create_child_permissions(
   main_perms: &mut Permissions,
   child_permissions_arg: ChildPermissionsArg,

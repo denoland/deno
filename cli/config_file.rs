@@ -16,6 +16,9 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::create_permissions_from_config;
+use deno_runtime::permissions::ChildPermissionsArg;
+use deno_runtime::permissions::Permissions;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -650,8 +653,17 @@ impl ConfigFile {
     }
   }
 
-  pub fn to_permissions(&self) -> Result<(), AnyError> {
-    todo!()
+  pub fn to_permissions(
+    &self,
+    prompt: bool,
+  ) -> Result<Option<Permissions>, AnyError> {
+    if let Some(config) = self.json.permissions.clone() {
+      let permissions: ChildPermissionsArg = serde_json::from_value(config)
+        .context("Failed to parse \"permissions\" configuration")?;
+      Ok(Some(create_permissions_from_config(permissions, prompt)))
+    } else {
+      Ok(None)
+    }
   }
 
   /// Return any tasks that are defined in the configuration file as a sequence
@@ -748,6 +760,10 @@ impl ConfigFile {
 mod tests {
   use super::*;
   use deno_core::serde_json::json;
+  use deno_runtime::permissions::PermissionState;
+  use deno_runtime::permissions::RunDescriptor;
+  use std::collections::HashSet;
+  use std::str::FromStr;
 
   #[test]
   fn read_config_file_relative() {
@@ -832,7 +848,8 @@ mod tests {
         "write": ["some/dir", "file.ts"],
         "env": false,
         "ffi": false,
-        "run": ["deno", "echo"]
+        "run": ["deno", "echo"],
+        "hrtime": true
       }
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
@@ -901,27 +918,31 @@ mod tests {
       "deno run --allow-net --allow-read server.ts"
     );
 
-    let permissions_config = config_file.json.permissions.unwrap();
+    let permissions = config_file.to_permissions(false).unwrap().unwrap();
+    assert!(!permissions.read.prompt);
+    assert_eq!(permissions.read.global_state, PermissionState::Granted,);
+    assert!(!permissions.env.prompt);
+    assert_eq!(permissions.env.global_state, PermissionState::Denied,);
+    assert!(!permissions.ffi.prompt);
+    assert_eq!(permissions.ffi.global_state, PermissionState::Denied,);
+    assert!(!permissions.run.prompt);
     assert_eq!(
-      permissions_config["read"],
-      true,
+      permissions.run.granted_list,
+      HashSet::from([
+        RunDescriptor::from_str("deno").unwrap(),
+        RunDescriptor::from_str("echo").unwrap()
+      ]),
     );
-    assert_eq!(
-      permissions_config["write"].as_array().unwrap(),
-      &["some/dir", "file.ts"],
-    );
-    assert_eq!(
-      permissions_config["env"],
-      false,
-    );
-    assert_eq!(
-      permissions_config["ffi"],
-      false,
-    );
-    assert_eq!(
-      permissions_config["run"].as_array().unwrap(),
-      &["deno", "echo"],
-    );
+    assert!(!permissions.hrtime.prompt);
+    assert_eq!(permissions.hrtime.state, PermissionState::Granted,);
+    assert!(!permissions.write.prompt);
+    let items = permissions
+      .write
+      .granted_list
+      .into_iter()
+      .collect::<Vec<_>>();
+    assert!(items[0].0.ends_with("some/dir"));
+    assert!(items[1].0.ends_with("file.ts"));
   }
 
   #[test]
