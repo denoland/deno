@@ -31,7 +31,7 @@ Deno.test(function performanceToJSON() {
   const json = performance.toJSON();
 
   assert("timeOrigin" in json);
-  assert(typeof json.timeOrigin === "number");
+  assert(json.timeOrigin === performance.timeOrigin);
   // check there are no other keys
   assertEquals(Object.keys(json).length, 1);
 });
