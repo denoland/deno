@@ -164,9 +164,7 @@ fn pty_complete_imports() {
     let output = console.read_all_output();
     assert!(output.contains("Hello World"));
     if cfg!(windows) {
-      if !output.contains("testing output\u{1b}") {
-        panic!("Output did not contain expected:\n{:?}", output);
-      }
+      assert!(output.contains("testing output\u{1b}"));
     } else {
       assert!(output.contains("\ntesting output"));
     }
