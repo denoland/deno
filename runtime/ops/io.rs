@@ -301,11 +301,9 @@ impl Resource for ChildStderrResource {
   }
 }
 
-#[derive(Default)]
 pub struct StdFileResource {
   fs_file: Option<Arc<Mutex<StdFile>>>,
   metadata: RefCell<FileMetadata>,
-  cancel: CancelHandle,
   name: String,
 }
 
@@ -313,18 +311,16 @@ impl StdFileResource {
   pub fn stdio(std_file: &StdFile, name: &str) -> Self {
     Self {
       fs_file: std_file.try_clone().map(|s| Arc::new(Mutex::new(s))).ok(),
-      metadata: RefCell::new(FileMetadata::default()),
+      metadata: Default::default(),
       name: name.to_string(),
-      ..Default::default()
     }
   }
 
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
       fs_file: Some(Arc::new(Mutex::new(fs_file))),
-      metadata: RefCell::new(FileMetadata::default()),
+      metadata: Default::default(),
       name: "fsFile".to_string(),
-      ..Default::default()
     }
   }
 
@@ -404,11 +400,6 @@ impl Resource for StdFileResource {
 
   fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.write(buf))
-  }
-
-  fn close(self: Rc<Self>) {
-    // TODO: do not cancel file I/O when file is writable.
-    self.cancel.cancel()
   }
 }
 
