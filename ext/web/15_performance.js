@@ -333,6 +333,7 @@
     }
 
     get timeOrigin() {
+      webidl.assertBranded(this, PerformancePrototype);
       return timeOrigin;
     }
 
