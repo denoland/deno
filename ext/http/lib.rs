@@ -669,7 +669,7 @@ fn should_compress(headers: &hyper::HeaderMap) -> bool {
   !content_range
     && !cache_control_no_transform(headers).unwrap_or_default()
     && headers
-      .get(hyper::header::CONTENT_ENCODING)
+      .get(hyper::header::CONTENT_TYPE)
       .map(compressible::is_content_compressible)
       .unwrap_or_default()
 }
