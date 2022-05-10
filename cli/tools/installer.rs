@@ -361,7 +361,7 @@ fn resolve_shim_data(
     executable_args.push(import_map_url.to_string());
   }
 
-  if let Some(config_path) = &flags.config_path {
+  if let Some(config_path) = &flags.config_flags.path {
     let mut copy_path = file_path.clone();
     copy_path.set_extension("tsconfig.json");
     executable_args.push("--config".to_string());
@@ -404,6 +404,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::flags::ConfigFlags;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
@@ -771,7 +772,10 @@ mod tests {
 
     let result = install(
       Flags {
-        config_path: Some(config_file_path.to_string_lossy().to_string()),
+        config_flags: ConfigFlags {
+          path: Some(config_file_path.to_string_lossy().to_string()),
+          disable_auto_discovery: false,
+        },
         ..Flags::default()
       },
       InstallFlags {

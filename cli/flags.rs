@@ -271,6 +271,12 @@ impl Default for FutureTypeCheckMode {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
+pub struct ConfigFlags {
+  pub path: Option<String>,
+  pub disable_auto_discovery: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -297,9 +303,7 @@ pub struct Flags {
   // once type checking is skipped by default
   pub future_type_check_mode: FutureTypeCheckMode,
   pub has_check_flag: bool,
-  pub config_path: Option<String>,
-  // Disable loading of configuration file
-  pub no_config: bool,
+  pub config_flags: ConfigFlags,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -1069,8 +1073,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 
   // deno-fmt-ignore-file",
     )
-    .arg(config_arg())
-    .arg(no_config_arg())
+    .args(config_args())
     .arg(
       Arg::new("check")
         .long("check")
@@ -1358,8 +1361,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .conflicts_with("rules")
         .help("Exclude lint rules"),
     )
-    .arg(config_arg())
-    .arg(no_config_arg())
+    .args(config_args())
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1451,8 +1453,7 @@ Specifying the filename '-' to read the file from stdin.
 fn task_subcommand<'a>() -> Command<'a> {
   Command::new("task")
     .trailing_var_arg(true)
-    .arg(config_arg())
-    .arg(no_config_arg())
+    .args(config_args())
     .arg(Arg::new("task").help("Task to be executed"))
     .arg(
       Arg::new("task_args")
@@ -1695,8 +1696,7 @@ Remote modules and multiple modules may also be specified:
         )
         .takes_value(false),
     )
-    .arg(config_arg())
-    .arg(no_config_arg())
+    .args(config_args())
     .arg(import_map_arg())
     .arg(lock_arg())
     .arg(reload_arg())
@@ -1707,8 +1707,7 @@ fn compile_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
-    .arg(config_arg())
-    .arg(no_config_arg())
+    .args(config_args())
     .arg(no_check_arg())
     .arg(reload_arg())
     .arg(lock_arg())
@@ -1720,8 +1719,7 @@ fn compile_args_without_no_check(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
-    .arg(config_arg())
-    .arg(no_config_arg())
+    .args(config_args())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -2104,23 +2102,22 @@ static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
   )
 });
 
-fn config_arg<'a>() -> Arg<'a> {
-  Arg::new("config")
-    .short('c')
-    .long("config")
-    .value_name("FILE")
-    .help("Specify the configuration file")
-    .long_help(CONFIG_HELP.as_str())
-    .takes_value(true)
-    .value_hint(ValueHint::FilePath)
-    .conflicts_with("no-config")
-}
-
-fn no_config_arg<'a>() -> Arg<'a> {
-  Arg::new("no-config")
-    .long("no-config")
-    .help("Disable automatic loading of the configuration file.")
-    .conflicts_with("config")
+fn config_args<'a>() -> [Arg<'a>; 2] {
+  [
+    Arg::new("config")
+      .short('c')
+      .long("config")
+      .value_name("FILE")
+      .help("Specify the configuration file")
+      .long_help(CONFIG_HELP.as_str())
+      .takes_value(true)
+      .value_hint(ValueHint::FilePath)
+      .conflicts_with("no-config"),
+    Arg::new("no-config")
+      .long("no-config")
+      .help("Disable automatic loading of the configuration file.")
+      .conflicts_with("config"),
+  ]
 }
 
 fn no_remote_arg<'a>() -> Arg<'a> {
@@ -2956,8 +2953,10 @@ fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
-  flags.no_config = matches.is_present("no-config");
+  flags.config_flags = ConfigFlags {
+    path: matches.value_of("config").map(ToOwned::to_owned),
+    disable_auto_discovery: matches.is_present("no-config"),
+  };
 }
 
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -3440,7 +3439,10 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
         }),
-        config_path: Some("deno.jsonc".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("deno.jsonc".to_string()),
+          disable_auto_discovery: false
+        },
         ..Flags::default()
       }
     );
@@ -3467,7 +3469,10 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
         }),
-        config_path: Some("deno.jsonc".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("deno.jsonc".to_string()),
+          disable_auto_discovery: false
+        },
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -3680,7 +3685,10 @@ mod tests {
           json: true,
           ignore: vec![],
         }),
-        config_path: Some("Deno.jsonc".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("Deno.jsonc".to_string()),
+          disable_auto_discovery: false
+        },
         ..Flags::default()
       }
     );
@@ -3813,7 +3821,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        config_path: Some("tsconfig.json".to_owned()),
+        config_flags: ConfigFlags {
+          path: Some("tsconfig.json".to_owned()),
+          disable_auto_discovery: false
+        },
         ..Flags::default()
       }
     );
@@ -3903,7 +3914,10 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_path: Some("tsconfig.json".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("tsconfig.json".to_owned()),
+          disable_auto_discovery: false
+        },
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -3994,7 +4008,10 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_path: Some("tsconfig.json".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("tsconfig.json".to_owned()),
+          disable_auto_discovery: false
+        },
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4224,7 +4241,10 @@ mod tests {
         }),
         allow_write: Some(vec![]),
         no_remote: true,
-        config_path: Some("tsconfig.json".to_owned()),
+        config_flags: ConfigFlags {
+          path: Some("tsconfig.json".to_owned()),
+          disable_auto_discovery: false
+        },
         ..Flags::default()
       }
     );
@@ -4517,7 +4537,10 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_path: Some("tsconfig.json".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("tsconfig.json".to_owned()),
+          disable_auto_discovery: false
+        },
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5362,7 +5385,10 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_path: Some("tsconfig.json".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("tsconfig.json".to_owned()),
+          disable_auto_discovery: false
+        },
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5534,7 +5560,10 @@ mod tests {
           force: true,
           output_path: Some(PathBuf::from("out_dir")),
         }),
-        config_path: Some("deno.json".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("deno.json".to_owned()),
+          disable_auto_discovery: false
+        },
         import_map_path: Some("import_map.json".to_string()),
         lock: Some(PathBuf::from("lock.json")),
         reload: true,
@@ -5588,7 +5617,10 @@ mod tests {
           task: "build".to_string(),
         }),
         argv: svec!["--", "hello", "world"],
-        config_path: Some("deno.json".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("deno.json".to_owned()),
+          disable_auto_discovery: false
+        },
         ..Flags::default()
       }
     );
@@ -5648,7 +5680,10 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           task: "".to_string(),
         }),
-        config_path: Some("deno.jsonc".to_string()),
+        config_flags: ConfigFlags {
+          path: Some("deno.jsonc".to_string()),
+          disable_auto_discovery: false
+        },
         ..Flags::default()
       }
     );
@@ -5749,7 +5784,10 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        no_config: true,
+        config_flags: ConfigFlags {
+          disable_auto_discovery: true,
+          path: None,
+        },
         ..Flags::default()
       }
     );
