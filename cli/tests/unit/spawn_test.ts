@@ -264,8 +264,13 @@ Deno.test(
     queueMicrotask(() => ac.abort());
     const status = await child.status;
     assertEquals(status.success, false);
-    assertEquals(status.code, 143);
-    assertEquals(status.signal, 15);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, undefined);
+    } else {
+      assertEquals(status.success, false);
+      assertEquals(status.code, 143);
+    }
   },
 );
 
