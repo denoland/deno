@@ -35,6 +35,14 @@ static LONG_VERSION: Lazy<String> = Lazy::new(|| {
   )
 });
 
+static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
+  crate::version::deno()
+    .split('+')
+    .next()
+    .unwrap()
+    .to_string()
+});
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
@@ -493,9 +501,11 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
-static DENO_HELP: &str = "A modern JavaScript and TypeScript runtime
+static DENO_HELP: Lazy<String> = Lazy::new(|| {
+  format!(
+    "A modern JavaScript and TypeScript runtime
 
-Docs: https://deno.land/manual
+Docs: https://deno.land/manual@v{}
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
@@ -510,7 +520,10 @@ To execute a script:
 To evaluate code in the shell:
 
   deno eval \"console.log(30933 + 404)\"
-";
+",
+    SHORT_VERSION.as_str()
+  )
+});
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
@@ -633,7 +646,7 @@ fn clap_root(version: &str) -> Command {
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
     .subcommand(vendor_subcommand())
-    .long_about(DENO_HELP)
+    .long_about(DENO_HELP.as_str())
     .after_help(ENV_VARIABLES_HELP)
 }
 
@@ -1260,17 +1273,23 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno")
 }
 
-fn lsp_subcommand<'a>() -> Command<'a> {
-  Command::new("lsp")
-    .about("Start the language server")
-    .long_about(
-      "The 'deno lsp' subcommand provides a way for code editors and IDEs to
+static LSP_HELP: Lazy<String> = Lazy::new(|| {
+  format!(
+    "The 'deno lsp' subcommand provides a way for code editors and IDEs to
 interact with Deno using the Language Server Protocol. Usually humans do not
 use this subcommand directly. For example, 'deno lsp' can provide IDEs with
 go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
-https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
+https://deno.land/manual@v{}/getting_started/setup_your_environment#editors-and-ides",
+    SHORT_VERSION.as_str()
+  )
+});
+
+fn lsp_subcommand<'a>() -> Command<'a> {
+  Command::new("lsp")
+    .about("Start the language server")
+    .long_about(LSP_HELP.as_str())
 }
 
 fn lint_subcommand<'a>() -> Command<'a> {
@@ -1844,18 +1863,23 @@ fn inspect_args(app: Command) -> Command {
     )
 }
 
+static IMPORT_MAP_HELP: Lazy<String> = Lazy::new(|| {
+  format!(
+    "Load import map file from local file or remote URL.
+  Docs: https://deno.land/manual@v{}/linking_to_external_code/import_maps
+  Specification: https://wicg.github.io/import-maps/
+  Examples: https://github.com/WICG/import-maps#the-import-map",
+    SHORT_VERSION.as_str()
+  )
+});
+
 fn import_map_arg<'a>() -> Arg<'a> {
   Arg::new("import-map")
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
     .help("Load import map file")
-    .long_help(
-      "Load import map file from local file or remote URL.
-Docs: https://deno.land/manual/linking_to_external_code/import_maps
-Specification: https://wicg.github.io/import-maps/
-Examples: https://github.com/WICG/import-maps#the-import-map",
-    )
+    .long_help(IMPORT_MAP_HELP.as_str())
     .takes_value(true)
     .value_hint(ValueHint::FilePath)
 }
@@ -1948,12 +1972,19 @@ fn seed_arg<'a>() -> Arg<'a> {
     })
 }
 
+static COMPAT_HELP: Lazy<String> = Lazy::new(|| {
+  format!(
+    "See https://deno.land/manual@v{}/node/compatibility_mode",
+    SHORT_VERSION.as_str()
+  )
+});
+
 fn compat_arg<'a>() -> Arg<'a> {
   Arg::new("compat")
     .long("compat")
     .requires("unstable")
     .help("UNSTABLE: Node compatibility mode.")
-    .long_help("See https://deno.land/manual/node/compatibility_mode")
+    .long_help(COMPAT_HELP.as_str())
 }
 
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
@@ -2054,19 +2085,24 @@ fn lock_write_arg<'a>() -> Arg<'a> {
     .help("Write lock file (use with --lock)")
 }
 
+static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
+  format!(
+    "The configuration file can be used to configure different aspects of \
+      deno including TypeScript, linting, and code formatting. Typically the \
+      configuration file will be called `deno.json` or `deno.jsonc` and \
+      automatically detected; in that case this flag is not necessary. \
+      See https://deno.land/manual@v{}/getting_started/configuration_file",
+    SHORT_VERSION.as_str()
+  )
+});
+
 fn config_arg<'a>() -> Arg<'a> {
   Arg::new("config")
     .short('c')
     .long("config")
     .value_name("FILE")
     .help("Specify the configuration file")
-    .long_help(
-      "The configuration file can be used to configure different aspects of \
-      deno including TypeScript, linting, and code formatting. Typically the \
-      configuration file will be called `deno.json` or `deno.jsonc` and \
-      automatically detected; in that case this flag is not necessary. \
-      See https://deno.land/manual/getting_started/configuration_file",
-    )
+    .long_help(CONFIG_HELP.as_str())
     .takes_value(true)
     .value_hint(ValueHint::FilePath)
 }

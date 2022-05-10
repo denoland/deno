@@ -2,7 +2,7 @@ Check [WILDCARD]test/ops_sanitizer_missing_details.ts
 running 1 test from ./test/ops_sanitizer_missing_details.ts
 test 1 ... FAILED [WILDCARD]
 
-failures:
+ ERRORS 
 
 test 1 => ./test/ops_sanitizer_missing_details.ts:[WILDCARD]
 error: Test case is leaking async ops.
@@ -11,7 +11,7 @@ error: Test case is leaking async ops.
 
 To get more details where ops were leaked, run again with --trace-ops flag.
 
-failures:
+ FAILURES 
 
 test 1 => ./test/ops_sanitizer_missing_details.ts:[WILDCARD]
 
