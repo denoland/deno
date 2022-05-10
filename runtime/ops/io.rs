@@ -495,10 +495,6 @@ impl Resource for StdFileResource {
   fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.write(buf))
   }
-
-  fn close(self: Rc<Self>) {
-    // do nothing
-  }
 }
 
 // override op_print to use the stdout and stderr in the resource table
