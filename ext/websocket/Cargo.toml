@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_websocket"
-version = "0.55.0"
+version = "0.56.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,11 +14,11 @@ description = "Implementation of WebSocket API for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.132.0", path = "../../core" }
-deno_tls = { version = "0.37.0", path = "../tls" }
-http = "0.2.4"
-hyper = { version = "0.14.12" }
-serde = { version = "1.0.129", features = ["derive"] }
+deno_core = { version = "0.133.0", path = "../../core" }
+deno_tls = { version = "0.38.0", path = "../tls" }
+http = "0.2.6"
+hyper = { version = "0.14.18" }
+serde = { version = "1.0.136", features = ["derive"] }
 tokio = { version = "1.17", features = ["full"] }
-tokio-rustls = "0.23.0"
-tokio-tungstenite = { version = "0.16.0", features = ["rustls-tls-webpki-roots"] }
+tokio-rustls = "0.23.3"
+tokio-tungstenite = { version = "0.16.1", features = ["rustls-tls-webpki-roots"] }
