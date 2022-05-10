@@ -100,19 +100,19 @@ pub(crate) fn parse_import_assertions(
   assertions
 }
 
-pub(crate) fn get_module_type_from_assertions(
+pub(crate) fn get_asserted_module_type_from_assertions(
   assertions: &HashMap<String, String>,
-) -> ModuleType {
+) -> AssertedModuleType {
   assertions
     .get("type")
     .map(|ty| {
       if ty == "json" {
-        ModuleType::Json
+        AssertedModuleType::Json
       } else {
-        ModuleType::JavaScript
+        AssertedModuleType::JavaScriptOrWasm
       }
     })
-    .unwrap_or(ModuleType::JavaScript)
+    .unwrap_or(AssertedModuleType::JavaScriptOrWasm)
 }
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
@@ -337,7 +337,7 @@ enum LoadInit {
   Side(String),
   /// Dynamic import specifier with referrer and expected
   /// module type (which is determined by import assertion).
-  DynamicImport(String, String, ModuleType),
+  DynamicImport(String, String, AssertedModuleType),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -353,6 +353,7 @@ pub(crate) struct RecursiveModuleLoad {
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
   init: LoadInit,
+  root_asserted_module_type: Option<AssertedModuleType>,
   root_module_type: Option<ModuleType>,
   state: LoadState,
   module_map_rc: Rc<RefCell<ModuleMap>>,
@@ -383,14 +384,14 @@ impl RecursiveModuleLoad {
   fn dynamic_import(
     specifier: &str,
     referrer: &str,
-    module_type: ModuleType,
+    asserted_module_type: AssertedModuleType,
     module_map_rc: Rc<RefCell<ModuleMap>>,
   ) -> Self {
     Self::new(
       LoadInit::DynamicImport(
         specifier.to_string(),
         referrer.to_string(),
-        module_type,
+        asserted_module_type,
       ),
       module_map_rc,
     )
@@ -405,13 +406,14 @@ impl RecursiveModuleLoad {
     };
     let op_state = module_map_rc.borrow().op_state.clone();
     let loader = module_map_rc.borrow().loader.clone();
-    let expected_module_type = match init {
+    let asserted_module_type = match init {
       LoadInit::DynamicImport(_, _, module_type) => module_type,
-      _ => ModuleType::JavaScript,
+      _ => AssertedModuleType::JavaScriptOrWasm,
     };
     let mut load = Self {
       id,
       root_module_id: None,
+      root_asserted_module_type: None,
       root_module_type: None,
       init,
       state: LoadState::Init,
@@ -426,10 +428,17 @@ impl RecursiveModuleLoad {
     if let Ok(root_specifier) = load.resolve_root() {
       if let Some(module_id) = module_map_rc
         .borrow()
-        .get_id(root_specifier.as_str(), expected_module_type)
+        .get_id(root_specifier.as_str(), asserted_module_type)
       {
         load.root_module_id = Some(module_id);
-        load.root_module_type = Some(expected_module_type);
+        load.root_asserted_module_type = Some(asserted_module_type);
+        load.root_module_type = Some(
+          module_map_rc
+            .borrow()
+            .get_info_by_id(&module_id)
+            .unwrap()
+            .module_type,
+        );
       }
     }
     load
@@ -493,10 +502,11 @@ impl RecursiveModuleLoad {
     module_request: &ModuleRequest,
     module_source: &ModuleSource,
   ) -> Result<(), ModuleError> {
-    if module_request.expected_module_type != module_source.module_type {
+    let expected_asserted_module_type = module_source.module_type.into();
+    if module_request.asserted_module_type != expected_asserted_module_type {
       return Err(ModuleError::Other(generic_error(format!(
         "Expected a \"{}\" module but loaded a \"{}\" module.",
-        module_request.expected_module_type, module_source.module_type,
+        module_request.asserted_module_type, module_source.module_type,
       ))));
     }
 
@@ -505,14 +515,14 @@ impl RecursiveModuleLoad {
     if module_source.module_url_specified != module_source.module_url_found {
       self.module_map_rc.borrow_mut().alias(
         &module_source.module_url_specified,
-        module_source.module_type,
+        expected_asserted_module_type,
         &module_source.module_url_found,
       );
     }
-    let maybe_module_id = self
-      .module_map_rc
-      .borrow()
-      .get_id(&module_source.module_url_found, module_source.module_type);
+    let maybe_module_id = self.module_map_rc.borrow().get_id(
+      &module_source.module_url_found,
+      expected_asserted_module_type,
+    );
     let module_id = match maybe_module_id {
       Some(id) => {
         debug!(
@@ -562,7 +572,7 @@ impl RecursiveModuleLoad {
         if !self.visited.contains(&module_request) {
           if let Some(module_id) = self.module_map_rc.borrow().get_id(
             module_request.specifier.as_str(),
-            module_request.expected_module_type,
+            module_request.asserted_module_type,
           ) {
             already_registered.push_back((module_id, module_request.clone()));
           } else {
@@ -590,7 +600,7 @@ impl RecursiveModuleLoad {
     // Update `self.state` however applicable.
     if self.state == LoadState::LoadingRoot {
       self.root_module_id = Some(module_id);
-      self.root_module_type = Some(module_source.module_type);
+      self.root_asserted_module_type = Some(module_source.module_type.into());
       self.state = LoadState::LoadingImports;
     }
     if self.pending.is_empty() {
@@ -625,10 +635,11 @@ impl Stream for RecursiveModuleLoad {
           // like the bottom of `RecursiveModuleLoad::register_and_recurse()`.
           // But the module map cannot be borrowed here. Instead fake a load
           // event so it gets passed to that function and recursed eventually.
+          let asserted_module_type = inner.root_asserted_module_type.unwrap();
           let module_type = inner.root_module_type.unwrap();
           let module_request = ModuleRequest {
             specifier: module_specifier.clone(),
-            expected_module_type: module_type,
+            asserted_module_type,
           };
           let module_source = ModuleSource {
             module_url_specified: module_specifier.to_string(),
@@ -646,13 +657,13 @@ impl Stream for RecursiveModuleLoad {
             }
             _ => None,
           };
-          let expected_module_type = match inner.init {
+          let asserted_module_type = match inner.init {
             LoadInit::DynamicImport(_, _, module_type) => module_type,
-            _ => ModuleType::JavaScript,
+            _ => AssertedModuleType::JavaScriptOrWasm,
           };
           let module_request = ModuleRequest {
             specifier: module_specifier.clone(),
-            expected_module_type,
+            asserted_module_type,
           };
           let loader = inner.loader.clone();
           let is_dynamic_import = inner.is_dynamic_import();
@@ -680,13 +691,38 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
-/// Describes what is the expected type of module, usually
-/// it's `ModuleType::JavaScript`, but if there were import assertions
-/// it might be `ModuleType::Json`.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum AssertedModuleType {
+  JavaScriptOrWasm,
+  Json,
+}
+
+impl From<ModuleType> for AssertedModuleType {
+  fn from(module_type: ModuleType) -> AssertedModuleType {
+    match module_type {
+      ModuleType::JavaScript => AssertedModuleType::JavaScriptOrWasm,
+      ModuleType::Json => AssertedModuleType::Json,
+    }
+  }
+}
+
+impl std::fmt::Display for AssertedModuleType {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match self {
+      Self::JavaScriptOrWasm => write!(f, "JavaScriptOrWasm"),
+      Self::Json => write!(f, "JSON"),
+    }
+  }
+}
+
+/// Describes a request for a module as parsed from the source code.
+/// Usually executable (`JavaScriptOrWasm`) is used, except when an
+/// import assertions explicitly constrains an import to JSON, in
+/// which case this will have a `AssertedModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
-  pub expected_module_type: ModuleType,
+  pub asserted_module_type: AssertedModuleType,
 }
 
 pub(crate) struct ModuleInfo {
@@ -721,7 +757,7 @@ pub(crate) struct ModuleMap {
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
-  by_name: HashMap<(String, ModuleType), SymbolicModule>,
+  by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
   next_module_id: ModuleId,
   next_load_id: ModuleLoadId,
 
@@ -763,11 +799,16 @@ impl ModuleMap {
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
-  fn get_id(&self, name: &str, module_type: ModuleType) -> Option<ModuleId> {
+  fn get_id(
+    &self,
+    name: &str,
+    asserted_module_type: AssertedModuleType,
+  ) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let symbolic_module =
-        self.by_name.get(&(mod_name.to_string(), module_type))?;
+      let symbolic_module = self
+        .by_name
+        .get(&(mod_name.to_string(), asserted_module_type))?;
       match symbolic_module {
         SymbolicModule::Alias(target) => {
           mod_name = target;
@@ -883,10 +924,11 @@ impl ModuleMap {
           Ok(s) => s,
           Err(e) => return Err(ModuleError::Other(e)),
         };
-      let expected_module_type = get_module_type_from_assertions(&assertions);
+      let asserted_module_type =
+        get_asserted_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
         specifier: module_specifier,
-        expected_module_type,
+        asserted_module_type,
       };
       requests.push(request);
     }
@@ -924,9 +966,10 @@ impl ModuleMap {
   ) -> ModuleId {
     let id = self.next_module_id;
     self.next_module_id += 1;
-    self
-      .by_name
-      .insert((name.to_string(), module_type), SymbolicModule::Mod(id));
+    self.by_name.insert(
+      (name.to_string(), module_type.into()),
+      SymbolicModule::Mod(id),
+    );
     self.handles_by_id.insert(id, handle.clone());
     self.ids_by_handle.insert(handle, id);
     self.info.insert(
@@ -950,26 +993,35 @@ impl ModuleMap {
   fn is_registered(
     &self,
     specifier: &ModuleSpecifier,
-    module_type: ModuleType,
+    asserted_module_type: AssertedModuleType,
   ) -> bool {
-    if let Some(id) = self.get_id(specifier.as_str(), module_type) {
+    if let Some(id) = self.get_id(specifier.as_str(), asserted_module_type) {
       let info = self.get_info_by_id(&id).unwrap();
-      return info.module_type == module_type;
+      return asserted_module_type == info.module_type.into();
     }
 
     false
   }
 
-  fn alias(&mut self, name: &str, module_type: ModuleType, target: &str) {
+  fn alias(
+    &mut self,
+    name: &str,
+    asserted_module_type: AssertedModuleType,
+    target: &str,
+  ) {
     self.by_name.insert(
-      (name.to_string(), module_type),
+      (name.to_string(), asserted_module_type),
       SymbolicModule::Alias(target.to_string()),
     );
   }
 
   #[cfg(test)]
-  fn is_alias(&self, name: &str, module_type: ModuleType) -> bool {
-    let cond = self.by_name.get(&(name.to_string(), module_type));
+  fn is_alias(
+    &self,
+    name: &str,
+    asserted_module_type: AssertedModuleType,
+  ) -> bool {
+    let cond = self.by_name.get(&(name.to_string(), asserted_module_type));
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
@@ -1018,13 +1070,13 @@ impl ModuleMap {
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
     referrer: &str,
-    module_type: ModuleType,
+    asserted_module_type: AssertedModuleType,
     resolver_handle: v8::Global<v8::PromiseResolver>,
   ) {
     let load = RecursiveModuleLoad::dynamic_import(
       specifier,
       referrer,
-      module_type,
+      asserted_module_type,
       module_map_rc.clone(),
     );
     module_map_rc
@@ -1039,7 +1091,7 @@ impl ModuleMap {
       Ok(module_specifier) => {
         if module_map_rc
           .borrow()
-          .is_registered(&module_specifier, module_type)
+          .is_registered(&module_specifier, asserted_module_type)
         {
           async move { (load.id, Ok(load)) }.boxed_local()
         } else {
@@ -1073,7 +1125,8 @@ impl ModuleMap {
       .resolve(specifier, referrer, false)
       .expect("Module should have been already resolved");
 
-    let module_type = get_module_type_from_assertions(&import_assertions);
+    let module_type =
+      get_asserted_module_type_from_assertions(&import_assertions);
 
     if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type) {
       if let Some(handle) = self.get_handle(id) {
@@ -1342,28 +1395,28 @@ import "/a.js";
     let modules = module_map_rc.borrow();
 
     assert_eq!(
-      modules.get_id("file:///a.js", ModuleType::JavaScript),
+      modules.get_id("file:///a.js", AssertedModuleType::JavaScriptOrWasm),
       Some(a_id)
     );
     let b_id = modules
-      .get_id("file:///b.js", ModuleType::JavaScript)
+      .get_id("file:///b.js", AssertedModuleType::JavaScriptOrWasm)
       .unwrap();
     let c_id = modules
-      .get_id("file:///c.js", ModuleType::JavaScript)
+      .get_id("file:///c.js", AssertedModuleType::JavaScriptOrWasm)
       .unwrap();
     let d_id = modules
-      .get_id("file:///d.js", ModuleType::JavaScript)
+      .get_id("file:///d.js", AssertedModuleType::JavaScriptOrWasm)
       .unwrap();
     assert_eq!(
       modules.get_requested_modules(a_id),
       Some(&vec![
         ModuleRequest {
           specifier: resolve_url("file:///b.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
           specifier: resolve_url("file:///c.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
       ])
     );
@@ -1371,14 +1424,14 @@ import "/a.js";
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
         specifier: resolve_url("file:///c.js").unwrap(),
-        expected_module_type: ModuleType::JavaScript,
+        asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
         specifier: resolve_url("file:///d.js").unwrap(),
-        expected_module_type: ModuleType::JavaScript,
+        asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
     assert_eq!(modules.get_requested_modules(d_id), Some(&vec![]));
@@ -1476,7 +1529,7 @@ import "/a.js";
         imports,
         Some(&vec![ModuleRequest {
           specifier: resolve_url("file:///b.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },])
       );
 
@@ -1581,7 +1634,7 @@ import "/a.js";
         imports,
         Some(&vec![ModuleRequest {
           specifier: resolve_url("file:///b.json").unwrap(),
-          expected_module_type: ModuleType::Json,
+          asserted_module_type: AssertedModuleType::Json,
         },])
       );
 
@@ -1900,18 +1953,19 @@ import "/a.js";
       let modules = module_map_rc.borrow();
 
       assert_eq!(
-        modules.get_id("file:///circular1.js", ModuleType::JavaScript),
+        modules
+          .get_id("file:///circular1.js", AssertedModuleType::JavaScriptOrWasm),
         Some(circular1_id)
       );
       let circular2_id = modules
-        .get_id("file:///circular2.js", ModuleType::JavaScript)
+        .get_id("file:///circular2.js", AssertedModuleType::JavaScriptOrWasm)
         .unwrap();
 
       assert_eq!(
         modules.get_requested_modules(circular1_id),
         Some(&vec![ModuleRequest {
           specifier: resolve_url("file:///circular2.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
 
@@ -1919,26 +1973,26 @@ import "/a.js";
         modules.get_requested_modules(circular2_id),
         Some(&vec![ModuleRequest {
           specifier: resolve_url("file:///circular3.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
 
       assert!(modules
-        .get_id("file:///circular3.js", ModuleType::JavaScript)
+        .get_id("file:///circular3.js", AssertedModuleType::JavaScriptOrWasm)
         .is_some());
       let circular3_id = modules
-        .get_id("file:///circular3.js", ModuleType::JavaScript)
+        .get_id("file:///circular3.js", AssertedModuleType::JavaScriptOrWasm)
         .unwrap();
       assert_eq!(
         modules.get_requested_modules(circular3_id),
         Some(&vec![
           ModuleRequest {
             specifier: resolve_url("file:///circular1.js").unwrap(),
-            expected_module_type: ModuleType::JavaScript,
+            asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           },
           ModuleRequest {
             specifier: resolve_url("file:///circular2.js").unwrap(),
-            expected_module_type: ModuleType::JavaScript,
+            asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           }
         ])
       );
@@ -1957,61 +2011,72 @@ import "/a.js";
       ..Default::default()
     });
 
-    let fut =
-      async move {
-        let spec = resolve_url("file:///redirect1.js").unwrap();
-        let result = runtime.load_main_module(&spec, None).await;
-        assert!(result.is_ok());
-        let redirect1_id = result.unwrap();
-        let _ = runtime.mod_evaluate(redirect1_id);
-        runtime.run_event_loop(false).await.unwrap();
-        let l = loads.lock();
-        assert_eq!(
-          l.to_vec(),
-          vec![
-            "file:///redirect1.js",
-            "file:///redirect2.js",
-            "file:///dir/redirect3.js"
-          ]
-        );
+    let fut = async move {
+      let spec = resolve_url("file:///redirect1.js").unwrap();
+      let result = runtime.load_main_module(&spec, None).await;
+      assert!(result.is_ok());
+      let redirect1_id = result.unwrap();
+      let _ = runtime.mod_evaluate(redirect1_id);
+      runtime.run_event_loop(false).await.unwrap();
+      let l = loads.lock();
+      assert_eq!(
+        l.to_vec(),
+        vec![
+          "file:///redirect1.js",
+          "file:///redirect2.js",
+          "file:///dir/redirect3.js"
+        ]
+      );
 
-        let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
-        let modules = module_map_rc.borrow();
+      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let modules = module_map_rc.borrow();
 
-        assert_eq!(
-          modules.get_id("file:///redirect1.js", ModuleType::JavaScript),
-          Some(redirect1_id)
-        );
+      assert_eq!(
+        modules
+          .get_id("file:///redirect1.js", AssertedModuleType::JavaScriptOrWasm),
+        Some(redirect1_id)
+      );
 
-        let redirect2_id = modules
-          .get_id("file:///dir/redirect2.js", ModuleType::JavaScript)
-          .unwrap();
-        assert!(
-          modules.is_alias("file:///redirect2.js", ModuleType::JavaScript)
-        );
-        assert!(
-          !modules.is_alias("file:///dir/redirect2.js", ModuleType::JavaScript)
-        );
-        assert_eq!(
-          modules.get_id("file:///redirect2.js", ModuleType::JavaScript),
-          Some(redirect2_id)
-        );
+      let redirect2_id = modules
+        .get_id(
+          "file:///dir/redirect2.js",
+          AssertedModuleType::JavaScriptOrWasm,
+        )
+        .unwrap();
+      assert!(modules.is_alias(
+        "file:///redirect2.js",
+        AssertedModuleType::JavaScriptOrWasm
+      ));
+      assert!(!modules.is_alias(
+        "file:///dir/redirect2.js",
+        AssertedModuleType::JavaScriptOrWasm
+      ));
+      assert_eq!(
+        modules
+          .get_id("file:///redirect2.js", AssertedModuleType::JavaScriptOrWasm),
+        Some(redirect2_id)
+      );
 
-        let redirect3_id = modules
-          .get_id("file:///redirect3.js", ModuleType::JavaScript)
-          .unwrap();
-        assert!(
-          modules.is_alias("file:///dir/redirect3.js", ModuleType::JavaScript)
-        );
-        assert!(
-          !modules.is_alias("file:///redirect3.js", ModuleType::JavaScript)
-        );
-        assert_eq!(
-          modules.get_id("file:///dir/redirect3.js", ModuleType::JavaScript),
-          Some(redirect3_id)
-        );
-      }
-      .boxed_local();
+      let redirect3_id = modules
+        .get_id("file:///redirect3.js", AssertedModuleType::JavaScriptOrWasm)
+        .unwrap();
+      assert!(modules.is_alias(
+        "file:///dir/redirect3.js",
+        AssertedModuleType::JavaScriptOrWasm
+      ));
+      assert!(!modules.is_alias(
+        "file:///redirect3.js",
+        AssertedModuleType::JavaScriptOrWasm
+      ));
+      assert_eq!(
+        modules.get_id(
+          "file:///dir/redirect3.js",
+          AssertedModuleType::JavaScriptOrWasm
+        ),
+        Some(redirect3_id)
+      );
+    }
+    .boxed_local();
 
     futures::executor::block_on(fut);
   }
@@ -2122,17 +2187,20 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     let modules = module_map_rc.borrow();
 
     assert_eq!(
-      modules.get_id("file:///main_with_code.js", ModuleType::JavaScript),
+      modules.get_id(
+        "file:///main_with_code.js",
+        AssertedModuleType::JavaScriptOrWasm
+      ),
       Some(main_id)
     );
     let b_id = modules
-      .get_id("file:///b.js", ModuleType::JavaScript)
+      .get_id("file:///b.js", AssertedModuleType::JavaScriptOrWasm)
       .unwrap();
     let c_id = modules
-      .get_id("file:///c.js", ModuleType::JavaScript)
+      .get_id("file:///c.js", AssertedModuleType::JavaScriptOrWasm)
       .unwrap();
     let d_id = modules
-      .get_id("file:///d.js", ModuleType::JavaScript)
+      .get_id("file:///d.js", AssertedModuleType::JavaScriptOrWasm)
       .unwrap();
 
     assert_eq!(
@@ -2140,11 +2208,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       Some(&vec![
         ModuleRequest {
           specifier: resolve_url("file:///b.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
           specifier: resolve_url("file:///c.js").unwrap(),
-          expected_module_type: ModuleType::JavaScript,
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }
       ])
     );
@@ -2152,14 +2220,14 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
         specifier: resolve_url("file:///c.js").unwrap(),
-        expected_module_type: ModuleType::JavaScript,
+        asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
         specifier: resolve_url("file:///d.js").unwrap(),
-        expected_module_type: ModuleType::JavaScript,
+        asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
     assert_eq!(modules.get_requested_modules(d_id), Some(&vec![]));

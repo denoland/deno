@@ -64,7 +64,7 @@ parallel steps where only inner tests have sanitizers ...
   FAILED ([WILDCARD])
 FAILED ([WILDCARD])
 
-failures:
+ ERRORS 
 
 capturing => ./test/steps/invalid_usage.ts:[WILDCARD]
 error: Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
@@ -99,7 +99,7 @@ error: Error: 1 test step failed.
     at runTest ([WILDCARD])
     at [WILDCARD]
 
-failures:
+ FAILURES 
 
 capturing => ./test/steps/invalid_usage.ts:[WILDCARD]
 top level missing await => ./test/steps/invalid_usage.ts:[WILDCARD]

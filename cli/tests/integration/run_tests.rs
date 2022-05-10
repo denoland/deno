@@ -2780,6 +2780,12 @@ itest!(spawn_stdout_inherit {
   output: "spawn_stdout_inherit.ts.out",
 });
 
+itest!(error_name_non_string {
+  args: "run --quiet error_name_non_string.js",
+  output: "error_name_non_string.js.out",
+  exit_code: 1,
+});
+
 itest!(allow_run_allowlist_resolution {
   args: "run --quiet -A allow_run_allowlist_resolution.ts",
   output: "allow_run_allowlist_resolution.ts.out",

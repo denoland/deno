@@ -4,7 +4,7 @@ exit(0) ... FAILED ([WILDCARD])
 exit(1) ... FAILED ([WILDCARD])
 exit(2) ... FAILED ([WILDCARD])
 
-failures:
+ ERRORS 
 
 exit(0) => ./test/exit_sanitizer.ts:[WILDCARD]
 error: AssertionError: Test case attempted to exit with exit code: 0
@@ -27,7 +27,7 @@ error: AssertionError: Test case attempted to exit with exit code: 2
     at [WILDCARD]
     at [WILDCARD]/test/exit_sanitizer.ts:10:8
 
-failures:
+ FAILURES 
 
 exit(0) => ./test/exit_sanitizer.ts:[WILDCARD]
 exit(1) => ./test/exit_sanitizer.ts:[WILDCARD]
