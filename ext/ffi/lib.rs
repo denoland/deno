@@ -376,15 +376,6 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FfiCallArgs {
-  rid: ResourceId,
-  symbol: String,
-  parameters: Vec<Value>,
-  buffers: Vec<Option<ZeroCopyBuf>>,
-}
-
 fn get_symbol(fn_ptr: u64, def: ForeignFunction) -> Symbol {
   let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
   let cif = libffi::middle::Cif::new(
@@ -414,19 +405,19 @@ fn value_as_arg(
     NativeType::Void => Arg::new(&()),
     NativeType::U8 => {
       let value = value
-        .uint32_value(scope)
+        .integer_value(scope)
         .ok_or_else(|| generic_error("Expected u8"))?;
       Arg::new(&u8::try_from(value).map_err(|_| generic_error("Expected u8"))?)
     }
     NativeType::I8 => {
       let value = value
-        .int32_value(scope)
+        .integer_value(scope)
         .ok_or_else(|| generic_error("Expected i8"))?;
       Arg::new(&i8::try_from(value).map_err(|_| generic_error("Expected i8"))?)
     }
     NativeType::U16 => {
       let value = value
-        .uint32_value(scope)
+        .integer_value(scope)
         .ok_or_else(|| generic_error("Expected u16"))?;
       Arg::new(
         &u16::try_from(value).map_err(|_| generic_error("Expected u16"))?,
@@ -434,7 +425,7 @@ fn value_as_arg(
     }
     NativeType::I16 => {
       let value = value
-        .int32_value(scope)
+        .integer_value(scope)
         .ok_or_else(|| generic_error("Expected i16"))?;
       Arg::new(
         &i16::try_from(value).map_err(|_| generic_error("Expected i16"))?,
@@ -442,13 +433,13 @@ fn value_as_arg(
     }
     NativeType::U32 => {
       let value = value
-        .uint32_value(scope)
+        .integer_value(scope)
         .ok_or_else(|| generic_error("Expected u32"))?;
       Arg::new(&value)
     }
     NativeType::I32 => {
       let value = value
-        .int32_value(scope)
+        .integer_value(scope)
         .ok_or_else(|| generic_error("Expected i32"))?;
       Arg::new(&value)
     }
@@ -492,11 +483,9 @@ fn value_as_arg(
       } else if value.is_null() {
         Arg::new::<*const u8>(&ptr::null())
       } else {
-        // BigInt -> pointer
-        let (value, _) = value
-          .to_big_int(scope)
-          .ok_or_else(|| generic_error("Expected pointer"))?
-          .i64_value();
+        // U32x2 -> pointer
+        let u32x2: U32x2 = serde_v8::from_v8(scope, value)?;
+        let value: u64 = u32x2.into();
         Arg::new(&(value as *const u8))
       }
     }
@@ -593,10 +582,9 @@ pub fn op_ffi_call_ptr_fn(
   args: deno_core::v8::FunctionCallbackArguments,
   mut rv: deno_core::v8::ReturnValue,
 ) {
-  // TODO
-  let pointer = args.get(0).uint32_value(scope).unwrap();
+  let pointer: U32x2 = serde_v8::from_v8(scope, args.get(0)).unwrap();
   let fn_def: ForeignFunction = serde_v8::from_v8(scope, args.get(1)).unwrap();
-  let symbol = get_symbol(pointer as u64, fn_def);
+  let symbol = get_symbol(pointer.into(), fn_def);
   let args = v8::Local::<v8::Array>::try_from(args.get(2)).unwrap();
   let args_len = args.length() as usize;
   let mut call_args = Vec::with_capacity(args_len);
@@ -662,7 +650,8 @@ pub fn op_ffi_call_ptr_fn(
     NativeType::Pointer => {
       let value =
         unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) } as u64;
-      serde_v8::to_v8(scope, value).unwrap()
+      let ptr = U32x2::from(value);
+      serde_v8::to_v8(scope, ptr).unwrap()
     }
   };
   rv.set(value);
@@ -759,7 +748,8 @@ pub fn op_ffi_call_fn(
     NativeType::Pointer => {
       let value =
         unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) } as u64;
-      serde_v8::to_v8(scope, value).unwrap()
+      let ptr = U32x2::from(value);
+      serde_v8::to_v8(scope, ptr).unwrap()
     }
   };
   rv.set(value);
@@ -786,9 +776,10 @@ pub fn op_ffi_call_ptr_nonblocking_fn(
     state.tracker.track_async(op_id);
     state.get_error_class_fn
   };
-  let pointer = args.get(1).uint32_value(scope).unwrap();
+
+  let pointer: U32x2 = serde_v8::from_v8(scope, args.get(1)).unwrap();
   let fn_def: ForeignFunction = serde_v8::from_v8(scope, args.get(2)).unwrap();
-  let symbol = get_symbol(pointer as u64, fn_def);
+  let symbol = get_symbol(pointer.into(), fn_def);
 
   let args = v8::Local::<v8::Array>::try_from(args.get(3)).unwrap();
   let args_len = args.length() as usize;
@@ -856,7 +847,8 @@ pub fn op_ffi_call_ptr_nonblocking_fn(
         let value =
           unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) }
             as u64;
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        let ptr = U32x2::from(value);
+        (promise_id, op_id, deno_core::OpResult::Ok(ptr.into()))
       }
     }
   });
@@ -965,7 +957,8 @@ pub fn op_ffi_call_nonblocking_fn(
         let value =
           unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) }
             as u64;
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        let ptr = U32x2::from(value);
+        (promise_id, op_id, deno_core::OpResult::Ok(ptr.into()))
       }
     }
   });

@@ -1,7 +1,10 @@
-const lib = Deno.dlopen("/Users/divy/gh/deno/target/release/libtest_ffi.dylib", {
-  "add_u32": { parameters: ["u32", "u32"], result: "u32" },
-  "nop": { parameters: [], result: "void" },
-});
+const lib = Deno.dlopen(
+  "/Users/divy/gh/deno/target/release/libtest_ffi.dylib",
+  {
+    "add_u32": { parameters: ["u32", "u32"], result: "u32" },
+    "nop": { parameters: [], result: "void" },
+  },
+);
 
 Deno.bench("nop()", () => {
   lib.symbols.nop();
