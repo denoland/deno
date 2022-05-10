@@ -557,6 +557,8 @@ impl WebWorker {
     let id = self.preload_module(module_specifier, false).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")
@@ -579,6 +581,8 @@ impl WebWorker {
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
         // If `None` is returned it means that runtime was destroyed before
