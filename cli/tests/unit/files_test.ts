@@ -791,3 +791,19 @@ Deno.test(
     assertEquals(res, "hello world!");
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function readTextFileNonUtf8() {
+    const path = await Deno.makeTempFile();
+    const file = await Deno.open(path, { write: true });
+    await file.write(new TextEncoder().encode("hello "));
+    await file.write(new Uint8Array([0xC0]));
+    file.close();
+
+    const res = await Deno.readTextFile(path);
+    const resSync = Deno.readTextFileSync(path);
+    assertEquals(res, resSync);
+    assertEquals(res, "hello \uFFFD");
+  },
+);

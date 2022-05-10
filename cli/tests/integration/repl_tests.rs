@@ -163,7 +163,11 @@ fn pty_complete_imports() {
 
     let output = console.read_all_output();
     assert!(output.contains("Hello World"));
-    assert!(output.contains("testing output\u{1b}"));
+    if cfg!(windows) {
+      assert!(output.contains("testing output\u{1b}"));
+    } else {
+      assert!(output.contains("\ntesting output"));
+    }
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
