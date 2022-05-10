@@ -622,7 +622,7 @@ fn http_response(
 // ensure it is a Weak Etag header ("W/").
 fn weaken_etag(hmap: &mut hyper::HeaderMap) {
   if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
-    if etag.as_bytes().starts_with(b"W/") {
+    if !etag.as_bytes().starts_with(b"W/") {
       let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
       v.extend(b"W/");
       v.extend(etag.as_bytes());
