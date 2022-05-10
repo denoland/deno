@@ -2119,7 +2119,7 @@ fn config_arg<'a>() -> Arg<'a> {
 fn no_config_arg<'a>() -> Arg<'a> {
   Arg::new("no-config")
     .long("no-config")
-    .help("Disable automatic loading of configuration file.")
+    .help("Disable automatic loading of the configuration file.")
     .conflicts_with("config")
 }
 
