@@ -298,6 +298,8 @@ pub struct Flags {
   pub future_type_check_mode: FutureTypeCheckMode,
   pub has_check_flag: bool,
   pub config_path: Option<String>,
+  // Disable loading of configuration file
+  pub no_config: bool,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -1068,6 +1070,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
   // deno-fmt-ignore-file",
     )
     .arg(config_arg())
+    .arg(no_config_arg())
     .arg(
       Arg::new("check")
         .long("check")
@@ -1356,6 +1359,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .help("Exclude lint rules"),
     )
     .arg(config_arg())
+    .arg(no_config_arg())
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1448,6 +1452,7 @@ fn task_subcommand<'a>() -> Command<'a> {
   Command::new("task")
     .trailing_var_arg(true)
     .arg(config_arg())
+    .arg(no_config_arg())
     .arg(Arg::new("task").help("Task to be executed"))
     .arg(
       Arg::new("task_args")
@@ -1691,6 +1696,7 @@ Remote modules and multiple modules may also be specified:
         .takes_value(false),
     )
     .arg(config_arg())
+    .arg(no_config_arg())
     .arg(import_map_arg())
     .arg(lock_arg())
     .arg(reload_arg())
@@ -1702,6 +1708,7 @@ fn compile_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(config_arg())
+    .arg(no_config_arg())
     .arg(no_check_arg())
     .arg(reload_arg())
     .arg(lock_arg())
@@ -1714,6 +1721,7 @@ fn compile_args_without_no_check(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(config_arg())
+    .arg(no_config_arg())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -2105,6 +2113,14 @@ fn config_arg<'a>() -> Arg<'a> {
     .long_help(CONFIG_HELP.as_str())
     .takes_value(true)
     .value_hint(ValueHint::FilePath)
+    .conflicts_with("no-config")
+}
+
+fn no_config_arg<'a>() -> Arg<'a> {
+  Arg::new("no-config")
+    .long("no-config")
+    .help("Disable automatic loading of configuration file.")
+    .conflicts_with("config")
 }
 
 fn no_remote_arg<'a>() -> Arg<'a> {
@@ -2337,7 +2353,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  config_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
 
   let files = match matches.values_of("files") {
@@ -2460,7 +2476,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  config_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -2539,7 +2555,7 @@ fn task_parse(
   matches: &clap::ArgMatches,
   raw_args: &[String],
 ) {
-  config_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
 
   let mut task_name = "".to_string();
   if let Some(task) = matches.value_of("task") {
@@ -2674,7 +2690,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
-  config_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
@@ -2692,7 +2708,7 @@ fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  config_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -2705,7 +2721,7 @@ fn compile_args_without_no_check_parse(
 ) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  config_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
@@ -2939,8 +2955,9 @@ fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 }
 
-fn config_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
+  flags.no_config = matches.is_present("no-config");
 }
 
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -5718,6 +5735,31 @@ mod tests {
       "run",
       "--no-check",
       "--check",
+      "script.ts",
+    ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn no_config() {
+    let r = flags_from_vec(svec!["deno", "run", "--no-config", "script.ts",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        no_config: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--config",
+      "deno.json",
+      "--no-config",
       "script.ts",
     ]);
     assert!(r.is_err());

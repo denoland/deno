@@ -162,6 +162,10 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
 const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
 pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
+  if flags.no_config {
+    return Ok(None);
+  }
+
   if let Some(config_path) = flags.config_path.as_ref() {
     Ok(Some(ConfigFile::read(config_path)?))
   } else if let Some(config_path_args) = flags.config_path_args() {
