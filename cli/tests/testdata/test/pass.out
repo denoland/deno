@@ -9,6 +9,11 @@ test 5 ... ok ([WILDCARD])
 test 6 ... ok ([WILDCARD])
 test 7 ... ok ([WILDCARD])
 test 8 ... ok ([WILDCARD])
+test 9 ...
+------- output -------
+console.log
+console.error
+----- output end -----
 test 9 ... ok ([WILDCARD])
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
