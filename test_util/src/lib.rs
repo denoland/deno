@@ -1823,7 +1823,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
     if args.get(0) == Some(&"test") {
-      actual = actual.replace("\u{200B}", "");
+      actual = actual.replace('\u{200B}', "");
     }
 
     let expected = if let Some(s) = self.output_str {
