@@ -364,7 +364,7 @@ mod tests {
         runtime_version: "x".to_string(),
         ts_version: "x".to_string(),
         unstable: false,
-        user_agent: "x".to_string(),  
+        user_agent: "x".to_string(),
       },
       extensions: vec![],
       //user_agent: "x".to_string(),
