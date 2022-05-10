@@ -270,10 +270,17 @@ impl Default for FutureTypeCheckMode {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct ConfigFlags {
-  pub path: Option<String>,
-  pub disable_auto_discovery: bool,
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConfigFlag {
+  Discover,
+  Path(String),
+  Disabled,
+}
+
+impl Default for ConfigFlag {
+  fn default() -> Self {
+    Self::Discover
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -303,7 +310,7 @@ pub struct Flags {
   // once type checking is skipped by default
   pub future_type_check_mode: FutureTypeCheckMode,
   pub has_check_flag: bool,
-  pub config_flags: ConfigFlags,
+  pub config_flag: ConfigFlag,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -2953,9 +2960,12 @@ fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  flags.config_flags = ConfigFlags {
-    path: matches.value_of("config").map(ToOwned::to_owned),
-    disable_auto_discovery: matches.is_present("no-config"),
+  flags.config_flag = if matches.is_present("no-config") {
+    ConfigFlag::Disabled
+  } else if let Some(config) = matches.value_of("config") {
+    ConfigFlag::Path(config.to_string())
+  } else {
+    ConfigFlag::Discover
   };
 }
 
@@ -3439,10 +3449,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
         }),
-        config_flags: ConfigFlags {
-          path: Some("deno.jsonc".to_string()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
@@ -3469,10 +3476,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
         }),
-        config_flags: ConfigFlags {
-          path: Some("deno.jsonc".to_string()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -3685,10 +3689,7 @@ mod tests {
           json: true,
           ignore: vec![],
         }),
-        config_flags: ConfigFlags {
-          path: Some("Deno.jsonc".to_string()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
@@ -3821,10 +3822,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        config_flags: ConfigFlags {
-          path: Some("tsconfig.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         ..Flags::default()
       }
     );
@@ -3914,10 +3912,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_flags: ConfigFlags {
-          path: Some("tsconfig.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4008,10 +4003,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_flags: ConfigFlags {
-          path: Some("tsconfig.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4241,10 +4233,7 @@ mod tests {
         }),
         allow_write: Some(vec![]),
         no_remote: true,
-        config_flags: ConfigFlags {
-          path: Some("tsconfig.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         ..Flags::default()
       }
     );
@@ -4537,10 +4526,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_flags: ConfigFlags {
-          path: Some("tsconfig.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5385,10 +5371,7 @@ mod tests {
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
-        config_flags: ConfigFlags {
-          path: Some("tsconfig.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5560,10 +5543,7 @@ mod tests {
           force: true,
           output_path: Some(PathBuf::from("out_dir")),
         }),
-        config_flags: ConfigFlags {
-          path: Some("deno.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("deno.json".to_owned()),
         import_map_path: Some("import_map.json".to_string()),
         lock: Some(PathBuf::from("lock.json")),
         reload: true,
@@ -5617,10 +5597,7 @@ mod tests {
           task: "build".to_string(),
         }),
         argv: svec!["--", "hello", "world"],
-        config_flags: ConfigFlags {
-          path: Some("deno.json".to_owned()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("deno.json".to_owned()),
         ..Flags::default()
       }
     );
@@ -5680,10 +5657,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           task: "".to_string(),
         }),
-        config_flags: ConfigFlags {
-          path: Some("deno.jsonc".to_string()),
-          disable_auto_discovery: false
-        },
+        config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
@@ -5784,10 +5758,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        config_flags: ConfigFlags {
-          disable_auto_discovery: true,
-          path: None,
-        },
+        config_flag: ConfigFlag::Disabled,
         ..Flags::default()
       }
     );
