@@ -1625,9 +1625,9 @@ impl TestOutputPipe {
     if let Some(sender) = self.state.lock().replace(sender) {
       let _ = sender.send(()); // just in case
     }
-    // Bit of a hack in order to send a zero width space in order
-    // to wake the thread up. It seems that sending zero bytes
-    // does not work here on windows.
+    // Bit of a hack to send a zero width space in order to wake
+    // the thread up. It seems that sending zero bytes here does
+    // not work on windows.
     self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
     self.writer.flush().unwrap();
     // ignore the error as it might have been picked up and closed
