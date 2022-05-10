@@ -6,6 +6,6 @@ Deno.test(function navigatorNumCpus() {
 });
 
 Deno.test(function navigatorUserAgent() {
-  const pattern = /ˆDeno\/\d+\.\d+\.\d+/;
+  const pattern = /Deno\/\d+\.\d+\.\d+/;
   assert(pattern.test(navigator.userAgent));
 });
