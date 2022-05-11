@@ -44,7 +44,6 @@ async fn main() -> Result<(), AnyError> {
     extensions: vec![],
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
-    //    user_agent: "hello_runtime".to_string(),
     seed: None,
     js_error_create_fn: None,
     web_worker_preload_module_cb,
