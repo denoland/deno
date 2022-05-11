@@ -266,7 +266,7 @@ Deno.test(
     assertEquals(status.success, false);
     if (Deno.build.os === "windows") {
       assertEquals(status.code, 1);
-      assertEquals(status.signal, undefined);
+      assertEquals(status.signal, null);
     } else {
       assertEquals(status.success, false);
       assertEquals(status.code, 143);
