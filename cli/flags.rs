@@ -1448,14 +1448,15 @@ fn task_subcommand<'a>() -> Command<'a> {
   Command::new("task")
     .trailing_var_arg(true)
     .arg(config_arg())
-    .arg(Arg::new("task").help("Task to be executed"))
-    .arg(
-      Arg::new("task_args")
+    // Ideally the task name and trailing arguments should be two separate clap
+    // arguments, but there is a bug in clap that's preventing us from doing
+    // this (https://github.com/clap-rs/clap/issues/1538). Once that's fixed,
+    // then we can revert this back to what it used to be.
+    .arg(Arg::new("task_name_and_args")
         .multiple_values(true)
         .multiple_occurrences(true)
         .allow_hyphen_values(true)
-        .help("Additional arguments passed to the task"),
-    )
+    .help("Task to be executed with any additional arguments passed to the task"))
     .about("Run a task defined in the configuration file")
     .long_about(
       "Run a task defined in the configuration file
@@ -2542,13 +2543,33 @@ fn task_parse(
   config_arg_parse(flags, matches);
 
   let mut task_name = "".to_string();
-  if let Some(task) = matches.value_of("task") {
-    task_name = task.to_string();
+  if let Some(mut index) = matches.index_of("task_name_and_args") {
+    index += 1; // skip `task`
 
-    if let Some(index) = matches.index_of("task") {
-      flags
-        .argv
-        .extend(raw_args[index + 2..].iter().map(String::from));
+    // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
+    while index < raw_args.len() {
+      match raw_args[index].as_str() {
+        "-c" | "--config" => {
+          flags.config_path = Some(raw_args[index + 1].to_string());
+          index += 2;
+        }
+        "-q" | "--quiet" => {
+          flags.log_level = Some(Level::Error);
+          index += 1;
+        }
+        _ => break,
+      }
+    }
+
+    if index < raw_args.len() {
+      task_name = raw_args[index].to_string();
+      index += 1;
+
+      if index < raw_args.len() {
+        flags
+          .argv
+          .extend(raw_args[index..].iter().map(String::from));
+      }
     }
   }
 
@@ -5609,6 +5630,21 @@ mod tests {
   }
 
   #[test]
+  fn task_following_double_hyphen_arg() {
+    let r = flags_from_vec(svec!["deno", "task", "build", "--test"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "build".to_string(),
+        }),
+        argv: svec!["--test"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn task_subcommand_empty() {
     let r = flags_from_vec(svec!["deno", "task"]);
     assert_eq!(
@@ -5625,6 +5661,21 @@ mod tests {
   #[test]
   fn task_subcommand_config() {
     let r = flags_from_vec(svec!["deno", "task", "--config", "deno.jsonc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          task: "".to_string(),
+        }),
+        config_path: Some("deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_subcommand_config_short() {
+    let r = flags_from_vec(svec!["deno", "task", "-c", "deno.jsonc"]);
     assert_eq!(
       r.unwrap(),
       Flags {
