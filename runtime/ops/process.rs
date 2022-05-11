@@ -299,7 +299,7 @@ pub fn kill(pid: i32, signal: super::signal::Signal) -> Result<(), AnyError> {
 }
 
 #[cfg(not(unix))]
-pub fn kill(pid: i32, signal: super::signal::Signal) -> Result<(), AnyError> {
+pub fn kill(pid: i32, _signal: super::signal::Signal) -> Result<(), AnyError> {
   use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
