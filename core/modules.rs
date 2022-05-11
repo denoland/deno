@@ -905,32 +905,6 @@ impl PendingWasmEvaluation {
     eprintln!("all promises resolved");
     scope.perform_microtask_checkpoint();
     true
-
-    // let module_evaluation = maybe_module_evaluation.unwrap();
-
-    // let promise = module_evaluation.promise.open(scope);
-    // let promise_state = promise.state();
-
-    // match promise_state {
-    //   v8::PromiseState::Pending => {
-    //     // NOTE: `poll_event_loop` will decide if
-    //     // runtime would be woken soon
-    //     state_rc.borrow_mut().pending_mod_evaluate = Some(module_evaluation);
-    //   }
-    //   v8::PromiseState::Fulfilled => {
-    //     scope.perform_microtask_checkpoint();
-    //     // Receiver end might have been already dropped, ignore the result
-    //     let _ = module_evaluation.sender.send(Ok(()));
-    //   }
-    //   v8::PromiseState::Rejected => {
-    //     let exception = promise.result(scope);
-    //     scope.perform_microtask_checkpoint();
-    //     // Receiver end might have been already dropped, ignore the result
-    //     let _ = module_evaluation
-    //       .sender
-    //       .send(exception_to_err_result(scope, exception, false));
-    //   }
-    // }
   }
 
   pub fn complete(&self, scope: &mut v8::HandleScope) {
