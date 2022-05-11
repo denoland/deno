@@ -193,7 +193,7 @@ pub enum Signal {
   SIGTERM = 15,
   SIGUSR1 = 16,
   SIGUSR2 = 17,
-  SIGCLD = 18,
+  SIGCHLD = 18,
   SIGPWR = 19,
   SIGWINCH = 20,
   SIGURG = 21,
