@@ -18,6 +18,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
@@ -343,8 +344,8 @@ impl StdFileResourceInner {
 impl Read for StdFileResourceInner {
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     match self {
-      Self::Stdout => unreachable!(),
-      Self::Stderr => unreachable!(),
+      Self::Stdout => Err(ErrorKind::Unsupported.into()),
+      Self::Stderr => Err(ErrorKind::Unsupported.into()),
       Self::Stdin => std::io::stdin().read(buf),
       Self::File(file) => file.lock().read(buf),
     }
@@ -356,7 +357,7 @@ impl Write for StdFileResourceInner {
     match self {
       Self::Stdout => std::io::stdout().write(buf),
       Self::Stderr => std::io::stderr().write(buf),
-      Self::Stdin => unreachable!(),
+      Self::Stdin => Err(ErrorKind::Unsupported.into()),
       Self::File(file) => file.lock().write(buf),
     }
   }
@@ -365,7 +366,7 @@ impl Write for StdFileResourceInner {
     match self {
       Self::Stdout => std::io::stdout().flush(),
       Self::Stderr => std::io::stderr().flush(),
-      Self::Stdin => unreachable!(),
+      Self::Stdin => Err(ErrorKind::Unsupported.into()),
       Self::File(file) => file.lock().flush(),
     }
   }
