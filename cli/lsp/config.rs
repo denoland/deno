@@ -556,7 +556,7 @@ mod tests {
           test: true,
         },
         internal_debug: false,
-        lint: false,
+        lint: true,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
