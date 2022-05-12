@@ -365,27 +365,8 @@ fn is_result(ty: impl ToTokens) -> bool {
 }
 
 /// Detects if a type is of the form Result<(), Err>
-fn is_unit_result(ty: &syn::Type) -> bool {
-  let path = match ty {
-    syn::Type::Path(ref path) => path,
-    _ => return false,
-  };
-
-  let maybe_result = path.path.segments.first().expect("Invalid return type.");
-  if maybe_result.ident != "Result" {
-    return false;
-  }
-  assert!(!maybe_result.arguments.is_empty());
-
-  let args = match &maybe_result.arguments {
-    syn::PathArguments::AngleBracketed(args) => args,
-    _ => unreachable!(),
-  };
-
-  match args.args.first().unwrap() {
-    syn::GenericArgument::Type(syn::Type::Tuple(ty)) => ty.elems.is_empty(),
-    _ => false,
-  }
+fn is_unit_result(ty: impl ToTokens) -> bool {
+  is_result(&ty) && tokens(&ty).contains("Result < ()")
 }
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
