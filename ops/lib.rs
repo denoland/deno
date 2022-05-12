@@ -215,7 +215,10 @@ fn codegen_v8_sync(
     }
     _ => None,
   };
-  let special_args = f.sig.inputs.iter()
+  let special_args = f
+    .sig
+    .inputs
+    .iter()
     .map_while(|a| {
       (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
     })
