@@ -165,6 +165,10 @@ impl Default for TestingSettings {
   }
 }
 
+fn default_to_true() -> bool {
+  true
+}
+
 /// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -202,7 +206,7 @@ pub struct WorkspaceSettings {
   pub internal_debug: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
-  #[serde(default = "true")]
+  #[serde(default = "default_to_true")]
   pub lint: bool,
 
   /// A flag that indicates if Dene should validate code against the unstable
