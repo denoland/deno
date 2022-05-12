@@ -140,6 +140,7 @@ fn magic_buffer() {
     assert_eq!(buf.slice(0..2), bytes::Bytes::from_static(&[1, 2]));
     assert_eq!(buf.slice(2..), bytes::Bytes::from_static(&[3, 4, 5]));
     assert_eq!(
+      #[allow(clippy::redundant-clone)] // Essence of test
       buf.slice(2..).clone(),
       bytes::Bytes::from_static(&[3, 4, 5])
     );
