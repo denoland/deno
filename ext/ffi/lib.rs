@@ -593,7 +593,6 @@ pub fn op_ffi_call_ptr_fn(
     call_args
       .push(value_as_arg(scope, arg, symbol.parameter_types[idx]).unwrap());
   }
-
   let value = match symbol.result_type {
     NativeType::Void => {
       unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) };
@@ -688,6 +687,7 @@ pub fn op_ffi_call_fn(
   let mut call_args = Vec::with_capacity(args_len);
   for idx in 0..args_len {
     let arg = args.get_index(scope, idx as u32).unwrap();
+    dbg!(arg);
     call_args
       .push(value_as_arg(scope, arg, symbol.parameter_types[idx]).unwrap());
   }
@@ -755,6 +755,17 @@ pub fn op_ffi_call_fn(
   rv.set(value);
 }
 
+#[repr(transparent)]
+struct ThreadSafeArgs(Vec<Arg>);
+
+unsafe impl Send for ThreadSafeArgs {}
+impl core::ops::Deref for ThreadSafeArgs {
+  type Target = Vec<Arg>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
 pub fn op_ffi_call_ptr_nonblocking_fn(
   scope: &mut deno_core::v8::HandleScope,
   args: deno_core::v8::FunctionCallbackArguments,
@@ -779,78 +790,84 @@ pub fn op_ffi_call_ptr_nonblocking_fn(
 
   let pointer: U32x2 = serde_v8::from_v8(scope, args.get(1)).unwrap();
   let fn_def: ForeignFunction = serde_v8::from_v8(scope, args.get(2)).unwrap();
-  let symbol = get_symbol(pointer.into(), fn_def);
 
   let args = v8::Local::<v8::Array>::try_from(args.get(3)).unwrap();
   let args_len = args.length() as usize;
   let mut call_args = Vec::with_capacity(args_len);
   for idx in 0..args_len {
     let arg = args.get_index(scope, idx as u32).unwrap();
-    call_args
-      .push(value_as_arg(scope, arg, symbol.parameter_types[idx]).unwrap());
+    call_args.push(value_as_arg(scope, arg, fn_def.parameters[idx]).unwrap());
   }
+  let call_args = ThreadSafeArgs(call_args);
   deno_core::_ops::queue_async_op(scope, async move {
-    match symbol.result_type {
-      NativeType::Void => {
-        unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(().into()))
+    tokio::task::spawn_blocking(move || {
+      let symbol = get_symbol(pointer.into(), fn_def);
+      match symbol.result_type {
+        NativeType::Void => {
+          unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(().into()))
+        }
+        NativeType::U8 => {
+          let value = unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::I8 => {
+          let value = unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::U16 => {
+          let value = unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::I16 => {
+          let value = unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::U32 => {
+          let value = unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::I32 => {
+          let value = unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::U64 => {
+          let value = unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::I64 => {
+          let value = unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::USize => {
+          let value =
+            unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::ISize => {
+          let value =
+            unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::F32 => {
+          let value = unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::F64 => {
+          let value = unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) };
+          (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
+        }
+        NativeType::Pointer => {
+          let value =
+            unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) }
+              as u64;
+          let ptr = U32x2::from(value);
+          (promise_id, op_id, deno_core::OpResult::Ok(ptr.into()))
+        }
       }
-      NativeType::U8 => {
-        let value = unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::I8 => {
-        let value = unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::U16 => {
-        let value = unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::I16 => {
-        let value = unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::U32 => {
-        let value = unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::I32 => {
-        let value = unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::U64 => {
-        let value = unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::I64 => {
-        let value = unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::USize => {
-        let value = unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::ISize => {
-        let value = unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::F32 => {
-        let value = unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::F64 => {
-        let value = unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) };
-        (promise_id, op_id, deno_core::OpResult::Ok(value.into()))
-      }
-      NativeType::Pointer => {
-        let value =
-          unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) }
-            as u64;
-        let ptr = U32x2::from(value);
-        (promise_id, op_id, deno_core::OpResult::Ok(ptr.into()))
-      }
-    }
+    })
+    .await
+    .unwrap()
   });
 }
 
@@ -899,7 +916,10 @@ pub fn op_ffi_call_nonblocking_fn(
     call_args
       .push(value_as_arg(scope, arg, symbol.parameter_types[idx]).unwrap());
   }
+  let call_args = ThreadSafeArgs(call_args);
   deno_core::_ops::queue_async_op(scope, async move {
+    tokio::task::spawn_blocking(move || {
+    let symbol = symbol.clone();
     match symbol.result_type {
       NativeType::Void => {
         unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) };
@@ -961,6 +981,7 @@ pub fn op_ffi_call_nonblocking_fn(
         (promise_id, op_id, deno_core::OpResult::Ok(ptr.into()))
       }
     }
+    }).await.unwrap()
   });
 }
 

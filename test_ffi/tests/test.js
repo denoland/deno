@@ -113,6 +113,7 @@ console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
+console.log(addU32Ptr);
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
   parameters: ["u32", "u32"],
   result: "u32",

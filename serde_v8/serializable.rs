@@ -34,6 +34,8 @@ pub enum SerializablePkg {
   Serializable(Box<dyn Serializable>),
 }
 
+unsafe impl Send for SerializablePkg {}
+
 impl SerializablePkg {
   pub fn to_v8<'a>(
     &self,
