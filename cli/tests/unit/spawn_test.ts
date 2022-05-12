@@ -249,6 +249,32 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { run: true, read: true } },
+  async function spawnAbort() {
+    const ac = new AbortController();
+    const child = Deno.spawnChild(Deno.execPath(), {
+      args: [
+        "eval",
+        "setTimeout(console.log, 1e8)",
+      ],
+      signal: ac.signal,
+      stdout: "null",
+      stderr: "null",
+    });
+    queueMicrotask(() => ac.abort());
+    const status = await child.status;
+    assertEquals(status.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, null);
+    } else {
+      assertEquals(status.success, false);
+      assertEquals(status.code, 143);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { read: true, run: false } },
   async function spawnPermissions() {
     await assertRejects(async () => {
