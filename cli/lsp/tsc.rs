@@ -3835,8 +3835,6 @@ mod tests {
         specifier: "/error/unknown:something/index.d.ts".to_string(),
       },
     );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
     assert!(!actual);
   }
 
