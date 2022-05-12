@@ -202,7 +202,7 @@ pub struct WorkspaceSettings {
   pub internal_debug: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
-  #[serde(default)]
+  #[serde(default = "true")]
   pub lint: bool,
 
   /// A flag that indicates if Dene should validate code against the unstable
