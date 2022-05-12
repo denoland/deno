@@ -154,6 +154,11 @@ fn codegen_v8_async(
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let type_params = &f.sig.generics.params;
 
+  let result_wrapper = match is_result(&f.sig.output) {
+    true => quote! {},
+    false => quote! { let result = Ok(result); },
+  };
+
   quote! {
     use #core::futures::FutureExt;
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
@@ -189,6 +194,7 @@ fn codegen_v8_async(
 
     #core::_ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(#args_head #args_tail).await;
+      #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
@@ -325,7 +331,14 @@ fn codegen_sync_ret(
     }
   };
 
+  let result_wrapper = match is_result(&**ret_type) {
+    true => quote! {},
+    false => quote! { let result = Ok(result); },
+  };
+
   quote! {
+    #result_wrapper
+
     match result {
       Ok(v) => {
         #ok_block
@@ -335,6 +348,19 @@ fn codegen_sync_ret(
         rv.set(#core::serde_v8::to_v8(scope, err).unwrap());
       },
     };
+  }
+}
+
+fn is_result(ty: impl ToTokens) -> bool {
+  let tokens = tokens(ty);
+  if tokens.trim_start_matches("-> ").starts_with("Result <") {
+    return true;
+  }
+  // Detect `io::Result<...>`, `anyhow::Result<...>`, etc...
+  // i.e: Result aliases/shorthands which are unfortunately "opaque" at macro-time
+  match tokens.find(":: Result <") {
+    Some(idx) => !tokens.split_at(idx).0.contains('<'),
+    None => false,
   }
 }
 
