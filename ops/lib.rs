@@ -309,19 +309,16 @@ fn codegen_sync_ret(
   core: &TokenStream2,
   output: &syn::ReturnType,
 ) -> TokenStream2 {
-  let ret_type = match output {
-    // Func with no return no-ops
-    syn::ReturnType::Default => return quote! { let ret = (); },
-    // Func with a return Result<T, E>
-    syn::ReturnType::Type(_, ty) => ty,
-  };
+  if is_void(output) {
+    return quote! {};
+  }
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
-  let ok_block = if is_unit_result(&**ret_type) {
+  let ok_block = if is_unit_result(output) {
     quote! {}
   } else {
     quote! {
-      match #core::serde_v8::to_v8(scope, v) {
+      match #core::serde_v8::to_v8(scope, result) {
         Ok(ret) => rv.set(ret),
         Err(err) => #core::_ops::throw_type_error(
           scope,
@@ -331,16 +328,13 @@ fn codegen_sync_ret(
     }
   };
 
-  let result_wrapper = match is_result(&**ret_type) {
-    true => quote! {},
-    false => quote! { let result = Ok(result); },
-  };
+  if !is_result(output) {
+    return ok_block;
+  }
 
   quote! {
-    #result_wrapper
-
     match result {
-      Ok(v) => {
+      Ok(result) => {
         #ok_block
       },
       Err(err) => {
@@ -349,6 +343,10 @@ fn codegen_sync_ret(
       },
     };
   }
+}
+
+fn is_void(ty: impl ToTokens) -> bool {
+  tokens(ty).is_empty()
 }
 
 fn is_result(ty: impl ToTokens) -> bool {
