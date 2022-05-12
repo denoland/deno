@@ -180,13 +180,13 @@ fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
 }
 
 #[op]
-fn op_base64_encode(s: ZeroCopyBuf) -> Result<String, AnyError> {
-  Ok(b64_encode(&s))
+fn op_base64_encode(s: ZeroCopyBuf) -> String {
+  b64_encode(&s)
 }
 
 #[op]
-fn op_base64_btoa(s: ByteString) -> Result<String, AnyError> {
-  Ok(b64_encode(s))
+fn op_base64_btoa(s: ByteString) -> String {
+  b64_encode(s)
 }
 
 fn b64_encode(s: impl AsRef<[u8]>) -> String {
@@ -323,7 +323,7 @@ struct EncodeIntoResult {
 fn op_encoding_encode_into(
   input: String,
   mut buffer: ZeroCopyBuf,
-) -> Result<EncodeIntoResult, AnyError> {
+) -> EncodeIntoResult {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
   // that point.
@@ -347,18 +347,17 @@ fn op_encoding_encode_into(
 
   buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
 
-  Ok(EncodeIntoResult {
+  EncodeIntoResult {
     // The `read` output parameter is measured in UTF-16 code units.
     read: input[..boundary].encode_utf16().count(),
     written: boundary,
-  })
+  }
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
 #[op]
-pub fn op_cancel_handle(state: &mut OpState) -> Result<ResourceId, AnyError> {
-  let rid = state.resource_table.add(CancelHandle::new());
-  Ok(rid)
+pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
+  state.resource_table.add(CancelHandle::new())
 }
 
 pub fn get_declaration() -> PathBuf {
