@@ -139,7 +139,8 @@ fn magic_buffer() {
     assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
     assert_eq!(buf.slice(0..2), bytes::Bytes::from_static(&[1, 2]));
     assert_eq!(buf.slice(2..), bytes::Bytes::from_static(&[3, 4, 5]));
-    #[allow(clippy::redundant_clone)] // We're specifically testing that slices are preserved post-clone
+    // We're specifically testing that slices are preserved post-clone
+    #[allow(clippy::redundant_clone)]
     let buf2 = buf.slice(2..).clone();
     assert_eq!(buf2, bytes::Bytes::from_static(&[3, 4, 5]));
   })
