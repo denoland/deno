@@ -193,6 +193,11 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
+  export interface ConsoleSize {
+    columns: number;
+    rows: number;
+  }
+  
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Gets the size of the console as columns/rows.
@@ -203,10 +208,7 @@ declare namespace Deno {
    */
   export function consoleSize(
     rid: number,
-  ): {
-    columns: number;
-    rows: number;
-  };
+  ): ConsoleSize;
 
   /** **Unstable**  There are questions around which permission this needs. And
    * maybe should be renamed (loadAverage?)
@@ -1353,6 +1355,7 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+    pty?: Pty;
   }
 
   /**
@@ -1399,6 +1402,16 @@ declare namespace Deno {
     /** Kills the process with given Signal. */
     kill(signo: Signal): void;
   }
+  
+  export class Pty {
+    rid: number;
+    readable: ReadableStream<Uint8Array>;
+    writable: WritableStream<Uint8Array>;
+    close(): void;
+    resize(size: ConsoleSize): void;
+  }
+  
+  export function openPty(size: ConsoleSize): Pty;
 
   /**
    * Executes a subprocess, waiting for it to finish and

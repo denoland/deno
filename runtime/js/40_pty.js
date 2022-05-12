@@ -17,45 +17,27 @@
 
   class Pty {
     #rid;
-
-    #pid;
-    get pid() {
-      return this.#pid;
+    get rid() {
+      return this.#rid;
     }
 
-    constructor(key = null, { rid, pid }) {
+    constructor(key = null, rid) {
       if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
 
       this.#rid = rid;
-      this.#pid = pid;
 
       this.readable = readableStreamForRid(rid);
       this.writable = writableStreamForRid(rid);
-
-      this.success = core.opAsync("op_pty_wait", rid).then((res) => {
-        console.log(res);
-        this.#rid = null;
-        return res;
-      });
     }
   }
 
-  function openPty(command, {
-    args = [],
-    cwd = undefined,
-    clearEnv = false,
-    env = {},
+  function openPty({
     rows,
     columns,
   }) {
     const pty = core.opSync("op_pty_open", {
-      cmd: pathFromURL(command),
-      args: ArrayPrototypeMap(args, String),
-      cwd: pathFromURL(cwd),
-      clearEnv,
-      env: ObjectEntries(env),
       rows,
       columns,
     });

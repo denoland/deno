@@ -5,6 +5,7 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::process::Stdio;
 use super::process::StdioOrRid;
+use super::pty::PtyResource;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -17,6 +18,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::os::unix::prelude::FromRawFd;
 use std::process::ExitStatus;
 use std::rc::Rc;
 
@@ -58,6 +60,7 @@ pub struct SpawnArgs {
 
   #[serde(flatten)]
   stdio: ChildStdio,
+  pty: Option<ResourceId>,
 }
 
 #[derive(Deserialize)]
@@ -141,21 +144,47 @@ fn create_command(
   }
   #[cfg(unix)]
   unsafe {
-    command.pre_exec(|| {
+    command.pre_exec(move || {
       libc::setgroups(0, std::ptr::null());
+      for signo in &[
+        libc::SIGCHLD,
+        libc::SIGHUP,
+        libc::SIGINT,
+        libc::SIGQUIT,
+        libc::SIGTERM,
+        libc::SIGALRM,
+      ] {
+        libc::signal(*signo, libc::SIG_DFL);
+      }
+      if let Some(_) = args.pty {
+        if libc::setsid() == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+        if libc::ioctl(0, libc::TIOCSCTTY as _, 0) == -1 {
+          return Err(std::io::Error::last_os_error());
+        }
+      }
       Ok(())
     });
   }
 
-  command.stdin(args.stdio.stdin.as_stdio());
-  command.stdout(match args.stdio.stdout {
-    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
-  command.stderr(match args.stdio.stderr {
-    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
+  if let Some(rid) = args.pty {
+    let pty = state.resource_table.get::<PtyResource>(rid)?;
+    let pty = pty.pty.borrow();
+    command.stdin(pty.as_stdio());
+    command.stdout(pty.as_stdio());
+    command.stderr(pty.as_stdio());
+  } else {
+    command.stdin(args.stdio.stdin.as_stdio());
+    command.stdout(match args.stdio.stdout {
+      Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
+      value => value.as_stdio(),
+    });
+    command.stderr(match args.stdio.stderr {
+      Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
+      value => value.as_stdio(),
+    });
+  }
 
   Ok(command)
 }
