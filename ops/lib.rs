@@ -311,7 +311,7 @@ fn codegen_sync_ret(
 ) -> TokenStream2 {
   let ret_type = match output {
     // Func with no return no-ops
-    syn::ReturnType::Default => return quote! { let ret = (); },
+    syn::ReturnType::Default => return quote! {},
     // Func with a return Result<T, E>
     syn::ReturnType::Type(_, ty) => ty,
   };
@@ -321,7 +321,7 @@ fn codegen_sync_ret(
     quote! {}
   } else {
     quote! {
-      match #core::serde_v8::to_v8(scope, v) {
+      match #core::serde_v8::to_v8(scope, result) {
         Ok(ret) => rv.set(ret),
         Err(err) => #core::_ops::throw_type_error(
           scope,
@@ -331,16 +331,13 @@ fn codegen_sync_ret(
     }
   };
 
-  let result_wrapper = match is_result(&**ret_type) {
-    true => quote! {},
-    false => quote! { let result = Ok(result); },
-  };
+  if !is_result(&**ret_type) {
+    return ok_block;
+  }
 
   quote! {
-    #result_wrapper
-
     match result {
-      Ok(v) => {
+      Ok(result) => {
         #ok_block
       },
       Err(err) => {
