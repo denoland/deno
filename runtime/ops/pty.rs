@@ -202,8 +202,6 @@ impl Resource for PtyResource {
     return "pty".into();
   }
 
-  // HELP NEEDED
-  // pty.readable.pipeTo() throws an error once the resource is closed.
   #[cfg(unix)]
   fn close(self: Rc<Self>) {
     if self.pty.borrow().master_fd == -1 {
