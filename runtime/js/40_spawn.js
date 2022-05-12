@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const { pathFromURL } = window.__bootstrap.util;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
+  const { add, remove } = window.__bootstrap.abortSignal;
   const {
     ArrayPrototypeMap,
     ObjectEntries,
@@ -26,6 +27,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
+    signal = undefined,
   } = {}) {
     const child = core.opSync("op_spawn_child", {
       cmd: pathFromURL(command),
@@ -39,7 +41,10 @@
       stdout,
       stderr,
     });
-    return new Child(illegalConstructorKey, child);
+    return new Child(illegalConstructorKey, {
+      ...child,
+      signal,
+    });
   }
 
   async function collectOutput(readableStream) {
@@ -91,6 +96,7 @@
     }
 
     constructor(key = null, {
+      signal,
       rid,
       pid,
       stdinRid,
@@ -119,8 +125,12 @@
         this.#stderr = readableStreamForRid(stderrRid);
       }
 
+      const onAbort = () => this.kill("SIGTERM");
+      signal?.[add](onAbort);
+
       this.#status = core.opAsync("op_spawn_wait", this.#rid).then((res) => {
         this.#rid = null;
+        signal?.[remove](onAbort);
         return res;
       });
     }

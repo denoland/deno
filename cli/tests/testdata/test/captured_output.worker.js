@@ -1,6 +1,6 @@
 self.onmessage = () => {
-  console.log(9);
-  console.error(10);
+  console.log(8);
+  console.error(9);
   self.postMessage({});
   self.close();
 };
