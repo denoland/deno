@@ -6,6 +6,7 @@ use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
 use quote::quote;
 use quote::ToTokens;
+use syn::FnArg;
 use syn::Ident;
 
 // Identifer to the `deno_core` crate.
@@ -34,9 +35,10 @@ fn core_import() -> TokenStream2 {
   }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 struct MacroArgs {
   is_unstable: bool,
+  is_v8: bool,
 }
 
 impl syn::parse::Parse for MacroArgs {
@@ -47,20 +49,25 @@ impl syn::parse::Parse for MacroArgs {
       )?;
     let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
     let vars: Vec<_> = vars.iter().map(String::as_str).collect();
-    match vars[..] {
-      ["unstable"] => Ok(Self { is_unstable: true }),
-      [] => Ok(Self { is_unstable: false }),
-      _ => Err(syn::Error::new(
-        input.span(),
-        "Ops expect #[op] or #[op(unstable)]",
-      )),
+    for var in vars.iter() {
+      if !["unstable", "v8"].contains(var) {
+        return Err(syn::Error::new(
+          input.span(),
+          "Ops expect #[op] or #[op(unstable)]",
+        ));
+      }
     }
+    Ok(Self {
+      is_unstable: vars.contains(&"unstable"),
+      is_v8: vars.contains(&"v8"),
+    })
   }
 }
 
 #[proc_macro_attribute]
 pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
-  let MacroArgs { is_unstable } = syn::parse_macro_input!(attr as MacroArgs);
+  let margs = syn::parse_macro_input!(attr as MacroArgs);
+  let MacroArgs { is_unstable, is_v8 } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
@@ -78,9 +85,9 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let is_async = func.sig.asyncness.is_some();
   let v8_body = if is_async {
-    codegen_v8_async(&core, &func)
+    codegen_v8_async(&core, &func, margs)
   } else {
-    codegen_v8_sync(&core, &func)
+    codegen_v8_sync(&core, &func, margs)
   };
 
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
@@ -111,6 +118,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
           enabled: true,
           is_async: #is_async,
           is_unstable: #is_unstable,
+          is_v8: #is_v8,
         }
       }
 
@@ -130,7 +138,11 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Generate the body of a v8 func for an async op
-fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
+fn codegen_v8_async(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  _margs: MacroArgs,
+) -> TokenStream2 {
   let arg0 = f.sig.inputs.first();
   let uses_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
@@ -183,31 +195,36 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 }
 
 /// Generate the body of a v8 func for a sync op
-fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let args = f.sig.inputs.iter().collect::<Vec<_>>();
-  let mut arg0 = args.first();
-  let has_scope = match arg0 {
-    Some(arg0) => is_handle_scope(arg0),
-    None => false,
-  };
-  let rust_i0;
-  let scope_arg = if has_scope {
-    arg0 = args.get(1); // Next arg might be OpState.
-    rust_i0 = 1;
-    quote! { scope, }
-  } else {
-    rust_i0 = 0;
-    quote! {}
-  };
-  let (rust_i0, args_head) = match arg0 {
-    Some(arg0) if is_rc_refcell_opstate(arg0) => {
-      (rust_i0 + 1, quote! { ctx.state.clone(), })
+fn codegen_v8_sync(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  margs: MacroArgs,
+) -> TokenStream2 {
+  let MacroArgs { is_v8, .. } = margs;
+  let scope_arg = |arg: &FnArg| {
+    if is_handle_scope(arg) {
+      Some(quote! { scope, })
+    } else {
+      None
     }
-    Some(arg0) if is_mut_ref_opstate(arg0) => {
-      (rust_i0 + 1, quote! { &mut ctx.state.borrow_mut(), })
-    }
-    _ => (rust_i0, quote! {}),
   };
+  let opstate_arg = |arg: &FnArg| match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => {
+      Some(quote! { &mut ctx.state.borrow_mut(), })
+    }
+    _ => None,
+  };
+  let special_args = f
+    .sig
+    .inputs
+    .iter()
+    .map_while(|a| {
+      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+    })
+    .collect::<Vec<_>>();
+  let rust_i0 = special_args.len();
+  let args_head = special_args.into_iter().collect::<TokenStream2>();
 
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
@@ -222,7 +239,7 @@ fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
     #arg_decls
 
-    let result = Self::call::<#type_params>(#scope_arg #args_head #args_tail);
+    let result = Self::call::<#type_params>(#args_head #args_tail);
 
     let op_state = &mut ctx.state.borrow();
     op_state.tracker.track_sync(ctx.id);
