@@ -139,7 +139,7 @@ fn create_web_worker_callback(
     let preload_module_cb =
       create_web_worker_preload_module_callback(ps.clone());
 
-    let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
+    let extensions = ops::cli_exts(ps.clone(), true);
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
@@ -172,7 +172,6 @@ fn create_web_worker_callback(
       preload_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(ps.clone())),
-      use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&crate::errors::get_error_class_name),

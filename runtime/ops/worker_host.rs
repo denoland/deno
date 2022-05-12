@@ -36,7 +36,6 @@ pub struct CreateWebWorkerArgs {
   pub parent_permissions: Permissions,
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_exit_code: Option<Arc<AtomicI32>>,
 }
@@ -133,7 +132,6 @@ pub struct CreateWorkerArgs {
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
-  use_deno_namespace: bool,
   worker_type: WebWorkerType,
 }
 
@@ -150,10 +148,6 @@ fn op_create_worker(
     None
   };
   let args_name = args.name;
-  let use_deno_namespace = args.use_deno_namespace;
-  if use_deno_namespace {
-    super::check_unstable(state, "Worker.deno.namespace");
-  }
   let worker_type = args.worker_type;
   if let WebWorkerType::Classic = worker_type {
     if let TestingFeaturesEnabled(false) = state.borrow() {
@@ -216,7 +210,6 @@ fn op_create_worker(
         parent_permissions,
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
-        use_deno_namespace,
         worker_type,
         maybe_exit_code,
       });
