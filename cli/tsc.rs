@@ -344,7 +344,7 @@ struct EmitArgs {
 }
 
 #[op]
-fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
+fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -389,7 +389,7 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
     }
   }
 
-  Ok(json!(true))
+  true
 }
 
 #[derive(Debug, Deserialize)]
@@ -399,20 +399,20 @@ struct ExistsArgs {
 }
 
 #[op]
-fn op_exists(state: &mut OpState, args: ExistsArgs) -> Result<bool, AnyError> {
+fn op_exists(state: &mut OpState, args: ExistsArgs) -> bool {
   let state = state.borrow_mut::<State>();
   let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
-      Ok(true)
+      true
     } else {
-      Ok(matches!(
+      matches!(
         graph_data.get(&graph_data.follow_redirect(&specifier)),
         Some(ModuleEntry::Module { .. })
-      ))
+      )
     }
   } else {
-    Ok(false)
+    false
   }
 }
 
@@ -507,10 +507,7 @@ pub struct ResolveArgs {
 }
 
 #[op]
-fn op_resolve(
-  state: &mut OpState,
-  args: ResolveArgs,
-) -> Result<Value, AnyError> {
+fn op_resolve(state: &mut OpState, args: ResolveArgs) -> Vec<(String, String)> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = if let Some(remapped_specifier) =
@@ -607,7 +604,7 @@ fn op_resolve(
     }
   }
 
-  Ok(json!(resolved))
+  resolved
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
