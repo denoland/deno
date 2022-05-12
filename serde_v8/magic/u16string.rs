@@ -13,7 +13,9 @@ impl ToV8 for U16String {
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let v =
       v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal)
-        .unwrap();
+        .expect(
+          "Cannot allocate String from UTF-16: buffer exceeds maximum length.",
+        );
     Ok(v.into())
   }
 }
