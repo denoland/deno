@@ -473,10 +473,10 @@ Deno.test(
 Deno.test({ permissions: { run: false } }, function killPermissions() {
   assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a
-    // subprocess we can safely kill. Instead we send SIGCONT to the current
+    // subprocess we can safely kill. Instead we send SIGTERM to the current
     // process - assuming that Deno does not have a special handler set for it
     // and will just continue even if a signal is erroneously sent.
-    Deno.kill(Deno.pid, "SIGCONT");
+    Deno.kill(Deno.pid, "SIGTERM");
   }, Deno.errors.PermissionDenied);
 });
 
