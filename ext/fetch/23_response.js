@@ -159,6 +159,7 @@
   }
 
   /**
+   * https://fetch.spec.whatwg.org#initialize-a-response
    * @param {Response} response
    * @param {ResponseInit} init
    * @param {{ body: __bootstrap.fetchBody.InnerBody, contentType: string | null } | null} bodyWithType
