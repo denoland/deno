@@ -3215,7 +3215,9 @@
         "response-consume-stream.any.html": true,
         "response-consume-stream.any.worker.html": true,
         "response-init-contenttype.any.html": true,
-        "response-init-contenttype.any.worker.html": true
+        "response-init-contenttype.any.worker.html": true,
+        "response-static-json.any.html": true,
+        "response-static-json.any.worker.html": true
       },
       "body": {
         "formdata.any.html": [
