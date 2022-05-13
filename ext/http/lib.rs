@@ -392,10 +392,28 @@ async fn op_http_accept(
 
   {
     let mut accept_encoding = stream.accept_encoding.borrow_mut();
-    *accept_encoding = fly_accept_encoding::parse(request.headers())
-      .ok()
-      .flatten()
-      .unwrap_or(Encoding::Identity);
+
+    // curl --compressed sends "Accept-Encoding: deflate, gzip".
+    // fly_accept_encoding::parse() returns Encoding::Deflate.
+    // Deno does not support Encoding::Deflate.
+    // So, Deno used no compression, although gzip was possible.
+    // This patch makes Deno use gzip instead in this case.
+    *accept_encoding = Encoding::Identity;
+    let mut max_qval = 0.0;
+    if let Ok(encodings) = fly_accept_encoding::encodings(request.headers()) {
+      for (encoding, qval) in encodings {
+        if let Some(enc @ (Encoding::Brotli | Encoding::Gzip)) = encoding {
+          // this logic came from fly_accept_encoding.
+          if (qval - 1.0f32).abs() < 0.01 {
+            *accept_encoding = enc;
+            break;
+          } else if qval > max_qval {
+            *accept_encoding = enc;
+            max_qval = qval;
+          }
+        }
+      }
+    }
   }
 
   let method = request.method().to_string();
