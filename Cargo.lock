@@ -3615,6 +3615,7 @@ name = "serde_v8"
 version = "0.45.0"
 dependencies = [
  "bencher",
+ "bytes",
  "derive_more",
  "serde",
  "serde_json",
