@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -82,7 +82,7 @@ interface EcKeyGenParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
-interface EcImportParams extends Algorithm {
+interface EcKeyImportParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
@@ -114,10 +114,6 @@ interface RsaOaepParams extends Algorithm {
 interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
-}
-
-interface RsaHashedImportParams extends Algorithm {
-  hash: HashAlgorithmIdentifier;
 }
 
 interface EcKeyAlgorithm extends KeyAlgorithm {
@@ -214,7 +210,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -225,7 +221,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -313,7 +309,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | HmacImportParams
       | RsaHashedImportParams
-      | EcImportParams,
+      | EcKeyImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;

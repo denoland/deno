@@ -98,7 +98,7 @@
     }
 
     postMessage(message) {
-      webidl.assertBranded(this, BroadcastChannel);
+      webidl.assertBranded(this, BroadcastChannelPrototype);
 
       const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -117,11 +117,11 @@
       dispatch(this, this[_name], new Uint8Array(data));
 
       // Send to listeners in other VMs.
-      defer(() => core.opAsync("op_broadcast_send", [rid, this[_name]], data));
+      defer(() => core.opAsync("op_broadcast_send", rid, this[_name], data));
     }
 
     close() {
-      webidl.assertBranded(this, BroadcastChannel);
+      webidl.assertBranded(this, BroadcastChannelPrototype);
       this[_closed] = true;
 
       const index = ArrayPrototypeIndexOf(channels, this);
@@ -134,6 +134,7 @@
 
   defineEventHandler(BroadcastChannel.prototype, "message");
   defineEventHandler(BroadcastChannel.prototype, "messageerror");
+  const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
   window.__bootstrap.broadcastChannel = { BroadcastChannel };
 })(this);

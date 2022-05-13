@@ -13,7 +13,8 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
-  const { Blob, File } = globalThis.__bootstrap.file;
+  const { Blob, BlobPrototype, File, FilePrototype } =
+    globalThis.__bootstrap.file;
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
@@ -25,6 +26,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     MathRandom,
+    ObjectPrototypeIsPrototypeOf,
     Symbol,
     StringFromCharCode,
     StringPrototypeTrim,
@@ -48,10 +50,16 @@
    * @returns {FormDataEntry}
    */
   function createEntry(name, value, filename) {
-    if (value instanceof Blob && !(value instanceof File)) {
+    if (
+      ObjectPrototypeIsPrototypeOf(BlobPrototype, value) &&
+      !ObjectPrototypeIsPrototypeOf(FilePrototype, value)
+    ) {
       value = new File([value], "blob", { type: value.type });
     }
-    if (value instanceof File && filename !== undefined) {
+    if (
+      ObjectPrototypeIsPrototypeOf(FilePrototype, value) &&
+      filename !== undefined
+    ) {
       value = new File([value], filename, {
         type: value.type,
         lastModified: value.lastModified,
@@ -89,7 +97,7 @@
      * @returns {void}
      */
     append(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'append' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -97,7 +105,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (valueOrBlobValue instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -125,7 +133,7 @@
      * @returns {void}
      */
     delete(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'name' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -148,7 +156,7 @@
      * @returns {FormDataEntryValue | null}
      */
     get(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'get' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -168,7 +176,7 @@
      * @returns {FormDataEntryValue[]}
      */
     getAll(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'getAll' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -189,7 +197,7 @@
      * @returns {boolean}
      */
     has(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'has' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -211,7 +219,7 @@
      * @returns {void}
      */
     set(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'set' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -219,7 +227,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (valueOrBlobValue instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -261,6 +269,7 @@
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
   webidl.configurePrototype(FormData);
+  const FormDataPrototype = FormData.prototype;
 
   const escape = (str, isFilename) =>
     StringPrototypeReplace(
@@ -491,10 +500,11 @@
   }
 
   webidl.converters["FormData"] = webidl
-    .createInterfaceConverter("FormData", FormData);
+    .createInterfaceConverter("FormData", FormDataPrototype);
 
   globalThis.__bootstrap.formData = {
     FormData,
+    FormDataPrototype,
     formDataToBlob,
     parseFormData,
     formDataFromEntries,

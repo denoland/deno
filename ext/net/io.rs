@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -9,6 +10,7 @@ use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
+use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
 use tokio::io::AsyncRead;
@@ -68,13 +70,13 @@ where
   pub async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut rd = self.rd_borrow_mut().await;
     let nread = rd
       .read(&mut buf)
       .try_or_cancel(self.cancel_handle())
       .await?;
-    Ok(nread)
+    Ok((nread, buf))
   }
 
   pub async fn write(
@@ -101,7 +103,10 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
@@ -118,6 +123,34 @@ impl Resource for TcpStreamResource {
   }
 }
 
+impl TcpStreamResource {
+  pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), AnyError> {
+    self.map_socket(Box::new(move |socket| Ok(socket.set_nodelay(nodelay)?)))
+  }
+
+  pub fn set_keepalive(
+    self: Rc<Self>,
+    keepalive: bool,
+  ) -> Result<(), AnyError> {
+    self
+      .map_socket(Box::new(move |socket| Ok(socket.set_keepalive(keepalive)?)))
+  }
+
+  fn map_socket(
+    self: Rc<Self>,
+    map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
+  ) -> Result<(), AnyError> {
+    if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
+      let stream = wr.as_ref().as_ref();
+      let socket = socket2::SockRef::from(stream);
+
+      return map(socket);
+    }
+
+    Err(generic_error("Unable to get resources"))
+  }
+}
+
 #[cfg(unix)]
 pub type UnixStreamResource =
   FullDuplexResource<unix::OwnedReadHalf, unix::OwnedWriteHalf>;
@@ -130,7 +163,7 @@ impl UnixStreamResource {
   pub async fn read(
     self: Rc<Self>,
     _buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     unreachable!()
   }
   pub async fn write(
@@ -152,7 +185,10 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 

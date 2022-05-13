@@ -114,7 +114,7 @@
     return core.write(rid, data);
   }
 
-  const READ_PER_ITER = 16 * 1024; // 16kb, see https://github.com/denoland/deno/issues/10157
+  const READ_PER_ITER = 64 * 1024; // 64kb
 
   function readAll(r) {
     return readAllInner(r);

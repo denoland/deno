@@ -68,7 +68,7 @@ can use a shorthand or a partial match to profile a group of benches, e.g:
 It essentially vendors the `deno_webgpu` tree with a few minor patches applied
 on top, somewhat similar to `git subtree`.
 
-1. Update `COMMIT` in `./tools/wgpu_sync.js`
+1. Update `COMMIT` or `V_WGPU` in `./tools/wgpu_sync.js`
 2. Run `./tools/wgpu_sync.js`
 3. Double check changes, possibly patch
 4. Commit & send a PR with the updates

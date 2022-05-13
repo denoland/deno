@@ -7,7 +7,7 @@ import {
   toFileUrl,
 } from "../test_util/std/path/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync } from "../test_util/std/fs/mod.ts";
+export { existsSync, walk } from "../test_util/std/fs/mod.ts";
 export { readLines } from "../test_util/std/io/mod.ts";
 export { delay } from "../test_util/std/async/delay.ts";
 

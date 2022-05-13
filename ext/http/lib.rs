@@ -1,6 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use bytes::Bytes;
+use async_compression::tokio::write::BrotliEncoder;
+use async_compression::tokio::write::GzipEncoder;
+use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -19,8 +21,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -34,12 +35,17 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_websocket::ws_create_server_stream;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use fly_accept_encoding::Encoding;
+use hyper::body::Bytes;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -47,9 +53,9 @@ use std::cmp::min;
 use std::error::Error;
 use std::future::Future;
 use std::io;
+use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -57,7 +63,11 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 use tokio::task::spawn_local;
+use tokio_util::io::ReaderStream;
+
+pub mod compressible;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -66,25 +76,39 @@ pub fn init() -> Extension {
       "01_http.js",
     ))
     .ops(vec![
-      ("op_http_accept", op_async(op_http_accept)),
-      ("op_http_read", op_async(op_http_read)),
-      ("op_http_write_headers", op_async(op_http_write_headers)),
-      ("op_http_write", op_async(op_http_write)),
-      ("op_http_shutdown", op_async(op_http_shutdown)),
-      (
-        "op_http_websocket_accept_header",
-        op_sync(op_http_websocket_accept_header),
-      ),
-      (
-        "op_http_upgrade_websocket",
-        op_async(op_http_upgrade_websocket),
-      ),
+      op_http_accept::decl(),
+      op_http_read::decl(),
+      op_http_write_headers::decl(),
+      op_http_write::decl(),
+      op_http_write_resource::decl(),
+      op_http_shutdown::decl(),
+      op_http_websocket_accept_header::decl(),
+      op_http_upgrade_websocket::decl(),
     ])
     .build()
 }
 
+pub enum HttpSocketAddr {
+  IpSocket(std::net::SocketAddr),
+  #[cfg(unix)]
+  UnixSocket(tokio::net::unix::SocketAddr),
+}
+
+impl From<std::net::SocketAddr> for HttpSocketAddr {
+  fn from(addr: std::net::SocketAddr) -> Self {
+    Self::IpSocket(addr)
+  }
+}
+
+#[cfg(unix)]
+impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
+  fn from(addr: tokio::net::unix::SocketAddr) -> Self {
+    Self::UnixSocket(addr)
+  }
+}
+
 struct HttpConnResource {
-  addr: SocketAddr,
+  addr: HttpSocketAddr,
   scheme: &'static str,
   acceptors_tx: mpsc::UnboundedSender<HttpAcceptor>,
   closed_fut: Shared<RemoteHandle<Result<(), Arc<hyper::Error>>>>,
@@ -92,7 +116,7 @@ struct HttpConnResource {
 }
 
 impl HttpConnResource {
-  fn new<S>(io: S, scheme: &'static str, addr: SocketAddr) -> Self
+  fn new<S>(io: S, scheme: &'static str, addr: HttpSocketAddr) -> Self
   where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
   {
@@ -172,8 +196,8 @@ impl HttpConnResource {
     self.scheme
   }
 
-  fn addr(&self) -> SocketAddr {
-    self.addr
+  fn addr(&self) -> &HttpSocketAddr {
+    &self.addr
   }
 }
 
@@ -188,16 +212,17 @@ impl Resource for HttpConnResource {
 }
 
 /// Creates a new HttpConn resource which uses `io` as its transport.
-pub fn http_create_conn_resource<S>(
+pub fn http_create_conn_resource<S, A>(
   state: &mut OpState,
   io: S,
-  addr: SocketAddr,
+  addr: A,
   scheme: &'static str,
 ) -> Result<ResourceId, AnyError>
 where
   S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+  A: Into<HttpSocketAddr>,
 {
-  let conn = HttpConnResource::new(io, scheme, addr);
+  let conn = HttpConnResource::new(io, scheme, addr.into());
   let rid = state.resource_table.add(conn);
   Ok(rid)
 }
@@ -269,10 +294,11 @@ impl HttpAcceptor {
 }
 
 /// A resource representing a single HTTP request/response stream.
-struct HttpStreamResource {
+pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
-  rd: AsyncRefCell<HttpRequestReader>,
+  pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
+  accept_encoding: RefCell<Encoding>,
   cancel_handle: CancelHandle,
 }
 
@@ -286,6 +312,7 @@ impl HttpStreamResource {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
+      accept_encoding: RefCell::new(Encoding::Identity),
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -302,7 +329,7 @@ impl Resource for HttpStreamResource {
 }
 
 /// The read half of an HTTP stream.
-enum HttpRequestReader {
+pub enum HttpRequestReader {
   Headers(Request<Body>),
   Body(Peekable<Body>),
   Closed,
@@ -317,7 +344,8 @@ impl Default for HttpRequestReader {
 /// The write half of an HTTP stream.
 enum HttpResponseWriter {
   Headers(oneshot::Sender<Response<Body>>),
-  Body(hyper::body::Sender),
+  Body(Pin<Box<dyn tokio::io::AsyncWrite>>),
+  BodyUncompressed(hyper::body::Sender),
   Closed,
 }
 
@@ -343,10 +371,10 @@ struct NextRequestResponse(
   String,
 );
 
+#[op]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
@@ -362,6 +390,32 @@ async fn op_http_accept(
     _ => unreachable!(),
   };
 
+  {
+    let mut accept_encoding = stream.accept_encoding.borrow_mut();
+
+    // curl --compressed sends "Accept-Encoding: deflate, gzip".
+    // fly_accept_encoding::parse() returns Encoding::Deflate.
+    // Deno does not support Encoding::Deflate.
+    // So, Deno used no compression, although gzip was possible.
+    // This patch makes Deno use gzip instead in this case.
+    *accept_encoding = Encoding::Identity;
+    let mut max_qval = 0.0;
+    if let Ok(encodings) = fly_accept_encoding::encodings(request.headers()) {
+      for (encoding, qval) in encodings {
+        if let Some(enc @ (Encoding::Brotli | Encoding::Gzip)) = encoding {
+          // this logic came from fly_accept_encoding.
+          if (qval - 1.0f32).abs() < 0.01 {
+            *accept_encoding = enc;
+            break;
+          } else if qval > max_qval {
+            *accept_encoding = enc;
+            max_qval = qval;
+          }
+        }
+      }
+    }
+  }
+
   let method = request.method().to_string();
   let headers = req_headers(request);
   let url = req_url(request, conn.scheme(), conn.addr());
@@ -375,30 +429,49 @@ async fn op_http_accept(
 fn req_url(
   req: &hyper::Request<hyper::Body>,
   scheme: &'static str,
-  addr: SocketAddr,
+  addr: &HttpSocketAddr,
 ) -> String {
-  let host: Cow<str> = if let Some(auth) = req.uri().authority() {
-    match addr.port() {
-      443 if scheme == "https" => Cow::Borrowed(auth.host()),
-      80 if scheme == "http" => Cow::Borrowed(auth.host()),
-      _ => Cow::Borrowed(auth.as_str()), // Includes port number.
+  let host: Cow<str> = match addr {
+    HttpSocketAddr::IpSocket(addr) => {
+      if let Some(auth) = req.uri().authority() {
+        match addr.port() {
+          443 if scheme == "https" => Cow::Borrowed(auth.host()),
+          80 if scheme == "http" => Cow::Borrowed(auth.host()),
+          _ => Cow::Borrowed(auth.as_str()), // Includes port number.
+        }
+      } else if let Some(host) = req.uri().host() {
+        Cow::Borrowed(host)
+      } else if let Some(host) = req.headers().get("HOST") {
+        match host.to_str() {
+          Ok(host) => Cow::Borrowed(host),
+          Err(_) => Cow::Owned(
+            host
+              .as_bytes()
+              .iter()
+              .cloned()
+              .map(char::from)
+              .collect::<String>(),
+          ),
+        }
+      } else {
+        Cow::Owned(addr.to_string())
+      }
     }
-  } else if let Some(host) = req.uri().host() {
-    Cow::Borrowed(host)
-  } else if let Some(host) = req.headers().get("HOST") {
-    match host.to_str() {
-      Ok(host) => Cow::Borrowed(host),
-      Err(_) => Cow::Owned(
-        host
-          .as_bytes()
-          .iter()
-          .cloned()
-          .map(char::from)
-          .collect::<String>(),
-      ),
-    }
-  } else {
-    Cow::Owned(addr.to_string())
+    // There is no standard way for unix domain socket URLs
+    // nginx and nodejs request use http://unix:[socket_path]:/ but it is not a valid URL
+    // httpie uses http+unix://[percent_encoding_of_path]/ which we follow
+    #[cfg(unix)]
+    HttpSocketAddr::UnixSocket(addr) => Cow::Owned(
+      percent_encoding::percent_encode(
+        addr
+          .as_pathname()
+          .and_then(|x| x.to_str())
+          .unwrap_or_default()
+          .as_bytes(),
+        percent_encoding::NON_ALPHANUMERIC,
+      )
+      .to_string(),
+    ),
   };
   let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
   [scheme, "://", &host, path].concat()
@@ -421,37 +494,25 @@ fn req_headers(
     } else {
       let name: &[u8] = name.as_ref();
       let value = value.as_bytes();
-      headers.push((ByteString(name.to_owned()), ByteString(value.to_owned())));
+      headers.push((name.into(), value.into()));
     }
   }
 
   if !cookies.is_empty() {
-    headers.push((
-      ByteString("cookie".as_bytes().to_owned()),
-      ByteString(cookies.join(cookie_sep)),
-    ));
+    headers.push(("cookie".into(), cookies.join(cookie_sep).into()));
   }
 
   headers
 }
 
-// We use a tuple instead of struct to avoid serialization overhead of the keys.
-#[derive(Deserialize)]
-struct RespondArgs(
-  // rid:
-  u32,
-  // status:
-  u16,
-  // headers:
-  Vec<(ByteString, ByteString)>,
-);
-
+#[op]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
-  args: RespondArgs,
+  rid: u32,
+  status: u16,
+  headers: Vec<(ByteString, ByteString)>,
   data: Option<StringOrBuffer>,
 ) -> Result<(), AnyError> {
-  let RespondArgs(rid, status, headers) = args;
   let stream = state
     .borrow_mut()
     .resource_table
@@ -459,27 +520,46 @@ async fn op_http_write_headers(
 
   let mut builder = Response::builder().status(status);
 
-  builder.headers_mut().unwrap().reserve(headers.len());
-  for (key, value) in &headers {
-    builder = builder.header(key.as_ref(), value.as_ref());
+  // Add headers
+  let header_count = headers.len();
+  let headers = headers.into_iter().filter_map(|(k, v)| {
+    let v: Vec<u8> = v.into();
+    Some((
+      HeaderName::try_from(k.as_slice()).ok()?,
+      HeaderValue::try_from(v).ok()?,
+    ))
+  });
+  // Track supported encoding
+  let encoding = *stream.accept_encoding.borrow();
+
+  let hmap = builder.headers_mut().unwrap();
+  hmap.reserve(header_count + 2);
+  hmap.extend(headers);
+  ensure_vary_accept_encoding(hmap);
+
+  let accepts_compression =
+    matches!(encoding, Encoding::Brotli | Encoding::Gzip);
+  let compressing = accepts_compression
+    && (matches!(data, Some(ref data) if data.len() > 20) || data.is_none())
+    && should_compress(hmap);
+
+  if compressing {
+    weaken_etag(hmap);
+    // Drop 'content-length' header. Hyper will update it using compressed body.
+    hmap.remove(hyper::header::CONTENT_LENGTH);
+    // Content-Encoding header
+    hmap.insert(
+      hyper::header::CONTENT_ENCODING,
+      HeaderValue::from_static(match encoding {
+        Encoding::Brotli => "br",
+        Encoding::Gzip => "gzip",
+        _ => unreachable!(), // Forbidden by accepts_compression
+      }),
+    );
   }
 
-  let body: Response<Body>;
-  let new_wr: HttpResponseWriter;
-
-  match data {
-    Some(data) => {
-      // If a buffer was passed, we use it to construct a response body.
-      body = builder.body(data.into_bytes().into())?;
-      new_wr = HttpResponseWriter::Closed;
-    }
-    None => {
-      // If no buffer was passed, the caller will stream the response body.
-      let (body_tx, body_rx) = Body::channel();
-      body = builder.body(body_rx)?;
-      new_wr = HttpResponseWriter::Body(body_tx);
-    }
-  }
+  let (new_wr, body) = http_response(data, compressing, encoding)?;
+  let body = builder.body(body)?;
 
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let response_tx = match replace(&mut *old_wr, new_wr) {
@@ -496,6 +576,178 @@ async fn op_http_write_headers(
   }
 }
 
+fn http_response(
+  data: Option<StringOrBuffer>,
+  compressing: bool,
+  encoding: Encoding,
+) -> Result<(HttpResponseWriter, hyper::Body), AnyError> {
+  match data {
+    Some(data) if compressing => match encoding {
+      Encoding::Brotli => {
+        // quality level 6 is based on google's nginx default value for
+        // on-the-fly compression
+        // https://github.com/google/ngx_brotli#brotli_comp_level
+        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
+        // (~4MB)
+        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        writer.write_all(&data)?;
+        Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
+      }
+      Encoding::Gzip => {
+        // Gzip, after level 1, doesn't produce significant size difference.
+        // Probably the reason why nginx's default gzip compression level is
+        // 1.
+        // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
+        let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
+        writer.write_all(&data)?;
+        Ok((HttpResponseWriter::Closed, writer.finish()?.into()))
+      }
+      _ => unreachable!(), // forbidden by accepts_compression
+    },
+    Some(data) => {
+      // If a buffer was passed, but isn't compressible, we use it to
+      // construct a response body.
+      Ok((HttpResponseWriter::Closed, Bytes::from(data).into()))
+    }
+    None if compressing => {
+      // Create a one way pipe that implements tokio's async io traits. To do
+      // this we create a [tokio::io::DuplexStream], but then throw away one
+      // of the directions to create a one way pipe.
+      let (a, b) = tokio::io::duplex(64 * 1024);
+      let (reader, _) = tokio::io::split(a);
+      let (_, writer) = tokio::io::split(b);
+      let writer: Pin<Box<dyn tokio::io::AsyncWrite>> = match encoding {
+        Encoding::Brotli => Box::pin(BrotliEncoder::new(writer)),
+        Encoding::Gzip => Box::pin(GzipEncoder::new(writer)),
+        _ => unreachable!(), // forbidden by accepts_compression
+      };
+      Ok((
+        HttpResponseWriter::Body(writer),
+        Body::wrap_stream(ReaderStream::new(reader)),
+      ))
+    }
+    None => {
+      let (body_tx, body_rx) = Body::channel();
+      Ok((HttpResponseWriter::BodyUncompressed(body_tx), body_rx))
+    }
+  }
+}
+
+// If user provided a ETag header for uncompressed data, we need to
+// ensure it is a Weak Etag header ("W/").
+fn weaken_etag(hmap: &mut hyper::HeaderMap) {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
+    if !etag.as_bytes().starts_with(b"W/") {
+      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+      v.extend(b"W/");
+      v.extend(etag.as_bytes());
+      *etag = v.try_into().unwrap();
+    }
+  }
+}
+
+// Set Vary: Accept-Encoding header for direct body response.
+// Note: we set the header irrespective of whether or not we compress the data
+// to make sure cache services do not serve uncompressed data to clients that
+// support compression.
+fn ensure_vary_accept_encoding(hmap: &mut hyper::HeaderMap) {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
+    if let Ok(s) = v.to_str() {
+      if !s.to_lowercase().contains("accept-encoding") {
+        *v = format!("Accept-Encoding, {}", s).try_into().unwrap()
+      }
+      return;
+    }
+  }
+  hmap.insert(
+    hyper::header::VARY,
+    HeaderValue::from_static("Accept-Encoding"),
+  );
+}
+
+fn should_compress(headers: &hyper::HeaderMap) -> bool {
+  // skip compression if the cache-control header value is set to "no-transform" or not utf8
+  fn cache_control_no_transform(headers: &hyper::HeaderMap) -> Option<bool> {
+    let v = headers.get(hyper::header::CACHE_CONTROL)?;
+    let s = match std::str::from_utf8(v.as_bytes()) {
+      Ok(s) => s,
+      Err(_) => return Some(true),
+    };
+    let c = CacheControl::from_value(s)?;
+    Some(c.no_transform)
+  }
+  // we skip compression if the `content-range` header value is set, as it
+  // indicates the contents of the body were negotiated based directly
+  // with the user code and we can't compress the response
+  let content_range = headers.contains_key(hyper::header::CONTENT_RANGE);
+
+  !content_range
+    && !cache_control_no_transform(headers).unwrap_or_default()
+    && headers
+      .get(hyper::header::CONTENT_TYPE)
+      .map(compressible::is_content_compressible)
+      .unwrap_or_default()
+}
+
+#[op]
+async fn op_http_write_resource(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  stream: ResourceId,
+) -> Result<(), AnyError> {
+  let http_stream = state
+    .borrow()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?;
+  let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
+  let resource = state.borrow().resource_table.get_any(stream)?;
+  loop {
+    match *wr {
+      HttpResponseWriter::Headers(_) => {
+        return Err(http_error("no response headers"))
+      }
+      HttpResponseWriter::Closed => {
+        return Err(http_error("response already completed"))
+      }
+      _ => {}
+    };
+
+    let vec = vec![0u8; 64 * 1024]; // 64KB
+    let buf = ZeroCopyBuf::new_temp(vec);
+    let (nread, buf) = resource.clone().read_return(buf).await?;
+    if nread == 0 {
+      break;
+    }
+
+    match &mut *wr {
+      HttpResponseWriter::Body(body) => {
+        if let Err(err) = body.write_all(&buf[..nread]).await {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          http_stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+        }
+      }
+      HttpResponseWriter::BodyUncompressed(body) => {
+        let mut buf = buf.to_temp();
+        buf.truncate(nread);
+        if let Err(err) = body.send_data(Bytes::from(buf)).await {
+          assert!(err.is_closed());
+          // Pull up the failure associated with the transport connection instead.
+          http_stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+        }
+      }
+      _ => unreachable!(),
+    };
+  }
+  Ok(())
+}
+
+#[op]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -507,27 +759,39 @@ async fn op_http_write(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
-  loop {
-    let body_tx = match &mut *wr {
-      HttpResponseWriter::Body(body_tx) => body_tx,
-      HttpResponseWriter::Headers(_) => {
-        break Err(http_error("no response headers"))
+  match &mut *wr {
+    HttpResponseWriter::Headers(_) => Err(http_error("no response headers")),
+    HttpResponseWriter::Closed => Err(http_error("response already completed")),
+    HttpResponseWriter::Body(body) => {
+      let mut result = body.write_all(&buf).await;
+      if result.is_ok() {
+        result = body.flush().await;
       }
-      HttpResponseWriter::Closed => {
-        break Err(http_error("response already completed"))
+      match result {
+        Ok(_) => Ok(()),
+        Err(err) => {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+          Err(http_error("response already completed"))
+        }
       }
-    };
-
-    let bytes = Bytes::copy_from_slice(&buf[..]);
-    match body_tx.send_data(bytes).await {
-      Ok(_) => break Ok(()),
-      Err(err) => {
-        // Don't return "channel closed", that's an implementation detail.
-        // Pull up the failure associated with the transport connection instead.
-        assert!(err.is_closed());
-        stream.conn.closed().await?;
-        // If there was no connection error, drop body_tx.
-        *wr = HttpResponseWriter::Closed;
+    }
+    HttpResponseWriter::BodyUncompressed(body) => {
+      let bytes = Bytes::from(buf);
+      match body.send_data(bytes).await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+          assert!(err.is_closed());
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+          Err(http_error("response already completed"))
+        }
       }
     }
   }
@@ -536,20 +800,32 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
+#[op]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
     .resource_table
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
-  take(&mut *wr);
+  let wr = take(&mut *wr);
+  if let HttpResponseWriter::Body(mut body_writer) = wr {
+    match body_writer.shutdown().await {
+      Ok(_) => {}
+      Err(err) => {
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        // Don't return "broken pipe", that's an implementation detail.
+        // Pull up the failure associated with the transport connection instead.
+        stream.conn.closed().await?;
+      }
+    }
+  }
   Ok(())
 }
 
+#[op]
 async fn op_http_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -598,11 +874,8 @@ async fn op_http_read(
   fut.try_or_cancel(cancel_handle).await
 }
 
-fn op_http_websocket_accept_header(
-  _: &mut OpState,
-  key: String,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),
@@ -610,10 +883,10 @@ fn op_http_websocket_accept_header(
   Ok(base64::encode(digest))
 }
 
+#[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<ResourceId, AnyError> {
   let stream = state
     .borrow_mut()

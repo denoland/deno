@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-empty-interface
 
@@ -596,9 +596,9 @@ declare class GPUColorWrite {
 }
 
 declare interface GPUBlendComponent {
-  operation: GPUBlendOperation;
-  srcFactor: GPUBlendFactor;
-  dstFactor: GPUBlendFactor;
+  operation?: GPUBlendOperation;
+  srcFactor?: GPUBlendFactor;
+  dstFactor?: GPUBlendFactor;
 }
 
 declare type GPUBlendFactor =

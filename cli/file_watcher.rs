@@ -25,29 +25,39 @@ const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 struct DebouncedReceiver {
+  // The `recv()` call could be used in a tokio `select!` macro,
+  // and so we store this state on the struct to ensure we don't
+  // lose items if a `recv()` never completes
+  received_items: HashSet<PathBuf>,
   receiver: mpsc::UnboundedReceiver<Vec<PathBuf>>,
 }
 
 impl DebouncedReceiver {
   fn new_with_sender() -> (Arc<mpsc::UnboundedSender<Vec<PathBuf>>>, Self) {
     let (sender, receiver) = mpsc::unbounded_channel();
-    (Arc::new(sender), Self { receiver })
+    (
+      Arc::new(sender),
+      Self {
+        receiver,
+        received_items: HashSet::new(),
+      },
+    )
   }
 
   async fn recv(&mut self) -> Option<Vec<PathBuf>> {
-    let mut received_items = self
-      .receiver
-      .recv()
-      .await?
-      .into_iter()
-      .collect::<HashSet<_>>(); // prevent duplicates
+    if self.received_items.is_empty() {
+      self
+        .received_items
+        .extend(self.receiver.recv().await?.into_iter());
+    }
+
     loop {
       tokio::select! {
         items = self.receiver.recv() => {
-          received_items.extend(items?);
+          self.received_items.extend(items?);
         }
         _ = sleep(DEBOUNCE_INTERVAL) => {
-          return Some(received_items.into_iter().collect());
+          return Some(self.received_items.drain().collect());
         }
       }
     }
@@ -91,16 +101,17 @@ where
         paths_to_watch,
         result,
       } => {
-        // Clear screen first
-        eprint!("{}", CLEAR_SCREEN);
-        info!(
-          "{} File change detected! Restarting!",
-          colors::intense_blue("Watcher"),
-        );
         return (paths_to_watch, result);
       }
     }
   }
+}
+
+pub struct PrintConfig {
+  /// printing watcher status to terminal.
+  pub job_name: String,
+  /// determine whether to clear the terminal screen
+  pub clear_screen: bool,
 }
 
 /// Creates a file watcher, which will call `resolver` with every file change.
@@ -113,12 +124,10 @@ where
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-///
-/// - `job_name` is just used for printing watcher status to terminal.
 pub async fn watch_func<R, O, T, F1, F2>(
   mut resolver: R,
   mut operation: O,
-  job_name: &str,
+  print_config: PrintConfig,
 ) -> Result<(), AnyError>
 where
   R: FnMut(Option<Vec<PathBuf>>) -> F1,
@@ -128,10 +137,25 @@ where
 {
   let (sender, mut receiver) = DebouncedReceiver::new_with_sender();
 
+  let PrintConfig {
+    job_name,
+    clear_screen,
+  } = print_config;
+
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
   let mut paths_to_watch;
   let mut resolution_result;
+
+  let print_after_restart = || {
+    if clear_screen {
+      eprint!("{}", CLEAR_SCREEN);
+    }
+    info!(
+      "{} File change detected! Restarting!",
+      colors::intense_blue("Watcher"),
+    );
+  };
 
   match resolver(None).await {
     ResolutionResult::Ignore => {
@@ -149,6 +173,8 @@ where
       let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
       paths_to_watch = paths;
       resolution_result = result;
+
+      print_after_restart();
     }
     ResolutionResult::Restart {
       paths_to_watch: paths,
@@ -159,8 +185,6 @@ where
     }
   };
 
-  // Clear screen first
-  eprint!("{}", CLEAR_SCREEN);
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
@@ -175,6 +199,8 @@ where
               paths_to_watch = paths;
             }
             resolution_result = result;
+
+            print_after_restart();
             continue;
           },
           _ = fut => {},
@@ -201,6 +227,8 @@ where
       paths_to_watch = paths;
     }
     resolution_result = result;
+
+    print_after_restart();
 
     drop(watcher);
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
 
@@ -32,7 +32,7 @@ import {
   wptreport,
 } from "./wpt/utils.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
+import { writeAll, writeAllSync } from "../test_util/std/streams/conversion.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];

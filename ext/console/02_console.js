@@ -9,13 +9,16 @@
   const colors = window.__bootstrap.colors;
   const {
     ArrayBufferIsView,
+    AggregateErrorPrototype,
+    ArrayPrototypeUnshift,
     isNaN,
-    DataView,
-    Date,
+    DataViewPrototype,
+    DatePrototype,
     DateNow,
     DatePrototypeGetTime,
     DatePrototypeToISOString,
     Boolean,
+    BooleanPrototype,
     BooleanPrototypeToString,
     ObjectKeys,
     ObjectCreate,
@@ -27,9 +30,11 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertySymbols,
     ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     ObjectPrototypePropertyIsEnumerable,
-    Promise,
+    PromisePrototype,
     String,
+    StringPrototype,
     StringPrototypeRepeat,
     StringPrototypeReplace,
     StringPrototypeReplaceAll,
@@ -47,11 +52,15 @@
     TypeError,
     NumberParseInt,
     RegExp,
+    RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
-    Set,
+    SafeArrayIterator,
+    SafeSet,
+    SetPrototype,
     SetPrototypeEntries,
     Symbol,
+    SymbolPrototype,
     SymbolPrototypeToString,
     SymbolPrototypeValueOf,
     SymbolToStringTag,
@@ -67,12 +76,14 @@
     ArrayPrototypePop,
     ArrayPrototypeSort,
     ArrayPrototypeSlice,
+    ArrayPrototypeShift,
     ArrayPrototypeIncludes,
     ArrayPrototypeFill,
     ArrayPrototypeFilter,
     ArrayPrototypeFind,
     FunctionPrototypeBind,
     Map,
+    MapPrototype,
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -80,6 +91,7 @@
     MapPrototypeEntries,
     MapPrototypeForEach,
     Error,
+    ErrorPrototype,
     ErrorCaptureStackTrace,
     MathAbs,
     MathMax,
@@ -88,16 +100,18 @@
     MathRound,
     MathFloor,
     Number,
+    NumberPrototype,
     NumberPrototypeToString,
     NumberPrototypeValueOf,
-    BigInt,
+    BigIntPrototype,
     BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
-    WeakMap,
-    WeakSet,
+    ReflectHas,
+    WeakMapPrototype,
+    WeakSetPrototype,
   } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
@@ -126,7 +140,8 @@
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBufferIsView(x) && !(x instanceof DataView);
+    return ArrayBufferIsView(x) &&
+      !ObjectPrototypeIsPrototypeOf(DataViewPrototype, x);
   }
 
   const tableChars = {
@@ -283,6 +298,7 @@
     colors: false,
     getters: false,
     showHidden: false,
+    strAbbreviateSize: 100,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -315,7 +331,10 @@
 
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    if (customInspect in value && typeof value[customInspect] === "function") {
+    if (
+      ReflectHas(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
       return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
@@ -331,11 +350,17 @@
     // If we didn't find any properties, we will just append an
     // empty suffix.
     let suffix = ``;
+    let refStr = "";
     if (
       ObjectKeys(value).length > 0 ||
       ObjectGetOwnPropertySymbols(value).length > 0
     ) {
-      const propString = inspectRawObject(value, level, inspectOptions);
+      const [propString, refIndex] = inspectRawObject(
+        value,
+        level,
+        inspectOptions,
+      );
+      refStr = refIndex;
       // Filter out the empty string for the case we only have
       // non-enumerable symbols.
       if (
@@ -348,9 +373,9 @@
 
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
-      return cyan(`[${cstrName}: ${value.name}]`) + suffix;
+      return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
     }
-    return cyan(`[${cstrName}]`) + suffix;
+    return cyan(`${refStr}[${cstrName}]`) + suffix;
   }
 
   function inspectIterable(
@@ -440,12 +465,18 @@
     const entryIndentation = `,\n${
       StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
     }`;
-    const closingIndentation = `${inspectOptions.trailingComma ? "," : ""}\n${
-      StringPrototypeRepeat(DEFAULT_INDENT, level)
-    }`;
+    const closingDelimIndentation = StringPrototypeRepeat(
+      DEFAULT_INDENT,
+      level,
+    );
+    const closingIndentation = `${
+      inspectOptions.trailingComma ? "," : ""
+    }\n${closingDelimIndentation}`;
 
     let iContent;
-    if (options.group && entries.length > MIN_GROUP_LENGTH) {
+    if (entries.length === 0 && !inspectOptions.compact) {
+      iContent = `\n${closingDelimIndentation}`;
+    } else if (options.group && entries.length > MIN_GROUP_LENGTH) {
       const groups = groupEntries(entries, level, value);
       iContent = `${initIndentation}${
         ArrayPrototypeJoin(groups, entryIndentation)
@@ -580,6 +611,23 @@
     return entries;
   }
 
+  let circular;
+  function handleCircular(value, cyan) {
+    let index = 1;
+    if (circular === undefined) {
+      circular = new Map();
+      MapPrototypeSet(circular, value, index);
+    } else {
+      index = MapPrototypeGet(circular, value);
+      if (index === undefined) {
+        index = circular.size + 1;
+        MapPrototypeSet(circular, value, index);
+      }
+    }
+    // Circular string is cyan
+    return cyan(`[Circular *${index}]`);
+  }
+
   function _inspectValue(
     value,
     level,
@@ -614,7 +662,7 @@
       case "function": // Function string is cyan
         if (ctxHas(value)) {
           // Circular string is cyan
-          return cyan("[Circular]");
+          return handleCircular(value, cyan);
         }
 
         return inspectFunction(value, level, inspectOptions);
@@ -624,10 +672,10 @@
         }
 
         if (ctxHas(value)) {
-          // Circular string is cyan
-          return cyan("[Circular]");
+          return handleCircular(value, cyan);
         }
-        return inspectObject(value, level, inspectOptions);
+
+        return inspectObject(value, level, inspectOptions, proxyDetails);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -745,11 +793,15 @@
     level,
     inspectOptions,
   ) {
+    const abbreviateSize =
+      typeof inspectOptions.strAbbreviateSize === "undefined"
+        ? STR_ABBREVIATE_SIZE
+        : inspectOptions.strAbbreviateSize;
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string": {
-        const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
+        const trunc = value.length > abbreviateSize
+          ? StringPrototypeSlice(value, 0, abbreviateSize) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }
@@ -883,24 +935,75 @@
     return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
-  function inspectError(value) {
-    const causes = [];
+  function inspectError(value, cyan) {
+    const causes = [value];
 
     let err = value;
-    while (
-      err.cause instanceof Error && err.cause !== value &&
-      !ArrayPrototypeIncludes(causes, err.cause) // circular check
-    ) {
-      ArrayPrototypePush(causes, err.cause);
-      err = err.cause;
+    while (err.cause) {
+      if (ArrayPrototypeIncludes(causes, err.cause)) {
+        ArrayPrototypePush(causes, handleCircular(err.cause, cyan));
+        break;
+      } else {
+        ArrayPrototypePush(causes, err.cause);
+        err = err.cause;
+      }
     }
 
-    return `${value.stack}${
-      ArrayPrototypeJoin(
-        ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`),
-        "",
-      )
-    }`;
+    const refMap = new Map();
+    for (const cause of causes) {
+      if (circular !== undefined) {
+        const index = MapPrototypeGet(circular, cause);
+        if (index !== undefined) {
+          MapPrototypeSet(refMap, cause, cyan(`<ref *${index}> `));
+        }
+      }
+    }
+    ArrayPrototypeShift(causes);
+
+    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+
+    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
+      const stackLines = StringPrototypeSplit(value.stack, "\n");
+      while (true) {
+        const line = ArrayPrototypeShift(stackLines);
+        if (RegExpPrototypeTest(/\s+at/, line)) {
+          ArrayPrototypeUnshift(stackLines, line);
+          break;
+        }
+
+        finalMessage += line;
+        finalMessage += "\n";
+      }
+      const aggregateMessage = ArrayPrototypeJoin(
+        ArrayPrototypeMap(
+          value.errors,
+          (error) =>
+            StringPrototypeReplace(
+              inspectArgs([error]),
+              /^(?!\s*$)/gm,
+              StringPrototypeRepeat(" ", 4),
+            ),
+        ),
+        "\n",
+      );
+      finalMessage += aggregateMessage;
+      finalMessage += "\n";
+      finalMessage += ArrayPrototypeJoin(stackLines, "\n");
+    } else {
+      finalMessage += value.stack;
+    }
+
+    finalMessage += ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        causes,
+        (cause) =>
+          "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
+          (cause?.stack ?? cause),
+      ),
+      "",
+    );
+
+    return finalMessage;
   }
 
   function inspectStringObject(value, inspectOptions) {
@@ -992,7 +1095,7 @@
     const cyan = maybeColor(colors.cyan, inspectOptions);
 
     if (level >= inspectOptions.depth) {
-      return cyan("[Object]"); // wrappers are in cyan
+      return [cyan("[Object]"), ""]; // wrappers are in cyan
     }
 
     let baseString;
@@ -1134,15 +1237,27 @@
       baseString = `${displayName} ${baseString}`;
     }
 
-    return baseString;
+    let refIndex = "";
+    if (circular !== undefined) {
+      const index = MapPrototypeGet(circular, value);
+      if (index !== undefined) {
+        refIndex = cyan(`<ref *${index}> `);
+      }
+    }
+
+    return [baseString, refIndex];
   }
 
   function inspectObject(
     value,
     level,
     inspectOptions,
+    proxyDetails,
   ) {
-    if (customInspect in value && typeof value[customInspect] === "function") {
+    if (
+      ReflectHas(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
       return String(value[customInspect](inspect));
     }
     // This non-unique symbol is used to support op_crates, ie.
@@ -1151,7 +1266,7 @@
     // Internal only, shouldn't be used by users.
     const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
     if (
-      privateCustomInspect in value &&
+      ReflectHas(value, privateCustomInspect) &&
       typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
@@ -1160,33 +1275,41 @@
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect));
     }
-    if (value instanceof Error) {
-      return inspectError(value);
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
+      return inspectError(value, maybeColor(colors.cyan, inspectOptions));
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
-    } else if (value instanceof Number) {
+    } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
       return inspectNumberObject(value, inspectOptions);
-    } else if (value instanceof BigInt) {
+    } else if (ObjectPrototypeIsPrototypeOf(BigIntPrototype, value)) {
       return inspectBigIntObject(value, inspectOptions);
-    } else if (value instanceof Boolean) {
+    } else if (ObjectPrototypeIsPrototypeOf(BooleanPrototype, value)) {
       return inspectBooleanObject(value, inspectOptions);
-    } else if (value instanceof String) {
+    } else if (ObjectPrototypeIsPrototypeOf(StringPrototype, value)) {
       return inspectStringObject(value, inspectOptions);
-    } else if (value instanceof Symbol) {
+    } else if (ObjectPrototypeIsPrototypeOf(SymbolPrototype, value)) {
       return inspectSymbolObject(value, inspectOptions);
-    } else if (value instanceof Promise) {
+    } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
       return inspectPromise(value, level, inspectOptions);
-    } else if (value instanceof RegExp) {
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
-    } else if (value instanceof Date) {
+    } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       return inspectDate(value, inspectOptions);
-    } else if (value instanceof Set) {
-      return inspectSet(value, level, inspectOptions);
-    } else if (value instanceof Map) {
-      return inspectMap(value, level, inspectOptions);
-    } else if (value instanceof WeakSet) {
+    } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
+      return inspectSet(
+        proxyDetails ? proxyDetails[0] : value,
+        level,
+        inspectOptions,
+      );
+    } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
+      return inspectMap(
+        proxyDetails ? proxyDetails[0] : value,
+        level,
+        inspectOptions,
+      );
+    } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
-    } else if (value instanceof WeakMap) {
+    } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
       return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
@@ -1197,7 +1320,9 @@
       );
     } else {
       // Otherwise, default object formatting
-      return inspectRawObject(value, level, inspectOptions);
+      let [insp, refIndex] = inspectRawObject(value, level, inspectOptions);
+      insp = refIndex + insp;
+      return insp;
     }
   }
 
@@ -1562,10 +1687,18 @@
       } else if (css.backgroundColor == "white") {
         ansi += `\x1b[47m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.backgroundColor)
-          ? css.backgroundColor
-          : parseCssColor(css.backgroundColor);
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.backgroundColor)) {
+          const [r, g, b] = css.backgroundColor;
+          ansi += `\x1b[48;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.backgroundColor);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[48;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[49m";
+          }
+        }
       }
     }
     if (!colorEquals(css.color, prevCss.color)) {
@@ -1588,10 +1721,18 @@
       } else if (css.color == "white") {
         ansi += `\x1b[37m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.color)
-          ? css.color
-          : parseCssColor(css.color);
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.color)) {
+          const [r, g, b] = css.color;
+          ansi += `\x1b[38;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.color);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[38;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[39m";
+          }
+        }
       }
     }
     if (css.fontWeight != prevCss.fontWeight) {
@@ -1650,6 +1791,8 @@
   }
 
   function inspectArgs(args, inspectOptions = {}) {
+    circular = undefined;
+
     const noColor = colors.getNoColor();
     const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
     const first = args[0];
@@ -1861,11 +2004,14 @@
       const [first, ...rest] = args;
 
       if (typeof first === "string") {
-        this.error(`Assertion failed: ${first}`, ...rest);
+        this.error(
+          `Assertion failed: ${first}`,
+          ...new SafeArrayIterator(rest),
+        );
         return;
       }
 
-      this.error(`Assertion failed:`, ...args);
+      this.error(`Assertion failed:`, ...new SafeArrayIterator(args));
     };
 
     count = (label = "default") => {
@@ -1911,14 +2057,14 @@
       const toTable = (header, body) => this.log(cliTable(header, body));
 
       let resultData;
-      const isSet = data instanceof Set;
-      const isMap = data instanceof Map;
+      const isSet = ObjectPrototypeIsPrototypeOf(SetPrototype, data);
+      const isMap = ObjectPrototypeIsPrototypeOf(MapPrototype, data);
       const valuesKey = "Values";
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
-      if (data instanceof Set) {
-        resultData = [...data];
-      } else if (data instanceof Map) {
+      if (isSet) {
+        resultData = [...new SafeSet(data)];
+      } else if (isMap) {
         let idx = 0;
         resultData = {};
 
@@ -1956,8 +2102,8 @@
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
           for (const k of keys) {
-            if (!primitive && k in valueObj) {
-              if (!(k in objectValues)) {
+            if (!primitive && ReflectHas(valueObj, k)) {
+              if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
               }
               objectValues[k][idx] = stringifyValue(valueObj[k]);
@@ -1971,12 +2117,16 @@
 
       const headerKeys = ObjectKeys(objectValues);
       const bodyValues = ObjectValues(objectValues);
+      const headerProps = properties ||
+        [
+          ...new SafeArrayIterator(headerKeys),
+          !isMap && hasPrimitives && valuesKey,
+        ];
       const header = ArrayPrototypeFilter([
         indexKey,
-        ...(properties ||
-          [...headerKeys, !isMap && hasPrimitives && valuesKey]),
+        ...new SafeArrayIterator(headerProps),
       ], Boolean);
-      const body = [indexKeys, ...bodyValues, values];
+      const body = [indexKeys, ...new SafeArrayIterator(bodyValues), values];
 
       toTable(header, body);
     };
@@ -2003,7 +2153,7 @@
       const startTime = MapPrototypeGet(timerMap, label);
       const duration = DateNow() - startTime;
 
-      this.info(`${label}: ${duration}ms`, ...args);
+      this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
     };
 
     timeEnd = (label = "default") => {
@@ -2023,7 +2173,7 @@
 
     group = (...label) => {
       if (label.length > 0) {
-        this.log(...label);
+        this.log(...new SafeArrayIterator(label));
       }
       this.indentLevel += 2;
     };
@@ -2066,6 +2216,7 @@
     value,
     inspectOptions = {},
   ) {
+    circular = undefined;
     return inspectValue(value, 0, {
       ...DEFAULT_INSPECT_OPTIONS,
       ...inspectOptions,

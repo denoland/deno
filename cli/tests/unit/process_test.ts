@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -21,7 +21,12 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function runSuccess() {
     const p = Deno.run({
-      cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+      // freeze the array to ensure it's not modified
+      cmd: Object.freeze([
+        Deno.execPath(),
+        "eval",
+        "console.log('hello world')",
+      ]),
       stdout: "piped",
       stderr: "null",
     });
@@ -552,8 +557,9 @@ Deno.test(
 
     const obj = JSON.parse(new TextDecoder().decode(await p.output()));
 
-    // can't check for object equality because the OS may set additional env vars for processes
-    // so we check if PATH isn't present as that is a common env var across OS's and isn't set for processes.
+    // can't check for object equality because the OS may set additional env
+    // vars for processes, so we check if PATH isn't present as that is a common
+    // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
     assert(!("PATH" in obj));
 

@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const core = Deno.core;
   const {
     Error,
     ObjectFreeze,
@@ -70,7 +71,7 @@
   }
 
   // Keep in sync with `cli/fmt_errors.rs`.
-  function formatLocation(callSite, formatFileNameFn) {
+  function formatLocation(callSite) {
     if (callSite.isNative()) {
       return "native";
     }
@@ -80,7 +81,7 @@
     const fileName = callSite.getFileName();
 
     if (fileName) {
-      result += formatFileNameFn(fileName);
+      result += core.opSync("op_format_file_name", fileName);
     } else {
       if (callSite.isEval()) {
         const evalOrigin = callSite.getEvalOrigin();
@@ -106,7 +107,7 @@
   }
 
   // Keep in sync with `cli/fmt_errors.rs`.
-  function formatCallSite(callSite, formatFileNameFn) {
+  function formatCallSite(callSite) {
     let result = "";
     const functionName = callSite.getFunctionName();
 
@@ -159,11 +160,11 @@
     } else if (functionName) {
       result += functionName;
     } else {
-      result += formatLocation(callSite, formatFileNameFn);
+      result += formatLocation(callSite);
       return result;
     }
 
-    result += ` (${formatLocation(callSite, formatFileNameFn)})`;
+    result += ` (${formatLocation(callSite)})`;
     return result;
   }
 
@@ -188,76 +189,55 @@
     };
   }
 
-  /**
-   * Returns a function that can be used as `Error.prepareStackTrace`.
-   *
-   * This function accepts an optional argument, a function that performs
-   * source mapping. It is not required to pass this argument, but
-   * in such case only JavaScript sources will have proper position in
-   * stack frames.
-   * @param {(
-   *  fileName: string,
-   *  lineNumber: number,
-   *  columnNumber: number
-   * ) => {
-   *  fileName: string,
-   *  lineNumber: number,
-   *  columnNumber: number
-   * }} sourceMappingFn
-   */
-  function createPrepareStackTrace(sourceMappingFn, formatFileNameFn) {
-    return function prepareStackTrace(
-      error,
-      callSites,
-    ) {
-      const mappedCallSites = ArrayPrototypeMap(callSites, (callSite) => {
-        const fileName = callSite.getFileName();
-        const lineNumber = callSite.getLineNumber();
-        const columnNumber = callSite.getColumnNumber();
-        if (
-          sourceMappingFn && fileName && lineNumber != null &&
-          columnNumber != null
-        ) {
-          return patchCallSite(
-            callSite,
-            sourceMappingFn({
-              fileName,
-              lineNumber,
-              columnNumber,
-            }),
-          );
-        }
-        return callSite;
-      });
-      ObjectDefineProperties(error, {
-        __callSiteEvals: { value: [], configurable: true },
-      });
-      const formattedCallSites = [];
-      for (const callSite of mappedCallSites) {
-        ArrayPrototypePush(error.__callSiteEvals, evaluateCallSite(callSite));
-        ArrayPrototypePush(
-          formattedCallSites,
-          formatCallSite(callSite, formatFileNameFn),
+  /** A function that can be used as `Error.prepareStackTrace`. */
+  function prepareStackTrace(
+    error,
+    callSites,
+  ) {
+    const mappedCallSites = ArrayPrototypeMap(callSites, (callSite) => {
+      const fileName = callSite.getFileName();
+      const lineNumber = callSite.getLineNumber();
+      const columnNumber = callSite.getColumnNumber();
+      if (fileName && lineNumber != null && columnNumber != null) {
+        return patchCallSite(
+          callSite,
+          core.applySourceMap({
+            fileName,
+            lineNumber,
+            columnNumber,
+          }),
         );
       }
-      const message = error.message !== undefined ? error.message : "";
-      const name = error.name !== undefined ? error.name : "Error";
-      let messageLine;
-      if (name != "" && message != "") {
-        messageLine = `${name}: ${message}`;
-      } else if ((name || message) != "") {
-        messageLine = name || message;
-      } else {
-        messageLine = "";
-      }
-      return messageLine +
-        ArrayPrototypeJoin(
-          ArrayPrototypeMap(formattedCallSites, (s) => `\n    at ${s}`),
-          "",
-        );
-    };
+      return callSite;
+    });
+    ObjectDefineProperties(error, {
+      __callSiteEvals: { value: [], configurable: true },
+    });
+    const formattedCallSites = [];
+    for (const callSite of mappedCallSites) {
+      ArrayPrototypePush(error.__callSiteEvals, evaluateCallSite(callSite));
+      ArrayPrototypePush(
+        formattedCallSites,
+        formatCallSite(callSite),
+      );
+    }
+    const message = error.message !== undefined ? error.message : "";
+    const name = error.name !== undefined ? error.name : "Error";
+    let messageLine;
+    if (name != "" && message != "") {
+      messageLine = `${name}: ${message}`;
+    } else if ((name || message) != "") {
+      messageLine = name || message;
+    } else {
+      messageLine = "";
+    }
+    return messageLine +
+      ArrayPrototypeJoin(
+        ArrayPrototypeMap(formattedCallSites, (s) => `\n    at ${s}`),
+        "",
+      );
   }
 
-  ObjectAssign(globalThis.__bootstrap.core, { createPrepareStackTrace });
+  ObjectAssign(globalThis.__bootstrap.core, { prepareStackTrace });
   ObjectFreeze(globalThis.__bootstrap.core);
 })(this);

@@ -1,0 +1,7 @@
+Check [WILDCARD]/bench/ignore.ts
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/bench/ignore.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------

@@ -65,7 +65,9 @@
 
   function listenTls({
     port,
+    cert,
     certFile,
+    key,
     keyFile,
     hostname = "0.0.0.0",
     transport = "tcp",
@@ -73,7 +75,9 @@
   }) {
     const res = opListenTls({
       port,
+      cert,
       certFile,
+      key,
       keyFile,
       hostname,
       transport,

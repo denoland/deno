@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
@@ -46,7 +46,7 @@ declare global {
   type LanguageServerRequest =
     | ConfigureRequest
     | FindRenameLocationsRequest
-    | GetAsset
+    | GetAssets
     | GetApplicableRefactors
     | GetEditsForRefactor
     | GetCodeFixes
@@ -91,9 +91,8 @@ declare global {
     providePrefixAndSuffixTextForRename: boolean;
   }
 
-  interface GetAsset extends BaseLanguageServerRequest {
-    method: "getAsset";
-    specifier: string;
+  interface GetAssets extends BaseLanguageServerRequest {
+    method: "getAssets";
   }
 
   interface GetApplicableRefactors extends BaseLanguageServerRequest {

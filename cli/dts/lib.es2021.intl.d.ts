@@ -49,25 +49,25 @@ declare namespace Intl {
      */
     type ListFormatLocaleMatcher = "lookup" | "best fit";
 
-     /**
-      * The format of output message.
-      *
-      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
-      */
+    /**
+     * The format of output message.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
+     */
     type ListFormatType = "conjunction" | "disjunction" | "unit";
- 
-     /**
-      * The length of the formatted message.
-      *
-      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
-      */
+
+    /**
+     * The length of the formatted message.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
+     */
     type ListFormatStyle = "long" | "short" | "narrow";
- 
-     /**
-      * An object with some or all properties of the `Intl.ListFormat` constructor `options` parameter.
-      *
-      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
-      */
+
+    /**
+     * An object with some or all properties of the `Intl.ListFormat` constructor `options` parameter.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
+     */
     interface ListFormatOptions {
         /** The locale matching algorithm to use. For information about this option, see [Intl page](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl#Locale_negotiation). */
         localeMatcher?: ListFormatLocaleMatcher;
@@ -76,7 +76,7 @@ declare namespace Intl {
         /** The length of the internationalized message. */
         style?: ListFormatStyle;
     }
- 
+
     interface ListFormat {
         /**
          * Returns a string with a language-specific representation of the list.

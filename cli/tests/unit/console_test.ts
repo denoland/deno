@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -225,7 +225,7 @@ Deno.test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{
+  const nestedObjExpected = `<ref *1> {
   num: 1,
   bool: true,
   str: "a",
@@ -245,9 +245,9 @@ Deno.test(function consoleTestStringifyCircular() {
     method: [Function: method],
     un: undefined,
     nu: null,
-    nested: [Circular],
+    nested: [Circular *1],
     emptyObj: {},
-    arr: [ 1, "s", false, null, [Circular] ],
+    arr: [ 1, "s", false, null, [Circular *1] ],
     baseClass: Base { a: 1 }
   }
 }`;
@@ -350,10 +350,21 @@ Deno.test(function consoleTestStringifyCircular() {
         return Deno.inspect(this);
       },
     }),
-    "[Circular]",
+    "[Circular *1]",
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
+});
+
+Deno.test(function consoleTestStringifyMultipleCircular() {
+  const y = { a: { b: {} }, foo: { bar: {} } };
+  y.a.b = y.a;
+  y.foo.bar = y.foo;
+  console.log(y);
+  assertEquals(
+    stringify(y),
+    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+  );
 });
 
 Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
@@ -392,14 +403,14 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] {
+  f: <ref *1> [Function: f] {
     x: [Function],
     y: 3,
     z: [Function],
     b: [Function: bar],
     a: Map {},
-    s: [Circular],
-    t: [Function: t] { x: [Circular] }
+    s: [Circular *1],
+    t: [Function: t] { x: [Circular *1] }
   }
 }`,
   );
@@ -989,6 +1000,7 @@ Deno.test(function consoleTestWithStyleSpecifier() {
 });
 
 Deno.test(function consoleParseCssColor() {
+  assertEquals(parseCssColor("inherit"), null);
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
@@ -1008,6 +1020,14 @@ Deno.test(function consoleParseCssColor() {
 });
 
 Deno.test(function consoleParseCss() {
+  assertEquals(
+    parseCss("background-color: inherit"),
+    { ...DEFAULT_CSS, backgroundColor: "inherit" },
+  );
+  assertEquals(
+    parseCss("color: inherit"),
+    { ...DEFAULT_CSS, color: "inherit" },
+  );
   assertEquals(
     parseCss("background-color: red"),
     { ...DEFAULT_CSS, backgroundColor: "red" },
@@ -1063,8 +1083,20 @@ Deno.test(function consoleParseCss() {
 
 Deno.test(function consoleCssToAnsi() {
   assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
+    "_[49m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "foo" }),
+    "_[49m",
+  );
+  assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "black" }),
     "_[40m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "inherit" }),
+    "_[39m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: "blue" }),
@@ -1561,12 +1593,37 @@ Deno.test(function consoleLogShouldNotThrowError() {
   });
 });
 
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
+  mockConsole((console, out) => {
+    console.log("%cfoo", "color: foo; background-color: bar;");
+    assertEquals(stripColor(out.toString()), "foo\n");
+  });
+});
+
 // console.log(Invalid Date) test
 Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
     assertEquals(stripColor(out.toString()), "Invalid Date\n");
+  });
+});
+
+// console.log(new Proxy(new Set(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedSet() {
+  mockConsole((console, out) => {
+    const proxiedSet = new Proxy(new Set(), {});
+    console.log(proxiedSet);
+    assertEquals(stripColor(out.toString()), "Set {}\n");
+  });
+});
+
+// console.log(new Proxy(new Map(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
+  mockConsole((console, out) => {
+    const proxiedMap = new Proxy(new Map(), {});
+    console.log(proxiedMap);
+    assertEquals(stripColor(out.toString()), "Map {}\n");
   });
 });
 
@@ -1856,6 +1913,7 @@ Deno.test(function inspectErrorCircular() {
     cause: new Error("This is a cause error"),
   });
   error1.cause = error1;
+  assert(error2.cause);
   error2.cause.cause = error2;
 
   assertStringIncludes(
@@ -1864,15 +1922,103 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
-    "Error: This is an error",
+    "<ref *1> Error: This is an error",
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
     "Caused by Error: This is a cause error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by [Circular *1]",
   );
 });
 
 Deno.test(function inspectColors() {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
+});
+
+Deno.test(function inspectEmptyArray() {
+  const arr: string[] = [];
+
+  assertEquals(
+    Deno.inspect(arr, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "[\n]",
+  );
+});
+
+Deno.test(function inspectDeepEmptyArray() {
+  const obj = {
+    arr: [],
+  };
+
+  assertEquals(
+    Deno.inspect(obj, {
+      compact: false,
+      trailingComma: true,
+    }),
+    `{
+  arr: [
+  ],
+}`,
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const map = new Map();
+
+  assertEquals(
+    Deno.inspect(map, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Map {\n}",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const set = new Set();
+
+  assertEquals(
+    Deno.inspect(set, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Set {\n}",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const typedArray = new Uint8Array(0);
+
+  assertEquals(
+    Deno.inspect(typedArray, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Uint8Array(0) [\n]",
+  );
+});
+
+Deno.test(function inspectStringAbbreviation() {
+  const LONG_STRING =
+    "This is a really long string which will be abbreviated with ellipsis.";
+  const obj = {
+    str: LONG_STRING,
+  };
+  const arr = [LONG_STRING];
+
+  assertEquals(
+    Deno.inspect(obj, { strAbbreviateSize: 10 }),
+    '{ str: "This is a ..." }',
+  );
+
+  assertEquals(
+    Deno.inspect(arr, { strAbbreviateSize: 10 }),
+    '[ "This is a ..." ]',
+  );
 });

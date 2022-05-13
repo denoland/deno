@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::future::Future;
 
 use deno_ast::swc::common::BytePos;
 use deno_ast::swc::common::Span;
@@ -11,34 +10,33 @@ use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use lspower::lsp::ClientCapabilities;
-use lspower::lsp::ClientInfo;
-use lspower::lsp::CompletionContext;
-use lspower::lsp::CompletionParams;
-use lspower::lsp::CompletionResponse;
-use lspower::lsp::CompletionTextEdit;
-use lspower::lsp::CompletionTriggerKind;
-use lspower::lsp::DidChangeTextDocumentParams;
-use lspower::lsp::DidCloseTextDocumentParams;
-use lspower::lsp::DidOpenTextDocumentParams;
-use lspower::lsp::InitializeParams;
-use lspower::lsp::InitializedParams;
-use lspower::lsp::PartialResultParams;
-use lspower::lsp::Position;
-use lspower::lsp::Range;
-use lspower::lsp::TextDocumentContentChangeEvent;
-use lspower::lsp::TextDocumentIdentifier;
-use lspower::lsp::TextDocumentItem;
-use lspower::lsp::TextDocumentPositionParams;
-use lspower::lsp::VersionedTextDocumentIdentifier;
-use lspower::lsp::WorkDoneProgressParams;
-use lspower::LanguageServer;
-
-use crate::logger;
+use tower_lsp::lsp_types::ClientCapabilities;
+use tower_lsp::lsp_types::ClientInfo;
+use tower_lsp::lsp_types::CompletionContext;
+use tower_lsp::lsp_types::CompletionParams;
+use tower_lsp::lsp_types::CompletionResponse;
+use tower_lsp::lsp_types::CompletionTextEdit;
+use tower_lsp::lsp_types::CompletionTriggerKind;
+use tower_lsp::lsp_types::DidChangeTextDocumentParams;
+use tower_lsp::lsp_types::DidCloseTextDocumentParams;
+use tower_lsp::lsp_types::DidOpenTextDocumentParams;
+use tower_lsp::lsp_types::InitializeParams;
+use tower_lsp::lsp_types::InitializedParams;
+use tower_lsp::lsp_types::PartialResultParams;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
+use tower_lsp::lsp_types::TextDocumentContentChangeEvent;
+use tower_lsp::lsp_types::TextDocumentIdentifier;
+use tower_lsp::lsp_types::TextDocumentItem;
+use tower_lsp::lsp_types::TextDocumentPositionParams;
+use tower_lsp::lsp_types::VersionedTextDocumentIdentifier;
+use tower_lsp::lsp_types::WorkDoneProgressParams;
+use tower_lsp::LanguageServer;
 
 use super::client::Client;
 use super::config::CompletionSettings;
 use super::config::ImportCompletionSettings;
+use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
 #[derive(Debug)]
@@ -276,12 +274,16 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: true,
+    enable_paths: Vec::new(),
     config: None,
+    certificate_stores: None,
     cache: None,
     import_map: None,
     code_lens: Default::default(),
     internal_debug: false,
     lint: false,
+    tls_certificate: None,
+    unsafely_ignore_certificate_errors: None,
     unstable: false,
     suggest: CompletionSettings {
       complete_function_calls: false,
@@ -292,6 +294,10 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         auto_discover: false,
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
+    },
+    testing: TestingSettings {
+      args: vec![],
+      enable: false,
     },
   }
 }

@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     Error,
+    ObjectPrototypeIsPrototypeOf,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -16,8 +17,11 @@
   const { serializePermissions } = window.__bootstrap.permissions;
   const { log } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.event;
-  const { deserializeJsMessageData, serializeJsMessageData } =
-    window.__bootstrap.messagePort;
+  const {
+    deserializeJsMessageData,
+    serializeJsMessageData,
+    MessagePortPrototype,
+  } = window.__bootstrap.messagePort;
 
   function createWorker(
     specifier,
@@ -130,20 +134,21 @@
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        lineno: e.lineNumber ? e.lineNumber : undefined,
+        colno: e.columnNumber ? e.columnNumber : undefined,
         filename: e.fileName,
         error: null,
       });
 
-      let handled = false;
-
       this.dispatchEvent(event);
-      if (event.defaultPrevented) {
-        handled = true;
+      // Don't bubble error event to window for loader errors (`!e.fileName`).
+      // TODO(nayeemrmn): It's not correct to use `e.fileName` to detect user
+      // errors. It won't be there for non-awaited async ops for example.
+      if (e.fileName && !event.defaultPrevented) {
+        window.dispatchEvent(event);
       }
 
-      return handled;
+      return event.defaultPrevented;
     }
 
     #pollControl = async () => {
@@ -161,7 +166,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              throw new Error("Unhandled error event in child worker.");
+              throw new Error("Unhandled error in child worker.");
             }
             break;
           }
@@ -199,7 +204,9 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transferables.filter((t) => t instanceof MessagePort),
+          ports: transferables.filter((t) =>
+            ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+          ),
         });
         this.dispatchEvent(event);
       }

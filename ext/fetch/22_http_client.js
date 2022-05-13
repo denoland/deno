@@ -20,7 +20,12 @@
    */
   function createHttpClient(options) {
     options.caCerts ??= [];
-    return new HttpClient(core.opSync("op_fetch_custom_client", options));
+    return new HttpClient(
+      core.opSync(
+        "op_fetch_custom_client",
+        options,
+      ),
+    );
   }
 
   class HttpClient {
@@ -34,8 +39,10 @@
       core.close(this.rid);
     }
   }
+  const HttpClientPrototype = HttpClient.prototype;
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.createHttpClient = createHttpClient;
   window.__bootstrap.fetch.HttpClient = HttpClient;
+  window.__bootstrap.fetch.HttpClientPrototype = HttpClientPrototype;
 })(globalThis);

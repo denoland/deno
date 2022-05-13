@@ -8,7 +8,6 @@ use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -83,7 +82,7 @@ impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
-      max_size: 1_000,
+      max_size: 3_000,
       measures: Default::default(),
     }
   }

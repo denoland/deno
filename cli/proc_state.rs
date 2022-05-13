@@ -8,6 +8,7 @@ use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
+use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
@@ -19,9 +20,9 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::source_maps::SourceMapGetter;
 use crate::version;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -36,26 +37,24 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
-use deno_graph::MediaType;
+use deno_graph::source::ResolveResponse;
+use deno_graph::ModuleKind;
+use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use import_map::parse_from_json;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
 use std::env;
-use std::fs::File;
-use std::io::BufReader;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -67,7 +66,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
-  pub flags: flags::Flags,
+  pub flags: Arc<flags::Flags>,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
@@ -92,7 +91,7 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
+  pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -101,67 +100,11 @@ impl ProcState {
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
 
-    let mut root_cert_store = RootCertStore::empty();
-    let ca_stores: Vec<String> = flags
-      .ca_stores
-      .clone()
-      .or_else(|| {
-        let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
-        Some(
-          env_ca_store
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect(),
-        )
-      })
-      .unwrap_or_else(|| vec!["mozilla".to_string()]);
-
-    for store in ca_stores.iter() {
-      match store.as_str() {
-        "mozilla" => {
-          root_cert_store.add_server_trust_anchors(
-            webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-              rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject,
-                ta.spki,
-                ta.name_constraints,
-              )
-            }),
-          );
-        }
-        "system" => {
-          let roots =
-            load_native_certs().expect("could not load platform certs");
-          for root in roots {
-            root_cert_store
-              .add(&rustls::Certificate(root.0))
-              .expect("Failed to add platform cert to root cert store");
-          }
-        }
-        _ => {
-          return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
-        }
-      }
-    }
-
-    let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
-    if let Some(ca_file) = ca_file {
-      let certfile = File::open(&ca_file)?;
-      let mut reader = BufReader::new(certfile);
-
-      match rustls_pemfile::certs(&mut reader) {
-        Ok(certs) => {
-          root_cert_store.add_parsable_certificates(&certs);
-        }
-        Err(e) => {
-          return Err(anyhow!(
-            "Unable to add pem file to certificate store: {}",
-            e
-          ));
-        }
-      }
-    }
+    let root_cert_store = get_root_cert_store(
+      None,
+      flags.ca_stores.clone(),
+      flags.ca_file.clone(),
+    )?;
 
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -209,26 +152,26 @@ impl ProcState {
 
     let maybe_config_file = crate::config_file::discover(&flags)?;
 
-    let maybe_import_map: Option<Arc<ImportMap>> =
-      match flags.import_map_path.as_ref() {
-        None => None,
-        Some(import_map_url) => {
-          let import_map_specifier =
-            deno_core::resolve_url_or_path(import_map_url).context(format!(
-              "Bad URL (\"{}\") for import map.",
-              import_map_url
-            ))?;
-          let file = file_fetcher
-            .fetch(&import_map_specifier, &mut Permissions::allow_all())
-            .await
-            .context(format!(
-              "Unable to load '{}' import map",
-              import_map_specifier
-            ))?;
-          let import_map =
-            import_map_from_text(&import_map_specifier, &file.source)?;
-          Some(Arc::new(import_map))
-        }
+    let maybe_import_map_specifier =
+      crate::config_file::resolve_import_map_specifier(
+        flags.import_map_path.as_deref(),
+        maybe_config_file.as_ref(),
+      )?;
+
+    let maybe_import_map =
+      if let Some(import_map_specifier) = maybe_import_map_specifier {
+        let file = file_fetcher
+          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .await
+          .context(format!(
+            "Unable to load '{}' import map",
+            import_map_specifier
+          ))?;
+        let import_map =
+          import_map_from_text(&import_map_specifier, &file.source)?;
+        Some(Arc::new(import_map))
+      } else {
+        None
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
@@ -248,13 +191,10 @@ impl ProcState {
     );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
+    let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    });
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
     > = if flags.compat {
@@ -311,7 +251,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
-  pub(crate) async fn prepare_module_load(
+  pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
@@ -320,10 +260,43 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
+
+    // NOTE(@bartlomieju):
+    // Even though `roots` are fully resolved at this point, we are going
+    // to resolve them through `maybe_resolver` to get module kind for the graph
+    // or default to ESM.
+    //
+    // One might argue that this is a code smell, and I would agree. However
+    // due to flux in "Node compatibility" it's not clear where it should be
+    // decided what `ModuleKind` is decided for root specifier.
+    let roots = roots
+      .into_iter()
+      .map(|r| {
+        if let Some(resolver) = &maybe_resolver {
+          let response =
+            resolver.resolve(r.as_str(), &Url::parse("unused:").unwrap());
+          // TODO(bartlomieju): this should be implemented in `deno_graph`
+          match response {
+            ResolveResponse::CommonJs(_) => (r, ModuleKind::CommonJs),
+            ResolveResponse::Err(_) => unreachable!(),
+            _ => (r, ModuleKind::Esm),
+          }
+        } else {
+          (r, ModuleKind::Esm)
+        }
+      })
+      .collect();
+
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
     let roots = if self.flags.compat {
-      let mut r = vec![compat::GLOBAL_URL.clone()];
+      let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
       r.extend(roots);
       r
     } else {
@@ -331,12 +304,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.check == flags::CheckFlag::None
+      if self.flags.type_check_mode == flags::TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.check != flags::CheckFlag::None,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -351,12 +324,6 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports()?;
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -390,6 +357,7 @@ impl ProcState {
       graph_data: self.graph_data.clone(),
       reload: reload_on_watch,
     };
+
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -401,6 +369,34 @@ impl ProcState {
       None,
     )
     .await;
+
+    let needs_cjs_esm_translation = graph
+      .modules()
+      .iter()
+      .any(|m| m.kind == ModuleKind::CommonJs);
+
+    if needs_cjs_esm_translation {
+      for module in graph.modules() {
+        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
+        // in compat mode, all files ending with plain `.js` extension are
+        // considered CommonJs modules. Which leads to situation where valid
+        // ESM modules with `.js` extension might undergo translation (it won't
+        // work in this situation).
+        if module.kind == ModuleKind::CommonJs {
+          let translated_source = compat::translate_cjs_to_esm(
+            &self.file_fetcher,
+            &module.specifier,
+            module.maybe_source.as_ref().unwrap().to_string(),
+            module.media_type,
+          )
+          .await?;
+          let mut graph_data = self.graph_data.write();
+          graph_data
+            .add_cjs_esm_translation(&module.specifier, translated_source);
+        }
+      }
+    }
+
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     graph_lock_or_exit(&graph);
@@ -421,18 +417,23 @@ impl ProcState {
         .map(|cf| cf.get_check_js())
         .unwrap_or(false);
       graph_data
-        .check(&roots, self.flags.check != flags::CheckFlag::None, check_js)
+        .check(
+          &roots,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
+          check_js,
+        )
         .unwrap()?;
     }
 
-    let config_type = if self.flags.check == flags::CheckFlag::None {
-      emit::ConfigType::Emit
-    } else {
-      emit::ConfigType::Check {
-        tsc_emit: true,
-        lib: lib.clone(),
-      }
-    };
+    let config_type =
+      if self.flags.type_check_mode == flags::TypeCheckMode::None {
+        emit::ConfigType::Emit
+      } else {
+        emit::ConfigType::Check {
+          tsc_emit: true,
+          lib: lib.clone(),
+        }
+      };
 
     let (ts_config, maybe_ignored_options) =
       emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
@@ -441,7 +442,7 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.check == flags::CheckFlag::None {
+    if self.flags.type_check_mode == flags::TypeCheckMode::None {
       let options = emit::EmitOptions {
         ts_config,
         reload: self.flags.reload,
@@ -455,7 +456,7 @@ impl ProcState {
         .as_ref()
         .map(|cf| cf.specifier.clone());
       let options = emit::CheckOptions {
-        check: self.flags.check.clone(),
+        type_check_mode: self.flags.type_check_mode.clone(),
         debug: self.flags.log_level == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -476,7 +477,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.check != flags::CheckFlag::None {
+    if self.flags.type_check_mode != flags::TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, &lib);
     }
@@ -490,7 +491,7 @@ impl ProcState {
     Ok(())
   }
 
-  pub(crate) fn resolve(
+  pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
@@ -499,21 +500,21 @@ impl ProcState {
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {
-        Some(ModuleEntry::Module { dependencies, .. }) => dependencies
-          .get(specifier)
-          .and_then(|dep| dep.maybe_code.clone()),
+        Some(ModuleEntry::Module { dependencies, .. }) => {
+          dependencies.get(specifier).map(|d| &d.maybe_code)
+        }
         _ => None,
       };
 
       match maybe_resolved {
-        Some(Ok((specifier, _))) => return Ok(specifier),
-        Some(Err(err)) => {
+        Some(Resolved::Ok { specifier, .. }) => return Ok(specifier.clone()),
+        Some(Resolved::Err(err)) => {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
           ))
         }
-        None => {}
+        Some(Resolved::None) | None => {}
       }
     }
 
@@ -533,7 +534,7 @@ impl ProcState {
         None
       };
     if let Some(resolver) = &maybe_resolver {
-      resolver.resolve(specifier, &referrer)
+      resolver.resolve(specifier, &referrer).to_result()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
@@ -567,7 +568,14 @@ impl ProcState {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => code.as_ref().clone(),
+          | MediaType::Json => {
+            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier)
+            {
+              source.to_owned()
+            } else {
+              code.as_ref().clone()
+            }
+          }
           MediaType::Dts => "".to_string(),
           _ => {
             let emit_path = self
@@ -584,7 +592,7 @@ impl ProcState {
           }
         };
         Ok(ModuleSource {
-          code,
+          code: code.into_bytes().into_boxed_slice(),
           module_url_specified: specifier.to_string(),
           module_url_found: found.to_string(),
           module_type: match media_type {
@@ -638,7 +646,8 @@ impl SourceMapGetter for ProcState {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None, false) {
-        source_map_from_code(source.code)
+        let code = String::from_utf8(source.code.to_vec()).unwrap();
+        source_map_from_code(code)
       } else {
         None
       }
@@ -655,7 +664,7 @@ impl SourceMapGetter for ProcState {
     if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using .split_terminator() instead of .split())
+        // (due to internally using_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
         if line_number >= lines.len() {
           format!(
@@ -676,7 +685,7 @@ pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
 ) -> Result<ImportMap, AnyError> {
-  let result = ImportMap::from_json_with_diagnostics(specifier, json_text)?;
+  let result = parse_from_json(specifier, json_text)?;
   if !result.diagnostics.is_empty() {
     warn!(
       "Import map diagnostics:\n{}",

@@ -19,13 +19,13 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
@@ -239,16 +239,15 @@ impl Visit for DenoTestCollector {
 async fn resolve_implementation_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let asset_or_doc =
-    language_server.get_cached_asset_or_document(&data.specifier)?;
+  let asset_or_doc = language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_doc.line_index();
   let req = tsc::RequestMethod::GetImplementation((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
   ));
-  let snapshot = language_server.snapshot()?;
+  let snapshot = language_server.snapshot();
   let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
     language_server.ts_server.request(snapshot, req).await?;
   if let Some(implementations) = maybe_implementations {
@@ -308,16 +307,16 @@ async fn resolve_implementation_code_lens(
 async fn resolve_references_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_document =
-    language_server.get_cached_asset_or_document(&data.specifier)?;
+    language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_document.line_index();
   let req = tsc::RequestMethod::GetReferences((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
   ));
-  let snapshot = language_server.snapshot()?;
+  let snapshot = language_server.snapshot();
   let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
     language_server.ts_server.request(snapshot, req).await?;
   if let Some(references) = maybe_references {
@@ -328,11 +327,11 @@ async fn resolve_references_code_lens(
       }
       let reference_specifier =
         resolve_url(&reference.document_span.file_name)?;
-      let asset_or_doc = language_server
-        .get_asset_or_document(&reference_specifier)
-        .await?;
+      let asset_or_doc =
+        language_server.get_asset_or_document(&reference_specifier)?;
       locations.push(
-        reference.to_location(asset_or_doc.line_index(), language_server),
+        reference
+          .to_location(asset_or_doc.line_index(), &language_server.url_map),
       );
     }
     let command = if !locations.is_empty() {
@@ -376,9 +375,9 @@ async fn resolve_references_code_lens(
   }
 }
 
-pub(crate) async fn resolve_code_lens(
+pub async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
   let data: CodeLensData =
     serde_json::from_value(code_lens.data.clone().unwrap())?;
@@ -392,7 +391,7 @@ pub(crate) async fn resolve_code_lens(
   }
 }
 
-pub(crate) async fn collect(
+pub async fn collect(
   specifier: &ModuleSpecifier,
   parsed_source: Option<ParsedSource>,
   config: &Config,

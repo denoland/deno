@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
+
 use deno_core::ZeroCopyBuf;
 use deno_core::{CancelFuture, Resource};
 use deno_core::{CancelHandle, OpState};
@@ -104,11 +106,10 @@ impl Resource for MessagePortResource {
   }
 }
 
+#[op]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(ResourceId, ResourceId), AnyError> {
+) -> (ResourceId, ResourceId) {
   let (port1, port2) = create_entangled_message_port();
 
   let port1_id = state.resource_table.add(MessagePortResource {
@@ -121,7 +122,7 @@ pub fn op_message_port_create_entangled(
     cancel: CancelHandle::new(),
   });
 
-  Ok((port1_id, port2_id))
+  (port1_id, port2_id)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -185,6 +186,7 @@ pub struct JsMessageData {
   transferables: Vec<JsTransferable>,
 }
 
+#[op]
 pub fn op_message_port_post_message(
   state: &mut OpState,
   rid: ResourceId,
@@ -203,10 +205,10 @@ pub fn op_message_port_post_message(
   resource.port.send(state, data)
 }
 
+#[op]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = {
     let state = state.borrow();

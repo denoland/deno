@@ -12,7 +12,7 @@ use test_util::lsp::LspClient;
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
 fn incremental_change_wait(bench: &mut Bencher) {
   let deno_exe = test_util::deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
 
   static FIXTURE_INIT_JSON: &[u8] =
     include_bytes!("testdata/initialize_params.json");
@@ -36,6 +36,19 @@ fn incremental_change_wait(bench: &mut Bencher) {
       }),
     )
     .unwrap();
+
+  let (id, method, _): (u64, String, Option<Value>) =
+    client.read_request().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!({
+        "enable": true
+      }),
+    )
+    .unwrap();
+
   let (method, _maybe_diag): (String, Option<Value>) =
     client.read_notification().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
@@ -78,10 +91,11 @@ fn wait_for_deno_lint_diagnostic(
       let version = msg.get("version").unwrap().as_u64().unwrap();
       if document_version == version {
         let diagnostics = msg.get("diagnostics").unwrap().as_array().unwrap();
-        let first = &diagnostics[0];
-        let source = first.get("source").unwrap().as_str().unwrap();
-        if source == "deno-lint" {
-          return;
+        for diagnostic in diagnostics {
+          let source = diagnostic.get("source").unwrap().as_str().unwrap();
+          if source == "deno-lint" {
+            return;
+          }
         }
       }
     } else {

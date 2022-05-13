@@ -16,11 +16,7 @@ pub struct DenoDir {
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
     let root: PathBuf = if let Some(root) = maybe_custom_root {
-      if root.is_absolute() {
-        root
-      } else {
-        std::env::current_dir()?.join(root)
-      }
+      root
     } else if let Some(cache_dir) = dirs::cache_dir() {
       // We use the OS cache dir because all files deno writes are cache files
       // Once that changes we need to start using different roots if DENO_DIR
@@ -32,6 +28,11 @@ impl DenoDir {
     } else {
       panic!("Could not set the Deno root directory")
     };
+    let root = if root.is_absolute() {
+      root
+    } else {
+      std::env::current_dir()?.join(root)
+    };
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
 
@@ -42,6 +43,18 @@ impl DenoDir {
     deno_dir.gen_cache.ensure_dir_exists(&gen_path)?;
 
     Ok(deno_dir)
+  }
+
+  /// Path for the incremental cache used for formatting.
+  pub fn fmt_incremental_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("fmt_incremental_cache_v1")
+  }
+
+  /// Path for the incremental cache used for linting.
+  pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("lint_incremental_cache_v1")
   }
 }
 

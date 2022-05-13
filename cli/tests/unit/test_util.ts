@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 import * as colors from "../../../test_util/std/fmt/colors.ts";
 export { colors };
@@ -26,4 +26,22 @@ export function pathToAbsoluteFileUrl(path: string): URL {
   path = resolve(path);
 
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
+}
+
+const decoder = new TextDecoder();
+
+export async function execCode(code: string): Promise<[number, string]> {
+  const p = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "eval",
+      "--unstable",
+      "--no-check",
+      code,
+    ],
+    stdout: "piped",
+  });
+  const [status, output] = await Promise.all([p.status(), p.output()]);
+  p.close();
+  return [status.code, decoder.decode(output)];
 }

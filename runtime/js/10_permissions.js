@@ -21,6 +21,7 @@
     FunctionPrototypeCall,
     PromiseResolve,
     PromiseReject,
+    ReflectHas,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -120,7 +121,10 @@
    */
   function cache(desc, state) {
     let { name: key } = desc;
-    if ((desc.name === "read" || desc.name === "write") && "path" in desc) {
+    if (
+      (desc.name === "read" || desc.name === "write") &&
+      ReflectHas(desc, "path")
+    ) {
       key += `-${desc.path}`;
     } else if (desc.name === "net" && desc.host) {
       key += `-${desc.host}`;

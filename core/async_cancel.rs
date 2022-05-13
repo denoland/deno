@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::RcLike;
+use crate::Resource;
 use futures::future::FusedFuture;
 use futures::future::Future;
 use futures::future::TryFuture;
@@ -8,6 +9,7 @@ use futures::task::Context;
 use futures::task::Poll;
 use pin_project::pin_project;
 use std::any::type_name;
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
@@ -81,6 +83,16 @@ impl<F: Future> Future for Cancelable<F> {
 impl<F: Future> FusedFuture for Cancelable<F> {
   fn is_terminated(&self) -> bool {
     matches!(self, Self::Terminated)
+  }
+}
+
+impl Resource for CancelHandle {
+  fn name(&self) -> Cow<str> {
+    "cancellation".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel();
   }
 }
 
@@ -460,18 +472,18 @@ mod internal {
     /// must refer to a head (`CancelHandle`) node.
     fn cancel(&mut self) {
       let mut head_nn = NonNull::from(self);
-      let mut item_nn;
 
       // Mark the head node as canceled.
-      match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
-        NodeInner::Linked {
-          kind: NodeKind::Head { .. },
-          next: next_nn,
-          ..
-        } => item_nn = next_nn,
-        NodeInner::Unlinked | NodeInner::Canceled => return,
-        _ => unreachable!(),
-      };
+      let mut item_nn =
+        match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
+          NodeInner::Linked {
+            kind: NodeKind::Head { .. },
+            next: next_nn,
+            ..
+          } => next_nn,
+          NodeInner::Unlinked | NodeInner::Canceled => return,
+          _ => unreachable!(),
+        };
 
       // Cancel all item nodes in the chain, waking each stored `Waker`.
       while item_nn != head_nn {
