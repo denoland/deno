@@ -6,6 +6,7 @@ use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
 use quote::quote;
 use quote::ToTokens;
+use syn::FnArg;
 use syn::Ident;
 
 // Identifer to the `deno_core` crate.
@@ -34,9 +35,10 @@ fn core_import() -> TokenStream2 {
   }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 struct MacroArgs {
   is_unstable: bool,
+  is_v8: bool,
 }
 
 impl syn::parse::Parse for MacroArgs {
@@ -47,20 +49,25 @@ impl syn::parse::Parse for MacroArgs {
       )?;
     let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
     let vars: Vec<_> = vars.iter().map(String::as_str).collect();
-    match vars[..] {
-      ["unstable"] => Ok(Self { is_unstable: true }),
-      [] => Ok(Self { is_unstable: false }),
-      _ => Err(syn::Error::new(
-        input.span(),
-        "Ops expect #[op] or #[op(unstable)]",
-      )),
+    for var in vars.iter() {
+      if !["unstable", "v8"].contains(var) {
+        return Err(syn::Error::new(
+          input.span(),
+          "Ops expect #[op] or #[op(unstable)]",
+        ));
+      }
     }
+    Ok(Self {
+      is_unstable: vars.contains(&"unstable"),
+      is_v8: vars.contains(&"v8"),
+    })
   }
 }
 
 #[proc_macro_attribute]
 pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
-  let MacroArgs { is_unstable } = syn::parse_macro_input!(attr as MacroArgs);
+  let margs = syn::parse_macro_input!(attr as MacroArgs);
+  let MacroArgs { is_unstable, is_v8 } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
@@ -78,9 +85,9 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let is_async = func.sig.asyncness.is_some();
   let v8_body = if is_async {
-    codegen_v8_async(&core, &func)
+    codegen_v8_async(&core, &func, margs)
   } else {
-    codegen_v8_sync(&core, &func)
+    codegen_v8_sync(&core, &func, margs)
   };
 
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
@@ -111,6 +118,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
           enabled: true,
           is_async: #is_async,
           is_unstable: #is_unstable,
+          is_v8: #is_v8,
         }
       }
 
@@ -130,7 +138,11 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Generate the body of a v8 func for an async op
-fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
+fn codegen_v8_async(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  _margs: MacroArgs,
+) -> TokenStream2 {
   let arg0 = f.sig.inputs.first();
   let uses_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
   let args_head = if uses_opstate {
@@ -141,6 +153,11 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
   let rust_i0 = if uses_opstate { 1 } else { 0 };
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let type_params = &f.sig.generics.params;
+
+  let result_wrapper = match is_result(&f.sig.output) {
+    true => quote! {},
+    false => quote! { let result = Ok(result); },
+  };
 
   quote! {
     use #core::futures::FutureExt;
@@ -177,23 +194,44 @@ fn codegen_v8_async(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
 
     #core::_ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(#args_head #args_tail).await;
+      #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
 }
 
 /// Generate the body of a v8 func for a sync op
-fn codegen_v8_sync(core: &TokenStream2, f: &syn::ItemFn) -> TokenStream2 {
-  let arg0 = f.sig.inputs.first();
-  let (rust_i0, args_head) = match arg0 {
-    Some(arg0) if is_rc_refcell_opstate(arg0) => {
-      (1, quote! { ctx.state.clone(), })
+fn codegen_v8_sync(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  margs: MacroArgs,
+) -> TokenStream2 {
+  let MacroArgs { is_v8, .. } = margs;
+  let scope_arg = |arg: &FnArg| {
+    if is_handle_scope(arg) {
+      Some(quote! { scope, })
+    } else {
+      None
     }
-    Some(arg0) if is_mut_ref_opstate(arg0) => {
-      (1, quote! { &mut ctx.state.borrow_mut(), })
-    }
-    _ => (0, quote! {}),
   };
+  let opstate_arg = |arg: &FnArg| match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => {
+      Some(quote! { &mut ctx.state.borrow_mut(), })
+    }
+    _ => None,
+  };
+  let special_args = f
+    .sig
+    .inputs
+    .iter()
+    .map_while(|a| {
+      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+    })
+    .collect::<Vec<_>>();
+  let rust_i0 = special_args.len();
+  let args_head = special_args.into_iter().collect::<TokenStream2>();
+
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = &f.sig.generics.params;
@@ -271,19 +309,16 @@ fn codegen_sync_ret(
   core: &TokenStream2,
   output: &syn::ReturnType,
 ) -> TokenStream2 {
-  let ret_type = match output {
-    // Func with no return no-ops
-    syn::ReturnType::Default => return quote! { let ret = (); },
-    // Func with a return Result<T, E>
-    syn::ReturnType::Type(_, ty) => ty,
-  };
+  if is_void(output) {
+    return quote! {};
+  }
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
-  let ok_block = if is_unit_result(&**ret_type) {
+  let ok_block = if is_unit_result(output) {
     quote! {}
   } else {
     quote! {
-      match #core::serde_v8::to_v8(scope, v) {
+      match #core::serde_v8::to_v8(scope, result) {
         Ok(ret) => rv.set(ret),
         Err(err) => #core::_ops::throw_type_error(
           scope,
@@ -293,9 +328,13 @@ fn codegen_sync_ret(
     }
   };
 
+  if !is_result(output) {
+    return ok_block;
+  }
+
   quote! {
     match result {
-      Ok(v) => {
+      Ok(result) => {
         #ok_block
       },
       Err(err) => {
@@ -306,28 +345,26 @@ fn codegen_sync_ret(
   }
 }
 
+fn is_void(ty: impl ToTokens) -> bool {
+  tokens(ty).is_empty()
+}
+
+fn is_result(ty: impl ToTokens) -> bool {
+  let tokens = tokens(ty);
+  if tokens.trim_start_matches("-> ").starts_with("Result <") {
+    return true;
+  }
+  // Detect `io::Result<...>`, `anyhow::Result<...>`, etc...
+  // i.e: Result aliases/shorthands which are unfortunately "opaque" at macro-time
+  match tokens.find(":: Result <") {
+    Some(idx) => !tokens.split_at(idx).0.contains('<'),
+    None => false,
+  }
+}
+
 /// Detects if a type is of the form Result<(), Err>
-fn is_unit_result(ty: &syn::Type) -> bool {
-  let path = match ty {
-    syn::Type::Path(ref path) => path,
-    _ => return false,
-  };
-
-  let maybe_result = path.path.segments.first().expect("Invalid return type.");
-  if maybe_result.ident != "Result" {
-    return false;
-  }
-  assert!(!maybe_result.arguments.is_empty());
-
-  let args = match &maybe_result.arguments {
-    syn::PathArguments::AngleBracketed(args) => args,
-    _ => unreachable!(),
-  };
-
-  match args.args.first().unwrap() {
-    syn::GenericArgument::Type(syn::Type::Tuple(ty)) => ty.elems.is_empty(),
-    _ => false,
-  }
+fn is_unit_result(ty: impl ToTokens) -> bool {
+  is_result(&ty) && tokens(&ty).contains("Result < ()")
 }
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
@@ -338,6 +375,11 @@ fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
   tokens(arg).ends_with(": Rc < RefCell < OpState > >")
     || tokens(arg).ends_with(": Rc < RefCell < deno_core :: OpState > >")
+}
+
+fn is_handle_scope(arg: &syn::FnArg) -> bool {
+  tokens(arg).ends_with(": & mut v8 :: HandleScope")
+    || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope")
 }
 
 fn tokens(x: impl ToTokens) -> String {
