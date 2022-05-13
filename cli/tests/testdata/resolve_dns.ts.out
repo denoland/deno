@@ -8,6 +8,8 @@ CNAME
 ["cname.com."]
 MX
 [{"preference":0,"exchange":"mx.com."}]
+NS
+["ns1.ns.com."]
 PTR
 ["ptr.com."]
 SRV

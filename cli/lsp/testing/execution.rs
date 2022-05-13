@@ -14,12 +14,13 @@ use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
 use crate::ops;
-use crate::ops::testing::create_stdout_stderr_pipes;
 use crate::proc_state;
 use crate::tools::test;
+use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
@@ -27,6 +28,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::ops::io::Stdio;
+use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use std::collections::HashMap;
@@ -179,22 +182,21 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
-  channel: mpsc::UnboundedSender<test::TestEvent>,
+  sender: &TestEventSender,
   token: CancellationToken,
   options: Option<Value>,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
-    let (stdout_writer, stderr_writer) =
-      create_stdout_stderr_pipes(channel.clone());
     let mut worker = create_main_worker(
       &ps,
       specifier.clone(),
       permissions,
-      vec![ops::testing::init(
-        channel.clone(),
-        stdout_writer,
-        stderr_writer,
-      )],
+      vec![ops::testing::init(sender.clone())],
+      Stdio {
+        stdin: StdioPipe::Inherit,
+        stdout: StdioPipe::File(sender.stdout()),
+        stderr: StdioPipe::File(sender.stderr()),
+      },
     );
 
     worker
@@ -299,7 +301,8 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags::flags_from_vec(args)?;
+    let flags =
+      flags::flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(Arc::new(flags)).await?;
     let permissions =
       Permissions::from_options(&ps.flags.permissions_options());
@@ -316,6 +319,7 @@ impl TestRun {
     .await?;
 
     let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
+    let sender = TestEventSender::new(sender);
 
     let (concurrent_jobs, fail_fast) =
       if let flags::DenoSubcommand::Test(test_flags) = &ps.flags.subcommand {
@@ -334,22 +338,32 @@ impl TestRun {
       let specifier = specifier.clone();
       let ps = ps.clone();
       let permissions = permissions.clone();
-      let sender = sender.clone();
+      let mut sender = sender.clone();
       let options = self.filters.get(&specifier).map(|f| f.as_test_options());
       let token = self.token.clone();
 
       tokio::task::spawn_blocking(move || {
-        let future = test_specifier(
+        let origin = specifier.to_string();
+        let file_result = run_basic(test_specifier(
           ps,
           permissions,
           specifier,
           test::TestMode::Executable,
-          sender,
+          &sender,
           token,
           options,
-        );
-
-        run_basic(future)
+        ));
+        if let Err(error) = file_result {
+          if error.is::<JsError>() {
+            sender.send(test::TestEvent::UncaughtError(
+              origin,
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ))?;
+          } else {
+            return Err(error);
+          }
+        }
+        Ok(())
       })
     });
 
@@ -400,6 +414,11 @@ impl TestRun {
               }
 
               reporter.report_result(&description, &result, elapsed);
+            }
+            test::TestEvent::UncaughtError(origin, error) => {
+              reporter.report_uncaught_error(&origin, &error);
+              summary.failed += 1;
+              summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepWait(description) => {
               reporter.report_step_wait(&description);
@@ -752,20 +771,14 @@ impl test::TestReporter for LspTestReporter {
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
-  fn report_output(&mut self, output: &test::TestOutput) {
+  fn report_output(&mut self, output: &[u8]) {
     let test = self.current_origin.as_ref().and_then(|origin| {
       self
         .stack
         .get(origin)
         .and_then(|v| v.last().map(|td| td.into()))
     });
-    let value = match output {
-      test::TestOutput::PrintStdout(value)
-      | test::TestOutput::PrintStderr(value) => value.replace('\n', "\r\n"),
-      test::TestOutput::Stdout(bytes) | test::TestOutput::Stderr(bytes) => {
-        String::from_utf8_lossy(bytes).replace('\n', "\r\n")
-      }
-    };
+    let value = String::from_utf8_lossy(output).replace('\n', "\r\n");
 
     self.progress(lsp_custom::TestRunProgressMessage::Output {
       value,
@@ -804,6 +817,37 @@ impl test::TestReporter for LspTestReporter {
           messages: as_test_messages(err_string, false),
           duration: Some(elapsed as u32),
         })
+      }
+    }
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+    if self.current_origin == Some(origin.to_string()) {
+      self.current_origin = None;
+    }
+    let stack = self.stack.remove(origin).unwrap_or_default();
+    let err_string = format!(
+      "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
+      origin,
+      test::format_test_error(js_error)
+    );
+    let messages = as_test_messages(err_string, false);
+    for t in stack.iter().rev() {
+      match t {
+        TestOrTestStepDescription::TestDescription(desc) => {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: desc.into(),
+            messages: messages.clone(),
+            duration: None,
+          });
+        }
+        TestOrTestStepDescription::TestStepDescription(desc) => {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: desc.into(),
+            messages: messages.clone(),
+            duration: None,
+          });
+        }
       }
     }
   }
