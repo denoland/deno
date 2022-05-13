@@ -8,10 +8,13 @@ test 4 ... ok ([WILDCARD])
 test 5 ... ok ([WILDCARD])
 test 6 ... ok ([WILDCARD])
 test 7 ... ok ([WILDCARD])
+test 8 ...
+------- output -------
+console.log
+----- output end -----
 test 8 ... ok ([WILDCARD])
 test 9 ...
 ------- output -------
-console.log
 console.error
 ----- output end -----
 test 9 ... ok ([WILDCARD])

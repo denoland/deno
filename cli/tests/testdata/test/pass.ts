@@ -6,8 +6,9 @@ Deno.test("test 4", () => {});
 Deno.test("test 5", () => {});
 Deno.test("test 6", () => {});
 Deno.test("test 7", () => {});
-Deno.test("test 8", () => {});
-Deno.test("test 9", () => {
+Deno.test("test 8", () => {
   console.log("console.log");
+});
+Deno.test("test 9", () => {
   console.error("console.error");
 });
