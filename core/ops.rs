@@ -63,6 +63,8 @@ impl<T> Future for OpCall<T> {
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
+    // TODO(piscisaureus): safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let inner = unsafe { &mut self.get_unchecked_mut().0 };
     let mut pinned = Pin::new(inner);
     ready!(pinned.as_mut().poll(cx));

@@ -523,6 +523,8 @@ impl InspectorSession {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let mut v8_inspector = v8_inspector_rc.borrow_mut();
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
