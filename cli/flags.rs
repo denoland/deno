@@ -2570,7 +2570,7 @@ fn task_parse(
     while index < raw_args.len() {
       match raw_args[index].as_str() {
         "-c" | "--config" => {
-          flags.config_path = Some(raw_args[index + 1].to_string());
+          flags.config_flag = ConfigFlag::Path(raw_args[index + 1].to_string());
           index += 2;
         }
         "-q" | "--quiet" => {
@@ -5708,7 +5708,7 @@ mod tests {
         subcommand: DenoSubcommand::Task(TaskFlags {
           task: "".to_string(),
         }),
-        config_path: Some("deno.jsonc".to_string()),
+        config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
