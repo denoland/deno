@@ -4,36 +4,11 @@ use crate::colors::cyan;
 use crate::colors::italic_bold;
 use crate::colors::red;
 use crate::colors::yellow;
-use deno_core::error::{JsError, JsStackFrame};
-use deno_core::url::Url;
+use deno_core::error::format_file_name;
+use deno_core::error::JsError;
+use deno_core::error::JsStackFrame;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
-const DATA_URL_ABBREV_THRESHOLD: usize = 150;
-
-pub fn format_file_name(file_name: &str) -> String {
-  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
-    if let Ok(url) = Url::parse(file_name) {
-      if url.scheme() == "data" {
-        let data_path = url.path();
-        if let Some(data_pieces) = data_path.split_once(',') {
-          let data_length = data_pieces.1.len();
-          if let Some(data_start) = data_pieces.1.get(0..20) {
-            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
-              return format!(
-                "{}:{},{}......{}",
-                url.scheme(),
-                data_pieces.0,
-                data_start,
-                data_end
-              );
-            }
-          }
-        }
-      }
-    }
-  }
-  file_name.to_string()
-}
 
 // Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {

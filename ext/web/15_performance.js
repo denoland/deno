@@ -24,6 +24,7 @@
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = SymbolFor("Deno.customInspect");
   let performanceEntries = [];
+  let timeOrigin;
 
   webidl.converters["PerformanceMarkOptions"] = webidl
     .createDictionaryConverter(
@@ -76,6 +77,10 @@
     }
     return webidl.converters.DOMString(V, opts);
   };
+
+  function setTimeOrigin(origin) {
+    timeOrigin = origin;
+  }
 
   function findMostRecent(
     name,
@@ -327,6 +332,11 @@
       webidl.illegalConstructor();
     }
 
+    get timeOrigin() {
+      webidl.assertBranded(this, PerformancePrototype);
+      return timeOrigin;
+    }
+
     clearMarks(markName = undefined) {
       webidl.assertBranded(this, PerformancePrototype);
       if (markName !== undefined) {
@@ -546,7 +556,9 @@
 
     toJSON() {
       webidl.assertBranded(this, PerformancePrototype);
-      return {};
+      return {
+        timeOrigin: this.timeOrigin,
+      };
     }
 
     [customInspect](inspect) {
@@ -566,5 +578,6 @@
     PerformanceMeasure,
     Performance,
     performance: webidl.createBranded(Performance),
+    setTimeOrigin,
   };
 })(this);

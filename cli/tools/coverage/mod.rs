@@ -583,7 +583,8 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("deno:")
         || e.url.ends_with("__anonymous__")
-        || e.url.ends_with("$deno$test.js");
+        || e.url.ends_with("$deno$test.js")
+        || e.url.ends_with(".snap");
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));

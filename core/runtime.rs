@@ -1554,7 +1554,7 @@ impl JsRuntime {
           // main module
           true,
           specifier.as_str(),
-          &code,
+          code.as_bytes(),
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -1613,7 +1613,7 @@ impl JsRuntime {
           // not main module
           false,
           specifier.as_str(),
-          &code,
+          code.as_bytes(),
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -3022,7 +3022,7 @@ assertEquals(1, notify_return_value);
       ) -> Pin<Box<ModuleSourceFuture>> {
         async move {
           Ok(ModuleSource {
-            code: "console.log('hello world');".to_string(),
+            code: b"console.log('hello world');".to_vec().into_boxed_slice(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,
