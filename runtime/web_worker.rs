@@ -323,7 +323,6 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  //pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
