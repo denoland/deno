@@ -794,7 +794,7 @@ Deno.test({
        * self.onmessage = function() {self.postMessage(Deno.memoryUsage())}
        */
       "data:application/typescript;base64,c2VsZi5vbm1lc3NhZ2UgPSBmdW5jdGlvbigpIHtzZWxmLnBvc3RNZXNzYWdlKERlbm8ubWVtb3J5VXNhZ2UoKSl9",
-      { type: "module", name: "tsWorker", deno: true },
+      { type: "module", name: "tsWorker" },
     );
 
     w.postMessage(null);
