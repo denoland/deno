@@ -35,7 +35,10 @@
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
-          // TODO(lucacasonato): convert chunk to BufferSource
+          chunk = webidl.converters.BufferSource(chunk, {
+            prefix,
+            context: "chunk",
+          });
           const output = core.opSync(
             "op_compression_write",
             rid,
@@ -53,17 +56,18 @@
     }
 
     get readable() {
-      webidl.assertBranded(this, CompressionStream);
+      webidl.assertBranded(this, CompressionStreamPrototype);
       return this.#transform.readable;
     }
 
     get writable() {
-      webidl.assertBranded(this, CompressionStream);
+      webidl.assertBranded(this, CompressionStreamPrototype);
       return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(CompressionStream);
+  const CompressionStreamPrototype = CompressionStream.prototype;
 
   class DecompressionStream {
     #transform;
@@ -80,7 +84,10 @@
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
-          // TODO(lucacasonato): convert chunk to BufferSource
+          chunk = webidl.converters.BufferSource(chunk, {
+            prefix,
+            context: "chunk",
+          });
           const output = core.opSync(
             "op_compression_write",
             rid,
@@ -98,12 +105,12 @@
     }
 
     get readable() {
-      webidl.assertBranded(this, DecompressionStream);
+      webidl.assertBranded(this, DecompressionStreamPrototype);
       return this.#transform.readable;
     }
 
     get writable() {
-      webidl.assertBranded(this, DecompressionStream);
+      webidl.assertBranded(this, DecompressionStreamPrototype);
       return this.#transform.writable;
     }
   }
@@ -115,6 +122,7 @@
   }
 
   webidl.configurePrototype(DecompressionStream);
+  const DecompressionStreamPrototype = DecompressionStream.prototype;
 
   window.__bootstrap.compression = {
     CompressionStream,

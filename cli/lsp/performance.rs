@@ -8,7 +8,6 @@ use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 

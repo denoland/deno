@@ -141,5 +141,28 @@ declare namespace Deno {
     ): undefined | UncaughtExceptionCallback;
 
     export type UncaughtExceptionCallback = (err: any) => void;
+
+    /**
+     * Enables collection of stack traces of all async ops. This allows for
+     * debugging of where a given async op was started. Deno CLI uses this for
+     * improving error message in op sanitizer errors for `deno test`.
+     *
+     * **NOTE:** enabling tracing has a significant negative performance impact.
+     * To get high level metrics on async ops with no added performance cost,
+     * use `Deno.core.metrics()`.
+     */
+    function enableOpCallTracing(): void;
+
+    export interface OpCallTrace {
+      opName: string;
+      stack: string;
+    }
+
+    /**
+     * A map containing traces for all ongoing async ops. The key is the op id.
+     * Tracing only occurs when `Deno.core.enableOpCallTracing()` was previously
+     * enabled.
+     */
+    const opCallTraces: Map<number, OpCallTrace>;
   }
 }

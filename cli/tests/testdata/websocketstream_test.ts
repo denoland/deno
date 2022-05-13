@@ -140,22 +140,26 @@ Deno.test("aborting immediately with a primitive as reason throws that primitive
 });
 
 Deno.test("headers", async () => {
-  const listener = Deno.listen({ port: 4501 });
+  const listener = Deno.listen({ port: 4512 });
   const promise = (async () => {
-    const httpConn = Deno.serveHttp(await listener.accept());
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
     const { request, respondWith } = (await httpConn.nextRequest())!;
     assertEquals(request.headers.get("x-some-header"), "foo");
-    const {
-      response,
-      socket,
-    } = Deno.upgradeWebSocket(request);
+    const { response, socket } = Deno.upgradeWebSocket(request);
     socket.onopen = () => socket.close();
+    const p = new Promise<void>((resolve) => {
+      socket.onopen = () => socket.close();
+      socket.onclose = () => resolve();
+    });
     await respondWith(response);
+    await p;
   })();
 
-  const ws = new WebSocketStream("ws://localhost:4501", {
+  const ws = new WebSocketStream("ws://localhost:4512", {
     headers: [["x-some-header", "foo"]],
   });
+  await ws.connection;
   await promise;
   await ws.closed;
   listener.close();
@@ -172,24 +176,27 @@ Deno.test("forbidden headers", async () => {
     "connection",
   ];
 
-  const listener = Deno.listen({ port: 4501 });
+  const listener = Deno.listen({ port: 4512 });
   const promise = (async () => {
-    const httpConn = Deno.serveHttp(await listener.accept());
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
     const { request, respondWith } = (await httpConn.nextRequest())!;
-    for (const header of request.headers.keys()) {
-      assertNotEquals(header, "foo");
+    for (const [key] of request.headers) {
+      assertNotEquals(key, "foo");
     }
-    const {
-      response,
-      socket,
-    } = Deno.upgradeWebSocket(request);
-    socket.onopen = () => socket.close();
+    const { response, socket } = Deno.upgradeWebSocket(request);
+    const p = new Promise<void>((resolve) => {
+      socket.onopen = () => socket.close();
+      socket.onclose = () => resolve();
+    });
     await respondWith(response);
+    await p;
   })();
 
-  const ws = new WebSocketStream("ws://localhost:4501", {
+  const ws = new WebSocketStream("ws://localhost:4512", {
     headers: forbiddenHeaders.map((header) => [header, "foo"]),
   });
+  await ws.connection;
   await promise;
   await ws.closed;
   listener.close();

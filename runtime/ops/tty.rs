@@ -1,14 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StdFileResource;
-use deno_core::error::bad_resource_id;
-use deno_core::error::not_supported;
-use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::ResourceId;
 use serde::Deserialize;
 use serde::Serialize;
@@ -47,9 +43,9 @@ fn get_windows_handle(
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_set_raw", op_sync(op_set_raw)),
-      ("op_isatty", op_sync(op_isatty)),
-      ("op_console_size", op_sync(op_console_size)),
+      op_set_raw::decl(),
+      op_isatty::decl(),
+      op_console_size::decl(),
     ])
     .build()
 }
@@ -67,11 +63,8 @@ pub struct SetRawArgs {
   options: SetRawOptions,
 }
 
-fn op_set_raw(
-  state: &mut OpState,
-  args: SetRawArgs,
-  _: (),
-) -> Result<(), AnyError> {
+#[op]
+fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
   let rid = args.rid;
@@ -92,40 +85,12 @@ fn op_set_raw(
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
 
     if cbreak {
-      return Err(not_supported());
+      return Err(deno_core::error::not_supported());
     }
 
-    if resource.fs_file.is_none() {
-      return Err(bad_resource_id());
-    }
-
-    let fs_file_resource =
-      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
-
-    let handle_result = if let Some(mut fs_file) = fs_file_resource {
-      let tokio_file = fs_file.0.take().unwrap();
-      match tokio_file.try_into_std() {
-        Ok(std_file) => {
-          let raw_handle = std_file.as_raw_handle();
-          // Turn the std_file handle back into a tokio file, put it back
-          // in the resource table.
-          let tokio_file = tokio::fs::File::from_std(std_file);
-          fs_file.0 = Some(tokio_file);
-          // return the result.
-          Ok(raw_handle)
-        }
-        Err(tokio_file) => {
-          // This function will return an error containing the file if
-          // some operation is in-flight.
-          fs_file.0 = Some(tokio_file);
-          Err(resource_unavailable())
-        }
-      }
-    } else {
-      Err(resource_unavailable())
-    };
-
-    let handle = handle_result?;
+    let std_file = resource.std_file();
+    let std_file = std_file.lock(); // hold the lock
+    let handle = std_file.as_raw_handle();
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
       return Err(Error::last_os_error().into());
@@ -154,25 +119,10 @@ fn op_set_raw(
     use std::os::unix::io::AsRawFd;
 
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
-
-    if resource.fs_file.is_none() {
-      return Err(not_supported());
-    }
-
-    let maybe_fs_file_resource =
-      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
-
-    if maybe_fs_file_resource.is_none() {
-      return Err(resource_unavailable());
-    }
-
-    let mut fs_file_resource = maybe_fs_file_resource.unwrap();
-    if fs_file_resource.0.is_none() {
-      return Err(resource_unavailable());
-    }
-
-    let raw_fd = fs_file_resource.0.as_ref().unwrap().as_raw_fd();
-    let maybe_tty_mode = &mut fs_file_resource.1.as_mut().unwrap().tty.mode;
+    let std_file = resource.std_file();
+    let raw_fd = std_file.lock().as_raw_fd();
+    let mut meta_data = resource.metadata_mut();
+    let maybe_tty_mode = &mut meta_data.tty.mode;
 
     if is_raw {
       if maybe_tty_mode.is_none() {
@@ -211,30 +161,25 @@ fn op_set_raw(
   }
 }
 
-fn op_isatty(
-  state: &mut OpState,
-  rid: ResourceId,
-  _: (),
-) -> Result<bool, AnyError> {
-  let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
-    Ok(std_file) => {
-      #[cfg(windows)]
-      {
-        use winapi::um::consoleapi;
+#[op]
+fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
+  let isatty: bool = StdFileResource::with_file(state, rid, move |std_file| {
+    #[cfg(windows)]
+    {
+      use winapi::shared::minwindef::FALSE;
+      use winapi::um::consoleapi;
 
-        let handle = get_windows_handle(std_file)?;
-        let mut test_mode: DWORD = 0;
-        // If I cannot get mode out of console, it is not a console.
-        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-      }
-      #[cfg(unix)]
-      {
-        use std::os::unix::io::AsRawFd;
-        let raw_fd = std_file.as_raw_fd();
-        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-      }
+      let handle = get_windows_handle(std_file)?;
+      let mut test_mode: DWORD = 0;
+      // If I cannot get mode out of console, it is not a console.
+      Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE })
     }
-    _ => Ok(false),
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+      let raw_fd = std_file.as_raw_fd();
+      Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+    }
   })?;
   Ok(isatty)
 }
@@ -245,59 +190,54 @@ struct ConsoleSize {
   rows: u32,
 }
 
+#[op]
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
-  _: (),
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 
-  let size = StdFileResource::with(state, rid, move |r| match r {
-    Ok(std_file) => {
-      #[cfg(windows)]
-      {
-        use std::os::windows::io::AsRawHandle;
-        let handle = std_file.as_raw_handle();
+  let size = StdFileResource::with_file(state, rid, move |std_file| {
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::AsRawHandle;
+      let handle = std_file.as_raw_handle();
 
-        unsafe {
-          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-            std::mem::zeroed();
+      unsafe {
+        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+          std::mem::zeroed();
 
-          if winapi::um::wincon::GetConsoleScreenBufferInfo(
-            handle,
-            &mut bufinfo,
-          ) == 0
-          {
-            return Err(Error::last_os_error().into());
-          }
-
-          Ok(ConsoleSize {
-            columns: bufinfo.dwSize.X as u32,
-            rows: bufinfo.dwSize.Y as u32,
-          })
+        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+          == 0
+        {
+          return Err(Error::last_os_error().into());
         }
-      }
 
-      #[cfg(unix)]
-      {
-        use std::os::unix::io::AsRawFd;
-
-        let fd = std_file.as_raw_fd();
-        unsafe {
-          let mut size: libc::winsize = std::mem::zeroed();
-          if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-            return Err(Error::last_os_error().into());
-          }
-
-          // TODO (caspervonb) return a tuple instead
-          Ok(ConsoleSize {
-            columns: size.ws_col as u32,
-            rows: size.ws_row as u32,
-          })
-        }
+        Ok(ConsoleSize {
+          columns: bufinfo.dwSize.X as u32,
+          rows: bufinfo.dwSize.Y as u32,
+        })
       }
     }
-    Err(_) => Err(bad_resource_id()),
+
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+
+      let fd = std_file.as_raw_fd();
+      unsafe {
+        let mut size: libc::winsize = std::mem::zeroed();
+        if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+          return Err(Error::last_os_error().into());
+        }
+
+        // TODO (caspervonb) return a tuple instead
+        Ok(ConsoleSize {
+          columns: size.ws_col as u32,
+          rows: size.ws_row as u32,
+        })
+      }
+    }
   })?;
 
   Ok(size)

@@ -1,0 +1,6 @@
+1
+error: Uncaught Error: bar
+  throw new Error("bar");
+        ^
+    at [WILDCARD]/event_listener_error_immediate_exit.ts:4:9[WILDCARD]
+    at [WILDCARD]/event_listener_error_immediate_exit.ts:11:1

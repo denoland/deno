@@ -3,13 +3,14 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { File } = window.__bootstrap.files;
+  const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
-  const { assert, pathFromURL } = window.__bootstrap.util;
+  const { pathFromURL } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
+    ArrayPrototypeSlice,
     TypeError,
-    isNaN,
     ObjectEntries,
     String,
   } = window.__bootstrap.primordials;
@@ -46,15 +47,15 @@
       this.pid = res.pid;
 
       if (res.stdinRid && res.stdinRid > 0) {
-        this.stdin = new File(res.stdinRid);
+        this.stdin = new FsFile(res.stdinRid);
       }
 
       if (res.stdoutRid && res.stdoutRid > 0) {
-        this.stdout = new File(res.stdoutRid);
+        this.stdout = new FsFile(res.stdoutRid);
       }
 
       if (res.stderrRid && res.stderrRid > 0) {
-        this.stderr = new File(res.stderrRid);
+        this.stderr = new FsFile(res.stderrRid);
       }
     }
 
@@ -93,10 +94,6 @@
     }
   }
 
-  function isRid(arg) {
-    return !isNaN(arg);
-  }
-
   function run({
     cmd,
     cwd = undefined,
@@ -109,7 +106,7 @@
     stdin = "inherit",
   }) {
     if (cmd[0] != null) {
-      cmd[0] = pathFromURL(cmd[0]);
+      cmd = [pathFromURL(cmd[0]), ...ArrayPrototypeSlice(cmd, 1)];
     }
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),
@@ -118,12 +115,9 @@
       env: ObjectEntries(env),
       gid,
       uid,
-      stdin: isRid(stdin) ? "" : stdin,
-      stdout: isRid(stdout) ? "" : stdout,
-      stderr: isRid(stderr) ? "" : stderr,
-      stdinRid: isRid(stdin) ? stdin : 0,
-      stdoutRid: isRid(stdout) ? stdout : 0,
-      stderrRid: isRid(stderr) ? stderr : 0,
+      stdin,
+      stdout,
+      stderr,
     });
     return new Process(res);
   }

@@ -8,9 +8,10 @@
 //! the same functions as ops available in JS runtime.
 use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::LintFlags;
+use crate::flags::{Flags, LintFlags};
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
+use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
@@ -33,6 +34,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use super::incremental_cache::IncrementalCache;
+
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
 #[derive(Clone, Debug)]
@@ -48,11 +51,8 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(
-  maybe_lint_config: Option<LintConfig>,
-  lint_flags: LintFlags,
-  watch: bool,
-) -> Result<(), AnyError> {
+pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
+  let flags = Arc::new(flags);
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
@@ -68,6 +68,13 @@ pub async fn lint(
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
+
+  let ps = ProcState::build(flags.clone()).await?;
+  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
+    config_file.to_lint_config()?
+  } else {
+    None
+  };
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
@@ -142,6 +149,17 @@ pub async fn lint(
   };
 
   let operation = |paths: Vec<PathBuf>| async {
+    let incremental_cache = Arc::new(IncrementalCache::new(
+      &ps.dir.lint_incremental_cache_db_file_path(),
+      // use a hash of the rule names in order to bust the cache
+      &{
+        // ensure this is stable by sorting it
+        let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
+        names.sort_unstable();
+        names
+      },
+      &paths,
+    ));
     let target_files_len = paths.len();
     let reporter_kind = reporter_kind.clone();
     let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
@@ -149,8 +167,23 @@ pub async fn lint(
       let has_error = has_error.clone();
       let lint_rules = lint_rules.clone();
       let reporter_lock = reporter_lock.clone();
+      let incremental_cache = incremental_cache.clone();
       move |file_path| {
-        let r = lint_file(file_path.clone(), lint_rules.clone());
+        let file_text = fs::read_to_string(&file_path)?;
+
+        // don't bother rechecking this file if it didn't have any diagnostics before
+        if incremental_cache.is_file_same(&file_path, &file_text) {
+          return Ok(());
+        }
+
+        let r = lint_file(file_path.clone(), file_text, lint_rules.clone());
+        if let Ok((file_diagnostics, file_text)) = &r {
+          if file_diagnostics.is_empty() {
+            // update the incremental cache if there were no diagnostics
+            incremental_cache.update_file(&file_path, file_text)
+          }
+        }
+
         handle_lint_result(
           &file_path.to_string_lossy(),
           r,
@@ -162,17 +195,26 @@ pub async fn lint(
       }
     })
     .await?;
+    incremental_cache.wait_completion().await;
     reporter_lock.lock().unwrap().close(target_files_len);
 
     Ok(())
   };
-  if watch {
+  if flags.watch.is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
     }
-    file_watcher::watch_func(resolver, operation, "Lint").await?;
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      file_watcher::PrintConfig {
+        job_name: "Lint".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
+    )
+    .await?;
   } else {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       let reporter_lock =
@@ -249,10 +291,10 @@ pub fn create_linter(
 
 fn lint_file(
   file_path: PathBuf,
+  source_code: String,
   lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
 
   let linter = create_linter(media_type, lint_rules);
@@ -466,7 +508,7 @@ impl LintReporter for JsonLintReporter {
   }
 }
 
-fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
+fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   // Sort so that we guarantee a deterministic output which is useful for tests
   diagnostics.sort_by(|a, b| {
     use std::cmp::Ordering;
@@ -487,7 +529,7 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
   });
 }
 
-pub(crate) fn get_configured_rules(
+pub fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
   maybe_rules_tags: Option<Vec<String>>,
   maybe_rules_include: Option<Vec<String>>,
@@ -537,7 +579,7 @@ pub(crate) fn get_configured_rules(
   );
 
   if configured_rules.is_empty() {
-    anyhow!("No rules have been configured");
+    return Err(anyhow!("No rules have been configured"));
   }
 
   Ok(configured_rules)

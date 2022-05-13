@@ -2,18 +2,16 @@
 
 mod urlpattern;
 
-use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
-use std::panic::catch_unwind;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -27,21 +25,12 @@ pub fn init() -> Extension {
       "01_urlpattern.js",
     ))
     .ops(vec![
-      ("op_url_parse", op_sync(op_url_parse)),
-      ("op_url_reparse", op_sync(op_url_reparse)),
-      (
-        "op_url_parse_search_params",
-        op_sync(op_url_parse_search_params),
-      ),
-      (
-        "op_url_stringify_search_params",
-        op_sync(op_url_stringify_search_params),
-      ),
-      ("op_urlpattern_parse", op_sync(op_urlpattern_parse)),
-      (
-        "op_urlpattern_process_match_input",
-        op_sync(op_urlpattern_process_match_input),
-      ),
+      op_url_parse::decl(),
+      op_url_reparse::decl(),
+      op_url_parse_search_params::decl(),
+      op_url_stringify_search_params::decl(),
+      op_urlpattern_parse::decl(),
+      op_urlpattern_process_match_input::decl(),
     ])
     .build()
 }
@@ -66,8 +55,8 @@ type UrlParts = String;
 
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
+#[op]
 pub fn op_url_parse(
-  _state: &mut deno_core::OpState,
   href: String,
   base_href: Option<String>,
 ) -> Result<UrlParts, AnyError> {
@@ -80,37 +69,39 @@ pub fn op_url_parse(
     .parse(&href)
     .map_err(|_| type_error("Invalid URL"))?;
 
-  url_result(url, href, base_href)
+  Ok(url_parts(url))
 }
 
-#[derive(
-  serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Debug,
-)]
+#[derive(PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {
-  Hash = 1,
-  Host = 2,
-  Hostname = 3,
-  Password = 4,
-  Pathname = 5,
-  Port = 6,
-  Protocol = 7,
-  Search = 8,
-  Username = 9,
+  Hash = 0,
+  Host = 1,
+  Hostname = 2,
+  Password = 3,
+  Pathname = 4,
+  Port = 5,
+  Protocol = 6,
+  Search = 7,
+  Username = 8,
 }
 
+#[op]
 pub fn op_url_reparse(
-  _state: &mut deno_core::OpState,
   href: String,
-  setter_opts: (UrlSetter, String),
+  setter_opts: (u8, String),
 ) -> Result<UrlParts, AnyError> {
   let mut url = Url::options()
     .parse(&href)
     .map_err(|_| type_error("Invalid URL"))?;
 
   let (setter, setter_value) = setter_opts;
+  if setter > 8 {
+    return Err(type_error("Invalid URL setter"));
+  }
+  // SAFETY: checked to be less than 9.
+  let setter = unsafe { std::mem::transmute::<u8, UrlSetter>(setter) };
   let value = setter_value.as_ref();
-
   match setter {
     UrlSetter::Hash => quirks::set_hash(&mut url, value),
     UrlSetter::Host => quirks::set_host(&mut url, value)
@@ -129,47 +120,28 @@ pub fn op_url_reparse(
       .map_err(|_| uri_error("Invalid username"))?,
   }
 
-  url_result(url, href, None)
+  Ok(url_parts(url))
 }
 
-fn url_result(
-  url: Url,
-  href: String,
-  base_href: Option<String>,
-) -> Result<UrlParts, AnyError> {
-  // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
-  // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
-  let username = catch_unwind(|| quirks::username(&url)).map_err(|_| {
-    generic_error(format!(
-      "Internal error while parsing \"{}\"{}, \
-       see https://github.com/servo/rust-url/issues/670",
-      href,
-      base_href
-        .map(|b| format!(" against \"{}\"", b))
-        .unwrap_or_default()
-    ))
-  })?;
-
-  Ok(
-    [
-      quirks::href(&url),
-      quirks::hash(&url),
-      quirks::host(&url),
-      quirks::hostname(&url),
-      &quirks::origin(&url),
-      quirks::password(&url),
-      quirks::pathname(&url),
-      quirks::port(&url),
-      quirks::protocol(&url),
-      quirks::search(&url),
-      username,
-    ]
-    .join("\n"),
-  )
+fn url_parts(url: Url) -> UrlParts {
+  [
+    quirks::href(&url),
+    quirks::hash(&url),
+    quirks::host(&url),
+    quirks::hostname(&url),
+    &quirks::origin(&url),
+    quirks::password(&url),
+    quirks::pathname(&url),
+    quirks::port(&url),
+    quirks::protocol(&url),
+    quirks::search(&url),
+    quirks::username(&url),
+  ]
+  .join("\n")
 }
 
+#[op]
 pub fn op_url_parse_search_params(
-  _state: &mut deno_core::OpState,
   args: Option<String>,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Vec<(String, String)>, AnyError> {
@@ -187,15 +159,12 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
-pub fn op_url_stringify_search_params(
-  _state: &mut deno_core::OpState,
-  args: Vec<(String, String)>,
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+pub fn op_url_stringify_search_params(args: Vec<(String, String)>) -> String {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
-  Ok(search)
+  search
 }
 
 pub fn get_declaration() -> PathBuf {

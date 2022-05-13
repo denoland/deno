@@ -4,6 +4,178 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
+  export interface BenchDefinition {
+    fn: () => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Group name for the benchmark.
+     * Grouped benchmarks produce a time summary */
+    group?: string;
+    /** Benchmark should be used as the baseline for other benchmarks
+     * If there are multiple baselines in a group, the first one is used as the baseline */
+    baseline?: boolean;
+    /** If at least one bench has `only` set to true, only run benches that have
+     * `only` set to true and fail the bench suite. */
+    only?: boolean;
+    /** Ensure the bench case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
+
+    /** Specifies the permissions that should be used to run the bench.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: Deno.PermissionOptions;
+  }
+
+  /** Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench({
+   *   name: "example test",
+   *   fn(): void {
+   *     assertEquals("world", "world");
+   *   },
+   * });
+   *
+   * Deno.bench({
+   *   name: "example ignored test",
+   *   ignore: Deno.build.os === "windows",
+   *   fn(): void {
+   *     // This test is ignored only on Windows machines
+   *   },
+   * });
+   *
+   * Deno.bench({
+   *   name: "example async test",
+   *   async fn() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * });
+   * ```
+   */
+  export function bench(t: BenchDefinition): void;
+
+  /** Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench("My test description", (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench("My async test description", async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function bench(
+    name: string,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench(function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench(async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function bench(fn: () => void | Promise<void>): void;
+
+  /** Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench("My test description", { permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function bench(
+    name: string,
+    options: Omit<BenchDefinition, "fn" | "name">,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench({ name: "My test description", permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench({ name: "My async test description", permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function bench(
+    options: Omit<BenchDefinition, "fn">,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench({ permissions: { read: true } }, function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function bench(
+    options: Omit<BenchDefinition, "fn" | "name">,
+    fn: () => void | Promise<void>,
+  ): void;
+
   /**
    * **UNSTABLE**: New API, yet to be vetted.  This API is under consideration to
    * determine if permissions are required to call it.
@@ -133,6 +305,18 @@ declare namespace Deno {
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getUid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getUid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"
@@ -164,9 +348,15 @@ declare namespace Deno {
     nonblocking?: NonBlocking;
   }
 
-  /** A foreign function interface descriptor */
-  export interface ForeignFunctionInterface {
-    [name: string]: ForeignFunction;
+  export interface ForeignStatic<Type extends NativeType = NativeType> {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
+    type: Exclude<Type, "void">;
+  }
+
+  /** A foreign library interface descriptor */
+  export interface ForeignLibraryInterface {
+    [name: string]: ForeignFunction | ForeignStatic;
   }
 
   /** All possible number types interfacing with foreign functions */
@@ -191,20 +381,23 @@ declare namespace Deno {
     },
   ];
 
-  /** Infers a foreign function */
-  type StaticForeignFunction<T extends ForeignFunction> = (
-    ...args: StaticForeignFunctionParameters<T["parameters"]>
-  ) => ConditionalAsync<
-    T["nonblocking"],
-    StaticForeignFunctionResult<T["result"]>
-  >;
+  /** Infers a foreign symbol */
+  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+    T extends ForeignFunction ? (
+      ...args: StaticForeignFunctionParameters<T["parameters"]>
+    ) => ConditionalAsync<
+      T["nonblocking"],
+      StaticForeignFunctionResult<T["result"]>
+    >
+      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+      : never;
 
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
 
-  /** Infers a foreign function interface */
-  type StaticForeignFunctionInterface<T extends ForeignFunctionInterface> = {
-    [K in keyof T]: StaticForeignFunction<T[K]>;
+  /** Infers a foreign library interface */
+  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
+    [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
   type TypedArray =
@@ -301,9 +494,9 @@ declare namespace Deno {
   }
 
   /** A dynamic library resource */
-  export interface DynamicLibrary<S extends ForeignFunctionInterface> {
-    /** All of the registered symbols along with functions for calling them */
-    symbols: StaticForeignFunctionInterface<S>;
+  export interface DynamicLibrary<S extends ForeignLibraryInterface> {
+    /** All of the registered library along with functions for calling them */
+    symbols: StaticForeignLibraryInterface<S>;
     close(): void;
   }
 
@@ -311,7 +504,7 @@ declare namespace Deno {
    *
    * Opens a dynamic library and registers symbols
    */
-  export function dlopen<S extends ForeignFunctionInterface>(
+  export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
@@ -702,79 +895,6 @@ declare namespace Deno {
     options?: EmitOptions,
   ): Promise<EmitResult>;
 
-  /** **UNSTABLE**: Should not have same name as `window.location` type. */
-  interface Location {
-    /** The full url for the module, e.g. `file://some/file.ts` or
-     * `https://some/file.ts`. */
-    fileName: string;
-    /** The line number in the file. It is assumed to be 1-indexed. */
-    lineNumber: number;
-    /** The column number in the file. It is assumed to be 1-indexed. */
-    columnNumber: number;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Given a current location in a module, lookup the source location and return
-   * it.
-   *
-   * When Deno transpiles code, it keep source maps of the transpiled code. This
-   * function can be used to lookup the original location. This is
-   * automatically done when accessing the `.stack` of an error, or when an
-   * uncaught error is logged. This function can be used to perform the lookup
-   * for creating better error handling.
-   *
-   * **Note:** `lineNumber` and `columnNumber` are 1 indexed, which matches display
-   * expectations, but is not typical of most index numbers in Deno.
-   *
-   * An example:
-   *
-   * ```ts
-   * const origin = Deno.applySourceMap({
-   *   fileName: "file://my/module.ts",
-   *   lineNumber: 5,
-   *   columnNumber: 15
-   * });
-   *
-   * console.log(`${origin.fileName}:${origin.lineNumber}:${origin.columnNumber}`);
-   * ```
-   */
-  export function applySourceMap(location: Location): Location;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Registers the given function as a listener of the given signal event.
-   *
-   * ```ts
-   * Deno.addSignalListener("SIGTERM", () => {
-   *   console.log("SIGTERM!")
-   * });
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function addSignalListener(signal: Signal, handler: () => void): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Removes the given signal listener that has been registered with
-   * Deno.addSignalListener.
-   *
-   * ```ts
-   * const listener = () => {
-   *   console.log("SIGTERM!")
-   * };
-   * Deno.addSignalListener("SIGTERM", listener);
-   * Deno.removeSignalListener("SIGTERM", listener);
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function removeSignalListener(
-    signal: Signal,
-    handler: () => void,
-  ): void;
-
   export type SetRawOptions = {
     cbreak: boolean;
   };
@@ -1062,8 +1182,11 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
-    options: ConnectOptions | UnixConnectOptions,
-  ): Promise<Conn>;
+    options: ConnectOptions,
+  ): Promise<TcpConn>;
+  export function connect(
+    options: UnixConnectOptions,
+  ): Promise<UnixConn>;
 
   export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */
@@ -1132,6 +1255,22 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
+  export interface Listener extends AsyncIterable<Conn> {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Make the listener not block the event loop from finishing.
+     */
+    unref(): void;
+  }
+
   /** **UNSTABLE**: New API should be tested first.
    *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
@@ -1169,6 +1308,165 @@ declare namespace Deno {
    * Make the timer of the given id not blocking the event loop from finishing
    */
   export function unrefTimer(id: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetter.
+   *
+   * Allows to "hijack" a connection that the request is associated with.
+   * Can be used to implement protocols that build on top of HTTP (eg.
+   * WebSockets).
+   *
+   * The returned promise returns underlying connection and first packet
+   * received. The promise shouldn't be awaited before responding to the
+   * `request`, otherwise event loop might deadlock.
+   */
+  export function upgradeHttp(
+    request: Request,
+  ): Promise<[Deno.Conn, Uint8Array]>;
+
+  export interface SpawnOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     * If not specified, the cwd of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     * Doesn't guarantee that only `opt.env` variables are present,
+     * as the OS may set environmental variables for processes.
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call
+     * in the child process. Failure in the setuid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+    /**
+     * An AbortSignal that allows closing the process using the corresponding
+     * AbortController by sending the process a SIGTERM signal.
+     * Not Supported by execSync.
+     */
+    signal?: AbortSignal;
+
+    /** Defaults to "null". */
+    stdin?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stdout?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  /**
+   * Spawns a child process.
+   *
+   * If stdin is set to "piped", the stdin WritableStream needs to be closed manually.
+   *
+   * ```ts
+   * const child = Deno.spawnChild(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   *
+   * // open a file and pipe the subprocess output to it.
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * child.stdin.close();
+   * const status = await child.status;
+   * ```
+   */
+  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Child<T>;
+
+  export class Child<T extends SpawnOptions> {
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<ChildStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and status. */
+    output(): Promise<SpawnOutput<T>>;
+    /** Kills the process with given Signal. */
+    kill(signo: Signal): void;
+  }
+
+  /**
+   * Executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * ```ts
+   * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *        "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   */
+  export function spawn<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Promise<SpawnOutput<T>>;
+
+  /**
+   * Synchronously executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * ```ts
+   * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *       "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   */
+  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): SpawnOutput<T>;
+
+  export type ChildStatus =
+    | {
+      success: true;
+      code: 0;
+      signal: null;
+    }
+    | {
+      success: false;
+      code: number;
+      signal: number | null;
+    };
+
+  export interface SpawnOutput<T extends SpawnOptions> {
+    status: ChildStatus;
+    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
+    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
+  }
 }
 
 declare function fetch(
@@ -1182,11 +1480,11 @@ declare interface WorkerOptions {
    * Set deno.namespace to `true` to make `Deno` namespace and all of its
    * methods available to the worker environment. Defaults to `false`.
    *
-   * Configure deno.permissions options to change the level of access the worker will
-   * have. By default it will inherit the permissions of its parent thread. The permissions
+   * Configure permissions options to change the level of access the worker will
+   * have. By default it will have no permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    * - "inherit" will take the permissions of the thread the worker is created in
-   * - You can disable/enable permissions all together by passing a boolean
+   * - "none" will use the default behavior and have no permission
    * - You can provide a list of routes relative to the file the worker
    *   is created in to limit the access of the worker (read/write permissions only)
    *
@@ -1213,20 +1511,7 @@ declare interface WorkerOptions {
   deno?: boolean | {
     namespace?: boolean;
     /** Set to `"none"` to disable all the permissions in the worker. */
-    permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean | string[];
-      hrtime?: "inherit" | boolean;
-      /** The format of the net access list must be `hostname[:port]`
-       * in order to be resolved.
-       *
-       * For example: `["https://deno.land", "localhost:8080"]`.
-       */
-      net?: "inherit" | boolean | string[];
-      ffi?: "inherit" | boolean | Array<string | URL>;
-      read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean | Array<string | URL>;
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
+    permissions?: Deno.PermissionOptions;
   };
 }
 

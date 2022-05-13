@@ -24,6 +24,20 @@ const remote = Deno.dlopen(
     method17: { parameters: [], result: "usize", nonblocking: true },
     method18: { parameters: [], result: "pointer" },
     method19: { parameters: [], result: "pointer", nonblocking: true },
+    static1: { type: "usize" },
+    static2: { type: "pointer" },
+    static3: { type: "usize" },
+    static4: { type: "isize" },
+    static5: { type: "u8" },
+    static6: { type: "u16" },
+    static7: { type: "u32" },
+    static8: { type: "u64" },
+    static9: { type: "i8" },
+    static10: { type: "i16" },
+    static11: { type: "i32" },
+    static12: { type: "i64" },
+    static13: { type: "f32" },
+    static14: { type: "f64" },
   } as const,
 );
 
@@ -121,3 +135,46 @@ const fnptr = new Deno.UnsafeFnPointer(
 // @ts-expect-error: Invalid argument
 fnptr.call(null, null);
 fnptr.call(0, null);
+
+// @ts-expect-error: Invalid member type
+const static1_wrong: null = remote.symbols.static1;
+const static1_right: number = remote.symbols.static1;
+// @ts-expect-error: Invalid member type
+const static2_wrong: null = remote.symbols.static2;
+const static2_right: Deno.UnsafePointer = remote.symbols.static2;
+// @ts-expect-error: Invalid member type
+const static3_wrong: null = remote.symbols.static3;
+const static3_right: number = remote.symbols.static3;
+// @ts-expect-error: Invalid member type
+const static4_wrong: null = remote.symbols.static4;
+const static4_right: number = remote.symbols.static4;
+// @ts-expect-error: Invalid member type
+const static5_wrong: null = remote.symbols.static5;
+const static5_right: number = remote.symbols.static5;
+// @ts-expect-error: Invalid member type
+const static6_wrong: null = remote.symbols.static6;
+const static6_right: number = remote.symbols.static6;
+// @ts-expect-error: Invalid member type
+const static7_wrong: null = remote.symbols.static7;
+const static7_right: number = remote.symbols.static7;
+// @ts-expect-error: Invalid member type
+const static8_wrong: null = remote.symbols.static8;
+const static8_right: number = remote.symbols.static8;
+// @ts-expect-error: Invalid member type
+const static9_wrong: null = remote.symbols.static9;
+const static9_right: number = remote.symbols.static9;
+// @ts-expect-error: Invalid member type
+const static10_wrong: null = remote.symbols.static10;
+const static10_right: number = remote.symbols.static10;
+// @ts-expect-error: Invalid member type
+const static11_wrong: null = remote.symbols.static11;
+const static11_right: number = remote.symbols.static11;
+// @ts-expect-error: Invalid member type
+const static12_wrong: null = remote.symbols.static12;
+const static12_right: number = remote.symbols.static12;
+// @ts-expect-error: Invalid member type
+const static13_wrong: null = remote.symbols.static13;
+const static13_right: number = remote.symbols.static13;
+// @ts-expect-error: Invalid member type
+const static14_wrong: null = remote.symbols.static14;
+const static14_right: number = remote.symbols.static14;

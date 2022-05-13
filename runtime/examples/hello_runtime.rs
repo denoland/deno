@@ -22,16 +22,19 @@ async fn main() -> Result<(), AnyError> {
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Web workers are not supported in the example");
   });
+  let web_worker_preload_module_cb = Arc::new(|_| {
+    todo!("Web workers are not supported in the example");
+  });
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
-      apply_source_maps: false,
       args: vec![],
       cpu_count: 1,
       debug_flag: false,
       enable_testing_features: false,
       location: None,
       no_color: false,
+      is_tty: false,
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       unstable: false,
@@ -41,7 +44,9 @@ async fn main() -> Result<(), AnyError> {
     root_cert_store: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
-    js_error_create_fn: None,
+    source_map_getter: None,
+    format_js_error_fn: None,
+    web_worker_preload_module_cb,
     create_web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
@@ -52,6 +57,7 @@ async fn main() -> Result<(), AnyError> {
     broadcast_channel: InMemoryBroadcastChannel::default(),
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
+    stdio: Default::default(),
   };
 
   let js_path =

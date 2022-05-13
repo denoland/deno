@@ -15,6 +15,7 @@ use std::fmt;
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
+  "BenchDefinition",
   "CompilerOptions",
   "CreateHttpClientOptions",
   "DatagramConn",
@@ -38,7 +39,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixConnectOptions",
   "UnixListenOptions",
   "addSignalListener",
-  "applySourceMap",
+  "bench",
   "connect",
   "consoleSize",
   "createHttpClient",
@@ -64,6 +65,12 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "umask",
   "utime",
   "utimeSync",
+  "spawnChild",
+  "Child",
+  "spawn",
+  "spawnSync",
+  "ChildStatus",
+  "SpawnOutput",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
