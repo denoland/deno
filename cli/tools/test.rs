@@ -1622,13 +1622,16 @@ impl TestOutputPipe {
     // We want to wake up the other thread and have it respond back
     // that it's done clearing out its pipe before returning.
     let (sender, receiver) = std::sync::mpsc::channel();
-    self.state.lock().replace(sender);
+    if let Some(sender) = self.state.lock().replace(sender) {
+      let _ = sender.send(()); // just in case
+    }
     // Bit of a hack to send a zero width space in order to wake
     // the thread up. It seems that sending zero bytes here does
     // not work on windows.
     self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
     self.writer.flush().unwrap();
-    receiver.recv().unwrap();
+    // ignore the error as it might have been picked up and closed
+    let _ = receiver.recv();
   }
 
   pub fn as_file(&self) -> std::fs::File {

@@ -178,26 +178,23 @@ fn create_compiler_snapshot(
   }
 
   #[op]
-  fn op_build_info(
-    state: &mut OpState,
-    _args: Value,
-  ) -> Result<Value, AnyError> {
+  fn op_build_info(state: &mut OpState) -> Value {
     let build_specifier = "asset:///bootstrap.ts";
     let build_libs = state.borrow::<Vec<&str>>();
-    Ok(json!({
+    json!({
       "buildSpecifier": build_specifier,
       "libs": build_libs,
-    }))
+    })
   }
 
   #[op]
-  fn op_cwd(_args: Value) -> Result<Value, AnyError> {
-    Ok(json!("cache:///"))
+  fn op_cwd() -> String {
+    "cache:///".into()
   }
 
   #[op]
-  fn op_exists(_args: Value) -> Result<Value, AnyError> {
-    Ok(json!(false))
+  fn op_exists() -> bool {
+    false
   }
 
   #[op]
