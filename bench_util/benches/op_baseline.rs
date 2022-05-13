@@ -29,7 +29,7 @@ fn op_pi_json() -> i64 {
 
 // this is a function since async closures aren't stable
 #[op]
-async fn op_pi_async(_: Rc<RefCell<OpState>>) -> i64 {
+async fn op_pi_async() -> i64 {
   314159
 }
 
