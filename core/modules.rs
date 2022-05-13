@@ -1141,7 +1141,6 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::error::AnyError;
   use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
@@ -1474,10 +1473,10 @@ import "/a.js";
     static DISPATCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_test(_: &mut OpState, control: u8) -> Result<u8, AnyError> {
+    fn op_test(control: u8) -> u8 {
       DISPATCH_COUNT.fetch_add(1, Ordering::Relaxed);
       assert_eq!(control, 42);
-      Ok(43)
+      43
     }
 
     let ext = Extension::builder().ops(vec![op_test::decl()]).build();
