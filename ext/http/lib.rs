@@ -589,10 +589,7 @@ fn http_response(
     Some(data) => {
       // If a buffer was passed, but isn't compressible, we use it to
       // construct a response body.
-      Ok((
-        HttpResponseWriter::Closed,
-        Bytes::copy_from_slice(&data).into(),
-      ))
+      Ok((HttpResponseWriter::Closed, Bytes::from(data).into()))
     }
     None if compressing => {
       // Create a one way pipe that implements tokio's async io traits. To do
@@ -766,7 +763,7 @@ async fn op_http_write(
       }
     }
     HttpResponseWriter::BodyUncompressed(body) => {
-      let bytes = Bytes::copy_from_slice(&buf[..]);
+      let bytes = Bytes::from(buf);
       match body.send_data(bytes).await {
         Ok(_) => Ok(()),
         Err(err) => {
