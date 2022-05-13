@@ -556,7 +556,9 @@
 
     toJSON() {
       webidl.assertBranded(this, PerformancePrototype);
-      return {};
+      return {
+        timeOrigin: this.timeOrigin,
+      };
     }
 
     [customInspect](inspect) {
