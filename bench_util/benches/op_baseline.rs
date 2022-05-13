@@ -4,10 +4,6 @@ use deno_bench_util::{bench_js_async, bench_js_sync};
 
 use deno_core::op;
 use deno_core::Extension;
-use deno_core::OpState;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 fn setup() -> Vec<Extension> {
   vec![Extension::builder()
