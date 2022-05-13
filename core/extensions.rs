@@ -17,6 +17,7 @@ pub struct OpDecl {
   pub enabled: bool,
   pub is_async: bool, // TODO(@AaronO): enum sync/async/fast ?
   pub is_unstable: bool,
+  pub is_v8: bool,
 }
 
 impl OpDecl {

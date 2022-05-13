@@ -2459,10 +2459,7 @@ struct SpecifierArgs {
 }
 
 #[op]
-fn op_exists(
-  state: &mut OpState,
-  args: SpecifierArgs,
-) -> Result<bool, AnyError> {
+fn op_exists(state: &mut OpState, args: SpecifierArgs) -> bool {
   let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
@@ -2474,16 +2471,15 @@ fn op_exists(
     // sometimes tsc tries to query invalid specifiers, especially when
     // something else isn't quite right, so instead of bubbling up the error
     // back to tsc, we simply swallow it and say the file doesn't exist
-    Err(_) => return Ok(false),
+    Err(_) => return false,
   };
-  let result = state.state_snapshot.documents.exists(&specifier);
-  Ok(result)
+  state.state_snapshot.documents.exists(&specifier)
 }
 
 #[op]
-fn op_is_cancelled(state: &mut OpState) -> Result<bool, AnyError> {
+fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
-  Ok(state.token.is_cancelled())
+  state.token.is_cancelled()
 }
 
 #[op]
@@ -2545,27 +2541,22 @@ fn op_resolve(
 }
 
 #[op]
-fn op_respond(state: &mut OpState, args: Response) -> Result<bool, AnyError> {
+fn op_respond(state: &mut OpState, args: Response) -> bool {
   let state = state.borrow_mut::<State>();
   state.response = Some(args);
-  Ok(true)
+  true
 }
 
 #[op]
-fn op_script_names(
-  state: &mut OpState,
-  _args: Value,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
+fn op_script_names(state: &mut OpState) -> Vec<ModuleSpecifier> {
   let state = state.borrow_mut::<State>();
-  Ok(
-    state
-      .state_snapshot
-      .documents
-      .documents(true, true)
-      .into_iter()
-      .map(|d| d.specifier().clone())
-      .collect(),
-  )
+  state
+    .state_snapshot
+    .documents
+    .documents(true, true)
+    .into_iter()
+    .map(|d| d.specifier().clone())
+    .collect()
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -3696,8 +3687,6 @@ mod tests {
         specifier: "/error/unknown:something/index.d.ts".to_string(),
       },
     );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
     assert!(!actual);
   }
 
