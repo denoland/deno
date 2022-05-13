@@ -2573,6 +2573,10 @@ fn task_parse(
           flags.config_flag = ConfigFlag::Path(raw_args[index + 1].to_string());
           index += 2;
         }
+        "--no-config" => {
+          flags.config_flag = ConfigFlag::Disabled;
+          index += 1;
+        }
         "-q" | "--quiet" => {
           flags.log_level = Some(Level::Error);
           index += 1;
