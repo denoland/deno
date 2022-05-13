@@ -2714,6 +2714,14 @@ itest!(event_listener_error_immediate_exit {
   exit_code: 1,
 });
 
+// https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
+itest!(event_listener_error_immediate_exit_worker {
+  args:
+    "run --quiet --unstable -A event_listener_error_immediate_exit_worker.ts",
+  output: "event_listener_error_immediate_exit_worker.ts.out",
+  exit_code: 1,
+});
+
 itest!(set_timeout_error {
   args: "run --quiet set_timeout_error.ts",
   output: "set_timeout_error.ts.out",
@@ -2778,4 +2786,10 @@ itest!(report_error_handled {
 itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
+});
+
+itest!(error_name_non_string {
+  args: "run --quiet error_name_non_string.js",
+  output: "error_name_non_string.js.out",
+  exit_code: 1,
 });

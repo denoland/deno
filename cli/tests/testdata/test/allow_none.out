@@ -8,7 +8,7 @@ run ... FAILED [WILDCARD]
 ffi ... FAILED [WILDCARD]
 hrtime ... FAILED [WILDCARD]
 
-failures:
+ ERRORS 
 
 read => ./test/allow_none.ts:[WILDCARD]
 error: PermissionDenied: Can't escalate parent thread permissions
@@ -38,7 +38,7 @@ hrtime => ./test/allow_none.ts:[WILDCARD]
 error: PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
-failures:
+ FAILURES 
 
 read => ./test/allow_none.ts:[WILDCARD]
 write => ./test/allow_none.ts:[WILDCARD]
