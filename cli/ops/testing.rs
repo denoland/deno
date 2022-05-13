@@ -1,4 +1,8 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -8,10 +12,9 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
-use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
+pub fn init(sender: TestEventSender) -> Extension {
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
@@ -39,6 +42,9 @@ pub fn op_pledge_test_permissions(
   let worker_permissions = create_child_permissions(parent_permissions, args)?;
   let parent_permissions = parent_permissions.clone();
 
+  if state.try_take::<PermissionsHolder>().is_some() {
+    panic!("pledge test permissions called before restoring previous pledge");
+  }
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
@@ -75,8 +81,7 @@ fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
+  let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
-
   Ok(())
 }

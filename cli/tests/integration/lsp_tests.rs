@@ -5470,13 +5470,30 @@ Deno.test({
   assert!(res.is_ok());
   let (method, notification) = res.unwrap();
   assert_eq!(method, "deno/testRunProgress");
+  let notification_value = notification
+    .as_ref()
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("message")
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("value")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  // deno test's output capturing flushes with a zero-width space in order to
+  // synchronize the output pipes. Occassionally this zero width space
+  // might end up in the output so strip it from the output comparison here.
+  assert_eq!(notification_value.replace('\u{200B}', ""), "test a\r\n");
   assert_eq!(
     notification,
     Some(json!({
       "id": 1,
       "message": {
         "type": "output",
-        "value": "test a\r\n",
+        "value": notification_value,
         "test": {
           "textDocument": {
             "uri": specifier,

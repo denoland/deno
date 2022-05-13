@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git --allow-net --no-check
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git --allow-net --no-check --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { createOctoKit, getGitHubRepository } from "./deps.ts";
@@ -26,7 +26,7 @@ async function createReleaseTag() {
     console.log(`Tag ${tagName} already exists.`);
   } else {
     await repo.gitTag(tagName);
-    await repo.gitPush(tagName);
+    await repo.gitPush("origin", tagName);
   }
 }
 
@@ -40,6 +40,7 @@ async function forwardReleaseCommitToMain() {
     return;
   }
 
+  await repo.runCommandWithOutput(["git", "fetch", "origin", "main"]);
   const releaseCommitHash =
     (await repo.runCommand(["git", "rev-parse", "HEAD"])).trim();
   const newBranchName = `forward_v${cliCrate.version}`;
@@ -49,7 +50,7 @@ async function forwardReleaseCommitToMain() {
     "checkout",
     "-b",
     newBranchName,
-    "main",
+    "origin/main",
   ]);
   await repo.runCommand([
     "git",

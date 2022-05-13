@@ -1,16 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::extensions::OpDecl;
-use crate::modules::get_module_type_from_assertions;
+use crate::error::JsError;
+use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::ops::OpCtx;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
+use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRuntime;
-use crate::OpState;
 use crate::PromiseId;
 use crate::ResourceId;
 use crate::ZeroCopyBuf;
@@ -21,9 +22,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::option::Option;
 use std::os::raw::c_void;
-use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -104,6 +105,15 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: abort_wasm_streaming.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: destructure_error.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: terminate.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: apply_source_map.map_fn_to(),
+      },
     ])
   });
 
@@ -147,9 +157,8 @@ pub fn module_origin<'a>(
 
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
-  ops: &[OpDecl],
+  op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
-  op_state: Rc<RefCell<OpState>>,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -165,14 +174,13 @@ pub fn initialize_context<'s>(
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
-    // Grab Deno.core.ops object
+    // Grab the Deno.core & Deno.core.ops objects
+    let core_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core")
+      .expect("Deno.core to exist");
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-
-    let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-    for op in ops {
-      set_func_raw(scope, ops_obj, op.name, op.v8_fn_ptr, raw_op_state);
-    }
+    initialize_ops(scope, ops_obj, op_ctxs);
+    initialize_op_names(scope, core_obj, op_ctxs);
     return scope.escape(context);
   }
 
@@ -232,16 +240,40 @@ pub fn initialize_context<'s>(
     set_wasm_streaming_callback,
   );
   set_func(scope, core_val, "abortWasmStreaming", abort_wasm_streaming);
+  set_func(scope, core_val, "destructureError", destructure_error);
+  set_func(scope, core_val, "terminate", terminate);
+  set_func(scope, core_val, "applySourceMap", apply_source_map);
+
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
   // Bind functions to Deno.core.ops.*
-  let ops_val = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
-  let raw_op_state = Rc::as_ptr(&op_state) as *const c_void;
-  for op in ops {
-    set_func_raw(scope, ops_val, op.name, op.v8_fn_ptr, raw_op_state);
-  }
+  let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  initialize_ops(scope, ops_obj, op_ctxs);
+  initialize_op_names(scope, core_val, op_ctxs);
   scope.escape(context)
+}
+
+fn initialize_ops(
+  scope: &mut v8::HandleScope,
+  ops_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
+  for ctx in op_ctxs {
+    let ctx_ptr = ctx as *const OpCtx as *const c_void;
+    set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
+  }
+}
+
+fn initialize_op_names(
+  scope: &mut v8::HandleScope,
+  core_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
+  let names: Vec<&str> = op_ctxs.iter().map(|o| o.decl.name).collect();
+  let k = v8::String::new(scope, "op_names").unwrap().into();
+  let v = serde_v8::to_v8(scope, names).unwrap();
+  core_obj.set(scope, k, v);
 }
 
 pub fn set_func(
@@ -311,7 +343,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
       resolver.reject(tc_scope, e);
     }
   }
-  let module_type = get_module_type_from_assertions(&assertions);
+  let asserted_module_type =
+    get_asserted_module_type_from_assertions(&assertions);
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
@@ -326,7 +359,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
-      module_type,
+      asserted_module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();
@@ -1275,6 +1308,63 @@ fn queue_microtask(
       throw_type_error(scope, "Invalid argument");
     }
   };
+}
+
+fn destructure_error(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let js_error = JsError::from_v8_exception(scope, args.get(0));
+  let object = serde_v8::to_v8(scope, js_error).unwrap();
+  rv.set(object);
+}
+
+fn terminate(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  state.explicit_terminate_exception =
+    Some(v8::Global::new(scope, args.get(0)));
+  scope.terminate_execution();
+}
+
+fn apply_source_map(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  #[derive(Deserialize, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct Location {
+    file_name: String,
+    line_number: u32,
+    column_number: u32,
+  }
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  if let Some(source_map_getter) = &state.source_map_getter {
+    let mut location = match serde_v8::from_v8::<Location>(scope, args.get(0)) {
+      Ok(location) => location,
+      Err(error) => return throw_type_error(scope, error.to_string()),
+    };
+    let (f, l, c, _) = apply_source_map_(
+      location.file_name,
+      location.line_number.into(),
+      location.column_number.into(),
+      &mut HashMap::new(),
+      source_map_getter.as_ref(),
+    );
+    location.file_name = f;
+    location.line_number = l as u32;
+    location.column_number = c as u32;
+    rv.set(serde_v8::to_v8(scope, location).unwrap());
+  } else {
+    rv.set(args.get(0));
+  }
 }
 
 fn create_host_object(
