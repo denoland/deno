@@ -129,6 +129,20 @@ fn magic_buffer() {
     assert!(eq.is_true());
     let eq = js_exec(scope, "t3.b[4] === 11");
     assert!(eq.is_true());
+
+    // ZeroCopyBuf as bytes::Bytes
+    let v8_array = js_exec(scope, "new Uint8Array([1,2,3,4,5])");
+    let zbuf: serde_v8::ZeroCopyBuf =
+      serde_v8::from_v8(scope, v8_array).unwrap();
+    let buf: bytes::Bytes = zbuf.into();
+    assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
+    assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
+    assert_eq!(buf.slice(0..2), bytes::Bytes::from_static(&[1, 2]));
+    assert_eq!(buf.slice(2..), bytes::Bytes::from_static(&[3, 4, 5]));
+    // We're specifically testing that slices are preserved post-clone
+    #[allow(clippy::redundant_clone)]
+    let buf2 = buf.slice(2..).clone();
+    assert_eq!(buf2, bytes::Bytes::from_static(&[3, 4, 5]));
   })
 }
 
