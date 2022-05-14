@@ -667,7 +667,7 @@ fn set_uncaught_exception_callback(
 }
 
 /// Set a callback which formats exception messages as stored in
-/// `JsError::exception_message`. The callback is passed the error value and 
+/// `JsError::exception_message`. The callback is passed the error value and
 /// should return a string or `null`. If no callback is set or the callback
 /// returns `null`, the built-in default formatting will be used.
 fn set_format_exception_callback(
