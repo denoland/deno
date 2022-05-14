@@ -198,7 +198,7 @@ impl JsError {
       let format_exception_cb = format_exception_cb.open(scope);
       let this = v8::undefined(scope).into();
       let formatted =
-        format_exception_cb.call(scope, this, &[exception.clone()]);
+        format_exception_cb.call(scope, this, &[exception]);
       if let Some(formatted) = formatted {
         if formatted.is_string() {
           exception_message = Some(formatted.to_rust_string_lossy(scope));
