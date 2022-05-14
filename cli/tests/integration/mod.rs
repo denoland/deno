@@ -15,6 +15,8 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use trust_dns_client::serialize::txt::Lexer;
+use trust_dns_client::serialize::txt::Parser;
 
 #[macro_export]
 macro_rules! itest(
@@ -811,9 +813,6 @@ fn set_raw_should_not_panic_on_no_tty() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_resolve_dns() {
-  use std::collections::BTreeMap;
-  use std::net::Ipv4Addr;
-  use std::net::Ipv6Addr;
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
@@ -821,19 +820,9 @@ async fn test_resolve_dns() {
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;
-  use trust_dns_client::rr::LowerName;
-  use trust_dns_client::rr::RecordType;
-  use trust_dns_client::rr::RrKey;
   use trust_dns_server::authority::Catalog;
   use trust_dns_server::authority::ZoneType;
-  use trust_dns_server::proto::rr::rdata::mx::MX;
-  use trust_dns_server::proto::rr::rdata::soa::SOA;
-  use trust_dns_server::proto::rr::rdata::srv::SRV;
-  use trust_dns_server::proto::rr::rdata::txt::TXT;
-  use trust_dns_server::proto::rr::record_data::RData;
-  use trust_dns_server::proto::rr::resource::Record;
   use trust_dns_server::proto::rr::Name;
-  use trust_dns_server::proto::rr::RecordSet;
   use trust_dns_server::store::in_memory::InMemoryAuthority;
   use trust_dns_server::ServerFuture;
 
@@ -841,137 +830,25 @@ async fn test_resolve_dns() {
 
   // Setup DNS server for testing
   async fn run_dns_server(tx: oneshot::Sender<()>) {
-    let catalog = {
-      let records = {
-        let mut map = BTreeMap::new();
-        let lookup_name = "www.example.com".parse::<Name>().unwrap();
-        let lookup_name_lower = LowerName::new(&lookup_name);
-
-        // Inserts SOA record
-        let soa = SOA::new(
-          Name::from_str("net").unwrap(),
-          Name::from_str("example").unwrap(),
-          0,
-          i32::MAX,
-          i32::MAX,
-          i32::MAX,
-          0,
-        );
-        let rdata = RData::SOA(soa);
-        let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map
-          .insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
-
-        // Inserts A record
-        let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::A),
-          record_set,
-        );
-
-        // Inserts AAAA record
-        let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
-          record_set,
-        );
-
-        // Inserts ANAME record
-        let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
-          record_set,
-        );
-
-        // Inserts CNAME record
-        let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
-        let record =
-          Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
-          record_set,
-        );
-
-        // Inserts MX record
-        let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::MX),
-          record_set,
-        );
-
-        // Inserts NS record
-        let rdata = RData::NS(Name::from_str("ns1.ns.com").unwrap());
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::NS),
-          record_set,
-        );
-
-        // Inserts PTR record
-        let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
-        let record = Record::from_rdata(
-          Name::from_str("5.6.7.8").unwrap(),
-          u32::MAX,
-          rdata,
-        );
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
-          record_set,
-        );
-
-        // Inserts SRV record
-        let rdata = RData::SRV(SRV::new(
-          0,
-          100,
-          1234,
-          Name::from_str("srv.com").unwrap(),
-        ));
-        let record = Record::from_rdata(
-          Name::from_str("_Service._TCP.example.com").unwrap(),
-          u32::MAX,
-          rdata,
-        );
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
-          record_set,
-        );
-
-        // Inserts TXT record
-        let rdata =
-          RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
-        let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
-
-        map
-      };
-
-      let authority = Box::new(Arc::new(
-        InMemoryAuthority::new(
-          Name::from_str("com").unwrap(),
-          records,
-          ZoneType::Primary,
-          false,
-        )
+    let zone_file =
+      fs::read_to_string(util::testdata_path().join("resolve_dns.zone.in"))
+        .unwrap();
+    let lexer = Lexer::new(&zone_file);
+    let records = Parser::new().parse(
+      lexer,
+      Some(Name::from_str("example.com").unwrap()),
+      None,
+    );
+    if records.is_err() {
+      panic!("failed to parse: {:?}", records.err())
+    }
+    let (origin, records) = records.unwrap();
+    let authority = Box::new(Arc::new(
+      InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
         .unwrap(),
-      ));
-      let mut c = Catalog::new();
-      c.upsert(Name::root().into(), authority);
-      c
-    };
+    ));
+    let mut catalog: Catalog = Catalog::new();
+    catalog.upsert(Name::root().into(), authority);
 
     let mut server_fut = ServerFuture::new(catalog);
     let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
@@ -1011,6 +888,7 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    println!("{}", err);
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
