@@ -2560,6 +2560,12 @@ itest!(config_auto_discovered_for_local_script {
   output_str: Some("ok\n"),
 });
 
+itest!(no_config_auto_discovery_for_local_script {
+  args: "run --quiet --no-config run/with_config/frontend_work.ts",
+  output: "run/with_config/no_auto_discovery.out",
+  exit_code: 1,
+});
+
 itest!(config_not_auto_discovered_for_remote_script {
   args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
   output_str: Some("ok\n"),
