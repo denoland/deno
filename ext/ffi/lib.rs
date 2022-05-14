@@ -728,12 +728,12 @@ unsafe extern "C" fn deno_ffi_callback(
 ) {
   let isolate = &mut *info.isolate;
   let callback = v8::Global::from_raw(isolate, info.callback);
-  let context = v8::Global::from_raw(isolate, info.context);
+  let context = std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(info.context);
+  let mut cb_scope = v8::CallbackScope::new(context);
   let mut scope = if info.create_scope.get() {
-    v8::HandleScope::with_context(isolate, context.clone())
+    v8::HandleScope::with_context(isolate, context)
   } else {
-    // CallbackScope
-    panic!("Scope is alive. Use it ;)")
+    v8::HandleScope::new(&mut cb_scope)
   };
   let func = callback.open(&mut scope);
   let result = result as *mut c_void;
