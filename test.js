@@ -1,7 +1,8 @@
 const callback = Deno.core.opSync("op_ffi_register_callback", {
   parameters: [],
   result: "void",
-}, console.log);
+}, function daCallback() {
+  console.log("Called");
+});
 
-Deno.core.opSync("test_registered_callback", callback)
-
+Deno.core.opSync("test_registered_callback", callback);

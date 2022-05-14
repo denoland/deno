@@ -26,8 +26,8 @@ use libffi::raw::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
@@ -728,7 +728,10 @@ unsafe extern "C" fn deno_ffi_callback(
 ) {
   let isolate = &mut *info.isolate;
   let callback = v8::Global::from_raw(isolate, info.callback);
-  let context = std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(info.context);
+  let context = std::mem::transmute::<
+    NonNull<v8::Context>,
+    v8::Local<v8::Context>,
+  >(info.context);
   let mut cb_scope = v8::CallbackScope::new(context);
   let mut scope = if info.create_scope.get() {
     v8::HandleScope::with_context(isolate, context)
@@ -888,14 +891,22 @@ fn op_ffi_deregister_callback(state: &mut deno_core::OpState, rid: ResourceId) {
 }
 
 #[op]
-fn test_registered_callback(state: &mut deno_core::OpState, rid: ResourceId) {
-  let resource = state
-    .resource_table
-    .get::<RegisteredCallbackResource>(rid)
-    .unwrap();
-  let info: &CallbackInfo = unsafe { &*resource.info };
+fn test_registered_callback(
+  state: Rc<RefCell<deno_core::OpState>>,
+  rid: ResourceId,
+) {
+  let (fn_ptr, info) = {
+    let state = &mut state.borrow_mut();
+    let resource = state
+      .resource_table
+      .get::<RegisteredCallbackResource>(rid)
+      .unwrap();
+    let info: &CallbackInfo = unsafe { &*resource.info };
+
+    let fn_ptr: unsafe extern "C" fn() = *resource.closure.code_ptr();
+    (fn_ptr, info)
+  };
   info.create_scope.set(false);
-  let fn_ptr: unsafe extern "C" fn() = *resource.closure.code_ptr();
   unsafe { fn_ptr() };
   info.create_scope.set(true);
 }
