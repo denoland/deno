@@ -902,11 +902,29 @@
       webidl.requiredArguments(arguments.length, 2, {
         prefix: "Failed to execute 'addEventListener' on 'EventTarget'",
       });
+
+      options = normalizeAddEventHandlerOptions(options);
+
+      if (options?.signal) {
+        const signal = options?.signal;
+        if (signal.aborted) {
+          // If signal is not null and its aborted flag is set, then return.
+          return;
+        } else {
+          // If listener’s signal is not null, then add the following abort
+          // abort steps to it: Remove an event listener.
+          signal.addEventListener("abort", () => {
+            this.removeEventListener(type, callback, options);
+          });
+        }
+      } else if (options?.signal === null) {
+        throw new TypeError("signal must be non-null");
+      }
+
       if (callback === null) {
         return;
       }
 
-      options = normalizeAddEventHandlerOptions(options);
       const { listeners } = (this ?? globalThis)[eventTargetData];
 
       if (!(ReflectHas(listeners, type))) {
@@ -923,21 +941,6 @@
         ) {
           return;
         }
-      }
-      if (options?.signal) {
-        const signal = options?.signal;
-        if (signal.aborted) {
-          // If signal is not null and its aborted flag is set, then return.
-          return;
-        } else {
-          // If listener’s signal is not null, then add the following abort
-          // abort steps to it: Remove an event listener.
-          signal.addEventListener("abort", () => {
-            this.removeEventListener(type, callback, options);
-          });
-        }
-      } else if (options?.signal === null) {
-        throw new TypeError("signal must be non-null");
       }
 
       ArrayPrototypePush(listeners[type], { callback, options });

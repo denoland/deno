@@ -918,12 +918,8 @@
         "returnValue should be ignored if-and-only-if the passive option is true",
         "Equivalence of option values"
       ],
-      "AddEventListenerOptions-signal.any.html": [
-        "Passing null as the signal should throw (listener is also null)"
-      ],
-      "AddEventListenerOptions-signal.any.worker.html": [
-        "Passing null as the signal should throw (listener is also null)"
-      ],
+      "AddEventListenerOptions-signal.any.html": true,
+      "AddEventListenerOptions-signal.any.worker.html": true,
       "Event-isTrusted.any.html": true,
       "Event-isTrusted.any.worker.html": true,
       "EventTarget-add-remove-listener.any.html": true,
