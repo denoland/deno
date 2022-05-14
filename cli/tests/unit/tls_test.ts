@@ -36,18 +36,9 @@ Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
 Deno.test(
   { permissions: { read: true, net: true } },
   async function connectTLSInvalidHost() {
-    const listener = await Deno.listenTls({
-      hostname: "localhost",
-      port: 3567,
-      certFile: "cli/tests/testdata/tls/localhost.crt",
-      keyFile: "cli/tests/testdata/tls/localhost.key",
-    });
-
     await assertRejects(async () => {
-      await Deno.connectTls({ hostname: "127.0.0.1", port: 3567 });
+      await Deno.connectTls({ hostname: "256.0.0.0", port: 3567 });
     }, TypeError);
-
-    listener.close();
   },
 );
 

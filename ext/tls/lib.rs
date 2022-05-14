@@ -50,26 +50,28 @@ impl ServerCertVerifier for NoCertificateVerification {
     ocsp_response: &[u8],
     now: SystemTime,
   ) -> Result<ServerCertVerified, Error> {
-    if let ServerName::DnsName(dns_name) = server_name {
-      let dns_name = dns_name.as_ref().to_owned();
-      if self.0.is_empty() || self.0.contains(&dns_name) {
-        Ok(ServerCertVerified::assertion())
-      } else {
-        let root_store = create_default_root_cert_store();
-        let verifier = WebPkiVerifier::new(root_store, None);
-        verifier.verify_server_cert(
-          end_entity,
-          intermediates,
-          server_name,
-          scts,
-          ocsp_response,
-          now,
-        )
+    let dns_name_or_ip_address = match server_name {
+      ServerName::DnsName(dns_name) => dns_name.as_ref().to_owned(),
+      ServerName::IpAddress(ip_address) => ip_address.to_string(),
+      _ => {
+        // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
+        // so we have this catch all errors here.
+        return Err(Error::General("Unknown `ServerName` variant".to_string()));
       }
+    };
+    if self.0.is_empty() || self.0.contains(&dns_name_or_ip_address) {
+      Ok(ServerCertVerified::assertion())
     } else {
-      // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
-      // so we have this catch all error here.
-      Err(Error::General("Unknown `ServerName` variant".to_string()))
+      let root_store = create_default_root_cert_store();
+      let verifier = WebPkiVerifier::new(root_store, None);
+      verifier.verify_server_cert(
+        end_entity,
+        intermediates,
+        server_name,
+        scts,
+        ocsp_response,
+        now,
+      )
     }
   }
 }
