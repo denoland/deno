@@ -374,3 +374,9 @@ itest!(uncaught_errors {
   output: "test/uncaught_errors.out",
   exit_code: 1,
 });
+
+itest!(non_error_thrown {
+  args: "test --quiet test/non_error_thrown.ts",
+  output: "test/non_error_thrown.out",
+  exit_code: 1,
+});
