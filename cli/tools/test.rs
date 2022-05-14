@@ -101,10 +101,17 @@ pub enum TestOutput {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum TestError {
+  JsError(Box<JsError>),
+  Other(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(Box<JsError>),
+  Failed(TestError),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -120,12 +127,12 @@ pub struct TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<Box<JsError>>),
-  Pending(Option<Box<JsError>>),
+  Failed(Option<TestError>),
+  Pending(Option<TestError>),
 }
 
 impl TestStepResult {
-  fn error(&self) -> Option<&JsError> {
+  fn error(&self) -> Option<&TestError> {
     match self {
       TestStepResult::Failed(Some(error)) => Some(error),
       TestStepResult::Pending(Some(error)) => Some(error),
@@ -150,7 +157,7 @@ pub enum TestEvent {
   Wait(TestDescription),
   Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
-  UncaughtError(String, Box<JsError>),
+  UncaughtError(String, TestError),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
 }
@@ -167,8 +174,8 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, Box<JsError>)>,
-  pub uncaught_errors: Vec<(String, Box<JsError>)>,
+  pub failures: Vec<(TestDescription, TestError)>,
+  pub uncaught_errors: Vec<(String, TestError)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -218,7 +225,7 @@ pub trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
-  fn report_uncaught_error(&mut self, origin: &str, error: &JsError);
+  fn report_uncaught_error(&mut self, origin: &str, error: &TestError);
   fn report_step_wait(&mut self, description: &TestStepDescription);
   fn report_step_result(
     &mut self,
@@ -322,8 +329,8 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
-    if let Some(js_error) = result.error() {
-      let err_string = format_test_error(js_error);
+    if let Some(test_error) = result.error() {
+      let err_string = format_test_error(test_error);
       let err_string = format!("{}: {}", colors::red_bold("error"), err_string);
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
@@ -436,7 +443,7 @@ impl TestReporter for PrettyTestReporter {
     self.in_new_line = true;
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, _error: &JsError) {
+  fn report_uncaught_error(&mut self, origin: &str, _error: &TestError) {
     if !self.in_new_line {
       println!();
     }
@@ -488,23 +495,23 @@ impl TestReporter for PrettyTestReporter {
       #[allow(clippy::type_complexity)] // Type alias doesn't look better here
       let mut failures_by_origin: BTreeMap<
         String,
-        (Vec<(&TestDescription, &JsError)>, Option<&JsError>),
+        (Vec<(&TestDescription, &TestError)>, Option<&TestError>),
       > = BTreeMap::default();
       let mut failure_titles = vec![];
-      for (description, js_error) in &summary.failures {
+      for (description, test_error) in &summary.failures {
         let (failures, _) = failures_by_origin
           .entry(description.origin.clone())
           .or_default();
-        failures.push((description, js_error.as_ref()));
+        failures.push((description, test_error));
       }
-      for (origin, js_error) in &summary.uncaught_errors {
+      for (origin, test_error) in &summary.uncaught_errors {
         let (_, uncaught_error) =
           failures_by_origin.entry(origin.clone()).or_default();
-        let _ = uncaught_error.insert(js_error.as_ref());
+        let _ = uncaught_error.insert(test_error);
       }
       println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
-        for (description, js_error) in failures {
+        for (description, test_error) in failures {
           let failure_title = format!(
             "{} {}",
             &description.name,
@@ -521,7 +528,7 @@ impl TestReporter for PrettyTestReporter {
           println!(
             "{}: {}",
             colors::red_bold("error"),
-            format_test_error(js_error)
+            format_test_error(test_error)
           );
           println!();
           failure_titles.push(failure_title);
@@ -582,7 +589,7 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-fn abbreviate_test_error(js_error: &JsError) -> JsError {
+fn abbreviate_js_error(js_error: &JsError) -> JsError {
   let mut js_error = js_error.clone();
   let frames = std::mem::take(&mut js_error.frames);
 
@@ -617,11 +624,11 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   js_error.cause = js_error
     .cause
     .as_ref()
-    .map(|e| Box::new(abbreviate_test_error(e)));
+    .map(|e| Box::new(abbreviate_js_error(e)));
   js_error.aggregated = js_error
     .aggregated
     .as_ref()
-    .map(|es| es.iter().map(abbreviate_test_error).collect());
+    .map(|es| es.iter().map(abbreviate_js_error).collect());
   js_error
 }
 
@@ -632,13 +639,18 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
 //   - if stack trace consists of mixed user and internal code, the frames
 //     below the first user code frame are filtered out
 //   - if stack trace consists only of internal code it is preserved as is
-pub fn format_test_error(js_error: &JsError) -> String {
-  let mut js_error = abbreviate_test_error(js_error);
-  js_error.exception_message = js_error
-    .exception_message
-    .trim_start_matches("Uncaught ")
-    .to_string();
-  format_js_error(&js_error)
+pub fn format_test_error(test_error: &TestError) -> String {
+  match test_error {
+    TestError::JsError(js_error) => {
+      let mut js_error = abbreviate_js_error(js_error);
+      js_error.exception_message = js_error
+        .exception_message
+        .trim_start_matches("Uncaught ")
+        .to_string();
+      format_js_error(&js_error)
+    }
+    TestError::Other(string) => string.clone(),
+  }
 }
 
 fn create_reporter(
@@ -1045,7 +1057,12 @@ async fn test_specifiers(
           if error.is::<JsError>() {
             sender.send(TestEvent::UncaughtError(
               origin,
-              Box::new(error.downcast::<JsError>().unwrap()),
+              // TODO(nayeemrmn): Identify non-errors here and use
+              // `TestError::Other` instead. Or rather if we could do that with
+              // `JsError` we wouldn't need `TestError::Other` at all.
+              TestError::JsError(Box::new(
+                error.downcast::<JsError>().unwrap(),
+              )),
             ))?;
           } else {
             return Err(error);

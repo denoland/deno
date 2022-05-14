@@ -16,6 +16,7 @@ use crate::lsp::logging::lsp_log;
 use crate::ops;
 use crate::proc_state;
 use crate::tools::test;
+use crate::tools::test::TestError;
 use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
@@ -357,7 +358,9 @@ impl TestRun {
           if error.is::<JsError>() {
             sender.send(test::TestEvent::UncaughtError(
               origin,
-              Box::new(error.downcast::<JsError>().unwrap()),
+              TestError::JsError(Box::new(
+                error.downcast::<JsError>().unwrap(),
+              )),
             ))?;
           } else {
             return Err(error);
@@ -821,7 +824,7 @@ impl test::TestReporter for LspTestReporter {
     }
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+  fn report_uncaught_error(&mut self, origin: &str, test_error: &TestError) {
     if self.current_origin == Some(origin.to_string()) {
       self.current_origin = None;
     }
@@ -829,7 +832,7 @@ impl test::TestReporter for LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::format_test_error(js_error)
+      test::format_test_error(test_error)
     );
     let messages = as_test_messages(err_string, false);
     for t in stack.iter().rev() {

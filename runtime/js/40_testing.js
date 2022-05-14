@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { setExitHandler } = window.__bootstrap.os;
-  const { Console, inspectArgs } = window.__bootstrap.console;
+  const { Console, inspectArgs, quoteString } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.infra;
   const {
@@ -790,6 +790,16 @@
     };
   }
 
+  function asTestError(error) {
+    if (error instanceof Error) {
+      return { jsError: core.destructureError(error) };
+    } else if (typeof error == "string") {
+      return { other: inspectArgs([quoteString(error)], { colors: true }) };
+    } else {
+      return { other: inspectArgs([error], { colors: true }) };
+    }
+  }
+
   async function runTest(test, description) {
     if (test.ignore) {
       return "ignored";
@@ -817,7 +827,7 @@
       };
     } catch (error) {
       return {
-        "failed": core.destructureError(error),
+        "failed": asTestError(error),
       };
     } finally {
       step.finalized = true;
@@ -1335,13 +1345,9 @@
         case "ignored":
           return "ignored";
         case "pending":
-          return {
-            "pending": this.error && core.destructureError(this.error),
-          };
+          return { "pending": asTestError(this.error) };
         case "failed":
-          return {
-            "failed": this.error && core.destructureError(this.error),
-          };
+          return { "failed": asTestError(this.error) };
         default:
           throw new Error(`Unhandled status: ${this.status}`);
       }

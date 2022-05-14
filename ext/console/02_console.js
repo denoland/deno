@@ -326,7 +326,7 @@
   }
 
   function maybeColor(fn, inspectOptions) {
-    return inspectOptions.colors ? fn : (s) => s;
+    return inspectOptions.colors && !colors.getNoColor() ? fn : (s) => s;
   }
 
   function inspectFunction(value, level, inspectOptions) {
@@ -2322,5 +2322,6 @@
     inspect,
     wrapConsole,
     createFilteredInspectProxy,
+    quoteString,
   };
 })(this);
