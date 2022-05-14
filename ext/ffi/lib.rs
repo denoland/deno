@@ -14,7 +14,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
-use deno_core::v8::Handle;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -28,6 +27,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
@@ -717,6 +717,7 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
+  pub create_scope: Cell<bool>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -728,7 +729,12 @@ unsafe extern "C" fn deno_ffi_callback(
   let isolate = &mut *info.isolate;
   let callback = v8::Global::from_raw(isolate, info.callback);
   let context = v8::Global::from_raw(isolate, info.context);
-  let mut scope = v8::HandleScope::with_context(isolate, context.clone());
+  let mut scope = if info.create_scope.get() {
+    v8::HandleScope::with_context(isolate, context.clone())
+  } else {
+    // CallbackScope
+    panic!("Scope is alive. Use it ;)")
+  };
   let func = callback.open(&mut scope);
   let result = result as *mut c_void;
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
@@ -856,6 +862,7 @@ fn op_ffi_register_callback(
       callback,
       context,
       isolate,
+      create_scope: Cell::new(true),
     }))
   };
   let cif = Cif::new(
@@ -886,9 +893,11 @@ fn test_registered_callback(state: &mut deno_core::OpState, rid: ResourceId) {
     .resource_table
     .get::<RegisteredCallbackResource>(rid)
     .unwrap();
-
+  let info: &CallbackInfo = unsafe { &*resource.info };
+  info.create_scope.set(false);
   let fn_ptr: unsafe extern "C" fn() = *resource.closure.code_ptr();
   unsafe { fn_ptr() };
+  info.create_scope.set(true);
 }
 
 #[op]
