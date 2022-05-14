@@ -709,6 +709,7 @@ pub fn bundle(
     let emit_options: deno_ast::EmitOptions = options.ts_config.into();
     let source_map_config = deno_ast::SourceMapConfig {
       inline_sources: emit_options.inline_sources,
+      maybe_base: None,
     };
 
     let cm = Rc::new(swc::common::SourceMap::new(
