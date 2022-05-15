@@ -2994,6 +2994,11 @@ declare namespace Deno {
   export interface SOARecord {
     mname: string;
     rname: string;
+    serial: number;
+    refresh: number;
+    retry: number;
+    expire: number;
+    minimum: number;
   }
 
   /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
