@@ -226,7 +226,8 @@ fn handle_dep_specifier(
       let mut local_base_specifier = mappings.local_uri(base_specifier);
       local_base_specifier.set_query(unresolved_specifier.query());
       local_base_specifier = local_base_specifier
-        .join(&unresolved_specifier.path()[1..])
+        // path includes "/" so make it relative
+        .join(&format!(".{}", unresolved_specifier.path()))
         .unwrap_or_else(|_| {
           panic!(
             "Error joining {} to {}",

@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::tools::test::TestEvent;
-use crate::tools::test::TestOutput;
+use crate::tools::test::TestEventSender;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -12,10 +12,9 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
-use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
+pub fn init(sender: TestEventSender) -> Extension {
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
@@ -23,10 +22,6 @@ pub fn init(sender: UnboundedSender<TestEvent>) -> Extension {
       op_get_test_origin::decl(),
       op_dispatch_test_event::decl(),
     ])
-    .middleware(|op| match op.name {
-      "op_print" => op_print::decl(),
-      _ => op,
-    })
     .state(move |state| {
       state.put(sender.clone());
       Ok(())
@@ -86,19 +81,7 @@ fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
+  let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
-  Ok(())
-}
-
-#[op]
-pub fn op_print(
-  state: &mut OpState,
-  msg: String,
-  _is_err: bool,
-) -> Result<(), AnyError> {
-  let sender = state.borrow::<UnboundedSender<TestEvent>>().clone();
-  let msg = TestOutput::String(msg);
-  sender.send(TestEvent::Output(msg)).ok();
   Ok(())
 }

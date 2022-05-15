@@ -2,6 +2,7 @@
 
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
+use crate::url::Url;
 use anyhow::Error;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -163,7 +164,7 @@ fn get_property<'a>(
   object.get(scope, key.into())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Default, serde::Deserialize)]
 pub(crate) struct NativeJsError {
   pub name: Option<String>,
   pub message: Option<String>,
@@ -195,7 +196,7 @@ impl JsError {
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
       let cause = get_property(scope, exception, "cause");
       let e: NativeJsError =
-        serde_v8::from_v8(scope, exception.into()).unwrap();
+        serde_v8::from_v8(scope, exception.into()).unwrap_or_default();
       // Get the message by formatting error.name and error.message.
       let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
       let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
@@ -429,6 +430,27 @@ pub(crate) fn is_instance_of_error<'s>(
       .and_then(|o| o.get_prototype(scope));
   }
   false
+}
+
+const DATA_URL_ABBREV_THRESHOLD: usize = 150;
+
+pub fn format_file_name(file_name: &str) -> String {
+  abbrev_file_name(file_name).unwrap_or_else(|| file_name.to_string())
+}
+
+fn abbrev_file_name(file_name: &str) -> Option<String> {
+  if file_name.len() <= DATA_URL_ABBREV_THRESHOLD {
+    return None;
+  }
+  let url = Url::parse(file_name).ok()?;
+  if url.scheme() != "data" {
+    return None;
+  }
+  let (head, tail) = url.path().split_once(',')?;
+  let len = tail.len();
+  let start = tail.get(0..20)?;
+  let end = tail.get(len - 20..)?;
+  Some(format!("{}:{},{}......{}", url.scheme(), head, start, end))
 }
 
 #[cfg(test)]

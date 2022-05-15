@@ -1728,18 +1728,18 @@ pub fn run_powershell_script_file(
 }
 
 #[derive(Debug, Default)]
-pub struct CheckOutputIntegrationTest {
-  pub args: &'static str,
-  pub args_vec: Vec<&'static str>,
-  pub output: &'static str,
-  pub input: Option<&'static str>,
-  pub output_str: Option<&'static str>,
+pub struct CheckOutputIntegrationTest<'a> {
+  pub args: &'a str,
+  pub args_vec: Vec<&'a str>,
+  pub output: &'a str,
+  pub input: Option<&'a str>,
+  pub output_str: Option<&'a str>,
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
 }
 
-impl CheckOutputIntegrationTest {
+impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn run(&self) {
     let args = if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
@@ -1818,6 +1818,13 @@ impl CheckOutputIntegrationTest {
     }
 
     actual = strip_ansi_codes(&actual).to_string();
+
+    // deno test's output capturing flushes with a zero-width space in order to
+    // synchronize the output pipes. Occassionally this zero width space
+    // might end up in the output so strip it from the output comparison here.
+    if args.get(0) == Some(&"test") {
+      actual = actual.replace('\u{200B}', "");
+    }
 
     let expected = if let Some(s) = self.output_str {
       s.to_owned()

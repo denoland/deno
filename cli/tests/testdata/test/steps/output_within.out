@@ -12,20 +12,20 @@ description ...
 ------- output -------
 3
 ----- output end -----
-    ok ([WILDCARD]ms)
+    inner 1 ... ok ([WILDCARD]ms)
     inner 2 ...
 ------- output -------
 4
 ----- output end -----
-    ok ([WILDCARD]ms)
+    inner 2 ... ok ([WILDCARD]ms)
 
 ------- output -------
 5
 ----- output end -----
-  ok ([WILDCARD]ms)
+  step 1 ... ok ([WILDCARD]ms)
 
 ------- output -------
 6
 ----- output end -----
-ok ([WILDCARD]ms)
+description ... ok ([WILDCARD]ms)
 [WILDCARD]

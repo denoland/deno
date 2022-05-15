@@ -6,6 +6,31 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.21.3 / 2022.05.12
+
+- fix(cli): add deno version to manual links (#14505)
+- fix(core): avoid panic on non-string Error.name (#14529)
+- fix(ext/tls): finish TLS handshake before shutting down (#14547)
+- fix(runtime): stdout and stderr encoding on Windows (#14559)
+- fix(task): accept double hyphen arg immediately following task name (#14567)
+- fix(test): do not panic on `TestOutputPipe::flush` when receiver dropped
+  (#14560)
+- fix(workers): make module evaluation result deterministic (#14553)
+
+### 1.21.2 / 2022.05.05
+
+- fix(cli): add dom.extras lib (#14430)
+- fix(coverage): exclude .snap files (#14480)
+- fix(ext/http): explicitly close resource after reading (#14471)
+- fix(runtime): lossy utf8 readTextFile (#14456)
+- fix(task): allow hyphen values after task name (#14434)
+- fix(task): support forwarding lone double hyphen (#14436)
+- fix(test): actually capture stdout and stderr in workers (#14435)
+- fix(test/bench): accept file protocol module specifier CLI args (#14429)
+- fix(vendor): do not panic on relative specifier with scheme-like folder name
+  (#14453)
+- fix: improve formatting jsdocs with asterisk as first char on line (#14446)
+
 ### 1.21.1 / 2022.04.28
 
 - Reland "feat(ext/http): stream auto resp body compression" (#14345)

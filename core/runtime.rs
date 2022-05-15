@@ -491,9 +491,8 @@ impl JsRuntime {
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
-        let source = source()?;
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self, filename, &source)?;
+        realm.execute_script(self, filename, source)?;
       }
     }
     // Restore extensions
@@ -1554,7 +1553,7 @@ impl JsRuntime {
           // main module
           true,
           specifier.as_str(),
-          &code,
+          code.as_bytes(),
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -1613,7 +1612,7 @@ impl JsRuntime {
           // not main module
           false,
           specifier.as_str(),
-          &code,
+          code.as_bytes(),
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -3022,7 +3021,7 @@ assertEquals(1, notify_return_value);
       ) -> Pin<Box<ModuleSourceFuture>> {
         async move {
           Ok(ModuleSource {
-            code: "console.log('hello world');".to_string(),
+            code: b"console.log('hello world');".to_vec().into_boxed_slice(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,
