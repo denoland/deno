@@ -45,6 +45,7 @@ declare namespace globalThis {
       };
       forgivingBase64Encode(data: Uint8Array): string;
       forgivingBase64Decode(data: string): Uint8Array;
+      serializeJSValueToJSONString(value: unknown): string;
     };
 
     declare var domException: {

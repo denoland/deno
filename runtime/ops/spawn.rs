@@ -3,6 +3,8 @@
 use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
+use super::process::Stdio;
+use super::process::StdioOrRid;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -38,22 +40,6 @@ struct ChildResource(tokio::process::Child);
 impl Resource for ChildResource {
   fn name(&self) -> Cow<str> {
     "child".into()
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Stdio {
-  Inherit,
-  Piped,
-  Null,
-}
-
-fn subprocess_stdio_map(s: &Stdio) -> Result<std::process::Stdio, AnyError> {
-  match s {
-    Stdio::Inherit => Ok(std::process::Stdio::inherit()),
-    Stdio::Piped => Ok(std::process::Stdio::piped()),
-    Stdio::Null => Ok(std::process::Stdio::null()),
   }
 }
 
@@ -161,9 +147,15 @@ fn create_command(
     });
   }
 
-  command.stdin(subprocess_stdio_map(&args.stdio.stdin)?);
-  command.stdout(subprocess_stdio_map(&args.stdio.stdout)?);
-  command.stderr(subprocess_stdio_map(&args.stdio.stderr)?);
+  command.stdin(args.stdio.stdin.as_stdio());
+  command.stdout(match args.stdio.stdout {
+    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
+    value => value.as_stdio(),
+  });
+  command.stderr(match args.stdio.stderr {
+    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
+    value => value.as_stdio(),
+  });
 
   Ok(command)
 }

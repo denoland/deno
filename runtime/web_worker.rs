@@ -3,8 +3,10 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
+use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::run_basic;
+use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
@@ -22,7 +24,6 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
-use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -93,7 +94,10 @@ impl Serialize for WorkerControlEvent {
       | WorkerControlEvent::Error(error) => {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
-            let frame = js_error.frames.first();
+            let frame = js_error.frames.iter().find(|f| match &f.file_name {
+              Some(s) => !s.trim_start_matches('[').starts_with("deno:"),
+              None => false,
+            });
             json!({
               "message": js_error.exception_message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
@@ -319,13 +323,12 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -335,6 +338,7 @@ pub struct WebWorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub maybe_exit_code: Option<Arc<AtomicI32>>,
+  pub stdio: Stdio,
 }
 
 impl WebWorker {
@@ -381,7 +385,7 @@ impl WebWorker {
         Some(main_module.clone()),
       ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
-        user_agent: options.user_agent.clone(),
+        user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
@@ -390,7 +394,7 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
-        options.user_agent.clone(),
+        options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -406,12 +410,13 @@ impl WebWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
+        options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init().enabled(options.use_deno_namespace),
       ops::fs::init().enabled(options.use_deno_namespace),
       ops::io::init(),
-      ops::io::init_stdio().enabled(options.use_deno_namespace),
+      ops::io::init_stdio(options.stdio).enabled(options.use_deno_namespace),
       deno_tls::init().enabled(options.use_deno_namespace),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
@@ -443,7 +448,6 @@ impl WebWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       source_map_getter: options.source_map_getter,
-      js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -552,6 +556,8 @@ impl WebWorker {
     let id = self.preload_module(module_specifier, false).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")
@@ -574,6 +580,8 @@ impl WebWorker {
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
         // If `None` is returned it means that runtime was destroyed before
@@ -644,7 +652,18 @@ impl WebWorker {
   }
 }
 
-fn print_worker_error(error_str: String, name: &str) {
+fn print_worker_error(
+  error: &AnyError,
+  name: &str,
+  format_js_error_fn: Option<&FormatJsErrorFn>,
+) {
+  let error_str = match format_js_error_fn {
+    Some(format_js_error_fn) => match error.downcast_ref::<JsError>() {
+      Some(js_error) => format_js_error_fn(js_error),
+      None => error.to_string(),
+    },
+    None => error.to_string(),
+  };
   eprintln!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
@@ -660,6 +679,7 @@ pub fn run_web_worker(
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
   preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
@@ -673,7 +693,7 @@ pub fn run_web_worker(
     let mut worker = match result {
       Ok(worker) => worker,
       Err(e) => {
-        print_worker_error(e.to_string(), &name);
+        print_worker_error(&e, &name, format_js_error_fn.as_deref());
         internal_handle
           .post_event(WorkerControlEvent::TerminalError(e))
           .expect("Failed to post message to host");
@@ -713,7 +733,7 @@ pub fn run_web_worker(
     };
 
     if let Err(e) = result {
-      print_worker_error(e.to_string(), &name);
+      print_worker_error(&e, &name, format_js_error_fn.as_deref());
       internal_handle
         .post_event(WorkerControlEvent::TerminalError(e))
         .expect("Failed to post message to host");

@@ -116,7 +116,7 @@ impl ReplSession {
     Ok(repl_session)
   }
 
-  pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
+  pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let closed = self
       .evaluate_expression("(this.closed)")
       .await?
