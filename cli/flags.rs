@@ -308,6 +308,8 @@ pub struct Flags {
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
+  // TODO(bartlomieju): to be removed in v1.23
+  pub has_no_check_flag: bool,
   // TODO(bartlomieju): should be removed in favor of `check`
   // once type checking is skipped by default
   pub future_type_check_mode: FutureTypeCheckMode,
@@ -2047,6 +2049,7 @@ fn no_check_arg<'a>() -> Arg<'a> {
       "Skip type-checking. If the value of '--no-check=remote' is supplied, \
       diagnostic errors from remote modules will be ignored.",
     )
+    .conflicts_with("check")
 }
 
 fn check_arg<'a>() -> Arg<'a> {
@@ -2948,6 +2951,7 @@ fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.has_no_check_flag = matches.is_present("no-check");
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
       "remote" => flags.type_check_mode = TypeCheckMode::Local,
