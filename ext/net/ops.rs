@@ -746,9 +746,9 @@ fn rdata_to_return_record(
       NAPTR => r.as_naptr().map(|naptr| DnsReturnRecord::Naptr {
         order: naptr.order(),
         preference: naptr.preference(),
-        flags: std::str::from_utf8(naptr.flags()).unwrap().to_string(),
-        services: std::str::from_utf8(naptr.services()).unwrap().to_string(),
-        regexp: std::str::from_utf8(naptr.regexp()).unwrap().to_string(),
+        flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
+        services: String::from_utf8(naptr.services().to_vec()).unwrap(),
+        regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
         replacement: naptr.replacement().to_string(),
       }),
       NS => r.as_ns().map(ToString::to_string).map(DnsReturnRecord::Ns),
@@ -849,8 +849,8 @@ mod tests {
   fn rdata_to_return_record_naptr() {
     let func = rdata_to_return_record(RecordType::NAPTR);
     let rdata = RData::NAPTR(NAPTR::new(
-      0,
-      0,
+      1,
+      2,
       <Box<[u8]>>::default(),
       <Box<[u8]>>::default(),
       <Box<[u8]>>::default(),
@@ -859,8 +859,8 @@ mod tests {
     assert_eq!(
       func(&rdata),
       Some(DnsReturnRecord::Naptr {
-        order: 0,
-        preference: 0,
+        order: 1,
+        preference: 2,
         flags: "".to_string(),
         services: "".to_string(),
         regexp: "".to_string(),
