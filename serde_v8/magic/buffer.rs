@@ -144,3 +144,19 @@ impl FromV8 for ZeroCopyBuf {
     Ok(Self::FromV8(V8Slice::from_v8(scope, value)?))
   }
 }
+
+impl From<ZeroCopyBuf> for bytes::Bytes {
+  fn from(zbuf: ZeroCopyBuf) -> bytes::Bytes {
+    match zbuf {
+      ZeroCopyBuf::FromV8(v) => v.into(),
+      // WARNING(AaronO): potential footgun, but will disappear in future ZeroCopyBuf refactor
+      ZeroCopyBuf::ToV8(v) => v
+        .lock()
+        .unwrap()
+        .take()
+        .expect("ZeroCopyBuf was empty")
+        .into(),
+      ZeroCopyBuf::Temp(v) => v.into(),
+    }
+  }
+}

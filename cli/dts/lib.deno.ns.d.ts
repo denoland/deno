@@ -2955,8 +2955,10 @@ declare namespace Deno {
     | "ANAME"
     | "CNAME"
     | "MX"
+    | "NAPTR"
     | "NS"
     | "PTR"
+    | "SOA"
     | "SRV"
     | "TXT";
 
@@ -2978,6 +2980,27 @@ declare namespace Deno {
     exchange: string;
   }
 
+  /** If `resolveDns` is called with "NAPTR" record type specified, it will return an array of this interface. */
+  export interface NAPTRRecord {
+    order: number;
+    preference: number;
+    flags: string;
+    services: string;
+    regexp: string;
+    replacement: string;
+  }
+
+  /** If `resolveDns` is called with "SOA" record type specified, it will return an array of this interface. */
+  export interface SOARecord {
+    mname: string;
+    rname: string;
+    serial: number;
+    refresh: number;
+    retry: number;
+    expire: number;
+    minimum: number;
+  }
+
   /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
   export interface SRVRecord {
     priority: number;
@@ -2997,6 +3020,18 @@ declare namespace Deno {
     recordType: "MX",
     options?: ResolveDnsOptions,
   ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "NAPTR",
+    options?: ResolveDnsOptions,
+  ): Promise<NAPTRRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SOA",
+    options?: ResolveDnsOptions,
+  ): Promise<SOARecord[]>;
 
   export function resolveDns(
     query: string,
@@ -3031,5 +3066,12 @@ declare namespace Deno {
     query: string,
     recordType: RecordType,
     options?: ResolveDnsOptions,
-  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
+  ): Promise<
+    | string[]
+    | MXRecord[]
+    | NAPTRRecord[]
+    | SOARecord[]
+    | SRVRecord[]
+    | string[][]
+  >;
 }
