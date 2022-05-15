@@ -1,19 +1,21 @@
 A
-["1.2.3.4"]
+["1.2.3.4","5.6.7.8"]
 AAAA
 ["1:2:3:4:5:6:7:8"]
 ANAME
-["aname.com."]
+["aname.example.com."]
 CNAME
-["cname.com."]
+["cname.example.com."]
 MX
-[{"preference":0,"exchange":"mx.com."}]
+[{"preference":10,"exchange":"mx1.com."},{"preference":20,"exchange":"mx2.com."}]
 NS
-["ns1.ns.com."]
+["ns1.ns.com.","ns2.ns.com.","ns3.ns.com."]
 PTR
-["ptr.com."]
+["www.example.com.","alias.example.com."]
+SOA
+[{"mname":"net.example.com.","rname":"admin\\.domain.example.com."}]
 SRV
-[{"priority":0,"weight":100,"port":1234,"target":"srv.com."}]
+[{"priority":0,"weight":100,"port":1234,"target":"srv.example.com."}]
 TXT
-[["foo","bar"]]
+[["I","am","a","txt","record"],["I","am","another","txt","record"],["I am a different","txt record"],["key=val"]]
 Error NotFound thrown for not-found-example.com

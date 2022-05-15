@@ -11,23 +11,24 @@
 ((window) => {
   const core = Deno.core;
   const {
-    Error,
-    RegExp,
-    ArrayPrototypeMap,
-    StringPrototypeCharCodeAt,
-    NumberPrototypeToString,
-    StringPrototypePadStart,
-    TypeError,
     ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    Error,
+    JSONStringify,
+    NumberPrototypeToString,
+    RegExp,
     SafeArrayIterator,
-    StringPrototypeCharAt,
-    StringPrototypeMatch,
-    StringPrototypeSlice,
     String,
+    StringPrototypeCharAt,
+    StringPrototypeCharCodeAt,
+    StringPrototypeMatch,
+    StringPrototypePadStart,
     StringPrototypeReplace,
-    StringPrototypeToUpperCase,
-    StringPrototypeToLowerCase,
+    StringPrototypeSlice,
     StringPrototypeSubstring,
+    StringPrototypeToLowerCase,
+    StringPrototypeToUpperCase,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const ASCII_DIGIT = ["\u0030-\u0039"];
@@ -294,6 +295,18 @@
     }
   }
 
+  /**
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function serializeJSValueToJSONString(value) {
+    const result = JSONStringify(value);
+    if (result === undefined) {
+      throw new TypeError("Value is not JSON serializable.");
+    }
+    return result;
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -320,5 +333,6 @@
     forgivingBase64Decode,
     AssertionError,
     assert,
+    serializeJSValueToJSONString,
   };
 })(globalThis);

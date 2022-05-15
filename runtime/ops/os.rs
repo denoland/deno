@@ -103,13 +103,12 @@ fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
 }
 
 #[op]
-fn op_set_exit_code(state: &mut OpState, code: i32) -> Result<(), AnyError> {
+fn op_set_exit_code(state: &mut OpState, code: i32) {
   state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
-  Ok(())
 }
 
 #[op]
-fn op_exit(state: &mut OpState) -> Result<(), AnyError> {
+fn op_exit(state: &mut OpState) {
   let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
   std::process::exit(code)
 }

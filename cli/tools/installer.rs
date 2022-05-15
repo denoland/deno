@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::flags::ConfigFlag;
 use crate::flags::Flags;
 use crate::flags::InstallFlags;
 use crate::flags::TypeCheckMode;
@@ -361,7 +362,7 @@ fn resolve_shim_data(
     executable_args.push(import_map_url.to_string());
   }
 
-  if let Some(config_path) = &flags.config_path {
+  if let ConfigFlag::Path(config_path) = &flags.config_flag {
     let mut copy_path = file_path.clone();
     copy_path.set_extension("tsconfig.json");
     executable_args.push("--config".to_string());
@@ -404,6 +405,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::flags::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
@@ -771,7 +773,9 @@ mod tests {
 
     let result = install(
       Flags {
-        config_path: Some(config_file_path.to_string_lossy().to_string()),
+        config_flag: ConfigFlag::Path(
+          config_file_path.to_string_lossy().to_string(),
+        ),
         ..Flags::default()
       },
       InstallFlags {

@@ -31,6 +31,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Metrics",
   "OpMetrics",
   "RecordType",
+  "SOARecord",
   "SRVRecord",
   "SetRawOptions",
   "SignalStream",

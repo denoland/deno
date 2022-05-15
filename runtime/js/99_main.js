@@ -301,7 +301,7 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus;
+  let numCpus, userAgent;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -318,6 +318,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
+      },
+    },
+    userAgent: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return userAgent;
       },
     },
   });
@@ -575,6 +583,7 @@ delete Object.prototype.__proto__;
       ppid,
       unstableFlag,
       cpuCount,
+      userAgent: userAgentInfo,
     } = runtimeOptions;
 
     colors.setNoColor(noColor || !isTty);
@@ -582,6 +591,7 @@ delete Object.prototype.__proto__;
       location.setLocationHref(locationHref);
     }
     numCpus = cpuCount;
+    userAgent = userAgentInfo;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");

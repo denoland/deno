@@ -581,6 +581,10 @@ pub enum DnsReturnRecord {
   },
   Ns(String),
   Ptr(String),
+  Soa {
+    mname: String,
+    rname: String,
+  },
   Srv {
     priority: u16,
     weight: u16,
@@ -736,6 +740,10 @@ fn rdata_to_return_record(
         .as_ptr()
         .map(ToString::to_string)
         .map(DnsReturnRecord::Ptr),
+      SOA => r.as_soa().map(|soa| DnsReturnRecord::Soa {
+        mname: soa.mname().to_string(),
+        rname: soa.rname().to_string(),
+      }),
       SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
         weight: srv.weight(),
@@ -772,6 +780,7 @@ mod tests {
   use trust_dns_proto::rr::rdata::mx::MX;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
+  use trust_dns_proto::rr::rdata::SOA;
   use trust_dns_proto::rr::record_data::RData;
   use trust_dns_proto::rr::Name;
 
@@ -831,6 +840,27 @@ mod tests {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
     assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_soa() {
+    let func = rdata_to_return_record(RecordType::SOA);
+    let rdata = RData::SOA(SOA::new(
+      Name::new(),
+      Name::new(),
+      0,
+      i32::MAX,
+      i32::MAX,
+      i32::MAX,
+      0,
+    ));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::Soa {
+        mname: "".to_string(),
+        rname: "".to_string()
+      })
+    );
   }
 
   #[test]
