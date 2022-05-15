@@ -182,7 +182,7 @@ fn codegen_v8_async(
     let promise_and_id = #core::_ops::queue_async_op(scope, async move {
       let result = Self::call::<#type_params>(#args_head #args_tail).await;
       #result_wrapper
-      (promise_id, #core::_ops::to_op_result(get_class, result))
+      (op_id, #core::_ops::to_op_result(get_class, result))
     });
     rv.set(promise_and_id.into());
   }
