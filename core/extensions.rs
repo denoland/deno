@@ -3,8 +3,7 @@ use crate::OpState;
 use anyhow::Error;
 use std::task::Context;
 
-pub type SourcePair = (&'static str, Box<SourceLoadFn>);
-pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
+pub type SourcePair = (&'static str, &'static str);
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
@@ -169,9 +168,8 @@ impl ExtensionBuilder {
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
-/// representing the filename and source code. This is only meant for extensions
-/// that will be snapshotted, as code will be loaded at runtime.
+/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
+/// representing the filename and source code.
 ///
 /// Example:
 /// ```ignore
@@ -187,13 +185,7 @@ macro_rules! include_js_files {
     vec![
       $((
         concat!($prefix, "/", $file),
-        Box::new(|| {
-          let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-          let path = c.join($file);
-          println!("cargo:rerun-if-changed={}", path.display());
-          let src = std::fs::read_to_string(path)?;
-          Ok(src)
-        }),
+        include_str!($file),
       ),)+
     ]
   };
