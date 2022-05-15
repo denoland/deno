@@ -59,7 +59,7 @@ use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TaskFlags;
 use crate::flags::TestFlags;
-use crate::flags::OldTypeCheckMode;
+use crate::flags::TypeCheckMode;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::flags::VendorFlags;
@@ -593,10 +593,10 @@ async fn check_command(
 
   // In `deno check` the default mode is to check only
   // local modules, with `--remote` we check remote modules too.
-  flags.old_type_check_mode = if check_flags.remote {
-    OldTypeCheckMode::All
+  flags.type_check_mode = if check_flags.remote {
+    TypeCheckMode::All
   } else {
-    OldTypeCheckMode::Local
+    TypeCheckMode::Local
   };
 
   cache_command(
@@ -707,12 +707,12 @@ async fn create_graph_and_maybe_check(
     .unwrap_or(false);
   graph_valid(
     &graph,
-    ps.flags.old_type_check_mode != OldTypeCheckMode::None,
+    ps.flags.type_check_mode != TypeCheckMode::None,
     check_js,
   )?;
   graph_lock_or_exit(&graph);
 
-  if ps.flags.old_type_check_mode != OldTypeCheckMode::None {
+  if ps.flags.type_check_mode != TypeCheckMode::None {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -736,7 +736,7 @@ async fn create_graph_and_maybe_check(
       Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
-        type_check_mode: ps.flags.old_type_check_mode.clone(),
+        type_check_mode: ps.flags.type_check_mode.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -767,7 +767,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.old_type_check_mode == OldTypeCheckMode::None {
+  if flags.type_check_mode == TypeCheckMode::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -1049,7 +1049,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         .unwrap_or(false);
       graph_valid(
         &graph,
-        ps.flags.old_type_check_mode != flags::OldTypeCheckMode::None,
+        ps.flags.type_check_mode != flags::TypeCheckMode::None,
         check_js,
       )?;
 
@@ -1539,10 +1539,10 @@ pub fn main() {
     let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
     if let Some(env_var) = future_check_env_var {
       if env_var == "1" {
-        flags.old_type_check_mode = match &flags.future_type_check_mode {
-          FutureTypeCheckMode::None => OldTypeCheckMode::None,
-          FutureTypeCheckMode::All => OldTypeCheckMode::All,
-          FutureTypeCheckMode::Local => OldTypeCheckMode::Local,
+        flags.type_check_mode = match &flags.future_type_check_mode {
+          FutureTypeCheckMode::None => TypeCheckMode::None,
+          FutureTypeCheckMode::All => TypeCheckMode::All,
+          FutureTypeCheckMode::Local => TypeCheckMode::Local,
         }
       }
     }

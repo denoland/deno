@@ -10,7 +10,7 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
 use crate::flags::Flags;
-use crate::flags::OldTypeCheckMode;
+use crate::flags::TypeCheckMode;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
 use crate::graph_util::contains_specifier;
@@ -584,7 +584,7 @@ pub async fn run_benchmarks_with_watch(
   let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = bench_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.old_type_check_mode == OldTypeCheckMode::None;
+  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
