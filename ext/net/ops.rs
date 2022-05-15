@@ -588,7 +588,7 @@ pub enum DnsReturnRecord {
     refresh: i32,
     retry: i32,
     expire: i32,
-    minimum: u32
+    minimum: u32,
   },
   Srv {
     priority: u16,
