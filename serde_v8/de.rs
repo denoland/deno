@@ -665,17 +665,14 @@ fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
 pub fn to_utf8(
   s: v8::Local<v8::String>,
   scope: &mut v8::HandleScope,
-) -> std::string::String {
-  if let Some(s) = to_utf8_fast(s, scope) {
-    return s;
-  }
-  to_utf8_slow(s, scope)
+) -> String {
+  to_utf8_fast(s, scope).unwrap_or_else(|| to_utf8_slow(s, scope))
 }
 
 fn to_utf8_fast(
   s: v8::Local<v8::String>,
   scope: &mut v8::HandleScope,
-) -> Option<std::string::String> {
+) -> Option<String> {
   // Over-allocate by 20% to avoid checking string twice
   let len = s.length();
   let capacity = (len as f64 * 1.2) as usize;
@@ -699,14 +696,14 @@ fn to_utf8_fast(
   // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
   unsafe {
     buf.set_len(length);
-    Some(std::string::String::from_utf8_unchecked(buf))
+    Some(String::from_utf8_unchecked(buf))
   }
 }
 
 fn to_utf8_slow(
   s: v8::Local<v8::String>,
   scope: &mut v8::HandleScope,
-) -> std::string::String {
+) -> String {
   let capacity = s.utf8_length(scope);
   let mut buf = Vec::with_capacity(capacity);
   let data = buf.as_mut_ptr();
@@ -724,6 +721,6 @@ fn to_utf8_slow(
   // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
   unsafe {
     buf.set_len(length);
-    std::string::String::from_utf8_unchecked(buf)
+    String::from_utf8_unchecked(buf)
   }
 }
