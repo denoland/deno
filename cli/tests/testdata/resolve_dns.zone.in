@@ -1,4 +1,4 @@
-@   IN  SOA     net     admin\.domain (
+@   IN  SOA     net      admin\.domain (
                             20     ; SERIAL
                             7200   ; REFRESH
                             600    ; RETRY
