@@ -584,6 +584,11 @@ pub enum DnsReturnRecord {
   Soa {
     mname: String,
     rname: String,
+    serial: u32,
+    refresh: i32,
+    retry: i32,
+    expire: i32,
+    minimum: u32,
   },
   Srv {
     priority: u16,
@@ -743,6 +748,11 @@ fn rdata_to_return_record(
       SOA => r.as_soa().map(|soa| DnsReturnRecord::Soa {
         mname: soa.mname().to_string(),
         rname: soa.rname().to_string(),
+        serial: soa.serial(),
+        refresh: soa.refresh(),
+        retry: soa.retry(),
+        expire: soa.expire(),
+        minimum: soa.minimum(),
       }),
       SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
@@ -858,7 +868,12 @@ mod tests {
       func(&rdata),
       Some(DnsReturnRecord::Soa {
         mname: "".to_string(),
-        rname: "".to_string()
+        rname: "".to_string(),
+        serial: 0,
+        refresh: i32::MAX,
+        retry: i32::MAX,
+        expire: i32::MAX,
+        minimum: 0,
       })
     );
   }

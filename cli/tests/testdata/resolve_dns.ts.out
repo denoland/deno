@@ -13,7 +13,7 @@ NS
 PTR
 ["www.example.com.","alias.example.com."]
 SOA
-[{"mname":"net.example.com.","rname":"admin\\.domain.example.com."}]
+[{"mname":"net.example.com.","rname":"admin\\.domain.example.com.","serial":20,"refresh":7200,"retry":600,"expire":3600000,"minimum":60}]
 SRV
 [{"priority":0,"weight":100,"port":1234,"target":"srv.example.com."}]
 TXT
