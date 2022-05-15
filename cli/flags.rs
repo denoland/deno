@@ -246,7 +246,9 @@ pub enum TypeCheckMode {
 
 impl Default for TypeCheckMode {
   fn default() -> Self {
-    Self::All
+    // TODO(bartlomieju): in v1.22 we switched to `Local` instead of `All` and
+    // in v1.23 we will switch to `None` by default.
+    Self::Local
   }
 }
 

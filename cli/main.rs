@@ -1532,6 +1532,18 @@ pub fn main() {
 
     logger::init(flags.log_level);
 
+    // TODO(bartlomieju): change to switch to no check mode if present
+    // let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
+    // if let Some(env_var) = future_check_env_var {
+    //   if env_var == "1" {
+    //     flags.type_check_mode = match &flags.future_type_check_mode {
+    //       FutureTypeCheckMode::None => TypeCheckMode::None,
+    //       FutureTypeCheckMode::All => TypeCheckMode::All,
+    //       FutureTypeCheckMode::Local => TypeCheckMode::Local,
+    //     }
+    //   }
+    // }
+
     // TODO(bartlomieju): remove once type checking is skipped by default (probably
     // in 1.23).
     // If this env var is set we're gonna override default behavior of type checking
