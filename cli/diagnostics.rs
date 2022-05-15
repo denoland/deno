@@ -28,7 +28,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "HttpClient",
   "Location",
   "Metrics",
-  "NAPTRRecord",
   "OpMetrics",
   "SetRawOptions",
   "SignalStream",
