@@ -761,12 +761,12 @@ fn rdata_to_return_record(
               }
 
               if name.is_none() && key_values.is_empty() {
-                s.push_str(";");
+                s.push(';');
               } else {
                 for key_value in key_values {
                   s.push_str("; ");
                   s.push_str(key_value.key());
-                  s.push_str("=");
+                  s.push('=');
                   s.push_str(key_value.value());
                 }
               }
