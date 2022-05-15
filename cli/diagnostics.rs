@@ -29,6 +29,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Location",
   "MXRecord",
   "Metrics",
+  "NAPTRRecord",
   "OpMetrics",
   "RecordType",
   "SOARecord",

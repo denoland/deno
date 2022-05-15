@@ -8,6 +8,8 @@ CNAME
 ["cname.example.com."]
 MX
 [{"preference":10,"exchange":"mx1.com."},{"preference":20,"exchange":"mx2.com."}]
+NAPTR
+[{"order":10,"preference":0,"flags":"s","services":"SIPS+D2T","regexp":"","replacement":"_sips._tcp.example.com."},{"order":10,"preference":0,"flags":"s","services":"RELAY:turn.udp","regexp":"","replacement":"_turn._udp.example.com."}]
 NS
 ["ns1.ns.com.","ns2.ns.com.","ns3.ns.com."]
 PTR
