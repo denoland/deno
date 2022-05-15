@@ -309,7 +309,6 @@ pub struct Flags {
   // TODO(bartlomieju): should be removed in favor of `check`
   // once type checking is skipped by default
   pub future_type_check_mode: FutureTypeCheckMode,
-  pub has_check_flag: bool,
   pub config_flag: ConfigFlag,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
@@ -2536,6 +2535,11 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  // NOTE(bartlomieju): Starting with v1.22 we default to not type checking remote
+  // files and in v1.23 we'll default to no type checking, unless "--check" flag
+  // is supplied.
+  flags.type_check_mode = TypeCheckMode::Local;
+
   runtime_args_parse(flags, matches, true, true);
   check_arg_parse(flags, matches);
 
@@ -2956,7 +2960,6 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.has_check_flag = matches.is_present("check");
   if let Some(cache_type) = matches.value_of("check") {
     match cache_type {
       "all" => flags.future_type_check_mode = FutureTypeCheckMode::All,
@@ -5763,7 +5766,6 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         future_type_check_mode: FutureTypeCheckMode::Local,
-        has_check_flag: true,
         ..Flags::default()
       }
     );
@@ -5776,7 +5778,6 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         future_type_check_mode: FutureTypeCheckMode::All,
-        has_check_flag: true,
         ..Flags::default()
       }
     );
@@ -5789,7 +5790,6 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         future_type_check_mode: FutureTypeCheckMode::None,
-        has_check_flag: true,
         ..Flags::default()
       }
     );

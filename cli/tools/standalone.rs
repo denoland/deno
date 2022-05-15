@@ -277,7 +277,6 @@ pub fn compile_to_runtime_flags(
     log_level: flags.log_level,
     type_check_mode: TypeCheckMode::All,
     future_type_check_mode: FutureTypeCheckMode::None,
-    has_check_flag: false,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors
