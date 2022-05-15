@@ -678,24 +678,29 @@ fn to_utf8_fast(
 ) -> Option<std::string::String> {
   // Over-allocate by 20% to avoid checking string twice
   let len = s.length();
-  let capacity = (s.length() as f64 * 1.2) as usize;
+  let capacity = (len as f64 * 1.2) as usize;
   let mut buf = Vec::with_capacity(capacity);
   let mut nchars = 0;
   let data = buf.as_mut_ptr();
   let length = s.write_utf8(
     scope,
+    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
+    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
+    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
+    // are sufficiently "initialized" for writes
     unsafe { std::slice::from_raw_parts_mut(data, capacity) },
     Some(&mut nchars),
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   );
-  unsafe {
-    buf.set_len(length);
-  }
   if nchars < len {
     return None;
   }
-  Some(unsafe { std::string::String::from_utf8_unchecked(buf) })
+  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+  unsafe {
+    buf.set_len(length);
+    Some(std::string::String::from_utf8_unchecked(buf))
+  }
 }
 
 fn to_utf8_slow(
@@ -703,15 +708,22 @@ fn to_utf8_slow(
   scope: &mut v8::HandleScope,
 ) -> std::string::String {
   let capacity = s.utf8_length(scope);
-  let mut string = std::string::String::with_capacity(capacity);
-  let data = string.as_mut_ptr();
-  std::mem::forget(string);
+  let mut buf = Vec::with_capacity(capacity);
+  let data = buf.as_mut_ptr();
   let length = s.write_utf8(
     scope,
+    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
+    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
+    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
+    // are sufficiently "initialized" for writes
     unsafe { std::slice::from_raw_parts_mut(data, capacity) },
     None,
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   );
-  unsafe { std::string::String::from_raw_parts(data, length, capacity) }
+  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+  unsafe {
+    buf.set_len(length);
+    std::string::String::from_utf8_unchecked(buf)
+  }
 }
