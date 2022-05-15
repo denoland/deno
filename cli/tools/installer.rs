@@ -3,7 +3,7 @@
 use crate::flags::ConfigFlag;
 use crate::flags::Flags;
 use crate::flags::InstallFlags;
-use crate::flags::TypeCheckMode;
+use crate::flags::OldTypeCheckMode;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -307,10 +307,10 @@ fn resolve_shim_data(
 
   // we should avoid a default branch here to ensure we continue to cover any
   // changes to this flag.
-  match flags.type_check_mode {
-    TypeCheckMode::All => (),
-    TypeCheckMode::None => executable_args.push("--no-check".to_string()),
-    TypeCheckMode::Local => {
+  match flags.old_type_check_mode {
+    OldTypeCheckMode::All => (),
+    OldTypeCheckMode::None => executable_args.push("--no-check".to_string()),
+    OldTypeCheckMode::Local => {
       executable_args.push("--no-check=remote".to_string())
     }
   }
@@ -592,7 +592,7 @@ mod tests {
       &Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         log_level: Some(Level::Error),
         compat: true,
         ..Flags::default()

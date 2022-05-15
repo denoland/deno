@@ -6,7 +6,7 @@ use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::FutureTypeCheckMode;
 use crate::flags::RunFlags;
-use crate::flags::TypeCheckMode;
+use crate::flags::OldTypeCheckMode;
 use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
@@ -275,7 +275,7 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    type_check_mode: TypeCheckMode::All,
+    old_type_check_mode: OldTypeCheckMode::All,
     future_type_check_mode: FutureTypeCheckMode::None,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags

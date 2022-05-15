@@ -233,7 +233,7 @@ impl Default for DenoSubcommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeCheckMode {
+pub enum OldTypeCheckMode {
   /// Type check all modules. The default value.
   All,
   /// Skip type checking of all modules. Represents `--no-check` on the command
@@ -244,7 +244,7 @@ pub enum TypeCheckMode {
   Local,
 }
 
-impl Default for TypeCheckMode {
+impl Default for OldTypeCheckMode {
   fn default() -> Self {
     Self::All
   }
@@ -305,7 +305,7 @@ pub struct Flags {
   /// the language server is configured with an explicit cache option.
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
-  pub type_check_mode: TypeCheckMode,
+  pub old_type_check_mode: OldTypeCheckMode,
   // TODO(bartlomieju): should be removed in favor of `check`
   // once type checking is skipped by default
   pub future_type_check_mode: FutureTypeCheckMode,
@@ -1426,7 +1426,6 @@ fn run_subcommand<'a>() -> Command<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
-    .arg(check_arg())
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
@@ -1716,6 +1715,7 @@ fn compile_args(app: Command) -> Command {
     .arg(no_remote_arg())
     .args(config_args())
     .arg(no_check_arg())
+    .arg(check_arg())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -2517,7 +2517,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // Use no-check by default for the REPL
-  flags.type_check_mode = TypeCheckMode::None;
+  flags.old_type_check_mode = OldTypeCheckMode::None;
   runtime_args_parse(flags, matches, false, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
@@ -2538,10 +2538,9 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // NOTE(bartlomieju): Starting with v1.22 we default to not type checking remote
   // files and in v1.23 we'll default to no type checking, unless "--check" flag
   // is supplied.
-  flags.type_check_mode = TypeCheckMode::Local;
+  flags.old_type_check_mode = OldTypeCheckMode::Local;
 
   runtime_args_parse(flags, matches, true, true);
-  check_arg_parse(flags, matches);
 
   let mut script: Vec<String> = matches
     .values_of("script_arg")
@@ -2743,6 +2742,7 @@ fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   no_remote_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   no_check_arg_parse(flags, matches);
+  check_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
@@ -2948,14 +2948,14 @@ fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
-      "remote" => flags.type_check_mode = TypeCheckMode::Local,
+      "remote" => flags.old_type_check_mode = OldTypeCheckMode::Local,
       _ => debug!(
         "invalid value for 'no-check' of '{}' using default",
         cache_type
       ),
     }
   } else if matches.is_present("no-check") {
-    flags.type_check_mode = TypeCheckMode::None;
+    flags.old_type_check_mode = OldTypeCheckMode::None;
   }
 }
 
@@ -3941,7 +3941,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4032,7 +4032,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4074,7 +4074,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4103,7 +4103,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4333,7 +4333,7 @@ mod tests {
           source_file: "script.ts".to_string(),
           out_file: None,
         }),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4555,7 +4555,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4706,7 +4706,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4722,7 +4722,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        type_check_mode: TypeCheckMode::Local,
+        old_type_check_mode: OldTypeCheckMode::Local,
         ..Flags::default()
       }
     );
@@ -4753,7 +4753,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -4835,7 +4835,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         ..Flags::default()
       }
     );
@@ -5400,7 +5400,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        type_check_mode: TypeCheckMode::None,
+        old_type_check_mode: OldTypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,

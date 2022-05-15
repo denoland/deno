@@ -245,7 +245,7 @@ async fn op_emit(
       Arc::new(RwLock::new(graph.as_ref().into())),
       cache.as_mut_cacher(),
       emit::CheckOptions {
-        type_check_mode: flags::TypeCheckMode::All,
+        type_check_mode: flags::OldTypeCheckMode::All,
         debug,
         emit_with_diagnostics: true,
         maybe_config_specifier: None,
@@ -268,7 +268,7 @@ async fn op_emit(
         Arc::new(RwLock::new(graph.as_ref().into())),
         cache.as_mut_cacher(),
         emit::CheckOptions {
-          type_check_mode: flags::TypeCheckMode::All,
+          type_check_mode: flags::OldTypeCheckMode::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
