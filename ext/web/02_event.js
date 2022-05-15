@@ -944,6 +944,18 @@
       if (!(ReflectHas(listeners, type))) {
         listeners[type] = [];
       }
+
+      for (const listener of listeners[type]) {
+        if (
+          ((typeof listener.options === "boolean" &&
+            listener.options === options.capture) ||
+            (typeof listener.options === "object" &&
+              listener.options.capture === options.capture)) &&
+          listener.callback === callback
+        ) {
+          return;
+        }
+      }
       if (options?.signal) {
         const signal = options?.signal;
         if (signal.aborted) {
@@ -955,18 +967,6 @@
           signal.addEventListener("abort", () => {
             this.removeEventListener(type, callback, options);
           });
-        }
-      }
-
-      for (const listener of listeners[type]) {
-        if (
-          ((typeof listener.options === "boolean" &&
-            listener.options === options.capture) ||
-            (typeof listener.options === "object" &&
-              listener.options.capture === options.capture)) &&
-          listener.callback === callback
-        ) {
-          return;
         }
       }
 
