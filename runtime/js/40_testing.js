@@ -635,6 +635,16 @@
       );
     }
 
+    const jsError = Deno.core.destructureError(new Error());
+    // Note: There might pop up a case where one of the filename, line number or
+    // column number from the caller isn't defined. We assume never for now.
+    // Make `TestDescription::location` optional if such a case is found.
+    testDef.location = {
+      fileName: jsError.frames[1].fileName,
+      lineNumber: jsError.frames[1].lineNumber,
+      columnNumber: jsError.frames[1].columnNumber,
+    };
+
     ArrayPrototypePush(tests, testDef);
   }
 
@@ -1097,6 +1107,7 @@
       const description = {
         origin,
         name: test.name,
+        location: test.location,
       };
       const earlier = DateNow();
 

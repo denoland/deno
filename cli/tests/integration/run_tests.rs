@@ -991,6 +991,11 @@ itest!(lib_dom_asynciterable {
   output: "lib_dom_asynciterable.ts.out",
 });
 
+itest!(lib_dom_extras {
+  args: "run --quiet --unstable --reload lib_dom_extras.ts",
+  output: "lib_dom_extras.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
@@ -1608,6 +1613,11 @@ itest!(worker_drop_handle_race {
   args: "run --quiet --reload --allow-read worker_drop_handle_race.js",
   output: "worker_drop_handle_race.js.out",
   exit_code: 1,
+});
+
+itest!(worker_drop_handle_race_terminate {
+  args: "run --unstable worker_drop_handle_race_terminate.js",
+  output: "worker_drop_handle_race_terminate.js.out",
 });
 
 itest!(worker_close_nested {
@@ -2550,6 +2560,12 @@ itest!(config_auto_discovered_for_local_script {
   output_str: Some("ok\n"),
 });
 
+itest!(no_config_auto_discovery_for_local_script {
+  args: "run --quiet --no-config run/with_config/frontend_work.ts",
+  output: "run/with_config/no_auto_discovery.out",
+  exit_code: 1,
+});
+
 itest!(config_not_auto_discovered_for_remote_script {
   args: "run --quiet http://127.0.0.1:4545/run/with_config/server_side_work.ts",
   output_str: Some("ok\n"),
@@ -2704,6 +2720,14 @@ itest!(event_listener_error_immediate_exit {
   exit_code: 1,
 });
 
+// https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
+itest!(event_listener_error_immediate_exit_worker {
+  args:
+    "run --quiet --unstable -A event_listener_error_immediate_exit_worker.ts",
+  output: "event_listener_error_immediate_exit_worker.ts.out",
+  exit_code: 1,
+});
+
 itest!(set_timeout_error {
   args: "run --quiet set_timeout_error.ts",
   output: "set_timeout_error.ts.out",
@@ -2768,4 +2792,10 @@ itest!(report_error_handled {
 itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
+});
+
+itest!(error_name_non_string {
+  args: "run --quiet error_name_non_string.js",
+  output: "error_name_non_string.js.out",
+  exit_code: 1,
 });

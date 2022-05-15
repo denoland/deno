@@ -856,6 +856,31 @@ Deno.test({ permissions: { net: true } }, async function httpServerPanic() {
 
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
+  async function httpServerCorrectSizeResponse() {
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
+    file.close();
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4503 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const ev = await httpConn.nextRequest();
+      const { respondWith } = ev!;
+      const f = await Deno.open(tmpFile, { read: true });
+      await respondWith(new Response(f.readable, { status: 200 }));
+      httpConn.close();
+      listener.close();
+    })();
+    const resp = await fetch("http://127.0.0.1:4503/");
+    const body = await resp.arrayBuffer();
+    assertEquals(body.byteLength, 70 * 1024);
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
   async function httpServerClosedStream() {
     const listener = Deno.listen({ port: 4502 });
 
@@ -1886,6 +1911,66 @@ Deno.test({
       // Ensure the content-length header is updated.
       assert(!output.includes(`content-length: ${contentLength}\r\n`));
       assert(output.includes("content-length: 72\r\n"));
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+});
+
+Deno.test({
+  name: "http server compresses when accept-encoding is deflate, gzip",
+  permissions: { net: true, run: true },
+  async fn() {
+    const hostname = "localhost";
+    const port = 4501;
+    let contentLength: string;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.headers.get("Accept-Encoding"), "deflate, gzip");
+      const body = "x".repeat(10000);
+      contentLength = String(body.length);
+      const response = new Response(
+        body,
+        {
+          headers: {
+            "content-length": contentLength,
+          },
+        },
+      );
+      await respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = [
+        "curl",
+        "-i",
+        "--request",
+        "GET",
+        "--url",
+        url,
+        // "--compressed", // Windows curl does not support --compressed
+        "--header",
+        "Accept-Encoding: deflate, gzip",
+      ];
+      const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      const output = decoder.decode(await proc.output());
+      assert(output.includes("vary: Accept-Encoding\r\n"));
+      assert(output.includes("content-encoding: gzip\r\n"));
+      // Ensure the content-length header is updated.
+      assert(!output.includes(`content-length: ${contentLength}\r\n`));
+      assert(output.includes("content-length: 80\r\n"));
       proc.close();
     }
 

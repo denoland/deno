@@ -611,12 +611,17 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getAsset": {
-        const sourceFile = host.getSourceFile(
-          request.specifier,
-          ts.ScriptTarget.ESNext,
-        );
-        return respond(id, sourceFile && sourceFile.text);
+      case "getAssets": {
+        const assets = [];
+        for (const sourceFile of sourceFileCache.values()) {
+          if (sourceFile.fileName.startsWith(ASSETS)) {
+            assets.push({
+              specifier: sourceFile.fileName,
+              text: sourceFile.text,
+            });
+          }
+        }
+        return respond(id, assets);
       }
       case "getApplicableRefactors": {
         return respond(

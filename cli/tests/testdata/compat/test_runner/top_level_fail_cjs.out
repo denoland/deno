@@ -1,7 +1,9 @@
+Uncaught error from ./compat/test_runner/top_level_fail_cjs.js FAILED
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+ ERRORS 
 
-error: Uncaught (in promise) AssertionError: Values are not strictly equal:
+./compat/test_runner/top_level_fail_cjs.js (uncaught error)
+error: (in promise) AssertionError: Values are not strictly equal:
 
 
     [Diff] Actual / Expected
@@ -10,4 +12,16 @@ error: Uncaught (in promise) AssertionError: Values are not strictly equal:
 -   10
 +   20
 
-[WILDCARD]
+    Error.captureStackTrace(this, stackStartFn || stackStartFunction);
+          ^
+    at [WILDCARD]
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+./compat/test_runner/top_level_fail_cjs.js (uncaught error)
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

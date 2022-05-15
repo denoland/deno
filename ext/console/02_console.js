@@ -298,6 +298,7 @@
     colors: false,
     getters: false,
     showHidden: false,
+    strAbbreviateSize: 100,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -464,12 +465,18 @@
     const entryIndentation = `,\n${
       StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
     }`;
-    const closingIndentation = `${inspectOptions.trailingComma ? "," : ""}\n${
-      StringPrototypeRepeat(DEFAULT_INDENT, level)
-    }`;
+    const closingDelimIndentation = StringPrototypeRepeat(
+      DEFAULT_INDENT,
+      level,
+    );
+    const closingIndentation = `${
+      inspectOptions.trailingComma ? "," : ""
+    }\n${closingDelimIndentation}`;
 
     let iContent;
-    if (options.group && entries.length > MIN_GROUP_LENGTH) {
+    if (entries.length === 0 && !inspectOptions.compact) {
+      iContent = `\n${closingDelimIndentation}`;
+    } else if (options.group && entries.length > MIN_GROUP_LENGTH) {
       const groups = groupEntries(entries, level, value);
       iContent = `${initIndentation}${
         ArrayPrototypeJoin(groups, entryIndentation)
@@ -786,11 +793,15 @@
     level,
     inspectOptions,
   ) {
+    const abbreviateSize =
+      typeof inspectOptions.strAbbreviateSize === "undefined"
+        ? STR_ABBREVIATE_SIZE
+        : inspectOptions.strAbbreviateSize;
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string": {
-        const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
+        const trunc = value.length > abbreviateSize
+          ? StringPrototypeSlice(value, 0, abbreviateSize) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }

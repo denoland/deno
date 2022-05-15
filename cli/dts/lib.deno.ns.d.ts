@@ -2491,6 +2491,8 @@ declare namespace Deno {
     getters?: boolean;
     /** Show an object's non-enumerable properties. Defaults to false. */
     showHidden?: boolean;
+    /** The maximum length of a string before it is truncated with an ellipsis */
+    strAbbreviateSize?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by
@@ -2953,7 +2955,9 @@ declare namespace Deno {
     | "ANAME"
     | "CNAME"
     | "MX"
+    | "NS"
     | "PTR"
+    | "SOA"
     | "SRV"
     | "TXT";
 
@@ -2975,6 +2979,12 @@ declare namespace Deno {
     exchange: string;
   }
 
+  /** If `resolveDns` is called with "SOA" record type specified, it will return an array of this interface. */
+  export interface SOARecord {
+    mname: string;
+    rname: string;
+  }
+
   /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
   export interface SRVRecord {
     priority: number;
@@ -2985,7 +2995,7 @@ declare namespace Deno {
 
   export function resolveDns(
     query: string,
-    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
 
@@ -2994,6 +3004,12 @@ declare namespace Deno {
     recordType: "MX",
     options?: ResolveDnsOptions,
   ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SOA",
+    options?: ResolveDnsOptions,
+  ): Promise<SOARecord[]>;
 
   export function resolveDns(
     query: string,
