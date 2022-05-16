@@ -129,6 +129,8 @@ impl MainWorker {
       deno_webgpu::init(unstable),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
+      // sqlite
+      deno_sqlite::init(),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(

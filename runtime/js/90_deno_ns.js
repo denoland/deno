@@ -154,5 +154,6 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    sqlite: __bootstrap.sqlite,
   };
 })(this);

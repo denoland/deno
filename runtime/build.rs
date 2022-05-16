@@ -164,6 +164,7 @@ mod not_docs {
         None,
       ),
       deno_http::init(),
+      deno_sqlite::init(),
     ];
 
     let js_runtime = JsRuntime::new(RuntimeOptions {

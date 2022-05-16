@@ -18,6 +18,7 @@ members = [
   "ext/ffi",
   "ext/http",
   "ext/net",
+  "ext/sqlite",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -81,6 +82,8 @@ opt-level = 3
 [profile.bench.package.deno_websocket]
 opt-level = 3
 [profile.bench.package.deno_net]
+opt-level = 3
+[profile.bench.package.deno_sqlite]
 opt-level = 3
 [profile.bench.package.deno_crypto]
 opt-level = 3

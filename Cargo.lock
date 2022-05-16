@@ -1051,6 +1051,7 @@ dependencies = [
  "deno_ffi",
  "deno_http",
  "deno_net",
+ "deno_sqlite",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -1083,6 +1084,15 @@ dependencies = [
  "uuid",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno_sqlite"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "rusqlite",
+ "serde",
 ]
 
 [[package]]
