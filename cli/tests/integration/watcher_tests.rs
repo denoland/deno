@@ -775,10 +775,7 @@ fn test_watch() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_eq!(stdout_lines.next().unwrap(), "");
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
-  );
+  assert_contains!(stdout_lines.next().unwrap(), "0 passed | 0 failed");
   wait_for("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.js");
@@ -872,7 +869,7 @@ fn test_watch() {
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
   assert_contains!(stdout_lines.next().unwrap(), "FAILED");
-  wait_for("test result", &mut stdout_lines);
+  wait_for("FAILED", &mut stdout_lines);
   stdout_lines.next();
   wait_for("Test finished", &mut stderr_lines);
 
@@ -919,10 +916,7 @@ fn test_watch_doc() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_eq!(stdout_lines.next().unwrap(), "");
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
-  );
+  assert_contains!(stdout_lines.next().unwrap(), "0 passed | 0 failed");
   wait_for("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.ts");
