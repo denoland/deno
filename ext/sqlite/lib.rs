@@ -84,6 +84,7 @@ fn op_sqlite_run(
   let stmt = state.resource_table.get::<StmtResource>(stmt)?;
   let mut stmt = stmt.0.borrow_mut();
   for (index, value) in args.into_iter().enumerate() {
+    let index = index + 1;
     let value = value.v8_value;
     if value.is_null() {
       // stmt.raw_bind_parameter(index, ())?;
@@ -120,7 +121,7 @@ fn op_sqlite_query<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<OpState>>,
   stmt: ResourceId,
-  args: Vec<serde_v8::Value<'scope>>,
+  array: serde_v8::Value<'scope>,
 ) -> Result<Vec<Vec<serde_v8::Value<'scope>>>, AnyError>
 where
   'scope: 'scope,
@@ -128,8 +129,10 @@ where
   let state = state.borrow();
   let stmt = state.resource_table.get::<StmtResource>(stmt)?;
   let mut stmt = stmt.0.borrow_mut();
-  for (index, value) in args.into_iter().enumerate() {
-    let value = value.v8_value;
+  let args = v8::Local::<v8::Array>::try_from(array.v8_value).unwrap();
+  
+  for index in 0..args.length() as usize {
+    let value = args.get_index(scope, index as u32).unwrap();
     if value.is_null() {
       // stmt.raw_bind_parameter(index, ())?;
     } else if value.is_boolean() {
