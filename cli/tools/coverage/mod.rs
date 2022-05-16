@@ -170,10 +170,9 @@ fn generate_coverage_report(
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
-  let maybe_source_map = maybe_source_map.as_ref().map(|source_map| {
-    eprintln!("source map {:?}", source_map);
-    SourceMap::from_slice(source_map).unwrap()
-  });
+  let maybe_source_map = maybe_source_map
+    .as_ref()
+    .map(|source_map| SourceMap::from_slice(source_map).unwrap());
   let text_lines = TextLines::new(script_source);
 
   let comment_spans = deno_ast::lex(script_source, MediaType::JavaScript)
