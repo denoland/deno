@@ -11,8 +11,9 @@ use deno_core::ResourceId;
 use rusqlite::CachedStatement;
 use rusqlite::Connection;
 use std::borrow::Cow;
-use std::path::PathBuf;
 use std::cell::RefCell;
+use std::path::PathBuf;
+use fallible_iterator::FallibleIterator;
 
 pub use rusqlite;
 
@@ -55,9 +56,7 @@ fn op_sqlite_open(
   path: String,
 ) -> Result<ResourceId, AnyError> {
   let conn = Connection::open(&path)?;
-  let handle = state.resource_table.add(ConnResource {
-    conn,
-  });
+  let handle = state.resource_table.add(ConnResource { conn });
   Ok(handle)
 }
 
@@ -67,7 +66,8 @@ fn op_sqlite_prepare(
   handle: ResourceId,
   sql: String,
 ) -> Result<ResourceId, AnyError> {
-  let resource = Box::leak(Box::new(state.resource_table.get::<ConnResource>(handle)?));
+  let resource =
+    Box::leak(Box::new(state.resource_table.get::<ConnResource>(handle)?));
   let stmt = resource.conn.prepare_cached(&sql)?;
   let rid = state.resource_table.add(StmtResource(RefCell::new(stmt)));
   Ok(rid)
@@ -104,13 +104,23 @@ fn op_sqlite_run(
   Ok(stmt.raw_execute()?)
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub enum Value {
+  Null,
+  Integer(i64),
+  Real(f64),
+  Text(String),
+  Blob(Vec<u8>),
+}
+
 #[op(v8)]
 fn op_sqlite_query(
   scope: &mut v8::HandleScope,
   state: &mut OpState,
   stmt: ResourceId,
   args: Vec<serde_v8::Value>,
-) -> Result<(), AnyError> {
+) -> Result<Vec<Vec<Value>>, AnyError> {
   let stmt = state.resource_table.get::<StmtResource>(stmt)?;
   let mut stmt = stmt.0.borrow_mut();
   for (index, value) in args.into_iter().enumerate() {
@@ -132,8 +142,24 @@ fn op_sqlite_query(
     }
     // TODO: Blobs
   }
-  stmt.raw_query();
-  Ok(())
+
+  let count = stmt.column_count();
+  let rows = stmt.raw_query();
+  let values = rows.map(|r| {
+    let mut values = vec![];
+    for index in 0..count {
+      let value: rusqlite::types::Value = r.get(index).unwrap();
+      values.push(match value {
+        rusqlite::types::Value::Null => Value::Null,
+        rusqlite::types::Value::Integer(i) => Value::Integer(i),
+        rusqlite::types::Value::Real(r) => Value::Real(r),
+        rusqlite::types::Value::Text(s) => Value::Text(s),
+        rusqlite::types::Value::Blob(b) => Value::Blob(b),
+      });
+    }
+    Ok(values)
+  }).collect()?;
+  Ok(values)
 }
 
 pub fn get_declaration() -> PathBuf {
