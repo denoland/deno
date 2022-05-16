@@ -275,7 +275,9 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    type_check_mode: TypeCheckMode::All,
+    has_no_check_flag: false,
+    has_check_flag: false,
+    type_check_mode: TypeCheckMode::Local,
     future_type_check_mode: FutureTypeCheckMode::None,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
