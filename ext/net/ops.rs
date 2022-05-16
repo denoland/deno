@@ -746,37 +746,28 @@ fn rdata_to_return_record(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsReturnRecord::Aname),
-      CAA => r.as_caa().map(|caa| {
-        let value = caa.value();
+      CAA => r.as_caa().map(|caa| DnsReturnRecord::Caa {
+        critical: caa.issuer_critical(),
+        tag: caa.tag().to_string(),
+        value: match caa.value() {
+          Value::Issuer(name, key_values) => {
+            let mut s = String::new();
 
-        DnsReturnRecord::Caa {
-          critical: caa.issuer_critical(),
-          tag: caa.tag().to_string(),
-          value: match value {
-            Value::Issuer(name, key_values) => {
-              let mut s = String::new();
-
-              if let Some(name) = name {
-                s.push_str(&name.to_string())
-              }
-
-              if name.is_none() && key_values.is_empty() {
-                s.push(';');
-              } else {
-                for key_value in key_values {
-                  s.push_str("; ");
-                  s.push_str(key_value.key());
-                  s.push('=');
-                  s.push_str(key_value.value());
-                }
-              }
-
-              s
+            if let Some(name) = name {
+              s.push_str(&format!("{}", name));
+            } else if name.is_none() && key_values.is_empty() {
+              s.push(';');
             }
-            Value::Url(url) => url.to_string(),
-            Value::Unknown(data) => String::from_utf8(data.to_vec()).unwrap(),
-          },
-        }
+
+            for key_value in key_values {
+              s.push_str(&format!("; {}", key_value));
+            }
+
+            s
+          }
+          Value::Url(url) => url.to_string(),
+          Value::Unknown(data) => String::from_utf8(data.to_vec()).unwrap(),
+        },
       }),
       CNAME => r
         .as_cname()
