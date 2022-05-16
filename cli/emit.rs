@@ -192,7 +192,8 @@ pub fn get_ts_config(
         ts_config.merge(&json!({
           "emitDecoratorMetadata": false,
           "importsNotUsedAsValues": "remove",
-          "inlineSourceMap": true,
+          "inlineSourceMap": false,
+          "sourceMap": true,
           "inlineSources": true,
           "outDir": "deno://",
           "removeComments": true,
@@ -208,9 +209,9 @@ pub fn get_ts_config(
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
+      "inlineSourceMap": false,
       "inlineSources": true,
-      "sourceMap": false,
+      "sourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
@@ -463,9 +464,19 @@ pub fn check_and_maybe_emit(
         cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
       }
     }
-    for emit in response.emitted_files.into_iter() {
+
+    let (emitted_source_maps, emitted_files): (
+      Vec<tsc::EmittedFile>,
+      Vec<tsc::EmittedFile>,
+    ) = response
+      .emitted_files
+      .into_iter()
+      .partition(|e| e.media_type == MediaType::SourceMap);
+
+    for mut emit in emitted_files {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
+
         // The emitted specifier might not be the file specifier we want, so we
         // resolve it via the graph.
         let graph_data = graph_data.read();
@@ -501,6 +512,30 @@ pub fn check_and_maybe_emit(
           MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
             let version = get_version(source_bytes, &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
+
+            // NOTE(bartlomieju): here we're doing a bit of magic - TSC emits broken
+            // inlined source maps if original source code contains emojis. To alleviate
+            // this problem, we're gonna manually edit emitted files and replace source
+            // map url with inlined source map that we'll encode manually.
+            let maybe_source_map = emitted_source_maps.iter().find(|e| {
+              if let Some(s) = &e.maybe_specifiers {
+                s[0] == specifiers[0]
+              } else {
+                false
+              }
+            });
+
+            if let Some(emitted_source_map) = maybe_source_map {
+              emit.data.push_str(
+                "\n//# sourceMappingURL=data:application/json;base64,",
+              );
+              base64::encode_config_buf(
+                &emitted_source_map.data,
+                base64::Config::new(base64::CharacterSet::Standard, true),
+                &mut emit.data,
+              );
+            }
+
             cache.set(CacheType::Emit, &specifier, emit.data)?;
           }
           MediaType::SourceMap => {
