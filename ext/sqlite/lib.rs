@@ -43,7 +43,7 @@ impl Resource for ConnResource {
   }
 }
 
-pub struct StmtResource(RefCell<CachedStatement<'static>>);
+pub struct StmtResource(RefCell<CachedStatement<'static>>, usize);
 
 impl Resource for StmtResource {
   fn name(&self) -> Cow<str> {
@@ -70,7 +70,10 @@ fn op_sqlite_prepare(
   let resource =
     Box::leak(Box::new(state.resource_table.get::<ConnResource>(handle)?));
   let stmt = resource.conn.prepare_cached(&sql)?;
-  let rid = state.resource_table.add(StmtResource(RefCell::new(stmt)));
+  let count = stmt.column_count();
+  let rid = state
+    .resource_table
+    .add(StmtResource(RefCell::new(stmt), count));
   Ok(rid)
 }
 
@@ -122,15 +125,15 @@ fn op_sqlite_query<'scope>(
   state: Rc<RefCell<OpState>>,
   stmt: ResourceId,
   array: serde_v8::Value<'scope>,
-) -> Result<Vec<Vec<serde_v8::Value<'scope>>>, AnyError>
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   'scope: 'scope,
 {
   let state = state.borrow();
-  let stmt = state.resource_table.get::<StmtResource>(stmt)?;
-  let mut stmt = stmt.0.borrow_mut();
+  let resource = state.resource_table.get::<StmtResource>(stmt)?;
+  let mut stmt = resource.0.borrow_mut();
   let args = v8::Local::<v8::Array>::try_from(array.v8_value).unwrap();
-  
+
   for index in 0..args.length() as usize {
     let value = args.get_index(scope, index as u32).unwrap();
     if value.is_null() {
@@ -151,31 +154,36 @@ where
     // TODO: Blobs
   }
 
-  let count = stmt.column_count();
   let rows = stmt.raw_query();
-  let values = rows
+
+  let values: Vec<v8::Local<v8::Value>> = rows
     .map(|r| {
-      let mut values = Vec::with_capacity(count);
-      for index in 0..count {
-        let value: rusqlite::types::Value = r.get(index).unwrap();
-        values.push(serde_v8::Value {
-          v8_value: match value {
-            rusqlite::types::Value::Null => v8::null(scope).into(),
-            rusqlite::types::Value::Integer(i) => {
-              v8::Number::new(scope, i as f64).into()
-            }
-            rusqlite::types::Value::Real(r) => v8::Number::new(scope, r).into(),
-            rusqlite::types::Value::Text(s) => {
-              v8::String::new(scope, &s).unwrap().into()
-            }
-            rusqlite::types::Value::Blob(b) => todo!(),
-          },
+      let mut values = Vec::with_capacity(resource.1);
+      for index in 0..resource.1 {
+        let value: rusqlite::types::ValueRef = r.get_ref_unwrap(index);
+        values.push(match value {
+          rusqlite::types::ValueRef::Null => v8::null(scope).into(),
+          rusqlite::types::ValueRef::Integer(i) => {
+            v8::Number::new(scope, i as f64).into()
+          }
+          rusqlite::types::ValueRef::Real(r) => {
+            v8::Number::new(scope, r).into()
+          }
+          rusqlite::types::ValueRef::Text(s) => {
+            v8::String::new_from_utf8(scope, s, v8::NewStringType::Internalized)
+              .unwrap()
+              .into()
+          }
+          rusqlite::types::ValueRef::Blob(b) => todo!(),
         });
       }
-      Ok(values)
+      Ok(v8::Array::new_with_elements(scope, &values).into())
     })
     .collect()?;
-  Ok(values)
+
+  Ok(serde_v8::Value {
+    v8_value: v8::Array::new_with_elements(scope, &values).into(),
+  })
 }
 
 pub fn get_declaration() -> PathBuf {
