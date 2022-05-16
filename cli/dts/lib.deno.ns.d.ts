@@ -2953,6 +2953,7 @@ declare namespace Deno {
     | "A"
     | "AAAA"
     | "ANAME"
+    | "CAA"
     | "CNAME"
     | "MX"
     | "NAPTR"
@@ -2972,6 +2973,13 @@ declare namespace Deno {
        * If not specified, defaults to 53. */
       port?: number;
     };
+  }
+
+  /** If `resolveDns` is called with "CAA" record type specified, it will return an array of this interface. */
+  export interface CAARecord {
+    critical: boolean;
+    tag: string;
+    value: string;
   }
 
   /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
@@ -3014,6 +3022,12 @@ declare namespace Deno {
     recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "CAA",
+    options?: ResolveDnsOptions,
+  ): Promise<CAARecord[]>;
 
   export function resolveDns(
     query: string,
@@ -3068,6 +3082,7 @@ declare namespace Deno {
     options?: ResolveDnsOptions,
   ): Promise<
     | string[]
+    | CAARecord[]
     | MXRecord[]
     | NAPTRRecord[]
     | SOARecord[]
