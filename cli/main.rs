@@ -1541,10 +1541,8 @@ pub fn main() {
     // of skipping type checking completely if no `--check` flag is present.
     let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
     if let Some(env_var) = future_check_env_var {
-      if env_var == "1" {
-        if !flags.has_check_flag {
-          flags.type_check_mode = TypeCheckMode::None;
-        }
+      if env_var == "1" && !flags.has_check_flag {
+        flags.type_check_mode = TypeCheckMode::None;
       }
     } else if !flags.has_no_check_flag {
       flags.type_check_mode = match &flags.future_type_check_mode {
