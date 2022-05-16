@@ -764,7 +764,7 @@ Future runs of this module will trigger no downloads or compilation unless \
 }
 
 fn check_subcommand<'a>() -> Command<'a> {
-  compile_args_without_no_check(Command::new("check"))
+  compile_args_without_check_args(Command::new("check"))
   .arg(
     Arg::new("remote")
       .long("remote")
@@ -1728,7 +1728,7 @@ fn compile_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
-fn compile_args_without_no_check(app: Command) -> Command {
+fn compile_args_without_check_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
