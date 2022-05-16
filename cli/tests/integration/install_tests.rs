@@ -41,9 +41,11 @@ fn install_basic() {
   assert_eq!(content.chars().last().unwrap(), '\n');
 
   if cfg!(windows) {
-    assert!(content.contains(r#""run" "http://localhost:4545/echo.ts""#));
+    assert!(
+      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    );
   } else {
-    assert!(content.contains(r#"run 'http://localhost:4545/echo.ts'"#));
+    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
   }
 }
 
@@ -79,9 +81,11 @@ fn install_custom_dir_env_var() {
 
   let content = fs::read_to_string(file_path).unwrap();
   if cfg!(windows) {
-    assert!(content.contains(r#""run" "http://localhost:4545/echo.ts""#));
+    assert!(
+      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    );
   } else {
-    assert!(content.contains(r#"run 'http://localhost:4545/echo.ts'"#));
+    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
   }
 }
 
