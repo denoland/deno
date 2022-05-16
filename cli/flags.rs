@@ -2544,11 +2544,6 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  // NOTE(bartlomieju): Starting with v1.22 we default to not type checking remote
-  // files and in v1.23 we'll default to no type checking, unless "--check" flag
-  // is supplied.
-  flags.type_check_mode = TypeCheckMode::Local;
-
   runtime_args_parse(flags, matches, true, true);
   check_arg_parse(flags, matches);
 
