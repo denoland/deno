@@ -450,7 +450,7 @@ Deno.test(function testBufferBytesCopyFalseGrowExactBytes() {
 Deno.test(function testThrowsErrorWhenBufferExceedsMaxLength() {
   const kStringMaxLengthPlusOne = 536870888 + 1;
   const bytes = new Uint8Array(kStringMaxLengthPlusOne);
-  
+
   assertThrows(
     () => {
       new TextDecoder().decode(bytes);
