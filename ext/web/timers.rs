@@ -28,7 +28,7 @@ pub type StartTime = Instant;
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 #[op]
-pub fn op_now<TP>(state: &mut OpState, _argument: ()) -> Result<f64, AnyError>
+pub fn op_now<TP>(state: &mut OpState, _argument: ()) -> f64
 where
   TP: TimersPermission + 'static,
 {
@@ -44,9 +44,7 @@ where
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
-  let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
-
-  Ok(result)
+  (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0)
 }
 
 pub struct TimerHandle(Rc<CancelHandle>);
@@ -64,11 +62,10 @@ impl Resource for TimerHandle {
 /// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
 /// [`op_sleep`].
 #[op]
-pub fn op_timer_handle(state: &mut OpState) -> Result<ResourceId, AnyError> {
-  let rid = state
+pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
+  state
     .resource_table
-    .add(TimerHandle(CancelHandle::new_rc()));
-  Ok(rid)
+    .add(TimerHandle(CancelHandle::new_rc()))
 }
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
@@ -87,14 +84,10 @@ pub async fn op_sleep(
 }
 
 #[op]
-pub fn op_sleep_sync<TP>(
-  state: &mut OpState,
-  millis: u64,
-) -> Result<(), AnyError>
+pub fn op_sleep_sync<TP>(state: &mut OpState, millis: u64)
 where
   TP: TimersPermission + 'static,
 {
   state.borrow::<TP>().check_unstable(state, "Deno.sleepSync");
   std::thread::sleep(Duration::from_millis(millis));
-  Ok(())
 }

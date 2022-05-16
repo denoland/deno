@@ -72,6 +72,8 @@ delete Object.prototype.__proto__;
     }
   }
 
+  // In the case of the LSP, this is initialized with the assets
+  // when snapshotting and never added to or removed after that.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
@@ -186,62 +188,6 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
-  class ScriptSnapshot {
-    /** @type {string} */
-    specifier;
-    /** @type {string} */
-    version;
-    /**
-     * @param {string} specifier
-     * @param {string} version
-     */
-    constructor(specifier, version) {
-      this.specifier = specifier;
-      this.version = version;
-    }
-    /**
-     * @param {number} start
-     * @param {number} end
-     * @returns {string}
-     */
-    getText(start, end) {
-      const { specifier, version } = this;
-      debug(
-        `snapshot.getText(${start}, ${end}) specifier: ${specifier} version: ${version}`,
-      );
-      return core.opSync("op_get_text", { specifier, version, start, end });
-    }
-    /**
-     * @returns {number}
-     */
-    getLength() {
-      const { specifier, version } = this;
-      debug(`snapshot.getLength() specifier: ${specifier} version: ${version}`);
-      return core.opSync("op_get_length", { specifier, version });
-    }
-    /**
-     * @param {ScriptSnapshot} oldSnapshot
-     * @returns {ts.TextChangeRange | undefined}
-     */
-    getChangeRange(oldSnapshot) {
-      const { specifier, version } = this;
-      const { version: oldVersion } = oldSnapshot;
-      const oldLength = oldSnapshot.getLength();
-      debug(
-        `snapshot.getLength() specifier: ${specifier} oldVersion: ${oldVersion} version: ${version}`,
-      );
-      return core.opSync(
-        "op_get_change_range",
-        { specifier, oldLength, oldVersion, version },
-      );
-    }
-    dispose() {
-      const { specifier, version } = this;
-      debug(`snapshot.dispose() specifier: ${specifier} version: ${version}`);
-      core.opSync("op_dispose", { specifier, version });
-    }
-  }
-
   /** Error thrown on cancellation. */
   class OperationCanceledError extends Error {
   }
@@ -310,16 +256,17 @@ delete Object.prototype.__proto__;
           ts.ScriptTarget[languageVersion]
         })`,
       );
+
+      // Needs the original specifier
+      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+
       let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile;
       }
 
-      // Needs the original specifier
-      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-
-      /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
-      const { data, hash, scriptKind } = core.opSync(
+      /** @type {{ data: string; scriptKind: ts.ScriptKind }} */
+      const { data, scriptKind, version } = core.opSync(
         "op_load",
         { specifier },
       );
@@ -335,8 +282,9 @@ delete Object.prototype.__proto__;
         scriptKind,
       );
       sourceFile.moduleName = specifier;
-      sourceFile.version = hash;
+      sourceFile.version = version;
       sourceFileCache.set(specifier, sourceFile);
+      scriptVersionCache.set(specifier, version);
       return sourceFile;
     },
     getDefaultLibFileName() {
@@ -445,11 +393,17 @@ delete Object.prototype.__proto__;
           },
         };
       }
-      const version = host.getScriptVersion(specifier);
-      if (version != null) {
-        return new ScriptSnapshot(specifier, version);
+
+      const fileInfo = core.opSync(
+        "op_load",
+        { specifier },
+      );
+      if (fileInfo) {
+        scriptVersionCache.set(specifier, fileInfo.version);
+        return ts.ScriptSnapshot.fromString(fileInfo.data);
+      } else {
+        return undefined;
       }
-      return undefined;
     },
   };
 
