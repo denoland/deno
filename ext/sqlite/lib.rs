@@ -8,12 +8,13 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use fallible_iterator::FallibleIterator;
 use rusqlite::CachedStatement;
 use rusqlite::Connection;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
-use fallible_iterator::FallibleIterator;
+use std::rc::Rc;
 
 pub use rusqlite;
 
@@ -115,12 +116,16 @@ pub enum Value {
 }
 
 #[op(v8)]
-fn op_sqlite_query(
-  scope: &mut v8::HandleScope,
-  state: &mut OpState,
+fn op_sqlite_query<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: Rc<RefCell<OpState>>,
   stmt: ResourceId,
-  args: Vec<serde_v8::Value>,
-) -> Result<Vec<Vec<Value>>, AnyError> {
+  args: Vec<serde_v8::Value<'scope>>,
+) -> Result<Vec<Vec<serde_v8::Value<'scope>>>, AnyError>
+where
+  'scope: 'scope,
+{
+  let state = state.borrow();
   let stmt = state.resource_table.get::<StmtResource>(stmt)?;
   let mut stmt = stmt.0.borrow_mut();
   for (index, value) in args.into_iter().enumerate() {
@@ -145,20 +150,28 @@ fn op_sqlite_query(
 
   let count = stmt.column_count();
   let rows = stmt.raw_query();
-  let values = rows.map(|r| {
-    let mut values = vec![];
-    for index in 0..count {
-      let value: rusqlite::types::Value = r.get(index).unwrap();
-      values.push(match value {
-        rusqlite::types::Value::Null => Value::Null,
-        rusqlite::types::Value::Integer(i) => Value::Integer(i),
-        rusqlite::types::Value::Real(r) => Value::Real(r),
-        rusqlite::types::Value::Text(s) => Value::Text(s),
-        rusqlite::types::Value::Blob(b) => Value::Blob(b),
-      });
-    }
-    Ok(values)
-  }).collect()?;
+  let values = rows
+    .map(|r| {
+      let mut values = Vec::with_capacity(count);
+      for index in 0..count {
+        let value: rusqlite::types::Value = r.get(index).unwrap();
+        values.push(serde_v8::Value {
+          v8_value: match value {
+            rusqlite::types::Value::Null => v8::null(scope).into(),
+            rusqlite::types::Value::Integer(i) => {
+              v8::Number::new(scope, i as f64).into()
+            }
+            rusqlite::types::Value::Real(r) => v8::Number::new(scope, r).into(),
+            rusqlite::types::Value::Text(s) => {
+              v8::String::new(scope, &s).unwrap().into()
+            }
+            rusqlite::types::Value::Blob(b) => todo!(),
+          },
+        });
+      }
+      Ok(values)
+    })
+    .collect()?;
   Ok(values)
 }
 

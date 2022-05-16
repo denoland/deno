@@ -15,6 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.134.0", path = "../../core" }
+fallible-iterator = "0.2.0"
 rusqlite = { version = "0.27.0", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.136", features = ["derive"] }
-fallible-iterator = "0.2.0"
