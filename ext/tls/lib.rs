@@ -50,6 +50,9 @@ impl ServerCertVerifier for NoCertificateVerification {
     ocsp_response: &[u8],
     now: SystemTime,
   ) -> Result<ServerCertVerified, Error> {
+    if self.0.is_empty() {
+      return Ok(ServerCertVerified::assertion());
+    }
     let dns_name_or_ip_address = match server_name {
       ServerName::DnsName(dns_name) => dns_name.as_ref().to_owned(),
       ServerName::IpAddress(ip_address) => ip_address.to_string(),
@@ -59,7 +62,7 @@ impl ServerCertVerifier for NoCertificateVerification {
         return Err(Error::General("Unknown `ServerName` variant".to_string()));
       }
     };
-    if self.0.is_empty() || self.0.contains(&dns_name_or_ip_address) {
+    if self.0.contains(&dns_name_or_ip_address) {
       Ok(ServerCertVerified::assertion())
     } else {
       let root_store = create_default_root_cert_store();
