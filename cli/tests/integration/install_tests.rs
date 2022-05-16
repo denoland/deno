@@ -161,3 +161,50 @@ fn installer_test_remote_module_run() {
     .trim()
     .ends_with("hello, foo"));
 }
+
+#[test]
+fn check_local_by_default() {
+  let _guard = util::http_server();
+  let temp_dir = TempDir::new();
+  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+
+  let status = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("install")
+    .arg(util::testdata_path().join("./install/check_local_by_default.ts"))
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .status()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn check_local_by_default2() {
+  let _guard = util::http_server();
+  let temp_dir = TempDir::new();
+  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+
+  let output = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("install")
+    .arg(util::testdata_path().join("./install/check_local_by_default2.ts"))
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("NO_COLOR", "1"),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stdout.is_empty());
+  assert!(stderr.contains(
+    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
+  ));
+}
