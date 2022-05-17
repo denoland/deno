@@ -83,9 +83,10 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let core = core_import();
 
-  let is_async = func.sig.asyncness.is_some();
+  let asyncness = func.sig.asyncness.is_some();
+  let is_async = asyncness || is_future(&func.sig.output);
   let v8_body = if is_async {
-    codegen_v8_async(&core, &func, margs)
+    codegen_v8_async(&core, &func, margs, asyncness)
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
@@ -142,6 +143,7 @@ fn codegen_v8_async(
   core: &TokenStream2,
   f: &syn::ItemFn,
   _margs: MacroArgs,
+  asyncness: bool,
 ) -> TokenStream2 {
   let arg0 = f.sig.inputs.first();
   let uses_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
@@ -154,6 +156,16 @@ fn codegen_v8_async(
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let type_params = &f.sig.generics.params;
 
+  let (pre_result, result_fut) = match asyncness {
+    true => (
+      quote! {},
+      quote! { Self::call::<#type_params>(#args_head #args_tail) },
+    ),
+    false => (
+      quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
+      quote! { result_fut },
+    ),
+  };
   let result_wrapper = match is_result(&f.sig.output) {
     true => quote! {},
     false => quote! { let result = Ok(result); },
@@ -192,8 +204,9 @@ fn codegen_v8_async(
       state.get_error_class_fn
     };
 
+    #pre_result
     #core::_ops::queue_async_op(scope, async move {
-      let result = Self::call::<#type_params>(#args_head #args_tail).await;
+      let result = #result_fut.await;
       #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
@@ -380,6 +393,10 @@ fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
 fn is_handle_scope(arg: &syn::FnArg) -> bool {
   tokens(arg).ends_with(": & mut v8 :: HandleScope")
     || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope")
+}
+
+fn is_future(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("impl Future < Output =")
 }
 
 fn tokens(x: impl ToTokens) -> String {
