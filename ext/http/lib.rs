@@ -392,10 +392,28 @@ async fn op_http_accept(
 
   {
     let mut accept_encoding = stream.accept_encoding.borrow_mut();
-    *accept_encoding = fly_accept_encoding::parse(request.headers())
-      .ok()
-      .flatten()
-      .unwrap_or(Encoding::Identity);
+
+    // curl --compressed sends "Accept-Encoding: deflate, gzip".
+    // fly_accept_encoding::parse() returns Encoding::Deflate.
+    // Deno does not support Encoding::Deflate.
+    // So, Deno used no compression, although gzip was possible.
+    // This patch makes Deno use gzip instead in this case.
+    *accept_encoding = Encoding::Identity;
+    let mut max_qval = 0.0;
+    if let Ok(encodings) = fly_accept_encoding::encodings(request.headers()) {
+      for (encoding, qval) in encodings {
+        if let Some(enc @ (Encoding::Brotli | Encoding::Gzip)) = encoding {
+          // this logic came from fly_accept_encoding.
+          if (qval - 1.0f32).abs() < 0.01 {
+            *accept_encoding = enc;
+            break;
+          } else if qval > max_qval {
+            *accept_encoding = enc;
+            max_qval = qval;
+          }
+        }
+      }
+    }
   }
 
   let method = request.method().to_string();
@@ -500,23 +518,22 @@ async fn op_http_write_headers(
     .resource_table
     .get::<HttpStreamResource>(rid)?;
 
-  let mut builder = Response::builder().status(status);
-
-  // Add headers
-  let header_count = headers.len();
-  let headers = headers.into_iter().filter_map(|(k, v)| {
-    let v: Vec<u8> = v.into();
-    Some((
-      HeaderName::try_from(k.as_slice()).ok()?,
-      HeaderValue::try_from(v).ok()?,
-    ))
-  });
   // Track supported encoding
   let encoding = *stream.accept_encoding.borrow();
 
-  let hmap = builder.headers_mut().unwrap();
-  hmap.reserve(header_count + 2);
-  hmap.extend(headers);
+  let mut builder = Response::builder();
+  // SAFETY: can not fail, since a fresh Builder is non-errored
+  let hmap = unsafe { builder.headers_mut().unwrap_unchecked() };
+
+  // Add headers
+  hmap.reserve(headers.len() + 2);
+  for (k, v) in headers.into_iter() {
+    let v: Vec<u8> = v.into();
+    hmap.append(
+      HeaderName::try_from(k.as_slice())?,
+      HeaderValue::try_from(v)?,
+    );
+  }
   ensure_vary_accept_encoding(hmap);
 
   let accepts_compression =
@@ -541,7 +558,7 @@ async fn op_http_write_headers(
   }
 
   let (new_wr, body) = http_response(data, compressing, encoding)?;
-  let body = builder.body(body)?;
+  let body = builder.status(status).body(body)?;
 
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let response_tx = match replace(&mut *old_wr, new_wr) {
@@ -589,10 +606,7 @@ fn http_response(
     Some(data) => {
       // If a buffer was passed, but isn't compressible, we use it to
       // construct a response body.
-      Ok((
-        HttpResponseWriter::Closed,
-        Bytes::copy_from_slice(&data).into(),
-      ))
+      Ok((HttpResponseWriter::Closed, Bytes::from(data).into()))
     }
     None if compressing => {
       // Create a one way pipe that implements tokio's async io traits. To do
@@ -665,8 +679,11 @@ fn should_compress(headers: &hyper::HeaderMap) -> bool {
   // indicates the contents of the body were negotiated based directly
   // with the user code and we can't compress the response
   let content_range = headers.contains_key(hyper::header::CONTENT_RANGE);
+  // assume body is already compressed if Content-Encoding header present, thus avoid recompressing
+  let is_precompressed = headers.contains_key(hyper::header::CONTENT_ENCODING);
 
   !content_range
+    && !is_precompressed
     && !cache_control_no_transform(headers).unwrap_or_default()
     && headers
       .get(hyper::header::CONTENT_TYPE)
@@ -766,7 +783,7 @@ async fn op_http_write(
       }
     }
     HttpResponseWriter::BodyUncompressed(body) => {
-      let bytes = Bytes::copy_from_slice(&buf[..]);
+      let bytes = Bytes::from(buf);
       match body.send_data(bytes).await {
         Ok(_) => Ok(()),
         Err(err) => {

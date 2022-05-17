@@ -896,11 +896,11 @@ fn encode(
       return;
     }
   };
-  let text_str = text.to_rust_string_lossy(scope);
-  let bytes: Box<[u8]> = text_str.into_bytes().into_boxed_slice();
+  let text_str = serde_v8::to_utf8(text, scope);
+  let bytes = text_str.into_bytes();
   let len = bytes.len();
   let backing_store =
-    v8::ArrayBuffer::new_backing_store_from_boxed_slice(bytes).make_shared();
+    v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
   let buffer = v8::ArrayBuffer::with_backing_store(scope, &backing_store);
   let u8array = v8::Uint8Array::new(scope, buffer, 0, len).unwrap();
   rv.set(u8array.into())
