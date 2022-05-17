@@ -122,13 +122,10 @@ impl Resource for WasmStreamingResource {
 /// Feed bytes to WasmStreamingResource.
 #[op]
 pub fn op_wasm_streaming_feed(
-  state: &mut OpState,
-  rid: ResourceId,
+  resource: serde_v8::Resource<WasmStreamingResource>,
   bytes: ZeroCopyBuf,
 ) -> Result<(), Error> {
-  let wasm_streaming =
-    state.resource_table.get::<WasmStreamingResource>(rid)?;
-
+  let wasm_streaming = resource.borrow();
   wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
 
   Ok(())
@@ -136,13 +133,10 @@ pub fn op_wasm_streaming_feed(
 
 #[op]
 pub fn op_wasm_streaming_set_url(
-  state: &mut OpState,
-  rid: ResourceId,
+  resource: serde_v8::Resource<WasmStreamingResource>,
   url: String,
 ) -> Result<(), Error> {
-  let wasm_streaming =
-    state.resource_table.get::<WasmStreamingResource>(rid)?;
-
+  let wasm_streaming = resource.borrow();
   wasm_streaming.0.borrow_mut().set_url(&url);
 
   Ok(())
