@@ -513,10 +513,10 @@ pub fn check_and_maybe_emit(
             let version = get_version(source_bytes, &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
 
-            // NOTE(bartlomieju): here we're doing a bit of magic - TSC emits broken
-            // inlined source maps if original source code contains emojis. To alleviate
-            // this problem, we're gonna manually edit emitted files and replace source
-            // map url with inlined source map that we'll encode manually.
+            // NOTE(bartlomieju): here we're doing a bit of magic - TSC emits
+            // broken inlined source maps if original source code contains
+            // emojis. To alleviate this problem, we're gonna manually edit
+            // emitted files and append a source map that we'll encode manually.
             let maybe_source_map = emitted_source_maps.iter().find(|e| {
               if let Some(s) = &e.maybe_specifiers {
                 s[0] == specifiers[0]
