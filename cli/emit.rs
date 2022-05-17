@@ -192,8 +192,7 @@ pub fn get_ts_config(
         ts_config.merge(&json!({
           "emitDecoratorMetadata": false,
           "importsNotUsedAsValues": "remove",
-          "inlineSourceMap": false,
-          "sourceMap": true,
+          "inlineSourceMap": true,
           "inlineSources": true,
           "outDir": "deno://",
           "removeComments": true,
@@ -388,7 +387,6 @@ pub fn check_and_maybe_emit(
   graph_data: Arc<RwLock<GraphData>>,
   cache: &mut dyn Cacher,
   options: CheckOptions,
-  is_runtime_api: bool,
 ) -> Result<CheckEmitResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
   let segment_graph_data = {
@@ -465,29 +463,9 @@ pub fn check_and_maybe_emit(
         cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
       }
     }
-
-    // NOTE(bartlomieju): here we're doing a bit of magic - TSC emits
-    // broken inlined source maps if original source code contains
-    // emojis. To alleviate this problem, we're gonna manually edit
-    // emitted files and append a source map that we'll encode manually.
-    // This is only happening for the emits for "deno" subcommand, the
-    // runtime API (`Deno.emit()`) is excluded from this.
-    let (emitted_source_maps, emitted_files): (
-      Vec<tsc::EmittedFile>,
-      Vec<tsc::EmittedFile>,
-    ) = if is_runtime_api {
-      (vec![], response.emitted_files)
-    } else {
-      response
-        .emitted_files
-        .into_iter()
-        .partition(|e| e.media_type == MediaType::SourceMap)
-    };
-
-    for mut emit in emitted_files {
+    for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
-
         // The emitted specifier might not be the file specifier we want, so we
         // resolve it via the graph.
         let graph_data = graph_data.read();
@@ -523,28 +501,6 @@ pub fn check_and_maybe_emit(
           MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
             let version = get_version(source_bytes, &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
-
-            // Encode and inline source map if we're not in the
-            // "runtime API" emit.
-            let maybe_source_map = emitted_source_maps.iter().find(|e| {
-              if let Some(s) = &e.maybe_specifiers {
-                s[0] == specifiers[0]
-              } else {
-                false
-              }
-            });
-
-            if let Some(emitted_source_map) = maybe_source_map {
-              emit.data.push_str(
-                "\n//# sourceMappingURL=data:application/json;base64,",
-              );
-              base64::encode_config_buf(
-                &emitted_source_map.data,
-                base64::Config::new(base64::CharacterSet::Standard, true),
-                &mut emit.data,
-              );
-            }
-
             cache.set(CacheType::Emit, &specifier, emit.data)?;
           }
           MediaType::SourceMap => {
@@ -753,7 +709,6 @@ pub fn bundle(
     let emit_options: deno_ast::EmitOptions = options.ts_config.into();
     let source_map_config = deno_ast::SourceMapConfig {
       inline_sources: emit_options.inline_sources,
-      maybe_base: None,
     };
 
     let cm = Rc::new(swc::common::SourceMap::new(
