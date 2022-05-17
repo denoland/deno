@@ -523,6 +523,12 @@ itest!(deno_land_unsafe_ssl {
   output: "deno_land_unsafe_ssl.ts.out",
 });
 
+itest!(ip_address_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 ip_address_unsafe_ssl.ts",
+  output: "ip_address_unsafe_ssl.ts.out",
+});
+
 itest!(localhost_unsafe_ssl {
   args:
     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cafile_url_imports.ts",

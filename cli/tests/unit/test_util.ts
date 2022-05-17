@@ -31,17 +31,13 @@ export function pathToAbsoluteFileUrl(path: string): URL {
 const decoder = new TextDecoder();
 
 export async function execCode(code: string): Promise<[number, string]> {
-  const p = Deno.run({
-    cmd: [
-      Deno.execPath(),
+  const { status, stdout } = await Deno.spawn(Deno.execPath(), {
+    args: [
       "eval",
       "--unstable",
       "--no-check",
       code,
     ],
-    stdout: "piped",
   });
-  const [status, output] = await Promise.all([p.status(), p.output()]);
-  p.close();
-  return [status.code, decoder.decode(output)];
+  return [status.code, decoder.decode(stdout)];
 }
