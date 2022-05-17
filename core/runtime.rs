@@ -204,7 +204,10 @@ impl Drop for JsRuntime {
   }
 }
 
-fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
+fn v8_init(
+  v8_platform: Option<v8::SharedRef<v8::Platform>>,
+  predictable: bool,
+) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
   struct IcuData([u8; 10284336]);
@@ -222,7 +225,15 @@ fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
     " --harmony-import-assertions",
     " --no-validate-asm",
   );
-  v8::V8::set_flags_from_string(flags);
+
+  if predictable {
+    v8::V8::set_flags_from_string(&format!(
+      "{}{}",
+      flags, " --predictable --random-seed=42"
+    ));
+  } else {
+    v8::V8::set_flags_from_string(flags);
+  }
 }
 
 #[derive(Default)]
@@ -251,6 +262,7 @@ pub struct RuntimeOptions {
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
+  /// The snapshot is determinstic and uses predictable random numbers.
   ///
   /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
@@ -284,7 +296,7 @@ impl JsRuntime {
     let v8_platform = options.v8_platform.take();
 
     static DENO_INIT: Once = Once::new();
-    DENO_INIT.call_once(move || v8_init(v8_platform));
+    DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
