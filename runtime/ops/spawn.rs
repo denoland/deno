@@ -95,7 +95,7 @@ impl TryFrom<std::process::ExitStatus> for ChildStatus {
           crate::ops::signal::signal_int_to_str(signal)?.to_string(),
         ),
         #[cfg(not(unix))]
-        signal: None
+        signal: None,
       }
     } else {
       let code = code.expect("Should have either an exit code or a signal.");
