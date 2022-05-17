@@ -17,9 +17,11 @@ delete Object.prototype.__proto__;
     ObjectDefineProperty,
     ObjectDefineProperties,
     ObjectFreeze,
+    ObjectGetPrototypeOf,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     PromiseResolve,
+    SafeSet,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -531,6 +533,28 @@ delete Object.prototype.__proto__;
     postMessage: util.writable(postMessage),
   };
 
+  // Allow freezing the prototype chain of certain objects like window.
+  const frozenPrototypeObjects = new SafeSet();
+
+  // deno-lint-ignore prefer-primordials
+  Object.setPrototypeOf = (obj, prototype) => {
+    if (
+      frozenPrototypeObjects.has(obj) && ObjectGetPrototypeOf(obj) !== prototype
+    ) {
+      throw new TypeError(
+        "Immutable prototype object cannot have their prototype set",
+      );
+    }
+
+    return ObjectSetPrototypeOf(obj, prototype);
+  };
+
+  function freezePrototypeChain(start) {
+    for (let obj = start; obj; obj = ObjectGetPrototypeOf(obj)) {
+      frozenPrototypeObjects.add(obj);
+    }
+  }
+
   let hasBootstrapped = false;
 
   function bootstrapMainRuntime(runtimeOptions) {
@@ -553,10 +577,10 @@ delete Object.prototype.__proto__;
     }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
+    freezePrototypeChain(globalThis);
 
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
-
     eventTarget.setEventTargetData(globalThis);
 
     defineEventHandler(window, "error");
@@ -655,6 +679,7 @@ delete Object.prototype.__proto__;
       );
     }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+    freezePrototypeChain(globalThis);
 
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
