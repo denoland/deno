@@ -12,10 +12,12 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 
+use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
 use rustls::client::ServerCertVerifier;
 use rustls::client::StoresClientSessions;
 use rustls::client::WebPkiVerifier;
+use rustls::internal::msgs::handshake::DigitallySignedStruct;
 use rustls::Certificate;
 use rustls::ClientConfig;
 use rustls::Error;
@@ -76,6 +78,24 @@ impl ServerCertVerifier for NoCertificateVerification {
         now,
       )
     }
+  }
+
+  fn verify_tls12_signature(
+    &self,
+    _message: &[u8],
+    _cert: &rustls::Certificate,
+    _dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, Error> {
+    Ok(HandshakeSignatureValid::assertion())
+  }
+
+  fn verify_tls13_signature(
+    &self,
+    _message: &[u8],
+    _cert: &rustls::Certificate,
+    _dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, Error> {
+    Ok(HandshakeSignatureValid::assertion())
   }
 }
 
