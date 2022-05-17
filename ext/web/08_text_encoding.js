@@ -95,16 +95,6 @@
         context: "Argument 2",
       });
 
-      // TODO(lucacasonato): add fast path for non-streaming decoder & decode
-
-      if (this.#rid === null) {
-        this.#rid = core.opSync("op_encoding_new_decoder", {
-          label: this.#encoding,
-          fatal: this.#fatal,
-          ignoreBom: this.#ignoreBOM,
-        });
-      }
-
       try {
         try {
           if (ArrayBufferIsView(input)) {
@@ -132,12 +122,28 @@
           // with a TypedArray argument copies the data.
           input = new Uint8Array(input);
         }
+
+        if (!options.stream && this.#rid === null) {
+          return core.opSync("op_encoding_decode_single", input, {
+            label: this.#encoding,
+            fatal: this.#fatal,
+            ignoreBom: this.#ignoreBOM,
+          });
+        }
+
+        if (this.#rid === null) {
+          this.#rid = core.opSync("op_encoding_new_decoder", {
+            label: this.#encoding,
+            fatal: this.#fatal,
+            ignoreBom: this.#ignoreBOM,
+          });
+        }
         return core.opSync("op_encoding_decode", input, {
           rid: this.#rid,
           stream: options.stream,
         });
       } finally {
-        if (!options.stream) {
+        if (!options.stream && this.#rid) {
           core.close(this.#rid);
           this.#rid = null;
         }

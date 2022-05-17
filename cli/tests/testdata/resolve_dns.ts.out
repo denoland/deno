@@ -4,6 +4,8 @@ AAAA
 ["1:2:3:4:5:6:7:8"]
 ANAME
 ["aname.example.com."]
+CAA
+[{"critical":false,"tag":"issue","value":"ca.example.net"},{"critical":false,"tag":"issue","value":"ca2.example.net; account=123456"},{"critical":false,"tag":"issuewild","value":";"},{"critical":false,"tag":"iodef","value":"mailto:security@example.com"},{"critical":true,"tag":"tbs","value":"Unknown"}]
 CNAME
 ["cname.example.com."]
 MX

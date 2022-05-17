@@ -29,5 +29,9 @@ deno_url = { version = "0.52.0", path = "../url" }
 deno_webidl = { version = "0.52.0", path = "../webidl" }
 
 [[bench]]
+name = "encoding"
+harness = false
+
+[[bench]]
 name = "timers_ops"
 harness = false

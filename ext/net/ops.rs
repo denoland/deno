@@ -34,6 +34,7 @@ use std::rc::Rc;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use trust_dns_proto::rr::rdata::caa::Value;
 use trust_dns_proto::rr::record_data::RData;
 use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
@@ -574,6 +575,11 @@ pub enum DnsReturnRecord {
   A(String),
   Aaaa(String),
   Aname(String),
+  Caa {
+    critical: bool,
+    tag: String,
+    value: String,
+  },
   Cname(String),
   Mx {
     preference: u16,
@@ -740,6 +746,29 @@ fn rdata_to_return_record(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsReturnRecord::Aname),
+      CAA => r.as_caa().map(|caa| DnsReturnRecord::Caa {
+        critical: caa.issuer_critical(),
+        tag: caa.tag().to_string(),
+        value: match caa.value() {
+          Value::Issuer(name, key_values) => {
+            let mut s = String::new();
+
+            if let Some(name) = name {
+              s.push_str(&format!("{}", name));
+            } else if name.is_none() && key_values.is_empty() {
+              s.push(';');
+            }
+
+            for key_value in key_values {
+              s.push_str(&format!("; {}", key_value));
+            }
+
+            s
+          }
+          Value::Url(url) => url.to_string(),
+          Value::Unknown(data) => String::from_utf8(data.to_vec()).unwrap(),
+        },
+      }),
       CNAME => r
         .as_cname()
         .map(ToString::to_string)
@@ -803,6 +832,8 @@ mod tests {
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
   use std::path::Path;
+  use trust_dns_proto::rr::rdata::caa::KeyValue;
+  use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
   use trust_dns_proto::rr::rdata::naptr::NAPTR;
   use trust_dns_proto::rr::rdata::srv::SRV;
@@ -833,6 +864,24 @@ mod tests {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
     assert_eq!(func(&rdata), Some(DnsReturnRecord::Aname("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_caa() {
+    let func = rdata_to_return_record(RecordType::CAA);
+    let rdata = RData::CAA(CAA::new_issue(
+      false,
+      Some(Name::parse("example.com", None).unwrap()),
+      vec![KeyValue::new("account", "123456")],
+    ));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::Caa {
+        critical: false,
+        tag: "issue".to_string(),
+        value: "example.com; account=123456".to_string(),
+      })
+    );
   }
 
   #[test]
