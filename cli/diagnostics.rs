@@ -27,11 +27,8 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "EmitResult",
   "HttpClient",
   "Location",
-  "MXRecord",
   "Metrics",
   "OpMetrics",
-  "RecordType",
-  "SRVRecord",
   "SetRawOptions",
   "SignalStream",
   "StartTlsOptions",
@@ -39,7 +36,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixConnectOptions",
   "UnixListenOptions",
   "addSignalListener",
-  "applySourceMap",
   "bench",
   "connect",
   "consoleSize",
@@ -66,6 +62,12 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "umask",
   "utime",
   "utimeSync",
+  "spawnChild",
+  "Child",
+  "spawn",
+  "spawnSync",
+  "ChildStatus",
+  "SpawnOutput",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {

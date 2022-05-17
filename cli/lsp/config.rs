@@ -9,10 +9,10 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -21,6 +21,10 @@ pub struct ClientCapabilities {
   pub code_action_disabled_support: bool,
   pub line_folding_only: bool,
   pub status_notification: bool,
+  /// The client provides the `experimental.testingApi` capability, which is
+  /// built around VSCode's testing API. It indicates that the server should
+  /// send notifications about tests discovered in modules.
+  pub testing_api: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
 }
@@ -139,6 +143,32 @@ pub struct SpecifierSettings {
   pub code_lens: CodeLensSpecifierSettings,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestingSettings {
+  /// A vector of arguments which should be used when running the tests for
+  /// a workspace.
+  #[serde(default)]
+  pub args: Vec<String>,
+  /// Enable or disable the testing API if the client is capable of supporting
+  /// the testing API.
+  #[serde(default = "is_true")]
+  pub enable: bool,
+}
+
+impl Default for TestingSettings {
+  fn default() -> Self {
+    Self {
+      args: vec!["--allow-all".to_string(), "--no-check".to_string()],
+      enable: true,
+    }
+  }
+}
+
+fn default_to_true() -> bool {
+  true
+}
+
 /// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -176,13 +206,17 @@ pub struct WorkspaceSettings {
   pub internal_debug: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
-  #[serde(default)]
+  #[serde(default = "default_to_true")]
   pub lint: bool,
 
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
   #[serde(default)]
   pub suggest: CompletionSettings,
+
+  /// Testing settings for the workspace.
+  #[serde(default)]
+  pub testing: TestingSettings,
 
   /// An option which sets the cert file to use when attempting to fetch remote
   /// resources. This overrides `DENO_CERT` if present.
@@ -333,7 +367,10 @@ impl Config {
       self.client_capabilities.status_notification = experimental
         .get("statusNotification")
         .and_then(|it| it.as_bool())
-        == Some(true)
+        == Some(true);
+      self.client_capabilities.testing_api =
+        experimental.get("testingApi").and_then(|it| it.as_bool())
+          == Some(true);
     }
 
     if let Some(workspace) = &capabilities.workspace {
@@ -519,7 +556,7 @@ mod tests {
           test: true,
         },
         internal_debug: false,
-        lint: false,
+        lint: true,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
@@ -529,6 +566,10 @@ mod tests {
             auto_discover: true,
             hosts: HashMap::new(),
           }
+        },
+        testing: TestingSettings {
+          args: vec!["--allow-all".to_string(), "--no-check".to_string()],
+          enable: true
         },
         tls_certificate: None,
         unsafely_ignore_certificate_errors: None,

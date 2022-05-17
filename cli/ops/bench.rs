@@ -45,9 +45,8 @@ fn check_unstable(state: &OpState, api_name: &str) {
 }
 
 #[op]
-fn op_bench_check_unstable(state: &mut OpState) -> Result<(), AnyError> {
+fn op_bench_check_unstable(state: &mut OpState) {
   check_unstable(state, "Deno.bench");
-  Ok(())
 }
 
 #[derive(Clone)]
@@ -62,6 +61,10 @@ pub fn op_pledge_test_permissions(
   let parent_permissions = state.borrow_mut::<Permissions>();
   let worker_permissions = create_child_permissions(parent_permissions, args)?;
   let parent_permissions = parent_permissions.clone();
+
+  if state.try_take::<PermissionsHolder>().is_some() {
+    panic!("pledge test permissions called before restoring previous pledge");
+  }
 
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
@@ -90,19 +93,14 @@ pub fn op_restore_test_permissions(
 }
 
 #[op]
-fn op_get_bench_origin(state: &mut OpState) -> Result<String, AnyError> {
-  Ok(state.borrow::<ModuleSpecifier>().to_string())
+fn op_get_bench_origin(state: &mut OpState) -> String {
+  state.borrow::<ModuleSpecifier>().to_string()
 }
 
 #[op]
-fn op_dispatch_bench_event(
-  state: &mut OpState,
-  event: BenchEvent,
-) -> Result<(), AnyError> {
+fn op_dispatch_bench_event(state: &mut OpState, event: BenchEvent) {
   let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(event).ok();
-
-  Ok(())
 }
 
 #[op]

@@ -6,7 +6,7 @@
 ///! client.
 ///!
 use deno_core::serde_json::json;
-use lspower::lsp::*;
+use tower_lsp::lsp_types::*;
 
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::semantic_tokens::get_legend;
@@ -138,6 +138,7 @@ pub fn server_capabilities(
     moniker_provider: None,
     experimental: Some(json!({
       "denoConfigTasks": true,
+      "testingApi":true,
     })),
   }
 }

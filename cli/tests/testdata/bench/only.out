@@ -1,7 +1,9 @@
 Check [WILDCARD]/bench/only.ts
-running 1 bench from [WILDCARD]/bench/only.ts
-bench only ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
 
-bench result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out ([WILDCARD])
-
+[WILDCARD]/bench/only.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------
+only [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 error: Bench failed because the "only" option was used

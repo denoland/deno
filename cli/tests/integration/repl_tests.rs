@@ -79,7 +79,8 @@ fn pty_syntax_error_input() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("Expected 4 hex characters"));
+    assert!(output
+      .contains("Bad character escape sequence, expected 4 hex characters"));
     assert!(output.contains("Unterminated string constant"));
     assert!(output.contains("Expected a semicolon"));
   });
@@ -162,7 +163,11 @@ fn pty_complete_imports() {
 
     let output = console.read_all_output();
     assert!(output.contains("Hello World"));
-    assert!(output.contains("\ntesting output"));
+    if cfg!(windows) {
+      assert!(output.contains("testing output\u{1b}"));
+    } else {
+      assert!(output.contains("\ntesting output"));
+    }
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
@@ -198,6 +203,20 @@ fn pty_assign_global_this() {
 
     let output = console.read_all_output();
     assert!(!output.contains("panicked"));
+  });
+}
+
+#[test]
+fn pty_emoji() {
+  // windows was having issues displaying this
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log('🦕');");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    // one for input, one for output
+    let emoji_count = output.chars().filter(|c| *c == '🦕').count();
+    assert_eq!(emoji_count, 2);
   });
 }
 
@@ -707,4 +726,81 @@ fn eval_flag_runtime_error() {
   assert!(out.contains("error in --eval flag. Uncaught Error: Testing"));
   assert!(out.contains("2500")); // should not prevent input
   assert!(err.is_empty());
+}
+
+#[test]
+fn eval_file_flag_valid_input() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=./001_hello.js"],
+    None,
+    None,
+    false,
+  );
+  assert!(out.contains("Hello World"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_file_flag_call_defined_function() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=./tsc/d.ts"],
+    Some(vec!["v4()"]),
+    None,
+    false,
+  );
+  assert!(out.contains("hello"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_file_flag_http_input() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=http://127.0.0.1:4545/tsc/d.ts"],
+    Some(vec!["v4()"]),
+    None,
+    true,
+  );
+  assert!(out.contains("hello"));
+  assert!(err.contains("Download"));
+}
+
+#[test]
+fn eval_file_flag_multiple_files() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval-file=http://127.0.0.1:4545/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
+    None,
+    true,
+  );
+  assert!(out.contains("helloFOO"));
+  assert!(err.contains("Download"));
+}
+
+#[test]
+fn pty_clear_function() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log('hello');");
+    console.write_line("clear();");
+    console.write_line("const clear = 1234 + 2000;");
+    console.write_line("clear;");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    if cfg!(windows) {
+      // Windows will overwrite what's in the console buffer before
+      // we read from it. It contains this string repeated many times
+      // to clear the screen.
+      assert!(output.contains("\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K"));
+    } else {
+      assert!(output.contains("hello"));
+      assert!(output.contains("[1;1H"));
+    }
+    assert!(output.contains("undefined"));
+    assert!(output.contains("const clear = 1234 + 2000;"));
+    assert!(output.contains("3234"));
+  });
 }

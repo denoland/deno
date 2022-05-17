@@ -123,7 +123,7 @@ fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(
     true,
     vec!["repl", "--compat", "--unstable", "--no-check", "--quiet"],
-    Some(vec!["global == window"]),
+    Some(vec!["global.window == window"]),
     Some(vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())]),
     false,
   );

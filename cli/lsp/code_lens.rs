@@ -19,13 +19,13 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
@@ -241,8 +241,7 @@ async fn resolve_implementation_code_lens(
   data: CodeLensData,
   language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let asset_or_doc =
-    language_server.get_cached_asset_or_document(&data.specifier)?;
+  let asset_or_doc = language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_doc.line_index();
   let req = tsc::RequestMethod::GetImplementation((
     data.specifier.clone(),
@@ -311,7 +310,7 @@ async fn resolve_references_code_lens(
   language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_document =
-    language_server.get_cached_asset_or_document(&data.specifier)?;
+    language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_document.line_index();
   let req = tsc::RequestMethod::GetReferences((
     data.specifier.clone(),
@@ -328,9 +327,8 @@ async fn resolve_references_code_lens(
       }
       let reference_specifier =
         resolve_url(&reference.document_span.file_name)?;
-      let asset_or_doc = language_server
-        .get_asset_or_document(&reference_specifier)
-        .await?;
+      let asset_or_doc =
+        language_server.get_asset_or_document(&reference_specifier)?;
       locations.push(
         reference
           .to_location(asset_or_doc.line_index(), &language_server.url_map),

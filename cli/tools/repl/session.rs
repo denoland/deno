@@ -41,6 +41,8 @@ Object.defineProperty(globalThis, "_error", {
    console.log("Last thrown error is no longer saved to _error.");
   },
 });
+
+globalThis.clear = console.clear.bind(console);
 "#;
 
 pub enum EvaluationOutput {
@@ -114,7 +116,7 @@ impl ReplSession {
     Ok(repl_session)
   }
 
-  pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
+  pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let closed = self
       .evaluate_expression("(this.closed)")
       .await?

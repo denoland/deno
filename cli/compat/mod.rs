@@ -16,11 +16,9 @@ use std::sync::Arc;
 pub use esm_resolver::check_if_should_use_esm_loader;
 pub use esm_resolver::NodeEsmResolver;
 
-// TODO(bartlomieju): this needs to be bumped manually for
-// each release, a better mechanism is preferable, but it's a quick and dirty
-// solution to avoid printing `X-Deno-Warning` headers when the compat layer is
-// downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.132.0/";
+// WARNING: Ensure this is the only deno_std version reference as this
+// is automatically updated by the version bump workflow.
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.139.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -241,7 +239,7 @@ pub async fn translate_cjs_to_esm(
       .replace('\'', "\\\'")
       .replace('\"', "\\\"")
   ));
-  source.push("export default mod".to_string());
+  source.push("export default mod;".to_string());
 
   for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
     // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
