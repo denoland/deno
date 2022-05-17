@@ -66,3 +66,16 @@ itest!(v8_flags_eval {
   args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
   output: "v8_flags.js.out",
 });
+
+itest!(check_local_by_default {
+  args: "eval --quiet import('http://localhost:4545/subdir/type_error.ts').then(console.log);",
+  output: "eval/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "eval --quiet import('./eval/check_local_by_default2.ts').then(console.log);",
+  output: "eval/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});

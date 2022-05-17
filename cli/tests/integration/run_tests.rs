@@ -963,7 +963,7 @@ itest!(no_check_decorators {
 });
 
 itest!(check_remote {
-  args: "run --quiet --reload no_check_remote.ts",
+  args: "run --quiet --reload --check=all no_check_remote.ts",
   output: "no_check_remote.ts.disabled.out",
   exit_code: 1,
   http_server: true,
