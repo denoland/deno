@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-window-prefix
-import { assertEquals } from "./test_util.ts";
+import { assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test(function addEventListenerTest() {
   const document = new EventTarget();
@@ -253,4 +253,29 @@ Deno.test(function eventTargetAddEventListenerGlobalAbort() {
     addEventListener("test", () => {}, { signal: c.signal });
     c.abort();
   });
+});
+
+Deno.test(function eventTargetBrandChecking() {
+  const self = {};
+
+  assertThrows(
+    () => {
+      EventTarget.prototype.addEventListener.call(self, "test", null);
+    },
+    TypeError,
+  );
+
+  assertThrows(
+    () => {
+      EventTarget.prototype.removeEventListener.call(self, "test", null);
+    },
+    TypeError,
+  );
+
+  assertThrows(
+    () => {
+      EventTarget.prototype.dispatchEvent.call(self, new Event("test"));
+    },
+    TypeError,
+  );
 });
