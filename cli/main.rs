@@ -139,7 +139,7 @@ fn create_web_worker_callback(
     let preload_module_cb =
       create_web_worker_preload_module_callback(ps.clone());
 
-    let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
+    let extensions = ops::cli_exts(ps.clone());
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
@@ -237,7 +237,7 @@ pub fn create_main_worker(
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
-  let mut extensions = ops::cli_exts(ps.clone(), true);
+  let mut extensions = ops::cli_exts(ps.clone());
   extensions.append(&mut custom_extensions);
 
   let options = WorkerOptions {
