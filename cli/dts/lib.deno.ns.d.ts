@@ -2273,6 +2273,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
+  /** @deprecated use Deno.spawn or Deno.spawnChild */
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
@@ -2402,6 +2403,7 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
+  /** @deprecated use Deno.spawn or Deno.spawnChild */
   export type ProcessStatus =
     | {
       success: true;
@@ -2414,6 +2416,7 @@ declare namespace Deno {
       signal?: number;
     };
 
+  /**  @deprecated use Deno.spawn or Deno.spawnChild */
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
@@ -2427,7 +2430,8 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
+  /** @deprecated use Deno.spawn or Deno.spawnChild
+   * Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
@@ -3089,4 +3093,136 @@ declare namespace Deno {
     | SRVRecord[]
     | string[][]
   >;
+
+  export interface SpawnOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     * If not specified, the cwd of the parent process is used.
+     */
+    cwd?: string | URL;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * An AbortSignal that allows closing the process using the corresponding
+     * AbortController by sending the process a SIGTERM signal.
+     * Not Supported by execSync.
+     */
+    signal?: AbortSignal;
+
+    /** Defaults to "null". */
+    stdin?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stdout?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  /**
+   * Spawns a child process.
+   *
+   * If stdin is set to "piped", the stdin WritableStream needs to be closed manually.
+   *
+   * ```ts
+   * const child = Deno.spawnChild(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   *
+   * // open a file and pipe the subprocess output to it.
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * child.stdin.close();
+   * const status = await child.status;
+   * ```
+   */
+  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Child<T>;
+
+  export class Child<T extends SpawnOptions> {
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
+      : ReadableStream<Uint8Array>;
+
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<ChildStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and status. */
+    output(): Promise<SpawnOutput<T>>;
+    /** Kills the process with given Signal. */
+    kill(signo: Signal): void;
+  }
+
+  /**
+   * Executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * ```ts
+   * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *        "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   */
+  export function spawn<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): Promise<SpawnOutput<T>>;
+
+  /**
+   * Synchronously executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * ```ts
+   * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *       "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(status.code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   */
+  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
+    command: string | URL,
+    options?: T,
+  ): SpawnOutput<T>;
+
+  export type ChildStatus =
+    | {
+      success: true;
+      code: 0;
+      signal: null;
+    }
+    | {
+      success: false;
+      code: number;
+      signal: string | null;
+    };
+
+  export interface SpawnOutput<T extends SpawnOptions> {
+    status: ChildStatus;
+    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
+    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
+  }
 }
