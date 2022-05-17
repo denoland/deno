@@ -14,7 +14,7 @@ impl ToV8 for U16String {
     let maybe_v =
       v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal);
 
-    // 'None' can be returned if buffer length > kMaxLength.
+    // 'new_from_two_byte' can return 'None' if buffer length > kMaxLength.
     if let Some(v) = maybe_v {
       Ok(v.into())
     } else {
