@@ -200,6 +200,13 @@ impl AssetOrDocument {
     }
   }
 
+  pub fn media_type(&self) -> MediaType {
+    match self {
+      AssetOrDocument::Asset(_) => MediaType::TypeScript, // assets are always TypeScript
+      AssetOrDocument::Document(d) => d.media_type(),
+    }
+  }
+
   pub fn get_maybe_dependency(
     &self,
     position: &lsp::Position,

@@ -4,6 +4,11 @@
                             600    ; RETRY
                             3600000; EXPIRE
                             60)    ; MINIMUM
+@   IN	CAA	0       issue "ca.example.net"
+@   IN	CAA	0       issue "ca2.example.net; account=123456"
+@   IN	CAA	0       issuewild ";"
+@   IN	CAA	0       iodef "mailto:security@example.com"
+@   IN	CAA	128     tbs "Unknown"
         NS      ns1.ns.com.
         NS      ns2.ns.com.
         NS      ns3.ns.com.
