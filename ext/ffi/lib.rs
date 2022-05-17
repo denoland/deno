@@ -181,6 +181,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .build()
 }
 
+/// Defines the accepted types that can be used as
+/// parameters and return values in FFI.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum NativeType {
@@ -198,6 +200,7 @@ enum NativeType {
   F32,
   F64,
   Pointer,
+  Function,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -217,10 +220,13 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
       NativeType::Pointer => libffi::middle::Type::pointer(),
+      NativeType::Function => libffi::middle::Type::pointer(),
     }
   }
 }
 
+/// Intermediate format for easy translation from NativeType + V8 value
+/// to libffi argument types.
 #[repr(C)]
 union NativeValue {
   void_value: (),
@@ -291,6 +297,12 @@ impl NativeValue {
           }
         }
       }
+      NativeType::Function => {
+        // Self {
+        //   pointer: value_as_uint::<u32>(value)?.into(),
+        // }
+        unreachable!();
+      }
     };
     Ok(value)
   }
@@ -299,7 +311,10 @@ impl NativeValue {
     Self { pointer: ptr }
   }
 
-  unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
+  unsafe fn as_arg(
+    &self,
+    native_type: NativeType
+  ) -> Arg {
     match native_type {
       NativeType::Void => Arg::new(&self.void_value),
       NativeType::U8 => Arg::new(&self.u8_value),
@@ -314,7 +329,7 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer => Arg::new(&self.pointer),
+      NativeType::Pointer | NativeType::Function => Arg::new(&self.pointer),
     }
   }
 }
@@ -545,12 +560,22 @@ where
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum FfiParameter {
+  Null,
+  //Bool(bool),
+  Number(serde_json::Number),
+  //Value(Value),
+  Buffer(Option<ZeroCopyBuf>),
+  //Function(Resource),
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FfiCallArgs {
   rid: ResourceId,
   symbol: String,
-  parameters: Vec<Value>,
-  buffers: Vec<Option<ZeroCopyBuf>>,
+  parameters: Vec<FfiParameter>,
 }
 
 #[derive(Deserialize)]
@@ -558,8 +583,7 @@ struct FfiCallArgs {
 struct FfiCallPtrArgs {
   pointer: U32x2,
   def: ForeignFunction,
-  parameters: Vec<Value>,
-  buffers: Vec<Option<ZeroCopyBuf>>,
+  parameters: Vec<FfiParameter>,
 }
 
 impl From<FfiCallPtrArgs> for FfiCallArgs {
@@ -568,7 +592,7 @@ impl From<FfiCallPtrArgs> for FfiCallArgs {
       rid: 0,
       symbol: String::new(),
       parameters: args.parameters,
-      buffers: args.buffers,
+      //buffers: args.buffers,
     }
   }
 }
@@ -596,51 +620,63 @@ impl FfiCallPtrArgs {
   }
 }
 
-fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
-  let buffers: Vec<Option<&[u8]>> = args
-    .buffers
-    .iter()
-    .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
-    .collect();
-
+fn ffi_parse_args(
+  parameters: &Vec<FfiParameter>,
+  parameter_types: &Vec<NativeType>,
+  resource_table: &deno_core::ResourceTable,
+) -> Result<Vec<Arg>, AnyError> {
   let mut native_values: Vec<NativeValue> = vec![];
 
-  for (&native_type, value) in symbol
-    .parameter_types
-    .iter()
-    .zip(args.parameters.into_iter())
+  for (native_type, value) in
+    parameter_types.iter().zip(parameters.into_iter())
   {
-    match native_type {
-      NativeType::Pointer => match value.as_u64() {
-        Some(idx) => {
-          let buf = buffers
-            .get(idx as usize)
-            .ok_or_else(|| {
-              generic_error(format!("No buffer present at index {}", idx))
-            })?
-            .unwrap();
-          native_values.push(NativeValue::buffer(buf.as_ptr()));
-        }
-        _ => {
-          let value = NativeValue::new(native_type, value)?;
-          native_values.push(value);
-        }
-      },
+    match (native_type, &value) {
+      (
+        NativeType::Pointer | NativeType::Function,
+        FfiParameter::Null | FfiParameter::Buffer(None),
+      ) => {
+        native_values.push(NativeValue {
+          pointer: ptr::null(),
+        });
+      }
+      (NativeType::Pointer, FfiParameter::Buffer(Some(buf))) => {
+        native_values.push(NativeValue {
+          pointer: buf.as_ptr(),
+        });
+      }
+      (NativeType::Function, FfiParameter::Number(value)) => {
+        let resource = resource_table
+          .get::<RegisteredCallbackResource>(value.as_u64().unwrap() as u32)
+          .unwrap();
+        native_values.push(NativeValue {
+          pointer: *resource.closure.code_ptr() as *const u8,
+        });
+      }
+      (native_type, FfiParameter::Number(value)) => {
+        native_values.push(NativeValue::new(*native_type, serde_json::Value::Number(value.clone()))?);
+      }
       _ => {
-        let value = NativeValue::new(native_type, value)?;
-        native_values.push(value);
+        panic!("SHIIIT");
       }
     }
   }
 
-  let call_args = symbol
-    .parameter_types
-    .iter()
-    .zip(native_values.iter())
-    .map(|(&native_type, native_value)| unsafe {
-      native_value.as_arg(native_type)
-    })
-    .collect::<Vec<_>>();
+  Ok(
+    parameter_types
+      .iter()
+      .zip(native_values.iter())
+      .map(|(&native_type, native_value)| unsafe {
+        native_value.as_arg(native_type)
+      })
+      .collect::<Vec<_>>(),
+  )
+}
+
+fn ffi_call(
+  call_args: Vec<Arg>,
+  symbol: &Symbol,
+) -> Result<Value, AnyError> {
+  //let call_args = ffi_parse_args(&args.parameters, symbol, resource_table)?;
 
   Ok(match symbol.result_type {
     NativeType::Void => {
@@ -690,7 +726,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
-    NativeType::Pointer => {
+    NativeType::Pointer | NativeType::Function => {
       json!(U32x2::from(unsafe {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
@@ -709,6 +745,10 @@ impl Resource for RegisteredCallbackResource {
   }
 
   fn close(self: Rc<Self>) {
+    let info = unsafe { Box::from_raw(self.info as *mut CallbackInfo) };
+    let isolate = unsafe { info.isolate.as_mut().unwrap() };
+    unsafe { v8::Global::from_raw(isolate, info.callback) };
+    unsafe { v8::Global::from_raw(isolate, info.context) };
     drop(self)
   }
 }
@@ -882,33 +922,48 @@ fn op_ffi_register_callback(
 
 #[op]
 fn op_ffi_deregister_callback(state: &mut deno_core::OpState, rid: ResourceId) {
-  let resource = state
+  state
     .resource_table
     .take::<RegisteredCallbackResource>(rid)
-    .unwrap();
+    .unwrap()
+    .close();
+}
 
-  unsafe { Box::from_raw(resource.info as *mut CallbackInfo) };
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestCallbackArgs {
+  rid: ResourceId,
+  parameters: Vec<FfiParameter>,
 }
 
 #[op]
 fn test_registered_callback(
   state: Rc<RefCell<deno_core::OpState>>,
-  rid: ResourceId,
-) {
+  args: TestCallbackArgs,
+) -> Result<Value, AnyError> {
   let (fn_ptr, info) = {
     let state = &mut state.borrow_mut();
     let resource = state
       .resource_table
-      .get::<RegisteredCallbackResource>(rid)
+      .get::<RegisteredCallbackResource>(args.rid)
       .unwrap();
     let info: &CallbackInfo = unsafe { &*resource.info };
 
-    let fn_ptr: unsafe extern "C" fn() = *resource.closure.code_ptr();
+    let fn_ptr: unsafe extern "C" fn(u32) -> u32 = unsafe { *resource.closure.instantiate_code_ptr() };
     (fn_ptr, info)
   };
   info.create_scope.set(false);
-  unsafe { fn_ptr() };
+  let mut arg: u32 = 0;
+  match &args.parameters[0] {
+    FfiParameter::Null => {},
+    FfiParameter::Number(value) => {
+      arg = value_as_uint(serde_json::Value::Number(value.clone()))?;
+    },
+    FfiParameter::Buffer(_) => {},
+}
+  let result = unsafe { fn_ptr(arg) };
   info.create_scope.set(true);
+  Ok(result.into())
 }
 
 #[op]
@@ -925,7 +980,8 @@ where
   permissions.check(None)?;
 
   let symbol = args.get_symbol();
-  ffi_call(args.into(), &symbol)
+  let call_args = ffi_parse_args(&args.parameters, &symbol.parameter_types, &state.resource_table)?;
+  ffi_call(call_args, &symbol)
 }
 
 #[op]
@@ -945,9 +1001,13 @@ where
   }
 
   let symbol = args.get_symbol();
-  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
-    .await
-    .unwrap()
+  let call_args = ffi_parse_args(&args.parameters, &symbol.parameter_types, &state.borrow_mut().resource_table)?;
+  tokio::task::spawn_blocking(move || {
+    //ffi_call(call_args, &symbol)
+    Ok(serde_json::to_value(()).unwrap())
+  })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -1009,7 +1069,7 @@ fn op_ffi_get_static(
     NativeType::F64 => {
       json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
     }
-    NativeType::Pointer => {
+    NativeType::Pointer | NativeType::Function => {
       json!(U32x2::from(data_ptr as *const u8 as u64))
     }
   })
@@ -1028,8 +1088,10 @@ fn op_ffi_call(
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
+  
+  let call_args = ffi_parse_args(&args.parameters, &symbol.parameter_types, &state.resource_table)?;
 
-  ffi_call(args, symbol)
+  ffi_call(call_args, symbol)
 }
 
 /// A non-blocking FFI call.
@@ -1048,9 +1110,12 @@ async fn op_ffi_call_nonblocking(
     .ok_or_else(bad_resource_id)?
     .clone();
 
-  tokio::task::spawn_blocking(move || ffi_call(args, &symbol))
-    .await
-    .unwrap()
+  tokio::task::spawn_blocking(move || {
+    //ffi_call(args, &symbol, state.borrow_mut().resource_table)
+    Ok(serde_json::to_value(()).unwrap())
+  })
+  .await
+  .unwrap()
 }
 
 #[op]
