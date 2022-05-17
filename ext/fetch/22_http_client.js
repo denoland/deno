@@ -36,7 +36,7 @@
       this.rid = rid;
     }
     close() {
-      core.close(this.rid);
+      this.rid.close();
     }
   }
   const HttpClientPrototype = HttpClient.prototype;

@@ -231,7 +231,7 @@ where
       let (request, maybe_request_body, maybe_cancel_handle) =
         file_fetch_handler.fetch_file(state, url);
       let request_rid = Resource::new(FetchRequestResource(request));
-      let maybe_request_body_rid = maybe_request_body.map(|r| Resource::new(r));
+      let maybe_request_body_rid = maybe_request_body.map(Resource::new);
       let maybe_cancel_handle_rid =
         maybe_cancel_handle.map(|ch| Resource::new(FetchCancelHandle(ch)));
 

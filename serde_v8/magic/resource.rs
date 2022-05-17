@@ -100,7 +100,6 @@ impl<T> Resource<T> {
       }
     }
 
-    println!("try_unwrap");
     match Rc::try_unwrap(rc) {
       Ok(value) => {
         // Cancel the finalizer.
@@ -117,9 +116,9 @@ fn try_close_callback<'a, 's, T>(
   args: v8::FunctionCallbackArguments<'a>,
   _rv: v8::ReturnValue<'s>,
 ) {
-  let resource = args.get(0);
+  let resource = args.this().into();
   let resource = Resource::<T>::from_v8(scope, resource).unwrap();
-  let _ = resource.into_inner();
+  let _ = resource.into_inner(); // Consume
 }
 
 impl<T> ToV8 for Resource<T> {
@@ -167,7 +166,6 @@ impl<T> ToV8 for Resource<T> {
       wrap,
       // finalizer
       Box::new(move |isolate| {
-        println!("Finalizer called");
         // SAFETY: 1. The finalizer is guaranteed by V8 to run on the isolate thread.
         // 2. The backing memory for WeakData is initialized immediately after callback is registered.
         // 3. The second-pass callback calls finalizer before attempting to drop the WeakData.
@@ -177,12 +175,10 @@ impl<T> ToV8 for Resource<T> {
           let _weak = v8::Weak::from_raw(isolate, Some(raw_weak));
         }
         if cancel_finalization.get() {
-          println!("  Cancel finalization");
           // Rust tells us to prevent dropping the Rc.
           // It decrements the strong count and is the sole owner of the resource data.
           return;
         }
-        println!("  Drop resource");
         // SAFETY: We own the Rc<T>, no other Resource can hold the pointer
         // to it. Here, we say bye-bye to the object.
         unsafe {
@@ -215,13 +211,13 @@ impl<T> FromV8 for Resource<T> {
     let cancel_ptr =
       v8::Local::<v8::External>::try_from(cancel_external).unwrap();
 
-    // SAFETY: The internal field of this Object is a valid External pointer to the Rc<T>.
     let inner = ptr.value() as *const _;
     unsafe { Rc::increment_strong_count(inner) };
 
     let cancel_ptr = cancel_ptr.value() as *const _;
     unsafe { Rc::increment_strong_count(cancel_ptr) };
     let cancel_finalization = unsafe { Rc::from_raw(cancel_ptr) };
+
     Ok(Resource {
       inner: Some(inner),
       cancel_finalization,

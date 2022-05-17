@@ -98,7 +98,7 @@
       if (readable) {
         errorReadableStream(readable, terminator.reason);
       }
-      core.tryClose2(responseBodyRid);
+      responseBodyRid.close();
     }
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
@@ -121,7 +121,7 @@
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
-            core.tryClose2(responseBodyRid);
+            responseBodyRid.close();
           }
         } catch (err) {
           if (terminator.aborted) {
@@ -131,7 +131,7 @@
             // error.
             controller.error(err);
           }
-          core.tryClose2(responseBodyRid);
+          responseBodyRid.close();
         }
       },
       cancel() {
@@ -225,10 +225,10 @@
 
     function onAbort() {
       if (cancelHandleRid !== null) {
-        core.tryClose2(cancelHandleRid);
+        cancelHandleRid.close();
       }
       if (requestBodyRid !== null) {
-        core.tryClose2(requestBodyRid);
+        requestBodyRid.close();
       }
     }
     terminator[abortSignal.add](onAbort);
@@ -271,7 +271,7 @@
           }
         }
         WeakMapPrototypeDelete(requestBodyReaders, req);
-        core.tryClose2(requestBodyRid);
+        requestBodyRid.close();
       })();
     }
 
@@ -283,7 +283,7 @@
       });
     } finally {
       if (cancelHandleRid !== null) {
-        core.tryClose2(cancelHandleRid);
+        cancelHandleRid.close();
       }
     }
     if (terminator.aborted) return abortedNetworkError();
@@ -304,12 +304,12 @@
     if (redirectStatus(resp.status)) {
       switch (req.redirectMode) {
         case "error":
-          core.close2(resp.responseRid);
+          resp.responseRid.close();
           return networkError(
             "Encountered redirect while redirect mode is set to 'error'",
           );
         case "follow":
-          core.close2(resp.responseRid);
+          resp.responseRid.close();
           return httpRedirectFetch(req, response, terminator);
         case "manual":
           break;
@@ -317,11 +317,11 @@
     }
 
     if (nullBodyStatus(response.status)) {
-      core.close2(resp.responseRid);
+      resp.responseRid.close();
     } else {
       if (req.method === "HEAD" || req.method === "CONNECT") {
         response.body = null;
-        core.close2(resp.responseRid);
+        resp.responseRid.close();
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
@@ -564,13 +564,13 @@
           }
         })().then(
           // 2.7
-          () => core.close2(rid),
+          () => rid.close(),
           // 2.8
           (err) => core.abortWasmStreaming(rid, err),
         );
       } else {
         // 2.7
-        core.close2(rid);
+        rid.close();
       }
     } catch (err) {
       // 2.8
