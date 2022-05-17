@@ -109,16 +109,6 @@ fn op_sqlite_run(
   Ok(stmt.raw_execute()?)
 }
 
-#[derive(serde::Serialize)]
-#[serde(untagged)]
-pub enum Value {
-  Null,
-  Integer(i64),
-  Real(f64),
-  Text(String),
-  Blob(Vec<u8>),
-}
-
 #[op(v8)]
 fn op_sqlite_query<'scope>(
   scope: &mut v8::HandleScope<'scope>,
@@ -156,12 +146,12 @@ where
 
   let rows = stmt.raw_query();
 
+  let mut row = vec![v8::null(scope).into(); resource.1];
   let values: Vec<v8::Local<v8::Value>> = rows
     .map(|r| {
-      let mut values = Vec::with_capacity(resource.1);
       for index in 0..resource.1 {
         let value: rusqlite::types::ValueRef = r.get_ref_unwrap(index);
-        values.push(match value {
+        row[index] = match value {
           rusqlite::types::ValueRef::Null => v8::null(scope).into(),
           rusqlite::types::ValueRef::Integer(i) => {
             v8::Number::new(scope, i as f64).into()
@@ -175,9 +165,9 @@ where
               .into()
           }
           rusqlite::types::ValueRef::Blob(b) => todo!(),
-        });
+        };
       }
-      Ok(v8::Array::new_with_elements(scope, &values).into())
+      Ok(v8::Array::new_with_elements(scope, &row).into())
     })
     .collect()?;
 
