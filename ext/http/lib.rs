@@ -681,7 +681,7 @@ fn should_compress(headers: &hyper::HeaderMap) -> bool {
   // with the user code and we can't compress the response
   let content_range = headers.contains_key(hyper::header::CONTENT_RANGE);
   // assume body is already compressed if Content-Encoding header present, thus avoid recompressing
-  let is_precompressed = headers.contains_key(key::header::CONTENT_ENCODING);
+  let is_precompressed = headers.contains_key(hyper::header::CONTENT_ENCODING);
 
   !content_range
     && !is_precompressed
