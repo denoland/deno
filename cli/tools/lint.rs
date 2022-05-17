@@ -508,7 +508,7 @@ impl LintReporter for JsonLintReporter {
   }
 }
 
-fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
+fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   // Sort so that we guarantee a deterministic output which is useful for tests
   diagnostics.sort_by(|a, b| {
     use std::cmp::Ordering;

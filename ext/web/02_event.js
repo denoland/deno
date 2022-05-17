@@ -797,20 +797,6 @@
     }
   }
 
-  function normalizeAddEventHandlerOptions(
-    options,
-  ) {
-    if (typeof options === "boolean" || typeof options === "undefined") {
-      return {
-        capture: Boolean(options),
-        once: false,
-        passive: false,
-      };
-    } else {
-      return options;
-    }
-  }
-
   function normalizeEventHandlerOptions(
     options,
   ) {
@@ -889,6 +875,45 @@
     };
   }
 
+  // This is lazy loaded because there is a circular dependency with AbortSignal.
+  let addEventListenerOptionsConverter;
+
+  function lazyAddEventListenerOptionsConverter() {
+    addEventListenerOptionsConverter ??= webidl.createDictionaryConverter(
+      "AddEventListenerOptions",
+      [
+        {
+          key: "capture",
+          defaultValue: false,
+          converter: webidl.converters.boolean,
+        },
+        {
+          key: "passive",
+          defaultValue: false,
+          converter: webidl.converters.boolean,
+        },
+        {
+          key: "once",
+          defaultValue: false,
+          converter: webidl.converters.boolean,
+        },
+        {
+          key: "signal",
+          converter: webidl.converters.AbortSignal,
+        },
+      ],
+    );
+  }
+
+  webidl.converters.AddEventListenerOptions = (V, opts) => {
+    if (webidl.type(V) !== "Object" || V === null) {
+      V = { capture: Boolean(V) };
+    }
+
+    lazyAddEventListenerOptionsConverter();
+    return addEventListenerOptionsConverter(V, opts);
+  };
+
   class EventTarget {
     constructor() {
       this[eventTargetData] = getDefaultTargetData();
@@ -899,14 +924,21 @@
       callback,
       options,
     ) {
+      const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
+
       webidl.requiredArguments(arguments.length, 2, {
-        prefix: "Failed to execute 'addEventListener' on 'EventTarget'",
+        prefix,
       });
+
+      options = webidl.converters.AddEventListenerOptions(options, {
+        prefix,
+        context: "Argument 3",
+      });
+
       if (callback === null) {
         return;
       }
 
-      options = normalizeAddEventHandlerOptions(options);
       const { listeners } = (this ?? globalThis)[eventTargetData];
 
       if (!(ReflectHas(listeners, type))) {
@@ -936,8 +968,6 @@
             this.removeEventListener(type, callback, options);
           });
         }
-      } else if (options?.signal === null) {
-        throw new TypeError("signal must be non-null");
       }
 
       ArrayPrototypePush(listeners[type], { callback, options });

@@ -163,7 +163,11 @@ fn pty_complete_imports() {
 
     let output = console.read_all_output();
     assert!(output.contains("Hello World"));
-    assert!(output.contains("testing output\u{1b}"));
+    if cfg!(windows) {
+      assert!(output.contains("testing output\u{1b}"));
+    } else {
+      assert!(output.contains("\ntesting output"));
+    }
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
@@ -199,6 +203,20 @@ fn pty_assign_global_this() {
 
     let output = console.read_all_output();
     assert!(!output.contains("panicked"));
+  });
+}
+
+#[test]
+fn pty_emoji() {
+  // windows was having issues displaying this
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log('🦕');");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    // one for input, one for output
+    let emoji_count = output.chars().filter(|c| *c == '🦕').count();
+    assert_eq!(emoji_count, 2);
   });
 }
 

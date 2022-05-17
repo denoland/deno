@@ -281,6 +281,7 @@
                 streamRid,
                 resourceRid,
               );
+              core.tryClose(resourceRid);
               readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
@@ -318,13 +319,13 @@
                 throw error;
               }
             }
+          }
 
-            try {
-              await core.opAsync("op_http_shutdown", streamRid);
-            } catch (error) {
-              await reader.cancel(error);
-              throw error;
-            }
+          try {
+            await core.opAsync("op_http_shutdown", streamRid);
+          } catch (error) {
+            await reader.cancel(error);
+            throw error;
           }
         }
 
