@@ -244,3 +244,13 @@ Deno.test(function eventTargetDispatchShouldSetTargetInListener() {
   target.dispatchEvent(event);
   assertEquals(called, true);
 });
+
+Deno.test(function eventTargetAddEventListenerGlobalAbort() {
+  return new Promise((resolve) => {
+    const c = new AbortController();
+
+    c.signal.addEventListener("abort", () => resolve());
+    addEventListener("test", () => {}, { signal: c.signal });
+    c.abort();
+  });
+});
