@@ -178,26 +178,31 @@ fn create_compiler_snapshot(
   }
 
   #[op]
-  fn op_build_info(
-    state: &mut OpState,
-    _args: Value,
-  ) -> Result<Value, AnyError> {
+  fn op_build_info(state: &mut OpState) -> Value {
     let build_specifier = "asset:///bootstrap.ts";
     let build_libs = state.borrow::<Vec<&str>>();
-    Ok(json!({
+    json!({
       "buildSpecifier": build_specifier,
       "libs": build_libs,
-    }))
+    })
   }
 
   #[op]
-  fn op_cwd(_args: Value) -> Result<Value, AnyError> {
-    Ok(json!("cache:///"))
+  fn op_cwd() -> String {
+    "cache:///".into()
   }
 
   #[op]
-  fn op_exists(_args: Value) -> Result<Value, AnyError> {
-    Ok(json!(false))
+  fn op_exists() -> bool {
+    false
+  }
+
+  #[op]
+  fn op_script_version(
+    _state: &mut OpState,
+    _args: Value,
+  ) -> Result<Option<String>, AnyError> {
+    Ok(Some("1".to_string()))
   }
 
   #[op]
@@ -214,7 +219,7 @@ fn create_compiler_snapshot(
     if args.specifier == build_specifier {
       Ok(json!({
         "data": r#"console.log("hello deno!");"#,
-        "hash": "1",
+        "version": "1",
         // this corresponds to `ts.ScriptKind.TypeScript`
         "scriptKind": 3
       }))
@@ -233,7 +238,7 @@ fn create_compiler_snapshot(
         let data = std::fs::read_to_string(path)?;
         Ok(json!({
           "data": data,
-          "hash": "1",
+          "version": "1",
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
         }))
@@ -258,6 +263,7 @@ fn create_compiler_snapshot(
         op_cwd::decl(),
         op_exists::decl(),
         op_load::decl(),
+        op_script_version::decl(),
       ])
       .state(move |state| {
         state.put(op_crate_libs.clone());

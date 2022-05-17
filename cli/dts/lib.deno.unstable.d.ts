@@ -1346,6 +1346,12 @@ declare namespace Deno {
     uid?: number;
     /** Similar to `uid`, but sets the group ID of the child process. */
     gid?: number;
+    /**
+     * An AbortSignal that allows closing the process using the corresponding
+     * AbortController by sending the process a SIGTERM signal.
+     * Not Supported by execSync.
+     */
+    signal?: AbortSignal;
 
     /** Defaults to "null". */
     stdin?: "piped" | "inherit" | "null";
