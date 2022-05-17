@@ -2046,13 +2046,10 @@ fn no_check_arg<'a>() -> Arg<'a> {
     .min_values(0)
     .value_name("NO_CHECK_TYPE")
     .long("no-check")
-    .help("DEPRECATED: Skip type checking modules")
+    .help("Skip type checking modules")
     .long_help(
-      "DEPRECATED: Skip type-checking. If the value of '--no-check=remote' is supplied,
-diagnostic errors from remote modules will be ignored.
-
-This option will be removed in Deno 1.23, see `--check` instead.
-      ",
+      "Skip type-checking. If the value of '--no-check=remote' is supplied, \
+      diagnostic errors from remote modules will be ignored.",
     )
 }
 
