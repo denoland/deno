@@ -147,7 +147,6 @@
 
   function prepareArgs(types, args) {
     const parameters = [];
-    const buffers = [];
 
     for (let i = 0; i < types.length; i++) {
       const type = types[i];
@@ -158,14 +157,11 @@
           ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
           arg.byteLength !== undefined
         ) {
-          parameters.push(buffers.length);
-          buffers.push(arg);
+          parameters.push(arg);
         } else if (ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)) {
           parameters.push(pack64(arg.value));
-          buffers.push(undefined);
         } else if (arg === null) {
           parameters.push(null);
-          buffers.push(undefined);
         } else {
           throw new TypeError(
             "Invalid ffi arg value, expected TypedArray, UnsafePointer or null",
@@ -184,7 +180,7 @@
       }
     }
 
-    return { parameters, buffers };
+    return { parameters };
   }
 
   function unpackResult(type, result) {
@@ -214,7 +210,7 @@
     }
 
     call(...args) {
-      const { parameters, buffers } = prepareArgs(
+      const { parameters } = prepareArgs(
         this.definition.parameters,
         args,
       );
@@ -223,7 +219,6 @@
           pointer: pack64(this.pointer.value),
           def: this.definition,
           parameters,
-          buffers,
         });
 
         if (this.definition.result === "pointer") {
@@ -236,7 +231,6 @@
           pointer: pack64(this.pointer.value),
           def: this.definition,
           parameters,
-          buffers,
         });
 
         if (this.definition.result === "pointer") {
@@ -299,14 +293,13 @@
         const resultType = symbols[symbol].result;
 
         const fn = (...args) => {
-          const { parameters, buffers } = prepareArgs(types, args);
+          const { parameters } = prepareArgs(types, args);
 
           if (isNonBlocking) {
             const promise = core.opAsync("op_ffi_call_nonblocking", {
               rid: this.#rid,
               symbol,
               parameters,
-              buffers,
             });
 
             if (resultType === "pointer") {
@@ -319,7 +312,6 @@
               rid: this.#rid,
               symbol,
               parameters,
-              buffers,
             });
 
             return unpackResult(resultType, result);

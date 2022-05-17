@@ -566,6 +566,7 @@ enum FfiParameter {
   //Bool(bool),
   Number(serde_json::Number),
   //Value(Value),
+  Pointer(U32x2),
   Buffer(Option<ZeroCopyBuf>),
   //Function(Resource),
 }
@@ -638,6 +639,11 @@ fn ffi_parse_args(
         native_values.push(NativeValue {
           pointer: ptr::null(),
         });
+      }
+      (NativeType::Pointer | NativeType::Function, FfiParameter::Pointer(val)) => {
+        native_values.push(NativeValue {
+          pointer: u64::from(*val) as *const u8,
+        })
       }
       (NativeType::Pointer, FfiParameter::Buffer(Some(buf))) => {
         native_values.push(NativeValue {
@@ -955,11 +961,11 @@ fn test_registered_callback(
   info.create_scope.set(false);
   let mut arg: u32 = 0;
   match &args.parameters[0] {
-    FfiParameter::Null => {},
     FfiParameter::Number(value) => {
       arg = value_as_uint(serde_json::Value::Number(value.clone()))?;
     },
-    FfiParameter::Buffer(_) => {},
+    _ => {},
+
 }
   let result = unsafe { fn_ptr(arg) };
   info.create_scope.set(true);
