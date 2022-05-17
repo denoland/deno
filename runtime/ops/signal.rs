@@ -5,8 +5,6 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use serde::Deserialize;
-use serde::Serialize;
 
 use deno_core::Extension;
 #[cfg(unix)]
@@ -31,7 +29,7 @@ use deno_core::ResourceId;
 #[cfg(unix)]
 use std::borrow::Cow;
 #[cfg(unix)]
-use tokio::signal::unix::{signal, Signal as TokioSignal, SignalKind};
+use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -47,7 +45,7 @@ pub fn init() -> Extension {
 /// The resource for signal stream.
 /// The second element is the waker of polling future.
 struct SignalStreamResource {
-  signal: AsyncRefCell<TokioSignal>,
+  signal: AsyncRefCell<Signal>,
   cancel: CancelHandle,
 }
 
@@ -63,178 +61,181 @@ impl Resource for SignalStreamResource {
 }
 
 #[cfg(target_os = "freebsd")]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum Signal {
-  SIGHUP = 1,
-  SIGINT = 2,
-  SIGQUIT = 3,
-  SIGILL = 4,
-  SIGTRAP = 5,
-  SIGABRT = 6,
-  SIGEMT = 7,
-  SIGFPE = 8,
-  SIGKILL = 9,
-  SIGBUS = 10,
-  SIGSEGV = 11,
-  SIGSYS = 12,
-  SIGPIPE = 13,
-  SIGALRM = 14,
-  SIGTERM = 15,
-  SIGURG = 16,
-  SIGSTOP = 17,
-  SIGTSTP = 18,
-  SIGCONT = 19,
-  SIGCHLD = 20,
-  SIGTTIN = 21,
-  SIGTTOU = 22,
-  SIGIO = 23,
-  SIGXCPU = 24,
-  SIGXFSZ = 25,
-  SIGVTALRM = 26,
-  SIGPROF = 27,
-  SIGWINCH = 28,
-  SIGINFO = 29,
-  SIGUSR1 = 30,
-  SIGUSR2 = 31,
-  SIGTHR = 32,
-  SIGLIBRT = 33,
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGURG" => Ok(16),
+    "SIGSTOP" => Ok(17),
+    "SIGTSTP" => Ok(18),
+    "SIGCONT" => Ok(19),
+    "SIGCHLD" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGIO" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGINFO" => Ok(29),
+    "SIGUSR1" => Ok(30),
+    "SIGUSR2" => Ok(31),
+    "SIGTHR" => Ok(32),
+    "SIGLIBRT" => Ok(33),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum Signal {
-  SIGHUP = 1,
-  SIGINT = 2,
-  SIGQUIT = 3,
-  SIGILL = 4,
-  SIGTRAP = 5,
-  SIGABRT = 6,
-  SIGBUS = 7,
-  SIGFPE = 8,
-  SIGKILL = 9,
-  SIGUSR1 = 10,
-  SIGSEGV = 11,
-  SIGUSR2 = 12,
-  SIGPIPE = 13,
-  SIGALRM = 14,
-  SIGTERM = 15,
-  SIGSTKFLT = 16,
-  SIGCHLD = 17,
-  SIGCONT = 18,
-  SIGSTOP = 19,
-  SIGTSTP = 20,
-  SIGTTIN = 21,
-  SIGTTOU = 22,
-  SIGURG = 23,
-  SIGXCPU = 24,
-  SIGXFSZ = 25,
-  SIGVTALRM = 26,
-  SIGPROF = 27,
-  SIGWINCH = 28,
-  SIGIO = 29,
-  SIGPWR = 30,
-  SIGSYS = 31,
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGABRT" => Ok(6),
+    "SIGBUS" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGUSR1" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGUSR2" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGSTKFLT" => Ok(16),
+    "SIGCHLD" => Ok(17),
+    "SIGCONT" => Ok(18),
+    "SIGSTOP" => Ok(19),
+    "SIGTSTP" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGURG" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGIO" => Ok(29),
+    "SIGPWR" => Ok(30),
+    "SIGSYS" => Ok(31),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
 }
 
 #[cfg(target_os = "macos")]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum Signal {
-  SIGHUP = 1,
-  SIGINT = 2,
-  SIGQUIT = 3,
-  SIGILL = 4,
-  SIGTRAP = 5,
-  SIGABRT = 6,
-  SIGEMT = 7,
-  SIGFPE = 8,
-  SIGKILL = 9,
-  SIGBUS = 10,
-  SIGSEGV = 11,
-  SIGSYS = 12,
-  SIGPIPE = 13,
-  SIGALRM = 14,
-  SIGTERM = 15,
-  SIGURG = 16,
-  SIGSTOP = 17,
-  SIGTSTP = 18,
-  SIGCONT = 19,
-  SIGCHLD = 20,
-  SIGTTIN = 21,
-  SIGTTOU = 22,
-  SIGIO = 23,
-  SIGXCPU = 24,
-  SIGXFSZ = 25,
-  SIGVTALRM = 26,
-  SIGPROF = 27,
-  SIGWINCH = 28,
-  SIGINFO = 29,
-  SIGUSR1 = 30,
-  SIGUSR2 = 31,
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGURG" => Ok(16),
+    "SIGSTOP" => Ok(17),
+    "SIGTSTP" => Ok(18),
+    "SIGCONT" => Ok(19),
+    "SIGCHLD" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGIO" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGINFO" => Ok(29),
+    "SIGUSR1" => Ok(30),
+    "SIGUSR2" => Ok(31),
+    _ => Err(type_error(format!("Invalid signal: {}", s))),
+  }
 }
 
 #[cfg(any(target_os = "solaris", target_os = "illumos"))]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum Signal {
-  SIGHUP = 1,
-  SIGINT = 2,
-  SIGQUIT = 3,
-  SIGILL = 4,
-  SIGTRAP = 5,
-  SIGIOT = 6,
-  SIGABRT = 6,
-  SIGEMT = 7,
-  SIGFPE = 8,
-  SIGKILL = 9,
-  SIGBUS = 10,
-  SIGSEGV = 11,
-  SIGSYS = 12,
-  SIGPIPE = 13,
-  SIGALRM = 14,
-  SIGTERM = 15,
-  SIGUSR1 = 16,
-  SIGUSR2 = 17,
-  SIGCHLD = 18,
-  SIGPWR = 19,
-  SIGWINCH = 20,
-  SIGURG = 21,
-  SIGPOLL = 22,
-  SIGSTOP = 23,
-  SIGTSTP = 24,
-  SIGCONT = 25,
-  SIGTTIN = 26,
-  SIGTTOU = 27,
-  SIGVTALRM = 28,
-  SIGPROF = 29,
-  SIGXCPU = 30,
-  SIGXFSZ = 31,
-  SIGWAITING = 32,
-  SIGLWP = 33,
-  SIGFREEZE = 34,
-  SIGTHAW = 35,
-  SIGCANCEL = 36,
-  SIGLOST = 37,
-  SIGXRES = 38,
-  SIGJVM1 = 39,
-  SIGJVM2 = 40,
-}
-
-#[cfg(target_os = "windows")]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum Signal {
-  SIGKILL,
-  SIGTERM,
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGUSR1" => Ok(16),
+    "SIGUSR2" => Ok(17),
+    "SIGCLD" => Ok(18),
+    "SIGCHLD" => Ok(18),
+    "SIGPWR" => Ok(19),
+    "SIGWINCH" => Ok(20),
+    "SIGURG" => Ok(21),
+    "SIGPOLL" => Ok(22),
+    "SIGIO" => Ok(22),
+    "SIGSTOP" => Ok(23),
+    "SIGTSTP" => Ok(24),
+    "SIGCONT" => Ok(25),
+    "SIGTTIN" => Ok(26),
+    "SIGTTOU" => Ok(27),
+    "SIGVTALRM" => Ok(28),
+    "SIGPROF" => Ok(29),
+    "SIGXCPU" => Ok(30),
+    "SIGXFSZ" => Ok(31),
+    "SIGWAITING" => Ok(32),
+    "SIGLWP" => Ok(33),
+    "SIGFREEZE" => Ok(34),
+    "SIGTHAW" => Ok(35),
+    "SIGCANCEL" => Ok(36),
+    "SIGLOST" => Ok(37),
+    "SIGXRES" => Ok(38),
+    "SIGJVM1" => Ok(39),
+    "SIGJVM2" => Ok(40),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
 }
 
 #[cfg(unix)]
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: Signal,
+  sig: String,
 ) -> Result<ResourceId, AnyError> {
-  let signo = sig as libc::c_int;
+  let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(type_error(format!(
-      "Binding to signal '{:?}' is not allowed",
+      "Binding to signal '{}' is not allowed",
       sig
     )));
   }

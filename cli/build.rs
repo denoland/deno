@@ -198,6 +198,14 @@ fn create_compiler_snapshot(
   }
 
   #[op]
+  fn op_script_version(
+    _state: &mut OpState,
+    _args: Value,
+  ) -> Result<Option<String>, AnyError> {
+    Ok(Some("1".to_string()))
+  }
+
+  #[op]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
   fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
@@ -211,7 +219,7 @@ fn create_compiler_snapshot(
     if args.specifier == build_specifier {
       Ok(json!({
         "data": r#"console.log("hello deno!");"#,
-        "hash": "1",
+        "version": "1",
         // this corresponds to `ts.ScriptKind.TypeScript`
         "scriptKind": 3
       }))
@@ -230,7 +238,7 @@ fn create_compiler_snapshot(
         let data = std::fs::read_to_string(path)?;
         Ok(json!({
           "data": data,
-          "hash": "1",
+          "version": "1",
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
         }))
@@ -255,6 +263,7 @@ fn create_compiler_snapshot(
         op_cwd::decl(),
         op_exists::decl(),
         op_load::decl(),
+        op_script_version::decl(),
       ])
       .state(move |state| {
         state.put(op_crate_libs.clone());

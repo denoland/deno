@@ -902,28 +902,16 @@
       "event.any.worker.html": true
     },
     "events": {
-      "AddEventListenerOptions-once.any.html": [
-        "Once listener should be added / removed like normal listeners"
-      ],
-      "AddEventListenerOptions-once.any.worker.html": [
-        "Once listener should be added / removed like normal listeners"
-      ],
+      "AddEventListenerOptions-once.any.html": true,
+      "AddEventListenerOptions-once.any.worker.html": true,
       "AddEventListenerOptions-passive.any.html": [
-        "Supports passive option on addEventListener only",
-        "returnValue should be ignored if-and-only-if the passive option is true",
-        "Equivalence of option values"
+        "returnValue should be ignored if-and-only-if the passive option is true"
       ],
       "AddEventListenerOptions-passive.any.worker.html": [
-        "Supports passive option on addEventListener only",
-        "returnValue should be ignored if-and-only-if the passive option is true",
-        "Equivalence of option values"
+        "returnValue should be ignored if-and-only-if the passive option is true"
       ],
-      "AddEventListenerOptions-signal.any.html": [
-        "Passing null as the signal should throw (listener is also null)"
-      ],
-      "AddEventListenerOptions-signal.any.worker.html": [
-        "Passing null as the signal should throw (listener is also null)"
-      ],
+      "AddEventListenerOptions-signal.any.html": true,
+      "AddEventListenerOptions-signal.any.worker.html": true,
       "Event-isTrusted.any.html": true,
       "Event-isTrusted.any.worker.html": true,
       "EventTarget-add-remove-listener.any.html": true,

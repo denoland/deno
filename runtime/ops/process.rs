@@ -288,15 +288,16 @@ async fn op_run_status(
 }
 
 #[cfg(unix)]
-pub fn kill(pid: i32, signal: super::signal::Signal) -> Result<(), AnyError> {
+pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  let signo = super::signal::signal_str_to_int(signal)?;
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
-  let sig = Signal::try_from(signal as libc::c_int)?;
+  let sig = Signal::try_from(signo)?;
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
 }
 
 #[cfg(not(unix))]
-pub fn kill(pid: i32, _signal: super::signal::Signal) -> Result<(), AnyError> {
+pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
@@ -310,7 +311,9 @@ pub fn kill(pid: i32, _signal: super::signal::Signal) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if pid <= 0 {
+  if !matches!(signal, "SIGKILL" | "SIGTERM") {
+    Err(type_error(format!("Invalid signal: {}", signal)))
+  } else if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
@@ -336,9 +339,9 @@ pub fn kill(pid: i32, _signal: super::signal::Signal) -> Result<(), AnyError> {
 fn op_kill(
   state: &mut OpState,
   pid: i32,
-  signal: super::signal::Signal,
+  signal: String,
 ) -> Result<(), AnyError> {
   state.borrow_mut::<Permissions>().run.check_all()?;
-  kill(pid, signal)?;
+  kill(pid, &signal)?;
   Ok(())
 }
