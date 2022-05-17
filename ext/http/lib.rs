@@ -518,23 +518,22 @@ async fn op_http_write_headers(
     .resource_table
     .get::<HttpStreamResource>(rid)?;
 
-  let mut builder = Response::builder().status(status);
-
-  // Add headers
-  let header_count = headers.len();
-  let headers = headers.into_iter().filter_map(|(k, v)| {
-    let v: Vec<u8> = v.into();
-    Some((
-      HeaderName::try_from(k.as_slice()).ok()?,
-      HeaderValue::try_from(v).ok()?,
-    ))
-  });
   // Track supported encoding
   let encoding = *stream.accept_encoding.borrow();
 
-  let hmap = builder.headers_mut().unwrap();
-  hmap.reserve(header_count + 2);
-  hmap.extend(headers);
+  let mut builder = Response::builder();
+  // SAFETY: can not fail, since a fresh Builder is non-errored
+  let hmap = unsafe { builder.headers_mut().unwrap_unchecked() };
+
+  // Add headers
+  hmap.reserve(headers.len() + 2);
+  for (k, v) in headers.into_iter() {
+    let v: Vec<u8> = v.into();
+    hmap.append(
+      HeaderName::try_from(k.as_slice())?,
+      HeaderValue::try_from(v)?,
+    );
+  }
   ensure_vary_accept_encoding(hmap);
 
   let accepts_compression =
@@ -559,7 +558,7 @@ async fn op_http_write_headers(
   }
 
   let (new_wr, body) = http_response(data, compressing, encoding)?;
-  let body = builder.body(body)?;
+  let body = builder.status(status).body(body)?;
 
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let response_tx = match replace(&mut *old_wr, new_wr) {
