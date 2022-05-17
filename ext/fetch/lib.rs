@@ -358,11 +358,13 @@ async fn op_body_write(
 #[op]
 async fn op_body_read(
   body: Resource<FetchResponseBodyResource>,
-  buf: ZeroCopyBuf,
+  mut buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  use deno_core::Resource;
   let resource = body.borrow();
-  resource.read(buf).await.map(|n| n as u32)
+  let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
+  Ok(read as u32)
 }
 
 #[derive(Serialize)]

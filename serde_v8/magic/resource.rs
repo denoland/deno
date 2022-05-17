@@ -55,15 +55,7 @@ impl<T: ?Sized> Resource<T> {
   pub fn borrow(mut self) -> Rc<T> {
     let ptr = self.inner.take().unwrap();
     // SAFETY: Rc is immediately constructed from it's raw pointer.
-    let rc = unsafe { Rc::from_raw(ptr) };
-    if Rc::strong_count(&rc) == 1 {
-      // SAFETY: We cannot let the Rc<T> drop.
-      // TODO(@littledivy): Verify this doesn't cause any side effects!
-      unsafe {
-        Rc::increment_strong_count(ptr);
-      }
-    }
-    rc
+    unsafe { Rc::from_raw(ptr) }
   }
 }
 
@@ -78,7 +70,7 @@ impl<T> Resource<T> {
     }
   }
 
-  // Returns the underlying owned value held by the Resource.
+  /// Returns the underlying owned value held by the Resource.
   /// This will return None if the Resource is already in use.
   pub fn into_inner(mut self) -> Option<T> {
     let ptr = self.inner.take()?;
