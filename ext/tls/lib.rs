@@ -40,6 +40,22 @@ pub fn init() -> Extension {
   Extension::builder().build()
 }
 
+struct DefaultSignatureVerification;
+
+impl ServerCertVerifier for DefaultSignatureVerification {
+  fn verify_server_cert(
+    &self,
+    _end_entity: &Certificate,
+    _intermediates: &[Certificate],
+    _server_name: &ServerName,
+    _scts: &mut dyn Iterator<Item = &[u8]>,
+    _ocsp_response: &[u8],
+    _now: SystemTime,
+  ) -> Result<ServerCertVerified, Error> {
+    Err(Error::General("Should not be used".to_string()))
+  }
+}
+
 pub struct NoCertificateVerification(pub Vec<String>);
 
 impl ServerCertVerifier for NoCertificateVerification {
@@ -82,20 +98,30 @@ impl ServerCertVerifier for NoCertificateVerification {
 
   fn verify_tls12_signature(
     &self,
-    _message: &[u8],
-    _cert: &rustls::Certificate,
-    _dss: &DigitallySignedStruct,
+    message: &[u8],
+    cert: &rustls::Certificate,
+    dss: &DigitallySignedStruct,
   ) -> Result<HandshakeSignatureValid, Error> {
-    Ok(HandshakeSignatureValid::assertion())
+    if self.0.is_empty() {
+      return Ok(HandshakeSignatureValid::assertion());
+    }
+    filter_invalid_encoding_err(
+      DefaultSignatureVerification.verify_tls12_signature(message, cert, dss),
+    )
   }
 
   fn verify_tls13_signature(
     &self,
-    _message: &[u8],
-    _cert: &rustls::Certificate,
-    _dss: &DigitallySignedStruct,
+    message: &[u8],
+    cert: &rustls::Certificate,
+    dss: &DigitallySignedStruct,
   ) -> Result<HandshakeSignatureValid, Error> {
-    Ok(HandshakeSignatureValid::assertion())
+    if self.0.is_empty() {
+      return Ok(HandshakeSignatureValid::assertion());
+    }
+    filter_invalid_encoding_err(
+      DefaultSignatureVerification.verify_tls13_signature(message, cert, dss),
+    )
   }
 }
 
@@ -256,6 +282,17 @@ fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(keys.into_iter().map(PrivateKey).collect())
+}
+
+fn filter_invalid_encoding_err(
+  to_be_filtered: Result<HandshakeSignatureValid, Error>,
+) -> Result<HandshakeSignatureValid, Error> {
+  match to_be_filtered {
+    Err(Error::InvalidCertificateEncoding) => {
+      Ok(HandshakeSignatureValid::assertion())
+    }
+    res => res,
+  }
 }
 
 pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
