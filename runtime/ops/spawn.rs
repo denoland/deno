@@ -84,7 +84,7 @@ impl TryFrom<std::process::ExitStatus> for ChildStatus {
     #[cfg(unix)]
     let signal = status.signal();
     #[cfg(not(unix))]
-    let signal = None;
+    let signal: Option<i32> = None;
 
     let status = if let Some(signal) = signal {
       ChildStatus {
