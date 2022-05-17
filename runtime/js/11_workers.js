@@ -27,7 +27,6 @@
     specifier,
     hasSourceCode,
     sourceCode,
-    useDenoNamespace,
     permissions,
     name,
     workerType,
@@ -38,7 +37,6 @@
       permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
-      useDenoNamespace,
       workerType,
     });
   }
@@ -79,20 +77,6 @@
         type = "classic",
       } = options;
 
-      let namespace;
-      let permissions;
-      if (typeof deno == "object") {
-        namespace = deno.namespace ?? false;
-        permissions = deno.permissions ?? undefined;
-      } else {
-        // Assume `deno: boolean | undefined`.
-        // TODO(Soremwar)
-        // `deno: boolean` is kept for backwards compatibility with the previous
-        // worker options implementation. Remove for 2.0
-        namespace = !!deno;
-        permissions = undefined;
-      }
-
       const workerType = webidl.converters["WorkerType"](type);
 
       if (
@@ -120,8 +104,7 @@
         specifier,
         hasSourceCode,
         sourceCode,
-        namespace,
-        permissions,
+        deno?.permissions,
         name,
         workerType,
       );
