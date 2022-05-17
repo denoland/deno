@@ -2,8 +2,8 @@
 pub mod buffer;
 pub mod bytestring;
 pub mod detached_buffer;
-pub mod resource;
 pub(super) mod rawbytes;
+pub mod resource;
 pub mod string_or_buffer;
 pub mod transl8;
 pub mod u16string;

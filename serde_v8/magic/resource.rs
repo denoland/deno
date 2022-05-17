@@ -87,7 +87,6 @@ impl<T> Resource<T> {
 
     // Rust wants exclusive access to the Rc<T>.
     // We have to abort then finalization callback.
-    // TODO(@littledivy): Prevent finalizer to drop the Rc<T>.
 
     // Here, we signal the finalizer that it must not drop the Rc
     // and decrement its strong count.
@@ -101,6 +100,7 @@ impl<T> Resource<T> {
       }
     }
 
+    println!("try_unwrap");
     match Rc::try_unwrap(rc) {
       Ok(value) => {
         // Cancel the finalizer.
@@ -218,8 +218,10 @@ impl<T> FromV8 for Resource<T> {
     // SAFETY: The internal field of this Object is a valid External pointer to the Rc<T>.
     let inner = ptr.value() as *const _;
     unsafe { Rc::increment_strong_count(inner) };
-    let cancel_finalization =
-      unsafe { Rc::from_raw(cancel_ptr.value() as *const _) };
+
+    let cancel_ptr = cancel_ptr.value() as *const _;
+    unsafe { Rc::increment_strong_count(cancel_ptr) };
+    let cancel_finalization = unsafe { Rc::from_raw(cancel_ptr) };
     Ok(Resource {
       inner: Some(inner),
       cancel_finalization,

@@ -9,7 +9,8 @@ use crate::keys::v8_struct_key;
 use crate::magic::transl8::MAGIC_FIELD;
 use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
 use crate::{
-  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf, Resource
+  magic, ByteString, DetachedBuffer, Resource, StringOrBuffer, U16String,
+  ZeroCopyBuf,
 };
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
