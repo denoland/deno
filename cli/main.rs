@@ -158,6 +158,7 @@ fn create_web_worker_callback(
         runtime_version: version::deno(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
+        user_agent: version::get_user_agent(),
       },
       extensions,
       unsafely_ignore_certificate_errors: ps
@@ -165,7 +166,6 @@ fn create_web_worker_callback(
         .unsafely_ignore_certificate_errors
         .clone(),
       root_cert_store: ps.root_cert_store.clone(),
-      user_agent: version::get_user_agent(),
       seed: ps.flags.seed,
       module_loader,
       create_web_worker_cb,
@@ -254,6 +254,7 @@ pub fn create_main_worker(
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
+      user_agent: version::get_user_agent(),
     },
     extensions,
     unsafely_ignore_certificate_errors: ps
@@ -261,7 +262,6 @@ pub fn create_main_worker(
       .unsafely_ignore_certificate_errors
       .clone(),
     root_cert_store: ps.root_cert_store.clone(),
-    user_agent: version::get_user_agent(),
     seed: ps.flags.seed,
     source_map_getter: Some(Box::new(ps.clone())),
     format_js_error_fn: Some(Arc::new(format_js_error)),

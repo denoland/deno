@@ -8,7 +8,7 @@ mod ser;
 mod serializable;
 pub mod utils;
 
-pub use de::{from_v8, from_v8_cached, Deserializer};
+pub use de::{from_v8, from_v8_cached, to_utf8, Deserializer};
 pub use error::{Error, Result};
 pub use keys::KeyCache;
 pub use magic::buffer::ZeroCopyBuf;

@@ -491,9 +491,8 @@ impl JsRuntime {
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
-        let source = source()?;
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self, filename, &source)?;
+        realm.execute_script(self, filename, source)?;
       }
     }
     // Restore extensions

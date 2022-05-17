@@ -56,7 +56,6 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
-      RUSTC_FORCE_INCREMENTAL: 1
 
     steps:
       - name: Configure git
@@ -160,15 +159,15 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
 
-          # Install clang-13, lld-13, and debootstrap.
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-13.list
+          # Install clang-14, lld-14, and debootstrap.
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-14.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           sudo apt-get install --no-install-recommends debootstrap     \
-                                                       clang-13 lld-13
+                                                       clang-14 lld-14
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
@@ -193,8 +192,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-13
-            -C link-arg=-fuse-ld=lld-13
+            -C linker=clang-14
+            -C link-arg=-fuse-ld=lld-14
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -203,15 +202,15 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-13
-            -C link-arg=-fuse-ld=lld-13
+            -C linker=clang-14
+            -C link-arg=-fuse-ld=lld-14
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             ${{ env.RUSTFLAGS }}
           __1
-          CC=clang-13
+          CC=clang-14
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
 
@@ -236,7 +235,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 12-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 14-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -252,7 +251,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            12-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            14-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -268,7 +267,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            12-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            14-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)

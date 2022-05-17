@@ -43,26 +43,19 @@ pub(crate) fn init_builtins() -> Extension {
 /// Return map of resources with id as key
 /// and string representation as value.
 #[op]
-pub fn op_resources(
-  state: &mut OpState,
-) -> Result<Vec<(ResourceId, String)>, Error> {
-  let serialized_resources = state
+pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
+  state
     .resource_table
     .names()
     .map(|(rid, name)| (rid, name.to_string()))
-    .collect();
-  Ok(serialized_resources)
+    .collect()
 }
 
 #[op]
-pub fn op_void_sync() -> Result<(), Error> {
-  Ok(())
-}
+pub fn op_void_sync() {}
 
 #[op]
-pub async fn op_void_async() -> Result<(), Error> {
-  Ok(())
-}
+pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
 #[op]
@@ -92,12 +85,10 @@ pub fn op_try_close(
 }
 
 #[op]
-pub fn op_metrics(
-  state: &mut OpState,
-) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+pub fn op_metrics(state: &mut OpState) -> (OpMetrics, Vec<OpMetrics>) {
   let aggregate = state.tracker.aggregate();
   let per_op = state.tracker.per_op();
-  Ok((aggregate, per_op))
+  (aggregate, per_op)
 }
 
 /// Builtin utility to print to stdout/stderr
@@ -187,6 +178,6 @@ async fn op_shutdown(
 }
 
 #[op]
-fn op_format_file_name(file_name: String) -> Result<String, Error> {
-  Ok(format_file_name(&file_name))
+fn op_format_file_name(file_name: String) -> String {
+  format_file_name(&file_name)
 }
