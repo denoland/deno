@@ -255,6 +255,7 @@ async fn op_emit(
         // TODO(nayeemrmn): Determine reload exclusions.
         reload_exclusions: Default::default(),
       },
+      true,
     )?;
     let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
     (files, emit_result.diagnostics, emit_result.stats)
@@ -278,6 +279,7 @@ async fn op_emit(
           // TODO(nayeemrmn): Determine reload exclusions.
           reload_exclusions: Default::default(),
         },
+        true,
       )?;
       (emit_result.diagnostics, emit_result.stats)
     } else {

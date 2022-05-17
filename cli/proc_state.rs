@@ -470,6 +470,7 @@ impl ProcState {
         self.graph_data.clone(),
         &mut cache,
         options,
+        false,
       )?;
       if !emit_result.diagnostics.is_empty() {
         return Err(anyhow!(emit_result.diagnostics));

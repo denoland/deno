@@ -745,6 +745,7 @@ async fn create_graph_and_maybe_check(
         reload: ps.flags.reload,
         reload_exclusions: Default::default(),
       },
+      false,
     )?;
     debug!("{}", check_result.stats);
     if !check_result.diagnostics.is_empty() {
