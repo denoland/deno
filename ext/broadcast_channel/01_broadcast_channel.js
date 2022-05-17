@@ -35,7 +35,7 @@
       dispatch(null, name, new Uint8Array(data));
     }
 
-    core.close(rid);
+    rid.close();
     rid = null;
   }
 

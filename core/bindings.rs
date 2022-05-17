@@ -21,6 +21,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
+use serde_v8::Resource;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::option::Option;
@@ -826,12 +827,9 @@ fn set_wasm_streaming_callback(
       let state_rc = JsRuntime::state(scope);
       let state = state_rc.borrow();
       let cb_handle = state.js_wasm_streaming_cb.as_ref().unwrap().clone();
-      let streaming_rid = state
-        .op_state
-        .borrow_mut()
-        .resource_table
-        .add(WasmStreamingResource(RefCell::new(wasm_streaming)));
-      (cb_handle, streaming_rid)
+      let streaming_resource =
+        Resource::new(WasmStreamingResource(RefCell::new(wasm_streaming)));
+      (cb_handle, streaming_resource)
     };
 
     let undefined = v8::undefined(scope);

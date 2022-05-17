@@ -560,14 +560,6 @@ itest!(blob_gc_finalization {
   envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
-itest!(fetch_response_finalization {
-  args: "run --v8-flags=--expose-gc --allow-net fetch_response_finalization.js",
-  output: "fetch_response_finalization.js.out",
-  http_server: true,
-  exit_code: 0,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
-});
-
 itest!(import_type {
   args: "run --reload import_type.ts",
   output: "import_type.ts.out",

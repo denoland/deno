@@ -9,10 +9,9 @@ use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::serde_v8::Resource;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -20,7 +19,7 @@ use std::rc::Rc;
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {
-  type Resource: Resource;
+  type Resource;
 
   fn subscribe(&self) -> Result<Self::Resource, AnyError>;
 
@@ -46,7 +45,7 @@ struct Unstable(bool); // --unstable
 #[op]
 pub fn op_broadcast_subscribe<BC>(
   state: &mut OpState,
-) -> Result<ResourceId, AnyError>
+) -> Result<Resource<BC::Resource>, AnyError>
 where
   BC: BroadcastChannel + 'static,
 {
@@ -61,18 +60,18 @@ where
 
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
-  Ok(state.resource_table.add(resource))
+  Ok(Resource::new(resource))
 }
 
 #[op]
 pub fn op_broadcast_unsubscribe<BC>(
   state: &mut OpState,
-  rid: ResourceId,
+  resource: Resource<BC::Resource>,
 ) -> Result<(), AnyError>
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state.resource_table.get::<BC::Resource>(rid)?;
+  let resource = resource.borrow();
   let bc = state.borrow::<BC>();
   bc.unsubscribe(&resource)
 }
@@ -80,14 +79,14 @@ where
 #[op]
 pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  resource: Resource<BC::Resource>,
   name: String,
   buf: ZeroCopyBuf,
 ) -> Result<(), AnyError>
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
+  let resource = resource.borrow();
   let bc = state.borrow().borrow::<BC>().clone();
   bc.send(&resource, name, buf.to_vec()).await
 }
@@ -95,12 +94,12 @@ where
 #[op]
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  resource: Resource<BC::Resource>,
 ) -> Result<Option<Message>, AnyError>
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
+  let resource = resource.borrow();
   let bc = state.borrow().borrow::<BC>().clone();
   bc.recv(&resource).await
 }
