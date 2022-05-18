@@ -399,7 +399,7 @@ async fn op_http_accept(
     fly_accept_encoding::preferred(encodings)
       .ok()
       .flatten()
-      .unwrap_or_else(|| Encoding::Identity)
+      .unwrap_or(Encoding::Identity)
   });
 
   let method = request.method().to_string();
