@@ -11,11 +11,9 @@ https://github.com/denoland/deno_install
 - BREAKING(unstable): Enable Deno namespace in workers by default (#14581)
 - BREAKING: Remove unstable Deno.applySourceMap API (#14473)
 - BREAKING: Remove unstable Deno.emit and Deno.formatDiagnostics APIs (#14463)
-- Forward 1.21.1 (#14428)
-- Revert "core: don't include_str extension js code (#10786)" (#14614)
-- Revert "refactor(runtime): change from signal_str_to_int function to enum
-  (#14539)" (#14606)
 - feat(core): deterministic snapshots (#14037)
+- feat(core): Revert "core: don't include_str extension js code (#10786)"
+  (#14614)
 - feat(ext/net): add "NS" record support in Deno.resolveDns API (#14372)
 - feat(ext/net): add `CAA` DNS record support in Deno.resolveDns() API (#14624)
 - feat(ext/net): add support for SOA records in Deno.resolveDns() API (#14534)
