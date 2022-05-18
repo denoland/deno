@@ -1117,7 +1117,7 @@ declare namespace Deno {
     | {
       success: false;
       code: number;
-      signal: number | null;
+      signal: string | null;
     };
 
   export interface SpawnOutput<T extends SpawnOptions> {
