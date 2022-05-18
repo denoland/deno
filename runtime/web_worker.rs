@@ -312,7 +312,6 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
@@ -329,7 +328,6 @@ pub struct WebWorkerOptions {
   pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -413,30 +411,28 @@ impl WebWorker {
         options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
-      ops::fs_events::init().enabled(options.use_deno_namespace),
-      ops::fs::init().enabled(options.use_deno_namespace),
+      ops::fs_events::init(),
+      ops::fs::init(),
       ops::io::init(),
-      ops::io::init_stdio(options.stdio).enabled(options.use_deno_namespace),
-      deno_tls::init().enabled(options.use_deno_namespace),
+      ops::io::init_stdio(options.stdio),
+      deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
-      )
-      .enabled(options.use_deno_namespace),
+      ),
       ops::os::init(Some(
         options
           .maybe_exit_code
           .expect("Worker has access to OS ops but exit code was not passed."),
-      ))
-      .enabled(options.use_deno_namespace),
-      ops::permissions::init().enabled(options.use_deno_namespace),
-      ops::process::init().enabled(options.use_deno_namespace),
-      ops::spawn::init().enabled(options.use_deno_namespace),
-      ops::signal::init().enabled(options.use_deno_namespace),
-      ops::tty::init().enabled(options.use_deno_namespace),
-      deno_http::init().enabled(options.use_deno_namespace),
-      ops::http::init().enabled(options.use_deno_namespace),
+      )),
+      ops::permissions::init(),
+      ops::process::init(),
+      ops::spawn::init(),
+      ops::signal::init(),
+      ops::tty::init(),
+      deno_http::init(),
+      ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -479,7 +475,6 @@ impl WebWorker {
         js_runtime,
         name,
         internal_handle,
-        use_deno_namespace: options.use_deno_namespace,
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
@@ -492,10 +487,9 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
+      "bootstrap.workerRuntime({}, \"{}\", \"{}\")",
       options.as_json(),
       self.name,
-      self.use_deno_namespace,
       self.id
     );
     self

@@ -270,11 +270,12 @@
             throw new TypeError("Unreachable");
           }
           const resourceRid = getReadableStreamRid(respBody);
+          let reader;
           if (resourceRid) {
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }
-            const reader = respBody.getReader(); // Aquire JS lock.
+            reader = respBody.getReader(); // Aquire JS lock.
             try {
               await core.opAsync(
                 "op_http_write_resource",
@@ -296,7 +297,7 @@
               throw error;
             }
           } else {
-            const reader = respBody.getReader();
+            reader = respBody.getReader();
             while (true) {
               const { value, done } = await reader.read();
               if (done) break;

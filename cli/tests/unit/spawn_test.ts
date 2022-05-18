@@ -225,7 +225,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 137);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -410,7 +410,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -429,7 +429,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
