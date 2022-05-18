@@ -9,6 +9,7 @@ delete Object.prototype.__proto__;
   const core = Deno.core;
   const {
     ArrayPrototypeMap,
+    DateNow,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -25,14 +26,12 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
-  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
-  const errorStack = window.__bootstrap.errorStack;
   const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
   const base64 = window.__bootstrap.base64;
@@ -221,11 +220,8 @@ delete Object.prototype.__proto__;
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
-    const prepareStackTrace = core.createPrepareStackTrace(
-      errorStack.opFormatFileName,
-    );
     // deno-lint-ignore prefer-primordials
-    Error.prepareStackTrace = prepareStackTrace;
+    Error.prepareStackTrace = core.prepareStackTrace;
   }
 
   function registerErrors() {
@@ -304,7 +300,7 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus;
+  let numCpus, userAgent;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -321,6 +317,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
+      },
+    },
+    userAgent: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return userAgent;
       },
     },
   });
@@ -534,6 +538,7 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
@@ -577,6 +582,7 @@ delete Object.prototype.__proto__;
       ppid,
       unstableFlag,
       cpuCount,
+      userAgent: userAgentInfo,
     } = runtimeOptions;
 
     colors.setNoColor(noColor || !isTty);
@@ -584,6 +590,7 @@ delete Object.prototype.__proto__;
       location.setLocationHref(locationHref);
     }
     numCpus = cpuCount;
+    userAgent = userAgentInfo;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -619,13 +626,13 @@ delete Object.prototype.__proto__;
   function bootstrapWorkerRuntime(
     runtimeOptions,
     name,
-    useDenoNamespace,
     internalName,
   ) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
@@ -688,23 +695,18 @@ delete Object.prototype.__proto__;
       close: core.close,
       ...denoNs,
     };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        ObjectAssign(finalDenoNs, denoNsUnstable);
-      }
-      ObjectDefineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(ObjectFreeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-      ObjectFreeze(globalThis.Deno.core);
-    } else {
-      delete globalThis.Deno;
-      infra.assert(globalThis.Deno === undefined);
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
     }
+    ObjectDefineProperties(finalDenoNs, {
+      pid: util.readOnly(pid),
+      noColor: util.readOnly(noColor),
+      args: util.readOnly(ObjectFreeze(args)),
+    });
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

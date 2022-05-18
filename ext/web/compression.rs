@@ -38,7 +38,7 @@ pub fn op_compression_new(
   state: &mut OpState,
   format: String,
   is_decoder: bool,
-) -> Result<ResourceId, AnyError> {
+) -> ResourceId {
   let w = Vec::new();
   let inner = match (format.as_str(), is_decoder) {
     ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
@@ -52,7 +52,7 @@ pub fn op_compression_new(
     _ => unreachable!(),
   };
   let resource = CompressionResource(RefCell::new(inner));
-  Ok(state.resource_table.add(resource))
+  state.resource_table.add(resource)
 }
 
 #[op]
