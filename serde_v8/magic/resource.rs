@@ -61,7 +61,7 @@ impl<'de, T: ?Sized> serde::Deserialize<'de> for Resource<T> {
 impl<T: ?Sized> Resource<T> {
   const INTERNAL_FIELD_INDEX: usize = 0;
 
-  pub fn borrow(&self) -> Rc<T> {
+  pub fn borrow(self) -> Rc<T> {
     self.inner.clone().unwrap()
   }
 }
@@ -167,7 +167,6 @@ impl<T> FromV8 for Resource<T> {
     let ptr = v8::Local::<v8::External>::try_from(external).unwrap();
 
     let inner = unsafe { Rc::from_raw(ptr.value() as *const _) };
-
     Ok(Resource {
       inner: Some(inner),
       _marker: PhantomData,
