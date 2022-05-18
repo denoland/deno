@@ -182,7 +182,7 @@ export async function generateRunInfo(): Promise<unknown> {
   });
   const revision = (new TextDecoder().decode(proc.stdout)).trim();
   const proc2 = await Deno.spawn(denoBinary(), {
-    cmd: ["eval", "console.log(JSON.stringify(Deno.version))"],
+    args: ["eval", "console.log(JSON.stringify(Deno.version))"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
   });
   const version = JSON.parse(new TextDecoder().decode(proc2.stdout));
