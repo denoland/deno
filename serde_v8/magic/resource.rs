@@ -8,6 +8,7 @@ use crate::magic::transl8::ToV8;
 use std::cell::Cell;
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::mem::forget;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
@@ -19,9 +20,19 @@ use std::rc::Rc;
 /// The underlying Rc<T> will always have a strong count >= 1 until either
 /// the JavaScript object is garbage collected OR `into_inner` is called.
 pub struct Resource<T: ?Sized> {
-  inner: Option<*const T>,
-  cancel_finalization: Rc<Cell<bool>>,
+  inner: Option<Rc<T>>,
   _marker: PhantomData<T>,
+  from_v8: bool,
+}
+
+impl<T: ?Sized> Drop for Resource<T> {
+  fn drop(&mut self) {
+    if let Some(inner) = self.inner.take() {
+      if self.from_v8 {
+        forget(inner); // Don't drop.
+      }
+    }
+  }
 }
 
 impl<T: ?Sized> MagicType for Resource<T> {
@@ -48,111 +59,74 @@ impl<'de, T: ?Sized> serde::Deserialize<'de> for Resource<T> {
 }
 
 impl<T: ?Sized> Resource<T> {
-  /// TODO(@littledivy): Merge both fields into one v8::External.
   const INTERNAL_FIELD_INDEX: usize = 0;
-  const CANCEL_FINALIZATION_FIELD_INDEX: usize = 1;
 
-  pub fn borrow(mut self) -> Rc<T> {
-    let ptr = self.inner.take().unwrap();
-    // SAFETY: Rc is immediately constructed from it's raw pointer.
-    unsafe { Rc::from_raw(ptr) }
+  pub fn borrow(&self) -> Rc<T> {
+    self.inner.clone().unwrap()
   }
 }
 
 impl<T> Resource<T> {
   /// Create a new Resource.
   pub fn new(value: T) -> Self {
-    let rc = Rc::new(value);
     Resource {
-      inner: Some(Rc::into_raw(rc)),
-      cancel_finalization: Rc::new(Cell::new(false)),
+      inner: Some(Rc::new(value)),
       _marker: PhantomData,
+      from_v8: false,
     }
   }
 
   /// Returns the underlying owned value held by the Resource.
   /// This will return None if the Resource is already in use.
   pub fn into_inner(mut self) -> Option<T> {
-    let ptr = self.inner.take()?;
-    // SAFETY: Rc is immediately constructed from it's raw pointer.
-    let rc = unsafe { Rc::from_raw(ptr) };
-
-    // Rust wants exclusive access to the Rc<T>.
-    // We have to abort then finalization callback.
-
-    // Here, we signal the finalizer that it must not drop the Rc
-    // and decrement its strong count.
-    //
-    // `try_unwrap` takes care of pending `Rc`s.
-    if Rc::strong_count(&rc) != 1 {
-      // SAFETY: The Rc pointer is valid. It is also guaranteed that the finalizer
-      // increments the strong count and drops at finalization.
-      unsafe {
-        Rc::decrement_strong_count(ptr);
-      }
-    }
-
+    let rc = self.inner.take().unwrap();
     match Rc::try_unwrap(rc) {
-      Ok(value) => {
-        // Cancel the finalizer.
-        self.cancel_finalization.set(true);
-        Some(value)
-      }
+      Ok(value) => Some(value),
       Err(_) => None,
     }
   }
 }
 
 fn try_close_callback<'a, 's, T>(
-  scope: &mut v8::HandleScope<'a>,
+  _scope: &mut v8::HandleScope<'a>,
   args: v8::FunctionCallbackArguments<'a>,
   _rv: v8::ReturnValue<'s>,
 ) {
-  let resource = args.this().into();
-  let resource = Resource::<T>::from_v8(scope, resource).unwrap();
-  let _ = resource.into_inner(); // Consume
+  let _resource = args.this();
 }
 
-impl<T> ToV8 for Resource<T> {
+impl<T: 'static> ToV8 for Resource<T> {
   fn to_v8<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let tpl = v8::ObjectTemplate::new(scope);
     assert!(
-      tpl.set_internal_field_count(2),
-      "set_internal_field_count(2) failed"
+      tpl.set_internal_field_count(1),
+      "set_internal_field_count(1) failed"
     );
+
     let func_name = v8::String::new(scope, "close").unwrap();
     let func =
       v8::FunctionBuilder::<'_, v8::Function>::new(try_close_callback::<T>)
         .build(scope)
         .unwrap();
 
-    let ptr = self.inner.unwrap() as *mut c_void;
-    let field = v8::External::new(scope, ptr);
+    let rc = self.inner.clone().unwrap();
+    let weak_ptr = Rc::downgrade(&rc);
+    let rc_ptr = Rc::into_raw(rc) as *mut c_void;
+
+    let field = v8::External::new(scope, rc_ptr);
     let wrap = tpl.new_instance(scope).unwrap();
     assert!(
       wrap.set_internal_field(Self::INTERNAL_FIELD_INDEX, field.into()),
       "set_internal_field(0) failed"
-    );
-    let cancel_field = v8::External::new(
-      scope,
-      Rc::into_raw(self.cancel_finalization.clone()) as *mut c_void,
-    );
-    assert!(
-      wrap.set_internal_field(
-        Self::CANCEL_FINALIZATION_FIELD_INDEX,
-        cancel_field.into()
-      ),
-      "set_internal_field(1) failed"
     );
     wrap.set(scope, func_name.into(), func.into()).unwrap();
 
     let raw_weak: Rc<Cell<NonNull<_>>> =
       Rc::new(Cell::new(NonNull::dangling()));
     let raw_weak_clone = raw_weak.clone();
-    let cancel_finalization = self.cancel_finalization.clone();
     let weak = v8::Weak::with_finalizer(
       scope,
       wrap,
@@ -166,15 +140,9 @@ impl<T> ToV8 for Resource<T> {
           let raw_weak = raw_weak_clone.get();
           let _weak = v8::Weak::from_raw(isolate, Some(raw_weak));
         }
-        if cancel_finalization.get() {
-          // Rust tells us to prevent dropping the Rc.
-          // It decrements the strong count and is the sole owner of the resource data.
-          return;
-        }
-        // SAFETY: We own the Rc<T>, no other Resource can hold the pointer
-        // to it. Here, we say bye-bye to the object.
-        unsafe {
-          let _ = Rc::from_raw(ptr as *const T);
+        if let Some(rc) = weak_ptr.upgrade() {
+          drop(rc);
+          // To debug: println!("works 😭");
         }
       }),
     );
@@ -192,28 +160,18 @@ impl<T> FromV8 for Resource<T> {
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
     let obj = v8::Local::<v8::Object>::try_from(value).unwrap();
-    assert_eq!(obj.internal_field_count(), 2, "internal_field_count() != 2");
+    assert_eq!(obj.internal_field_count(), 1, "internal_field_count() != 1");
     let external = obj
       .get_internal_field(scope, Self::INTERNAL_FIELD_INDEX)
       .unwrap();
     let ptr = v8::Local::<v8::External>::try_from(external).unwrap();
-    let cancel_external = obj
-      .get_internal_field(scope, Self::CANCEL_FINALIZATION_FIELD_INDEX)
-      .unwrap();
-    let cancel_ptr =
-      v8::Local::<v8::External>::try_from(cancel_external).unwrap();
 
-    let inner = ptr.value() as *const _;
-    unsafe { Rc::increment_strong_count(inner) };
-
-    let cancel_ptr = cancel_ptr.value() as *const _;
-    unsafe { Rc::increment_strong_count(cancel_ptr) };
-    let cancel_finalization = unsafe { Rc::from_raw(cancel_ptr) };
+    let inner = unsafe { Rc::from_raw(ptr.value() as *const _) };
 
     Ok(Resource {
       inner: Some(inner),
-      cancel_finalization,
       _marker: PhantomData,
+      from_v8: true,
     })
   }
 }
