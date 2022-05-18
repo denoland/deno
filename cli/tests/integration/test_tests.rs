@@ -374,3 +374,16 @@ itest!(uncaught_errors {
   output: "test/uncaught_errors.out",
   exit_code: 1,
 });
+
+itest!(check_local_by_default {
+  args: "test --quiet test/check_local_by_default.ts",
+  output: "test/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "test --quiet test/check_local_by_default2.ts",
+  output: "test/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});

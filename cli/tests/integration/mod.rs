@@ -444,22 +444,6 @@ console.log("finish");
 }
 
 #[test]
-fn compiler_api() {
-  let status = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--reload")
-    .arg("--allow-read")
-    .arg("compiler_api_test.ts")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
 fn broken_stdout() {
   let (reader, writer) = os_pipe::pipe().unwrap();
   // drop the reader to create a broken pipe
