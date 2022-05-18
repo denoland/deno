@@ -133,7 +133,9 @@ export function runPy<T extends Omit<Deno.SpawnOptions, "cwd">>(
 }
 
 export async function checkPy3Available() {
-  const { status, stdout } = await runPy(["--version"], {}).output();
+  const { status, stdout } = await runPy(["--version"], {
+    stdout: "piped",
+  }).output();
   assert(status.success, "failed to run python --version");
   const output = new TextDecoder().decode(stdout);
   assert(
