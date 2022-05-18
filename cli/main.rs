@@ -139,7 +139,7 @@ fn create_web_worker_callback(
     let preload_module_cb =
       create_web_worker_preload_module_callback(ps.clone());
 
-    let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
+    let extensions = ops::cli_exts(ps.clone());
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
@@ -172,7 +172,6 @@ fn create_web_worker_callback(
       preload_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(ps.clone())),
-      use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
@@ -237,7 +236,7 @@ pub fn create_main_worker(
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
-  let mut extensions = ops::cli_exts(ps.clone(), true);
+  let mut extensions = ops::cli_exts(ps.clone());
   extensions.append(&mut custom_extensions);
 
   let options = WorkerOptions {
@@ -1532,18 +1531,23 @@ pub fn main() {
 
     logger::init(flags.log_level);
 
-    // TODO(bartlomieju): remove once type checking is skipped by default (probably
-    // in 1.23).
-    // If this env var is set we're gonna override default behavior of type checking
-    // and use behavior defined by the `--check` flag.
+    // TODO(bartlomieju): v1.22 is a "pivot version" in terms of default
+    // type checking mode. We're opting into type checking only local
+    // files by default and in v1.23 we're not gonna type check at all by default.
+    // So right now, we're still allowing to use `--no-check` flag and if it is
+    // present, we opt into the "old" behavior. Additionally, if
+    // "DENO_FUTURE_CHECK" env var is present we're switching to the new behavior
+    // of skipping type checking completely if no `--check` flag is present.
     let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
     if let Some(env_var) = future_check_env_var {
-      if env_var == "1" {
-        flags.type_check_mode = match &flags.future_type_check_mode {
-          FutureTypeCheckMode::None => TypeCheckMode::None,
-          FutureTypeCheckMode::All => TypeCheckMode::All,
-          FutureTypeCheckMode::Local => TypeCheckMode::Local,
-        }
+      if env_var == "1" && !flags.has_check_flag {
+        flags.type_check_mode = TypeCheckMode::None;
+      }
+    } else if !flags.has_no_check_flag {
+      flags.type_check_mode = match &flags.future_type_check_mode {
+        FutureTypeCheckMode::None => TypeCheckMode::None,
+        FutureTypeCheckMode::All => TypeCheckMode::All,
+        FutureTypeCheckMode::Local => TypeCheckMode::Local,
       }
     }
 

@@ -246,7 +246,9 @@ pub enum TypeCheckMode {
 
 impl Default for TypeCheckMode {
   fn default() -> Self {
-    Self::All
+    // TODO(bartlomieju): in v1.22 we switched to `Local` instead of `All` and
+    // in v1.23 we will switch to `None` by default.
+    Self::Local
   }
 }
 
@@ -254,19 +256,20 @@ impl Default for TypeCheckMode {
 // in 1.23)
 #[derive(Debug, Clone, PartialEq)]
 pub enum FutureTypeCheckMode {
-  /// Type check all modules. The default value.
+  /// Type check all modules. Represents `--check=all` on the command line.
   All,
-  /// Skip type checking of all modules. Represents `--no-check` on the command
-  /// line.
+  /// Skip type checking of all modules. The default value.
   None,
-  /// Only type check local modules. Represents `--no-check=remote` on the
+  /// Only type check local modules. Represents `--check` on the
   /// command line.
   Local,
 }
 
 impl Default for FutureTypeCheckMode {
   fn default() -> Self {
-    Self::None
+    // TODO(bartlomieju): in v1.22 we switched to `Local` instead of `All` and
+    // in v1.23 we will switch to `None` by default.
+    Self::Local
   }
 }
 
@@ -306,10 +309,12 @@ pub struct Flags {
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
-  // TODO(bartlomieju): should be removed in favor of `check`
-  // once type checking is skipped by default
-  pub future_type_check_mode: FutureTypeCheckMode,
+  // TODO(bartlomieju): to be removed in v1.23.
+  pub has_no_check_flag: bool,
+  // TODO(bartlomieju): to be removed in v1.23.
   pub has_check_flag: bool,
+  // TODO(bartlomieju): to be removed in v1.23.
+  pub future_type_check_mode: FutureTypeCheckMode,
   pub config_flag: ConfigFlag,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
@@ -759,7 +764,7 @@ Future runs of this module will trigger no downloads or compilation unless \
 }
 
 fn check_subcommand<'a>() -> Command<'a> {
-  compile_args_without_no_check(Command::new("check"))
+  compile_args_without_check_args(Command::new("check"))
   .arg(
     Arg::new("remote")
       .long("remote")
@@ -1427,7 +1432,6 @@ fn run_subcommand<'a>() -> Command<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
-    .arg(check_arg())
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
@@ -1717,13 +1721,14 @@ fn compile_args(app: Command) -> Command {
     .arg(no_remote_arg())
     .args(config_args())
     .arg(no_check_arg())
+    .arg(check_arg())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
     .arg(ca_file_arg())
 }
 
-fn compile_args_without_no_check(app: Command) -> Command {
+fn compile_args_without_check_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
@@ -2942,6 +2947,7 @@ fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.has_no_check_flag = matches.is_present("no-check");
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
       "remote" => flags.type_check_mode = TypeCheckMode::Local,
@@ -3938,6 +3944,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        has_no_check_flag: true,
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4030,6 +4037,7 @@ mod tests {
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
+        has_no_check_flag: true,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -4330,6 +4338,7 @@ mod tests {
           source_file: "script.ts".to_string(),
           out_file: None,
         }),
+        has_no_check_flag: true,
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
@@ -4552,6 +4561,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        has_no_check_flag: true,
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4703,6 +4713,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
+        has_no_check_flag: true,
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
@@ -4719,6 +4730,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
+        has_no_check_flag: true,
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -5397,6 +5409,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        has_no_check_flag: true,
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5762,8 +5775,8 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_type_check_mode: FutureTypeCheckMode::Local,
         has_check_flag: true,
+        future_type_check_mode: FutureTypeCheckMode::Local,
         ..Flags::default()
       }
     );
@@ -5775,8 +5788,8 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_type_check_mode: FutureTypeCheckMode::All,
         has_check_flag: true,
+        future_type_check_mode: FutureTypeCheckMode::All,
         ..Flags::default()
       }
     );
@@ -5788,8 +5801,8 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        future_type_check_mode: FutureTypeCheckMode::None,
         has_check_flag: true,
+        future_type_check_mode: FutureTypeCheckMode::Local,
         ..Flags::default()
       }
     );

@@ -288,7 +288,7 @@ pub async fn run(
       unstable: metadata.unstable,
       user_agent: version::get_user_agent(),
     },
-    extensions: ops::cli_exts(ps.clone(), true),
+    extensions: ops::cli_exts(ps.clone()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),

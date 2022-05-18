@@ -13,7 +13,6 @@ use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
-use super::text;
 use super::text::LineIndex;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
@@ -47,7 +46,6 @@ use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
-use std::borrow::Cow;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -157,7 +155,6 @@ impl TsServer {
 struct AssetDocumentInner {
   specifier: ModuleSpecifier,
   text: Arc<String>,
-  length: usize,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
@@ -173,7 +170,6 @@ impl AssetDocument {
     Self(Arc::new(AssetDocumentInner {
       specifier,
       text: Arc::new(text.to_string()),
-      length: text.encode_utf16().count(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
@@ -195,14 +191,6 @@ impl AssetDocument {
 
   pub fn text(&self) -> Arc<String> {
     self.0.text.clone()
-  }
-
-  pub fn text_str(&self) -> &str {
-    self.0.text.as_str()
-  }
-
-  pub fn length(&self) -> usize {
-    self.0.length
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
@@ -2374,17 +2362,16 @@ struct Response {
   data: Value,
 }
 
-struct State<'a> {
+struct State {
   last_id: usize,
   performance: Arc<Performance>,
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
-  snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
   token: CancellationToken,
 }
 
-impl<'a> State<'a> {
+impl State {
   fn new(
     state_snapshot: Arc<StateSnapshot>,
     performance: Arc<Performance>,
@@ -2394,7 +2381,6 @@ impl<'a> State<'a> {
       performance,
       response: None,
       state_snapshot,
-      snapshots: HashMap::default(),
       specifiers: HashMap::default(),
       token: Default::default(),
     }
@@ -2426,31 +2412,37 @@ impl<'a> State<'a> {
     }
     ModuleSpecifier::parse(&specifier_str).map_err(|err| err.into())
   }
-}
 
-/// If a snapshot is missing from the state cache, add it.
-fn cache_snapshot(
-  state: &mut State,
-  specifier: &ModuleSpecifier,
-  version: String,
-) -> Result<(), AnyError> {
-  if !state
-    .snapshots
-    .contains_key(&(specifier.clone(), version.clone().into()))
-  {
-    let content = state
-      .state_snapshot
-      .documents
-      .get(specifier)
-      .ok_or_else(|| {
-        anyhow!("Specifier unexpectedly doesn't exist: {}", specifier)
-      })?
-      .content();
-    state
-      .snapshots
-      .insert((specifier.clone(), version.into()), content.to_string());
+  fn get_asset_or_document(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<AssetOrDocument> {
+    let snapshot = &self.state_snapshot;
+    if specifier.scheme() == "asset" {
+      snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
+    } else {
+      snapshot
+        .documents
+        .get(specifier)
+        .map(AssetOrDocument::Document)
+    }
   }
-  Ok(())
+
+  fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if specifier.scheme() == "asset" {
+      if self.state_snapshot.assets.contains_key(specifier) {
+        Some("1".to_string())
+      } else {
+        None
+      }
+    } else {
+      self
+        .state_snapshot
+        .documents
+        .get(specifier)
+        .map(|d| d.script_version())
+    }
+  }
 }
 
 fn normalize_specifier<S: AsRef<str>>(
@@ -2458,28 +2450,6 @@ fn normalize_specifier<S: AsRef<str>>(
 ) -> Result<ModuleSpecifier, AnyError> {
   resolve_url(specifier.as_ref().replace(".d.ts.d.ts", ".d.ts").as_str())
     .map_err(|err| err.into())
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SourceSnapshotArgs {
-  specifier: String,
-  version: String,
-}
-
-/// The language service is dropping a reference to a source file snapshot, and
-/// we can drop our version of that document.
-#[op]
-fn op_dispose(
-  state: &mut OpState,
-  args: SourceSnapshotArgs,
-) -> Result<bool, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_dispose", Some(&args));
-  let specifier = state.normalize_specifier(&args.specifier)?;
-  state.snapshots.remove(&(specifier, args.version.into()));
-  state.performance.measure(mark);
-  Ok(true)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2506,116 +2476,6 @@ fn op_exists(state: &mut OpState, args: SpecifierArgs) -> bool {
   state.state_snapshot.documents.exists(&specifier)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GetChangeRangeArgs {
-  specifier: String,
-  old_length: u32,
-  old_version: String,
-  version: String,
-}
-
-/// The language service wants to compare an old snapshot with a new snapshot to
-/// determine what source has changed.
-#[op]
-fn op_get_change_range(
-  state: &mut OpState,
-  args: GetChangeRangeArgs,
-) -> Result<Value, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_get_change_range", Some(&args));
-  let specifier = state.normalize_specifier(&args.specifier)?;
-  cache_snapshot(state, &specifier, args.version.clone())?;
-  let r = if let Some(current) = state
-    .snapshots
-    .get(&(specifier.clone(), args.version.clone().into()))
-  {
-    if let Some(prev) = state
-      .snapshots
-      .get(&(specifier, args.old_version.clone().into()))
-    {
-      Ok(text::get_range_change(prev, current))
-    } else {
-      let new_length = current.encode_utf16().count();
-      // when a local file is opened up in the editor, the compiler might
-      // already have a snapshot of it in memory, and will request it, but we
-      // now are working off in memory versions of the document, and so need
-      // to tell tsc to reset the whole document
-      Ok(json!({
-        "span": {
-          "start": 0,
-          "length": args.old_length,
-        },
-        "newLength": new_length,
-      }))
-    }
-  } else {
-    Err(custom_error(
-      "MissingSnapshot",
-      format!(
-        "The current snapshot version is missing.\n  Args: \"{:?}\"",
-        args
-      ),
-    ))
-  };
-
-  state.performance.measure(mark);
-  r
-}
-
-#[op]
-fn op_get_length(
-  state: &mut OpState,
-  args: SourceSnapshotArgs,
-) -> Result<usize, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_get_length", Some(&args));
-  let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(asset) = state.state_snapshot.assets.get(&specifier) {
-    Ok(asset.length())
-  } else {
-    cache_snapshot(state, &specifier, args.version.clone())?;
-    let content = state
-      .snapshots
-      .get(&(specifier, args.version.into()))
-      .unwrap();
-    Ok(content.encode_utf16().count())
-  };
-  state.performance.measure(mark);
-  r
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GetTextArgs {
-  specifier: String,
-  version: String,
-  start: usize,
-  end: usize,
-}
-
-#[op]
-fn op_get_text(
-  state: &mut OpState,
-  args: GetTextArgs,
-) -> Result<String, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_get_text", Some(&args));
-  let specifier = state.normalize_specifier(args.specifier)?;
-  let maybe_asset = state.state_snapshot.assets.get(&specifier);
-  let content = if let Some(content) = &maybe_asset {
-    content.text_str()
-  } else {
-    cache_snapshot(state, &specifier, args.version.clone())?;
-    state
-      .snapshots
-      .get(&(specifier, args.version.into()))
-      .unwrap()
-  };
-  state.performance.measure(mark);
-  Ok(text::slice(content, args.start..args.end).to_string())
-}
-
 #[op]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
@@ -2626,13 +2486,22 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let document = state.state_snapshot.documents.get(&specifier);
+  let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
-  Ok(document.map(|d| d.content().to_string()))
+  Ok(match asset_or_document {
+    Some(doc) => {
+      json!({
+        "data": doc.text(),
+        "scriptKind": crate::tsc::as_ts_script_kind(&doc.media_type()),
+        "version": state.script_version(&specifier),
+      })
+    }
+    None => Value::Null,
+  })
 }
 
 #[op]
@@ -2705,20 +2574,7 @@ fn op_script_version(
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
-  if specifier.scheme() == "asset" {
-    if state.state_snapshot.assets.contains_key(&specifier) {
-      Ok(Some("1".to_string()))
-    } else {
-      Ok(None)
-    }
-  } else {
-    let script_version = state
-      .state_snapshot
-      .documents
-      .get(&specifier)
-      .map(|d| d.script_version());
-    Ok(script_version)
-  }
+  Ok(state.script_version(&specifier))
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -2735,11 +2591,7 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
     .ops(vec![
-      op_dispose::decl(),
       op_exists::decl(),
-      op_get_change_range::decl(),
-      op_get_length::decl(),
-      op_get_text::decl(),
       op_is_cancelled::decl(),
       op_load::decl(),
       op_resolve::decl(),

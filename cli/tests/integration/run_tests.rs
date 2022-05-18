@@ -450,12 +450,6 @@ itest!(_079_location_authentication {
   output: "079_location_authentication.ts.out",
 });
 
-itest!(_080_deno_emit_permissions {
-  args: "run --unstable 080_deno_emit_permissions.ts",
-  output: "080_deno_emit_permissions.ts.out",
-  exit_code: 1,
-});
-
 itest!(_081_location_relative_fetch_redirect {
     args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
     output: "081_location_relative_fetch_redirect.ts.out",
@@ -969,7 +963,7 @@ itest!(no_check_decorators {
 });
 
 itest!(check_remote {
-  args: "run --quiet --reload no_check_remote.ts",
+  args: "run --quiet --reload --check=all no_check_remote.ts",
   output: "no_check_remote.ts.disabled.out",
   exit_code: 1,
   http_server: true,
@@ -984,26 +978,6 @@ itest!(no_check_remote {
 itest!(runtime_decorators {
   args: "run --quiet --reload --no-check runtime_decorators.ts",
   output: "runtime_decorators.ts.out",
-});
-
-itest!(lib_dom_asynciterable {
-  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
-  output: "lib_dom_asynciterable.ts.out",
-});
-
-itest!(lib_dom_extras {
-  args: "run --quiet --unstable --reload lib_dom_extras.ts",
-  output: "lib_dom_extras.ts.out",
-});
-
-itest!(lib_ref {
-  args: "run --quiet --unstable --reload lib_ref.ts",
-  output: "lib_ref.ts.out",
-});
-
-itest!(lib_runtime_api {
-  args: "run --quiet --unstable --reload lib_runtime_api.ts",
-  output: "lib_runtime_api.ts.out",
 });
 
 itest!(seed_random {
@@ -2416,24 +2390,6 @@ itest!(eval_context_throw_dom_exception {
   output: "eval_context_throw_dom_exception.js.out",
   envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
-
-#[test]
-fn issue12453() {
-  let _g = util::http_server();
-  let deno_dir = util::new_deno_dir();
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let status = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("issue12453.js")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
 
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
