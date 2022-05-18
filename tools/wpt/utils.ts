@@ -118,17 +118,17 @@ export function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-export function runPy<T extends Deno.SpawnOptions>(
+export function runPy<T extends Omit<Deno.SpawnOptions, "cwd">>(
   args: string[],
-  options: Omit<T, "cwd">,
+  options: T,
 ): Deno.Child<T> {
   const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
   return Deno.spawnChild(cmd, {
     args,
-    cwd: join(ROOT_PATH, "./test_util/wpt/"),
     stdout: "inherit",
     stderr: "inherit",
     ...options,
+    cwd: join(ROOT_PATH, "./test_util/wpt/"),
   });
 }
 
