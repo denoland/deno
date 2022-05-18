@@ -1019,20 +1019,14 @@ function createHttpsListener(port: number): Deno.Listener {
 }
 
 async function curl(url: string): Promise<string> {
-  const curl = Deno.run({
-    cmd: ["curl", "--insecure", url],
-    stdout: "piped",
+  const { status, stdout } = await Deno.spawn("curl", {
+    args: ["--insecure", url],
   });
 
-  try {
-    const [status, output] = await Promise.all([curl.status(), curl.output()]);
-    if (!status.success) {
-      throw new Error(`curl ${url} failed: ${status.code}`);
-    }
-    return new TextDecoder().decode(output);
-  } finally {
-    curl.close();
+  if (!status.success) {
+    throw new Error(`curl ${url} failed: ${status.code}`);
   }
+  return new TextDecoder().decode(stdout);
 }
 
 Deno.test(

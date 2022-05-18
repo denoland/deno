@@ -182,8 +182,9 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
+// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -509,8 +510,9 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "088_dynamic_import_already_evaluating.ts.out",
 });
 
+// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(_089_run_allow_list {
-  args: "run --allow-run=curl 089_run_allow_list.ts",
+  args: "run --unstable --allow-run=curl 089_run_allow_list.ts",
   output: "089_run_allow_list.ts.out",
 });
 
@@ -588,9 +590,10 @@ itest!(lock_write_requires_lock {
   exit_code: 1,
 });
 
+// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable lock_write_fetch.ts",
   output: "lock_write_fetch.ts.out",
   http_server: true,
   exit_code: 0,
@@ -1861,12 +1864,14 @@ fn dont_cache_on_check_fail() {
 mod permissions {
   use test_util as util;
 
+  // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
         .arg("run")
+        .arg("--unstable")
         .arg(format!("--allow-{0}", permission))
         .arg("permission_test.ts")
         .arg(format!("{0}Required", permission))
@@ -1878,12 +1883,13 @@ mod permissions {
     }
   }
 
+  // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run permission_test.ts {0}Required", permission),
+        &format!("run --unstable permission_test.ts {0}Required", permission),
         None,
         None,
         false,
