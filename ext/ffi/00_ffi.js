@@ -159,7 +159,7 @@
         ) {
           parameters.push(arg);
         } else if (ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)) {
-          parameters.push(pack64(arg.value));
+          parameters.push(arg.value);
         } else if (arg === null) {
           parameters.push(null);
         } else {
@@ -216,7 +216,7 @@
       );
       if (this.definition.nonblocking) {
         const promise = core.opAsync("op_ffi_call_ptr_nonblocking", {
-          pointer: pack64(this.pointer.value),
+          pointer: this.pointer.value,
           def: this.definition,
           parameters,
         });
@@ -228,7 +228,7 @@
         return promise;
       } else {
         const result = core.opSync("op_ffi_call_ptr", {
-          pointer: pack64(this.pointer.value),
+          pointer: this.pointer.value,
           def: this.definition,
           parameters,
         });

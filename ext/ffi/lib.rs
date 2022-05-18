@@ -154,9 +154,9 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_load::decl::<P>(),
       op_ffi_get_static::decl(),
       op_ffi_call::decl(),
-      op_ffi_call_nonblocking::decl(),
+      //op_ffi_call_nonblocking::decl(),
       op_ffi_call_ptr::decl::<P>(),
-      op_ffi_call_ptr_nonblocking::decl::<P>(),
+      //op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
@@ -311,10 +311,7 @@ impl NativeValue {
     Self { pointer: ptr }
   }
 
-  unsafe fn as_arg(
-    &self,
-    native_type: NativeType
-  ) -> Arg {
+  unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
     match native_type {
       NativeType::Void => Arg::new(&self.void_value),
       NativeType::U8 => Arg::new(&self.u8_value),
@@ -560,35 +557,23 @@ where
 }
 
 #[derive(Deserialize)]
-#[serde(untagged)]
-enum FfiParameter {
-  Null,
-  //Bool(bool),
-  Number(serde_json::Number),
-  //Value(Value),
-  Pointer(U32x2),
-  Buffer(Option<ZeroCopyBuf>),
-  //Function(Resource),
-}
-
-#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FfiCallArgs {
+struct FfiCallArgs<'scope> {
   rid: ResourceId,
   symbol: String,
-  parameters: Vec<FfiParameter>,
+  parameters: serde_v8::Value<'scope>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FfiCallPtrArgs {
+struct FfiCallPtrArgs<'scope> {
   pointer: U32x2,
   def: ForeignFunction,
-  parameters: Vec<FfiParameter>,
+  parameters: serde_v8::Value<'scope>,
 }
 
-impl From<FfiCallPtrArgs> for FfiCallArgs {
-  fn from(args: FfiCallPtrArgs) -> Self {
+impl<'scope> From<FfiCallPtrArgs<'scope>> for FfiCallArgs<'scope> {
+  fn from(args: FfiCallPtrArgs<'scope>) -> Self {
     FfiCallArgs {
       rid: 0,
       symbol: String::new(),
@@ -598,7 +583,7 @@ impl From<FfiCallPtrArgs> for FfiCallArgs {
   }
 }
 
-impl FfiCallPtrArgs {
+impl<'scope> FfiCallPtrArgs<'scope> {
   fn get_symbol(&self) -> Symbol {
     let fn_ptr: u64 = self.pointer.into();
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
@@ -621,67 +606,96 @@ impl FfiCallPtrArgs {
   }
 }
 
-fn ffi_parse_args(
-  parameters: &Vec<FfiParameter>,
+fn ffi_parse_args<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  args: serde_v8::Value<'scope>,
   parameter_types: &Vec<NativeType>,
   resource_table: &deno_core::ResourceTable,
-) -> Result<Vec<Arg>, AnyError> {
-  let mut native_values: Vec<NativeValue> = vec![];
+) -> Result<Vec<Arg>, AnyError>
+where
+  'scope: 'scope,
+{
+  let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
+  let mut ffi_args: Vec<Arg> = Vec::with_capacity(parameter_types.len());
 
-  for (native_type, value) in
-    parameter_types.iter().zip(parameters.into_iter())
-  {
-    match (native_type, &value) {
-      (
-        NativeType::Pointer | NativeType::Function,
-        FfiParameter::Null | FfiParameter::Buffer(None),
-      ) => {
-        native_values.push(NativeValue {
-          pointer: ptr::null(),
-        });
+  for (index, native_type) in parameter_types.iter().enumerate() {
+    let value = args.get_index(scope, index as u32).unwrap();
+    match native_type {
+      NativeType::Void => {
+        unreachable!();
       }
-      (NativeType::Pointer | NativeType::Function, FfiParameter::Pointer(val)) => {
-        native_values.push(NativeValue {
-          pointer: u64::from(*val) as *const u8,
-        })
+      NativeType::U8 => {
+        let value = value.uint32_value(scope).unwrap() as u8;
+        ffi_args.push(Arg::new(&value))
       }
-      (NativeType::Pointer, FfiParameter::Buffer(Some(buf))) => {
-        native_values.push(NativeValue {
-          pointer: buf.as_ptr(),
-        });
+      NativeType::I8 => {
+        let value = value.int32_value(scope).unwrap() as i8;
+        ffi_args.push(Arg::new(&value));
       }
-      (NativeType::Function, FfiParameter::Number(value)) => {
-        let resource = resource_table
-          .get::<RegisteredCallbackResource>(value.as_u64().unwrap() as u32)
-          .unwrap();
-        native_values.push(NativeValue {
-          pointer: *resource.closure.code_ptr() as *const u8,
-        });
+      NativeType::U16 => {
+        let value = value.uint32_value(scope).unwrap() as u16;
+        ffi_args.push(Arg::new(&value));
       }
-      (native_type, FfiParameter::Number(value)) => {
-        native_values.push(NativeValue::new(*native_type, serde_json::Value::Number(value.clone()))?);
+      NativeType::I16 => {
+        let value = value.int32_value(scope).unwrap() as i16;
+        ffi_args.push(Arg::new(&value));
       }
-      _ => {
-        panic!("SHIIIT");
+      NativeType::U32 => {
+        let value = value.uint32_value(scope).unwrap();
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::I32 => {
+        let value = value.int32_value(scope).unwrap();
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::U64 => {
+        let value = value.integer_value(scope).unwrap() as u64;
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::I64 => {
+        let value = value.integer_value(scope).unwrap() as i64;
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::USize => {
+        let value = value.integer_value(scope).unwrap() as usize;
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::ISize => {
+        let value = value.integer_value(scope).unwrap() as isize;
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::F32 => {
+        let value = value.number_value(scope).unwrap() as f32;
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::F64 => {
+        let value = value.integer_value(scope).unwrap() as isize;
+        ffi_args.push(Arg::new(&value));
+      }
+      NativeType::Pointer => {
+        if value.is_null() {
+          let value: *const c_void = ptr::null();
+          ffi_args.push(Arg::new(&value))
+        } else if value.is_big_int() {
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          let value = value.u64_value().0 as *const u8;
+          ffi_args.push(Arg::new(&value));
+        } else {
+          let value: ZeroCopyBuf = serde_v8::from_v8(scope, value).unwrap();
+          let value: &[u8] = &value[..];
+          ffi_args.push(Arg::new(&value.as_ptr()));
+        }
+      }
+      NativeType::Function => {
+        todo!();
       }
     }
   }
 
-  Ok(
-    parameter_types
-      .iter()
-      .zip(native_values.iter())
-      .map(|(&native_type, native_value)| unsafe {
-        native_value.as_arg(native_type)
-      })
-      .collect::<Vec<_>>(),
-  )
+  Ok(ffi_args)
 }
 
-fn ffi_call(
-  call_args: Vec<Arg>,
-  symbol: &Symbol,
-) -> Result<Value, AnyError> {
+fn ffi_call(call_args: Vec<Arg>, symbol: &Symbol) -> Result<Value, AnyError> {
   //let call_args = ffi_parse_args(&args.parameters, symbol, resource_table)?;
 
   Ok(match symbol.result_type {
@@ -935,45 +949,37 @@ fn op_ffi_deregister_callback(state: &mut deno_core::OpState, rid: ResourceId) {
     .close();
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TestCallbackArgs {
-  rid: ResourceId,
-  parameters: Vec<FfiParameter>,
-}
-
-#[op]
+#[op(v8)]
 fn test_registered_callback(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<deno_core::OpState>>,
-  args: TestCallbackArgs,
+  rid: ResourceId,
+  args: serde_v8::Value,
 ) -> Result<Value, AnyError> {
   let (fn_ptr, info) = {
     let state = &mut state.borrow_mut();
     let resource = state
       .resource_table
-      .get::<RegisteredCallbackResource>(args.rid)
+      .get::<RegisteredCallbackResource>(rid)
       .unwrap();
     let info: &CallbackInfo = unsafe { &*resource.info };
 
-    let fn_ptr: unsafe extern "C" fn(u32) -> u32 = unsafe { *resource.closure.instantiate_code_ptr() };
+    let fn_ptr: unsafe extern "C" fn(u32) -> u32 =
+      unsafe { *resource.closure.instantiate_code_ptr() };
     (fn_ptr, info)
   };
   info.create_scope.set(false);
-  let mut arg: u32 = 0;
-  match &args.parameters[0] {
-    FfiParameter::Number(value) => {
-      arg = value_as_uint(serde_json::Value::Number(value.clone()))?;
-    },
-    _ => {},
-
-}
+  let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
+  let arg = args.get_index(scope, 0).unwrap();
+  let arg: u32 = arg.uint32_value(scope).unwrap();
   let result = unsafe { fn_ptr(arg) };
   info.create_scope.set(true);
   Ok(result.into())
 }
 
-#[op]
+#[op(v8)]
 fn op_ffi_call_ptr<FP>(
+  scope: &mut v8::HandleScope,
   state: &mut deno_core::OpState,
   args: FfiCallPtrArgs,
 ) -> Result<Value, AnyError>
@@ -986,35 +992,46 @@ where
   permissions.check(None)?;
 
   let symbol = args.get_symbol();
-  let call_args = ffi_parse_args(&args.parameters, &symbol.parameter_types, &state.resource_table)?;
+  let call_args = ffi_parse_args(
+    unsafe { std::mem::transmute(scope) },
+    args.parameters,
+    &symbol.parameter_types,
+    &state.resource_table,
+  )?;
   ffi_call(call_args, &symbol)
 }
 
-#[op]
-async fn op_ffi_call_ptr_nonblocking<FP>(
-  state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallPtrArgs,
-) -> Result<Value, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
+// #[op(v8)]
+// async fn op_ffi_call_ptr_nonblocking<FP, 'scope>(
+//   scope: &mut v8::HandleScope<'scope>,
+//   state: Rc<RefCell<deno_core::OpState>>,
+//   args: FfiCallPtrArgs<'scope>,
+// ) -> Result<Value, AnyError>
+// where
+//   FP: FfiPermissions + 'static,
+//   'scope: 'scope
+// {
+//   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
-  {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check(None)?;
-  }
+//   {
+//     let mut state = state.borrow_mut();
+//     let permissions = state.borrow_mut::<FP>();
+//     permissions.check(None)?;
+//   }
 
-  let symbol = args.get_symbol();
-  let call_args = ffi_parse_args(&args.parameters, &symbol.parameter_types, &state.borrow_mut().resource_table)?;
-  tokio::task::spawn_blocking(move || {
-    //ffi_call(call_args, &symbol)
-    Ok(serde_json::to_value(()).unwrap())
-  })
-  .await
-  .unwrap()
-}
+//   let symbol = args.get_symbol();
+//   let call_args = ffi_parse_args(
+//     &args.parameters,
+//     &symbol.parameter_types,
+//     &state.borrow_mut().resource_table,
+//   )?;
+//   tokio::task::spawn_blocking(move || {
+//     //ffi_call(call_args, &symbol)
+//     Ok(serde_json::to_value(()).unwrap())
+//   })
+//   .await
+//   .unwrap()
+// }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1081,8 +1098,9 @@ fn op_ffi_get_static(
   })
 }
 
-#[op]
+#[op(v8)]
 fn op_ffi_call(
+  scope: &mut v8::HandleScope,
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
 ) -> Result<Value, AnyError> {
@@ -1094,35 +1112,40 @@ fn op_ffi_call(
     .symbols
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
-  
-  let call_args = ffi_parse_args(&args.parameters, &symbol.parameter_types, &state.resource_table)?;
+
+  let call_args = ffi_parse_args(
+    unsafe { std::mem::transmute(scope) },
+    args.parameters,
+    &symbol.parameter_types,
+    &state.resource_table,
+  )?;
 
   ffi_call(call_args, symbol)
 }
 
 /// A non-blocking FFI call.
-#[op]
-async fn op_ffi_call_nonblocking(
-  state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallArgs,
-) -> Result<Value, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-  let symbols = &resource.symbols;
-  let symbol = symbols
-    .get(&args.symbol)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+// #[op]
+// async fn op_ffi_call_nonblocking(
+//   state: Rc<RefCell<deno_core::OpState>>,
+//   args: FfiCallArgs,
+// ) -> Result<Value, AnyError> {
+//   let resource = state
+//     .borrow()
+//     .resource_table
+//     .get::<DynamicLibraryResource>(args.rid)?;
+//   let symbols = &resource.symbols;
+//   let symbol = symbols
+//     .get(&args.symbol)
+//     .ok_or_else(bad_resource_id)?
+//     .clone();
 
-  tokio::task::spawn_blocking(move || {
-    //ffi_call(args, &symbol, state.borrow_mut().resource_table)
-    Ok(serde_json::to_value(()).unwrap())
-  })
-  .await
-  .unwrap()
-}
+//   tokio::task::spawn_blocking(move || {
+//     //ffi_call(args, &symbol, state.borrow_mut().resource_table)
+//     Ok(serde_json::to_value(()).unwrap())
+//   })
+//   .await
+//   .unwrap()
+// }
 
 #[op]
 fn op_ffi_ptr_of<FP>(
