@@ -26,7 +26,7 @@ cache_control = "0.2.0"
 deno_core = { version = "0.134.0", path = "../../core" }
 deno_websocket = { version = "0.57.0", path = "../websocket" }
 flate2 = "1.0.23"
-fly-accept-encoding = "0.2.0-alpha.5"
+fly-accept-encoding = "0.2.0"
 hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
 mime = "0.3.16"
 percent-encoding = "2.1.0"
