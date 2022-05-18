@@ -1575,11 +1575,12 @@ dependencies = [
 
 [[package]]
 name = "fly-accept-encoding"
-version = "0.2.0-alpha.5"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "741d3e4ac3bcebc022cd90e7d1ce376515a73db2d53ba7fd3a7e581d6db7fa97"
+checksum = "a3afa7516fdcfd8e5e93a938f8fec857785ced190a1f62d842d1fe1ffbe22ba8"
 dependencies = [
  "http",
+ "itertools",
  "thiserror",
 ]
 
@@ -2136,6 +2137,15 @@ dependencies = [
  "proc-macro2 1.0.38",
  "quote 1.0.18",
  "syn 1.0.93",
+]
+
+[[package]]
+name = "itertools"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
+dependencies = [
+ "either",
 ]
 
 [[package]]
