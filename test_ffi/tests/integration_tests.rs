@@ -73,8 +73,7 @@ fn basic() {
     Static ptr: true\n\
     Static ptr value: 42\n\
     After\n\
-    true\n\
-    Correct number of resources\n";
+    true\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

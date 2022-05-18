@@ -275,8 +275,7 @@
           const { parameters, buffers } = prepareArgs(types, args);
 
           if (isNonBlocking) {
-            const promise = core.opAsync("op_ffi_call_nonblocking", {
-              rid: this.#rid,
+            const promise = core.opAsync("op_ffi_call_nonblocking", this.#rid, {
               symbol,
               parameters,
               buffers,
@@ -290,8 +289,7 @@
 
             return promise;
           } else {
-            const result = core.opSync("op_ffi_call", {
-              rid: this.#rid,
+            const result = core.opSync("op_ffi_call", this.#rid, {
               symbol,
               parameters,
               buffers,

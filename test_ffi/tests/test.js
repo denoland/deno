@@ -201,8 +201,7 @@ start = performance.now();
 dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
-  // Close after task is complete.
-  cleanup();
+  dylib.close();
 });
 console.log("Before");
 console.log(performance.now() - start < 100);
@@ -214,21 +213,3 @@ console.log(
 );
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
-
-function cleanup() {
-  dylib.close();
-
-  const resourcesPost = Deno.resources();
-
-  const preStr = JSON.stringify(resourcesPre, null, 2);
-  const postStr = JSON.stringify(resourcesPost, null, 2);
-  if (preStr !== postStr) {
-    throw new Error(
-      `Difference in open resources before dlopen and after closing:
-Before: ${preStr}
-After: ${postStr}`,
-    );
-  }
-
-  console.log("Correct number of resources");
-}

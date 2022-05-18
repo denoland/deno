@@ -11,16 +11,14 @@ use deno_core::op;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8::Resource;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -69,16 +67,6 @@ unsafe impl Sync for Symbol {}
 struct DynamicLibraryResource {
   lib: Library,
   symbols: HashMap<String, Symbol>,
-}
-
-impl Resource for DynamicLibraryResource {
-  fn name(&self) -> Cow<str> {
-    "dynamicLibrary".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    drop(self)
-  }
 }
 
 impl DynamicLibraryResource {
@@ -470,7 +458,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
-) -> Result<ResourceId, AnyError>
+) -> Result<Resource<DynamicLibraryResource>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -503,13 +491,12 @@ where
     }
   }
 
-  Ok(state.resource_table.add(resource))
+  Ok(Resource::new(resource))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FfiCallArgs {
-  rid: ResourceId,
   symbol: String,
   parameters: Vec<Value>,
   buffers: Vec<Option<ZeroCopyBuf>>,
@@ -527,7 +514,6 @@ struct FfiCallPtrArgs {
 impl From<FfiCallPtrArgs> for FfiCallArgs {
   fn from(args: FfiCallPtrArgs) -> Self {
     FfiCallArgs {
-      rid: 0,
       symbol: String::new(),
       parameters: args.parameters,
       buffers: args.buffers,
@@ -694,20 +680,14 @@ where
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FfiGetArgs {
-  rid: ResourceId,
+  rid: Resource<DynamicLibraryResource>,
   name: String,
   r#type: NativeType,
 }
 
 #[op]
-fn op_ffi_get_static(
-  state: &mut deno_core::OpState,
-  args: FfiGetArgs,
-) -> Result<Value, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
+fn op_ffi_get_static(args: FfiGetArgs) -> Result<Value, AnyError> {
+  let resource = args.rid.borrow();
   let data_ptr = resource.get_static(args.name)? as *const u8;
 
   Ok(match args.r#type {
@@ -758,12 +738,10 @@ fn op_ffi_get_static(
 
 #[op]
 fn op_ffi_call(
-  state: &mut deno_core::OpState,
+  resource: Resource<DynamicLibraryResource>,
   args: FfiCallArgs,
 ) -> Result<Value, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
+  let resource = resource.borrow();
 
   let symbol = resource
     .symbols
@@ -776,13 +754,10 @@ fn op_ffi_call(
 /// A non-blocking FFI call.
 #[op]
 async fn op_ffi_call_nonblocking(
-  state: Rc<RefCell<deno_core::OpState>>,
+  resource: Resource<DynamicLibraryResource>,
   args: FfiCallArgs,
 ) -> Result<Value, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
+  let resource = resource.borrow();
   let symbols = &resource.symbols;
   let symbol = symbols
     .get(&args.symbol)
