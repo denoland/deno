@@ -54,6 +54,13 @@ pub fn strip_bom(text: &str) -> &str {
   }
 }
 
+/// Strips the byte order mark if it exists from the provided text.
+pub fn strip_bom_mut(text: &mut String) {
+  if text.starts_with(BOM_CHAR) {
+    text.drain(..BOM_CHAR.len_utf8());
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -102,5 +109,31 @@ mod tests {
     assert!(result.is_err());
     let err = result.expect_err("Err expected");
     assert!(err.kind() == ErrorKind::InvalidData);
+  }
+
+  #[test]
+  fn strip_bom_with_bom() {
+    let text = format!("{}text", BOM_CHAR);
+    assert_eq!(strip_bom(&text), "text");
+  }
+
+  #[test]
+  fn strip_bom_without_bom() {
+    let text = "text";
+    assert_eq!(strip_bom(&text), "text");
+  }
+
+  #[test]
+  fn strip_bom_mut_with_bom() {
+    let mut text = format!("{}text", BOM_CHAR);
+    strip_bom_mut(&mut text);
+    assert_eq!(text, "text");
+  }
+
+  #[test]
+  fn strip_bom_mut_without_bom() {
+    let mut text = "text".to_string();
+    strip_bom_mut(&mut text);
+    assert_eq!(text, "text");
   }
 }

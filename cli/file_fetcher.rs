@@ -8,6 +8,7 @@ use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
 use crate::text_encoding;
+use crate::text_encoding::strip_bom_mut;
 use crate::version::get_user_agent;
 
 use data_url::DataUrl;
@@ -257,16 +258,17 @@ pub fn get_source_from_data_url(
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
-/// string.
+/// string, and strips a leading utf8 BOM if it exists.
 pub fn get_source_from_bytes(
   bytes: Vec<u8>,
   maybe_charset: Option<String>,
 ) -> Result<String, AnyError> {
-  let source = if let Some(charset) = maybe_charset {
+  let mut source = if let Some(charset) = maybe_charset {
     text_encoding::convert_to_utf8(&bytes, &charset)?.to_string()
   } else {
     String::from_utf8(bytes)?
   };
+  strip_bom_mut(&mut source);
 
   Ok(source)
 }
@@ -739,6 +741,8 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
+  use crate::text_encoding::strip_bom;
+
   use super::*;
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
@@ -1669,28 +1673,31 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_local_utf_16be() {
-    let expected = String::from_utf8(
+    let mut expected = String::from_utf8(
       b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
     )
     .unwrap();
+    strip_bom_mut(&mut expected);
     test_fetch_local_encoded("utf-16be", expected).await;
   }
 
   #[tokio::test]
   async fn test_fetch_local_utf_16le() {
-    let expected = String::from_utf8(
+    let mut expected = String::from_utf8(
       b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
     )
     .unwrap();
+    strip_bom_mut(&mut expected);
     test_fetch_local_encoded("utf-16le", expected).await;
   }
 
   #[tokio::test]
   async fn test_fetch_local_utf8_with_bom() {
-    let expected = String::from_utf8(
+    let mut expected = String::from_utf8(
       b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
     )
     .unwrap();
+    strip_bom_mut(&mut expected);
     test_fetch_local_encoded("utf-8", expected).await;
   }
 
@@ -1731,7 +1738,8 @@ mod tests {
     let expected =
       std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A")
         .unwrap();
-    test_fetch_remote_encoded("utf-16le.ts", "utf-16le", expected).await;
+    test_fetch_remote_encoded("utf-16le.ts", "utf-16le", strip_bom(expected))
+      .await;
   }
 
   #[tokio::test]
@@ -1739,7 +1747,8 @@ mod tests {
     let expected =
       std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A")
         .unwrap();
-    test_fetch_remote_encoded("utf-16be.ts", "utf-16be", expected).await;
+    test_fetch_remote_encoded("utf-16be.ts", "utf-16be", strip_bom(expected))
+      .await;
   }
 
   #[tokio::test]
