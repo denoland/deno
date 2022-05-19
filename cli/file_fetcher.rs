@@ -59,7 +59,7 @@ pub struct File {
   /// The resolved media type for the file.
   pub media_type: MediaType,
   /// The source of the file as a string.
-  pub source: Arc<String>,
+  pub source: Arc<str>,
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
@@ -161,7 +161,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     local,
     maybe_types: None,
     media_type,
-    source: Arc::new(source),
+    source: source.into(),
     specifier: specifier.clone(),
     maybe_headers: None,
   })
@@ -383,7 +383,7 @@ impl FileFetcher {
       local,
       maybe_types,
       media_type,
-      source: Arc::new(source),
+      source: source.into(),
       specifier: specifier.clone(),
       maybe_headers: Some(headers.clone()),
     })
@@ -469,7 +469,7 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source: Arc::new(source),
+      source: source.into(),
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
     })
@@ -533,7 +533,7 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source: Arc::new(source),
+      source: source.into(),
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
     })
@@ -815,7 +815,7 @@ mod tests {
     let url_str = format!("http://127.0.0.1:4545/encoding/{}", fixture);
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
-    assert_eq!(file.source.as_str(), expected);
+    assert_eq!(file.source, expected);
     assert_eq!(file.media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
@@ -827,7 +827,7 @@ mod tests {
     let p = test_util::testdata_path().join(format!("encoding/{}.ts", charset));
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
-    assert_eq!(file.source.as_str(), expected);
+    assert_eq!(file.source, expected);
   }
 
   #[test]
