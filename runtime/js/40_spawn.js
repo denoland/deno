@@ -168,7 +168,7 @@
       };
     }
 
-    kill(signo) {
+    kill(signo = "SIGTERM") {
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
