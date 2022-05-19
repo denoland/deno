@@ -120,7 +120,7 @@ mod tests {
   #[test]
   fn strip_bom_without_bom() {
     let text = "text";
-    assert_eq!(strip_bom(&text), "text");
+    assert_eq!(strip_bom(text), "text");
   }
 
   #[test]
