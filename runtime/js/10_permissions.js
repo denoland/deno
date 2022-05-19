@@ -149,7 +149,7 @@
    * @returns {desc is Deno.PermissionDescriptor}
    */
   function isValidDescriptor(desc) {
-    return desc && desc !== null &&
+    return typeof desc === "object" && desc !== null &&
       ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
@@ -164,7 +164,8 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc
+              ?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -185,7 +186,8 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc
+              ?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -204,7 +206,8 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc
+              ?.name}" is not a valid permission name.`,
           ),
         );
       }
