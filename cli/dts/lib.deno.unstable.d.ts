@@ -124,7 +124,7 @@ declare namespace Deno {
   export function bench(
     name: string,
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>
+    fn: () => void | Promise<void>,
   ): void;
 
   /** Register a bench which will be run when `deno bench` is used on the command
@@ -147,7 +147,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn">,
-    fn: () => void | Promise<void>
+    fn: () => void | Promise<void>,
   ): void;
 
   /** Register a bench which will be run when `deno bench` is used on the command
@@ -170,7 +170,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>
+    fn: () => void | Promise<void>,
   ): void;
 
   /**
@@ -344,14 +344,15 @@ declare namespace Deno {
   type NativeParameterType =
     | NativeType
     | {
-        function: Omit<ForeignFunction, "nonblocking">;
-      };
+      function: Omit<ForeignFunction, "nonblocking">;
+    };
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
-    Parameters extends readonly NativeParameterType[] = readonly NativeParameterType[],
+    Parameters extends readonly NativeParameterType[] =
+      readonly NativeParameterType[],
     Result extends NativeType = NativeType,
-    NonBlocking extends boolean = boolean
+    NonBlocking extends boolean = boolean,
   > {
     /** Name of the symbol, defaults to the key name in symbols object. */
     name?: string;
@@ -397,29 +398,27 @@ declare namespace Deno {
 
   /** Infers a foreign function parameter list. */
   type StaticForeignFunctionParameters<
-    T extends readonly NativeParameterType[]
+    T extends readonly NativeParameterType[],
   > = [
     ...{
       [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
-    }
+    },
   ];
 
   /** Infers a foreign symbol */
   type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
-    T extends ForeignFunction
-      ? (
-          ...args: StaticForeignFunctionParameters<T["parameters"]>
-        ) => ConditionalAsync<
-          T["nonblocking"],
-          StaticForeignFunctionResult<T["result"]>
-        >
-      : T extends ForeignStatic
-      ? StaticForeignFunctionResult<T["type"]>
+    T extends ForeignFunction ? (
+      ...args: StaticForeignFunctionParameters<T["parameters"]>
+    ) => ConditionalAsync<
+      T["nonblocking"],
+      StaticForeignFunctionResult<T["result"]>
+    >
+      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
       : never;
 
   type ConditionalAsync<
     IsAsync extends boolean | undefined,
-    T
+    T,
   > = IsAsync extends true ? Promise<T> : T;
 
   /** Infers a foreign library interface */
@@ -533,7 +532,7 @@ declare namespace Deno {
    */
   export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
-    symbols: S
+    symbols: S,
   ): DynamicLibrary<S>;
 
   /** The log category for a diagnostic message. */
@@ -603,7 +602,7 @@ declare namespace Deno {
   export function setRaw(
     rid: number,
     mode: boolean,
-    options?: SetRawOptions
+    options?: SetRawOptions,
   ): void;
 
   /** **UNSTABLE**: needs investigation into high precision time.
@@ -620,7 +619,7 @@ declare namespace Deno {
   export function utimeSync(
     path: string | URL,
     atime: number | Date,
-    mtime: number | Date
+    mtime: number | Date,
   ): void;
 
   /** **UNSTABLE**: needs investigation into high precision time.
@@ -637,7 +636,7 @@ declare namespace Deno {
   export function utime(
     path: string | URL,
     atime: number | Date,
-    mtime: number | Date
+    mtime: number | Date,
   ): Promise<void>;
 
   export function run<
@@ -649,7 +648,7 @@ declare namespace Deno {
       clearEnv?: boolean;
       gid?: number;
       uid?: number;
-    }
+    },
   >(opt: T): Process<T>;
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
@@ -721,7 +720,7 @@ declare namespace Deno {
    * ```
    */
   export function createHttpClient(
-    options: CreateHttpClientOptions
+    options: CreateHttpClientOptions,
   ): HttpClient;
 
   /** **UNSTABLE**: needs investigation into high precision time.
@@ -738,7 +737,7 @@ declare namespace Deno {
   export function futimeSync(
     rid: number,
     atime: number | Date,
-    mtime: number | Date
+    mtime: number | Date,
   ): void;
 
   /** **UNSTABLE**: needs investigation into high precision time.
@@ -755,7 +754,7 @@ declare namespace Deno {
   export function futime(
     rid: number,
     atime: number | Date,
-    mtime: number | Date
+    mtime: number | Date,
   ): Promise<void>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -806,7 +805,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
-    options: UnixListenOptions & { transport: "unix" }
+    options: UnixListenOptions & { transport: "unix" },
   ): Listener;
 
   /** **UNSTABLE**: new API, yet to be vetted
@@ -827,7 +826,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" }
+    options: ListenOptions & { transport: "udp" },
   ): DatagramConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
@@ -843,7 +842,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listenDatagram(
-    options: UnixListenOptions & { transport: "unixpacket" }
+    options: UnixListenOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
   export interface UnixConnectOptions {
@@ -1001,7 +1000,7 @@ declare namespace Deno {
    * `request`, otherwise event loop might deadlock.
    */
   export function upgradeHttp(
-    request: Request
+    request: Request,
   ): Promise<[Deno.Conn, Uint8Array]>;
 
   export interface SpawnOptions {
@@ -1066,18 +1065,15 @@ declare namespace Deno {
    */
   export function spawnChild<T extends SpawnOptions = SpawnOptions>(
     command: string | URL,
-    options?: T
+    options?: T,
   ): Child<T>;
 
   export class Child<T extends SpawnOptions> {
-    readonly stdin: T["stdin"] extends "piped"
-      ? WritableStream<Uint8Array>
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
       : null;
-    readonly stdout: T["stdout"] extends "inherit" | "null"
-      ? null
+    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
       : ReadableStream<Uint8Array>;
-    readonly stderr: T["stderr"] extends "inherit" | "null"
-      ? null
+    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
       : ReadableStream<Uint8Array>;
 
     readonly pid: number;
@@ -1109,7 +1105,7 @@ declare namespace Deno {
    */
   export function spawn<T extends SpawnOptions = SpawnOptions>(
     command: string | URL,
-    options?: T
+    options?: T,
   ): Promise<SpawnOutput<T>>;
 
   /**
@@ -1131,15 +1127,15 @@ declare namespace Deno {
    */
   export function spawnSync<T extends SpawnOptions = SpawnOptions>(
     command: string | URL,
-    options?: T
+    options?: T,
   ): SpawnOutput<T>;
 
   export type ChildStatus =
     | {
-        success: true;
-        code: 0;
-        signal: null;
-      }
+      success: true;
+      code: 0;
+      signal: null;
+    }
     | {
       success: false;
       code: number;
@@ -1155,7 +1151,7 @@ declare namespace Deno {
 
 declare function fetch(
   input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient }
+  init?: RequestInit & { client: Deno.HttpClient },
 ): Promise<Response>;
 
 declare interface WorkerOptions {
