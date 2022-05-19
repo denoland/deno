@@ -497,7 +497,6 @@ pub mod tests {
   use super::*;
   use deno_ast::StartSourcePos;
   use deno_core::resolve_url;
-  use std::sync::Arc;
 
   pub fn new_range(start: usize, end: usize) -> SourceRange {
     SourceRange::new(

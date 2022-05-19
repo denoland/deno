@@ -451,7 +451,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let mut media_type = MediaType::Unknown;
   let graph_data = state.graph_data.read();
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
-    state.maybe_tsbuildinfo.as_ref().map(|i| i.as_str())
+    state.maybe_tsbuildinfo.as_deref()
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if &v.specifier == "deno:///missing_dependency.d.ts" {

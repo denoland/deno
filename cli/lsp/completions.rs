@@ -579,7 +579,6 @@ mod tests {
   use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_documents(
@@ -595,7 +594,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     let http_cache = HttpCache::new(location);

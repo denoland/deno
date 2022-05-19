@@ -1202,7 +1202,7 @@ console.log(b);
       )
       .unwrap();
     assert_eq!(
-      documents.get(&specifier).unwrap().content(),
+      &*documents.get(&specifier).unwrap().content(),
       r#"import * as b from "./b.ts";
 console.log(b, "hello deno");
 "#
