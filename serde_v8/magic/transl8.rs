@@ -64,6 +64,16 @@ where
       formatter.write_str(T::NAME)
     }
 
+    #[cfg(target_pointer_width = "32")]
+    fn visit_u32<E>(self, ptr: u32) -> Result<Self::Value, E>
+    where
+      E: serde::de::Error,
+    {
+      // SAFETY: opaque ptr originates from visit_magic, which forgets ownership so we can take it
+      Ok(unsafe { opaque_take(ptr) })
+    }
+
+    #[cfg(target_pointer_width = "64")]
     fn visit_u64<E>(self, ptr: u64) -> Result<Self::Value, E>
     where
       E: serde::de::Error,
@@ -82,6 +92,7 @@ where
   )
 }
 
+#[cfg(target_pointer_width = "64")]
 pub(crate) fn visit_magic<'de, T, V, E>(visitor: V, x: T) -> Result<V::Value, E>
 where
   V: serde::de::Visitor<'de>,
@@ -92,25 +103,60 @@ where
   y
 }
 
+#[cfg(target_pointer_width = "32")]
+pub(crate) fn visit_magic<'de, T, V, E>(visitor: V, x: T) -> Result<V::Value, E>
+where
+  V: serde::de::Visitor<'de>,
+  E: serde::de::Error,
+{
+  let y = visitor.visit_u32::<E>(opaque_send(&x));
+  std::mem::forget(x);
+  y
+}
+
 /// Constructs an "opaque" ptr from a reference to transerialize
+#[cfg(target_pointer_width = "64")]
 pub(crate) fn opaque_send<T: Sized>(x: &T) -> u64 {
   (x as *const T) as u64
 }
 
+#[cfg(target_pointer_width = "32")]
+pub(crate) fn opaque_send<T: Sized>(x: &T) -> u32 {
+  (x as *const T) as u32
+}
+
 /// Copies an "opaque" ptr from a reference to an opaque ptr (transerialized)
 /// NOTE: ptr-to-ptr, extra indirection
+#[cfg(target_pointer_width = "64")]
 pub(crate) unsafe fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
   *(ptr as *const T as *const u64)
 }
 
+#[cfg(target_pointer_width = "32")]
+pub(crate) unsafe fn opaque_recv<T: ?Sized>(ptr: &T) -> u32 {
+  *(ptr as *const T as *const u32)
+}
+
 /// Transmutes an "opaque" ptr back into a reference
+#[cfg(target_pointer_width = "64")]
 pub(crate) unsafe fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
+  std::mem::transmute(ptr)
+}
+
+#[cfg(target_pointer_width = "32")]
+pub(crate) unsafe fn opaque_deref<'a, T>(ptr: u32) -> &'a T {
   std::mem::transmute(ptr)
 }
 
 /// Transmutes & copies the value from the "opaque" ptr
 /// NOTE: takes ownership & requires other end to forget its ownership
+#[cfg(target_pointer_width = "64")]
 pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
+  std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr))
+}
+
+#[cfg(target_pointer_width = "32")]
+pub(crate) unsafe fn opaque_take<T>(ptr: u32) -> T {
   std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr))
 }
 

@@ -218,7 +218,13 @@ impl<'a, 'b, 'c> ser::SerializeStruct for ObjectSerializer<'a, 'b, 'c> {
 
 pub struct MagicalSerializer<'a, 'b, 'c, T> {
   scope: ScopePtr<'a, 'b, 'c>,
+
+  #[cfg(target_pointer_width = "64")]
   opaque: u64,
+
+  #[cfg(target_pointer_width = "32")]
+  opaque: u32,
+
   p1: std::marker::PhantomData<T>,
 }
 
@@ -245,7 +251,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
   ) -> Result<()> {
     assert_eq!(key, MAGIC_FIELD);
     let ptr: &U = value;
-    // SAFETY: MagicalSerializer only ever receives single field u64s,
+    // SAFETY: MagicalSerializer only ever receives single field u64s/u32s,
     // type-safety is ensured by MAGIC_NAME checks in `serialize_struct()`
     self.opaque = unsafe { opaque_recv(ptr) };
     Ok(())
