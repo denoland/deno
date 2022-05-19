@@ -1099,12 +1099,15 @@ fn serialize(
       }
     };
 
-  let arg2_to_cb = match v8::Local::<v8::Function>::try_from(args.get(2)) {
-    Ok(cb) => v8::Local::new(scope, cb),
-    Err(_) => {
-      throw_type_error(scope, "Invalid argument 3");
-      return;
-    }
+  let arg2_to_cb = match !args.get(2).is_undefined() {
+    true => match v8::Local::<v8::Function>::try_from(args.get(2)) {
+      Ok(cb) => Some(v8::Local::new(scope, cb)),
+      Err(_) => {
+        throw_type_error(scope, "Invalid argument 3");
+        return;
+      }
+    },
+    false => None,
   };
 
   let options = options.unwrap_or(SerializeDeserializeOptions {
@@ -1136,7 +1139,7 @@ fn serialize(
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
-    cb: Some(arg2_to_cb),
+    cb: arg2_to_cb,
   });
 
   let mut value_serializer =
