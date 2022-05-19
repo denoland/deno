@@ -250,6 +250,29 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
+  async function spawnKillOptional() {
+    const child = Deno.spawnChild(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+
+    child.kill();
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, null);
+    } else {
+      assertEquals(status.code, 143);
+      assertEquals(status.signal, "SIGTERM");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
   async function spawnAbort() {
     const ac = new AbortController();
     const child = Deno.spawnChild(Deno.execPath(), {
