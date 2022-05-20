@@ -1,35 +1,24 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-#[cfg(not(unix))]
-use deno_core::error::generic_error;
-#[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-
+use deno_core::AsyncRefCell;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::Extension;
-#[cfg(unix)]
 use deno_core::OpState;
-#[cfg(unix)]
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
+
+use std::borrow::Cow;
 use std::cell::RefCell;
-#[cfg(unix)]
 use std::rc::Rc;
 
 #[cfg(unix)]
-use deno_core::AsyncRefCell;
-#[cfg(unix)]
-use deno_core::CancelFuture;
-#[cfg(unix)]
-use deno_core::CancelHandle;
-#[cfg(unix)]
-use deno_core::RcRef;
-#[cfg(unix)]
-use deno_core::Resource;
-#[cfg(unix)]
-use deno_core::ResourceId;
-#[cfg(unix)]
-use std::borrow::Cow;
-#[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
+#[cfg(windows)]
+use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -50,6 +39,53 @@ struct SignalStreamResource {
 }
 
 #[cfg(unix)]
+impl Resource for SignalStreamResource {
+  fn name(&self) -> Cow<str> {
+    "signal".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+#[cfg(windows)]
+enum WindowsSignal {
+  Sigint(CtrlC),
+  Sigbreak(CtrlBreak),
+}
+
+#[cfg(windows)]
+impl From<CtrlC> for WindowsSignal {
+  fn from(ctrl_c: CtrlC) -> Self {
+    WindowsSignal::Sigint(ctrl_c)
+  }
+}
+
+#[cfg(windows)]
+impl From<CtrlBreak> for WindowsSignal {
+  fn from(ctrl_break: CtrlBreak) -> Self {
+    WindowsSignal::Sigbreak(ctrl_break)
+  }
+}
+
+#[cfg(windows)]
+impl WindowsSignal {
+  pub async fn recv(&mut self) -> Option<()> {
+    match self {
+      WindowsSignal::Sigint(ctrl_c) => ctrl_c.recv().await,
+      WindowsSignal::Sigbreak(ctrl_break) => ctrl_break.recv().await,
+    }
+  }
+}
+
+#[cfg(windows)]
+struct SignalStreamResource {
+  signal: AsyncRefCell<WindowsSignal>,
+  cancel: CancelHandle,
+}
+
+#[cfg(windows)]
 impl Resource for SignalStreamResource {
   fn name(&self) -> Cow<str> {
     "signal".into()
@@ -389,6 +425,28 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
   }
 }
 
+#[cfg(target_os = "windows")]
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGINT" => Ok(2),
+    "SIGBREAK" => Ok(21),
+    _ => Err(type_error(
+      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).",
+    )),
+  }
+}
+
+#[cfg(target_os = "windows")]
+pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+  match s {
+    2 => Ok("SIGINT"),
+    21 => Ok("SIGBREAK"),
+    _ => Err(type_error(
+      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).",
+    )),
+  }
+}
+
 #[cfg(unix)]
 #[op]
 fn op_signal_bind(
@@ -404,6 +462,37 @@ fn op_signal_bind(
   }
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo))?),
+    cancel: Default::default(),
+  };
+  let rid = state.resource_table.add(resource);
+  Ok(rid)
+}
+
+#[cfg(windows)]
+#[op]
+pub fn op_signal_bind(
+  state: &mut OpState,
+  sig: String,
+) -> Result<ResourceId, AnyError> {
+  let signo = signal_str_to_int(&sig)?;
+
+  println!("signo: {}, sig: {}", signo, sig);
+
+  if signal_hook_registry::FORBIDDEN.contains(&signo) {
+    return Err(type_error(format!(
+      "Binding to signal '{}' is not allowed",
+      sig
+    )));
+  }
+
+  let resource = SignalStreamResource {
+    signal: AsyncRefCell::new(match signo {
+      // SIGINT
+      2 => ctrl_c().expect("").into(),
+      // SIGBREAK
+      21 => ctrl_break().expect("").into(),
+      _ => unimplemented!(),
+    }),
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);
@@ -429,7 +518,26 @@ async fn op_signal_poll(
   }
 }
 
-#[cfg(unix)]
+#[cfg(windows)]
+#[op]
+async fn op_signal_poll(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<bool, AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<SignalStreamResource>(rid)?;
+
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
+  let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
+
+  match signal.recv().or_cancel(cancel).await {
+    Ok(result) => Ok(result.is_none()),
+    Err(_) => Ok(true),
+  }
+}
+
 #[op]
 pub fn op_signal_unbind(
   state: &mut OpState,
@@ -437,22 +545,4 @@ pub fn op_signal_unbind(
 ) -> Result<(), AnyError> {
   state.resource_table.close(rid)?;
   Ok(())
-}
-
-#[cfg(not(unix))]
-#[op]
-pub fn op_signal_bind() -> Result<(), AnyError> {
-  Err(generic_error("not implemented"))
-}
-
-#[cfg(not(unix))]
-#[op]
-fn op_signal_unbind() -> Result<(), AnyError> {
-  Err(generic_error("not implemented"))
-}
-
-#[cfg(not(unix))]
-#[op]
-async fn op_signal_poll() -> Result<(), AnyError> {
-  Err(generic_error("not implemented"))
 }

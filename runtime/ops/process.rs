@@ -309,13 +309,14 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::handleapi::CloseHandle;
   use winapi::um::processthreadsapi::OpenProcess;
   use winapi::um::processthreadsapi::TerminateProcess;
+  use winapi::um::wincon::GenerateConsoleCtrlEvent;
+  use winapi::um::wincon::CTRL_BREAK_EVENT;
+  use winapi::um::wincon::CTRL_C_EVENT;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if !matches!(signal, "SIGKILL" | "SIGTERM") {
-    Err(type_error(format!("Invalid signal: {}", signal)))
-  } else if pid <= 0 {
+  if pid <= 0 {
     Err(type_error("Invalid pid"))
-  } else {
+  } else if matches!(signal, "SIGKILL" | "SIGTERM") {
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
     if handle.is_null() {
       let err = match unsafe { GetLastError() } {
@@ -332,6 +333,26 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
         _ => unreachable!(),
       }
     }
+  } else if matches!(signal, "SIGINT" | "SIGBREAK") {
+    let ret = unsafe {
+      GenerateConsoleCtrlEvent(
+        match signal {
+          "SIGINT" => CTRL_C_EVENT,
+          "SIGBREAK" => CTRL_BREAK_EVENT,
+          _ => unreachable!(),
+        },
+        pid as u32,
+      )
+    };
+    match ret {
+      FALSE => {
+        Err(Error::from_raw_os_error(unsafe { GetLastError() } as i32).into())
+      }
+      TRUE => Ok(()),
+      _ => unreachable!(),
+    }
+  } else {
+    Err(type_error("unsupported signal"))
   }
 }
 
