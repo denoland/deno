@@ -922,6 +922,12 @@ itest!(set_exit_code_in_worker {
   exit_code: 42,
 });
 
+itest!(deno_exit_tampering {
+  args: "run --no-check --unstable deno_exit_tampering.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
 itest!(heapstats {
   args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
   output: "heapstats.js.out",
