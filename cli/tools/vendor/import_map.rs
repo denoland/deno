@@ -120,7 +120,7 @@ fn visit_modules(
 ) {
   for module in modules {
     let text_info = match &module.maybe_parsed_source {
-      Some(source) => source.source(),
+      Some(source) => source.text_info(),
       None => continue,
     };
     let source_text = match &module.maybe_source {
@@ -272,10 +272,8 @@ fn byte_range(
 
 fn byte_index(text_info: &SourceTextInfo, pos: &Position) -> usize {
   // todo(https://github.com/denoland/deno_graph/issues/79): use byte indexes all the way down
-  text_info
-    .byte_index(LineAndColumnIndex {
-      line_index: pos.line,
-      column_index: pos.character,
-    })
-    .0 as usize
+  text_info.loc_to_source_pos(LineAndColumnIndex {
+    line_index: pos.line,
+    column_index: pos.character,
+  }) - text_info.range().start
 }
