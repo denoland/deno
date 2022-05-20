@@ -19,6 +19,7 @@
     ObjectPrototypeIsPrototypeOf,
     PromiseReject,
     PromiseResolve,
+    Symbol,
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
@@ -259,7 +260,7 @@
         },
         cancel: (_) => {
           core.close(this.#decoder[_rid]);
-        }
+        },
       });
       this[webidl.brand] = webidl.brand;
     }
