@@ -34,6 +34,7 @@ use deno_ast::swc::parser::lexer::Lexer;
 use deno_ast::swc::parser::StringInput;
 use deno_ast::Diagnostic;
 use deno_ast::LineAndColumnDisplay;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -529,7 +530,7 @@ impl swc::bundler::Load for BundleLoader<'_> {
         if let Some(m) = self.graph.get(specifier) {
           let (fm, module) = transpile_module(
             specifier,
-            m.maybe_source.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            m.maybe_source.as_ref().map(|s| s as &str).unwrap_or(""),
             m.media_type,
             self.emit_options,
             self.cm.clone(),
@@ -616,7 +617,7 @@ fn swc_err_to_diagnostic(
   let location = source_map.lookup_char_pos(err.span().lo);
   Diagnostic {
     specifier: specifier.to_string(),
-    span: err.span(),
+    range: err.range(),
     display_position: LineAndColumnDisplay {
       line_number: location.line,
       column_number: location.col_display + 1,
@@ -669,7 +670,6 @@ pub fn bundle(
     let emit_options: deno_ast::EmitOptions = options.ts_config.into();
     let source_map_config = deno_ast::SourceMapConfig {
       inline_sources: emit_options.inline_sources,
-      maybe_base: None,
     };
 
     let cm = Rc::new(swc::common::SourceMap::new(
@@ -707,7 +707,11 @@ pub fn bundle(
     let mut buf = Vec::new();
     let mut srcmap = Vec::new();
     {
-      let cfg = swc::codegen::Config { minify: false };
+      let cfg = swc::codegen::Config {
+        minify: false,
+        ascii_only: false,
+        target: deno_ast::ES_VERSION,
+      };
       let mut wr = Box::new(swc::codegen::text_writer::JsWriter::new(
         cm.clone(),
         "\n",

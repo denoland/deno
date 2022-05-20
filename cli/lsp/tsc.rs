@@ -154,7 +154,7 @@ impl TsServer {
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
   specifier: ModuleSpecifier,
-  text: Arc<String>,
+  text: Arc<str>,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
@@ -169,7 +169,7 @@ impl AssetDocument {
     let text = text.as_ref();
     Self(Arc::new(AssetDocumentInner {
       specifier,
-      text: Arc::new(text.to_string()),
+      text: text.into(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
@@ -189,7 +189,7 @@ impl AssetDocument {
     }))
   }
 
-  pub fn text(&self) -> Arc<String> {
+  pub fn text(&self) -> Arc<str> {
     self.0.text.clone()
   }
 
@@ -3114,7 +3114,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     StateSnapshot {

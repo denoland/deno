@@ -35,5 +35,5 @@ path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
-deno_ast = { version = "0.14.0", features = ["transpiling"] }
+deno_ast = { version = "0.15.0", features = ["transpiling"] }
 tokio = { version = "1.17", features = ["full"] }

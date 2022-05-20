@@ -81,12 +81,12 @@ impl deno_graph::SourceParser for SourceParser {
   fn parse_module(
     &self,
     specifier: &ModuleSpecifier,
-    source: Arc<String>,
+    source: Arc<str>,
     media_type: MediaType,
   ) -> Result<deno_ast::ParsedSource, deno_ast::Diagnostic> {
     deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.to_string(),
-      source: SourceTextInfo::new(source),
+      text_info: SourceTextInfo::new(source),
       media_type,
       capture_tokens: true,
       scope_analysis: true,
@@ -179,7 +179,7 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<String> {
+  pub fn text(&self) -> Arc<str> {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
       AssetOrDocument::Document(d) => d.0.text_info.text(),
@@ -254,7 +254,7 @@ impl Document {
     specifier: ModuleSpecifier,
     fs_version: String,
     maybe_headers: Option<&HashMap<String, String>>,
-    content: Arc<String>,
+    content: Arc<str>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
     let parser = SourceParser::default();
@@ -293,7 +293,7 @@ impl Document {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    content: Arc<String>,
+    content: Arc<str>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
     let maybe_headers = language_id.as_headers();
@@ -352,7 +352,7 @@ impl Document {
         index_valid = IndexValid::UpTo(0);
       }
     }
-    let content = Arc::new(content);
+    let content: Arc<str> = content.into();
     let maybe_module = if self
       .0
       .maybe_language_id
@@ -413,7 +413,7 @@ impl Document {
     &self.0.specifier
   }
 
-  pub fn content(&self) -> Arc<String> {
+  pub fn content(&self) -> Arc<str> {
     self.0.text_info.text()
   }
 
@@ -661,12 +661,12 @@ impl FileSystemDocuments {
     let doc = if specifier.scheme() == "file" {
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
-      let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
+      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
       Document::new(
         specifier.clone(),
         fs_version,
         None,
-        content,
+        content.into(),
         maybe_resolver,
       )
     } else {
@@ -677,12 +677,12 @@ impl FileSystemDocuments {
         specifier_metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&specifier_metadata.headers);
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
-      let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
+      let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
       Document::new(
         specifier.clone(),
         fs_version,
         maybe_headers,
-        content,
+        content.into(),
         maybe_resolver,
       )
     };
@@ -752,7 +752,7 @@ impl Documents {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    content: Arc<String>,
+    content: Arc<str>,
   ) -> Document {
     let maybe_resolver = self.get_maybe_resolver();
     let document = Document::open(
@@ -1154,14 +1154,15 @@ mod tests {
     let temp_dir = TempDir::new();
     let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    let content = Arc::new(
-      r#"import * as b from "./b.ts";
+    let content = r#"import * as b from "./b.ts";
 console.log(b);
-"#
-      .to_string(),
+"#;
+    let document = documents.open(
+      specifier,
+      1,
+      "javascript".parse().unwrap(),
+      content.into(),
     );
-    let document =
-      documents.open(specifier, 1, "javascript".parse().unwrap(), content);
     assert!(document.is_open());
     assert!(document.is_diagnosable());
   }
@@ -1171,17 +1172,14 @@ console.log(b);
     let temp_dir = TempDir::new();
     let (mut documents, _) = setup(&temp_dir);
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    let content = Arc::new(
-      r#"import * as b from "./b.ts";
+    let content = r#"import * as b from "./b.ts";
 console.log(b);
-"#
-      .to_string(),
-    );
+"#;
     documents.open(
       specifier.clone(),
       1,
       "javascript".parse().unwrap(),
-      content,
+      content.into(),
     );
     documents
       .change(
@@ -1204,7 +1202,7 @@ console.log(b);
       )
       .unwrap();
     assert_eq!(
-      documents.get(&specifier).unwrap().content().as_str(),
+      &*documents.get(&specifier).unwrap().content(),
       r#"import * as b from "./b.ts";
 console.log(b, "hello deno");
 "#
@@ -1227,7 +1225,7 @@ console.log(b, "hello deno");
       file_specifier.clone(),
       1,
       LanguageId::TypeScript,
-      Default::default(),
+      "".into(),
     );
 
     // make a clone of the document store and close the document in that one

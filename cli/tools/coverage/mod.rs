@@ -175,12 +175,12 @@ fn generate_coverage_report(
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
   let text_lines = TextLines::new(script_source);
 
-  let comment_spans = deno_ast::lex(script_source, MediaType::JavaScript)
+  let comment_ranges = deno_ast::lex(script_source, MediaType::JavaScript)
     .into_iter()
     .filter(|item| {
       matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
     })
-    .map(|item| item.span)
+    .map(|item| item.range)
     .collect::<Vec<_>>();
 
   let url = Url::parse(&script_coverage.url).unwrap();
@@ -267,9 +267,8 @@ fn generate_coverage_report(
   for line_index in 0..text_lines.lines_count() {
     let line_start_offset = text_lines.line_start(line_index);
     let line_end_offset = text_lines.line_end(line_index);
-    let ignore = comment_spans.iter().any(|span| {
-      (span.lo.0 as usize) <= line_start_offset
-        && (span.hi.0 as usize) >= line_end_offset
+    let ignore = comment_ranges.iter().any(|range| {
+      range.start <= line_start_offset && range.end >= line_end_offset
     }) || script_source[line_start_offset..line_end_offset]
       .trim()
       .is_empty();
@@ -664,7 +663,7 @@ pub async fn cover_files(
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().clone(),
+      | MediaType::Json => file.source.as_ref().to_string(),
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
       MediaType::TypeScript
       | MediaType::Jsx
