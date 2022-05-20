@@ -4,11 +4,10 @@ try {
   // pass
 }
 
-const fetchProc = Deno.run({
+const fetchProc = await Deno.spawn(Deno.execPath(), {
   stdout: "null",
   stderr: "null",
-  cmd: [
-    Deno.execPath(),
+  args: [
     "cache",
     "--reload",
     "--lock=lock_write_fetch.json",
@@ -18,14 +17,12 @@ const fetchProc = Deno.run({
   ],
 });
 
-const fetchCode = (await fetchProc.status()).code;
-console.log(`fetch code: ${fetchCode}`);
+console.log(`fetch code: ${fetchProc.status.code}`);
 
-const fetchCheckProc = Deno.run({
+const fetchCheckProc = await Deno.spawn(Deno.execPath(), {
   stdout: "null",
   stderr: "null",
-  cmd: [
-    Deno.execPath(),
+  args: [
     "cache",
     "--lock=lock_write_fetch.json",
     "--cert=tls/RootCA.pem",
@@ -33,16 +30,14 @@ const fetchCheckProc = Deno.run({
   ],
 });
 
-const fetchCheckProcCode = (await fetchCheckProc.status()).code;
-console.log(`fetch check code: ${fetchCheckProcCode}`);
+console.log(`fetch check code: ${fetchCheckProc.status.code}`);
 
 Deno.removeSync("./lock_write_fetch.json");
 
-const runProc = Deno.run({
+const runProc = await Deno.spawn(Deno.execPath(), {
   stdout: "null",
   stderr: "null",
-  cmd: [
-    Deno.execPath(),
+  args: [
     "run",
     "--lock=lock_write_fetch.json",
     "--lock-write",
@@ -52,7 +47,6 @@ const runProc = Deno.run({
   ],
 });
 
-const runCode = (await runProc.status()).code;
-console.log(`run code: ${runCode}`);
+console.log(`run code: ${runProc.status.code}`);
 
 Deno.removeSync("./lock_write_fetch.json");

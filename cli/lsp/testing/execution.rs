@@ -20,6 +20,7 @@ use crate::tools::test::TestEventSender;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
@@ -181,7 +182,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
-  sender: TestEventSender,
+  sender: &TestEventSender,
   token: CancellationToken,
   options: Option<Value>,
 ) -> Result<(), AnyError> {
@@ -337,22 +338,32 @@ impl TestRun {
       let specifier = specifier.clone();
       let ps = ps.clone();
       let permissions = permissions.clone();
-      let sender = sender.clone();
+      let mut sender = sender.clone();
       let options = self.filters.get(&specifier).map(|f| f.as_test_options());
       let token = self.token.clone();
 
       tokio::task::spawn_blocking(move || {
-        let future = test_specifier(
+        let origin = specifier.to_string();
+        let file_result = run_basic(test_specifier(
           ps,
           permissions,
           specifier,
           test::TestMode::Executable,
-          sender,
+          &sender,
           token,
           options,
-        );
-
-        run_basic(future)
+        ));
+        if let Err(error) = file_result {
+          if error.is::<JsError>() {
+            sender.send(test::TestEvent::UncaughtError(
+              origin,
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ))?;
+          } else {
+            return Err(error);
+          }
+        }
+        Ok(())
       })
     });
 
@@ -403,6 +414,11 @@ impl TestRun {
               }
 
               reporter.report_result(&description, &result, elapsed);
+            }
+            test::TestEvent::UncaughtError(origin, error) => {
+              reporter.report_uncaught_error(&origin, &error);
+              summary.failed += 1;
+              summary.uncaught_errors.push((origin, error));
             }
             test::TestEvent::StepWait(description) => {
               reporter.report_step_wait(&description);
@@ -801,6 +817,37 @@ impl test::TestReporter for LspTestReporter {
           messages: as_test_messages(err_string, false),
           duration: Some(elapsed as u32),
         })
+      }
+    }
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
+    if self.current_origin == Some(origin.to_string()) {
+      self.current_origin = None;
+    }
+    let stack = self.stack.remove(origin).unwrap_or_default();
+    let err_string = format!(
+      "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
+      origin,
+      test::format_test_error(js_error)
+    );
+    let messages = as_test_messages(err_string, false);
+    for t in stack.iter().rev() {
+      match t {
+        TestOrTestStepDescription::TestDescription(desc) => {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: desc.into(),
+            messages: messages.clone(),
+            duration: None,
+          });
+        }
+        TestOrTestStepDescription::TestStepDescription(desc) => {
+          self.progress(lsp_custom::TestRunProgressMessage::Failed {
+            test: desc.into(),
+            messages: messages.clone(),
+            duration: None,
+          });
+        }
       }
     }
   }

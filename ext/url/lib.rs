@@ -160,13 +160,11 @@ pub fn op_url_parse_search_params(
 }
 
 #[op]
-pub fn op_url_stringify_search_params(
-  args: Vec<(String, String)>,
-) -> Result<String, AnyError> {
+pub fn op_url_stringify_search_params(args: Vec<(String, String)>) -> String {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
-  Ok(search)
+  search
 }
 
 pub fn get_declaration() -> PathBuf {

@@ -12,10 +12,12 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 
+use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
 use rustls::client::ServerCertVerifier;
 use rustls::client::StoresClientSessions;
 use rustls::client::WebPkiVerifier;
+use rustls::internal::msgs::handshake::DigitallySignedStruct;
 use rustls::Certificate;
 use rustls::ClientConfig;
 use rustls::Error;
@@ -38,6 +40,22 @@ pub fn init() -> Extension {
   Extension::builder().build()
 }
 
+struct DefaultSignatureVerification;
+
+impl ServerCertVerifier for DefaultSignatureVerification {
+  fn verify_server_cert(
+    &self,
+    _end_entity: &Certificate,
+    _intermediates: &[Certificate],
+    _server_name: &ServerName,
+    _scts: &mut dyn Iterator<Item = &[u8]>,
+    _ocsp_response: &[u8],
+    _now: SystemTime,
+  ) -> Result<ServerCertVerified, Error> {
+    Err(Error::General("Should not be used".to_string()))
+  }
+}
+
 pub struct NoCertificateVerification(pub Vec<String>);
 
 impl ServerCertVerifier for NoCertificateVerification {
@@ -50,27 +68,60 @@ impl ServerCertVerifier for NoCertificateVerification {
     ocsp_response: &[u8],
     now: SystemTime,
   ) -> Result<ServerCertVerified, Error> {
-    if let ServerName::DnsName(dns_name) = server_name {
-      let dns_name = dns_name.as_ref().to_owned();
-      if self.0.is_empty() || self.0.contains(&dns_name) {
-        Ok(ServerCertVerified::assertion())
-      } else {
-        let root_store = create_default_root_cert_store();
-        let verifier = WebPkiVerifier::new(root_store, None);
-        verifier.verify_server_cert(
-          end_entity,
-          intermediates,
-          server_name,
-          scts,
-          ocsp_response,
-          now,
-        )
-      }
-    } else {
-      // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
-      // so we have this catch all error here.
-      Err(Error::General("Unknown `ServerName` variant".to_string()))
+    if self.0.is_empty() {
+      return Ok(ServerCertVerified::assertion());
     }
+    let dns_name_or_ip_address = match server_name {
+      ServerName::DnsName(dns_name) => dns_name.as_ref().to_owned(),
+      ServerName::IpAddress(ip_address) => ip_address.to_string(),
+      _ => {
+        // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
+        // so we have this catch all errors here.
+        return Err(Error::General("Unknown `ServerName` variant".to_string()));
+      }
+    };
+    if self.0.contains(&dns_name_or_ip_address) {
+      Ok(ServerCertVerified::assertion())
+    } else {
+      let root_store = create_default_root_cert_store();
+      let verifier = WebPkiVerifier::new(root_store, None);
+      verifier.verify_server_cert(
+        end_entity,
+        intermediates,
+        server_name,
+        scts,
+        ocsp_response,
+        now,
+      )
+    }
+  }
+
+  fn verify_tls12_signature(
+    &self,
+    message: &[u8],
+    cert: &rustls::Certificate,
+    dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, Error> {
+    if self.0.is_empty() {
+      return Ok(HandshakeSignatureValid::assertion());
+    }
+    filter_invalid_encoding_err(
+      DefaultSignatureVerification.verify_tls12_signature(message, cert, dss),
+    )
+  }
+
+  fn verify_tls13_signature(
+    &self,
+    message: &[u8],
+    cert: &rustls::Certificate,
+    dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, Error> {
+    if self.0.is_empty() {
+      return Ok(HandshakeSignatureValid::assertion());
+    }
+    filter_invalid_encoding_err(
+      DefaultSignatureVerification.verify_tls13_signature(message, cert, dss),
+    )
   }
 }
 
@@ -231,6 +282,17 @@ fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(keys.into_iter().map(PrivateKey).collect())
+}
+
+fn filter_invalid_encoding_err(
+  to_be_filtered: Result<HandshakeSignatureValid, Error>,
+) -> Result<HandshakeSignatureValid, Error> {
+  match to_be_filtered {
+    Err(Error::InvalidCertificateEncoding) => {
+      Ok(HandshakeSignatureValid::assertion())
+    }
+    res => res,
+  }
 }
 
 pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {

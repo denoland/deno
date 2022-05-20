@@ -12,7 +12,7 @@ noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 summary
   noo[WILDCARD]
-   [WILDCARD]x times [WILDCARD] than noo[WILDCARD]
+   [WILDCARD]x [WILDCARD] than noo[WILDCARD]
 
 noop3 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 parse url 2x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
@@ -20,8 +20,8 @@ parse url 6x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WI
 
 summary
   parse url 2x
-   [WILDCARD]x times slower than noop3
-   [WILDCARD]x times faster than parse url 6x
+   [WILDCARD]x slower than noop3
+   [WILDCARD]x faster than parse url 6x
 
 [WILDCARD]/bench/pass.ts
 benchmark      time (avg)             (min … max)       p75       p99      p995
@@ -45,7 +45,7 @@ noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 summary
   noo[WILDCARD]
-   [WILDCARD]x times [WILDCARD] than noo[WILDCARD]
+   [WILDCARD]x [WILDCARD] than noo[WILDCARD]
 
 noop3 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 parse url 2x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
@@ -53,5 +53,5 @@ parse url 6x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WI
 
 summary
   parse url 2x
-   [WILDCARD]x times slower than noop3
-   [WILDCARD]x times faster than parse url 6x
+   [WILDCARD]x slower than noop3
+   [WILDCARD]x faster than parse url 6x

@@ -3,7 +3,7 @@ running 2 tests from ./test/ops_sanitizer_unstable.ts
 no-op ... ok ([WILDCARD])
 leak interval ... FAILED ([WILDCARD])
 
-failures:
+ ERRORS 
 
 leak interval => ./test/ops_sanitizer_unstable.ts:[WILDCARD]
 error: Test case is leaking async ops.
@@ -14,7 +14,7 @@ error: Test case is leaking async ops.
     at [WILDCARD]/testdata/test/ops_sanitizer_unstable.ts:3:3
     at [WILDCARD]
 
-failures:
+ FAILURES 
 
 leak interval => ./test/ops_sanitizer_unstable.ts:[WILDCARD]
 

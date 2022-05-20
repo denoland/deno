@@ -2,7 +2,7 @@
 
 use crate::error::is_instance_of_error;
 use crate::error::JsError;
-use crate::modules::get_module_type_from_assertions;
+use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
@@ -343,7 +343,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
       resolver.reject(tc_scope, e);
     }
   }
-  let module_type = get_module_type_from_assertions(&assertions);
+  let asserted_module_type =
+    get_asserted_module_type_from_assertions(&assertions);
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
@@ -358,7 +359,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
-      module_type,
+      asserted_module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();
@@ -895,11 +896,11 @@ fn encode(
       return;
     }
   };
-  let text_str = text.to_rust_string_lossy(scope);
-  let bytes: Box<[u8]> = text_str.into_bytes().into_boxed_slice();
+  let text_str = serde_v8::to_utf8(text, scope);
+  let bytes = text_str.into_bytes();
   let len = bytes.len();
   let backing_store =
-    v8::ArrayBuffer::new_backing_store_from_boxed_slice(bytes).make_shared();
+    v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
   let buffer = v8::ArrayBuffer::with_backing_store(scope, &backing_store);
   let u8array = v8::Uint8Array::new(scope, buffer, 0, len).unwrap();
   rv.set(u8array.into())

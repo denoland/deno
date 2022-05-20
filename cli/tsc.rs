@@ -344,7 +344,7 @@ struct EmitArgs {
 }
 
 #[op]
-fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
+fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -389,7 +389,7 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
     }
   }
 
-  Ok(json!(true))
+  true
 }
 
 #[derive(Debug, Deserialize)]
@@ -399,20 +399,20 @@ struct ExistsArgs {
 }
 
 #[op]
-fn op_exists(state: &mut OpState, args: ExistsArgs) -> Result<bool, AnyError> {
+fn op_exists(state: &mut OpState, args: ExistsArgs) -> bool {
   let state = state.borrow_mut::<State>();
   let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
-      Ok(true)
+      true
     } else {
-      Ok(matches!(
+      matches!(
         graph_data.get(&graph_data.follow_redirect(&specifier)),
         Some(ModuleEntry::Module { .. })
-      ))
+      )
     }
   } else {
-    Ok(false)
+    false
   }
 }
 
@@ -422,7 +422,7 @@ struct LoadArgs {
   specifier: String,
 }
 
-fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+pub fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   match media_type {
     MediaType::JavaScript => 1,
     MediaType::Jsx => 2,
@@ -492,7 +492,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   };
 
   Ok(
-    json!({ "data": data, "hash": hash, "scriptKind": as_ts_script_kind(&media_type) }),
+    json!({ "data": data, "version": hash, "scriptKind": as_ts_script_kind(&media_type) }),
   )
 }
 
@@ -510,7 +510,7 @@ pub struct ResolveArgs {
 fn op_resolve(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Value, AnyError> {
+) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = if let Some(remapped_specifier) =
@@ -607,7 +607,7 @@ fn op_resolve(
     }
   }
 
-  Ok(json!(resolved))
+  Ok(resolved)
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -917,9 +917,8 @@ mod tests {
         file_name: "cache:///some/file.js".to_string(),
         maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    );
+    assert!(actual);
     let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 1);
     assert!(state.maybe_tsbuildinfo.is_none());
@@ -948,9 +947,8 @@ mod tests {
           vec!["file:///some/file.ts?q=.json".to_string()],
         ),
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    );
+    assert!(actual);
     let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 1);
     assert!(state.maybe_tsbuildinfo.is_none());
@@ -977,9 +975,8 @@ mod tests {
         file_name: "deno:///.tsbuildinfo".to_string(),
         maybe_specifiers: None,
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    );
+    assert!(actual);
     let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 0);
     assert_eq!(
@@ -1005,7 +1002,7 @@ mod tests {
       actual,
       json!({
         "data": "console.log(\"hello deno\");\n",
-        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "version": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
         "scriptKind": 3,
       })
     );
@@ -1015,7 +1012,7 @@ mod tests {
   #[serde(rename_all = "camelCase")]
   struct LoadResponse {
     data: String,
-    hash: Option<String>,
+    version: Option<String>,
     script_kind: i64,
   }
 
@@ -1036,7 +1033,7 @@ mod tests {
       serde_json::from_value(value).expect("failed to deserialize");
     let expected = get_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
-    assert!(actual.hash.is_some());
+    assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
 
@@ -1055,7 +1052,7 @@ mod tests {
       actual,
       json!({
         "data": "some content",
-        "hash": null,
+        "version": null,
         "scriptKind": 0,
       })
     );
@@ -1073,7 +1070,7 @@ mod tests {
       actual,
       json!({
         "data": null,
-        "hash": null,
+        "version": null,
         "scriptKind": 0,
       })
     )
@@ -1095,7 +1092,10 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
+    assert_eq!(
+      actual,
+      vec![("https://deno.land/x/b.ts".into(), ".ts".into())]
+    );
   }
 
   #[tokio::test]
@@ -1116,7 +1116,7 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      json!([["deno:///missing_dependency.d.ts", ".d.ts"]])
+      vec![("deno:///missing_dependency.d.ts".into(), ".d.ts".into())]
     );
   }
 
