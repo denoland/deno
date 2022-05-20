@@ -470,20 +470,11 @@ fn op_signal_bind(
 
 #[cfg(windows)]
 #[op]
-pub fn op_signal_bind(
+fn op_signal_bind(
   state: &mut OpState,
   sig: String,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(&sig)?;
-
-  println!("signo: {}, sig: {}", signo, sig);
-
-  if signal_hook_registry::FORBIDDEN.contains(&signo) {
-    return Err(type_error(format!(
-      "Binding to signal '{}' is not allowed",
-      sig
-    )));
-  }
 
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
@@ -499,26 +490,6 @@ pub fn op_signal_bind(
   Ok(rid)
 }
 
-#[cfg(unix)]
-#[op]
-async fn op_signal_poll(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<bool, AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<SignalStreamResource>(rid)?;
-  let cancel = RcRef::map(&resource, |r| &r.cancel);
-  let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
-
-  match signal.recv().or_cancel(cancel).await {
-    Ok(result) => Ok(result.is_none()),
-    Err(_) => Ok(true),
-  }
-}
-
-#[cfg(windows)]
 #[op]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
