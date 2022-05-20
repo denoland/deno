@@ -6,7 +6,7 @@ use deno_ast::swc::ast;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::SourceRange;
-use deno_ast::SwcSourceRanged;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::ModuleSpecifier;
 use std::collections::HashSet;
 

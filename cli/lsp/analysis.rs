@@ -10,8 +10,8 @@ use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_ast::SwcSourceRanged;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;

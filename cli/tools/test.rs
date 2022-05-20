@@ -29,7 +29,7 @@ use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
-use deno_ast::SwcSourceRanged;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;

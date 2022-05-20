@@ -34,7 +34,7 @@ use deno_ast::swc::parser::lexer::Lexer;
 use deno_ast::swc::parser::StringInput;
 use deno_ast::Diagnostic;
 use deno_ast::LineAndColumnDisplay;
-use deno_ast::SwcSourceRanged;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
