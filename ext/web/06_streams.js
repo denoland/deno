@@ -3077,12 +3077,14 @@
    * @param {TransformStreamDefaultController<O>} controller
    * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
    * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
+   * @param {(reason?: any) => Promise<void>} cancelAlgorithm
    */
   function setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
     flushAlgorithm,
+    cancelAlgorithm,
   ) {
     assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
     assert(stream[_controller] === undefined);
@@ -3090,6 +3092,7 @@
     stream[_controller] = controller;
     controller[_transformAlgorithm] = transformAlgorithm;
     controller[_flushAlgorithm] = flushAlgorithm;
+    controller[_cancelAlgorithm] = cancelAlgorithm;
   }
 
   /**
@@ -3117,6 +3120,8 @@
     };
     /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
     let flushAlgorithm = () => resolvePromiseWith(undefined);
+    /** @type {(reason?: any) => Promise<void>} */
+    let cancelAlgorithm = () => resolvePromiseWith(undefined);
     if (transformerDict.transform !== undefined) {
       transformAlgorithm = (chunk, controller) =>
         webidl.invokeCallbackFunction(
@@ -3145,11 +3150,26 @@
           },
         );
     }
+    if (transformerDict.cancel !== undefined) {
+      cancelAlgorithm = (reason) =>
+        webidl.invokeCallbackFunction(
+          transformerDict.cancel,
+          [reason],
+          transformer,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'cancelAlgorithm' on 'TransformStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
+    }
     setUpTransformStreamDefaultController(
       stream,
       controller,
       transformAlgorithm,
       flushAlgorithm,
+      cancelAlgorithm,
     );
   }
 
@@ -3343,6 +3363,7 @@
   function transformStreamDefaultControllerClearAlgorithms(controller) {
     controller[_transformAlgorithm] = undefined;
     controller[_flushAlgorithm] = undefined;
+    controller[_cancelAlgorithm] = undefined;
   }
 
   /**
@@ -3504,6 +3525,7 @@
    * @param {any=} e
    */
   function transformStreamErrorWritableAndUnblockWrite(stream, e) {
+    stream[_controller][_cancelAlgorithm](e);
     transformStreamDefaultControllerClearAlgorithms(stream[_controller]);
     writableStreamDefaultControllerErrorIfNeeded(
       stream[_writable][_controller],
@@ -5290,6 +5312,8 @@
   class TransformStreamDefaultController {
     /** @type {(controller: this) => Promise<void>} */
     [_flushAlgorithm];
+    /** @type {(reason?: any) => Promise<void>} */
+    [_cancelAlgorithm];
     /** @type {TransformStream<O>} */
     [_stream];
     /** @type {(chunk: O, controller: this) => Promise<void>} */
@@ -5792,6 +5816,10 @@
       },
       {
         key: "flush",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "cancel",
         converter: webidl.converters.Function,
       },
       {

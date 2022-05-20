@@ -26,6 +26,7 @@
     Uint8Array,
   } = window.__bootstrap.primordials;
 
+  const _rid = Symbol("rid");
   class TextDecoder {
     /** @type {string} */
     #encoding;
@@ -35,7 +36,7 @@
     #ignoreBOM;
 
     /** @type {number | null} */
-    #rid = null;
+    [_rid] = null;
 
     /**
      * @param {string} label
@@ -123,7 +124,7 @@
           input = new Uint8Array(input);
         }
 
-        if (!options.stream && this.#rid === null) {
+        if (!options.stream && this[_rid] === null) {
           return core.opSync("op_encoding_decode_single", input, {
             label: this.#encoding,
             fatal: this.#fatal,
@@ -131,21 +132,21 @@
           });
         }
 
-        if (this.#rid === null) {
-          this.#rid = core.opSync("op_encoding_new_decoder", {
+        if (this[_rid] === null) {
+          this[_rid] = core.opSync("op_encoding_new_decoder", {
             label: this.#encoding,
             fatal: this.#fatal,
             ignoreBom: this.#ignoreBOM,
           });
         }
         return core.opSync("op_encoding_decode", input, {
-          rid: this.#rid,
+          rid: this[_rid],
           stream: options.stream,
         });
       } finally {
-        if (!options.stream && this.#rid) {
-          core.close(this.#rid);
-          this.#rid = null;
+        if (!options.stream && this[_rid]) {
+          core.close(this[_rid]);
+          this[_rid] = null;
         }
       }
     }
@@ -256,6 +257,9 @@
             return PromiseReject(err);
           }
         },
+        cancel: (_) => {
+          core.close(this.#decoder[_rid]);
+        }
       });
       this[webidl.brand] = webidl.brand;
     }

@@ -697,6 +697,7 @@ declare var TransformStreamDefaultController: TransformStreamDefaultController;
 
 interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;
+  cancel?: TransformStreamCancelControllerCallback;
   readableType?: undefined;
   start?: TransformStreamDefaultControllerCallback<O>;
   transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
@@ -705,6 +706,10 @@ interface Transformer<I = any, O = any> {
 
 interface TransformStreamDefaultControllerCallback<O> {
   (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+}
+
+interface TransformStreamCancelControllerCallback {
+  (reason?: any): void | PromiseLike<void>;
 }
 
 interface TransformStreamDefaultControllerTransformCallback<I, O> {
