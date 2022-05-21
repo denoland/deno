@@ -48,6 +48,7 @@
     SymbolAsyncIterator,
     SymbolFor,
     TypeError,
+    TypedArrayPrototypeSubarray,
     Uint8Array,
     Uint8ArrayPrototype,
     Uint16ArrayPrototype,
@@ -670,6 +671,33 @@
 
     stream[_maybeRid] = rid;
     return stream;
+  }
+
+  function writableStreamForRid(rid) {
+    const writable = new WritableStream({
+      async write(chunk, controller) {
+        try {
+          let nwritten = 0;
+          while (nwritten < chunk.length) {
+            nwritten += await core.write(
+              rid,
+              TypedArrayPrototypeSubarray(chunk, nwritten),
+            );
+          }
+        } catch (e) {
+          controller.error(e);
+          core.tryClose(rid);
+        }
+      },
+      close() {
+        core.tryClose(rid);
+      },
+      abort() {
+        core.tryClose(rid);
+      },
+    });
+    writable[_maybeRid] = rid;
+    return writable;
   }
 
   function getReadableStreamRid(stream) {
@@ -2023,6 +2051,14 @@
     );
     assert(!isReadableStreamLocked(source));
     assert(!isWritableStreamLocked(dest));
+    if (source[_maybeRid] && dest[_maybeRid]) {
+      // TODO: Abort signal
+      return core.opAsync(
+        "op_stream_pipe_to",
+        source[_maybeRid],
+        dest[_maybeRid],
+      );
+    }
     // We use acquireReadableStreamDefaultReader even in case of ReadableByteStreamController
     // as the spec allows us, and the only reason to use BYOBReader is to do some smart things
     // with it, but the spec does not specify what things, so to simplify we stick to DefaultReader.
@@ -5378,6 +5414,7 @@
     [_writer];
     /** @type {Deferred<void>[]} */
     [_writeRequests];
+    [_maybeRid];
 
     /**
      * @param {UnderlyingSink<W>=} underlyingSink
@@ -5881,6 +5918,7 @@
     writableStreamClose,
     readableStreamClose,
     readableStreamForRid,
+    writableStreamForRid,
     getReadableStreamRid,
     Deferred,
     // Exposed in global runtime scope

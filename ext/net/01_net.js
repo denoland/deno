@@ -4,7 +4,8 @@
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype } = core;
-  const { WritableStream, readableStreamForRid } = window.__bootstrap.streams;
+  const { readableStreamForRid, writableStreamForRid } =
+    window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -71,31 +72,6 @@
     } catch {
       // Ignore errors
     }
-  }
-
-  function writableStreamForRid(rid) {
-    return new WritableStream({
-      async write(chunk, controller) {
-        try {
-          let nwritten = 0;
-          while (nwritten < chunk.length) {
-            nwritten += await write(
-              rid,
-              TypedArrayPrototypeSubarray(chunk, nwritten),
-            );
-          }
-        } catch (e) {
-          controller.error(e);
-          tryClose(rid);
-        }
-      },
-      close() {
-        tryClose(rid);
-      },
-      abort() {
-        tryClose(rid);
-      },
-    });
   }
 
   class Conn {

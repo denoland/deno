@@ -15,7 +15,7 @@
     PromiseAll,
   } = window.__bootstrap.primordials;
   const { readableStreamForRid, writableStreamForRid } =
-    window.__bootstrap.streamUtils;
+    window.__bootstrap.streams;
 
   function spawnChild(command, {
     args = [],

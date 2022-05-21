@@ -29,6 +29,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::usize;
 
 use crate::blob::op_blob_create_object_url;
@@ -112,6 +113,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_cancel_handle::decl(),
       op_sleep::decl(),
       op_sleep_sync::decl::<P>(),
+      op_stream_pipe_to::decl(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -417,6 +419,27 @@ fn op_encoding_encode_into(
 #[op]
 pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
   state.resource_table.add(CancelHandle::new())
+}
+
+#[op]
+async fn op_stream_pipe_to(
+  state: Rc<RefCell<OpState>>,
+  src: ResourceId,
+  dest: ResourceId,
+) -> Result<(), AnyError> {
+  let state = state.borrow();
+  let src = state.resource_table.get_any(src)?;
+  let dest = state.resource_table.get_any(dest)?;
+  loop {
+    let vec = vec![0u8; 64 * 1024]; // 64KB
+    let buf = ZeroCopyBuf::new_temp(vec);
+    let (nread, buf) = src.clone().read_return(buf).await?;
+    if nread == 0 {
+      break;
+    }
+    dest.clone().write(buf);
+  }
+  Ok(())
 }
 
 pub fn get_declaration() -> PathBuf {
