@@ -297,7 +297,6 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&ats)
@@ -321,7 +320,6 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&ats)
@@ -346,7 +344,6 @@ fn ts_no_recheck_on_redirect() {
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("DENO_FUTURE_CHECK", "1");
   let mut initial = cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -360,7 +357,6 @@ fn ts_no_recheck_on_redirect() {
 
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("DENO_FUTURE_CHECK", "1");
   let output = cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -654,7 +650,6 @@ fn cafile_bundle_remote_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&test)
@@ -865,7 +860,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net")
@@ -893,7 +887,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
@@ -920,7 +913,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net=deno.land")
@@ -944,7 +936,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("resolve_dns.ts")
