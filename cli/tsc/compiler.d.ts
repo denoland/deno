@@ -8,7 +8,7 @@ declare global {
   namespace ts {
     var libs: string[];
     var libMap: Map<string, string>;
-
+    var base64encode: (host: ts.CompilerHost, input: string) => string;
     interface SourceFile {
       version?: string;
     }

@@ -226,76 +226,6 @@ fn standalone_follow_redirects() {
 }
 
 #[test]
-fn standalone_compiler_ops() {
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("standalone_compiler_ops.exe")
-  } else {
-    dir.path().join("standalone_compiler_ops")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./standalone_compiler_ops.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
-}
-
-#[test]
-fn compile_with_directory_output_flag() {
-  let dir = TempDir::new();
-  let output_path = if cfg!(windows) {
-    dir.path().join(r"args\random\")
-  } else {
-    dir.path().join("args/random/")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&output_path)
-    .arg("./standalone_compiler_ops.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let exe = if cfg!(windows) {
-    output_path.join("standalone_compiler_ops.exe")
-  } else {
-    output_path.join("standalone_compiler_ops")
-  };
-  assert!(&exe.exists());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
-}
-
-#[test]
 fn compile_with_file_exists_error() {
   let dir = TempDir::new();
   let output_path = if cfg!(windows) {
@@ -548,4 +478,53 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, "Hello World\n".as_bytes());
+}
+
+#[test]
+fn check_local_by_default() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/check_local_by_default.ts"))
+    .status()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn check_local_by_default2() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .env("NO_COLOR", "1")
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/check_local_by_default2.ts"))
+    .output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stdout.is_empty());
+  assert!(stderr.contains(
+    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
+  ));
 }

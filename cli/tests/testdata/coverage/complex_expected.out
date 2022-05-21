@@ -1,4 +1,4 @@
-cover [WILDCARD]/coverage/complex.ts ... 59.459% (22/37)
+cover [WILDCARD]/coverage/complex.ts ... 60.526% (23/38)
   46 | export function unused(
   47 |   foo: string,
   48 |   bar: string,

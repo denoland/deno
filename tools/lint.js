@@ -39,14 +39,14 @@ async function dlint() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const p = Deno.run({
-      cmd: [execPath, "run", "--config=" + configFile, ...chunk],
+    const { status } = await Deno.spawn(execPath, {
+      args: ["run", "--config=" + configFile, ...chunk],
+      stdout: "inherit",
+      stderr: "inherit",
     });
-    const { success } = await p.status();
-    if (!success) {
+    if (!status.success) {
       throw new Error("dlint failed");
     }
-    p.close();
   }
 }
 
@@ -70,14 +70,14 @@ async function dlintPreferPrimordials() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const p = Deno.run({
-      cmd: [execPath, "run", "--rule", "prefer-primordials", ...chunk],
+    const { status } = await Deno.spawn(execPath, {
+      args: ["run", "--rule", "prefer-primordials", ...chunk],
+      stdout: "inherit",
+      stderr: "inherit",
     });
-    const { success } = await p.status();
-    if (!success) {
+    if (!status.success) {
       throw new Error("prefer-primordials failed");
     }
-    p.close();
   }
 }
 
@@ -101,14 +101,14 @@ async function clippy() {
   console.log("clippy");
 
   const currentBuildMode = buildMode();
-  const cmd = ["cargo", "clippy", "--all-targets", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");
   }
 
-  const p = Deno.run({
-    cmd: [
+  const { status } = await Deno.spawn("cargo", {
+    args: [
       ...cmd,
       "--",
       "-D",
@@ -116,12 +116,12 @@ async function clippy() {
       "-D",
       "clippy::await_holding_refcell_ref",
     ],
+    stdout: "inherit",
+    stderr: "inherit",
   });
-  const { success } = await p.status();
-  if (!success) {
+  if (!status.success) {
     throw new Error("clippy failed");
   }
-  p.close();
 }
 
 async function main() {

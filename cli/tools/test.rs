@@ -29,6 +29,7 @@ use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -825,7 +826,7 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: Arc::new(file_source),
+        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
       })
@@ -837,12 +838,12 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: Arc<String>,
+  source: Arc<str>,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source: deno_ast::SourceTextInfo::new(source),
+    text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -866,7 +867,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.source().line_index(comment.span.lo),
+        parsed_source.text_info().line_index(comment.start()),
         &blocks_regex,
         &lines_regex,
       )
