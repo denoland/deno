@@ -53,6 +53,10 @@ console.log(JSON.stringify(srv));
 console.log("TXT");
 console.log(JSON.stringify(txt));
 
-const notFound = await Deno.resolveDns("not-found-example.com", "A", nameServer);
-console.log("Not found example")
-console.log(notFound)
+const notFound = await Deno.resolveDns(
+  "not-found-example.com",
+  "A",
+  nameServer,
+);
+console.log("Not found example");
+console.log(notFound);
