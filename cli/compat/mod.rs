@@ -11,7 +11,6 @@ use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
-use std::sync::Arc;
 
 pub use esm_resolver::check_if_should_use_esm_loader;
 pub use esm_resolver::NodeEsmResolver;
@@ -172,7 +171,7 @@ pub async fn translate_cjs_to_esm(
 ) -> Result<String, AnyError> {
   let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
     specifier: specifier.to_string(),
-    source: deno_ast::SourceTextInfo::new(Arc::new(code)),
+    text_info: deno_ast::SourceTextInfo::new(code.into()),
     media_type,
     capture_tokens: true,
     scope_analysis: false,
@@ -203,7 +202,7 @@ pub async fn translate_cjs_to_esm(
     {
       let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
         specifier: reexport_specifier.to_string(),
-        source: deno_ast::SourceTextInfo::new(reexport_file.source),
+        text_info: deno_ast::SourceTextInfo::new(reexport_file.source),
         media_type: reexport_file.media_type,
         capture_tokens: true,
         scope_analysis: false,
