@@ -22,4 +22,5 @@ SRV
 [{"priority":0,"weight":100,"port":1234,"target":"srv.example.com."}]
 TXT
 [["I","am","a","txt","record"],["I","am","another","txt","record"],["I am a different","txt record"],["key=val"]]
-Error NotFound thrown for not-found-example.com
+Not found example
+[]

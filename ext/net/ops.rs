@@ -684,27 +684,34 @@ where
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  let results = resolver
+  let results = match resolver
     .lookup(query, record_type, Default::default())
     .await
-    .map_err(|e| {
+  {
+    Ok(n) => Ok(
+      n.iter()
+        .filter_map(rdata_to_return_record(record_type))
+        .collect(),
+    ),
+    Err(e) => {
       let message = format!("{}", e);
       match e.kind() {
-        ResolveErrorKind::NoRecordsFound { .. } => {
-          custom_error("NotFound", message)
-        }
         ResolveErrorKind::Message("No connections available") => {
-          custom_error("NotConnected", message)
+          Err(custom_error("NotConnected", message))
         }
-        ResolveErrorKind::Timeout => custom_error("TimedOut", message),
-        _ => generic_error(message),
-      }
-    })?
-    .iter()
-    .filter_map(rdata_to_return_record(record_type))
-    .collect();
+        ResolveErrorKind::Timeout => Err(custom_error("TimedOut", message)),
+        ResolveErrorKind::NoConnections => {
+          Err(custom_error("NoConnections", message))
+        }
 
-  Ok(results)
+        ResolveErrorKind::NoRecordsFound { .. } => {
+          Ok(Vec::<DnsReturnRecord>::new())
+        }
+        _ => Err(generic_error(message)),
+      }
+    }
+  };
+  results
 }
 
 #[op]
