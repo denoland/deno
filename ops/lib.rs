@@ -73,7 +73,18 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let MacroArgs { is_unstable, is_v8 } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
-  let generics = &func.sig.generics;
+  let mut generics = func.sig.generics.clone();
+  let scope_lifetime =
+    syn::LifetimeDef::new(syn::Lifetime::new("'scope", Span::call_site()));
+  if generics
+  .lifetimes()
+  .find(|def| **def == scope_lifetime)
+  .is_none()
+  {
+    generics
+    .params
+    .push(syn::GenericParam::Lifetime(scope_lifetime));
+  }
   let type_params = exclude_lifetime_params(&func.sig.generics.params);
   let where_clause = &func.sig.generics.where_clause;
 
@@ -131,7 +142,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
       #original_func
 
       pub fn v8_func #generics (
-        scope: &mut #core::v8::HandleScope,
+        scope: &mut #core::v8::HandleScope<'scope>,
         args: #core::v8::FunctionCallbackArguments,
         mut rv: #core::v8::ReturnValue,
       ) #where_clause {
@@ -386,6 +397,7 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
   tokens(arg).ends_with(": & mut OpState")
     || tokens(arg).ends_with(": & mut deno_core :: OpState")
+    || tokens(arg).ends_with("mut OpState")
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
@@ -398,6 +410,7 @@ fn is_handle_scope(arg: &syn::FnArg) -> bool {
     || tokens(arg).ends_with(": & mut v8 :: HandleScope < 'a >")
     || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope")
     || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope < 'a >")
+    || tokens(arg).contains("mut v8 :: HandleScope")
 }
 
 fn is_future(ty: impl ToTokens) -> bool {
