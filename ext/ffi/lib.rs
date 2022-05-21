@@ -9,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
 
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
@@ -26,7 +25,6 @@ use libffi::raw::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -36,6 +34,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
+
+thread_local! {
+  static CREATE_SCOPE: RefCell<Option<bool>> = RefCell::new(None);
+}
 
 pub struct Unstable(pub bool);
 
@@ -93,6 +95,7 @@ impl DynamicLibraryResource {
     name: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
+    CREATE_SCOPE.with(|s| s.replace(Some(true)));
     let symbol = match &foreign_fn.name {
       Some(symbol) => symbol,
       None => &name,
@@ -796,7 +799,6 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
-  pub create_scope: Cell<bool>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -812,11 +814,22 @@ unsafe extern "C" fn deno_ffi_callback(
     v8::Local<v8::Context>,
   >(info.context);
   let mut cb_scope = v8::CallbackScope::new(context);
-  let mut scope = if info.create_scope.get() {
-    v8::HandleScope::with_context(isolate, context)
-  } else {
-    v8::HandleScope::new(&mut cb_scope)
-  };
+  let mut scope = CREATE_SCOPE.with(|s| match *s.borrow() {
+    Some(create_scope) => {
+      if create_scope {
+        // Call from main thread without an active scope.
+        // This shouldn't really be possible but here we are.
+        v8::HandleScope::with_context(isolate, context)
+      } else {
+        // Call from main thread with an active scope in existence, piggyback on it.
+        v8::HandleScope::new(&mut cb_scope)
+      }
+    }
+    None => {
+      // Call from another thread, PANIC IN THE DISCO!
+      todo!("Call from another thread");
+    }
+  });
   let func = callback.open(&mut scope);
   let result = result as *mut c_void;
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
@@ -944,7 +957,6 @@ fn op_ffi_register_callback(
       callback,
       context,
       isolate,
-      create_scope: Cell::new(true),
     }))
   };
   let cif = Cif::new(
@@ -987,12 +999,16 @@ fn test_registered_callback(
       unsafe { *resource.closure.instantiate_code_ptr() };
     (fn_ptr, info)
   };
-  info.create_scope.set(false);
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(true));
+  });
   let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
   let arg = args.get_index(scope, 0).unwrap();
   let arg: u32 = arg.uint32_value(scope).unwrap();
   let result = unsafe { fn_ptr(arg) };
-  info.create_scope.set(true);
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(false));
+  });
   Ok(result.into())
 }
 
@@ -1143,51 +1159,51 @@ fn op_ffi_call(
 }
 
 /// A non-blocking FFI call.
-#[op(v8)]
-async fn op_ffi_call_nonblocking<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
-  state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallArgs<'scope>,
-) -> Result<Value, AnyError>
-where
-  'scope: 'scope,
-{
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-  let symbols = &resource.symbols;
-  let symbol = symbols
-    .get(&args.symbol)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+// #[op(v8)]
+// async fn op_ffi_call_nonblocking<'scope>(
+//   scope: &mut v8::HandleScope<'scope>,
+//   state: Rc<RefCell<deno_core::OpState>>,
+//   args: FfiCallArgs<'scope>,
+// ) -> Result<Value, AnyError>
+// where
+//   'scope: 'scope,
+// {
+//   let resource = state
+//     .borrow()
+//     .resource_table
+//     .get::<DynamicLibraryResource>(args.rid)?;
+//   let symbols = &resource.symbols;
+//   let symbol = symbols
+//     .get(&args.symbol)
+//     .ok_or_else(bad_resource_id)?
+//     .clone();
 
-  let v8_array =
-    v8::Local::<v8::Array>::try_from(args.parameters.v8_value).unwrap();
-  let mut native_values: Vec<(NativeType, NativeValue)> =
-    Vec::with_capacity(symbol.parameter_types.len());
+//   let v8_array =
+//     v8::Local::<v8::Array>::try_from(args.parameters.v8_value).unwrap();
+//   let mut native_values: Vec<(NativeType, NativeValue)> =
+//     Vec::with_capacity(symbol.parameter_types.len());
 
-  for (index, native_type) in symbol.parameter_types.iter().enumerate() {
-    let value = v8_array.get_index(scope, index as u32).unwrap();
-    native_values.push((
-      native_type.clone(),
-      NativeValue::new(scope, *native_type, value)?,
-    ));
-  }
+//   for (index, native_type) in symbol.parameter_types.iter().enumerate() {
+//     let value = v8_array.get_index(scope, index as u32).unwrap();
+//     native_values.push((
+//       native_type.clone(),
+//       NativeValue::new(scope, *native_type, value)?,
+//     ));
+//   }
 
-  tokio::task::spawn_blocking(move || {
-    ffi_call(
-      native_values
-        .iter()
-        .map(|(native_type, native_value)| unsafe {
-          native_value.as_arg(*native_type)
-        })
-        .collect(),
-      &symbol,
-    )
-  })
-  .await?
-}
+//   tokio::task::spawn_blocking(move || {
+//     ffi_call(
+//       native_values
+//         .iter()
+//         .map(|(native_type, native_value)| unsafe {
+//           native_value.as_arg(*native_type)
+//         })
+//         .collect(),
+//       &symbol,
+//     )
+//   })
+//   .await?
+// }
 
 #[op]
 fn op_ffi_ptr_of<FP>(

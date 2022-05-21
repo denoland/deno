@@ -242,6 +242,22 @@
     }
   }
 
+  class RegisteredCallback {
+    #rid;
+
+    constructor(definition, callback) {
+      this.#rid = core.opSync("op_ffi_register_callback", definition, callback);
+    }
+
+    close() {
+      core.close(this.#rid);
+    }
+  }
+
+  function registerCallback(definition, callback) {
+    return new RegisteredCallback(definition, callback);
+  }
+
   class DynamicLibrary {
     #rid;
     symbols = {};
@@ -344,6 +360,7 @@
 
   window.__bootstrap.ffi = {
     dlopen,
+    registerCallback,
     UnsafePointer,
     UnsafePointerView,
     UnsafeFnPointer,
