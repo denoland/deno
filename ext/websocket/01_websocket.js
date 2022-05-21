@@ -440,12 +440,13 @@
 
             if (prevState === OPEN) {
               try {
-                await core.opAsync("op_ws_close", {
-                  rid: this[_rid],
-                  code: value.code,
-                  reason: value.reason,
-                });
-              } catch (_e) {
+                await core.opAsync(
+                  "op_ws_close",
+                  this[_rid],
+                  value.code,
+                  value.reason,
+                );
+              } catch {
                 // ignore failures
               }
             }
