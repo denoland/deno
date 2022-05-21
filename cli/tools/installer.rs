@@ -105,7 +105,7 @@ exec deno {} "$@"
 fn get_installer_root() -> Result<PathBuf, io::Error> {
   if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
-      return canonicalize_path(&PathBuf::from(env_dir));
+      return Ok(PathBuf::from(env_dir));
     }
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
@@ -249,10 +249,19 @@ fn resolve_shim_data(
   install_flags: &InstallFlags,
 ) -> Result<ShimData, AnyError> {
   let root = if let Some(root) = &install_flags.root {
-    canonicalize_path(root)?
+    root.clone()
   } else {
     get_installer_root()?
   };
+  let root = canonicalize_path(&root).or_else(|err| {
+    if err.kind() == io::ErrorKind::NotFound {
+      fs::create_dir_all(&root)?;
+      canonicalize_path(&root)
+    } else {
+      Err(err)
+    }
+  })?;
+
   let installation_dir = root.join("bin");
 
   // Check if module_url is remote
