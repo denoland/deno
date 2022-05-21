@@ -229,7 +229,7 @@ impl From<NativeType> for libffi::middle::Type {
 /// to libffi argument types.
 #[repr(C)]
 union NativeValue {
-  void_value: (),
+  //void_value: (),
   u8_value: u8,
   i8_value: i8,
   u16_value: u16,
@@ -245,56 +245,71 @@ union NativeValue {
   pointer: *const u8,
 }
 
+unsafe impl Send for NativeValue {}
+
 impl NativeValue {
-  fn new(native_type: NativeType, value: Value) -> Result<Self, AnyError> {
+  fn new(
+    scope: &mut v8::HandleScope,
+    native_type: NativeType,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, AnyError> {
     let value = match native_type {
-      NativeType::Void => Self { void_value: () },
+      NativeType::Void => {
+        unreachable!()
+      }
       NativeType::U8 => Self {
-        u8_value: value_as_uint::<u8>(value)?,
+        u8_value: value.uint32_value(scope).unwrap() as u8,
       },
       NativeType::I8 => Self {
-        i8_value: value_as_int::<i8>(value)?,
+        i8_value: value.int32_value(scope).unwrap() as i8,
       },
       NativeType::U16 => Self {
-        u16_value: value_as_uint::<u16>(value)?,
+        u16_value: value.uint32_value(scope).unwrap() as u16,
       },
       NativeType::I16 => Self {
-        i16_value: value_as_int::<i16>(value)?,
+        i16_value: value.int32_value(scope).unwrap() as i16,
       },
       NativeType::U32 => Self {
-        u32_value: value_as_uint::<u32>(value)?,
+        u32_value: value.uint32_value(scope).unwrap(),
       },
       NativeType::I32 => Self {
-        i32_value: value_as_int::<i32>(value)?,
+        i32_value: value.int32_value(scope).unwrap(),
       },
       NativeType::U64 => Self {
-        u64_value: value_as_uint::<u64>(value)?,
+        u64_value: value.integer_value(scope).unwrap() as u64,
       },
       NativeType::I64 => Self {
-        i64_value: value_as_int::<i64>(value)?,
+        i64_value: value.integer_value(scope).unwrap() as i64,
       },
       NativeType::USize => Self {
-        usize_value: value_as_uint::<usize>(value)?,
+        usize_value: value.integer_value(scope).unwrap() as usize,
       },
       NativeType::ISize => Self {
-        isize_value: value_as_int::<isize>(value)?,
+        isize_value: value.integer_value(scope).unwrap() as isize,
       },
       NativeType::F32 => Self {
-        f32_value: value_as_f32(value)?,
+        f32_value: value.number_value(scope).unwrap() as f32,
       },
       NativeType::F64 => Self {
-        f64_value: value_as_f64(value)?,
+        f64_value: value.number_value(scope).unwrap() as f64,
       },
       NativeType::Pointer => {
         if value.is_null() {
           Self {
             pointer: ptr::null(),
           }
-        } else {
+        } else if value.is_big_int() {
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          let value = value.u64_value().0 as *const u8;
+          Self { pointer: value }
+        } else if value.is_array_buffer() || value.is_array_buffer_view() {
+          let value: ZeroCopyBuf = serde_v8::from_v8(scope, value).unwrap();
+          let value: &[u8] = &value[..];
           Self {
-            pointer: u64::from(serde_json::from_value::<U32x2>(value)?)
-              as *const u8,
+            pointer: value.as_ptr(),
           }
+        } else {
+          return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer or ArrayBufferview"));
         }
       }
       NativeType::Function => {
@@ -313,7 +328,9 @@ impl NativeValue {
 
   unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
     match native_type {
-      NativeType::Void => Arg::new(&self.void_value),
+      NativeType::Void => {
+        unreachable!()
+      }
       NativeType::U8 => Arg::new(&self.u8_value),
       NativeType::I8 => Arg::new(&self.i8_value),
       NativeType::U16 => Arg::new(&self.u16_value),
@@ -669,7 +686,7 @@ where
         ffi_args.push(Arg::new(&value));
       }
       NativeType::F64 => {
-        let value = value.integer_value(scope).unwrap() as isize;
+        let value = value.integer_value(scope).unwrap() as f64;
         ffi_args.push(Arg::new(&value));
       }
       NativeType::Pointer => {
@@ -680,10 +697,12 @@ where
           let value = v8::Local::<v8::BigInt>::try_from(value)?;
           let value = value.u64_value().0 as *const u8;
           ffi_args.push(Arg::new(&value));
-        } else {
+        } else if value.is_array_buffer() || value.is_array_buffer_view() {
           let value: ZeroCopyBuf = serde_v8::from_v8(scope, value).unwrap();
           let value: &[u8] = &value[..];
           ffi_args.push(Arg::new(&value.as_ptr()));
+        } else {
+          return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer or ArrayBufferView"));
         }
       }
       NativeType::Function => {
@@ -1124,28 +1143,51 @@ fn op_ffi_call(
 }
 
 /// A non-blocking FFI call.
-// #[op]
-// async fn op_ffi_call_nonblocking(
-//   state: Rc<RefCell<deno_core::OpState>>,
-//   args: FfiCallArgs,
-// ) -> Result<Value, AnyError> {
-//   let resource = state
-//     .borrow()
-//     .resource_table
-//     .get::<DynamicLibraryResource>(args.rid)?;
-//   let symbols = &resource.symbols;
-//   let symbol = symbols
-//     .get(&args.symbol)
-//     .ok_or_else(bad_resource_id)?
-//     .clone();
+#[op(v8)]
+async fn op_ffi_call_nonblocking<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: Rc<RefCell<deno_core::OpState>>,
+  args: FfiCallArgs<'scope>,
+) -> Result<Value, AnyError>
+where
+  'scope: 'scope,
+{
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+  let symbols = &resource.symbols;
+  let symbol = symbols
+    .get(&args.symbol)
+    .ok_or_else(bad_resource_id)?
+    .clone();
 
-//   tokio::task::spawn_blocking(move || {
-//     //ffi_call(args, &symbol, state.borrow_mut().resource_table)
-//     Ok(serde_json::to_value(()).unwrap())
-//   })
-//   .await
-//   .unwrap()
-// }
+  let v8_array =
+    v8::Local::<v8::Array>::try_from(args.parameters.v8_value).unwrap();
+  let mut native_values: Vec<(NativeType, NativeValue)> =
+    Vec::with_capacity(symbol.parameter_types.len());
+
+  for (index, native_type) in symbol.parameter_types.iter().enumerate() {
+    let value = v8_array.get_index(scope, index as u32).unwrap();
+    native_values.push((
+      native_type.clone(),
+      NativeValue::new(scope, *native_type, value)?,
+    ));
+  }
+
+  tokio::task::spawn_blocking(move || {
+    ffi_call(
+      native_values
+        .iter()
+        .map(|(native_type, native_value)| unsafe {
+          native_value.as_arg(*native_type)
+        })
+        .collect(),
+      &symbol,
+    )
+  })
+  .await?
+}
 
 #[op]
 fn op_ffi_ptr_of<FP>(
