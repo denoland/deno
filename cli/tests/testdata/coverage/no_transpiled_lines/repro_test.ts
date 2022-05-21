@@ -1,7 +1,7 @@
-import { assertStrictEquals, TestInterface } from './index.ts';
+import { assertStrictEquals, TestInterface } from "./index.ts";
 
 Deno.test(function noTranspiledLines() {
-  const foo: TestInterface = { id: 'id' };
+  const foo: TestInterface = { id: "id" };
 
-  assertStrictEquals(foo.id, 'id');
+  assertStrictEquals(foo.id, "id");
 });

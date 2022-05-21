@@ -703,7 +703,7 @@ pub async fn cover_files(
       &out_mode,
     );
 
-    if coverage_report.found_lines.len() > 0 {
+    if !coverage_report.found_lines.is_empty() {
       reporter.report(&coverage_report, original_source)?;
     }
   }
