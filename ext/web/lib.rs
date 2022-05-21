@@ -424,12 +424,17 @@ pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
 #[op]
 async fn op_stream_pipe_to(
   state: Rc<RefCell<OpState>>,
-  src: ResourceId,
+  src_rid: ResourceId,
   dest: ResourceId,
 ) -> Result<(), AnyError> {
   let state = state.borrow();
-  let src = state.resource_table.get_any(src)?;
-  let dest = state.resource_table.get_any(dest)?;
+  let src = state.resource_table.get_any(src_rid)?;
+  let dest = if src_rid == dest {
+    src.clone()
+  } else {
+    state.resource_table.get_any(dest)?
+  };
+  drop(state);
   loop {
     let vec = vec![0u8; 64 * 1024]; // 64KB
     let buf = ZeroCopyBuf::new_temp(vec);
@@ -437,7 +442,9 @@ async fn op_stream_pipe_to(
     if nread == 0 {
       break;
     }
-    dest.clone().write(buf);
+    let mut buf = buf.to_temp();
+    buf.resize(nread, 0);
+    dest.clone().write(ZeroCopyBuf::new_temp(buf)).await?;
   }
   Ok(())
 }
