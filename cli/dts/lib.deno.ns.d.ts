@@ -2381,7 +2381,7 @@ declare namespace Deno {
    * });
    * ```
    *
-   * NOTE: This functionality is not yet implemented on Windows.
+   * NOTE: On Windows only SIGINT (ctrl+c) and SIGBREAK (ctrl+break) are supported.
    */
   export function addSignalListener(signal: Signal, handler: () => void): void;
 
@@ -2396,7 +2396,7 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * NOTE: This functionality is not yet implemented on Windows.
+   * NOTE: On Windows only SIGINT (ctrl+c) and SIGBREAK (ctrl+break) are supported.
    */
   export function removeSignalListener(
     signal: Signal,
