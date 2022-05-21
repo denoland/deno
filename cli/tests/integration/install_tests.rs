@@ -188,7 +188,7 @@ fn check_local_by_default2() {
   let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
-  let output = util::deno_cmd()
+  let status = util::deno_cmd()
     .current_dir(temp_dir.path())
     .arg("install")
     .arg(util::testdata_path().join("./install/check_local_by_default2.ts"))
@@ -198,13 +198,7 @@ fn check_local_by_default2() {
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", ""),
     ])
-    .output()
+    .status()
     .unwrap();
-  assert!(!output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stdout.is_empty());
-  assert!(stderr.contains(
-    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
-  ));
+  assert!(status.success());
 }

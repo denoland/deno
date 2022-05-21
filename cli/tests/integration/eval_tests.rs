@@ -77,5 +77,4 @@ itest!(check_local_by_default2 {
   args: "eval --quiet import('./eval/check_local_by_default2.ts').then(console.log);",
   output: "eval/check_local_by_default2.out",
   http_server: true,
-  exit_code: 1,
 });

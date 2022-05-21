@@ -89,5 +89,4 @@ itest!(check_local_by_default2 {
   args: "cache --quiet cache/check_local_by_default2.ts",
   output: "cache/check_local_by_default2.out",
   http_server: true,
-  exit_code: 1,
 });
