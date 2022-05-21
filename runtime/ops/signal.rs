@@ -475,13 +475,16 @@ fn op_signal_bind(
   sig: String,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(&sig)?;
-
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
       // SIGINT
-      2 => ctrl_c().expect("").into(),
+      2 => ctrl_c()
+        .expect("There was an issue creating ctrl+c event stream.")
+        .into(),
       // SIGBREAK
-      21 => ctrl_break().expect("").into(),
+      21 => ctrl_break()
+        .expect("There was an issue creating ctrl+break event stream.")
+        .into(),
       _ => unimplemented!(),
     }),
     cancel: Default::default(),

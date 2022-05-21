@@ -2340,6 +2340,7 @@ declare namespace Deno {
   export type Signal =
     | "SIGABRT"
     | "SIGALRM"
+    | "SIGBREAK"
     | "SIGBUS"
     | "SIGCHLD"
     | "SIGCONT"

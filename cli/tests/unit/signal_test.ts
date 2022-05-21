@@ -76,6 +76,31 @@ Deno.test(
       Error,
       msg,
     );
+    assertThrows(
+      () => Deno.addSignalListener("SIGKILL", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSTOP", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGILL", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGFPE", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSEGV", () => {}),
+      Error,
+      msg,
+    );
   },
 );
 
@@ -213,42 +238,6 @@ Deno.test(
       () => Deno.addSignalListener("SIGSEGV", () => {}),
       TypeError,
       "Binding to signal 'SIGSEGV' is not allowed",
-    );
-  },
-);
-
-Deno.test(
-  {
-    ignore: Deno.build.os !== "windows",
-  },
-  function signalForbiddenSignalTest() {
-    const msg =
-      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).";
-
-    assertThrows(
-      () => Deno.addSignalListener("SIGKILL", () => {}),
-      TypeError,
-      msg,
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGSTOP", () => {}),
-      TypeError,
-      msg,
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGILL", () => {}),
-      TypeError,
-      msg,
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGFPE", () => {}),
-      TypeError,
-      msg,
-    );
-    assertThrows(
-      () => Deno.addSignalListener("SIGSEGV", () => {}),
-      TypeError,
-      msg,
     );
   },
 );
