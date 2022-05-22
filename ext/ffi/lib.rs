@@ -39,6 +39,27 @@ thread_local! {
   static CREATE_SCOPE: RefCell<Option<bool>> = RefCell::new(None);
 }
 
+/// Local copy of `libffi::middle::Arg` to enable `Send`.
+#[derive(Clone, Debug)]
+#[repr(C)]
+struct FfiCallArg(*mut c_void);
+
+impl FfiCallArg {
+  /// Coerces an argument reference into the [`FfiCallArg`] type.
+  pub fn new<T>(r: &T) -> Self {
+    FfiCallArg(r as *const T as *mut c_void)
+  }
+}
+
+unsafe impl Send for FfiCallArg {}
+
+impl From<FfiCallArg> for Arg {
+  fn from(arg: FfiCallArg) -> Self {
+    // SAFETY: The types are identical
+    unsafe { std::mem::transmute::<FfiCallArg, Self>(arg) }
+  }
+}
+
 pub struct Unstable(pub bool);
 
 fn check_unstable(state: &OpState, api_name: &str) {
@@ -249,151 +270,6 @@ union NativeValue {
 }
 
 unsafe impl Send for NativeValue {}
-
-impl NativeValue {
-  fn new(
-    scope: &mut v8::HandleScope,
-    native_type: NativeType,
-    value: v8::Local<v8::Value>,
-  ) -> Result<Self, AnyError> {
-    let value = match native_type {
-      NativeType::Void => {
-        unreachable!()
-      }
-      NativeType::U8 => Self {
-        u8_value: value.uint32_value(scope).unwrap() as u8,
-      },
-      NativeType::I8 => Self {
-        i8_value: value.int32_value(scope).unwrap() as i8,
-      },
-      NativeType::U16 => Self {
-        u16_value: value.uint32_value(scope).unwrap() as u16,
-      },
-      NativeType::I16 => Self {
-        i16_value: value.int32_value(scope).unwrap() as i16,
-      },
-      NativeType::U32 => Self {
-        u32_value: value.uint32_value(scope).unwrap(),
-      },
-      NativeType::I32 => Self {
-        i32_value: value.int32_value(scope).unwrap(),
-      },
-      NativeType::U64 => Self {
-        u64_value: value.integer_value(scope).unwrap() as u64,
-      },
-      NativeType::I64 => Self {
-        i64_value: value.integer_value(scope).unwrap() as i64,
-      },
-      NativeType::USize => Self {
-        usize_value: value.integer_value(scope).unwrap() as usize,
-      },
-      NativeType::ISize => Self {
-        isize_value: value.integer_value(scope).unwrap() as isize,
-      },
-      NativeType::F32 => Self {
-        f32_value: value.number_value(scope).unwrap() as f32,
-      },
-      NativeType::F64 => Self {
-        f64_value: value.number_value(scope).unwrap() as f64,
-      },
-      NativeType::Pointer => {
-        if value.is_null() {
-          Self {
-            pointer: ptr::null(),
-          }
-        } else if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value)?;
-          let value = value.u64_value().0 as *const u8;
-          Self { pointer: value }
-        } else if value.is_array_buffer() || value.is_array_buffer_view() {
-          let value: ZeroCopyBuf = serde_v8::from_v8(scope, value).unwrap();
-          let value: &[u8] = &value[..];
-          Self {
-            pointer: value.as_ptr(),
-          }
-        } else {
-          return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer or ArrayBufferview"));
-        }
-      }
-      NativeType::Function => {
-        // Self {
-        //   pointer: value_as_uint::<u32>(value)?.into(),
-        // }
-        unreachable!();
-      }
-    };
-    Ok(value)
-  }
-
-  fn buffer(ptr: *const u8) -> Self {
-    Self { pointer: ptr }
-  }
-
-  unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
-    match native_type {
-      NativeType::Void => {
-        unreachable!()
-      }
-      NativeType::U8 => Arg::new(&self.u8_value),
-      NativeType::I8 => Arg::new(&self.i8_value),
-      NativeType::U16 => Arg::new(&self.u16_value),
-      NativeType::I16 => Arg::new(&self.i16_value),
-      NativeType::U32 => Arg::new(&self.u32_value),
-      NativeType::I32 => Arg::new(&self.i32_value),
-      NativeType::U64 => Arg::new(&self.u64_value),
-      NativeType::I64 => Arg::new(&self.i64_value),
-      NativeType::USize => Arg::new(&self.usize_value),
-      NativeType::ISize => Arg::new(&self.isize_value),
-      NativeType::F32 => Arg::new(&self.f32_value),
-      NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer | NativeType::Function => Arg::new(&self.pointer),
-    }
-  }
-}
-
-fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
-  if value.is_array() {
-    let value = U32x2::try_from(value)?;
-    return T::try_from(u64::from(value)).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to an unsigned integer, got {:?}", value)));
-  }
-
-  match value.as_u64().and_then(|v| T::try_from(v).ok()) {
-    Some(value) => Ok(value),
-    None => Err(type_error(format!(
-      "Expected FFI argument to be an unsigned integer, but got {:?}",
-      value
-    ))),
-  }
-}
-
-fn value_as_int<T: TryFrom<i64>>(value: Value) -> Result<T, AnyError> {
-  if value.is_array() {
-    let value = U32x2::try_from(value)?;
-    return T::try_from(u64::from(value) as i64).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to a signed integer, got {:?}", value)));
-  }
-
-  match value.as_i64().and_then(|v| T::try_from(v).ok()) {
-    Some(value) => Ok(value),
-    None => Err(type_error(format!(
-      "Expected FFI argument to be a signed integer, but got {:?}",
-      value
-    ))),
-  }
-}
-
-fn value_as_f32(value: Value) -> Result<f32, AnyError> {
-  Ok(value_as_f64(value)? as f32)
-}
-
-fn value_as_f64(value: Value) -> Result<f64, AnyError> {
-  match value.as_f64() {
-    Some(value) => Ok(value),
-    None => Err(type_error(format!(
-      "Expected FFI argument to be a double, but got {:?}",
-      value
-    ))),
-  }
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 struct U32x2(u32, u32);
@@ -631,12 +507,12 @@ fn ffi_parse_args<'scope>(
   args: serde_v8::Value<'scope>,
   parameter_types: &Vec<NativeType>,
   resource_table: &deno_core::ResourceTable,
-) -> Result<Vec<Arg>, AnyError>
+) -> Result<Vec<FfiCallArg>, AnyError>
 where
   'scope: 'scope,
 {
   let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
-  let mut ffi_args: Vec<Arg> = Vec::with_capacity(parameter_types.len());
+  let mut ffi_args: Vec<FfiCallArg> = Vec::with_capacity(parameter_types.len());
 
   for (index, native_type) in parameter_types.iter().enumerate() {
     let value = args.get_index(scope, index as u32).unwrap();
@@ -646,64 +522,68 @@ where
       }
       NativeType::U8 => {
         let value = value.uint32_value(scope).unwrap() as u8;
-        ffi_args.push(Arg::new(&value))
+        ffi_args.push(FfiCallArg::new(&value))
       }
       NativeType::I8 => {
         let value = value.int32_value(scope).unwrap() as i8;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::U16 => {
         let value = value.uint32_value(scope).unwrap() as u16;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::I16 => {
         let value = value.int32_value(scope).unwrap() as i16;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::U32 => {
         let value = value.uint32_value(scope).unwrap();
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::I32 => {
         let value = value.int32_value(scope).unwrap();
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::U64 => {
+        // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as u64;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::I64 => {
+        // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as i64;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::USize => {
+        // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as usize;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::ISize => {
+        // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as isize;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::F32 => {
         let value = value.number_value(scope).unwrap() as f32;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::F64 => {
         let value = value.integer_value(scope).unwrap() as f64;
-        ffi_args.push(Arg::new(&value));
+        ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::Pointer => {
         if value.is_null() {
           let value: *const c_void = ptr::null();
-          ffi_args.push(Arg::new(&value))
+          ffi_args.push(FfiCallArg::new(&value))
         } else if value.is_big_int() {
           let value = v8::Local::<v8::BigInt>::try_from(value)?;
           let value = value.u64_value().0 as *const u8;
-          ffi_args.push(Arg::new(&value));
+          ffi_args.push(FfiCallArg::new(&value));
         } else if value.is_array_buffer() || value.is_array_buffer_view() {
           let value: ZeroCopyBuf = serde_v8::from_v8(scope, value).unwrap();
           let value: &[u8] = &value[..];
-          ffi_args.push(Arg::new(&value.as_ptr()));
+          ffi_args.push(FfiCallArg::new(&value.as_ptr()));
         } else {
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer or ArrayBufferView"));
         }
@@ -717,8 +597,16 @@ where
   Ok(ffi_args)
 }
 
-fn ffi_call(call_args: Vec<Arg>, symbol: &Symbol) -> Result<Value, AnyError> {
+fn ffi_call(
+  call_args: Vec<FfiCallArg>,
+  symbol: &Symbol,
+) -> Result<Value, AnyError> {
   //let call_args = ffi_parse_args(&args.parameters, symbol, resource_table)?;
+
+  let call_args: Vec<Arg> = call_args
+    .iter()
+    .map(|ffi_arg| ffi_arg.clone().into())
+    .collect();
 
   Ok(match symbol.result_type {
     NativeType::Void => {
@@ -1159,51 +1047,34 @@ fn op_ffi_call(
 }
 
 /// A non-blocking FFI call.
-// #[op(v8)]
-// async fn op_ffi_call_nonblocking<'scope>(
-//   scope: &mut v8::HandleScope<'scope>,
-//   state: Rc<RefCell<deno_core::OpState>>,
-//   args: FfiCallArgs<'scope>,
-// ) -> Result<Value, AnyError>
-// where
-//   'scope: 'scope,
-// {
-//   let resource = state
-//     .borrow()
-//     .resource_table
-//     .get::<DynamicLibraryResource>(args.rid)?;
-//   let symbols = &resource.symbols;
-//   let symbol = symbols
-//     .get(&args.symbol)
-//     .ok_or_else(bad_resource_id)?
-//     .clone();
+//#[op(v8)]
+async fn op_ffi_call_nonblocking<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: Rc<RefCell<deno_core::OpState>>,
+  args: FfiCallArgs<'scope>,
+) -> Result<Value, AnyError>
+where
+  'scope: 'scope,
+{
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+  let symbols = &resource.symbols;
+  let symbol = symbols
+    .get(&args.symbol)
+    .ok_or_else(bad_resource_id)?
+    .clone();
 
-//   let v8_array =
-//     v8::Local::<v8::Array>::try_from(args.parameters.v8_value).unwrap();
-//   let mut native_values: Vec<(NativeType, NativeValue)> =
-//     Vec::with_capacity(symbol.parameter_types.len());
+  let call_args = ffi_parse_args(
+    scope,
+    args.parameters,
+    &symbol.parameter_types,
+    &state.borrow().resource_table,
+  )?;
 
-//   for (index, native_type) in symbol.parameter_types.iter().enumerate() {
-//     let value = v8_array.get_index(scope, index as u32).unwrap();
-//     native_values.push((
-//       native_type.clone(),
-//       NativeValue::new(scope, *native_type, value)?,
-//     ));
-//   }
-
-//   tokio::task::spawn_blocking(move || {
-//     ffi_call(
-//       native_values
-//         .iter()
-//         .map(|(native_type, native_value)| unsafe {
-//           native_value.as_arg(*native_type)
-//         })
-//         .collect(),
-//       &symbol,
-//     )
-//   })
-//   .await?
-// }
+  tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol)).await?
+}
 
 #[op]
 fn op_ffi_ptr_of<FP>(
