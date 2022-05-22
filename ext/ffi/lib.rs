@@ -21,6 +21,7 @@ use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
+use libffi::middle::CodePtr;
 use libffi::raw::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -195,7 +196,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_f64::decl::<P>(),
       op_ffi_register_callback::decl(),
       op_ffi_deregister_callback::decl(),
-      test_registered_callback::decl(),
+      op_ffi_call_registered_callback::decl(),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -538,6 +539,7 @@ where
       }
       NativeType::U32 => {
         let value = value.uint32_value(scope).unwrap();
+        println!("U32 being passed: {}", value);
         ffi_args.push(FfiCallArg::new(&value));
       }
       NativeType::I32 => {
@@ -601,12 +603,12 @@ fn ffi_call(
   call_args: Vec<FfiCallArg>,
   symbol: &Symbol,
 ) -> Result<Value, AnyError> {
-  //let call_args = ffi_parse_args(&args.parameters, symbol, resource_table)?;
-
   let call_args: Vec<Arg> = call_args
     .iter()
     .map(|ffi_arg| ffi_arg.clone().into())
     .collect();
+
+  dbg!(call_args.clone());
 
   Ok(match symbol.result_type {
     NativeType::Void => {
@@ -687,6 +689,8 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
+  pub parameters: Vec<NativeType>,
+  pub result: NativeType,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -738,7 +742,10 @@ unsafe extern "C" fn deno_ffi_callback(
       FFI_TYPE_SINT16 => serde_v8::to_v8(&mut scope, *(val as *const i16)),
       FFI_TYPE_UINT16 => serde_v8::to_v8(&mut scope, *(val as *const u16)),
       FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *(val as *const i32)),
-      FFI_TYPE_UINT32 => serde_v8::to_v8(&mut scope, *(val as *const u32)),
+      FFI_TYPE_UINT32 => {
+        println!("U32 being received: {:?}, {}", val as *const u32, *(val as *const u32));
+        serde_v8::to_v8(&mut scope, *(val as *const u32))
+      },
       FFI_TYPE_SINT64 => serde_v8::to_v8(&mut scope, *(val as *const i64)),
       FFI_TYPE_UINT64 => serde_v8::to_v8(&mut scope, *(val as *const u64)),
       FFI_TYPE_VOID => serde_v8::to_v8(&mut scope, ()),
@@ -845,6 +852,8 @@ fn op_ffi_register_callback(
       callback,
       context,
       isolate,
+      parameters: args.parameters.clone(),
+      result: args.result.clone(),
     }))
   };
   let cif = Cif::new(
@@ -869,7 +878,7 @@ fn op_ffi_deregister_callback(state: &mut deno_core::OpState, rid: ResourceId) {
 }
 
 #[op(v8)]
-fn test_registered_callback(
+fn op_ffi_call_registered_callback(
   scope: &mut v8::HandleScope,
   state: Rc<RefCell<deno_core::OpState>>,
   rid: ResourceId,
@@ -883,19 +892,30 @@ fn test_registered_callback(
       .unwrap();
     let info: &CallbackInfo = unsafe { &*resource.info };
 
-    let fn_ptr: unsafe extern "C" fn(u32) -> u32 =
-      unsafe { *resource.closure.instantiate_code_ptr() };
+    let fn_ptr =
+      *resource.closure.code_ptr() as *mut c_void;
     (fn_ptr, info)
   };
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(true));
-  });
-  let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
-  let arg = args.get_index(scope, 0).unwrap();
-  let arg: u32 = arg.uint32_value(scope).unwrap();
-  let result = unsafe { fn_ptr(arg) };
+  let call_args = ffi_parse_args(unsafe { std::mem::transmute(scope) }, args, &info.parameters, &state.borrow().resource_table)?;
   CREATE_SCOPE.with(|s| {
     s.replace(Some(false));
+  });
+  let cif = libffi::middle::Cif::new(
+      info.parameters
+        .clone()
+        .into_iter()
+        .map(libffi::middle::Type::from),
+      info.result.into(),
+    );
+  let symbol = Symbol {
+    cif,
+    ptr: libffi::middle::CodePtr::from_ptr(fn_ptr),
+    parameter_types: info.parameters.clone(),
+    result_type: info.result,
+  };
+  let result = ffi_call(call_args, &symbol)?;
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(true));
   });
   Ok(result.into())
 }

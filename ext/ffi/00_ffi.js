@@ -148,6 +148,10 @@
   function prepareArgs(types, args) {
     const parameters = [];
 
+    if (types.length !== args.length) {
+      throw new TypeError("Invalid FFI call, parameter vs args count mismatch");
+    }
+
     for (let i = 0; i < types.length; i++) {
       const type = types[i];
       const arg = args[i];
@@ -174,7 +178,13 @@
           );
         }
 
-        parameters.push(pack64(arg));
+        parameters.push(arg);
+      } else if (type === "function") {
+        if (ObjectPrototypeIsPrototypeOf(RegisteredCallback, arg)) {
+          parameters.push(arg);
+        } else {
+          throw new TypeError("Invalid ffi arg value, expected RegisteredCallback");
+        }
       } else {
         parameters.push(arg);
       }
@@ -244,9 +254,34 @@
 
   class RegisteredCallback {
     #rid;
+    definition;
+    callback;
 
     constructor(definition, callback) {
+      if (definition.nonblocking) {
+        throw new TypeError("Invalid ffi RegisteredCallback, cannot be nonblocking");
+      }
       this.#rid = core.opSync("op_ffi_register_callback", definition, callback);
+      this.definition = definition;
+      this.callback = callback;
+    }
+
+    call(...args) {
+      const { parameters } = prepareArgs(
+        this.definition.parameters,
+        args,
+      );
+      if (this.definition.nonblocking) {
+        throw new Error("Unreachable");
+      } else {
+        const result = core.opSync("op_ffi_call_registered_callback", this.#rid, parameters);
+
+        if (this.definition.result === "pointer") {
+          return new UnsafePointer(unpackU64(result));
+        }
+
+        return result;
+      }
     }
 
     close() {
@@ -255,6 +290,9 @@
   }
 
   function registerCallback(definition, callback) {
+    if (!definition || !callback) {
+      throw new TypeError("Invalid arguments");
+    }
     return new RegisteredCallback(definition, callback);
   }
 
