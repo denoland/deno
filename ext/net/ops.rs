@@ -611,6 +611,7 @@ pub enum DnsReturnRecord {
     target: String,
   },
   Txt(Vec<String>),
+  Unsupported,
 }
 
 #[derive(Deserialize)]
@@ -684,7 +685,7 @@ where
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  let results = resolver
+  let results: Vec<DnsReturnRecord> = resolver
     .lookup(query, record_type, Default::default())
     .await
     .map_err(|e| {
@@ -704,7 +705,13 @@ where
     .filter_map(rdata_to_return_record(record_type))
     .collect();
 
-  Ok(results)
+  match results[0] {
+    DnsReturnRecord::Unsupported => Err(custom_error(
+      "NotSupported",
+      "Deno still has no supports for this record type",
+    )),
+    _ => Ok(results),
+  }
 }
 
 #[op]
@@ -816,7 +823,7 @@ fn rdata_to_return_record(
         DnsReturnRecord::Txt(texts)
       }),
       // TODO(magurotuna): Other record types are not supported
-      _ => todo!(),
+      _ => Some(DnsReturnRecord::Unsupported),
     }
   }
 }
