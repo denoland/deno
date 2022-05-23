@@ -710,7 +710,7 @@ where
       let var: &'static str = record_type.into();
       Err(custom_error(
         "NotSupported",
-        var.to_owned() + " records are not supported for now",
+        var.to_owned() + " records are not supported",
       ))
     }
     _ => Ok(results),
