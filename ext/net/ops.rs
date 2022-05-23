@@ -706,10 +706,12 @@ where
     .collect();
 
   match results[0] {
-    DnsReturnRecord::Unsupported => Err(custom_error(
-      "NotSupported",
-      "Deno still has no supports for this record type",
-    )),
+    DnsReturnRecord::Unsupported => {
+      let var: &'static str = record_type.into();
+      Err(custom_error(
+        "NotSupported",
+        var.to_owned() + " records are not supported for now",
+    ))},
     _ => Ok(results),
   }
 }
