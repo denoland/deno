@@ -357,32 +357,18 @@
 
           httpConn.close();
 
-          if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", wsRid);
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          ws.dispatchEvent(event);
 
-            ws[_readyState] = WebSocket.CLOSED;
-
-            const errEvent = new ErrorEvent("error");
-            ws.dispatchEvent(errEvent);
-
-            const event = new CloseEvent("close");
-            ws.dispatchEvent(event);
-
-            core.tryClose(wsRid);
-          } else {
-            ws[_readyState] = WebSocket.OPEN;
-            const event = new Event("open");
-            ws.dispatchEvent(event);
-
-            ws[_eventLoop]();
-            if (ws[_idleTimeoutDuration]) {
-              ws.addEventListener(
-                "close",
-                () => clearTimeout(ws[_idleTimeoutTimeout]),
-              );
-            }
-            ws[_serverHandleIdleTimeout]();
+          ws[_eventLoop]();
+          if (ws[_idleTimeoutDuration]) {
+            ws.addEventListener(
+              "close",
+              () => clearTimeout(ws[_idleTimeoutTimeout]),
+            );
           }
+          ws[_serverHandleIdleTimeout]();
         }
       } finally {
         if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
