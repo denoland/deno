@@ -78,3 +78,10 @@ itest!(task_additional_args_no_logic {
   output: "task/task_additional_args_no_logic.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
+
+itest!(task_deno_exe_no_env {
+  args_vec: vec!["task", "-q", "--config", "task/deno.json", "deno_echo"],
+  output: "task/task_deno_exe_no_env.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  env_clear: true,
+});
