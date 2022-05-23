@@ -2,6 +2,7 @@
   "tasks": {
     "boolean_logic": "sleep 0.1 && echo 3 && echo 4 & echo 1 && echo 2 || echo NOPE",
     "echo": "echo 1",
+    "deno_echo": "deno eval 'console.log(5)'",
     "strings": "deno run main.ts && deno eval \"console.log(\\\"test\\\")\"",
     "exit_code_5": "echo $(echo 10 ; exit 2) && exit 5"
   }
