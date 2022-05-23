@@ -4184,12 +4184,12 @@
     "eventhandlers.any.worker.html?wss": true,
     "referrer.any.html": true,
     "referrer.any.worker.html": true,
-    "Close-delayed.any.html": false,
+    "Close-delayed.any.html": true,
     "Close-delayed.any.html?wpt_flags=h2": false,
-    "Close-delayed.any.html?wss": false,
-    "Close-delayed.any.worker.html": false,
+    "Close-delayed.any.html?wss": true,
+    "Close-delayed.any.worker.html": true,
     "Close-delayed.any.worker.html?wpt_flags=h2": false,
-    "Close-delayed.any.worker.html?wss": false,
+    "Close-delayed.any.worker.html?wss": true,
     "stream": {
       "tentative": {
         "abort.any.html?wss": true,
