@@ -86,12 +86,14 @@ impl<'a> ImportsBuilder<'a> {
   }
 
   pub fn add(&mut self, key: String, specifier: &ModuleSpecifier) {
-    self.imports.insert(
-      key,
-      self
-        .mappings
-        .relative_specifier_text(self.mappings.output_dir(), specifier),
-    );
+    let value = self
+      .mappings
+      .relative_specifier_text(self.mappings.output_dir(), specifier);
+
+    // skip creating identity entries
+    if key != value {
+      self.imports.insert(key, value);
+    }
   }
 }
 
@@ -221,7 +223,8 @@ fn handle_dep_specifier(
       return;
     }
 
-    let key = if text.starts_with("./") || text.starts_with("../") {
+    let imports = import_map.scope(base_specifier);
+    if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
       let mut local_base_specifier = mappings.local_uri(base_specifier);
       local_base_specifier.set_query(unresolved_specifier.query());
@@ -236,14 +239,37 @@ fn handle_dep_specifier(
           )
         });
       local_base_specifier.set_query(unresolved_specifier.query());
-      mappings
-        .relative_specifier_text(mappings.output_dir(), &local_base_specifier)
+
+      imports.add(
+        mappings.relative_specifier_text(
+          mappings.output_dir(),
+          &local_base_specifier,
+        ),
+        &specifier,
+      );
+
+      // add a mapping that uses the local directory name and the remote
+      // filename in order to support files importing this relatively
+      imports.add(
+        {
+          let local_path = mappings.local_path(&specifier);
+          let mut value =
+            ModuleSpecifier::from_directory_path(local_path.parent().unwrap())
+              .unwrap();
+          value.set_query(specifier.query());
+          value.set_path(&format!(
+            "{}{}",
+            value.path(),
+            specifier.path_segments().unwrap().last().unwrap(),
+          ));
+          mappings.relative_specifier_text(mappings.output_dir(), &value)
+        },
+        &specifier,
+      );
     } else {
       // absolute (`/`) or bare specifier should be left as-is
-      text.to_string()
-    };
-    let imports = import_map.scope(base_specifier);
-    imports.add(key, &specifier);
+      imports.add(text.to_string(), &specifier);
+    }
   }
 }
 
