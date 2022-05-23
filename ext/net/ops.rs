@@ -711,7 +711,8 @@ where
       Err(custom_error(
         "NotSupported",
         var.to_owned() + " records are not supported for now",
-    ))},
+      ))
+    }
     _ => Ok(results),
   }
 }
