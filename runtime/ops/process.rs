@@ -301,7 +301,6 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
-  use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::minwindef::TRUE;
   use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
@@ -315,26 +314,11 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::winnt::PROCESS_TERMINATE;
 
   if pid <= 0 {
-    Err(type_error("Invalid pid"))
-  } else if matches!(signal, "SIGKILL" | "SIGTERM") {
-    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
-    if handle.is_null() {
-      let err = match unsafe { GetLastError() } {
-        ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
-        errno => Error::from_raw_os_error(errno as i32),
-      };
-      Err(err.into())
-    } else {
-      let r = unsafe { TerminateProcess(handle, 1) };
-      unsafe { CloseHandle(handle) };
-      match r {
-        FALSE => Err(Error::last_os_error().into()),
-        TRUE => Ok(()),
-        _ => unreachable!(),
-      }
-    }
-  } else if matches!(signal, "SIGINT" | "SIGBREAK") {
-    let ret = unsafe {
+    return Err(type_error("Invalid process id (pid)."));
+  }
+
+  if matches!(signal, "SIGINT" | "SIGBREAK") {
+    let is_generated = unsafe {
       GenerateConsoleCtrlEvent(
         match signal {
           "SIGINT" => CTRL_C_EVENT,
@@ -344,15 +328,37 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
         pid as u32,
       )
     };
-    match ret {
+
+    match is_generated {
       FALSE => {
         Err(Error::from_raw_os_error(unsafe { GetLastError() } as i32).into())
       }
       TRUE => Ok(()),
       _ => unreachable!(),
     }
+  } else if matches!(signal, "SIGKILL" | "SIGTERM") {
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as u32) };
+
+    if handle.is_null() {
+      let err = match unsafe { GetLastError() } {
+        ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
+        errno => Error::from_raw_os_error(errno as i32),
+      };
+      Err(err.into())
+    } else {
+      let is_terminated = unsafe { TerminateProcess(handle, 1) };
+      unsafe { CloseHandle(handle) };
+      match is_terminated {
+        FALSE => Err(Error::last_os_error().into()),
+        TRUE => Ok(()),
+        _ => unreachable!(),
+      }
+    }
   } else {
-    Err(type_error("unsupported signal"))
+    Err(type_error(format!(
+      "Signal {} is unsupported on Windows.",
+      signal
+    )))
   }
 }
 

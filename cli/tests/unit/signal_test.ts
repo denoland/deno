@@ -182,7 +182,6 @@ Deno.test(
 // This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
 Deno.test(
   {
-    ignore: Deno.build.os === "windows",
     permissions: { run: true, read: true },
   },
   async function canExitWhileListeningToSignal() {
@@ -190,7 +189,7 @@ Deno.test(
       args: [
         "eval",
         "--unstable",
-        "Deno.addSignalListener('SIGIO', () => {})",
+        "Deno.addSignalListener('SIGINT', () => {})",
       ],
     });
     assertEquals(status.code, 0);
