@@ -78,3 +78,9 @@ itest!(task_additional_args_no_logic {
   output: "task/task_additional_args_no_logic.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
+
+itest!(task_piped_stdin {
+  args_vec: vec!["task", "-q", "--config", "task/deno.json", "piped"],
+  output: "task/task_piped_stdin.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
