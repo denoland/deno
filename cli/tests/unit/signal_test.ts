@@ -196,6 +196,18 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { run: true },
+  },
+  function throwsOnNegativePidTest() {
+    assertThrows(() => {
+      Deno.kill(-1, "SIGINT");
+    });
+  },
+);
+
 Deno.test(function signalInvalidHandlerTest() {
   assertThrows(() => {
     // deno-lint-ignore no-explicit-any
