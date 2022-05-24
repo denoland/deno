@@ -114,6 +114,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: apply_source_map.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: op_names.map_fn_to(),
+      },
     ])
   });
 
@@ -174,13 +177,10 @@ pub fn initialize_context<'s>(
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
-    // Grab the Deno.core & Deno.core.ops objects
-    let core_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core")
-      .expect("Deno.core to exist");
+    // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs);
-    initialize_op_names(scope, core_obj, op_ctxs);
     return scope.escape(context);
   }
 
@@ -243,6 +243,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "destructureError", destructure_error);
   set_func(scope, core_val, "terminate", terminate);
   set_func(scope, core_val, "applySourceMap", apply_source_map);
+  set_func(scope, core_val, "opNames", op_names);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -250,7 +251,6 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
   initialize_ops(scope, ops_obj, op_ctxs);
-  initialize_op_names(scope, core_val, op_ctxs);
   scope.escape(context)
 }
 
@@ -263,17 +263,6 @@ fn initialize_ops(
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
     set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
   }
-}
-
-fn initialize_op_names(
-  scope: &mut v8::HandleScope,
-  core_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-) {
-  let names: Vec<&str> = op_ctxs.iter().map(|o| o.decl.name).collect();
-  let k = v8::String::new(scope, "op_names").unwrap().into();
-  let v = serde_v8::to_v8(scope, names).unwrap();
-  core_obj.set(scope, k, v);
 }
 
 pub fn set_func(
@@ -1552,4 +1541,15 @@ fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
   }
+}
+
+fn op_names(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  let names: Vec<_> = state.op_ctxs.iter().map(|o| o.decl.name).collect();
+  rv.set(serde_v8::to_v8(scope, names).unwrap());
 }
