@@ -573,7 +573,7 @@ impl ProcState {
             {
               source.to_owned()
             } else {
-              code.as_ref().clone()
+              code.to_string()
             }
           }
           MediaType::Dts => "".to_string(),

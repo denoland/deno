@@ -141,9 +141,6 @@
     }
 
     async output() {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
-      }
       if (this.#stdout?.locked) {
         throw new TypeError(
           "Can't collect output because stdout is locked",
@@ -168,7 +165,7 @@
       };
     }
 
-    kill(signo) {
+    kill(signo = "SIGTERM") {
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }

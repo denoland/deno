@@ -225,7 +225,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 137);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -245,6 +245,29 @@ Deno.test(
     }, TypeError);
 
     await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function spawnKillOptional() {
+    const child = Deno.spawnChild(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+
+    child.kill();
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, null);
+    } else {
+      assertEquals(status.code, 143);
+      assertEquals(status.signal, "SIGTERM");
+    }
   },
 );
 
@@ -410,7 +433,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -429,7 +452,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
