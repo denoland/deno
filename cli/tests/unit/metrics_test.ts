@@ -82,7 +82,7 @@ Deno.test(function metricsForOpCrates() {
 Deno.test(function opNamesMatch() {
   assertEquals(
     // @ts-ignore: Deno.core allowed
-    Deno.core.op_names.slice().sort(),
+    Deno.core.opNames(),
     // @ts-ignore: Deno.core allowed
     Object.keys(Deno.core.ops).sort(),
   );
