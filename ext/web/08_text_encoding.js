@@ -258,7 +258,7 @@
             return PromiseReject(err);
           }
         },
-        cancel: (_) => {
+        finally: () => {
           core.close(this.#decoder[_rid]);
         },
       });

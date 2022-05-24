@@ -37,6 +37,7 @@
     Promise,
     PromiseAll,
     PromisePrototypeCatch,
+    PromisePrototypeFinally,
     PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
@@ -1173,6 +1174,8 @@
     controller[_cancelAlgorithm] = undefined;
     controller[_strategySizeAlgorithm] = undefined;
   }
+
+  const _finallyAlgorithm = Symbol("[[finallyAlgorithm]]");
 
   /** @param {ReadableStreamDefaultController<any>} controller */
   function readableStreamDefaultControllerClose(controller) {
@@ -3077,14 +3080,14 @@
    * @param {TransformStreamDefaultController<O>} controller
    * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
    * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
-   * @param {(reason?: any) => Promise<void>} cancelAlgorithm
+   * @param {() => Promise<void>} finallyAlgorithm
    */
   function setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
     flushAlgorithm,
-    cancelAlgorithm,
+    finallyAlgorithm,
   ) {
     assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
     assert(stream[_controller] === undefined);
@@ -3092,7 +3095,7 @@
     stream[_controller] = controller;
     controller[_transformAlgorithm] = transformAlgorithm;
     controller[_flushAlgorithm] = flushAlgorithm;
-    controller[_cancelAlgorithm] = cancelAlgorithm;
+    controller[_finallyAlgorithm] = finallyAlgorithm;
   }
 
   /**
@@ -3120,8 +3123,8 @@
     };
     /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
     let flushAlgorithm = () => resolvePromiseWith(undefined);
-    /** @type {(reason?: any) => Promise<void>} */
-    let cancelAlgorithm = () => resolvePromiseWith(undefined);
+    /** @type {() => Promise<void>} */
+    let finallyAlgorithm = () => resolvePromiseWith(undefined);
     if (transformerDict.transform !== undefined) {
       transformAlgorithm = (chunk, controller) =>
         webidl.invokeCallbackFunction(
@@ -3150,16 +3153,16 @@
           },
         );
     }
-    if (transformerDict.cancel !== undefined) {
-      cancelAlgorithm = (reason) =>
+    if (transformerDict.finally !== undefined) {
+      finallyAlgorithm = () =>
         webidl.invokeCallbackFunction(
-          transformerDict.cancel,
-          [reason],
+          transformerDict.finally,
+          [],
           transformer,
           webidl.converters["Promise<undefined>"],
           {
             prefix:
-              "Failed to call 'cancelAlgorithm' on 'TransformStreamDefaultController'",
+              "Failed to call 'finallyAlgorithm' on 'TransformStreamDefaultController'",
             returnsPromise: true,
           },
         );
@@ -3169,7 +3172,7 @@
       controller,
       transformAlgorithm,
       flushAlgorithm,
-      cancelAlgorithm,
+      finallyAlgorithm,
     );
   }
 
@@ -3363,7 +3366,6 @@
   function transformStreamDefaultControllerClearAlgorithms(controller) {
     controller[_transformAlgorithm] = undefined;
     controller[_flushAlgorithm] = undefined;
-    controller[_cancelAlgorithm] = undefined;
   }
 
   /**
@@ -3525,7 +3527,6 @@
    * @param {any=} e
    */
   function transformStreamErrorWritableAndUnblockWrite(stream, e) {
-    stream[_controller][_cancelAlgorithm](e);
     transformStreamDefaultControllerClearAlgorithms(stream[_controller]);
     writableStreamDefaultControllerErrorIfNeeded(
       stream[_writable][_controller],
@@ -3534,6 +3535,7 @@
     if (stream[_backpressure] === true) {
       transformStreamSetBackpressure(stream, false);
     }
+    stream[_controller][_finallyAlgorithm]();
   }
 
   /**
@@ -5312,8 +5314,8 @@
   class TransformStreamDefaultController {
     /** @type {(controller: this) => Promise<void>} */
     [_flushAlgorithm];
-    /** @type {(reason?: any) => Promise<void>} */
-    [_cancelAlgorithm];
+    /** @type {() => Promise<void>} */
+    [_finallyAlgorithm];
     /** @type {TransformStream<O>} */
     [_stream];
     /** @type {(chunk: O, controller: this) => Promise<void>} */
@@ -5819,7 +5821,7 @@
         converter: webidl.converters.Function,
       },
       {
-        key: "cancel",
+        key: "finally",
         converter: webidl.converters.Function,
       },
       {
