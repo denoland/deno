@@ -202,9 +202,13 @@ Deno.test(
     permissions: { run: true },
   },
   function throwsOnNegativePidTest() {
-    assertThrows(() => {
-      Deno.kill(-1, "SIGINT");
-    });
+    assertThrows(
+      () => {
+        Deno.kill(-1, "SIGINT");
+      },
+      TypeError,
+      "Invalid process id (pid).",
+    );
   },
 );
 
