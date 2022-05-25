@@ -212,10 +212,10 @@ Deno.test(async function callbackTakesLongerThanInterval() {
   const promise = deferred();
 
   let timeEndOfFirstCallback: number | undefined;
-  const interval = setInterval(() => {
+  const interval = setInterval(async () => {
     if (timeEndOfFirstCallback === undefined) {
       // First callback
-      Deno.sleepSync(300);
+      await delay(300);
       timeEndOfFirstCallback = Date.now();
     } else {
       // Second callback
@@ -236,8 +236,8 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
     promise.resolve();
   }, 300);
 
-  const interval = setInterval(() => {
-    Deno.sleepSync(400);
+  const interval = setInterval(async () => {
+    await delay(400);
     // Both the interval and the timeout's due times are now in the past.
     clearInterval(interval);
   }, 100);
@@ -255,7 +255,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
     promise.resolve();
   }, 200);
 
-  Deno.sleepSync(300);
+  await delay(300);
   // Both of the timeouts' due times are now in the past.
   clearTimeout(timeout1);
 
@@ -530,52 +530,6 @@ Deno.test(async function timerIgnoresDateOverride() {
   }
   assertEquals(hasThrown, 1);
 });
-
-Deno.test({ permissions: { hrtime: true } }, function sleepSync() {
-  const start = performance.now();
-  Deno.sleepSync(10);
-  const after = performance.now();
-  assert(after - start >= 10);
-});
-
-Deno.test(
-  { permissions: { hrtime: true } },
-  async function sleepSyncShorterPromise() {
-    const perf = performance;
-    const short = 5;
-    const long = 10;
-
-    const start = perf.now();
-    const p = delay(short).then(() => {
-      const after = perf.now();
-      // pending promises should resolve after the main thread comes out of sleep
-      assert(after - start >= long);
-    });
-    Deno.sleepSync(long);
-
-    await p;
-  },
-);
-
-Deno.test(
-  { permissions: { hrtime: true } },
-  async function sleepSyncLongerPromise() {
-    const perf = performance;
-    const short = 5;
-    const long = 10;
-
-    const start = perf.now();
-    const p = delay(long).then(() => {
-      const after = perf.now();
-      // sleeping for less than the duration of a promise should have no impact
-      // on the resolution of that promise
-      assert(after - start >= long);
-    });
-    Deno.sleepSync(short);
-
-    await p;
-  },
-);
 
 Deno.test({
   name: "unrefTimer",
