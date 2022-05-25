@@ -1001,20 +1001,20 @@ Deno.test(function consoleTestWithStyleSpecifier() {
 
 Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("inherit"), null);
-  assertEquals(parseCssColor("black"), [0, 0, 0]);
-  assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
-  assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
-  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#18d"), [16, 128, 208]);
-  assertEquals(parseCssColor("#18D"), [16, 128, 208]);
-  assertEquals(parseCssColor("rgb(100, 200, 50)"), [100, 200, 50]);
-  assertEquals(parseCssColor("rgb(+100.3, -200, .5)"), [100, 0, 1]);
-  assertEquals(parseCssColor("hsl(75, 60%, 40%)"), [133, 163, 41]);
+  assertEquals(parseCssColor("black").color, [0, 0, 0]);
+  assertEquals(parseCssColor("darkmagenta").color, [139, 0, 139]);
+  assertEquals(parseCssColor("slateblue").color, [106, 90, 205]);
+  assertEquals(parseCssColor("#ffaa00").color, [255, 170, 0]);
+  assertEquals(parseCssColor("#ffaa00").color, [255, 170, 0]);
+  assertEquals(parseCssColor("#18d").color, [16, 128, 208]);
+  assertEquals(parseCssColor("#18D").color, [16, 128, 208]);
+  assertEquals(parseCssColor("rgb(100, 200, 50)").color, [100, 200, 50]);
+  assertEquals(parseCssColor("rgb(+100.3, -200, .5)").color, [100, 0, 1]);
+  assertEquals(parseCssColor("hsl(75, 60%, 40%)").color, [133, 163, 41]);
 
-  assertEquals(parseCssColor("rgb(100,200,50)"), [100, 200, 50]);
+  assertEquals(parseCssColor("rgb(100,200,50)").color, [100, 200, 50]);
   assertEquals(
-    parseCssColor("rgb( \t\n100 \t\n, \t\n200 \t\n, \t\n50 \t\n)"),
+    parseCssColor("rgb( \t\n100 \t\n, \t\n200 \t\n, \t\n50 \t\n)").color,
     [100, 200, 50],
   );
 });
