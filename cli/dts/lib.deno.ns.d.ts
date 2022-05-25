@@ -2340,8 +2340,7 @@ declare namespace Deno {
   export type Signal =
     | "SIGABRT"
     | "SIGALRM"
-    // TODO: add this after update to std because tests will fail otherwise
-    // | "SIGBREAK"
+    | "SIGBREAK"
     | "SIGBUS"
     | "SIGCHLD"
     | "SIGCONT"
