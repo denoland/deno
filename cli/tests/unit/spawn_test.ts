@@ -381,7 +381,7 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { run: true } }, async function spawnNotFound() {
+Deno.test({ permissions: { run: true } }, function spawnNotFound() {
   assertThrows(
     () => Deno.spawn("this file hopefully doesn't exist"),
     Deno.errors.NotFound,
@@ -695,7 +695,7 @@ Deno.test(
   },
 );
 
-Deno.test(async function spawnStdinPipedFails() {
+Deno.test(function spawnStdinPipedFails() {
   assertThrows(
     () =>
       Deno.spawn("id", {
