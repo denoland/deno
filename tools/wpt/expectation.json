@@ -1410,12 +1410,8 @@
         "valueOf.any.html": true,
         "valueOf.any.worker.html": true
       },
-      "idlharness.any.html": [
-        "Table interface: operation set(unsigned long, optional any)"
-      ],
-      "idlharness.any.worker.html": [
-        "Table interface: operation set(unsigned long, optional any)"
-      ],
+      "idlharness.any.html": true,
+      "idlharness.any.worker.html": true,
       "instance": {
         "constructor-bad-imports.any.html": true,
         "constructor-bad-imports.any.worker.html": true,
@@ -1428,12 +1424,8 @@
         "toString.any.html": true,
         "toString.any.worker.html": true
       },
-      "interface.any.html": [
-        "WebAssembly.Table.set: length"
-      ],
-      "interface.any.worker.html": [
-        "WebAssembly.Table.set: length"
-      ],
+      "interface.any.html": true,
+      "interface.any.worker.html": true,
       "memory": {
         "buffer.any.html": true,
         "buffer.any.worker.html": true,
