@@ -588,4 +588,5 @@
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.fetch = fetch;
   window.__bootstrap.fetch.handleWasmStreaming = handleWasmStreaming;
+  window.__bootstrap.fetch.mainFetch = mainFetch;
 })(this);

@@ -99,6 +99,7 @@ where
       "23_request.js",
       "23_response.js",
       "26_fetch.js",
+      "27_eventsource.js",
     ))
     .ops(vec![
       op_fetch::decl::<FP>(),

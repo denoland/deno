@@ -441,6 +441,7 @@ delete Object.prototype.__proto__;
     Crypto: util.nonEnumerable(crypto.Crypto),
     SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
+    EventSource: util.writable(fetch.EventSource),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
