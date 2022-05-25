@@ -116,7 +116,9 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
       let t = &mut state.resource_table;
       t.add(StdFileResource::stdio(
         match stdio.stdin {
-          StdioPipe::Inherit => StdFileResourceInner::Stdin,
+          StdioPipe::Inherit => StdFileResourceInner::Stdin(Arc::new(
+            Mutex::new(STDIN_HANDLE.try_clone().unwrap()),
+          )),
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
         "stdin",
@@ -296,14 +298,14 @@ impl Resource for ChildStderrResource {
 
 #[derive(Clone)]
 enum StdFileResourceInner {
+  File(Arc<Mutex<StdFile>>),
+  Stdin(Arc<Mutex<StdFile>>),
   // Ideally we would store stdio as an StdFile, but we get some Windows
   // specific functionality for free by using Rust std's wrappers. So we
   // take a bit of a complexity hit here in order to not have to duplicate
   // the functionality in Rust's std/src/sys/windows/stdio.rs
-  Stdin,
   Stdout,
   Stderr,
-  File(Arc<Mutex<StdFile>>),
 }
 
 impl StdFileResourceInner {
@@ -313,13 +315,12 @@ impl StdFileResourceInner {
 
   pub fn with_file<R>(&self, mut f: impl FnMut(&mut StdFile) -> R) -> R {
     match self {
-      Self::Stdin => f(&mut STDIN_HANDLE.try_clone().unwrap()),
-      Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
-      Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
-      Self::File(file) => {
+      Self::File(file) | Self::Stdin(file) => {
         let mut file = file.lock();
         f(&mut file)
       }
+      Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
+      Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
     }
   }
 
@@ -344,10 +345,9 @@ impl StdFileResourceInner {
 impl Read for StdFileResourceInner {
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     match self {
+      Self::File(file) | Self::Stdin(file) => file.lock().read(buf),
       Self::Stdout => Err(ErrorKind::Unsupported.into()),
       Self::Stderr => Err(ErrorKind::Unsupported.into()),
-      Self::Stdin => std::io::stdin().read(buf),
-      Self::File(file) => file.lock().read(buf),
     }
   }
 }
@@ -355,19 +355,19 @@ impl Read for StdFileResourceInner {
 impl Write for StdFileResourceInner {
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
     match self {
+      Self::File(file) => file.lock().write(buf),
+      Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().write(buf),
       Self::Stderr => std::io::stderr().write(buf),
-      Self::Stdin => Err(ErrorKind::Unsupported.into()),
-      Self::File(file) => file.lock().write(buf),
     }
   }
 
   fn flush(&mut self) -> std::io::Result<()> {
     match self {
+      Self::File(file) => file.lock().flush(),
+      Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().flush(),
       Self::Stderr => std::io::stderr().flush(),
-      Self::Stdin => Err(ErrorKind::Unsupported.into()),
-      Self::File(file) => file.lock().flush(),
     }
   }
 }
@@ -397,10 +397,8 @@ impl StdFileResource {
 
   pub fn std_file(&self) -> Arc<Mutex<StdFile>> {
     match &self.inner {
-      StdFileResourceInner::File(fs_file) => fs_file.clone(),
-      StdFileResourceInner::Stdin => {
-        Arc::new(Mutex::new(STDIN_HANDLE.try_clone().unwrap()))
-      }
+      StdFileResourceInner::File(fs_file)
+      | StdFileResourceInner::Stdin(fs_file) => fs_file.clone(),
       StdFileResourceInner::Stdout => {
         Arc::new(Mutex::new(STDOUT_HANDLE.try_clone().unwrap()))
       }

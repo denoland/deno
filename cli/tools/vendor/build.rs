@@ -628,10 +628,14 @@ mod test {
           .add("/mod.ts", "import 'https://localhost/mod.ts';")
           .add(
             "https://localhost/mod.ts",
-            "import './npm:test@1.0.0/test/test!cjs';",
+            "import './npm:test@1.0.0/test/test!cjs?test';import './npm:test@1.0.0/mod.ts';",
+          )
+          .add(
+            "https://localhost/npm:test@1.0.0/mod.ts",
+            "console.log(4);",
           )
           .add_with_headers(
-            "https://localhost/npm:test@1.0.0/test/test!cjs",
+            "https://localhost/npm:test@1.0.0/test/test!cjs?test",
             "console.log(5);",
             &[("content-type", "application/javascript")],
           );
@@ -648,7 +652,9 @@ mod test {
         },
         "scopes": {
           "./localhost/": {
-            "./localhost/npm:test@1.0.0/test/test!cjs": "./localhost/npm_test@1.0.0/test/test!cjs.js"
+            "./localhost/npm:test@1.0.0/mod.ts": "./localhost/npm_test@1.0.0/mod.ts",
+            "./localhost/npm:test@1.0.0/test/test!cjs?test": "./localhost/npm_test@1.0.0/test/test!cjs.js",
+            "./localhost/npm_test@1.0.0/test/test!cjs?test": "./localhost/npm_test@1.0.0/test/test!cjs.js"
           }
         }
       }))
@@ -658,8 +664,9 @@ mod test {
       to_file_vec(&[
         (
           "/vendor/localhost/mod.ts",
-          "import './npm:test@1.0.0/test/test!cjs';"
+          "import './npm:test@1.0.0/test/test!cjs?test';import './npm:test@1.0.0/mod.ts';"
         ),
+        ("/vendor/localhost/npm_test@1.0.0/mod.ts", "console.log(4);"),
         (
           "/vendor/localhost/npm_test@1.0.0/test/test!cjs.js",
           "console.log(5);"
