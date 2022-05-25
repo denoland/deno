@@ -118,7 +118,8 @@ deno_core::extension!(deno_fetch,
     "22_http_client.js",
     "23_request.js",
     "23_response.js",
-    "26_fetch.js"
+    "26_fetch.js",
+    "27_eventsource.js"
   ],
   options = {
     options: Options,

@@ -580,4 +580,4 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-export { fetch, handleWasmStreaming };
+export { fetch, handleWasmStreaming, mainFetch };
