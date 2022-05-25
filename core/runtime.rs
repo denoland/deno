@@ -326,10 +326,18 @@ impl JsRuntime {
 
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
-      // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(options.startup_snapshot.is_none());
+      let exisiting_blob = if let Some(snapshot) = options.startup_snapshot {
+        let startup_data = match snapshot {
+          Snapshot::Static(data) => data.into(),
+          Snapshot::JustCreated(data) => data,
+          Snapshot::Boxed(data) => data.into(),
+        };
+        Some(startup_data)
+      } else {
+        None
+      };
       let mut creator =
-        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
+        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES), exisiting_blob.as_ref());
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
