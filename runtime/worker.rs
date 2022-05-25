@@ -21,6 +21,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
@@ -54,6 +55,7 @@ pub struct WorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub startup_snapshot: Option<Snapshot>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
@@ -161,7 +163,11 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: Some(
+        options
+          .startup_snapshot
+          .unwrap_or_else(|| js::deno_isolate_init()),
+      ),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -395,6 +401,7 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
+      startup_snapshot: None,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

@@ -336,8 +336,10 @@ impl JsRuntime {
       } else {
         None
       };
-      let mut creator =
-        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES), exisiting_blob.as_ref());
+      let mut creator = v8::SnapshotCreator::new(
+        Some(&bindings::EXTERNAL_REFERENCES),
+        exisiting_blob.as_ref(),
+      );
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
