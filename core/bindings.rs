@@ -937,6 +937,7 @@ fn decode(
 
 struct SerializeDeserialize<'a> {
   host_objects: Option<v8::Local<'a, v8::Array>>,
+  error_callback: Option<v8::Local<'a, v8::Function>>,
 }
 
 impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
@@ -946,6 +947,15 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
+    if let Some(cb) = self.error_callback {
+      let scope = &mut v8::TryCatch::new(scope);
+      let undefined = v8::undefined(scope).into();
+      cb.call(scope, undefined, &[message.into()]);
+      if scope.has_caught() || scope.has_terminated() {
+        scope.rethrow();
+        return;
+      };
+    }
     let error = v8::Exception::type_error(scope, message);
     scope.throw_exception(error);
   }
@@ -1078,6 +1088,17 @@ fn serialize(
       }
     };
 
+  let arg2_to_error_callback = match !args.get(2).is_undefined() {
+    true => match v8::Local::<v8::Function>::try_from(args.get(2)) {
+      Ok(cb) => Some(v8::Local::new(scope, cb)),
+      Err(_) => {
+        throw_type_error(scope, "Invalid argument 3");
+        return;
+      }
+    },
+    false => None,
+  };
+
   let options = options.unwrap_or(SerializeDeserializeOptions {
     host_objects: None,
     transfered_array_buffers: None,
@@ -1105,7 +1126,11 @@ fn serialize(
     None => None,
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects,
+    error_callback: arg2_to_error_callback,
+  });
+
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
 
@@ -1227,7 +1252,10 @@ fn deserialize(
     None => None,
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects,
+    error_callback: None,
+  });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
 

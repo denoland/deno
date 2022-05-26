@@ -52,7 +52,7 @@ function parseCss(cssString: string): Css {
   return parseCss_(cssString);
 }
 
-function parseCssColor(colorString: string): Css {
+function parseCssColor(colorString: string): [number, number, number] | null {
   return parseCssColor_(colorString);
 }
 
