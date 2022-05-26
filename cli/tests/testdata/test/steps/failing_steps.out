@@ -9,8 +9,8 @@ nested failure ...
           at [WILDCARD]/failing_steps.ts:[WILDCARD]
           [WILDCARD]
     inner 2 ... ok ([WILDCARD])
-  FAILED ([WILDCARD])
-FAILED ([WILDCARD])
+  step 1 ... FAILED ([WILDCARD])
+nested failure ... FAILED ([WILDCARD])
 multiple test step failures ...
   step 1 ... FAILED ([WILDCARD])
     error: Error: Fail.
@@ -23,7 +23,7 @@ multiple test step failures ...
                                                   ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         [WILDCARD]
-FAILED ([WILDCARD])
+multiple test step failures ... FAILED ([WILDCARD])
 failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
     error: Error: Fail.
@@ -31,7 +31,7 @@ failing step in failing test ...
               ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         at [WILDCARD]
-FAILED ([WILDCARD])
+failing step in failing test ... FAILED ([WILDCARD])
 
  ERRORS 
 
