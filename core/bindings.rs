@@ -937,7 +937,7 @@ fn decode(
 
 struct SerializeDeserialize<'a> {
   host_objects: Option<v8::Local<'a, v8::Array>>,
-  cb: Option<v8::Local<'a, v8::Function>>,
+  error_callback: Option<v8::Local<'a, v8::Function>>,
 }
 
 impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
@@ -947,7 +947,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
-    if let Some(cb) = self.cb {
+    if let Some(cb) = self.error_callback {
       let scope = &mut v8::TryCatch::new(scope);
       let undefined = v8::undefined(scope).into();
       cb.call(scope, undefined, &[message.into()]);
@@ -1088,7 +1088,7 @@ fn serialize(
       }
     };
 
-  let arg2_to_cb = match !args.get(2).is_undefined() {
+  let arg2_to_error_callback = match !args.get(2).is_undefined() {
     true => match v8::Local::<v8::Function>::try_from(args.get(2)) {
       Ok(cb) => Some(v8::Local::new(scope, cb)),
       Err(_) => {
@@ -1128,7 +1128,7 @@ fn serialize(
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
-    cb: arg2_to_cb,
+    error_callback: arg2_to_error_callback,
   });
 
   let mut value_serializer =
@@ -1254,7 +1254,7 @@ fn deserialize(
 
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
-    cb: None,
+    error_callback: None,
   });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
