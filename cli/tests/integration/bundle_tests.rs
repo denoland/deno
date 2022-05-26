@@ -456,3 +456,16 @@ itest!(bundle_ignore_directives {
   args: "bundle subdir/mod1.ts",
   output: "bundle_ignore_directives.test.out",
 });
+
+itest!(check_local_by_default {
+  args: "bundle --quiet bundle/check_local_by_default.ts",
+  output: "bundle/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "bundle --quiet bundle/check_local_by_default2.ts",
+  output: "bundle/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});

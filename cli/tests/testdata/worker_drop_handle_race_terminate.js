@@ -22,10 +22,7 @@ const WORKER2 = getCodeBlobUrl(`
 
 const WORKER1 = getCodeBlobUrl(`
   console.log("Worker 1");
-  const worker = new Worker(
-    ${JSON.stringify(WORKER2)},
-    { type: "module", deno: { namespace: true } }
-  );
+  const worker = new Worker(${JSON.stringify(WORKER2)}, { type: "module" });
 
   worker.addEventListener("message", () => {
     console.log("Terminating");
@@ -34,7 +31,7 @@ const WORKER1 = getCodeBlobUrl(`
   });
 `);
 
-new Worker(WORKER1, { type: "module", deno: { namespace: true } });
+new Worker(WORKER1, { type: "module" });
 
 // Don't kill the process before worker 2 is finished.
 setTimeout(() => {}, 3000);

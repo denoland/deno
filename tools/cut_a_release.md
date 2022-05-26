@@ -43,8 +43,8 @@ Before starting the process write a message in company's #general channel:
       1. Ensure the version in `version.ts` is updated correctly.
       2. Ensure `Releases.md` is updated correctly.
       3. Ensure all the tests pass with the latest build
-         - Use `../deno/target/release/deno test -A --unstable` and NOT
-           `deno task test`
+         - Use
+           `../deno/target/release/deno test --doc --unstable --allow-all --ignore=node/`
    3. Open a PR with the changes and continue with the steps below.
    </details>
 
@@ -83,7 +83,7 @@ verify on GitHub that everything looks correct.
    actions: https://github.com/denoland/deno/actions/workflows/version_bump.yml
 
 2. Click on the "Run workflow" button.
-   1. In the drop down, select the minor branch if doing a path release or the
+   1. In the drop down, select the minor branch if doing a patch release or the
       main branch if doing a minor release.
    2. For the kind of release, select either "patch", "minor", or "major".
    3. Run the workflow.

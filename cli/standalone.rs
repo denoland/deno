@@ -168,9 +168,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .ok_or_else(|| type_error("Module not found"));
 
     async move {
-      if let Some((ref source, _)) = is_data_uri {
+      if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
-          code: source.to_owned(),
+          code: source.into_bytes().into_boxed_slice(),
           module_type: deno_core::ModuleType::JavaScript,
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
@@ -184,7 +184,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .to_owned();
 
       Ok(deno_core::ModuleSource {
-        code,
+        code: code.into_bytes().into_boxed_slice(),
         module_type: match module.kind {
           eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
           eszip::ModuleKind::Json => deno_core::ModuleType::Json,
@@ -286,9 +286,9 @@ pub async fn run(
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
+      user_agent: version::get_user_agent(),
     },
-    extensions: ops::cli_exts(ps.clone(), true),
-    user_agent: version::get_user_agent(),
+    extensions: ops::cli_exts(ps.clone()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),

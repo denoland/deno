@@ -31,93 +31,76 @@ async function handler(req: Request): Promise<Response> {
 }
 
 async function testFetch() {
-  const c = Deno.run({
-    cmd: [
-      Deno.execPath(),
+  const { status } = await Deno.spawn(Deno.execPath(), {
+    args: [
       "run",
       "--quiet",
       "--reload",
       "--allow-net",
       "045_proxy_client.ts",
     ],
-    stdout: "piped",
     env: {
       HTTP_PROXY: `http://${addr}`,
     },
   });
 
-  const status = await c.status();
   assertEquals(status.code, 0);
-  c.close();
 }
 
 async function testModuleDownload() {
-  const http = Deno.run({
-    cmd: [
-      Deno.execPath(),
+  const { status } = await Deno.spawn(Deno.execPath(), {
+    args: [
       "cache",
       "--reload",
       "--quiet",
       "http://localhost:4545/045_mod.ts",
     ],
-    stdout: "piped",
     env: {
       HTTP_PROXY: `http://${addr}`,
     },
   });
 
-  const httpStatus = await http.status();
-  assertEquals(httpStatus.code, 0);
-  http.close();
+  assertEquals(status.code, 0);
 }
 
 async function testFetchNoProxy() {
-  const c = Deno.run({
-    cmd: [
-      Deno.execPath(),
+  const { status } = await Deno.spawn(Deno.execPath(), {
+    args: [
       "run",
       "--quiet",
       "--reload",
       "--allow-net",
       "045_proxy_client.ts",
     ],
-    stdout: "piped",
     env: {
       HTTP_PROXY: "http://not.exising.proxy.server",
       NO_PROXY: "localhost",
     },
   });
 
-  const status = await c.status();
   assertEquals(status.code, 0);
-  c.close();
 }
 
 async function testModuleDownloadNoProxy() {
-  const http = Deno.run({
-    cmd: [
-      Deno.execPath(),
+  const { status } = await Deno.spawn(Deno.execPath(), {
+    args: [
       "cache",
       "--reload",
       "--quiet",
       "http://localhost:4545/045_mod.ts",
     ],
-    stdout: "piped",
     env: {
       HTTP_PROXY: "http://not.exising.proxy.server",
       NO_PROXY: "localhost",
     },
   });
 
-  const httpStatus = await http.status();
-  assertEquals(httpStatus.code, 0);
-  http.close();
+  assertEquals(status.code, 0);
 }
 
 async function testFetchProgrammaticProxy() {
-  const c = Deno.run({
-    cmd: [
-      Deno.execPath(),
+  const { status } = await Deno.spawn(Deno.execPath(), {
+    args: [
       "run",
       "--quiet",
       "--reload",
@@ -125,11 +108,8 @@ async function testFetchProgrammaticProxy() {
       "--unstable",
       "045_programmatic_proxy_client.ts",
     ],
-    stdout: "piped",
   });
-  const status = await c.status();
   assertEquals(status.code, 0);
-  c.close();
 }
 
 proxyServer();

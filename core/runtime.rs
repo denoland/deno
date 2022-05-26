@@ -204,12 +204,15 @@ impl Drop for JsRuntime {
   }
 }
 
-fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
+fn v8_init(
+  v8_platform: Option<v8::SharedRef<v8::Platform>>,
+  predictable: bool,
+) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10284336]);
+  struct IcuData([u8; 10454784]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data_70(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let v8_platform = v8_platform
     .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
@@ -222,7 +225,15 @@ fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
     " --harmony-import-assertions",
     " --no-validate-asm",
   );
-  v8::V8::set_flags_from_string(flags);
+
+  if predictable {
+    v8::V8::set_flags_from_string(&format!(
+      "{}{}",
+      flags, " --predictable --random-seed=42"
+    ));
+  } else {
+    v8::V8::set_flags_from_string(flags);
+  }
 }
 
 #[derive(Default)]
@@ -251,6 +262,7 @@ pub struct RuntimeOptions {
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
+  /// The snapshot is determinstic and uses predictable random numbers.
   ///
   /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
@@ -284,7 +296,7 @@ impl JsRuntime {
     let v8_platform = options.v8_platform.take();
 
     static DENO_INIT: Once = Once::new();
-    DENO_INIT.call_once(move || v8_init(v8_platform));
+    DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
@@ -491,9 +503,8 @@ impl JsRuntime {
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
-        let source = source()?;
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self, filename, &source)?;
+        realm.execute_script(self, filename, source)?;
       }
     }
     // Restore extensions
@@ -1554,7 +1565,7 @@ impl JsRuntime {
           // main module
           true,
           specifier.as_str(),
-          &code,
+          code.as_bytes(),
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -1613,7 +1624,7 @@ impl JsRuntime {
           // not main module
           false,
           specifier.as_str(),
-          &code,
+          code.as_bytes(),
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -3022,7 +3033,7 @@ assertEquals(1, notify_return_value);
       ) -> Pin<Box<ModuleSourceFuture>> {
         async move {
           Ok(ModuleSource {
-            code: "console.log('hello world');".to_string(),
+            code: b"console.log('hello world');".to_vec().into_boxed_slice(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,
