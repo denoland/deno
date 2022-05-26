@@ -237,7 +237,7 @@
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
         try {
-          await core.opAsync(
+          core.opSync(
             "op_http_write_headers",
             streamRid,
             innerResp.status ?? 200,
