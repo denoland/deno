@@ -212,10 +212,10 @@ Deno.test(async function callbackTakesLongerThanInterval() {
   const promise = deferred();
 
   let timeEndOfFirstCallback: number | undefined;
-  const interval = setInterval(async () => {
+  const interval = setInterval(() => {
     if (timeEndOfFirstCallback === undefined) {
       // First callback
-      await delay(300);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
       timeEndOfFirstCallback = Date.now();
     } else {
       // Second callback
@@ -236,8 +236,8 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
     promise.resolve();
   }, 300);
 
-  const interval = setInterval(async () => {
-    await delay(400);
+  const interval = setInterval(() => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400);
     // Both the interval and the timeout's due times are now in the past.
     clearInterval(interval);
   }, 100);
@@ -255,7 +255,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
     promise.resolve();
   }, 200);
 
-  await delay(300);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
   // Both of the timeouts' due times are now in the past.
   clearTimeout(timeout1);
 
