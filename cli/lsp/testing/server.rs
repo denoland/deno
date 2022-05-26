@@ -117,7 +117,7 @@ impl TestServer {
                         test_definitions.as_notification(
                           specifier,
                           mru.as_ref(),
-                          parsed_source.source(),
+                          parsed_source.text_info(),
                         ),
                       );
                     }
