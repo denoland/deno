@@ -4777,7 +4777,7 @@
   },
   "eventsource": {
     "dedicated-worker": {
-      "eventsource-eventtarget.worker.html": false
+      "eventsource-eventtarget.worker.html": true
     },
     "event-data.any.html": true,
     "event-data.any.worker.html": true,
@@ -4850,6 +4850,6 @@
     "request-credentials.window.any.html": false,
     "request-credentials.window.any.worker.html": false,
     "request-redirect.window.any.html": false,
-    "request-redirect.window.any.worker.html": false,
+    "request-redirect.window.any.worker.html": false
   }
 }
