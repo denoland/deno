@@ -109,7 +109,7 @@ impl Resource for MessagePortResource {
 #[op]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
-) -> Result<(ResourceId, ResourceId), AnyError> {
+) -> (ResourceId, ResourceId) {
   let (port1, port2) = create_entangled_message_port();
 
   let port1_id = state.resource_table.add(MessagePortResource {
@@ -122,7 +122,7 @@ pub fn op_message_port_create_entangled(
     cancel: CancelHandle::new(),
   });
 
-  Ok((port1_id, port2_id))
+  (port1_id, port2_id)
 }
 
 #[derive(Deserialize, Serialize)]

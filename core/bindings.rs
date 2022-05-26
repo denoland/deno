@@ -2,7 +2,7 @@
 
 use crate::error::is_instance_of_error;
 use crate::error::JsError;
-use crate::modules::get_module_type_from_assertions;
+use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
@@ -114,6 +114,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: apply_source_map.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: op_names.map_fn_to(),
+      },
     ])
   });
 
@@ -174,13 +177,10 @@ pub fn initialize_context<'s>(
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
-    // Grab the Deno.core & Deno.core.ops objects
-    let core_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core")
-      .expect("Deno.core to exist");
+    // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs);
-    initialize_op_names(scope, core_obj, op_ctxs);
     return scope.escape(context);
   }
 
@@ -243,13 +243,14 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "destructureError", destructure_error);
   set_func(scope, core_val, "terminate", terminate);
   set_func(scope, core_val, "applySourceMap", apply_source_map);
+  set_func(scope, core_val, "opNames", op_names);
+
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
   initialize_ops(scope, ops_obj, op_ctxs);
-  initialize_op_names(scope, core_val, op_ctxs);
   scope.escape(context)
 }
 
@@ -262,17 +263,6 @@ fn initialize_ops(
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
     set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
   }
-}
-
-fn initialize_op_names(
-  scope: &mut v8::HandleScope,
-  core_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-) {
-  let names: Vec<&str> = op_ctxs.iter().map(|o| o.decl.name).collect();
-  let k = v8::String::new(scope, "op_names").unwrap().into();
-  let v = serde_v8::to_v8(scope, names).unwrap();
-  core_obj.set(scope, k, v);
 }
 
 pub fn set_func(
@@ -342,7 +332,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
       resolver.reject(tc_scope, e);
     }
   }
-  let module_type = get_module_type_from_assertions(&assertions);
+  let asserted_module_type =
+    get_asserted_module_type_from_assertions(&assertions);
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
@@ -357,7 +348,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
-      module_type,
+      asserted_module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();
@@ -894,11 +885,11 @@ fn encode(
       return;
     }
   };
-  let text_str = text.to_rust_string_lossy(scope);
-  let bytes: Box<[u8]> = text_str.into_bytes().into_boxed_slice();
+  let text_str = serde_v8::to_utf8(text, scope);
+  let bytes = text_str.into_bytes();
   let len = bytes.len();
   let backing_store =
-    v8::ArrayBuffer::new_backing_store_from_boxed_slice(bytes).make_shared();
+    v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
   let buffer = v8::ArrayBuffer::with_backing_store(scope, &backing_store);
   let u8array = v8::Uint8Array::new(scope, buffer, 0, len).unwrap();
   rv.set(u8array.into())
@@ -1550,4 +1541,15 @@ fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
   }
+}
+
+fn op_names(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  let names: Vec<_> = state.op_ctxs.iter().map(|o| o.decl.name).collect();
+  rv.set(serde_v8::to_v8(scope, names).unwrap());
 }

@@ -20,6 +20,7 @@ pub struct BootstrapOptions {
   /// Sets `Deno.version.typescript` in JS runtime.
   pub ts_version: String,
   pub unstable: bool,
+  pub user_agent: String,
 }
 
 impl BootstrapOptions {
@@ -42,6 +43,7 @@ impl BootstrapOptions {
       "ppid": ppid(),
       "target": env!("TARGET"),
       "v8Version": deno_core::v8_version(),
+      "userAgent": self.user_agent,
     });
     serde_json::to_string_pretty(&payload).unwrap()
   }

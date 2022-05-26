@@ -2,6 +2,7 @@
 
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
+use crate::url::Url;
 use anyhow::Error;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -163,7 +164,7 @@ fn get_property<'a>(
   object.get(scope, key.into())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Default, serde::Deserialize)]
 pub(crate) struct NativeJsError {
   pub name: Option<String>,
   pub message: Option<String>,
@@ -172,10 +173,6 @@ pub(crate) struct NativeJsError {
 }
 
 impl JsError {
-  pub(crate) fn create(js_error: Self) -> Error {
-    js_error.into()
-  }
-
   pub fn from_v8_exception(
     scope: &mut v8::HandleScope,
     exception: v8::Local<v8::Value>,
@@ -199,7 +196,7 @@ impl JsError {
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
       let cause = get_property(scope, exception, "cause");
       let e: NativeJsError =
-        serde_v8::from_v8(scope, exception.into()).unwrap();
+        serde_v8::from_v8(scope, exception.into()).unwrap_or_default();
       // Get the message by formatting error.name and error.message.
       let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
       let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
@@ -389,12 +386,16 @@ impl Display for JsError {
   }
 }
 
-pub(crate) fn attach_handle_to_error(
-  scope: &mut v8::Isolate,
+// TODO(piscisaureus): rusty_v8 should implement the Error trait on
+// values of type v8::Global<T>.
+pub(crate) fn to_v8_type_error(
+  scope: &mut v8::HandleScope,
   err: Error,
-  handle: v8::Local<v8::Value>,
-) -> Error {
-  ErrWithV8Handle::new(scope, err, handle).into()
+) -> v8::Global<v8::Value> {
+  let message = err.to_string();
+  let message = v8::String::new(scope, &message).unwrap();
+  let exception = v8::Exception::type_error(scope, message);
+  v8::Global::new(scope, exception)
 }
 
 /// Implements `value instanceof primordials.Error` in JS. Similar to
@@ -431,47 +432,25 @@ pub(crate) fn is_instance_of_error<'s>(
   false
 }
 
-// TODO(piscisaureus): rusty_v8 should implement the Error trait on
-// values of type v8::Global<T>.
-pub(crate) struct ErrWithV8Handle {
-  err: Error,
-  handle: v8::Global<v8::Value>,
+const DATA_URL_ABBREV_THRESHOLD: usize = 150;
+
+pub fn format_file_name(file_name: &str) -> String {
+  abbrev_file_name(file_name).unwrap_or_else(|| file_name.to_string())
 }
 
-impl ErrWithV8Handle {
-  pub fn new(
-    scope: &mut v8::Isolate,
-    err: Error,
-    handle: v8::Local<v8::Value>,
-  ) -> Self {
-    let handle = v8::Global::new(scope, handle);
-    Self { err, handle }
+fn abbrev_file_name(file_name: &str) -> Option<String> {
+  if file_name.len() <= DATA_URL_ABBREV_THRESHOLD {
+    return None;
   }
-
-  pub fn get_handle<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-  ) -> v8::Local<'s, v8::Value> {
-    v8::Local::new(scope, &self.handle)
+  let url = Url::parse(file_name).ok()?;
+  if url.scheme() != "data" {
+    return None;
   }
-}
-
-#[allow(clippy::non_send_fields_in_send_ty)]
-unsafe impl Send for ErrWithV8Handle {}
-unsafe impl Sync for ErrWithV8Handle {}
-
-impl std::error::Error for ErrWithV8Handle {}
-
-impl Display for ErrWithV8Handle {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    <Error as Display>::fmt(&self.err, f)
-  }
-}
-
-impl Debug for ErrWithV8Handle {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    <Self as Display>::fmt(self, f)
-  }
+  let (head, tail) = url.path().split_once(',')?;
+  let len = tail.len();
+  let start = tail.get(0..20)?;
+  let end = tail.get(len - 20..)?;
+  Some(format!("{}:{},{}......{}", url.scheme(), head, start, end))
 }
 
 #[cfg(test)]

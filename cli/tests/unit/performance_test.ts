@@ -20,6 +20,22 @@ Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
   assert(totalTime >= 10);
 });
 
+Deno.test(function timeOrigin() {
+  const origin = performance.timeOrigin;
+
+  assert(origin > 0);
+  assert(Date.now() >= origin);
+});
+
+Deno.test(function performanceToJSON() {
+  const json = performance.toJSON();
+
+  assert("timeOrigin" in json);
+  assert(json.timeOrigin === performance.timeOrigin);
+  // check there are no other keys
+  assertEquals(Object.keys(json).length, 1);
+});
+
 Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);
