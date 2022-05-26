@@ -213,6 +213,7 @@
         const contentType = res.headerList.find((header) =>
           header[0].toLowerCase() === "content-type"
         );
+        console.error(1, res.status, contentType);
         if (res.type === "error") {
           if (res.aborted) {
             this[_readyState] = CLOSED;
@@ -239,7 +240,7 @@
           }
         } else if (
           res.status !== 200 ||
-          contentType?.[1].toLowerCase() !== "text/event-stream"
+          !contentType?.[1].toLowerCase().includes("text/event-stream")
         ) {
           this[_readyState] = CLOSED;
           this.dispatchEvent(new Event("error"));
