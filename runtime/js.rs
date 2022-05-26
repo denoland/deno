@@ -9,7 +9,7 @@ pub static CLI_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[inline(never)]
   || {
     static COMPRESSED_CLI_SNAPSHOT: &[u8] =
-      include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
+      include_bytes!(env!("CLI_SNAPSHOT_PATH"));
 
     let size =
       u32::from_le_bytes(COMPRESSED_CLI_SNAPSHOT[0..4].try_into().unwrap())

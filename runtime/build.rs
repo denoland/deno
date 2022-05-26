@@ -203,7 +203,15 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
+  let runtime_snapshot_path = o
+    .parent()
+    .unwrap()
+    .parent()
+    .unwrap()
+    .parent()
+    .unwrap()
+    .join("CLI_SNAPSHOT.bin");
+  println!("cargo:rustc-env=CLI_SNAPSHOT_PATH={}", runtime_snapshot_path.display());
 
   // If we're building on docs.rs we just create
   // and empty snapshot file and return, because `rusty_v8`
