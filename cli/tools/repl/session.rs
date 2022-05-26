@@ -332,7 +332,7 @@ impl ReplSession {
   ) -> Result<TsEvaluateResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
-      source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
+      text_info: deno_ast::SourceTextInfo::from_string(expression.to_string()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,

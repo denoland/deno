@@ -34,6 +34,7 @@ use deno_ast::swc::parser::lexer::Lexer;
 use deno_ast::swc::parser::StringInput;
 use deno_ast::Diagnostic;
 use deno_ast::LineAndColumnDisplay;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -146,8 +147,6 @@ pub enum ConfigType {
   Check { lib: TypeLib, tsc_emit: bool },
   /// Return a configuration to use swc to emit single module files.
   Emit,
-  /// Return a configuration as a base for the runtime `Deno.emit()` API.
-  RuntimeEmit { tsc_emit: bool },
 }
 
 /// For a given configuration type and optionally a configuration file, return a
@@ -216,44 +215,6 @@ pub fn get_ts_config(
       "jsxFragmentFactory": "React.Fragment",
       "resolveJsonModule": true,
     })),
-    ConfigType::RuntimeEmit { tsc_emit } => {
-      let mut ts_config = TsConfig::new(json!({
-        "allowJs": true,
-        "allowSyntheticDefaultImports": true,
-        "checkJs": false,
-        "emitDecoratorMetadata": false,
-        "experimentalDecorators": true,
-        "importsNotUsedAsValues": "remove",
-        "incremental": true,
-        "isolatedModules": true,
-        "jsx": "react",
-        "jsxFactory": "React.createElement",
-        "jsxFragmentFactory": "React.Fragment",
-        "lib": TypeLib::DenoWindow,
-        "module": "esnext",
-        "removeComments": true,
-        "inlineSourceMap": false,
-        "inlineSources": false,
-        "sourceMap": true,
-        "strict": true,
-        "target": "esnext",
-        "tsBuildInfoFile": "deno:///.tsbuildinfo",
-        "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
-      }));
-      if tsc_emit {
-        ts_config.merge(&json!({
-          "importsNotUsedAsValues": "remove",
-          "outDir": "deno://",
-        }));
-      } else {
-        ts_config.merge(&json!({
-          "noEmit": true,
-        }));
-      }
-      ts_config
-    }
   };
   let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
     ts_config.merge_user_config(user_options)?
@@ -569,7 +530,7 @@ impl swc::bundler::Load for BundleLoader<'_> {
         if let Some(m) = self.graph.get(specifier) {
           let (fm, module) = transpile_module(
             specifier,
-            m.maybe_source.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            m.maybe_source.as_ref().map(|s| s as &str).unwrap_or(""),
             m.media_type,
             self.emit_options,
             self.cm.clone(),
@@ -656,7 +617,7 @@ fn swc_err_to_diagnostic(
   let location = source_map.lookup_char_pos(err.span().lo);
   Diagnostic {
     specifier: specifier.to_string(),
-    span: err.span(),
+    range: err.range(),
     display_position: LineAndColumnDisplay {
       line_number: location.line,
       column_number: location.col_display + 1,
@@ -746,7 +707,11 @@ pub fn bundle(
     let mut buf = Vec::new();
     let mut srcmap = Vec::new();
     {
-      let cfg = swc::codegen::Config { minify: false };
+      let cfg = swc::codegen::Config {
+        minify: false,
+        ascii_only: false,
+        target: deno_ast::ES_VERSION,
+      };
       let mut wr = Box::new(swc::codegen::text_writer::JsWriter::new(
         cm.clone(),
         "\n",
@@ -943,47 +908,6 @@ impl fmt::Display for GraphError {
       _ => self.0.fmt(f),
     }
   }
-}
-
-/// Convert a module graph to a map of "files", which are used by the runtime
-/// emit to be passed back to the caller.
-pub fn to_file_map(
-  graph: &ModuleGraph,
-  cache: &dyn Cacher,
-) -> HashMap<String, String> {
-  let mut files = HashMap::new();
-  for (_, result) in graph.specifiers().into_iter() {
-    if let Ok((specifier, _, media_type)) = result {
-      if let Some(emit) = cache.get(CacheType::Emit, &specifier) {
-        files.insert(format!("{}.js", specifier), emit);
-        if let Some(map) = cache.get(CacheType::SourceMap, &specifier) {
-          files.insert(format!("{}.js.map", specifier), map);
-        }
-      } else if matches!(
-        media_type,
-        MediaType::JavaScript
-          | MediaType::Mjs
-          | MediaType::Cjs
-          | MediaType::Json
-          | MediaType::Unknown
-      ) {
-        if let Some(module) = graph.get(&specifier) {
-          files.insert(
-            specifier.to_string(),
-            module
-              .maybe_source
-              .as_ref()
-              .map(|s| s.to_string())
-              .unwrap_or_else(|| "".to_string()),
-          );
-        }
-      }
-      if let Some(declaration) = cache.get(CacheType::Declaration, &specifier) {
-        files.insert(format!("{}.d.ts", specifier), declaration);
-      }
-    }
-  }
-  files
 }
 
 /// This contains the logic for Deno to rewrite the `import.meta` when bundling.

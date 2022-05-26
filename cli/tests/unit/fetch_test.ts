@@ -1533,3 +1533,12 @@ Deno.test(
     assertEquals(length, 'Some("4")');
   },
 );
+
+Deno.test(async function staticResponseJson() {
+  const data = { hello: "world" };
+  const resp = Response.json(data);
+  assertEquals(resp.status, 200);
+  assertEquals(resp.headers.get("content-type"), "application/json");
+  const res = await resp.json();
+  assertEquals(res, data);
+});

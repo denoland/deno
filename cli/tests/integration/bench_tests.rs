@@ -155,6 +155,19 @@ itest!(no_prompt_with_denied_perms {
   output: "bench/no_prompt_with_denied_perms.out",
 });
 
+itest!(check_local_by_default {
+  args: "bench --quiet --unstable bench/check_local_by_default.ts",
+  output: "bench/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "bench --quiet --unstable bench/check_local_by_default2.ts",
+  output: "bench/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});
+
 #[test]
 fn recursive_permissions_pledge() {
   let output = util::deno_cmd()

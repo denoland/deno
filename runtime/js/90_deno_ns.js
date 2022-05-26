@@ -116,7 +116,6 @@
   };
 
   __bootstrap.denoNsUnstable = {
-    emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
@@ -126,7 +125,6 @@
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
     getUid: __bootstrap.os.getUid,
-    formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     sleepSync: __bootstrap.timers.sleepSync,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
