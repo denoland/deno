@@ -1,5 +1,5 @@
-// signal that we started...
-console.log("started");
+// output the pid so we can check which process to kill
+console.log(Deno.pid);
 
 // now loop forever
 while (true) {

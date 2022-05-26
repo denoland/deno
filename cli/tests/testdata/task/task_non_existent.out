@@ -14,4 +14,4 @@ Available tasks:
 - strings
     deno run main.ts && deno eval "console.log(\"test\")"
 - wait_exit
-    temp_deno_task_wait_exit run -A --quiet wait_exit.js
+    deno run -A --quiet wait_exit.js

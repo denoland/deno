@@ -1,13 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::io::Read;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
 
 use test_util::deno_exe_path;
 use test_util::testdata_path;
-use test_util::TempDir;
 
 use crate::itest;
 
@@ -103,51 +103,41 @@ itest!(task_piped_stdin {
 
 #[test]
 fn task_subprocess_kill() {
-  let t = TempDir::new();
-  let mut new_deno_exe_path = t.path().join("temp_deno_task_wait_exit");
-  if cfg!(windows) {
-    new_deno_exe_path.set_extension("exe");
-  }
-  std::fs::copy(deno_exe_path(), new_deno_exe_path).unwrap();
-
-  kill_processes_with_name("temp_deno_task_wait_exit");
-
   let mut child = Command::new(deno_exe_path())
-    .env("PATH", t.path().to_string_lossy().to_string())
     .args(["task", "--quiet", "wait_exit"])
     .current_dir(testdata_path().join("task"))
     .stdout(Stdio::piped())
     .spawn()
     .unwrap();
 
-  // give task some time to start up
-  let mut stdout = child.stdout.take().unwrap();
-  let mut buf = [0; 7];
-  stdout.read_exact(&mut buf).unwrap();
-  assert_eq!(std::str::from_utf8(&buf).unwrap(), "started");
+  // give task some time to start up and get its pid
+  let stdout = child.stdout.take().unwrap();
+  let mut buf_reader = BufReader::new(stdout);
+  let mut pid_string = String::new();
+  buf_reader.read_line(&mut pid_string).unwrap();
+  let pid = pid_string.trim().parse::<u32>().unwrap();
 
   // now kill it
   child.kill().unwrap();
 
   // now wait a bit and ensure the child process was killed
   std::thread::sleep(Duration::from_millis(10));
-  assert!(!kill_processes_with_name("temp_deno_task_wait_exit"));
+  assert!(!kill_process(pid));
 }
 
 #[cfg(windows)]
-fn kill_processes_with_name(name: &str) -> bool {
-  let name = format!("{}.exe", name);
+fn kill_processes(pid: u32) -> bool {
   Command::new("taskkill")
-    .args(["/f", "/t", "/im", &name])
+    .args(["/f", "/t", "/pid", pid.to_string()])
     .status()
     .unwrap()
     .success()
 }
 
 #[cfg(not(windows))]
-fn kill_processes_with_name(name: &str) -> bool {
-  Command::new("pkill")
-    .args([name])
+fn kill_process(pid: u32) -> bool {
+  Command::new("kill")
+    .args([pid.to_string()])
     .status()
     .unwrap()
     .success()
