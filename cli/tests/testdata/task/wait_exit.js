@@ -1,4 +1,4 @@
-// output the pid so we can check which process to kill
+// output the pid so we can check if this process is still running
 console.log(Deno.pid);
 
 // now loop forever
