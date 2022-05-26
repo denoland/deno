@@ -120,6 +120,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "cache",
       "--reload",
+      "--unstable",
       "test_util/std/examples/chat/server_test.ts",
     ],
     None,
@@ -130,13 +131,18 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "cache",
       "--reload",
       "--no-check",
+      "--unstable",
       "test_util/std/examples/chat/server_test.ts",
     ],
     None,
   ),
   (
     "bundle",
-    &["bundle", "test_util/std/examples/chat/server_test.ts"],
+    &[
+      "bundle",
+      "--unstable",
+      "test_util/std/examples/chat/server_test.ts",
+    ],
     None,
   ),
   (
@@ -144,6 +150,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "bundle",
       "--no-check",
+      "--unstable",
       "test_util/std/examples/chat/server_test.ts",
     ],
     None,

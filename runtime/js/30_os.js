@@ -8,6 +8,8 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
 
+  const windowDispatchEvent = window.dispatchEvent.bind(window);
+
   function loadavg() {
     return core.opSync("op_loadavg");
   }
@@ -51,7 +53,7 @@
     if (!window[SymbolFor("isUnloadDispatched")]) {
       // Invokes the `unload` hooks before exiting
       // ref: https://github.com/denoland/deno/issues/3603
-      window.dispatchEvent(new Event("unload"));
+      windowDispatchEvent(new Event("unload"));
     }
 
     if (exitHandler) {

@@ -1060,8 +1060,8 @@ declare namespace Deno {
 
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<SpawnOutput<T>>;
-    /** Kills the process with given Signal. */
-    kill(signo: Signal): void;
+    /** Kills the process with given Signal. Defaults to SIGTERM. */
+    kill(signo?: Signal): void;
   }
 
   /**
@@ -1117,7 +1117,7 @@ declare namespace Deno {
     | {
       success: false;
       code: number;
-      signal: string | null;
+      signal: Signal | null;
     };
 
   export interface SpawnOutput<T extends SpawnOptions> {

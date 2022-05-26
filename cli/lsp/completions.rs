@@ -97,13 +97,15 @@ fn to_narrow_lsp_range(
   text_info: &SourceTextInfo,
   range: &deno_graph::Range,
 ) -> lsp::Range {
-  let end_byte_index = text_info.byte_index(LineAndColumnIndex {
-    line_index: range.end.line,
-    column_index: range.end.character,
-  });
+  let end_byte_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
+      line_index: range.end.line,
+      column_index: range.end.character,
+    })
+    .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
   let has_trailing_quote =
-    matches!(text_bytes[end_byte_index.0 as usize - 1], b'"' | b'\'');
+    matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -577,7 +579,6 @@ mod tests {
   use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_documents(
@@ -593,7 +594,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     let http_cache = HttpCache::new(location);

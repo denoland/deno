@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::analysis::source_range_to_lsp_range;
 use super::config::Config;
 use super::config::WorkspaceSettings;
 use super::language_server;
@@ -8,10 +9,11 @@ use super::tsc;
 use super::tsc::NavigationTree;
 
 use deno_ast::swc::ast;
-use deno_ast::swc::common::Span;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::ParsedSource;
+use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -48,21 +50,6 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
-fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp::Range {
-  let start = parsed_source.source().line_and_column_index(span.lo);
-  let end = parsed_source.source().line_and_column_index(span.hi);
-  lsp::Range {
-    start: lsp::Position {
-      line: start.line_index as u32,
-      character: start.column_index as u32,
-    },
-    end: lsp::Position {
-      line: end.line_index as u32,
-      character: end.column_index as u32,
-    },
-  }
-}
-
 struct DenoTestCollector {
   code_lenses: Vec<lsp::CodeLens>,
   parsed_source: ParsedSource,
@@ -80,8 +67,9 @@ impl DenoTestCollector {
     }
   }
 
-  fn add_code_lenses<N: AsRef<str>>(&mut self, name: N, span: &Span) {
-    let range = span_to_range(span, &self.parsed_source);
+  fn add_code_lenses<N: AsRef<str>>(&mut self, name: N, range: &SourceRange) {
+    let range =
+      source_range_to_lsp_range(range, self.parsed_source.text_info());
     self.add_code_lens(&name, range, "▶\u{fe0e} Run Test", false);
     self.add_code_lens(&name, range, "Debug", true);
   }
@@ -111,7 +99,7 @@ impl DenoTestCollector {
     });
   }
 
-  fn check_call_expr(&mut self, node: &ast::CallExpr, span: &Span) {
+  fn check_call_expr(&mut self, node: &ast::CallExpr, range: &SourceRange) {
     if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
       match expr {
         ast::Expr::Object(obj_lit) => {
@@ -126,7 +114,7 @@ impl DenoTestCollector {
                       key_value_prop.value.as_ref()
                     {
                       let name = lit_str.value.to_string();
-                      self.add_code_lenses(name, span);
+                      self.add_code_lenses(name, range);
                     }
                   }
                 }
@@ -137,12 +125,12 @@ impl DenoTestCollector {
         ast::Expr::Fn(fn_expr) => {
           if let Some(ast::Ident { sym, .. }) = fn_expr.ident.as_ref() {
             let name = sym.to_string();
-            self.add_code_lenses(name, span);
+            self.add_code_lenses(name, range);
           }
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
           let name = lit_str.value.to_string();
-          self.add_code_lenses(name, span);
+          self.add_code_lenses(name, range);
         }
         _ => (),
       }
@@ -161,7 +149,7 @@ impl Visit for DenoTestCollector {
       match callee_expr.as_ref() {
         ast::Expr::Ident(ident) => {
           if self.test_vars.contains(&ident.sym.to_string()) {
-            self.check_call_expr(node, &ident.span);
+            self.check_call_expr(node, &ident.range());
           }
         }
         ast::Expr::Member(member_expr) => {
@@ -169,7 +157,7 @@ impl Visit for DenoTestCollector {
             if ns_prop_ident.sym.to_string() == "test" {
               if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
                 if ident.sym.to_string() == "Deno" {
-                  self.check_call_expr(node, &ns_prop_ident.span);
+                  self.check_call_expr(node, &ns_prop_ident.range());
                 }
               }
             }
@@ -557,8 +545,7 @@ mod tests {
   #[test]
   fn test_deno_test_collector() {
     let specifier = resolve_url("https://deno.land/x/mod.ts").unwrap();
-    let source = Arc::new(
-      r#"
+    let source = r#"
       Deno.test({
         name: "test a",
         fn() {}
@@ -567,12 +554,10 @@ mod tests {
       Deno.test(function useFnName() {});
 
       Deno.test("test b", function anotherTest() {});
-    "#
-      .to_string(),
-    );
+    "#;
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.to_string(),
-      source: SourceTextInfo::new(source),
+      text_info: SourceTextInfo::new(source.into()),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: true,

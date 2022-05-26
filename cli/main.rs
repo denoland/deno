@@ -636,7 +636,7 @@ async fn eval_command(
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::Unknown,
-    source: Arc::new(String::from_utf8(source_code)?),
+    source: String::from_utf8(source_code)?.into(),
     specifier: main_module.clone(),
     maybe_headers: None,
   };
@@ -974,7 +974,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: Arc::new(String::from_utf8(source)?),
+    source: String::from_utf8(source)?.into(),
     specifier: main_module.clone(),
     maybe_headers: None,
   };
