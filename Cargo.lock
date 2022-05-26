@@ -2304,9 +2304,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.124"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21a41fed9d98f27ab1c6d161da622a4fa35e8a54a8adc24bbf3ddd0ef70b0e50"
+checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 
 [[package]]
 name = "libffi"
@@ -4997,9 +4997,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.42.1"
+version = "0.43.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "854740dcc66681c3e10d15a1ebe1e0dfed77a7e2e58b97913dd3a111cf4cdb5f"
+checksum = "1c87ec36fec9ea2cd5a368ae9d0a662a7c5e8caa8768ec1fcc02bea623681b98"
 dependencies = [
  "bitflags",
  "fslock",
