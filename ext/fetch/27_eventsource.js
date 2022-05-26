@@ -195,7 +195,14 @@
           this[_url],
           [
             ["accept", "text/event-stream"],
-            ...(lastEventIDValue ? [["last-event-id", String.fromCharCode(...new TextEncoder().encode(lastEventIDValue))]] : []),
+            ...(lastEventIDValue
+              ? [[
+                "last-event-id",
+                String.fromCharCode(
+                  ...new TextEncoder().encode(lastEventIDValue),
+                ),
+              ]]
+              : []),
           ],
           null,
           false,
@@ -252,7 +259,10 @@
               .pipeThrough(new TextLineStream())
           ) {
             if (chunk === "") {
-              console.error("inner event id replaced with:", JSON.stringify(lastEventID));
+              console.error(
+                "inner event id replaced with:",
+                JSON.stringify(lastEventID),
+              );
               this[_lastEventID] = lastEventID;
               if (data === "") {
                 eventType = "";
@@ -324,9 +334,7 @@
           }
           this[_readyState] = CONNECTING;
           this.dispatchEvent(new Event("error"));
-          await new Promise((res) =>
-            setTimeout(res, this[_reconnectionTime])
-          );
+          await new Promise((res) => setTimeout(res, this[_reconnectionTime]));
           if (this[_readyState] !== CONNECTING) {
             continue;
           }
@@ -335,7 +343,6 @@
           if (this[_lastEventID] !== "") {
             lastEventIDValue = this[_lastEventID];
           }
-
         }
       }
     }
