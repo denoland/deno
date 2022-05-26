@@ -4,16 +4,56 @@
 ((window) => {
   const core = window.Deno.core;
   const { FsFile } = window.__bootstrap.files;
-  const { readAll } = window.__bootstrap.io;
   const { pathFromURL } = window.__bootstrap.util;
   const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
+    ArrayPrototypePush,
     ArrayPrototypeSlice,
     TypeError,
     ObjectEntries,
     String,
+    Uint8Array,
+    TypedArrayPrototypeSet,
   } = window.__bootstrap.primordials;
+
+  function readAll(r) {
+    return readAllInner(r);
+  }
+  async function readAllInner(r, options) {
+    const buffers = [];
+    const signal = options?.signal ?? null;
+    while (true) {
+      signal?.throwIfAborted();
+      const buf = new Uint8Array(READ_PER_ITER);
+      const read = await r.read(buf);
+      if (typeof read == "number") {
+        ArrayPrototypePush(buffers, new Uint8Array(buf.buffer, 0, read));
+      } else {
+        break;
+      }
+    }
+    signal?.throwIfAborted();
+
+    return concatBuffers(buffers);
+  }
+
+  function concatBuffers(buffers) {
+    let totalLen = 0;
+    for (const buf of buffers) {
+      totalLen += buf.byteLength;
+    }
+
+    const contents = new Uint8Array(totalLen);
+
+    let n = 0;
+    for (const buf of buffers) {
+      TypedArrayPrototypeSet(contents, buf, n);
+      n += buf.byteLength;
+    }
+
+    return contents;
+  }
 
   function opKill(pid, signo) {
     core.opSync("op_kill", pid, signo);
