@@ -9,14 +9,17 @@ https://github.com/denoland/deno_install
 ### 1.23.0 / 2022.05.27
 
 - fix(bench): update typo in bench summary (#14672)
-- fix(cli/dts): change `ChildStatus.signal` from `string` to `Deno.Signal` (#14690)
+- fix(cli/dts): change `ChildStatus.signal` from `string` to `Deno.Signal`
+  (#14690)
 - fix(core): op metrics op_names mismatch (#14716)
 - fix(core): rethrow exception during structured cloning serialization (#14671)
-- fix(coverage): do not report transpiled files with no lines  (#14699)
+- fix(coverage): do not report transpiled files with no lines (#14699)
 - fix(ext/websocket): WebSocket dispatch single close event (#13443)
-- fix(fmt): prevent infinite loop when formatting certain binary expressions (#14725)
+- fix(fmt): prevent infinite loop when formatting certain binary expressions
+  (#14725)
 - fix(runtime): improve permission descriptor validation (#14676)
-- fix(vendor): handle relative imports when mapped local folder name differs from remote's (#14465)
+- fix(vendor): handle relative imports when mapped local folder name differs
+  from remote's (#14465)
 - fix: deno task should actually use current exe for `deno` command (#14705)
 - fix: prevent Deno.exit to fail when dispatchEvent tampered (#14665)
 - fix: read raw stdin to prevent buffering (regression) (#14704)
