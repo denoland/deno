@@ -168,7 +168,6 @@ fn create_web_worker_callback(
       root_cert_store: ps.root_cert_store.clone(),
       seed: ps.flags.seed,
       module_loader,
-      startup_snapshot: None,
       create_web_worker_cb,
       preload_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
@@ -277,7 +276,6 @@ pub fn create_main_worker(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    startup_snapshot: None
   };
 
   MainWorker::bootstrap_from_options(main_module, permissions, options)
