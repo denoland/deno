@@ -433,7 +433,9 @@ impl JsRuntime {
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
     // Init callbacks (opresolve)
-    js_runtime.init_cbs();
+    if !options.will_snapshot {
+      js_runtime.init_cbs();
+    }
 
     js_runtime
   }
@@ -2388,6 +2390,43 @@ pub mod tests {
     });
     runtime2
       .execute_script("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
+  }
+
+  #[test]
+  fn will_snapshot2() {
+    let snapshot = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime.execute_script("a.js", "a = 1 + 2").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let snapshot2 = {
+      let mut runtime2 = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        startup_snapshot: Some(snapshot),
+        ..Default::default()
+      });
+      runtime2
+        .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+        .unwrap();
+      runtime2.execute_script("b.js", "b = 2 + 3").unwrap();
+      runtime2.snapshot()
+    };
+    let snapshot2 = Snapshot::JustCreated(snapshot2);
+    let mut runtime3 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot2),
+      ..Default::default()
+    });
+    runtime3
+      .execute_script("check_b.js", "if (b != 5) throw Error('x')")
+      .unwrap();
+    runtime3
+      .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
       .unwrap();
   }
 
