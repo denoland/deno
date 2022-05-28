@@ -924,7 +924,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.1.1"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d43a724dec6898f53984acc966d4ccf24d4d4c0a568db8e4429055166e3c86d"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
