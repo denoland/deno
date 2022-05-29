@@ -207,7 +207,7 @@ Deno.test(
         Deno.kill(-1, "SIGINT");
       },
       TypeError,
-      "Invalid process id (pid).",
+      "Process id (pid) cannot be negative or zero on Windows.",
     );
   },
 );

@@ -314,7 +314,9 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::winnt::PROCESS_TERMINATE;
 
   if pid <= 0 {
-    return Err(type_error("Invalid process id (pid)."));
+    return Err(type_error(
+      "Process id (pid) cannot be negative or zero on Windows.",
+    ));
   }
 
   if matches!(signal, "SIGINT" | "SIGBREAK") {
