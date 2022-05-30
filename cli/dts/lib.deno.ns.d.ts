@@ -2432,7 +2432,7 @@ declare namespace Deno {
    *
    * ```ts
    * const p = Deno.run({
-   *   cmd: ["echo", "hello"], // Use ["pwsh", "-c", "echo", "hello"] on Windows.
+   *  cmd: ["curl", "https://example.com"],
    * });
    * const status = await p.status();
    * ```
