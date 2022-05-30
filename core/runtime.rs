@@ -342,11 +342,18 @@ impl JsRuntime {
       );
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
+      // Setup default (empty) context, if one doesn't yet exist
+      {
+        let scope = &mut v8::HandleScope::new(&mut isolate);
+        let context = v8::Context::new(scope);
+        creator.set_default_context(context);
+      }
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope, &op_ctxs, false);
+        let index = creator.add_context(context);
+        assert_eq!(index, 0);
         global_context = v8::Global::new(scope, context);
-        creator.set_default_context(context);
       }
       (isolate, Some(creator))
     } else {
@@ -713,7 +720,8 @@ impl JsRuntime {
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap();
     self.has_snapshotted = true;
-
+    eprintln!("did a snapshot!");
+    
     snapshot
   }
 
@@ -2395,39 +2403,52 @@ pub mod tests {
 
   #[test]
   fn will_snapshot2() {
-    let snapshot = {
+    let startup_data = {
       let mut runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
-      runtime.snapshot()
+      let s = runtime.snapshot();
+      eprintln!("did snap {}", runtime.has_snapshotted);
+      s
+    };
+    
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      will_snapshot: true,
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+
+    let startup_data = {
+      
+      // runtime
+      //   .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+      //   .unwrap();
+      runtime.execute_script("b.js", "b = 2 + 3").unwrap();
+      let s = runtime.snapshot();
+      eprintln!("did snap {}", runtime.has_snapshotted);
+      eprintln!("snapshot {:?}", s);
+      s
     };
 
-    let snapshot = Snapshot::JustCreated(snapshot);
-    let snapshot2 = {
-      let mut runtime2 = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
+    // std::thread::sleep(std::time::Duration::from_millis(5000));
+    // drop(runtime);
+    let snapshot = Snapshot::JustCreated(startup_data);    
+    {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
         startup_snapshot: Some(snapshot),
         ..Default::default()
       });
-      runtime2
-        .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+      runtime
+        .execute_script("check_b.js", "if (b != 5) throw Error('x')")
         .unwrap();
-      runtime2.execute_script("b.js", "b = 2 + 3").unwrap();
-      runtime2.snapshot()
-    };
-    let snapshot2 = Snapshot::JustCreated(snapshot2);
-    let mut runtime3 = JsRuntime::new(RuntimeOptions {
-      startup_snapshot: Some(snapshot2),
-      ..Default::default()
-    });
-    runtime3
-      .execute_script("check_b.js", "if (b != 5) throw Error('x')")
-      .unwrap();
-    runtime3
-      .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
-      .unwrap();
+      // runtime
+      //   .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
+      //   .unwrap();
+    }
   }
 
   #[test]
