@@ -758,7 +758,7 @@ fn bundle_module_graph(
   graph: &deno_graph::ModuleGraph,
   ps: &ProcState,
   flags: &Flags,
-) -> Result<(String, Option<String>), AnyError> {
+) -> Result<deno_emit::BundleEmit, AnyError> {
   info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
 
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
@@ -772,11 +772,11 @@ fn bundle_module_graph(
     }
   }
 
-  emit::bundle(
+  deno_emit::bundle_graph(
     graph,
-    emit::BundleOptions {
-      bundle_type: emit::BundleType::Module,
-      ts_config,
+    deno_emit::BundleOptions {
+      bundle_type: deno_emit::BundleType::Module,
+      emit_options: ts_config.into(),
       emit_ignore_directives: true,
     },
   )
@@ -836,12 +836,11 @@ async fn bundle_command(
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let out_file = bundle_flags.out_file.clone();
     async move {
-      let (bundle_emit, maybe_bundle_map) =
-        bundle_module_graph(graph.as_ref(), &ps, &ps.flags)?;
+      let bundle_output = bundle_module_graph(graph.as_ref(), &ps, &ps.flags)?;
       debug!(">>>>> bundle END");
 
       if let Some(out_file) = out_file.as_ref() {
-        let output_bytes = bundle_emit.as_bytes();
+        let output_bytes = bundle_output.code.as_bytes();
         let output_len = output_bytes.len();
         fs_util::write_file(out_file, output_bytes, 0o644)?;
         info!(
@@ -850,7 +849,7 @@ async fn bundle_command(
           out_file,
           colors::gray(display::human_size(output_len as f64))
         );
-        if let Some(bundle_map) = maybe_bundle_map {
+        if let Some(bundle_map) = bundle_output.maybe_map {
           let map_bytes = bundle_map.as_bytes();
           let map_len = map_bytes.len();
           let ext = if let Some(curr_ext) = out_file.extension() {
@@ -868,7 +867,7 @@ async fn bundle_command(
           );
         }
       } else {
-        println!("{}", bundle_emit);
+        println!("{}", bundle_output.code);
       }
 
       Ok(())

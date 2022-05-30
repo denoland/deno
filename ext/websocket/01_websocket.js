@@ -29,6 +29,8 @@
     StringPrototypeToLowerCase,
     Symbol,
     SymbolIterator,
+    PromisePrototypeCatch,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -367,16 +369,19 @@
       } else if (this[_readyState] === OPEN) {
         this[_readyState] = CLOSING;
 
-        PromisePrototypeThen(
+        PromisePrototypeCatch(
           core.opAsync("op_ws_close", this[_rid], code, reason),
-          () => {
+          (err) => {
             this[_readyState] = CLOSED;
-            const event = new CloseEvent("close", {
-              wasClean: true,
-              code: code ?? 1005,
-              reason,
+
+            const errorEv = new ErrorEvent("error", {
+              error: err,
+              message: ErrorPrototypeToString(err),
             });
-            this.dispatchEvent(event);
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            this.dispatchEvent(closeEv);
             core.tryClose(this[_rid]);
           },
         );
@@ -384,7 +389,7 @@
     }
 
     async [_eventLoop]() {
-      while (this[_readyState] === OPEN) {
+      while (this[_readyState] !== CLOSED) {
         const { kind, value } = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
@@ -429,8 +434,22 @@
           }
           case "closed":
           case "close": {
+            const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
+
+            if (prevState === OPEN) {
+              try {
+                await core.opAsync(
+                  "op_ws_close",
+                  this[_rid],
+                  value.code,
+                  value.reason,
+                );
+              } catch {
+                // ignore failures
+              }
+            }
 
             const event = new CloseEvent("close", {
               wasClean: true,
@@ -486,6 +505,19 @@
           }, (this[_idleTimeoutDuration] / 2) * 1000);
         }, (this[_idleTimeoutDuration] / 2) * 1000);
       }
+    }
+
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          url: this.url,
+          readyState: this.readyState,
+          extensions: this.extensions,
+          protocol: this.protocol,
+          binaryType: this.binaryType,
+          bufferedAmount: this.bufferedAmount,
+        })
+      }`;
     }
   }
 
