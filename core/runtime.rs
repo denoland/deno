@@ -687,12 +687,19 @@ impl JsRuntime {
     self.inspector.take();
 
     // Overwrite existing ModuleMap to drop v8::Global handles
-    self
+    let module_map = self
+      .v8_isolate()
+      .remove_slot::<Rc<RefCell<ModuleMap>>>()
+      .unwrap();
+    std::mem::take(&mut module_map.borrow_mut().inner);
+    drop(module_map);
+
+    assert!(self
       .v8_isolate()
       .set_slot(Rc::new(RefCell::new(ModuleMap::new(
         Rc::new(NoopModuleLoader),
         state.borrow().op_state.clone(),
-      ))));
+      )))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
 

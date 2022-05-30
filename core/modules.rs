@@ -753,6 +753,7 @@ pub(crate) enum ModuleError {
 
 // TODO(bartlomieju): should implement `Serialize`/`Deserialize`, so
 // we can run it through `serde_v8` and embed in a v8 snapshot
+#[derive(Default)]
 pub(crate) struct ModuleMapInner {
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
@@ -764,7 +765,7 @@ pub(crate) struct ModuleMapInner {
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
-  inner: ModuleMapInner,
+  pub(crate) inner: ModuleMapInner,
 
   next_load_id: ModuleLoadId,
   // Handling of futures for loading module sources
@@ -943,7 +944,8 @@ impl ModuleMap {
     }
 
     if main {
-      let maybe_main_module = self.inner.info.values().find(|module| module.main);
+      let maybe_main_module =
+        self.inner.info.values().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
         return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
@@ -1030,7 +1032,10 @@ impl ModuleMap {
     name: &str,
     asserted_module_type: AssertedModuleType,
   ) -> bool {
-    let cond = self.inner.by_name.get(&(name.to_string(), asserted_module_type));
+    let cond = self
+      .inner
+      .by_name
+      .get(&(name.to_string(), asserted_module_type));
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
