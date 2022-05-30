@@ -748,6 +748,7 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_doc",
+ "deno_emit",
  "deno_fetch",
  "deno_graph",
  "deno_lint",
@@ -919,6 +920,20 @@ dependencies = [
  "serde",
  "serde_json",
  "termcolor",
+]
+
+[[package]]
+name = "deno_emit"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d43a724dec6898f53984acc966d4ccf24d4d4c0a568db8e4429055166e3c86d"
+dependencies = [
+ "anyhow",
+ "base64 0.13.0",
+ "deno_ast",
+ "deno_graph",
+ "futures",
+ "parking_lot 0.11.2",
 ]
 
 [[package]]
