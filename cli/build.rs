@@ -156,6 +156,7 @@ fn create_compiler_snapshot(
     "es2022",
     "es2022.array",
     "es2022.error",
+    "es2022.intl",
     "es2022.object",
     "es2022.string",
     "esnext",
