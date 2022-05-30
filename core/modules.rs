@@ -751,16 +751,22 @@ pub(crate) enum ModuleError {
   Other(Error),
 }
 
-/// A collection of JS modules.
-pub(crate) struct ModuleMap {
-  // Handling of specifiers and v8 objects
+// TODO(bartlomieju): should implement `Serialize`/`Deserialize`, so
+// we can run it through `serde_v8` and embed in a v8 snapshot
+pub(crate) struct ModuleMapInner {
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
   next_module_id: ModuleId,
-  next_load_id: ModuleLoadId,
+}
 
+/// A collection of JS modules.
+pub(crate) struct ModuleMap {
+  // Handling of specifiers and v8 objects
+  inner: ModuleMapInner,
+
+  next_load_id: ModuleLoadId,
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
   op_state: Rc<RefCell<OpState>>,
@@ -782,11 +788,13 @@ impl ModuleMap {
     op_state: Rc<RefCell<OpState>>,
   ) -> ModuleMap {
     Self {
-      ids_by_handle: HashMap::new(),
-      handles_by_id: HashMap::new(),
-      info: HashMap::new(),
-      by_name: HashMap::new(),
-      next_module_id: 1,
+      inner: ModuleMapInner {
+        ids_by_handle: HashMap::new(),
+        handles_by_id: HashMap::new(),
+        info: HashMap::new(),
+        by_name: HashMap::new(),
+        next_module_id: 1,
+      },
       next_load_id: 1,
       loader,
       op_state,
@@ -807,6 +815,7 @@ impl ModuleMap {
     let mut mod_name = name;
     loop {
       let symbolic_module = self
+        .inner
         .by_name
         .get(&(mod_name.to_string(), asserted_module_type))?;
       match symbolic_module {
@@ -934,7 +943,7 @@ impl ModuleMap {
     }
 
     if main {
-      let maybe_main_module = self.info.values().find(|module| module.main);
+      let maybe_main_module = self.inner.info.values().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
         return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
@@ -964,15 +973,15 @@ impl ModuleMap {
     main: bool,
     requests: Vec<ModuleRequest>,
   ) -> ModuleId {
-    let id = self.next_module_id;
-    self.next_module_id += 1;
-    self.by_name.insert(
+    let id = self.inner.next_module_id;
+    self.inner.next_module_id += 1;
+    self.inner.by_name.insert(
       (name.to_string(), module_type.into()),
       SymbolicModule::Mod(id),
     );
-    self.handles_by_id.insert(id, handle.clone());
-    self.ids_by_handle.insert(handle, id);
-    self.info.insert(
+    self.inner.handles_by_id.insert(id, handle.clone());
+    self.inner.ids_by_handle.insert(handle, id);
+    self.inner.info.insert(
       id,
       ModuleInfo {
         id,
@@ -987,7 +996,7 @@ impl ModuleMap {
   }
 
   fn get_requested_modules(&self, id: ModuleId) -> Option<&Vec<ModuleRequest>> {
-    self.info.get(&id).map(|i| &i.requests)
+    self.inner.info.get(&id).map(|i| &i.requests)
   }
 
   fn is_registered(
@@ -1009,7 +1018,7 @@ impl ModuleMap {
     asserted_module_type: AssertedModuleType,
     target: &str,
   ) {
-    self.by_name.insert(
+    self.inner.by_name.insert(
       (name.to_string(), asserted_module_type),
       SymbolicModule::Alias(target.to_string()),
     );
@@ -1021,7 +1030,7 @@ impl ModuleMap {
     name: &str,
     asserted_module_type: AssertedModuleType,
   ) -> bool {
-    let cond = self.by_name.get(&(name.to_string(), asserted_module_type));
+    let cond = self.inner.by_name.get(&(name.to_string(), asserted_module_type));
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
@@ -1029,22 +1038,22 @@ impl ModuleMap {
     &self,
     id: ModuleId,
   ) -> Option<v8::Global<v8::Module>> {
-    self.handles_by_id.get(&id).cloned()
+    self.inner.handles_by_id.get(&id).cloned()
   }
 
   pub(crate) fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
-    if let Some(id) = self.ids_by_handle.get(global) {
-      return self.info.get(id);
+    if let Some(id) = self.inner.ids_by_handle.get(global) {
+      return self.inner.info.get(id);
     }
 
     None
   }
 
   pub(crate) fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
-    self.info.get(id)
+    self.inner.info.get(id)
   }
 
   pub(crate) async fn load_main(
