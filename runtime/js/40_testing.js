@@ -4,11 +4,10 @@
 ((window) => {
   const core = window.Deno.core;
   const { setExitHandler } = window.__bootstrap.os;
-  const { Console, inspectArgs } = window.__bootstrap.console;
+  const { Console } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.infra;
   const {
-    AggregateErrorPrototype,
     ArrayFrom,
     ArrayPrototypeFilter,
     ArrayPrototypeJoin,
@@ -537,8 +536,23 @@
     };
   }
 
+  /**
+   * @typedef {{
+   *   id: number,
+   *   name: string,
+   *   fn: BenchFunction
+   *   origin: string,
+   *   filteredOut: boolean,
+   *   ignore: boolean,
+   *   only: boolean.
+   *   sanitizeExit: boolean,
+   *   permissions: PermissionOptions,
+   * }} BenchDescription
+   */
+
   const tests = [];
-  const benches = [];
+  /** @type {BenchDescription[]} */
+  const benchDescs = [];
 
   // Main test function provided by Deno.
   function test(
@@ -655,12 +669,11 @@
     maybeFn,
   ) {
     core.opSync("op_bench_check_unstable");
-    let benchDef;
+    let benchDesc;
     const defaults = {
       ignore: false,
+      baseline: false,
       only: false,
-      sanitizeOps: true,
-      sanitizeResources: true,
       sanitizeExit: true,
       permissions: null,
     };
@@ -670,7 +683,7 @@
         throw new TypeError("The bench name can't be empty");
       }
       if (typeof optionsOrFn === "function") {
-        benchDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+        benchDesc = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
       } else {
         if (!maybeFn || typeof maybeFn !== "function") {
           throw new TypeError("Missing bench function");
@@ -685,7 +698,7 @@
             "Unexpected 'name' field in options, bench name is already provided as the first argument.",
           );
         }
-        benchDef = {
+        benchDesc = {
           ...defaults,
           ...optionsOrFn,
           fn: maybeFn,
@@ -702,7 +715,7 @@
       if (maybeFn != undefined) {
         throw new TypeError("Unexpected third argument to Deno.bench()");
       }
-      benchDef = {
+      benchDesc = {
         ...defaults,
         fn: nameOrFnOrOptions,
         name: nameOrFnOrOptions.name,
@@ -732,28 +745,18 @@
       if (!name) {
         throw new TypeError("The bench name can't be empty");
       }
-      benchDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
+      benchDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
+    benchDesc.origin = getBenchOrigin();
     const AsyncFunction = (async () => {}).constructor;
-    benchDef.async = AsyncFunction === benchDef.fn.constructor;
+    benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
 
-    ArrayPrototypePush(benches, benchDef);
-  }
+    const { id, filteredOut } = core.opSync("op_register_bench", benchDesc);
+    benchDesc.id = id;
+    benchDesc.filteredOut = filteredOut;
 
-  function formatError(error) {
-    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
-      const message = error
-        .errors
-        .map((error) =>
-          inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4))
-        )
-        .join("\n");
-
-      return error.name + "\n" + message + error.stack;
-    }
-
-    return inspectArgs([error]);
+    ArrayPrototypePush(benchDescs, benchDesc);
   }
 
   /**
@@ -848,7 +851,8 @@
     };
   }
 
-  async function benchMeasure(timeBudget, fn, step, sync) {
+  async function benchMeasure(timeBudget, desc) {
+    const fn = desc.fn;
     let n = 0;
     let avg = 0;
     let wavg = 0;
@@ -859,11 +863,10 @@
 
     // warmup step
     let c = 0;
-    step.warmup = true;
     let iterations = 20;
     let budget = 10 * 1e6;
 
-    if (sync) {
+    if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
 
@@ -890,13 +893,11 @@
     wavg /= c;
 
     // measure step
-    step.warmup = false;
-
     if (wavg > lowPrecisionThresholdInNs) {
       let iterations = 10;
       let budget = timeBudget * 1e6;
 
-      if (sync) {
+      if (!desc.async) {
         while (budget > 0 || iterations-- > 0) {
           const t1 = benchNow();
 
@@ -906,7 +907,7 @@
           n++;
           avg += iterationTime;
           budget -= iterationTime;
-          all.push(iterationTime);
+          ArrayPrototypePush(all, iterationTime);
           if (iterationTime < min) min = iterationTime;
           if (iterationTime > max) max = iterationTime;
         }
@@ -920,7 +921,7 @@
           n++;
           avg += iterationTime;
           budget -= iterationTime;
-          all.push(iterationTime);
+          ArrayPrototypePush(all, iterationTime);
           if (iterationTime < min) min = iterationTime;
           if (iterationTime > max) max = iterationTime;
         }
@@ -929,7 +930,7 @@
       let iterations = 10;
       let budget = timeBudget * 1e6;
 
-      if (sync) {
+      if (!desc.async) {
         while (budget > 0 || iterations-- > 0) {
           const t1 = benchNow();
           for (let c = 0; c < lowPrecisionThresholdInNs; c++) fn();
@@ -937,7 +938,7 @@
 
           n++;
           avg += iterationTime;
-          all.push(iterationTime);
+          ArrayPrototypePush(all, iterationTime);
           if (iterationTime < min) min = iterationTime;
           if (iterationTime > max) max = iterationTime;
           budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -962,21 +963,15 @@
     return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
   }
 
-  async function runBench(bench) {
-    const step = new BenchStep({
-      name: bench.name,
-      sanitizeExit: bench.sanitizeExit,
-      warmup: false,
-    });
-
+  async function runBench(desc) {
     let token = null;
 
     try {
-      if (bench.permissions) {
-        token = pledgePermissions(bench.permissions);
+      if (desc.permissions) {
+        token = pledgePermissions(desc.permissions);
       }
 
-      if (bench.sanitizeExit) {
+      if (desc.sanitizeExit) {
         setExitHandler((exitCode) => {
           assert(
             false,
@@ -986,24 +981,31 @@
       }
 
       const benchTimeInMs = 500;
-      const fn = bench.fn.bind(null, step);
-      const stats = await benchMeasure(benchTimeInMs, fn, step, !bench.async);
+      const stats = await benchMeasure(benchTimeInMs, desc);
 
-      return { ok: { stats, ...bench } };
+      return { ok: stats };
     } catch (error) {
-      return { failed: { ...bench, error: formatError(error) } };
+      return { failed: core.destructureError(error) };
     } finally {
       if (bench.sanitizeExit) setExitHandler(null);
       if (token !== null) restorePermissions(token);
     }
   }
 
+  let origin = null;
+
   function getTestOrigin() {
-    return core.opSync("op_get_test_origin");
+    if (origin == null) {
+      origin = core.opSync("op_get_test_origin");
+    }
+    return origin;
   }
 
   function getBenchOrigin() {
-    return core.opSync("op_get_bench_origin");
+    if (origin == null) {
+      origin = core.opSync("op_get_bench_origin");
+    }
+    return origin;
   }
 
   function reportTestPlan(plan) {
@@ -1033,30 +1035,6 @@
   function reportTestStepResult(testDescription, result, elapsed) {
     core.opSync("op_dispatch_test_event", {
       stepResult: [testDescription, result, elapsed],
-    });
-  }
-
-  function reportBenchPlan(plan) {
-    core.opSync("op_dispatch_bench_event", {
-      plan,
-    });
-  }
-
-  function reportBenchConsoleOutput(console) {
-    core.opSync("op_dispatch_bench_event", {
-      output: { console },
-    });
-  }
-
-  function reportBenchWait(description) {
-    core.opSync("op_dispatch_bench_event", {
-      wait: description,
-    });
-  }
-
-  function reportBenchResult(origin, result) {
-    core.opSync("op_dispatch_bench_event", {
-      result: [origin, result],
     });
   }
 
@@ -1120,50 +1098,52 @@
     }
   }
 
-  async function runBenchmarks({
-    filter = null,
-  } = {}) {
+  async function runBenchmarks() {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getBenchOrigin();
     const originalConsole = globalThis.console;
 
-    globalThis.console = new Console(reportBenchConsoleOutput);
+    globalThis.console = new Console((s) => {
+      core.opSync("op_dispatch_bench_event", { output: s });
+    });
 
-    const only = ArrayPrototypeFilter(benches, (bench) => bench.only);
+    const only = ArrayPrototypeFilter(benchDescs, (bench) => bench.only);
     const filtered = ArrayPrototypeFilter(
-      only.length > 0 ? only : benches,
-      createTestFilter(filter),
+      only.length > 0 ? only : benchDescs,
+      (desc) => !desc.filteredOut && !desc.ignore,
     );
 
     let groups = new Set();
-    const benchmarks = ArrayPrototypeFilter(filtered, (bench) => !bench.ignore);
-
     // make sure ungrouped benchmarks are placed above grouped
     groups.add(undefined);
 
-    for (const bench of benchmarks) {
-      bench.group ||= undefined;
-      groups.add(bench.group);
+    for (const desc of filtered) {
+      desc.group ||= undefined;
+      groups.add(desc.group);
     }
 
     groups = ArrayFrom(groups);
     ArrayPrototypeSort(
-      benchmarks,
+      filtered,
       (a, b) => groups.indexOf(a.group) - groups.indexOf(b.group),
     );
 
-    reportBenchPlan({
-      origin,
-      total: benchmarks.length,
-      usedOnly: only.length > 0,
-      names: ArrayPrototypeMap(benchmarks, (bench) => bench.name),
+    core.opSync("op_dispatch_bench_event", {
+      plan: {
+        origin,
+        total: filtered.length,
+        usedOnly: only.length > 0,
+        names: ArrayPrototypeMap(filtered, (desc) => desc.name),
+      },
     });
 
-    for (const bench of benchmarks) {
-      bench.baseline = !!bench.baseline;
-      reportBenchWait({ origin, ...bench });
-      reportBenchResult(origin, await runBench(bench));
+    for (const desc of filtered) {
+      desc.baseline = !!desc.baseline;
+      core.opSync("op_dispatch_bench_event", { wait: desc.id });
+      core.opSync("op_dispatch_bench_event", {
+        result: [desc.id, await runBench(desc)],
+      });
     }
 
     globalThis.console = originalConsole;
@@ -1361,27 +1341,6 @@
         count++;
       }
       return count;
-    }
-  }
-
-  /**
-   * @typedef {{
-   *   name: string;
-   *   sanitizeExit: boolean,
-   *   warmup: boolean,
-   * }} BenchStepParams
-   */
-  class BenchStep {
-    /** @type {BenchStepParams} */
-    #params;
-
-    /** @param params {BenchStepParams} */
-    constructor(params) {
-      this.#params = params;
-    }
-
-    get name() {
-      return this.#params.name;
     }
   }
 
