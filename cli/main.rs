@@ -636,7 +636,7 @@ async fn eval_command(
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::Unknown,
-    source: String::from_utf8(source_code)?.into(),
+    source: String::from_utf8(source_code)?,
     specifier: main_module.clone(),
     maybe_headers: None,
   };
@@ -973,7 +973,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?.into(),
+    source: String::from_utf8(source)?,
     specifier: main_module.clone(),
     maybe_headers: None,
   };

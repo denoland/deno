@@ -181,8 +181,8 @@ impl AssetOrDocument {
 
   pub fn text(&self) -> String {
     match self {
-      AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.0.text_info.text(),
+      AssetOrDocument::Asset(a) => a.text_str().to_string(),
+      AssetOrDocument::Document(d) => d.0.text_info.text_str().to_string(),
     }
   }
 
@@ -352,7 +352,7 @@ impl Document {
         index_valid = IndexValid::UpTo(0);
       }
     }
-    let content: String = content.into();
+    let content: String = content;
     let maybe_module = if self
       .0
       .maybe_language_id
@@ -414,7 +414,7 @@ impl Document {
   }
 
   pub fn content(&self) -> String {
-    self.0.text_info.text()
+    self.0.text_info.text_str().to_string()
   }
 
   pub fn text_info(&self) -> SourceTextInfo {
@@ -666,7 +666,7 @@ impl FileSystemDocuments {
         specifier.clone(),
         fs_version,
         None,
-        content.into(),
+        content,
         maybe_resolver,
       )
     } else {
@@ -682,7 +682,7 @@ impl FileSystemDocuments {
         specifier.clone(),
         fs_version,
         maybe_headers,
-        content.into(),
+        content,
         maybe_resolver,
       )
     };

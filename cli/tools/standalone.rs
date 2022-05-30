@@ -125,7 +125,7 @@ pub async fn create_standalone_binary(
           import_map_specifier
         ))?;
 
-      Some((import_map_specifier, file.source.to_string()))
+      Some((import_map_specifier, file.source))
     }
   };
   let metadata = Metadata {

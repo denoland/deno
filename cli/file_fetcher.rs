@@ -161,7 +161,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     local,
     maybe_types: None,
     media_type,
-    source: source.into(),
+    source,
     specifier: specifier.clone(),
     maybe_headers: None,
   })
@@ -383,7 +383,7 @@ impl FileFetcher {
       local,
       maybe_types,
       media_type,
-      source: source.into(),
+      source,
       specifier: specifier.clone(),
       maybe_headers: Some(headers.clone()),
     })
@@ -469,7 +469,7 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source: source.into(),
+      source,
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
     })
@@ -533,7 +533,7 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source: source.into(),
+      source,
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
     })

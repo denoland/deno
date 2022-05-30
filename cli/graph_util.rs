@@ -19,7 +19,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 /// Matches the `@ts-check` pragma.
 static TS_CHECK_RE: Lazy<Regex> =
@@ -36,7 +35,7 @@ pub fn contains_specifier(
 #[allow(clippy::large_enum_variant)]
 pub enum ModuleEntry {
   Module {
-    code: Arc<str>,
+    code: String,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
     /// Whether or not this is a JS/JSX module with a `@ts-check` directive.

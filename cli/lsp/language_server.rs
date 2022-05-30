@@ -857,7 +857,7 @@ impl Inner {
       specifier.clone(),
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
-      params.text_document.text.into(),
+      params.text_document.text,
     );
 
     self.performance.measure(mark);
@@ -2922,7 +2922,7 @@ impl Inner {
     } else {
       let asset_or_doc = self.get_maybe_asset_or_document(&specifier);
       if let Some(asset_or_doc) = asset_or_doc {
-        Some(asset_or_doc.text().to_string())
+        Some(asset_or_doc.text())
       } else {
         error!("The source was not found: {}", specifier);
         None

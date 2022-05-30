@@ -34,6 +34,7 @@ pub fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
     ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
     ModuleGraphError::InvalidSource(_, _)
     | ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
+    ModuleGraphError::ConflictingAssertions(_) => "TypeError",
     ModuleGraphError::ParseErr(_, diagnostic) => {
       get_diagnostic_class(diagnostic)
     }

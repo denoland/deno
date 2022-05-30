@@ -663,7 +663,7 @@ pub async fn cover_files(
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().to_string(),
+      | MediaType::Json => file.source.to_string(),
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
       MediaType::TypeScript
       | MediaType::Jsx

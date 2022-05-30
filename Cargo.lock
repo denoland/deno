@@ -750,7 +750,7 @@ dependencies = [
  "deno_doc",
  "deno_emit",
  "deno_fetch",
- "deno_graph 0.27.0",
+ "deno_graph",
  "deno_lint",
  "deno_net",
  "deno_runtime",
@@ -814,8 +814,6 @@ dependencies = [
 [[package]]
 name = "deno_ast"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2989afff97ba7da10f186e9a45e946b4ef943b9d4babd2ee7b4b24cc9906b69"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -912,7 +910,7 @@ version = "0.35.0"
 dependencies = [
  "cfg-if",
  "deno_ast",
- "deno_graph 0.27.0",
+ "deno_graph",
  "futures",
  "lazy_static",
  "regex",
@@ -928,7 +926,7 @@ dependencies = [
  "anyhow",
  "base64 0.13.0",
  "deno_ast",
- "deno_graph 0.27.0",
+ "deno_graph",
  "futures",
  "parking_lot 0.11.2",
 ]
@@ -983,28 +981,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_graph"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99110bbe6cc90fc653a6bd51cf56d8545cd210f3da913aab63d7e362ab9dbaa4"
-dependencies = [
- "anyhow",
- "cfg-if",
- "data-url",
- "deno_ast",
- "futures",
- "lazy_static",
- "parking_lot 0.12.0",
- "regex",
- "ring",
- "serde",
- "serde_json",
- "sourcemap",
- "termcolor",
- "url",
-]
-
-[[package]]
 name = "deno_http"
 version = "0.48.0"
 dependencies = [
@@ -1031,8 +1007,6 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a550a14b0b175707c116ab26dd97d96424f238a8c562a719971376d3d75529be"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1333,8 +1307,6 @@ dependencies = [
 [[package]]
 name = "dprint-plugin-typescript"
 version = "0.68.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff59354542a49bd9039b848676cac14a1f83e3e4c891ed5684b5b8f2f5ae2890"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1346,8 +1318,6 @@ dependencies = [
 [[package]]
 name = "dprint-swc-ext"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df529037ff02f1c43ae8c6cce54d9ad85546ff89cb5c1988f56130c16e16a48"
 dependencies = [
  "bumpalo",
  "num-bigint",
@@ -1495,13 +1465,11 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c2a7e3d40eb2f779d30d68f5b3605584d79533d5b314ece9cdbb9c14358cb80"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
  "deno_ast",
- "deno_graph 0.27.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "deno_graph",
  "futures",
  "serde",
  "serde_json",

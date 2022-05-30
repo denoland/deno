@@ -122,7 +122,7 @@ pub async fn print_docs(
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
-      get_types(ps.flags.unstable).into(),
+      get_types(ps.flags.unstable),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -134,7 +134,7 @@ pub async fn print_docs(
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: format!("export * from \"{}\";", module_specifier).into(),
+      source: format!("export * from \"{}\";", module_specifier),
       specifier: root_specifier.clone(),
       maybe_headers: None,
     };

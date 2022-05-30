@@ -171,7 +171,7 @@ pub async fn translate_cjs_to_esm(
 ) -> Result<String, AnyError> {
   let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
     specifier: specifier.to_string(),
-    text_info: deno_ast::SourceTextInfo::new(code.into()),
+    text_info: deno_ast::SourceTextInfo::new(code),
     media_type,
     capture_tokens: true,
     scope_analysis: false,

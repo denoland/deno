@@ -154,7 +154,7 @@ impl TsServer {
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
   specifier: ModuleSpecifier,
-  text: Arc<str>,
+  text: String,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
@@ -189,8 +189,8 @@ impl AssetDocument {
     }))
   }
 
-  pub fn text(&self) -> Arc<str> {
-    self.0.text.clone()
+  pub fn text_str(&self) -> &str {
+    &self.0.text
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {

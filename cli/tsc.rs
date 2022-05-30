@@ -752,7 +752,7 @@ mod tests {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
             maybe_headers: None,
-            content: c.into(),
+            content: c,
           })
         })
         .map_err(|err| err.into());

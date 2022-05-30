@@ -96,7 +96,7 @@ impl Loader for TestLoader {
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
-        content: result.0.clone().into(),
+        content: result.0.clone(),
         maybe_headers: result.1.clone(),
       }),
       Err(err) => Err(err),
