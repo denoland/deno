@@ -81,7 +81,7 @@ impl deno_graph::SourceParser for SourceParser {
   fn parse_module(
     &self,
     specifier: &ModuleSpecifier,
-    source: Arc<str>,
+    source: String,
     media_type: MediaType,
   ) -> Result<deno_ast::ParsedSource, deno_ast::Diagnostic> {
     deno_ast::parse_module(deno_ast::ParseParams {
@@ -179,7 +179,7 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<str> {
+  pub fn text(&self) -> String {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
       AssetOrDocument::Document(d) => d.0.text_info.text(),
@@ -254,7 +254,7 @@ impl Document {
     specifier: ModuleSpecifier,
     fs_version: String,
     maybe_headers: Option<&HashMap<String, String>>,
-    content: Arc<str>,
+    content: String,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
     let parser = SourceParser::default();
@@ -293,7 +293,7 @@ impl Document {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    content: Arc<str>,
+    content: String,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
     let maybe_headers = language_id.as_headers();
@@ -352,7 +352,7 @@ impl Document {
         index_valid = IndexValid::UpTo(0);
       }
     }
-    let content: Arc<str> = content.into();
+    let content: String = content.into();
     let maybe_module = if self
       .0
       .maybe_language_id
@@ -413,7 +413,7 @@ impl Document {
     &self.0.specifier
   }
 
-  pub fn content(&self) -> Arc<str> {
+  pub fn content(&self) -> String {
     self.0.text_info.text()
   }
 
@@ -752,7 +752,7 @@ impl Documents {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    content: Arc<str>,
+    content: String,
   ) -> Document {
     let maybe_resolver = self.get_maybe_resolver();
     let document = Document::open(

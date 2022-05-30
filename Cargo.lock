@@ -750,7 +750,7 @@ dependencies = [
  "deno_doc",
  "deno_emit",
  "deno_fetch",
- "deno_graph",
+ "deno_graph 0.27.0",
  "deno_lint",
  "deno_net",
  "deno_runtime",
@@ -909,12 +909,10 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb498c0dcc46a195f565b19eeef5593a6cdbd387ae1ef278ebf7eca2be55128b"
 dependencies = [
  "cfg-if",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.27.0",
  "futures",
  "lazy_static",
  "regex",
@@ -926,13 +924,11 @@ dependencies = [
 [[package]]
 name = "deno_emit"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d43a724dec6898f53984acc966d4ccf24d4d4c0a568db8e4429055166e3c86d"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.27.0",
  "futures",
  "parking_lot 0.11.2",
 ]
@@ -964,6 +960,26 @@ dependencies = [
  "serde",
  "tokio",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "deno_graph"
+version = "0.27.0"
+dependencies = [
+ "anyhow",
+ "cfg-if",
+ "data-url",
+ "deno_ast",
+ "futures",
+ "lazy_static",
+ "parking_lot 0.12.0",
+ "regex",
+ "ring",
+ "serde",
+ "serde_json",
+ "sourcemap",
+ "termcolor",
+ "url",
 ]
 
 [[package]]
@@ -1485,7 +1501,7 @@ dependencies = [
  "anyhow",
  "base64 0.13.0",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.27.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures",
  "serde",
  "serde_json",
