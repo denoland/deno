@@ -2432,7 +2432,7 @@ declare namespace Deno {
    *
    * ```ts
    * const p = Deno.run({
-   *  cmd: ["curl", "https://example.com"],
+   *   cmd: ["curl", "https://example.com"],
    * });
    * const status = await p.status();
    * ```
