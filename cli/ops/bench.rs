@@ -1,4 +1,6 @@
+use crate::tools::bench::BenchDescription;
 use crate::tools::bench::BenchEvent;
+use crate::tools::test::TestFilter;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -8,22 +10,32 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
+use serde::Deserialize;
+use serde::Serialize;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(sender: UnboundedSender<BenchEvent>, unstable: bool) -> Extension {
+pub fn init(
+  sender: UnboundedSender<BenchEvent>,
+  filter: TestFilter,
+  unstable: bool,
+) -> Extension {
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
       op_restore_test_permissions::decl(),
       op_get_bench_origin::decl(),
+      op_register_bench::decl(),
       op_dispatch_bench_event::decl(),
       op_bench_now::decl(),
       op_bench_check_unstable::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
+      state.put(filter.clone());
       state.put(Unstable(unstable));
       Ok(())
     })
@@ -95,6 +107,44 @@ pub fn op_restore_test_permissions(
 #[op]
 fn op_get_bench_origin(state: &mut OpState) -> String {
   state.borrow::<ModuleSpecifier>().to_string()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BenchInfo {
+  name: String,
+  origin: String,
+  baseline: bool,
+  group: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BenchRegisterResult {
+  id: usize,
+  filtered_out: bool,
+}
+
+static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+#[op]
+fn op_register_bench(
+  state: &mut OpState,
+  info: BenchInfo,
+) -> Result<BenchRegisterResult, AnyError> {
+  let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+  let filter = state.borrow::<TestFilter>().clone();
+  let filtered_out = !filter.includes(&info.name);
+  let description = BenchDescription {
+    id,
+    name: info.name,
+    origin: info.origin,
+    baseline: info.baseline,
+    group: info.group,
+  };
+  let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
+  sender.send(BenchEvent::Register(description)).ok();
+  Ok(BenchRegisterResult { id, filtered_out })
 }
 
 #[op]
