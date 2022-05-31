@@ -46,6 +46,8 @@ use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
+use serde_repr::Deserialize_repr;
+use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1872,7 +1874,8 @@ impl CompletionEntryDetails {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize_repr, Serialize_repr)]
+#[repr(u32)]
 pub enum CompletionInfoFlags {
   None = 0,
   MayIncludeAutoImports = 1,
