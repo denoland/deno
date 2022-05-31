@@ -13,6 +13,8 @@ use futures::stream::Stream;
 use futures::stream::StreamFuture;
 use futures::stream::TryStreamExt;
 use log::debug;
+use serde::Deserialize;
+use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -158,7 +160,7 @@ fn json_module_evaluation_steps<'a>(
 /// how to interpret the module; it is only used to validate
 /// the module against an import assertion (if one is present
 /// in the import statement).
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 pub enum ModuleType {
   JavaScript,
   Json,
@@ -691,7 +693,7 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 pub(crate) enum AssertedModuleType {
   JavaScriptOrWasm,
   Json,
@@ -719,12 +721,13 @@ impl std::fmt::Display for AssertedModuleType {
 /// Usually executable (`JavaScriptOrWasm`) is used, except when an
 /// import assertions explicitly constrains an import to JSON, in
 /// which case this will have a `AssertedModuleType::Json`.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
   pub asserted_module_type: AssertedModuleType,
 }
 
+#[derive(Deserialize, Serialize)]
 pub(crate) struct ModuleInfo {
   #[allow(unused)]
   pub id: ModuleId,
@@ -736,6 +739,7 @@ pub(crate) struct ModuleInfo {
 }
 
 /// A symbolic module entity.
+#[derive(Deserialize, Serialize)]
 enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
@@ -753,7 +757,7 @@ pub(crate) enum ModuleError {
 
 // TODO(bartlomieju): should implement `Serialize`/`Deserialize`, so
 // we can run it through `serde_v8` and embed in a v8 snapshot
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub(crate) struct ModuleMapInner {
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
