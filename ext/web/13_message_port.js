@@ -265,18 +265,15 @@
       WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
     }
 
-    let serializedData;
-    try {
-      serializedData = core.serialize(data, {
-        hostObjects: ArrayPrototypeFilter(
-          transferables,
-          (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
-        ),
-        transferedArrayBuffers,
-      });
-    } catch (err) {
-      throw new DOMException(err.message, "DataCloneError");
-    }
+    const serializedData = core.serialize(data, {
+      hostObjects: ArrayPrototypeFilter(
+        transferables,
+        (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
+      ),
+      transferedArrayBuffers,
+    }, (err) => {
+      throw new DOMException(err, "DataCloneError");
+    });
 
     /** @type {globalThis.__bootstrap.messagePort.Transferable[]} */
     const serializedTransferables = [];
