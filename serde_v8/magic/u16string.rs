@@ -11,10 +11,17 @@ impl ToV8 for U16String {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
-    let v =
-      v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal)
-        .unwrap();
-    Ok(v.into())
+    let maybe_v =
+      v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal);
+
+    // 'new_from_two_byte' can return 'None' if buffer length > kMaxLength.
+    if let Some(v) = maybe_v {
+      Ok(v.into())
+    } else {
+      Err(Error::Message(String::from(
+        "Cannot allocate String from UTF-16: buffer exceeds maximum length.",
+      )))
+    }
   }
 }
 

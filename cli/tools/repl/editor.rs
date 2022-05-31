@@ -179,7 +179,7 @@ impl Completer for EditorHelper {
     if !lsp_completions.is_empty() {
       // assumes all lsp completions have the same start position
       return Ok((
-        lsp_completions[0].span.lo.0 as usize,
+        lsp_completions[0].range.start,
         lsp_completions.into_iter().map(|c| c.new_text).collect(),
       ));
     }
@@ -302,43 +302,40 @@ impl Highlighter for EditorHelper {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
-      let span = std::ops::Range {
-        start: item.span.lo.0 as usize,
-        end: item.span.hi.0 as usize,
-      };
+      let range = item.range;
 
       out_line.replace_range(
-        span.start + offset..span.end + offset,
+        range.start + offset..range.end + offset,
         &match item.inner {
           deno_ast::TokenOrComment::Token(token) => match token {
             Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
-              colors::green(&line[span]).to_string()
+              colors::green(&line[range]).to_string()
             }
-            Token::Regex(_, _) => colors::red(&line[span]).to_string(),
+            Token::Regex(_, _) => colors::red(&line[range]).to_string(),
             Token::Num { .. } | Token::BigInt { .. } => {
-              colors::yellow(&line[span]).to_string()
+              colors::yellow(&line[range]).to_string()
             }
             Token::Word(word) => match word {
               Word::True | Word::False | Word::Null => {
-                colors::yellow(&line[span]).to_string()
+                colors::yellow(&line[range]).to_string()
               }
-              Word::Keyword(_) => colors::cyan(&line[span]).to_string(),
+              Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
               Word::Ident(ident) => {
                 if ident == *"undefined" {
-                  colors::gray(&line[span]).to_string()
+                  colors::gray(&line[range]).to_string()
                 } else if ident == *"Infinity" || ident == *"NaN" {
-                  colors::yellow(&line[span]).to_string()
+                  colors::yellow(&line[range]).to_string()
                 } else if ident == *"async" || ident == *"of" {
-                  colors::cyan(&line[span]).to_string()
+                  colors::cyan(&line[range]).to_string()
                 } else {
-                  line[span].to_string()
+                  line[range].to_string()
                 }
               }
             },
-            _ => line[span].to_string(),
+            _ => line[range].to_string(),
           },
           deno_ast::TokenOrComment::Comment { .. } => {
-            colors::gray(&line[span]).to_string()
+            colors::gray(&line[range]).to_string()
           }
         },
       );

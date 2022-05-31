@@ -36,7 +36,7 @@ pub fn contains_specifier(
 #[allow(clippy::large_enum_variant)]
 pub enum ModuleEntry {
   Module {
-    code: Arc<String>,
+    code: Arc<str>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
     /// Whether or not this is a JS/JSX module with a `@ts-check` directive.

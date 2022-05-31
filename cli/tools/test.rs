@@ -29,6 +29,7 @@ use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -74,6 +75,58 @@ pub enum TestMode {
   Executable,
   /// Test as both documentation and an executable module.
   Both,
+}
+
+// TODO(nayeemrmn): This is only used for benches right now.
+#[derive(Clone, Debug, Default)]
+pub struct TestFilter {
+  pub substring: Option<String>,
+  pub regex: Option<Regex>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Vec<String>,
+}
+
+impl TestFilter {
+  pub fn includes(&self, name: &String) -> bool {
+    if let Some(substring) = &self.substring {
+      if !name.contains(substring) {
+        return false;
+      }
+    }
+    if let Some(regex) = &self.regex {
+      if !regex.is_match(name) {
+        return false;
+      }
+    }
+    if let Some(include) = &self.include {
+      if !include.contains(name) {
+        return false;
+      }
+    }
+    if self.exclude.contains(name) {
+      return false;
+    }
+    true
+  }
+
+  pub fn from_flag(flag: &Option<String>) -> Self {
+    let mut substring = None;
+    let mut regex = None;
+    if let Some(flag) = flag {
+      if flag.starts_with('/') && flag.ends_with('/') {
+        let rs = flag.trim_start_matches('/').trim_end_matches('/');
+        regex =
+          Some(Regex::new(rs).unwrap_or_else(|_| Regex::new("$^").unwrap()));
+      } else {
+        substring = Some(flag.clone());
+      }
+    }
+    Self {
+      substring,
+      regex,
+      ..Default::default()
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
@@ -846,7 +899,7 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: Arc::new(file_source),
+        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
       })
@@ -858,12 +911,12 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: Arc<String>,
+  source: Arc<str>,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source: deno_ast::SourceTextInfo::new(source),
+    text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -887,7 +940,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.source().line_index(comment.span.lo),
+        parsed_source.text_info().line_index(comment.start()),
         &blocks_regex,
         &lines_regex,
       )

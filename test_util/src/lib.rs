@@ -1737,6 +1737,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
+  pub env_clear: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1766,6 +1767,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args.iter());
+    if self.env_clear {
+      command.env_clear();
+    }
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
