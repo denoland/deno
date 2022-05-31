@@ -201,13 +201,40 @@ Deno.test(
     ignore: Deno.build.os !== "windows",
     permissions: { run: true },
   },
-  function throwsOnNegativePidTest() {
+  function windowsThrowsOnNegativeProcessIdTest() {
     assertThrows(
       () => {
         Deno.kill(-1, "SIGINT");
       },
       TypeError,
-      "Process id (pid) cannot be negative or zero on Windows.",
+      "Invalid process id (pid) -1 for signal SIGINT.",
+    );
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { run: true },
+  },
+  function noOpenSystemIdleProcessTest() {
+    let signal: Deno.Signal = "SIGKILL";
+
+    assertThrows(
+      () => {
+        Deno.kill(0, signal);
+      },
+      TypeError,
+      `Cannot use ${signal} on PID 0`,
+    );
+
+    signal = "SIGTERM";
+    assertThrows(
+      () => {
+        Deno.kill(0, signal);
+      },
+      TypeError,
+      `Cannot use ${signal} on PID 0`,
     );
   },
 );

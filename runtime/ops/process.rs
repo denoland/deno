@@ -313,10 +313,11 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::wincon::CTRL_C_EVENT;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if pid <= 0 {
-    return Err(type_error(
-      "Process id (pid) cannot be negative or zero on Windows.",
-    ));
+  if pid < 0 {
+    return Err(type_error(format!(
+      "Invalid process id (pid) {} for signal {}.",
+      pid, signal
+    )));
   }
 
   if matches!(signal, "SIGINT" | "SIGBREAK") {
@@ -330,7 +331,6 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
         pid as u32,
       )
     };
-
     match is_generated {
       FALSE => {
         Err(Error::from_raw_os_error(unsafe { GetLastError() } as i32).into())
@@ -339,6 +339,11 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
       _ => unreachable!(),
     }
   } else if matches!(signal, "SIGKILL" | "SIGTERM") {
+    // PID 0 = System Idle Process and can't be opened.
+    if pid == 0 {
+      return Err(type_error(format!("Cannot use {} on PID 0", signal)));
+    }
+
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as u32) };
 
     if handle.is_null() {
