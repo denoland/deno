@@ -2429,13 +2429,14 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
+  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
    * const p = Deno.run({
-   *   cmd: ["echo", "hello"],
+   *   cmd: ["curl", "https://example.com"],
    * });
+   * const status = await p.status();
    * ```
    *
    * Subprocess uses same working directory as parent process unless `opt.cwd`
