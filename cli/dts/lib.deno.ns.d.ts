@@ -621,8 +621,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use iter() from https://deno.land/std/io/util.ts to turn a Reader into an
-     * AsyncIterator.
+     * Use `itereateReader` from from https://deno.land/std/streams/conversion.ts to
+     * turn a Reader into an AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
@@ -646,8 +646,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use iterSync() from https://deno.land/std/io/util.ts to turn a ReaderSync
-     * into an Iterator.
+     * Use `iterateReaderSync()` from from https://deno.land/std/streams/conversion.ts
+     * to turn a ReaderSync into an Iterator.
      */
     readSync(p: Uint8Array): number | null;
   }
@@ -883,7 +883,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use Deno.readAllSync() instead.
+   * work with this directly, but rather use
+   * `readAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -907,7 +908,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use Deno.readAll() instead.
+   * work with this directly, but rather use
+   * `readAll()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -946,7 +948,7 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAll() instead.
+   * `writeAll()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -2427,13 +2429,14 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
+  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
    * const p = Deno.run({
-   *   cmd: ["echo", "hello"],
+   *   cmd: ["curl", "https://example.com"],
    * });
+   * const status = await p.status();
    * ```
    *
    * Subprocess uses same working directory as parent process unless `opt.cwd`

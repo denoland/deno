@@ -8,10 +8,6 @@ const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
 
-// update the std version used in the code
-console.log("Updating std version...");
-await updateStdVersion();
-
 // increment the cli version
 if (Deno.args.some((a) => a === "--patch")) {
   await cliCrate.increment("patch");
@@ -27,6 +23,10 @@ if (Deno.args.some((a) => a === "--patch")) {
 for (const crate of workspace.getCliDependencyCrates()) {
   await crate.increment("minor");
 }
+
+// update the std version used in the code
+console.log("Updating std version...");
+await updateStdVersion();
 
 // update the lock file
 await workspace.getCliCrate().cargoUpdate("--workspace");
