@@ -2938,8 +2938,8 @@ declare namespace Deno {
   /** Send a signal to process under given `pid`.
    *
    * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`. An error will be thrown if a negative or zero
-   * process id is used on Windows.
+   * identified by `pid`. An error will be thrown if a negative
+   * `pid` is used on Windows.
    *
    * ```ts
    * const p = Deno.run({
