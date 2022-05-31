@@ -217,7 +217,7 @@
   function metrics() {
     const [aggregate, perOps] = opSync("op_metrics");
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      core.op_names,
+      core.opNames(),
       (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;

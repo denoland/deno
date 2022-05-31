@@ -5,21 +5,17 @@ import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   // get the user ID and group ID of the current process
-  const uidProc = Deno.run({
-    stdout: "piped",
-    cmd: ["id", "-u"],
+  const uidProc = await Deno.spawn("id", {
+    args: ["-u"],
   });
-  const gidProc = Deno.run({
-    stdout: "piped",
-    cmd: ["id", "-g"],
+  const gidProc = await Deno.spawn("id", {
+    args: ["-g"],
   });
 
-  assertEquals((await uidProc.status()).code, 0);
-  assertEquals((await gidProc.status()).code, 0);
-  const uid = parseInt(new TextDecoder("utf-8").decode(await uidProc.output()));
-  uidProc.close();
-  const gid = parseInt(new TextDecoder("utf-8").decode(await gidProc.output()));
-  gidProc.close();
+  assertEquals(uidProc.status.code, 0);
+  assertEquals(gidProc.status.code, 0);
+  const uid = parseInt(new TextDecoder("utf-8").decode(uidProc.stdout));
+  const gid = parseInt(new TextDecoder("utf-8").decode(gidProc.stdout));
 
   return { uid, gid };
 }

@@ -90,7 +90,7 @@ jobs:
         if: matrix.job == 'lint'
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.19.3
+          deno-version: v1.x
 
       - name: Install Python
         uses: actions/setup-python@v1

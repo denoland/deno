@@ -115,6 +115,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: apply_source_map.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: op_names.map_fn_to(),
+      },
     ])
   });
 
@@ -175,13 +178,10 @@ pub fn initialize_context<'s>(
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
   if snapshot_loaded {
-    // Grab the Deno.core & Deno.core.ops objects
-    let core_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core")
-      .expect("Deno.core to exist");
+    // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs);
-    initialize_op_names(scope, core_obj, op_ctxs);
     return scope.escape(context);
   }
 
@@ -244,6 +244,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "destructureError", destructure_error);
   set_func(scope, core_val, "terminate", terminate);
   set_func(scope, core_val, "applySourceMap", apply_source_map);
+  set_func(scope, core_val, "opNames", op_names);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -251,7 +252,6 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
   initialize_ops(scope, ops_obj, op_ctxs);
-  initialize_op_names(scope, core_val, op_ctxs);
   scope.escape(context)
 }
 
@@ -264,17 +264,6 @@ fn initialize_ops(
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
     set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
   }
-}
-
-fn initialize_op_names(
-  scope: &mut v8::HandleScope,
-  core_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-) {
-  let names: Vec<&str> = op_ctxs.iter().map(|o| o.decl.name).collect();
-  let k = v8::String::new(scope, "op_names").unwrap().into();
-  let v = serde_v8::to_v8(scope, names).unwrap();
-  core_obj.set(scope, k, v);
 }
 
 pub fn set_func(
@@ -946,6 +935,7 @@ fn decode(
 
 struct SerializeDeserialize<'a> {
   host_objects: Option<v8::Local<'a, v8::Array>>,
+  error_callback: Option<v8::Local<'a, v8::Function>>,
 }
 
 impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
@@ -955,6 +945,15 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     message: v8::Local<'s, v8::String>,
   ) {
+    if let Some(cb) = self.error_callback {
+      let scope = &mut v8::TryCatch::new(scope);
+      let undefined = v8::undefined(scope).into();
+      cb.call(scope, undefined, &[message.into()]);
+      if scope.has_caught() || scope.has_terminated() {
+        scope.rethrow();
+        return;
+      };
+    }
     let error = v8::Exception::type_error(scope, message);
     scope.throw_exception(error);
   }
@@ -1087,6 +1086,17 @@ fn serialize(
       }
     };
 
+  let arg2_to_error_callback = match !args.get(2).is_undefined() {
+    true => match v8::Local::<v8::Function>::try_from(args.get(2)) {
+      Ok(cb) => Some(v8::Local::new(scope, cb)),
+      Err(_) => {
+        throw_type_error(scope, "Invalid argument 3");
+        return;
+      }
+    },
+    false => None,
+  };
+
   let options = options.unwrap_or(SerializeDeserializeOptions {
     host_objects: None,
     transfered_array_buffers: None,
@@ -1114,7 +1124,11 @@ fn serialize(
     None => None,
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects,
+    error_callback: arg2_to_error_callback,
+  });
+
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
 
@@ -1236,7 +1250,10 @@ fn deserialize(
     None => None,
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
+  let serialize_deserialize = Box::new(SerializeDeserialize {
+    host_objects,
+    error_callback: None,
+  });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
 
@@ -1550,4 +1567,15 @@ fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
   }
+}
+
+fn op_names(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  let names: Vec<_> = state.op_ctxs.iter().map(|o| o.decl.name).collect();
+  rv.set(serde_v8::to_v8(scope, names).unwrap());
 }

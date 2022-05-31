@@ -523,6 +523,12 @@ itest!(deno_land_unsafe_ssl {
   output: "deno_land_unsafe_ssl.ts.out",
 });
 
+itest!(ip_address_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 ip_address_unsafe_ssl.ts",
+  output: "ip_address_unsafe_ssl.ts.out",
+});
+
 itest!(localhost_unsafe_ssl {
   args:
     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cafile_url_imports.ts",
@@ -732,10 +738,12 @@ fn websocket_server_multi_field_connection_header() {
     .uri("ws://localhost:4319")
     .body(())
     .unwrap();
-  assert!(
+  let (mut socket, _) =
     deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
-      .is_ok()
-  );
+      .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
+  socket.close(None).unwrap();
   assert!(child.wait().unwrap().success());
 }
 

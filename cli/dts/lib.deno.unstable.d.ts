@@ -317,6 +317,18 @@ declare namespace Deno {
    */
   export function getUid(): number | null;
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the group id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getGid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getGid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"
@@ -1060,8 +1072,8 @@ declare namespace Deno {
 
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<SpawnOutput<T>>;
-    /** Kills the process with given Signal. */
-    kill(signo: Signal): void;
+    /** Kills the process with given Signal. Defaults to SIGTERM. */
+    kill(signo?: Signal): void;
   }
 
   /**
@@ -1117,7 +1129,7 @@ declare namespace Deno {
     | {
       success: false;
       code: number;
-      signal: number | null;
+      signal: Signal | null;
     };
 
   export interface SpawnOutput<T extends SpawnOptions> {

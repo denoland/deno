@@ -383,6 +383,7 @@ type ResponseType =
 /** This Fetch API interface represents the response to a request. */
 declare class Response implements Body {
   constructor(body?: BodyInit | null, init?: ResponseInit);
+  static json(data: unknown, init?: ResponseInit): Response;
   static error(): Response;
   static redirect(url: string, status?: number): Response;
 
