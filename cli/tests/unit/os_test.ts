@@ -74,19 +74,14 @@ Deno.test(
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
       )`;
-      const proc = Deno.run({
-        cmd: [Deno.execPath(), "eval", src],
+      const { status, stdout } = await Deno.spawn(Deno.execPath(), {
+        args: ["eval", src],
         env: { ...inputEnv, NO_COLOR: "1" },
-        stdout: "piped",
       });
-      const status = await proc.status();
       assertEquals(status.success, true);
       const expectedValues = Object.values(expectedEnv);
-      const actualValues = JSON.parse(
-        new TextDecoder().decode(await proc.output()),
-      );
+      const actualValues = JSON.parse(new TextDecoder().decode(stdout));
       assertEquals(actualValues, expectedValues);
-      proc.close();
     };
 
     assertEquals(Deno.env.get("path"), Deno.env.get("PATH"));
@@ -133,16 +128,13 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
-    const process = Deno.run({
-      cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
-      stdout: "piped",
+    const { stdout } = await Deno.spawn(Deno.execPath(), {
+      args: ["eval", "-p", "--unstable", "Deno.ppid"],
       env: { NO_COLOR: "true" },
     });
-    const output = await process.output();
-    process.close();
 
     const expected = Deno.pid;
-    const actual = parseInt(decoder.decode(output));
+    const actual = parseInt(decoder.decode(stdout));
     assertEquals(actual, expected);
   },
 );

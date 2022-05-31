@@ -438,6 +438,8 @@ impl TlsStreamInner {
       self.rd_state = State::StreamClosed;
     }
 
+    // Wait for the handshake to complete.
+    ready!(self.poll_io(cx, Flow::Handshake))?;
     // Send TLS 'CloseNotify' alert.
     ready!(self.poll_shutdown(cx))?;
     // Wait for 'CloseNotify', shut down TCP stream, wait for TCP FIN packet.

@@ -902,21 +902,13 @@
       "event.any.worker.html": true
     },
     "events": {
-      "AddEventListenerOptions-once.any.html": [
-        "Once listener should be added / removed like normal listeners"
-      ],
-      "AddEventListenerOptions-once.any.worker.html": [
-        "Once listener should be added / removed like normal listeners"
-      ],
+      "AddEventListenerOptions-once.any.html": true,
+      "AddEventListenerOptions-once.any.worker.html": true,
       "AddEventListenerOptions-passive.any.html": [
-        "Supports passive option on addEventListener only",
-        "returnValue should be ignored if-and-only-if the passive option is true",
-        "Equivalence of option values"
+        "returnValue should be ignored if-and-only-if the passive option is true"
       ],
       "AddEventListenerOptions-passive.any.worker.html": [
-        "Supports passive option on addEventListener only",
-        "returnValue should be ignored if-and-only-if the passive option is true",
-        "Equivalence of option values"
+        "returnValue should be ignored if-and-only-if the passive option is true"
       ],
       "AddEventListenerOptions-signal.any.html": true,
       "AddEventListenerOptions-signal.any.worker.html": true,
@@ -1178,15 +1170,11 @@
     "idlharness.any.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
-      "Performance interface: attribute timeOrigin",
-      "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
     ],
     "idlharness.any.worker.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
-      "Performance interface: attribute timeOrigin",
-      "Performance interface: default toJSON operation on performance",
       "WorkerGlobalScope interface: attribute performance",
       "WorkerGlobalScope interface: self must inherit property \"performance\" with the proper type"
     ],
@@ -1407,8 +1395,12 @@
         "validate.any.worker.html": true
       },
       "global": {
-        "constructor.any.html": true,
-        "constructor.any.worker.html": true,
+        "constructor.any.html": [
+          "Construct v128 global"
+        ],
+        "constructor.any.worker.html": [
+          "Construct v128 global"
+        ],
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "type.tentative.any.html": false,
@@ -1418,12 +1410,8 @@
         "valueOf.any.html": true,
         "valueOf.any.worker.html": true
       },
-      "idlharness.any.html": [
-        "Table interface: operation set(unsigned long, optional any)"
-      ],
-      "idlharness.any.worker.html": [
-        "Table interface: operation set(unsigned long, optional any)"
-      ],
+      "idlharness.any.html": true,
+      "idlharness.any.worker.html": true,
       "instance": {
         "constructor-bad-imports.any.html": true,
         "constructor-bad-imports.any.worker.html": true,
@@ -1436,12 +1424,8 @@
         "toString.any.html": true,
         "toString.any.worker.html": true
       },
-      "interface.any.html": [
-        "WebAssembly.Table.set: length"
-      ],
-      "interface.any.worker.html": [
-        "WebAssembly.Table.set: length"
-      ],
+      "interface.any.html": true,
+      "interface.any.worker.html": true,
       "memory": {
         "buffer.any.html": true,
         "buffer.any.worker.html": true,
@@ -3209,7 +3193,9 @@
         "response-consume-stream.any.html": true,
         "response-consume-stream.any.worker.html": true,
         "response-init-contenttype.any.html": true,
-        "response-init-contenttype.any.worker.html": true
+        "response-init-contenttype.any.worker.html": true,
+        "response-static-json.any.html": true,
+        "response-static-json.any.worker.html": true
       },
       "body": {
         "formdata.any.html": [
@@ -4188,12 +4174,12 @@
     "eventhandlers.any.worker.html?wss": true,
     "referrer.any.html": true,
     "referrer.any.worker.html": true,
-    "Close-delayed.any.html": false,
+    "Close-delayed.any.html": true,
     "Close-delayed.any.html?wpt_flags=h2": false,
-    "Close-delayed.any.html?wss": false,
-    "Close-delayed.any.worker.html": false,
+    "Close-delayed.any.html?wss": true,
+    "Close-delayed.any.worker.html": true,
     "Close-delayed.any.worker.html?wpt_flags=h2": false,
-    "Close-delayed.any.worker.html?wss": false,
+    "Close-delayed.any.worker.html?wss": true,
     "stream": {
       "tentative": {
         "abort.any.html?wss": true,
@@ -4603,31 +4589,175 @@
     ]
   },
   "compression": {
-    "compression-bad-chunks.tentative.any.html": true,
-    "compression-bad-chunks.tentative.any.worker.html": true,
-    "compression-including-empty-chunk.tentative.any.html": true,
-    "compression-including-empty-chunk.tentative.any.worker.html": true,
-    "compression-multiple-chunks.tentative.any.html": true,
-    "compression-multiple-chunks.tentative.any.worker.html": true,
-    "compression-output-length.tentative.any.html": true,
-    "compression-output-length.tentative.any.worker.html": true,
+    "compression-bad-chunks.tentative.any.html": [
+      "chunk of type undefined should error the stream for deflate-raw",
+      "chunk of type null should error the stream for deflate-raw",
+      "chunk of type numeric should error the stream for deflate-raw",
+      "chunk of type object, not BufferSource should error the stream for deflate-raw",
+      "chunk of type array should error the stream for deflate-raw",
+      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
+      "chunk of type shared Uint8Array should error the stream for deflate-raw"
+    ],
+    "compression-bad-chunks.tentative.any.worker.html": [
+      "chunk of type undefined should error the stream for deflate-raw",
+      "chunk of type null should error the stream for deflate-raw",
+      "chunk of type numeric should error the stream for deflate-raw",
+      "chunk of type object, not BufferSource should error the stream for deflate-raw",
+      "chunk of type array should error the stream for deflate-raw",
+      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
+      "chunk of type shared Uint8Array should error the stream for deflate-raw"
+    ],
+    "compression-including-empty-chunk.tentative.any.html": [
+      "the result of compressing [,Hello,Hello] with deflate-raw should be 'HelloHello'",
+      "the result of compressing [Hello,,Hello] with deflate-raw should be 'HelloHello'",
+      "the result of compressing [Hello,Hello,] with deflate-raw should be 'HelloHello'"
+    ],
+    "compression-including-empty-chunk.tentative.any.worker.html": [
+      "the result of compressing [,Hello,Hello] with deflate-raw should be 'HelloHello'",
+      "the result of compressing [Hello,,Hello] with deflate-raw should be 'HelloHello'",
+      "the result of compressing [Hello,Hello,] with deflate-raw should be 'HelloHello'"
+    ],
+    "compression-multiple-chunks.tentative.any.html": [
+      "compressing 2 chunks with deflate-raw should work",
+      "compressing 3 chunks with deflate-raw should work",
+      "compressing 4 chunks with deflate-raw should work",
+      "compressing 5 chunks with deflate-raw should work",
+      "compressing 6 chunks with deflate-raw should work",
+      "compressing 7 chunks with deflate-raw should work",
+      "compressing 8 chunks with deflate-raw should work",
+      "compressing 9 chunks with deflate-raw should work",
+      "compressing 10 chunks with deflate-raw should work",
+      "compressing 11 chunks with deflate-raw should work",
+      "compressing 12 chunks with deflate-raw should work",
+      "compressing 13 chunks with deflate-raw should work",
+      "compressing 14 chunks with deflate-raw should work",
+      "compressing 15 chunks with deflate-raw should work",
+      "compressing 16 chunks with deflate-raw should work"
+    ],
+    "compression-multiple-chunks.tentative.any.worker.html": [
+      "compressing 2 chunks with deflate-raw should work",
+      "compressing 3 chunks with deflate-raw should work",
+      "compressing 4 chunks with deflate-raw should work",
+      "compressing 5 chunks with deflate-raw should work",
+      "compressing 6 chunks with deflate-raw should work",
+      "compressing 7 chunks with deflate-raw should work",
+      "compressing 8 chunks with deflate-raw should work",
+      "compressing 9 chunks with deflate-raw should work",
+      "compressing 10 chunks with deflate-raw should work",
+      "compressing 11 chunks with deflate-raw should work",
+      "compressing 12 chunks with deflate-raw should work",
+      "compressing 13 chunks with deflate-raw should work",
+      "compressing 14 chunks with deflate-raw should work",
+      "compressing 15 chunks with deflate-raw should work",
+      "compressing 16 chunks with deflate-raw should work"
+    ],
+    "compression-output-length.tentative.any.html": [
+      "the length of deflated (with -raw) data should be shorter than that of the original data"
+    ],
+    "compression-output-length.tentative.any.worker.html": [
+      "the length of deflated (with -raw) data should be shorter than that of the original data"
+    ],
     "compression-stream.tentative.any.html": true,
     "compression-stream.tentative.any.worker.html": true,
     "compression-with-detach.tentative.window.html": true,
-    "decompression-bad-chunks.tentative.any.html": true,
-    "decompression-bad-chunks.tentative.any.worker.html": true,
-    "decompression-buffersource.tentative.any.html": true,
-    "decompression-buffersource.tentative.any.worker.html": true,
+    "decompression-bad-chunks.tentative.any.html": [
+      "chunk of type undefined should error the stream for deflate-raw",
+      "chunk of type null should error the stream for deflate-raw",
+      "chunk of type numeric should error the stream for deflate-raw",
+      "chunk of type object, not BufferSource should error the stream for deflate-raw",
+      "chunk of type array should error the stream for deflate-raw",
+      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
+      "chunk of type shared Uint8Array should error the stream for deflate-raw",
+      "chunk of type invalid deflate bytes should error the stream for deflate-raw",
+      "chunk of type invalid gzip bytes should error the stream for deflate-raw"
+    ],
+    "decompression-bad-chunks.tentative.any.worker.html": [
+      "chunk of type undefined should error the stream for deflate-raw",
+      "chunk of type null should error the stream for deflate-raw",
+      "chunk of type numeric should error the stream for deflate-raw",
+      "chunk of type object, not BufferSource should error the stream for deflate-raw",
+      "chunk of type array should error the stream for deflate-raw",
+      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
+      "chunk of type shared Uint8Array should error the stream for deflate-raw",
+      "chunk of type invalid deflate bytes should error the stream for deflate-raw",
+      "chunk of type invalid gzip bytes should error the stream for deflate-raw"
+    ],
+    "decompression-buffersource.tentative.any.html": [
+      "chunk of type ArrayBuffer should work for deflate-raw",
+      "chunk of type Int8Array should work for deflate-raw",
+      "chunk of type Uint8Array should work for deflate-raw",
+      "chunk of type Uint8ClampedArray should work for deflate-raw",
+      "chunk of type Int16Array should work for deflate-raw",
+      "chunk of type Uint16Array should work for deflate-raw",
+      "chunk of type Int32Array should work for deflate-raw",
+      "chunk of type Uint32Array should work for deflate-raw",
+      "chunk of type Float32Array should work for deflate-raw",
+      "chunk of type Float64Array should work for deflate-raw",
+      "chunk of type DataView should work for deflate-raw"
+    ],
+    "decompression-buffersource.tentative.any.worker.html": [
+      "chunk of type ArrayBuffer should work for deflate-raw",
+      "chunk of type Int8Array should work for deflate-raw",
+      "chunk of type Uint8Array should work for deflate-raw",
+      "chunk of type Uint8ClampedArray should work for deflate-raw",
+      "chunk of type Int16Array should work for deflate-raw",
+      "chunk of type Uint16Array should work for deflate-raw",
+      "chunk of type Int32Array should work for deflate-raw",
+      "chunk of type Uint32Array should work for deflate-raw",
+      "chunk of type Float32Array should work for deflate-raw",
+      "chunk of type Float64Array should work for deflate-raw",
+      "chunk of type DataView should work for deflate-raw"
+    ],
     "decompression-constructor-error.tentative.any.html": true,
     "decompression-constructor-error.tentative.any.worker.html": true,
-    "decompression-correct-input.tentative.any.html": true,
-    "decompression-correct-input.tentative.any.worker.html": true,
+    "decompression-correct-input.tentative.any.html": [
+      "decompressing deflated (with -raw) input should work"
+    ],
+    "decompression-correct-input.tentative.any.worker.html": [
+      "decompressing deflated (with -raw) input should work"
+    ],
     "decompression-corrupt-input.tentative.any.html": true,
     "decompression-corrupt-input.tentative.any.worker.html": true,
-    "decompression-empty-input.tentative.any.html": true,
-    "decompression-empty-input.tentative.any.worker.html": true,
-    "decompression-split-chunk.tentative.any.html": true,
-    "decompression-split-chunk.tentative.any.worker.html": true,
+    "decompression-empty-input.tentative.any.html": [
+      "decompressing deflate-raw empty input should work"
+    ],
+    "decompression-empty-input.tentative.any.worker.html": [
+      "decompressing deflate-raw empty input should work"
+    ],
+    "decompression-split-chunk.tentative.any.html": [
+      "decompressing splitted chunk into pieces of size 1 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 2 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 3 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 4 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 5 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 6 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 7 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 8 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 9 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 10 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 11 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 12 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 13 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 14 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 15 should work in deflate-raw"
+    ],
+    "decompression-split-chunk.tentative.any.worker.html": [
+      "decompressing splitted chunk into pieces of size 1 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 2 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 3 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 4 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 5 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 6 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 7 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 8 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 9 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 10 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 11 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 12 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 13 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 14 should work in deflate-raw",
+      "decompressing splitted chunk into pieces of size 15 should work in deflate-raw"
+    ],
     "decompression-uint8array-output.tentative.any.html": true,
     "decompression-uint8array-output.tentative.any.worker.html": true,
     "decompression-with-detach.tentative.window.html": true,

@@ -333,6 +333,7 @@
     }
 
     get timeOrigin() {
+      webidl.assertBranded(this, PerformancePrototype);
       return timeOrigin;
     }
 
@@ -555,7 +556,9 @@
 
     toJSON() {
       webidl.assertBranded(this, PerformancePrototype);
-      return {};
+      return {
+        timeOrigin: this.timeOrigin,
+      };
     }
 
     [customInspect](inspect) {

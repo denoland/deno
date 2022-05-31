@@ -368,3 +368,22 @@ fn file_protocol() {
   })
   .run();
 }
+
+itest!(uncaught_errors {
+  args: "test --quiet test/uncaught_errors_1.ts test/uncaught_errors_2.ts test/uncaught_errors_3.ts",
+  output: "test/uncaught_errors.out",
+  exit_code: 1,
+});
+
+itest!(check_local_by_default {
+  args: "test --quiet test/check_local_by_default.ts",
+  output: "test/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "test --quiet test/check_local_by_default2.ts",
+  output: "test/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});

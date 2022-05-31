@@ -26,7 +26,6 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
-  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -301,7 +300,7 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus;
+  let numCpus, userAgent;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -318,6 +317,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
+      },
+    },
+    userAgent: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return userAgent;
       },
     },
   });
@@ -575,6 +582,7 @@ delete Object.prototype.__proto__;
       ppid,
       unstableFlag,
       cpuCount,
+      userAgent: userAgentInfo,
     } = runtimeOptions;
 
     colors.setNoColor(noColor || !isTty);
@@ -582,6 +590,7 @@ delete Object.prototype.__proto__;
       location.setLocationHref(locationHref);
     }
     numCpus = cpuCount;
+    userAgent = userAgentInfo;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -617,7 +626,6 @@ delete Object.prototype.__proto__;
   function bootstrapWorkerRuntime(
     runtimeOptions,
     name,
-    useDenoNamespace,
     internalName,
   ) {
     if (hasBootstrapped) {
@@ -687,23 +695,18 @@ delete Object.prototype.__proto__;
       close: core.close,
       ...denoNs,
     };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        ObjectAssign(finalDenoNs, denoNsUnstable);
-      }
-      ObjectDefineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(ObjectFreeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-      ObjectFreeze(globalThis.Deno.core);
-    } else {
-      delete globalThis.Deno;
-      infra.assert(globalThis.Deno === undefined);
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
     }
+    ObjectDefineProperties(finalDenoNs, {
+      pid: util.readOnly(pid),
+      noColor: util.readOnly(noColor),
+      args: util.readOnly(ObjectFreeze(args)),
+    });
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

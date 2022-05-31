@@ -71,6 +71,7 @@ declare class Navigator {
   constructor();
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
+  readonly userAgent: string;
 }
 
 declare var navigator: Navigator;

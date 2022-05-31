@@ -446,3 +446,16 @@ Deno.test(function testBufferBytesCopyFalseGrowExactBytes() {
   assertEquals(actualBytes.byteLength, bufSize);
   assertEquals(actualBytes.buffer.byteLength, actualBytes.byteLength);
 });
+
+Deno.test(function testThrowsErrorWhenBufferExceedsMaxLength() {
+  const kStringMaxLengthPlusOne = 536870888 + 1;
+  const bytes = new Uint8Array(kStringMaxLengthPlusOne);
+
+  assertThrows(
+    () => {
+      new TextDecoder().decode(bytes);
+    },
+    TypeError,
+    "buffer exceeds maximum length",
+  );
+});
