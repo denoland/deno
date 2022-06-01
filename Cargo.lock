@@ -792,6 +792,7 @@ dependencies = [
  "rustyline-derive",
  "semver-parser 0.10.2",
  "serde",
+ "serde_repr",
  "shell-escape",
  "tempfile",
  "test_util",
