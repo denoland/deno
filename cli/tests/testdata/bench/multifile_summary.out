@@ -20,8 +20,8 @@ parse url 200x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [
 
 summary
   parse url 2x
-   [WILDCARD]x [WILDCARD] than noop3
-   [WILDCARD]x [WILDCARD] than parse url 200x
+   [WILDCARD]x slower than noop3
+   [WILDCARD]x faster than parse url 200x
 
 [WILDCARD]/bench/pass.ts
 benchmark      time (avg)             (min … max)       p75       p99      p995

@@ -14,5 +14,5 @@ parse url 200x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [
 
 summary
   parse url 2x
-   [WILDCARD]x [WILDCARD] than noop3
-   [WILDCARD]x [WILDCARD] than parse url 200x
+   [WILDCARD]x slower than noop3
+   [WILDCARD]x faster than parse url 200x
