@@ -285,15 +285,15 @@ where
         print_after_restart();
         continue;
       },
-      _ = operation_future => {},
+      _ = operation_future => {
+        // TODO(bartlomieju): print exit code here?
+        info!(
+          "{} {} finished. Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+        );
+      },
     };
-
-    // TODO(bartlomieju): print exit code here?
-    info!(
-      "{} {} finished. Restarting on file change...",
-      colors::intense_blue("Watcher"),
-      job_name,
-    );
 
     loop {
       select! {
@@ -310,11 +310,6 @@ where
         },
       };
     }
-
-    // watcher_receiver.recv().await;
-    // print_after_restart();
-
-    // drop(watcher);
   }
 }
 
