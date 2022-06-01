@@ -358,6 +358,12 @@ impl ProcState {
       reload: reload_on_watch,
     };
 
+    // let maybe_reporter = if false {
+    //   Some(GraphReporter)
+    // } else {
+    //   None
+    // };
+
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -717,5 +723,22 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
     }
   } else {
     None
+  }
+}
+
+struct GraphReporter {
+  sender: Sender<ModuleSpecifier>
+}
+
+impl deno_graph::source::Reporter for CollectingReporter {
+  fn on_load(
+    &self,
+    specifier: &ModuleSpecifier,
+    _modules_done: usize,
+    _modules_total: usize,
+  ) {
+    if specifier.scheme() == "file" {
+      self.sender.send(specifier.to_owned());
+    }
   }
 }

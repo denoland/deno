@@ -245,7 +245,6 @@ where
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
 pub async fn watch_func2<R, O, T, F1, F2>(
-  mut resolver: R,
   mut operation: O,
   print_config: PrintConfig,
 ) -> Result<(), AnyError>
@@ -277,70 +276,30 @@ where
     );
   };
 
-  match resolver(None).await {
-    ResolutionResult::Ignore => {
-      // The only situation where it makes sense to ignore the initial 'change'
-      // is if the command isn't supposed to do anything until something changes,
-      // e.g. a variant of `deno test` which doesn't run the entire test suite to start with,
-      // but instead does nothing until you make a change.
-      //
-      // In that case, this is probably the correct output.
-      info!(
-        "{} Waiting for file changes...",
-        colors::intense_blue("Watcher"),
-      );
-
-      let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
-      paths_to_watch = paths;
-      resolution_result = result;
-
-      print_after_restart();
-    }
-    ResolutionResult::Restart {
-      paths_to_watch: paths,
-      result,
-    } => {
-      paths_to_watch = paths;
-      resolution_result = result;
-    }
-  };
-
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
     let watcher = new_watcher(&paths_to_watch, sender.clone())?;
 
-    match resolution_result {
-      Ok(operation_arg) => {
-        let fut = error_handler(operation(operation_arg));
-        select! {
-          (paths, result) = next_restart(&mut resolver, &mut receiver) => {
-            if result.is_ok() {
-              paths_to_watch = paths;
-            }
-            resolution_result = result;
+    let fut = error_handler(operation(operation_arg));
+    select! {
+      (paths, result) = next_restart(&mut receiver) => {
+        if result.is_ok() {
+          paths_to_watch = paths;
+        }
+        resolution_result = result;
 
-            print_after_restart();
-            continue;
-          },
-          _ = fut => {},
-        };
+        print_after_restart();
+        continue;
+      },
+      _ = fut => {},
+    };
 
-        info!(
-          "{} {} finished. Restarting on file change...",
-          colors::intense_blue("Watcher"),
-          job_name,
-        );
-      }
-      Err(error) => {
-        eprintln!("{}: {}", colors::red_bold("error"), error);
-        info!(
-          "{} {} failed. Restarting on file change...",
-          colors::intense_blue("Watcher"),
-          job_name,
-        );
-      }
-    }
+    info!(
+      "{} {} finished. Restarting on file change...",
+      colors::intense_blue("Watcher"),
+      job_name,
+    );
 
     let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
     if result.is_ok() {
