@@ -30,6 +30,15 @@ delete Object.prototype.__proto__;
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
   const normalizedToOriginalMap = new Map();
 
+  /**
+   * @param {unknown} value
+   * @returns {value is ts.CreateSourceFileOptions}
+   */
+  function isCreateSourceFileOptions(value) {
+    return value != null && typeof value === "object" &&
+      "languageVersion" in value;
+  }
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -290,7 +299,11 @@ delete Object.prototype.__proto__;
     ) {
       debug(
         `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[languageVersion]
+          ts.ScriptTarget[
+            isCreateSourceFileOptions(languageVersion)
+              ? languageVersion.languageVersion
+              : languageVersion
+          ]
         })`,
       );
 
@@ -302,7 +315,7 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind }} */
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
       const { data, scriptKind, version } = core.opSync(
         "op_load",
         { specifier },
