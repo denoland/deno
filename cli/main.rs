@@ -1061,9 +1061,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options());
     async move {
-      let ps =
-        ProcState::build_with_sender(flags.clone(), Some(sender.clone()))
-          .await?;
+      let ps = ProcState::build_for_file_watcher(flags.clone(), sender.clone())
+        .await?;
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
@@ -1082,23 +1081,6 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       Ok(())
     }
   };
-
-  // Add the extra files listed in the watch flag
-  if let Some(watch_paths) = &flags.watch {
-    for path in watch_paths {
-      sender.send(path.to_path_buf()).unwrap();
-    }
-  }
-
-  // TODO(bartlomieju):
-  // if let Ok(Some(import_map_path)) = config_file::resolve_import_map_specifier(
-  //   ps.flags.import_map_path.as_deref(),
-  //   ps.maybe_config_file.as_ref(),
-  // )
-  // .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-  // {
-  //   sender.send(import_map_path).unwrap();
-  // }
 
   file_watcher::watch_func2(
     receiver,

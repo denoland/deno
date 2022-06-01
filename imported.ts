@@ -1,1 +1,1 @@
-console.log("hello from imported123132123");
+console.log("I'm dynamically imported and I cause restarts!");
