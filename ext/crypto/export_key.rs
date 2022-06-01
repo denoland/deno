@@ -25,6 +25,7 @@ pub struct ExportKeyOptions {
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportKeyFormat {
+  Raw,
   Pkcs8,
   Spki,
   JwkPublic,
@@ -54,6 +55,7 @@ pub enum ExportKeyAlgorithm {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum ExportKeyResult {
+  Raw(ZeroCopyBuf),
   Pkcs8(ZeroCopyBuf),
   Spki(ZeroCopyBuf),
   JwkSecret {
@@ -228,6 +230,24 @@ fn export_key_ec(
   named_curve: EcNamedCurve,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
+    ExportKeyFormat::Raw => {
+      let subject_public_key = match named_curve {
+        EcNamedCurve::P256 => {
+          let point = key_data.as_ec_public_key_p256()?;
+
+          point.as_ref().to_vec()
+        }
+        EcNamedCurve::P384 => {
+          let point = key_data.as_ec_public_key_p384()?;
+
+          point.as_ref().to_vec()
+        }
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
+      };
+      Ok(ExportKeyResult::Raw(subject_public_key.into()))
+    }
     ExportKeyFormat::Spki => {
       let subject_public_key = match named_curve {
         EcNamedCurve::P256 => {
