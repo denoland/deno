@@ -269,13 +269,13 @@ where
 
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
+  let mut watcher = new_watcher2(watcher_sender.clone())?;
+
   'outer: loop {
-    let mut watcher = new_watcher2(watcher_sender.clone())?;
     let operation_future = error_handler(operation(operation_args.clone()));
 
     select! {
       maybe_path = paths_to_watch_receiver.recv() => {
-        eprintln!("received path to watch");
         let path = maybe_path.unwrap();
         log::debug!("Watching path: {:?}", path);
         // Ignore any error e.g. `PathNotFound`
@@ -298,7 +298,6 @@ where
     loop {
       select! {
         maybe_path = paths_to_watch_receiver.recv() => {
-          eprintln!("received path to watch");
           let path = maybe_path.unwrap();
           log::debug!("Watching path: {:?}", path);
           // Ignore any error e.g. `PathNotFound`
@@ -311,7 +310,7 @@ where
         },
       };
     }
-    
+
     // watcher_receiver.recv().await;
     // print_after_restart();
 

@@ -1053,13 +1053,17 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let main_module = resolve_url_or_path(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-  let ps =
-    ProcState::build_with_sender(flags.clone(), Some(sender.clone())).await?;
 
-  let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
+  let operation = |(sender, main_module): (
+    tokio::sync::mpsc::UnboundedSender<PathBuf>,
+    ModuleSpecifier,
+  )| {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options());
     async move {
+      let ps =
+        ProcState::build_with_sender(flags.clone(), Some(sender.clone()))
+          .await?;
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
@@ -1086,19 +1090,20 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   }
 
-  if let Ok(Some(import_map_path)) = config_file::resolve_import_map_specifier(
-    ps.flags.import_map_path.as_deref(),
-    ps.maybe_config_file.as_ref(),
-  )
-  .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-  {
-    sender.send(import_map_path).unwrap();
-  }
+  // TODO(bartlomieju):
+  // if let Ok(Some(import_map_path)) = config_file::resolve_import_map_specifier(
+  //   ps.flags.import_map_path.as_deref(),
+  //   ps.maybe_config_file.as_ref(),
+  // )
+  // .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+  // {
+  //   sender.send(import_map_path).unwrap();
+  // }
 
   file_watcher::watch_func2(
     receiver,
     operation,
-    (ps, main_module),
+    (sender, main_module),
     file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,

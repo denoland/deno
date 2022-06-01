@@ -751,7 +751,6 @@ impl deno_graph::source::Reporter for GraphReporter {
     _modules_done: usize,
     _modules_total: usize,
   ) {
-    eprintln!("onload {:?}", specifier);
     if specifier.scheme() == "file" {
       self.sender.send(specifier.to_file_path().unwrap()).unwrap();
     }
