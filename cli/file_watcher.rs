@@ -234,37 +234,28 @@ where
   }
 }
 
-/// Creates a file watcher, which will call `resolver` with every file change.
-///
-/// - `resolver` is used for resolving file paths to be watched at every restarting
-/// of the watcher, and can also return a value to be passed to `operation`.
-/// It returns a [`ResolutionResult`], which can either instruct the watcher to restart or ignore the change.
-/// This always contains paths to watch;
+/// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-pub async fn watch_func2<R, O, T, F1, F2>(
+pub async fn watch_func2<T: Clone, O, F>(
+  mut paths_to_watch_receiver: mpsc::UnboundedReceiver<PathBuf>,
   mut operation: O,
+  operation_args: T,
   print_config: PrintConfig,
 ) -> Result<(), AnyError>
 where
-  R: FnMut(Option<Vec<PathBuf>>) -> F1,
-  O: FnMut(T) -> F2,
-  F1: Future<Output = ResolutionResult<T>>,
-  F2: Future<Output = Result<(), AnyError>>,
+  O: FnMut(T) -> F,
+  F: Future<Output = Result<(), AnyError>>,
 {
-  let (sender, mut receiver) = DebouncedReceiver::new_with_sender();
+  let (watcher_sender, mut watcher_receiver) =
+    DebouncedReceiver::new_with_sender();
 
   let PrintConfig {
     job_name,
     clear_screen,
   } = print_config;
-
-  // Store previous data. If module resolution fails at some point, the watcher will try to
-  // continue watching files using these data.
-  let mut paths_to_watch;
-  let mut resolution_result;
 
   let print_after_restart = || {
     if clear_screen {
@@ -278,38 +269,53 @@ where
 
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
-  loop {
-    let watcher = new_watcher(&paths_to_watch, sender.clone())?;
+  'outer: loop {
+    let mut watcher = new_watcher2(watcher_sender.clone())?;
+    let operation_future = error_handler(operation(operation_args.clone()));
 
-    let fut = error_handler(operation(operation_arg));
     select! {
-      (paths, result) = next_restart(&mut receiver) => {
-        if result.is_ok() {
-          paths_to_watch = paths;
-        }
-        resolution_result = result;
-
+      maybe_path = paths_to_watch_receiver.recv() => {
+        eprintln!("received path to watch");
+        let path = maybe_path.unwrap();
+        log::debug!("Watching path: {:?}", path);
+        // Ignore any error e.g. `PathNotFound`
+        let _ = watcher.watch(&path, RecursiveMode::Recursive);
+      },
+      _ = watcher_receiver.recv() => {
         print_after_restart();
         continue;
       },
-      _ = fut => {},
+      _ = operation_future => {},
     };
 
+    // TODO(bartlomieju): print exit code here?
     info!(
       "{} {} finished. Restarting on file change...",
       colors::intense_blue("Watcher"),
       job_name,
     );
 
-    let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
-    if result.is_ok() {
-      paths_to_watch = paths;
+    loop {
+      select! {
+        maybe_path = paths_to_watch_receiver.recv() => {
+          eprintln!("received path to watch");
+          let path = maybe_path.unwrap();
+          log::debug!("Watching path: {:?}", path);
+          // Ignore any error e.g. `PathNotFound`
+          let _ = watcher.watch(&path, RecursiveMode::Recursive);
+          continue;
+        },
+        _ = watcher_receiver.recv() => {
+          print_after_restart();
+          continue 'outer;
+        },
+      };
     }
-    resolution_result = result;
+    
+    // watcher_receiver.recv().await;
+    // print_after_restart();
 
-    print_after_restart();
-
-    drop(watcher);
+    // drop(watcher);
   }
 }
 
@@ -341,6 +347,31 @@ fn new_watcher(
     // Ignore any error e.g. `PathNotFound`
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
+
+  Ok(watcher)
+}
+
+fn new_watcher2(
+  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+) -> Result<RecommendedWatcher, AnyError> {
+  let mut watcher: RecommendedWatcher =
+    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
+      if let Ok(event) = res {
+        if matches!(
+          event.kind,
+          EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) {
+          let paths = event
+            .paths
+            .iter()
+            .filter_map(|path| canonicalize_path(path).ok())
+            .collect();
+          sender.send(paths).unwrap();
+        }
+      }
+    })?;
+
+  watcher.configure(Config::PreciseEvents(true)).unwrap();
 
   Ok(watcher)
 }

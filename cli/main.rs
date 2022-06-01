@@ -1052,24 +1052,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
 
   let flags = Arc::new(flags);
   let main_module = resolve_url_or_path(&script)?;
-  let ps = ProcState::build(flags).await?;
+  let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+  let ps =
+    ProcState::build_with_sender(flags.clone(), Some(sender.clone())).await?;
 
-  // // Add the extra files listed in the watch flag
-  // if let Some(watch_paths) = watch_flag {
-  //   paths_to_watch.extend(watch_paths);
-  // }
-
-  // if let Ok(Some(import_map_path)) =
-  //   config_file::resolve_import_map_specifier(
-  //     ps.flags.import_map_path.as_deref(),
-  //     ps.maybe_config_file.as_ref(),
-  //   )
-  //   .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-  // {
-  //   paths_to_watch.push(import_map_path);
-  // }
-
-  let operation = move |(ps, main_module): (ProcState, ModuleSpecifier)| {
+  let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options());
     async move {
@@ -1092,8 +1079,26 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   };
 
+  // Add the extra files listed in the watch flag
+  if let Some(watch_paths) = &flags.watch {
+    for path in watch_paths {
+      sender.send(path.to_path_buf()).unwrap();
+    }
+  }
+
+  if let Ok(Some(import_map_path)) = config_file::resolve_import_map_specifier(
+    ps.flags.import_map_path.as_deref(),
+    ps.maybe_config_file.as_ref(),
+  )
+  .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+  {
+    sender.send(import_map_path).unwrap();
+  }
+
   file_watcher::watch_func2(
+    receiver,
     operation,
+    (ps, main_module),
     file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,
@@ -1101,16 +1106,6 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   )
   .await?;
 
-
-  file_watcher::watch_func(
-    resolver,
-    operation,
-    file_watcher::PrintConfig {
-      job_name: "Process".to_string(),
-      clear_screen: !flags.no_clear_screen,
-    },
-  )
-  .await?;
   Ok(0)
 }
 

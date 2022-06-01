@@ -56,6 +56,7 @@ use log::warn;
 use std::collections::HashSet;
 use std::env;
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -81,6 +82,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
+  maybe_reporter: Option<GraphReporter>,
 }
 
 impl Deref for ProcState {
@@ -92,6 +94,13 @@ impl Deref for ProcState {
 
 impl ProcState {
   pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
+    Self::build_with_sender(flags, None).await
+  }
+
+  pub async fn build_with_sender(
+    flags: Arc<flags::Flags>,
+    maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<PathBuf>>,
+  ) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -209,6 +218,8 @@ impl ProcState {
       None
     };
 
+    let maybe_reporter = maybe_sender.map(|sender| GraphReporter { sender });
+
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
@@ -225,6 +236,7 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       maybe_resolver,
+      maybe_reporter,
     })))
   }
 
@@ -358,11 +370,12 @@ impl ProcState {
       reload: reload_on_watch,
     };
 
-    // let maybe_reporter = if false {
-    //   Some(GraphReporter)
-    // } else {
-    //   None
-    // };
+    let maybe_reporter: Option<&dyn deno_graph::source::Reporter> =
+      if let Some(reporter) = &self.maybe_reporter {
+        Some(reporter)
+      } else {
+        None
+      };
 
     let graph = create_graph(
       roots.clone(),
@@ -372,7 +385,7 @@ impl ProcState {
       maybe_resolver,
       maybe_locker,
       None,
-      None,
+      maybe_reporter,
     )
     .await;
 
@@ -726,19 +739,21 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
   }
 }
 
+#[derive(Debug)]
 struct GraphReporter {
-  sender: Sender<ModuleSpecifier>
+  sender: tokio::sync::mpsc::UnboundedSender<PathBuf>,
 }
 
-impl deno_graph::source::Reporter for CollectingReporter {
+impl deno_graph::source::Reporter for GraphReporter {
   fn on_load(
     &self,
     specifier: &ModuleSpecifier,
     _modules_done: usize,
     _modules_total: usize,
   ) {
+    eprintln!("onload {:?}", specifier);
     if specifier.scheme() == "file" {
-      self.sender.send(specifier.to_owned());
+      self.sender.send(specifier.to_file_path().unwrap()).unwrap();
     }
   }
 }
