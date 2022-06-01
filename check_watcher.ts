@@ -1,2 +1,2 @@
-console.log("hello there121233!");
+console.log("Hopefully dynamic import will be watched...");
 await import("./imported.ts");

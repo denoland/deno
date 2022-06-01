@@ -10,10 +10,12 @@ use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
 use notify::Error as NotifyError;
+use notify::FsEventWatcher;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -271,15 +273,33 @@ where
 
   let mut watcher = new_watcher2(watcher_sender.clone())?;
 
+  fn add_path_to_watcher(watcher: &mut FsEventWatcher, path: &Path) {
+    log::debug!("Watching path: {:?}", path);
+    // Ignore any error e.g. `PathNotFound`
+    let _ = watcher.watch(path, RecursiveMode::Recursive);
+  }
+
+  loop {
+    match paths_to_watch_receiver.try_recv() {
+      Ok(path) => {
+        add_path_to_watcher(&mut watcher, &path);
+      }
+      Err(e) => match e {
+        mpsc::error::TryRecvError::Empty => {
+          break;
+        }
+        // there must be at least one receiver alive
+        _ => unreachable!(),
+      },
+    }
+  }
+
   'outer: loop {
     let operation_future = error_handler(operation(operation_args.clone()));
 
     select! {
       maybe_path = paths_to_watch_receiver.recv() => {
-        let path = maybe_path.unwrap();
-        log::debug!("Watching path: {:?}", path);
-        // Ignore any error e.g. `PathNotFound`
-        let _ = watcher.watch(&path, RecursiveMode::Recursive);
+        add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
       },
       _ = watcher_receiver.recv() => {
         print_after_restart();
@@ -298,10 +318,7 @@ where
     loop {
       select! {
         maybe_path = paths_to_watch_receiver.recv() => {
-          let path = maybe_path.unwrap();
-          log::debug!("Watching path: {:?}", path);
-          // Ignore any error e.g. `PathNotFound`
-          let _ = watcher.watch(&path, RecursiveMode::Recursive);
+          add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
           continue;
         },
         _ = watcher_receiver.recv() => {
