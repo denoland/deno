@@ -1031,3 +1031,92 @@ fn watch_with_no_clear_screen_flag() {
 
   check_alive_then_kill(child);
 }
+
+#[test]
+fn run_watch_dynamic_imports() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(
+    &file_to_watch,
+    r#"
+    console.log("Hopefully dynamic import will be watched...");
+    await import("./imported.js");    
+    "#,
+  )
+  .unwrap();
+  let file_to_watch2 = t.path().join("imported.js");
+  write(
+    &file_to_watch2,
+    r#"
+    import "./imported2.js";
+    console.log("I'm dynamically imported and I cause restarts!");
+    "#,
+  )
+  .unwrap();
+  let file_to_watch3 = t.path().join("imported2.js");
+  write(
+    &file_to_watch3,
+    r#"
+    console.log("I'm statically imported from the dynamic import"); 
+    "#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .env("DENO_FUTURE_CHECK", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for the first load event to fire
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "Hopefully dynamic import will be watched..."
+  );
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "I'm statically imported from the dynamic import"
+  );
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "I'm dynamically imported and I cause restarts!"
+  );
+
+  eprintln!("before");
+  write(
+    &file_to_watch3,
+    r#"
+    console.log("I'm statically imported from the dynamic import and I've changed"); 
+    "#,
+  )
+  .unwrap();
+  eprintln!("after");
+
+  // Wait for the restart
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, "Process started");
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  eprintln!("after2");
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "Hopefully dynamic import will be watched..."
+  );
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "I'm statically imported from the dynamic import and I've changed"
+  );
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "I'm dynamically imported and I cause restarts!"
+  );
+
+  check_alive_then_kill(child);
+}

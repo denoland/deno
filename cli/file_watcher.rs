@@ -276,11 +276,10 @@ where
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
 
-  
   loop {
     let mut watcher = new_watcher2(watcher_sender.clone())?;
-    
-    loop {  
+
+    loop {
       match paths_to_watch_receiver.try_recv() {
         Ok(path) => {
           add_path_to_watcher(&mut watcher, &path);
@@ -294,7 +293,7 @@ where
         },
       }
     }
-    
+
     let receiver_future = async {
       loop {
         let maybe_path = paths_to_watch_receiver.recv().await;
