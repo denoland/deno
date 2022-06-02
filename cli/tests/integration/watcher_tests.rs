@@ -1092,10 +1092,7 @@ fn run_watch_dynamic_imports() {
     "I'm dynamically imported and I cause restarts!"
   );
   eprintln!("before");
-  assert_contains!(
-    stderr_lines.next().unwrap(),
-    "finished"
-  );
+  assert_contains!(stderr_lines.next().unwrap(), "finished");
   eprintln!("after");
   write(
     &file_to_watch3,

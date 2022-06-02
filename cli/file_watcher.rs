@@ -13,7 +13,6 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
-use tokio::sync::mpsc::UnboundedReceiver;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -21,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
 
 const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
@@ -277,7 +277,10 @@ where
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
 
-  fn consume_paths_to_watch(watcher: &mut RecommendedWatcher, receiver: &mut UnboundedReceiver<PathBuf>) {
+  fn consume_paths_to_watch(
+    watcher: &mut RecommendedWatcher,
+    receiver: &mut UnboundedReceiver<PathBuf>,
+  ) {
     loop {
       match receiver.try_recv() {
         Ok(path) => {
