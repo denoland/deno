@@ -293,7 +293,7 @@ where
     }
   }
 
-  'outer: loop {
+  loop {
     let receiver_future = async {
       loop {
         let maybe_path = paths_to_watch_receiver.recv().await;
@@ -318,18 +318,19 @@ where
       },
     };
 
-    loop {
-      select! {
-        maybe_path = paths_to_watch_receiver.recv() => {
-          add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
-          continue;
-        },
-        _ = watcher_receiver.recv() => {
-          print_after_restart();
-          continue 'outer;
-        },
-      };
-    }
+    let receiver_future = async {
+      loop {
+        let maybe_path = paths_to_watch_receiver.recv().await;
+        add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
+      }
+    };
+    select! {
+      _ = receiver_future => {},
+      _ = watcher_receiver.recv() => {
+        print_after_restart();
+        continue;
+      },
+    };
   }
 }
 
