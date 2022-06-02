@@ -531,7 +531,7 @@ fn run_watch() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
-  wait_for("Process failed", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // Then restore the file
   write(
@@ -549,7 +549,7 @@ fn run_watch() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
-  wait_for("Process failed", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
@@ -692,7 +692,7 @@ fn run_watch_not_exit() {
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
-  assert_contains!(stderr_lines.next().unwrap(), "Process failed");
+  assert_contains!(stderr_lines.next().unwrap(), "Process finished");
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
@@ -979,7 +979,7 @@ fn test_watch_module_graph_error_referrer() {
   let line3 = stderr_lines.next().unwrap();
   assert_contains!(&line3, "    at ");
   assert_contains!(&line3, "file_to_watch.js");
-  wait_for("Process failed", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
