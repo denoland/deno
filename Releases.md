@@ -6,6 +6,16 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.22.2 / 2022.06.02
+
+- Remove .github/CODEOWNERS (#14781)
+- feat(unstable): add Deno.getGid (#14528)
+- feat: update to TypeScript 4.7 (#14242)
+- fix(cli/dts): add `captureStackTrace` to `lib.dom.extras` (#14748)
+- fix(ext/crypto): adjust `getRandomValues` types (#14714)
+- fix(fmt): do panic for import decl with empty named imports and default import (#14773)
+- fix(scripts/release): add unstable flag when running ./tools/format.js (#14743)
+
 ### 1.22.1 / 2022.05.27
 
 - fix(bench): update typo in bench summary (#14672)
