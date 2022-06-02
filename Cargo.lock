@@ -792,6 +792,7 @@ dependencies = [
  "rustyline-derive",
  "semver-parser 0.10.2",
  "serde",
+ "serde_repr",
  "shell-escape",
  "tempfile",
  "test_util",
@@ -1316,9 +1317,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.68.4"
+version = "0.68.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff59354542a49bd9039b848676cac14a1f83e3e4c891ed5684b5b8f2f5ae2890"
+checksum = "92ecec44e1646cb6d2574ef4ff5e169c56ac2fdc89cb8ada6ac25745a9d4fd64"
 dependencies = [
  "anyhow",
  "deno_ast",
