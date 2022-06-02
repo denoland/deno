@@ -752,11 +752,21 @@ delete Object.prototype.__proto__;
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
           for (const specifier of request.specifiers) {
-            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
-              ...languageService.getSemanticDiagnostics(specifier),
-              ...languageService.getSuggestionDiagnostics(specifier),
-              ...languageService.getSyntacticDiagnostics(specifier),
-            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+            let diagnostics = [];
+            try {
+              diagnostics = [
+                ...languageService.getSemanticDiagnostics(specifier),
+                ...languageService.getSuggestionDiagnostics(specifier),
+                ...languageService.getSyntacticDiagnostics(specifier),
+              ];
+            } catch {
+              // just swallow errors here, as they are meaningless
+            }
+            diagnosticMap[specifier] = fromTypeScriptDiagnostic(
+              diagnostics.filter(({ code }) =>
+                !IGNORED_DIAGNOSTICS.includes(code)
+              ),
+            );
           }
           return respond(id, diagnosticMap);
         } catch (e) {
