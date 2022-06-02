@@ -276,24 +276,25 @@ where
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
 
+  
   loop {
     let mut watcher = new_watcher2(watcher_sender.clone())?;
     
-    match paths_to_watch_receiver.try_recv() {
-      Ok(path) => {
-        add_path_to_watcher(&mut watcher, &path);
-      }
-      Err(e) => match e {
-        mpsc::error::TryRecvError::Empty => {
-          break;
+    loop {  
+      match paths_to_watch_receiver.try_recv() {
+        Ok(path) => {
+          add_path_to_watcher(&mut watcher, &path);
         }
-        // there must be at least one receiver alive
-        _ => unreachable!(),
-      },
+        Err(e) => match e {
+          mpsc::error::TryRecvError::Empty => {
+            break;
+          }
+          // there must be at least one receiver alive
+          _ => unreachable!(),
+        },
+      }
     }
-  }
-
-  loop {
+    
     let receiver_future = async {
       loop {
         let maybe_path = paths_to_watch_receiver.recv().await;
