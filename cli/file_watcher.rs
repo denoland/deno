@@ -294,12 +294,16 @@ where
   }
 
   'outer: loop {
+    let receiver_future = async {
+      loop {
+        let maybe_path = paths_to_watch_receiver.recv().await;
+        add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
+      }
+    };
     let operation_future = error_handler(operation(operation_args.clone()));
 
     select! {
-      maybe_path = paths_to_watch_receiver.recv() => {
-        add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
-      },
+      _ = receiver_future => {},
       _ = watcher_receiver.recv() => {
         print_after_restart();
         continue;
