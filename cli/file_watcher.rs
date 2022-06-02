@@ -13,6 +13,7 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use tokio::sync::mpsc::UnboundedReceiver;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -276,13 +277,11 @@ where
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
 
-  loop {
-    let mut watcher = new_watcher2(watcher_sender.clone())?;
-
+  fn consume_paths_to_watch(watcher: &mut RecommendedWatcher, receiver: &mut UnboundedReceiver<PathBuf>) {
     loop {
-      match paths_to_watch_receiver.try_recv() {
+      match receiver.try_recv() {
         Ok(path) => {
-          add_path_to_watcher(&mut watcher, &path);
+          add_path_to_watcher(watcher, &path);
         }
         Err(e) => match e {
           mpsc::error::TryRecvError::Empty => {
@@ -293,6 +292,11 @@ where
         },
       }
     }
+  }
+
+  loop {
+    let mut watcher = new_watcher2(watcher_sender.clone())?;
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
 
     let receiver_future = async {
       loop {
@@ -315,6 +319,7 @@ where
           colors::intense_blue("Watcher"),
           job_name,
         );
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 

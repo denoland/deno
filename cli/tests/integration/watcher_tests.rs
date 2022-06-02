@@ -1091,7 +1091,12 @@ fn run_watch_dynamic_imports() {
     stdout_lines.next().unwrap(),
     "I'm dynamically imported and I cause restarts!"
   );
-
+  eprintln!("before");
+  assert_contains!(
+    stderr_lines.next().unwrap(),
+    "finished"
+  );
+  eprintln!("after");
   write(
     &file_to_watch3,
     r#"
@@ -1100,7 +1105,9 @@ fn run_watch_dynamic_imports() {
   )
   .unwrap();
 
+  eprintln!("before1");
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  eprintln!("after1");
   assert_contains!(
     stdout_lines.next().unwrap(),
     "Hopefully dynamic import will be watched..."
