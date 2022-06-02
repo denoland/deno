@@ -159,6 +159,7 @@ fn create_web_worker_callback(
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
         user_agent: version::get_user_agent(),
+        is_file_watcher: false,
       },
       extensions,
       unsafely_ignore_certificate_errors: ps
@@ -254,6 +255,7 @@ pub fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
       user_agent: version::get_user_agent(),
+      is_file_watcher: ps.flags.watch.is_some(),
     },
     extensions,
     unsafely_ignore_certificate_errors: ps

@@ -583,7 +583,14 @@ delete Object.prototype.__proto__;
       unstableFlag,
       cpuCount,
       userAgent: userAgentInfo,
+      isFileWatcher,
     } = runtimeOptions;
+
+    if (isFileWatcher) {
+      os.setExitHandler((exitCode) => {
+        core.terminate(new Error(`Process exited with code: ${exitCode}`));
+      });
+    }
 
     colors.setNoColor(noColor || !isTty);
     if (locationHref != null) {
