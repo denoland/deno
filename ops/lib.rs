@@ -67,7 +67,10 @@ impl syn::parse::Parse for MacroArgs {
 #[proc_macro_attribute]
 pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let margs = syn::parse_macro_input!(attr as MacroArgs);
-  let MacroArgs { is_unstable, is_v8 } = margs;
+  let MacroArgs {
+    is_unstable,
+    is_v8: _,
+  } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let generics = &func.sig.generics;
@@ -118,7 +121,6 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
           enabled: true,
           is_async: #is_async,
           is_unstable: #is_unstable,
-          is_v8: #is_v8,
         }
       }
 
