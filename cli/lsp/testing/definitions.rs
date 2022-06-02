@@ -138,6 +138,9 @@ impl TestDefinitions {
     })
   }
 
+  /// Register a dynamically-detected test. Returns false if a test with the
+  /// same static id was already registered statically or dynamically. Otherwise
+  /// returns true.
   pub fn inject(&mut self, data: lsp_custom::TestData) -> bool {
     if self.discovered.iter().any(|td| td.contains_id(&data.id))
       || self.injected.iter().any(|td| td.id == data.id)
