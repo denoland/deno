@@ -11,8 +11,10 @@ https://github.com/denoland/deno_install
 - feat(unstable): add Deno.getGid (#14528)
 - fix(cli/dts): add `captureStackTrace` to `lib.dom.extras` (#14748)
 - fix(ext/crypto): adjust `getRandomValues` types (#14714)
-- fix(fmt): do panic for import decl with empty named imports and default import (#14773)
-- fix(scripts/release): add unstable flag when running ./tools/format.js (#14743)
+- fix(fmt): do panic for import decl with empty named imports and default import
+  (#14773)
+- fix(scripts/release): add unstable flag when running ./tools/format.js
+  (#14743)
 
 ### 1.22.1 / 2022.05.27
 
