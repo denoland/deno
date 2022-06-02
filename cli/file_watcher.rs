@@ -270,8 +270,6 @@ where
 
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
-  let mut watcher = new_watcher2(watcher_sender.clone())?;
-
   fn add_path_to_watcher(watcher: &mut RecommendedWatcher, path: &Path) {
     log::debug!("Watching path: {:?}", path);
     // Ignore any error e.g. `PathNotFound`
@@ -279,6 +277,8 @@ where
   }
 
   loop {
+    let mut watcher = new_watcher2(watcher_sender.clone())?;
+    
     match paths_to_watch_receiver.try_recv() {
       Ok(path) => {
         add_path_to_watcher(&mut watcher, &path);
