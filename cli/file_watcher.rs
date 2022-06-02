@@ -10,7 +10,6 @@ use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
 use notify::Error as NotifyError;
-use notify::FsEventWatcher;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
@@ -273,7 +272,7 @@ where
 
   let mut watcher = new_watcher2(watcher_sender.clone())?;
 
-  fn add_path_to_watcher(watcher: &mut FsEventWatcher, path: &Path) {
+  fn add_path_to_watcher(watcher: &mut RecommendedWatcher, path: &Path) {
     log::debug!("Watching path: {:?}", path);
     // Ignore any error e.g. `PathNotFound`
     let _ = watcher.watch(path, RecursiveMode::Recursive);
