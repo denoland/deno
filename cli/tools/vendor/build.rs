@@ -1,11 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
+use std::path::PathBuf;
 
+use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
+use import_map::ImportMap;
 
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
@@ -15,6 +18,7 @@ use super::specifiers::is_remote_specifier;
 
 /// Allows substituting the environment for testing purposes.
 pub trait VendorEnvironment {
+  fn cwd(&self) -> Result<PathBuf, AnyError>;
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError>;
   fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError>;
 }
@@ -22,6 +26,10 @@ pub trait VendorEnvironment {
 pub struct RealVendorEnvironment;
 
 impl VendorEnvironment for RealVendorEnvironment {
+  fn cwd(&self) -> Result<PathBuf, AnyError> {
+    Ok(std::env::current_dir()?)
+  }
+
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     Ok(std::fs::create_dir_all(dir_path)?)
   }
@@ -36,6 +44,7 @@ pub fn build(
   graph: &ModuleGraph,
   output_dir: &Path,
   environment: &impl VendorEnvironment,
+  original_import_map: Option<ImportMap>,
 ) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
   let all_modules = graph.modules();
@@ -79,9 +88,16 @@ pub fn build(
 
   // create the import map
   if !mappings.base_specifiers().is_empty() {
-    let import_map_text = build_import_map(graph, &all_modules, &mappings);
-    environment
-      .write_file(&output_dir.join("import_map.json"), &import_map_text)?;
+    let cwd = environment.cwd()?;
+    let cwd_uri = ModuleSpecifier::from_directory_path(&cwd).unwrap();
+    let import_map_text = build_import_map(
+      &cwd_uri,
+      graph,
+      &all_modules,
+      &mappings,
+      original_import_map,
+    );
+    environment.write_file(&cwd.join("import_map.json"), &import_map_text)?;
   }
 
   Ok(remote_modules.len())

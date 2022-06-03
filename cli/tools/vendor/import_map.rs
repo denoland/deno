@@ -1,40 +1,33 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeMap;
-
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
-use deno_core::serde_json;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use serde::Serialize;
+use import_map::ImportMap;
+use indexmap::IndexMap;
 
 use super::mappings::Mappings;
 use super::specifiers::is_remote_specifier;
 use super::specifiers::is_remote_specifier_text;
 
-#[derive(Serialize)]
-struct SerializableImportMap {
-  imports: BTreeMap<String, String>,
-  #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-  scopes: BTreeMap<String, BTreeMap<String, String>>,
-}
-
 struct ImportMapBuilder<'a> {
+  base: &'a ModuleSpecifier,
   mappings: &'a Mappings,
   imports: ImportsBuilder<'a>,
-  scopes: BTreeMap<String, ImportsBuilder<'a>>,
+  scopes: IndexMap<String, ImportsBuilder<'a>>,
 }
 
 impl<'a> ImportMapBuilder<'a> {
-  pub fn new(mappings: &'a Mappings) -> Self {
+  pub fn new(base: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     ImportMapBuilder {
+      base,
       mappings,
-      imports: ImportsBuilder::new(mappings),
+      imports: ImportsBuilder::new(base, mappings),
       scopes: Default::default(),
     }
   }
@@ -48,47 +41,55 @@ impl<'a> ImportMapBuilder<'a> {
       .entry(
         self
           .mappings
-          .relative_specifier_text(self.mappings.output_dir(), base_specifier),
+          .relative_specifier_text(self.base, base_specifier),
       )
-      .or_insert_with(|| ImportsBuilder::new(self.mappings))
+      .or_insert_with(|| ImportsBuilder::new(self.base, self.mappings))
   }
 
-  pub fn into_serializable(self) -> SerializableImportMap {
-    SerializableImportMap {
-      imports: self.imports.imports,
-      scopes: self
-        .scopes
-        .into_iter()
-        .map(|(key, value)| (key, value.imports))
-        .collect(),
+  pub fn into_import_map(
+    self,
+    original_import_map: Option<ImportMap>,
+  ) -> ImportMap {
+    let mut import_map =
+      original_import_map.unwrap_or_else(|| ImportMap::new(self.base.clone()));
+
+    let imports = import_map.imports_mut();
+    for (key, value) in self.imports.imports {
+      if !imports.contains(&key) {
+        imports.append(key, value).unwrap();
+      }
     }
-  }
 
-  pub fn into_file_text(self) -> String {
-    let mut text =
-      serde_json::to_string_pretty(&self.into_serializable()).unwrap();
-    text.push('\n');
-    text
+    for (scope_key, scope_value) in self.scopes {
+      let imports = import_map.get_or_append_scope_mut(&scope_key).unwrap();
+      for (key, value) in scope_value.imports {
+        if !imports.contains(&key) {
+          imports.append(key, value).unwrap();
+        }
+      }
+    }
+
+    import_map
   }
 }
 
 struct ImportsBuilder<'a> {
+  base: &'a ModuleSpecifier,
   mappings: &'a Mappings,
-  imports: BTreeMap<String, String>,
+  imports: IndexMap<String, String>,
 }
 
 impl<'a> ImportsBuilder<'a> {
-  pub fn new(mappings: &'a Mappings) -> Self {
+  pub fn new(base: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     Self {
+      base,
       mappings,
       imports: Default::default(),
     }
   }
 
   pub fn add(&mut self, key: String, specifier: &ModuleSpecifier) {
-    let value = self
-      .mappings
-      .relative_specifier_text(self.mappings.output_dir(), specifier);
+    let value = self.mappings.relative_specifier_text(self.base, specifier);
 
     // skip creating identity entries
     if key != value {
@@ -98,20 +99,16 @@ impl<'a> ImportsBuilder<'a> {
 }
 
 pub fn build_import_map(
+  base: &ModuleSpecifier,
   graph: &ModuleGraph,
   modules: &[&Module],
   mappings: &Mappings,
+  original_import_map: Option<ImportMap>,
 ) -> String {
-  let mut import_map = ImportMapBuilder::new(mappings);
-  visit_modules(graph, modules, mappings, &mut import_map);
+  let mut builder = ImportMapBuilder::new(base, mappings);
+  visit_modules(graph, modules, mappings, &mut builder);
 
-  for base_specifier in mappings.base_specifiers() {
-    import_map
-      .imports
-      .add(base_specifier.to_string(), base_specifier);
-  }
-
-  import_map.into_file_text()
+  builder.into_import_map(original_import_map).to_json()
 }
 
 fn visit_modules(
@@ -202,6 +199,12 @@ fn handle_dep_specifier(
     return;
   }
 
+  // add an entry for every local module referrencing a remote
+  if !is_remote_specifier(&referrer) {
+    import_map.imports.add(text.to_string(), &specifier);
+    return;
+  }
+
   let base_specifier = mappings.base_specifier(&specifier);
   if is_remote_specifier_text(text) {
     if !text.starts_with(base_specifier.as_str()) {
@@ -215,7 +218,8 @@ fn handle_dep_specifier(
       return;
     }
 
-    import_map.imports.add(text.to_string(), &specifier);
+    let imports = import_map.scope(base_specifier);
+    imports.add(text.to_string(), &specifier);
   } else {
     let expected_relative_specifier_text =
       mappings.relative_specifier_text(referrer, &specifier);

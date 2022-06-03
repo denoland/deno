@@ -120,6 +120,10 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
+  fn cwd(&self) -> Result<PathBuf, AnyError> {
+    Ok(make_path("/"))
+  }
+
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -173,7 +177,13 @@ impl VendorTestBuilder {
     let graph = self.build_graph().await;
     let output_dir = make_path("/vendor");
     let environment = TestVendorEnvironment::default();
-    super::build::build(&graph, &output_dir, &environment)?;
+    let original_import_map = None; // todo(THIS PR): this
+    super::build::build(
+      &graph,
+      &output_dir,
+      &environment,
+      original_import_map,
+    )?;
     let mut files = environment.files.borrow_mut();
     let import_map = files.remove(&output_dir.join("import_map.json"));
     let mut files = files

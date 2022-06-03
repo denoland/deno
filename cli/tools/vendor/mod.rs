@@ -2,7 +2,10 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use ::import_map::ImportMap;
+use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -32,9 +35,18 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
   };
   let output_dir = fs_util::resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &flags, &ps)?;
-  let graph = create_graph(&ps, &flags).await?;
-  let vendored_count =
-    build::build(&graph, &output_dir, &build::RealVendorEnvironment)?;
+  let maybe_import_map = ps.maybe_import_map.as_ref().map(|m| {
+    m.with_folder_removed(
+      &ModuleSpecifier::from_directory_path(&output_dir).unwrap(),
+    )
+  });
+  let graph = create_graph(&ps, &flags, &maybe_import_map).await?;
+  let vendored_count = build::build(
+    &graph,
+    &output_dir,
+    &build::RealVendorEnvironment,
+    maybe_import_map,
+  )?;
 
   eprintln!(
     r#"Vendored {} {} into {} directory.
@@ -111,6 +123,7 @@ fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
 async fn create_graph(
   ps: &ProcState,
   flags: &VendorFlags,
+  maybe_import_map: &Option<ImportMap>,
 ) -> Result<deno_graph::ModuleGraph, AnyError> {
   let entry_points = flags
     .specifiers
@@ -135,8 +148,9 @@ async fn create_graph(
   } else {
     None
   };
-  let maybe_import_map_resolver =
-    ps.maybe_import_map.clone().map(ImportMapResolver::new);
+  let maybe_import_map_resolver = maybe_import_map
+    .clone()
+    .map(|m| ImportMapResolver::new(Arc::new(m)));
   let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
     cf.to_maybe_jsx_import_source_module()
       .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
