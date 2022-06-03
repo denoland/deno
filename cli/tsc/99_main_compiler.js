@@ -752,25 +752,18 @@ delete Object.prototype.__proto__;
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
           for (const specifier of request.specifiers) {
-            let diagnostics = [];
-            try {
-              diagnostics = [
-                ...languageService.getSemanticDiagnostics(specifier),
-                ...languageService.getSuggestionDiagnostics(specifier),
-                ...languageService.getSyntacticDiagnostics(specifier),
-              ];
-            } catch {
-              // just swallow errors here, as they are meaningless
-            }
-            diagnosticMap[specifier] = fromTypeScriptDiagnostic(
-              diagnostics.filter(({ code }) =>
-                !IGNORED_DIAGNOSTICS.includes(code)
-              ),
-            );
+            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
+              ...languageService.getSemanticDiagnostics(specifier),
+              ...languageService.getSuggestionDiagnostics(specifier),
+              ...languageService.getSyntacticDiagnostics(specifier),
+            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if (!(e instanceof OperationCanceledError)) {
+          if (
+            !(e instanceof OperationCanceledError ||
+              e instanceof ts.OperationCanceledException)
+          ) {
             if ("stack" in e) {
               error(e.stack);
             } else {
