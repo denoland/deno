@@ -1,2 +1,5 @@
-const [, errorInfo] = Deno.core.evalContext('throw new DOMException("foo")');
+const [, errorInfo] = Deno.core.opSync(
+  "op_eval_context",
+  'throw new DOMException("foo")',
+);
 console.log(errorInfo);

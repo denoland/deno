@@ -24,11 +24,9 @@
     StringPrototypeSlice,
     ObjectAssign,
     SymbolFor,
+    setQueueMicrotask,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-
-  // Available on start due to bindings.
-  const { refOp_, unrefOp_ } = window.Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -176,14 +174,14 @@
     if (!hasPromise(promiseId)) {
       return;
     }
-    refOp_(promiseId);
+    opSync("op_ref_op", promiseId);
   }
 
   function unrefOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    unrefOp_(promiseId);
+    opSync("op_unref_op", promiseId);
   }
 
   function resources() {
@@ -217,10 +215,14 @@
   function metrics() {
     const [aggregate, perOps] = opSync("op_metrics");
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      core.opNames(),
+      core.opSync("op_op_names"),
       (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;
+  }
+
+  function queueMicrotask(cb) {
+    opSync("op_queue_microtask", cb);
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -270,4 +272,8 @@
 
   ObjectAssign(globalThis.__bootstrap, { core });
   ObjectAssign(globalThis.Deno, { core });
+
+  // Direct bindings on `globalThis`
+  ObjectAssign(globalThis, { queueMicrotask });
+  setQueueMicrotask(queueMicrotask);
 })(globalThis);

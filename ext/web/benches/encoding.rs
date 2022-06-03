@@ -30,7 +30,7 @@ fn setup() -> Vec<Extension> {
         "setup",
         r#"
         const { TextDecoder } = globalThis.__bootstrap.encoding;
-        const hello12k = Deno.core.encode("hello world\n".repeat(1e3));
+        const hello12k = Deno.core.opSync("op_encode", "hello world\n".repeat(1e3));
         "#,
       )])
       .state(|state| {

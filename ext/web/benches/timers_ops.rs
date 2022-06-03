@@ -28,7 +28,7 @@ fn setup() -> Vec<Extension> {
     .js(vec![
       ("setup", r#"
       const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
-      Deno.core.setMacrotaskCallback(handleTimerMacrotask);
+      Deno.core.opSync("op_set_macrotask_callback", handleTimerMacrotask);
       "#),
     ])
     .state(|state| {

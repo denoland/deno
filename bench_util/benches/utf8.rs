@@ -13,9 +13,9 @@ fn setup() -> Vec<Extension> {
       const hello = "hello world\n";
       const hello1k = hello.repeat(1e3);
       const hello1m = hello.repeat(1e6);
-      const helloEncoded = Deno.core.encode(hello);
-      const hello1kEncoded = Deno.core.encode(hello1k);
-      const hello1mEncoded = Deno.core.encode(hello1m);
+      const helloEncoded = Deno.core.opSync("op_encode", hello);
+      const hello1kEncoded = Deno.core.opSync("op_encode", hello1k);
+      const hello1mEncoded = Deno.core.opSync("op_encode", hello1m);
       "#,
     )])
     .build()]
@@ -24,7 +24,7 @@ fn setup() -> Vec<Extension> {
 fn bench_utf8_encode_12_b(b: &mut Bencher) {
   bench_js_sync_with(
     b,
-    r#"Deno.core.encode(hello);"#,
+    r#"Deno.core.opSync("op_encode", hello);"#,
     setup,
     BenchOptions {
       benching_inner: 1,
@@ -36,7 +36,7 @@ fn bench_utf8_encode_12_b(b: &mut Bencher) {
 fn bench_utf8_encode_12_kb(b: &mut Bencher) {
   bench_js_sync_with(
     b,
-    r#"Deno.core.encode(hello1k);"#,
+    r#"Deno.core.opSync("op_encode", hello1k);"#,
     setup,
     BenchOptions {
       benching_inner: 1,
@@ -48,7 +48,7 @@ fn bench_utf8_encode_12_kb(b: &mut Bencher) {
 fn bench_utf8_encode_12_mb(b: &mut Bencher) {
   bench_js_sync_with(
     b,
-    r#"Deno.core.encode(hello1m);"#,
+    r#"Deno.core.opSync("op_encode", hello1m);"#,
     setup,
     BenchOptions {
       benching_inner: 1,
@@ -61,7 +61,7 @@ fn bench_utf8_encode_12_mb(b: &mut Bencher) {
 fn bench_utf8_decode_12_b(b: &mut Bencher) {
   bench_js_sync_with(
     b,
-    r#"Deno.core.decode(helloEncoded);"#,
+    r#"Deno.core.opSync("op_decode", helloEncoded);"#,
     setup,
     BenchOptions {
       benching_inner: 1,
@@ -73,7 +73,7 @@ fn bench_utf8_decode_12_b(b: &mut Bencher) {
 fn bench_utf8_decode_12_kb(b: &mut Bencher) {
   bench_js_sync_with(
     b,
-    r#"Deno.core.decode(hello1kEncoded);"#,
+    r#"Deno.core.opSync("op_decode", hello1kEncoded);"#,
     setup,
     BenchOptions {
       benching_inner: 1,
@@ -85,7 +85,7 @@ fn bench_utf8_decode_12_kb(b: &mut Bencher) {
 fn bench_utf8_decode_12_mb(b: &mut Bencher) {
   bench_js_sync_with(
     b,
-    r#"Deno.core.decode(hello1mEncoded);"#,
+    r#"Deno.core.opSync("op_decode", hello1mEncoded);"#,
     setup,
     BenchOptions {
       benching_inner: 1,

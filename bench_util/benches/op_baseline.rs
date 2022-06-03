@@ -42,7 +42,7 @@ fn bench_op_async(b: &mut Bencher) {
 }
 
 fn bench_is_proxy(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.isProxy(42);"#, setup);
+  bench_js_sync(b, r#"Deno.core.opSync("op_is_proxy", 42);"#, setup);
 }
 
 benchmark_group!(

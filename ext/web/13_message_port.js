@@ -74,7 +74,7 @@
    * @returns {MessagePort}
    */
   function createMessagePort(id) {
-    const port = core.createHostObject();
+    const port = core.opSync("op_create_host_object");
     ObjectSetPrototypeOf(port, MessagePortPrototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
@@ -205,7 +205,7 @@
     const transferables = [];
     const hostObjects = [];
     const arrayBufferIdsInTransferables = [];
-    const transferedArrayBuffers = [];
+    const transferredArrayBuffers = [];
 
     for (const transferable of messageData.transferables) {
       switch (transferable.kind) {
@@ -216,7 +216,7 @@
           break;
         }
         case "arrayBuffer": {
-          ArrayPrototypePush(transferedArrayBuffers, transferable.data);
+          ArrayPrototypePush(transferredArrayBuffers, transferable.data);
           const i = ArrayPrototypePush(transferables, null);
           ArrayPrototypePush(arrayBufferIdsInTransferables, i);
           break;
@@ -226,14 +226,14 @@
       }
     }
 
-    const data = core.deserialize(messageData.data, {
+    const data = core.opSync("op_deserialize", messageData.data, {
       hostObjects,
-      transferedArrayBuffers,
+      transferredArrayBuffers,
     });
 
     for (const i in arrayBufferIdsInTransferables) {
       const id = arrayBufferIdsInTransferables[i];
-      transferables[id] = transferedArrayBuffers[i];
+      transferables[id] = transferredArrayBuffers[i];
     }
 
     return [data, transferables];
@@ -247,12 +247,12 @@
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, transferables) {
-    const transferedArrayBuffers = ArrayPrototypeFilter(
+    const transferredArrayBuffers = ArrayPrototypeFilter(
       transferables,
       (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
     );
 
-    for (const arrayBuffer of transferedArrayBuffers) {
+    for (const arrayBuffer of transferredArrayBuffers) {
       // This is hacky with both false positives and false negatives for
       // detecting detached array buffers. V8  needs to add a way to tell if a
       // buffer is detached or not.
@@ -265,12 +265,12 @@
       WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
     }
 
-    const serializedData = core.serialize(data, {
+    const serializedData = core.opSync("op_serialize", data, {
       hostObjects: ArrayPrototypeFilter(
         transferables,
         (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
       ),
-      transferedArrayBuffers,
+      transferredArrayBuffers,
     }, (err) => {
       throw new DOMException(err, "DataCloneError");
     });
@@ -299,7 +299,7 @@
       ) {
         ArrayPrototypePush(serializedTransferables, {
           kind: "arrayBuffer",
-          data: transferedArrayBuffers[arrayBufferI],
+          data: transferredArrayBuffers[arrayBufferI],
         });
         arrayBufferI++;
       } else {

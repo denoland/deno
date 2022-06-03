@@ -369,7 +369,7 @@
 
       this.boundary = `--${boundary}`;
       this.body = body;
-      this.boundaryChars = core.encode(this.boundary);
+      this.boundaryChars = core.opSync("op_encode", this.boundary);
     }
 
     /**
@@ -467,7 +467,7 @@
               });
               formData.append(name, blob, filename);
             } else {
-              formData.append(name, core.decode(content));
+              formData.append(name, core.opSync("op_decode", content));
             }
           }
         } else if (state === 5 && isNewLine) {

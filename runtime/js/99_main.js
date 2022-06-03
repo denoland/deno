@@ -199,7 +199,7 @@ delete Object.prototype.__proto__;
     loadedMainWorkerScript = true;
 
     for (const { url, script } of scripts) {
-      const err = core.evalContext(script, url)[1];
+      const err = core.opSync("op_eval_context", script, url)[1];
       if (err !== null) {
         throw err.thrown;
       }
@@ -211,8 +211,8 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    core.setMacrotaskCallback(timers.handleTimerMacrotask);
-    core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+    core.opSync("op_set_macrotask_callback", timers.handleTimerMacrotask);
+    core.opSync("op_set_wasm_streaming_callback", fetch.handleWasmStreaming);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,

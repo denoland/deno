@@ -5,8 +5,8 @@ addEventListener("foo", () => {
 });
 console.log(1);
 // @ts-ignore Deno.core
-Deno.core.setNextTickCallback(() => console.log("nextTick"));
+Deno.core.opSync("op_set_next_tick_callback", () => console.log("nextTick"));
 // @ts-ignore Deno.core
-Deno.core.setHasTickScheduled(true);
+Deno.core.opSync("op_set_has_tick_scheduled", true);
 dispatchEvent(new CustomEvent("foo"));
 console.log(2);

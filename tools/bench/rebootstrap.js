@@ -13,7 +13,7 @@ export function rebootstrap(exts) {
     .flat()
     .map((entry) => entry.path)
     .forEach((file) => {
-      Deno.core.evalContext(Deno.readTextFileSync(file), file);
+      Deno.core.opSync("op_eval_context", Deno.readTextFileSync(file), file);
     });
   const bootstrap = globalThis.__bootstrap;
   delete globalThis.__bootstrap;

@@ -1359,7 +1359,7 @@
   // https://html.spec.whatwg.org/#report-the-exception
   function reportException(error) {
     reportExceptionStackedCalls++;
-    const jsError = core.destructureError(error);
+    const jsError = core.opSync("op_destructure_error", error);
     const message = jsError.exceptionMessage;
     let filename = "";
     let lineno = 0;
@@ -1369,7 +1369,7 @@
       lineno = jsError.frames[0].lineNumber;
       colno = jsError.frames[0].columnNumber;
     } else {
-      const jsError = core.destructureError(new Error());
+      const jsError = core.opSync("op_destructure_error", new Error());
       for (const frame of jsError.frames) {
         if (
           typeof frame.fileName == "string" &&
@@ -1392,7 +1392,7 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      core.terminate(error);
+      core.opSync("op_terminate", error);
     }
     reportExceptionStackedCalls--;
   }

@@ -126,7 +126,8 @@
         ArrayPrototypePush(processedParts, element);
         size += element.size;
       } else if (typeof element === "string") {
-        const chunk = core.encode(
+        const chunk = core.opSync(
+          "op_encode",
           endings == "native" ? convertLineEndingsToNative(element) : element,
         );
         size += chunk.byteLength;
@@ -341,7 +342,7 @@
     async text() {
       webidl.assertBranded(this, BlobPrototype);
       const buffer = await this.#u8Array(this.size);
-      return core.decode(buffer);
+      return core.opSync("op_decode", buffer);
     }
 
     async #u8Array(size) {
@@ -402,9 +403,9 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    // BlobPart is passed to processBlobParts after conversion, which calls core.encode()
+    // BlobPart is passed to processBlobParts after conversion, which calls op_encode
     // on the string.
-    // core.encode() is equivalent to USVString normalization.
+    // op_encode is equivalent to USVString normalization.
     return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
