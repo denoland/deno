@@ -519,7 +519,7 @@ impl ProcState {
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
-    // and `op_eval_context` API. Ideally we should always have a referrer filled
+    // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
     let referrer = if referrer.is_empty() && self.flags.repl {
       deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()

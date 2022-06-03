@@ -172,13 +172,13 @@
     encode(input = "") {
       webidl.assertBranded(this, TextEncoderPrototype);
       const prefix = "Failed to execute 'encode' on 'TextEncoder'";
-      // The WebIDL type of `input` is `USVString`, but `op_encode` already
+      // The WebIDL type of `input` is `USVString`, but `core.encode` already
       // converts lone surrogates to the replacement character.
       input = webidl.converters.DOMString(input, {
         prefix,
         context: "Argument 1",
       });
-      return core.opSync("op_encode", input);
+      return core.encode(input);
     }
 
     /**
@@ -324,7 +324,7 @@
               this.#pendingHighSurrogate = null;
             }
             if (chunk) {
-              controller.enqueue(core.opSync("op_encode", chunk));
+              controller.enqueue(core.encode(chunk));
             }
             return PromiseResolve();
           } catch (err) {

@@ -71,7 +71,7 @@
       }
       ArrayPrototypePush(buf, c[0]);
     }
-    return core.opSync("op_decode", new Uint8Array(buf));
+    return core.decode(new Uint8Array(buf));
   }
 
   window.__bootstrap.prompt = {

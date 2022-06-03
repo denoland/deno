@@ -74,7 +74,7 @@
     }
 
     try {
-      return core.opSync("op_deserialize", core.opSync("op_serialize", value));
+      return core.deserialize(core.serialize(value));
     } catch (e) {
       if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
         throw new DOMException(e.message, "DataCloneError");

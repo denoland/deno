@@ -806,7 +806,7 @@
       }
       const result = {};
       // Fast path for common case (not a Proxy)
-      if (!core.opSync("op_is_proxy", V)) {
+      if (!core.isProxy(V)) {
         for (const key in V) {
           if (!ObjectPrototypeHasOwnProperty(V, key)) {
             continue;

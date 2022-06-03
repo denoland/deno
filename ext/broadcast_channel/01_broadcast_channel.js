@@ -48,7 +48,7 @@
       const go = () => {
         if (channel[_closed]) return;
         const event = new MessageEvent("message", {
-          data: core.opSync("op_deserialize", data), // TODO(bnoordhuis) Cache immutables.
+          data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
           origin: "http://127.0.0.1",
         });
         setTarget(event, channel);
@@ -111,7 +111,7 @@
         throw new DOMException("Uncloneable value", "DataCloneError");
       }
 
-      const data = core.opSync("op_serialize", message);
+      const data = core.serialize(message);
 
       // Send to other listeners in this VM.
       dispatch(this, this[_name], new Uint8Array(data));

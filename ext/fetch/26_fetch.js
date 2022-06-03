@@ -214,9 +214,7 @@
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
         // TODO(@AaronO): plumb support for StringOrBuffer all the way
-        reqBody = typeof reqBody === "string"
-          ? core.opSync("op_encode", reqBody)
-          : reqBody;
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
@@ -521,7 +519,7 @@
   /**
    * Handle the Response argument to the WebAssembly streaming APIs, after
    * resolving if it was passed as a promise. This function should be registered
-   * through `op_set_wasm_streaming_callback`.
+   * through `Deno.core.setWasmStreamingCallback`.
    *
    * @param {any} source The source parameter that the WebAssembly streaming API
    * was called with. If it was called with a Promise, `source` is the resolved
@@ -575,7 +573,7 @@
           // 2.7
           () => core.close(rid),
           // 2.8
-          (err) => core.opSync("op_abort_wasm_streaming", rid, err),
+          (err) => core.abortWasmStreaming(rid, err),
         );
       } else {
         // 2.7
@@ -583,7 +581,7 @@
       }
     } catch (err) {
       // 2.8
-      core.opSync("op_abort_wasm_streaming", rid, err);
+      core.abortWasmStreaming(rid, err);
     }
   }
 

@@ -74,7 +74,7 @@
    * @returns {MessagePort}
    */
   function createMessagePort(id) {
-    const port = core.opSync("op_create_host_object");
+    const port = core.createHostObject();
     ObjectSetPrototypeOf(port, MessagePortPrototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
@@ -226,7 +226,7 @@
       }
     }
 
-    const data = core.opSync("op_deserialize", messageData.data, {
+    const data = core.deserialize(messageData.data, {
       hostObjects,
       transferredArrayBuffers,
     });
@@ -265,7 +265,7 @@
       WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
     }
 
-    const serializedData = core.opSync("op_serialize", data, {
+    const serializedData = core.serialize(data, {
       hostObjects: ArrayPrototypeFilter(
         transferables,
         (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),

@@ -649,7 +649,7 @@
       );
     }
 
-    const jsError = Deno.core.opSync("op_destructure_error", new Error());
+    const jsError = Deno.core.destructureError(new Error());
     // Note: There might pop up a case where one of the filename, line number or
     // column number from the caller isn't defined. We assume never for now.
     // Make `TestDescription::location` optional if such a case is found.
@@ -812,8 +812,7 @@
       await test.fn(step);
       const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
-        "failed": core.opSync(
-          "op_destructure_error",
+        "failed": core.destructureError(
           new Error(
             `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
           ),
@@ -821,7 +820,7 @@
       };
     } catch (error) {
       return {
-        "failed": core.opSync("op_destructure_error", error),
+        "failed": core.destructureError(error),
       };
     } finally {
       step.finalized = true;
@@ -986,7 +985,7 @@
 
       return { ok: stats };
     } catch (error) {
-      return { failed: core.opSync("op_destructure_error", error) };
+      return { failed: core.destructureError(error) };
     } finally {
       if (bench.sanitizeExit) setExitHandler(null);
       if (token !== null) restorePermissions(token);
@@ -1047,7 +1046,7 @@
     filter = null,
     shuffle = null,
   } = {}) {
-    core.opSync("op_set_macrotask_callback", handleOpSanitizerDelayMacrotask);
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
 
@@ -1100,7 +1099,7 @@
   }
 
   async function runBenchmarks() {
-    core.opSync("op_set_macrotask_callback", handleOpSanitizerDelayMacrotask);
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getBenchOrigin();
     const originalConsole = globalThis.console;
@@ -1317,13 +1316,11 @@
           return "ignored";
         case "pending":
           return {
-            "pending": this.error &&
-              core.opSync("op_destructure_error", this.error),
+            "pending": this.error && core.destructureError(this.error),
           };
         case "failed":
           return {
-            "failed": this.error &&
-              core.opSync("op_destructure_error", this.error),
+            "failed": this.error && core.destructureError(this.error),
           };
         default:
           throw new Error(`Unhandled status: ${this.status}`);

@@ -52,7 +52,7 @@
    * @returns {Uint8Array}
    */
   function chunkToU8(chunk) {
-    return typeof chunk === "string" ? core.opSync("op_encode", chunk) : chunk;
+    return typeof chunk === "string" ? core.encode(chunk) : chunk;
   }
 
   /**
@@ -60,7 +60,7 @@
    * @returns {string}
    */
   function chunkToString(chunk) {
-    return typeof chunk === "string" ? chunk : core.opSync("op_decode", chunk);
+    return typeof chunk === "string" ? chunk : core.decode(chunk);
   }
 
   class InnerBody {
@@ -200,10 +200,7 @@
       const [out1, out2] = this.stream.tee();
       this.streamOrStatic = out1;
       const second = new InnerBody(out2);
-      second.source = core.opSync(
-        "op_deserialize",
-        core.opSync("op_serialize", this.source),
-      );
+      second.source = core.deserialize(core.serialize(this.source));
       second.length = this.length;
       return second;
     }
@@ -476,8 +473,8 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    // BodyInit conversion is passed to extractBody(), which calls op_encode.
-    // op_encode will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
+    // BodyInit conversion is passed to extractBody(), which calls core.encode().
+    // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
     // Therefore we can convert to DOMString instead of USVString and avoid a costly redundant conversion.
     return webidl.converters["DOMString"](V, opts);
   };

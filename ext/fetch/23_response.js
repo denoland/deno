@@ -12,7 +12,7 @@
 "use strict";
 
 ((window) => {
-  const { core } = Deno;
+  const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher, serializeJSValueToJSONString } =
@@ -448,7 +448,7 @@
       return { status: 200, statusText: "", headers: undefined };
     }
     // Fast path, if not a proxy
-    if (typeof init === "object" && !core.opSync("op_is_proxy", init)) {
+    if (typeof init === "object" && !isProxy(init)) {
       // Not a proxy fast path
       const status = init.status !== undefined
         ? webidl.converters["unsigned short"](init.status)

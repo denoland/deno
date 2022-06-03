@@ -633,7 +633,7 @@
     level,
     inspectOptions,
   ) {
-    const proxyDetails = core.opSync("op_get_proxy_details", value);
+    const proxyDetails = core.getProxyDetails(value);
     if (proxyDetails != null && inspectOptions.showProxy) {
       return inspectProxy(proxyDetails, level, inspectOptions);
     }
@@ -1052,7 +1052,7 @@
     const cyan = maybeColor(colors.cyan, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
 
-    const [state, result] = core.opSync("op_get_promise_details", value);
+    const [state, result] = core.getPromiseDetails(value);
 
     if (state === PromiseState.Pending) {
       return `Promise { ${cyan("<pending>")} }`;
@@ -2290,9 +2290,9 @@
   // Inspired by:
   // https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
   function wrapConsole(consoleFromDeno, consoleFromV8) {
-    for (const key of ObjectKeys(consoleFromV8)) {
-      const callConsole = core.callConsole;
+    const callConsole = core.callConsole;
 
+    for (const key of ObjectKeys(consoleFromV8)) {
       if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
         consoleFromDeno[key] = FunctionPrototypeBind(
           callConsole,
