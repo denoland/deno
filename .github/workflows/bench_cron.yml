@@ -1,0 +1,35 @@
+name: bench
+
+on:
+  schedule:
+    - cron: 0 0 * * *
+  workflow_dispatch:
+
+jobs:
+  bench:
+    name: wpt / ${{ matrix.os }} / ${{ matrix.deno-version }}
+    if: github.repository == 'denoland/deno'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04-xl]
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release
+        run: cargo build --release --locked --all-targets
+      
+      - name: Run and Post benchmarks
+        run: cargo bench --locked
