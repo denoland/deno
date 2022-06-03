@@ -221,8 +221,36 @@
     return aggregate;
   }
 
-  function queueMicrotask(cb) {
-    opSync("op_queue_microtask", cb);
+  function queueMicrotask(...args) {
+    return opSync("op_queue_microtask", ...args);
+  }
+
+  function setMacrotaskCallback(...args) {
+    return opSync("op_set_macrotask_callback", ...args);
+  }
+
+  function setNextTickCallback(...args) {
+    return opSync("op_set_next_tick_callback", ...args);
+  }
+
+  function runMicrotasks(...args) {
+    return opSync("op_run_microtasks", ...args);
+  }
+
+  function hasTickScheduled(...args) {
+    return opSync("op_has_tick_scheduled", ...args);
+  }
+
+  function setHasTickScheduled(...args) {
+    return opSync("op_set_has_tick_scheduled", ...args);
+  }
+
+  function evalContext(...args) {
+    return opSync("op_eval_context", ...args);
+  }
+
+  function encode(...args) {
+    return opSync("op_encode", ...args);
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -268,6 +296,13 @@
     opCallTraces,
     refOp,
     unrefOp,
+    setMacrotaskCallback,
+    setNextTickCallback,
+    runMicrotasks,
+    hasTickScheduled,
+    setHasTickScheduled,
+    evalContext,
+    encode,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
