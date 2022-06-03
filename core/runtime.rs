@@ -53,6 +53,16 @@ pub enum Snapshot {
   Boxed(Box<[u8]>),
 }
 
+impl Clone for Snapshot {
+  fn clone(&self) -> Self {
+    match self {
+      Self::Static(ptr) => Self::Static(ptr),
+      Self::JustCreated(_) => panic!("Can't Clone Snapshot::JustCreated"),
+      Self::Boxed(boxed) => Self::Boxed(boxed.clone()),
+    }
+  }
+}
+
 pub type JsErrorCreateFn = dyn Fn(JsError) -> Error;
 
 pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e Error) -> &'static str;
