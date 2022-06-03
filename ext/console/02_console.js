@@ -46,6 +46,7 @@
     StringPrototypeMatch,
     StringPrototypePadStart,
     StringPrototypeLocaleCompare,
+    StringPrototypeStartsWith,
     StringPrototypeToString,
     StringPrototypeTrim,
     StringPrototypeIncludes,
@@ -2281,7 +2282,7 @@
   // with default implementation of Console from V8. This will cause
   // console messages to be piped to inspector console.
   //
-  // We are using `op_call_console` binding to preserve proper stack
+  // We are using `Deno.core.callConsole` binding to preserve proper stack
   // frames in inspector console. This has to be done because V8 considers
   // the last JS stack frame as gospel for the inspector. In our case we
   // specifically want the latest user stack frame to be the one that matters
@@ -2291,17 +2292,15 @@
   // https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
   function wrapConsole(consoleFromDeno, consoleFromV8) {
     for (const key of ObjectKeys(consoleFromV8)) {
+      const callConsole = core.callConsole;
+
       if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
-        const v8ConsoleMethod = consoleFromV8[key];
-        const denoConsoleMethod = consoleFromDeno[key];
-        consoleFromDeno[key] = (...args) =>
-          core.opSync(
-            "op_call_console",
-            consoleFromDeno,
-            v8ConsoleMethod,
-            denoConsoleMethod,
-            args,
-          );
+        consoleFromDeno[key] = FunctionPrototypeBind(
+          callConsole,
+          consoleFromDeno,
+          consoleFromV8[key],
+          consoleFromDeno[key],
+        );
       }
     }
   }

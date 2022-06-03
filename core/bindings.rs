@@ -12,9 +12,14 @@ use log::debug;
 use once_cell::sync::Lazy;
 use std::option::Option;
 use std::os::raw::c_void;
+use v8::MapFnTo;
 
 pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
-  Lazy::new(|| v8::ExternalReferences::new(&[]));
+  Lazy::new(|| {
+    v8::ExternalReferences::new(&[v8::ExternalReference {
+      function: call_console.map_fn_to(),
+    }])
+  });
 
 pub fn module_origin<'a>(
   s: &mut v8::HandleScope<'a>,
@@ -62,7 +67,10 @@ pub fn initialize_context<'s>(
   }
 
   // global.Deno = { core: { } };
-  JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
+  let core_val = JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
+
+  // Bind functions to Deno.core.*
+  set_func(scope, core_val, "callConsole", call_console);
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
@@ -79,6 +87,18 @@ fn initialize_ops(
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
     set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
   }
+}
+
+pub fn set_func(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  name: &'static str,
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let val = v8::Function::new(scope, callback).unwrap();
+  val.set_name(key);
+  obj.set(scope, key.into(), val.into());
 }
 
 // Register a raw v8::FunctionCallback
@@ -315,6 +335,56 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       }
     }
   }
+}
+
+/// This binding should be used if there's a custom console implementation
+/// available. Using it will make sure that proper stack frames are displayed
+/// in the inspector console.
+///
+/// Each method on console object should be bound to this function, eg:
+/// ```ignore
+/// function wrapConsole(consoleFromDeno, consoleFromV8) {
+///   const callConsole = core.callConsole;
+///
+///   for (const key of Object.keys(consoleFromV8)) {
+///     if (consoleFromDeno.hasOwnProperty(key)) {
+///       consoleFromDeno[key] = callConsole.bind(
+///         consoleFromDeno,
+///         consoleFromV8[key],
+///         consoleFromDeno[key],
+///       );
+///     }
+///   }
+/// }
+/// ```
+///
+/// Inspired by:
+/// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/src/inspector_js_api.cc#L194-L222
+fn call_console(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  if args.length() < 2
+    || !args.get(0).is_function()
+    || !args.get(1).is_function()
+  {
+    return throw_type_error(scope, "Invalid arguments");
+  }
+
+  let mut call_args = vec![];
+  for i in 2..args.length() {
+    call_args.push(args.get(i));
+  }
+
+  let receiver = args.this();
+  let inspector_console_method =
+    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
+  let deno_console_method =
+    v8::Local::<v8::Function>::try_from(args.get(1)).unwrap();
+
+  inspector_console_method.call(scope, receiver.into(), &call_args);
+  deno_console_method.call(scope, receiver.into(), &call_args);
 }
 
 /// Called by V8 during `JsRuntime::instantiate_module`.

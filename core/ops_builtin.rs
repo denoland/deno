@@ -68,7 +68,6 @@ pub(crate) fn init_builtins() -> Extension {
       op_get_proxy_details::decl(),
       op_is_proxy::decl(),
       op_memory_usage::decl(),
-      op_call_console::decl(),
       op_set_wasm_streaming_callback::decl(),
       op_abort_wasm_streaming::decl(),
       op_destructure_error::decl(),
@@ -824,50 +823,6 @@ fn op_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
   }
-}
-
-/// This binding should be used if there's a custom console implementation
-/// available. Using it will make sure that proper stack frames are displayed
-/// in the inspector console.
-///
-/// Each method on console object should be bound to this function, eg:
-/// ```ignore
-/// function wrapConsole(consoleFromDeno, consoleFromV8) {\
-///   for (const key of Object.keys(consoleFromV8)) {
-///     if (consoleFromDeno.hasOwnProperty(key)) {
-///       consoleFromDeno[key] = (...args) =>
-///         core.opSync(
-///           "op_call_console",
-///           consoleFromDeno,
-///           consoleFromV8[key],
-///           consoleFromDeno[key],
-///           args,
-///         );
-///     }
-///   }
-/// }
-/// ```
-///
-/// Inspired by:
-/// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/src/inspector_js_api.cc#L194-L222
-#[op(v8)]
-fn op_call_console(
-  scope: &mut v8::HandleScope,
-  receiver: serde_v8::Value,
-  inspector_console_method: serde_v8::Value,
-  deno_console_method: serde_v8::Value,
-  args: Vec<serde_v8::Value>,
-) -> Result<(), Error> {
-  let inspector_console_method =
-    v8::Local::<v8::Function>::try_from(inspector_console_method.v8_value)
-      .map_err(|_| type_error("Invalid inspector console method"))?;
-  let deno_console_method =
-    v8::Local::<v8::Function>::try_from(deno_console_method.v8_value)
-      .map_err(|_| type_error("Invalid deno console method"))?;
-  let args = args.iter().map(|a| a.v8_value).collect::<Vec<_>>();
-  inspector_console_method.call(scope, receiver.v8_value, &args);
-  deno_console_method.call(scope, receiver.v8_value, &args);
-  Ok(())
 }
 
 #[op(v8)]
