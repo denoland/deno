@@ -257,6 +257,7 @@
     deserialize: opSync.bind(null, "op_deserialize"),
     getPromiseDetails: opSync.bind(null, "op_get_promise_details"),
     getProxyDetails: opSync.bind(null, "op_get_proxy_details"),
+    isProxy: opSync.bind(null, "op_is_proxy"),
     memoryUsage: opSync.bind(null, "op_memory_usage"),
     setWasmStreamingCallback: opSync.bind(
       null,
