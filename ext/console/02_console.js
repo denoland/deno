@@ -46,7 +46,6 @@
     StringPrototypeMatch,
     StringPrototypePadStart,
     StringPrototypeLocaleCompare,
-    StringPrototypeStartsWith,
     StringPrototypeToString,
     StringPrototypeTrim,
     StringPrototypeIncludes,
