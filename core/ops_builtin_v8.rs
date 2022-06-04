@@ -1,3 +1,4 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
 use crate::error::type_error;
