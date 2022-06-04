@@ -13,11 +13,18 @@ description = "Provides snapshots of TSC & Deno (runtime+web+core)"
 name = "deno_snapshots"
 path = "lib.rs"
 
+[[bin]]
+name = "deno_snapshots"
+path = "main.rs"
+required-features = ["snaphack"]
+
 [dependencies]
 deno_core = { version = "0.137.0", path = "../core" } # For mock TSC #[op]s
 deno_runtime = { version = "0.63.0", path = "../runtime" }
 lzzzz = '=0.8.0'
 once_cell = "=1.10.0"
+regex = "=1.5.5"
+serde = { version = "1.0.125", features = ["derive"] }
 zstd = '=0.11.1'
 
 [build-dependencies]
@@ -27,3 +34,6 @@ lzzzz = '=0.8.0'
 regex = "=1.5.5"
 serde = { version = "1.0.125", features = ["derive"] }
 zstd = '=0.11.1'
+
+[features]
+snaphack = []
