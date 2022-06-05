@@ -9,7 +9,7 @@ use quote::ToTokens;
 use syn::FnArg;
 use syn::Ident;
 
-// Identifer to the `deno_core` crate.
+// Identifier to the `deno_core` crate.
 //
 // If macro called in deno_core, `crate` is used.
 // If macro called outside deno_core, `deno_core` OR the renamed
