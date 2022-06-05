@@ -760,7 +760,10 @@ delete Object.prototype.__proto__;
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if (!(e instanceof OperationCanceledError)) {
+          if (
+            !(e instanceof OperationCanceledError ||
+              e instanceof ts.OperationCanceledException)
+          ) {
             if ("stack" in e) {
               error(e.stack);
             } else {

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.22.1"
+version = "1.22.2"
 authors = ["the Deno authors"]
 default-run = "deno"
 edition = "2021"
@@ -25,17 +25,17 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.48.0", path = "../ext/broadcast_channel" }
-deno_console = { version = "0.54.0", path = "../ext/console" }
-deno_core = { version = "0.136.0", path = "../core" }
-deno_crypto = { version = "0.68.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.77.0", path = "../ext/fetch" }
-deno_net = { version = "0.46.0", path = "../ext/net" }
-deno_url = { version = "0.54.0", path = "../ext/url" }
-deno_web = { version = "0.85.0", path = "../ext/web" }
-deno_webgpu = { version = "0.55.0", path = "../ext/webgpu" }
-deno_websocket = { version = "0.59.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.49.0", path = "../ext/webstorage" }
+deno_broadcast_channel = { version = "0.49.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.55.0", path = "../ext/console" }
+deno_core = { version = "0.137.0", path = "../core" }
+deno_crypto = { version = "0.69.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.78.0", path = "../ext/fetch" }
+deno_net = { version = "0.47.0", path = "../ext/net" }
+deno_url = { version = "0.55.0", path = "../ext/url" }
+deno_web = { version = "0.86.0", path = "../ext/web" }
+deno_webgpu = { version = "0.56.0", path = "../ext/webgpu" }
+deno_websocket = { version = "0.60.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.50.0", path = "../ext/webstorage" }
 regex = "=1.5.5"
 serde = { version = "=1.0.136", features = ["derive"] }
 zstd = '=0.11.1'
@@ -46,12 +46,12 @@ winres = "=0.1.12"
 
 [dependencies]
 deno_ast = { version = "0.15.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
-deno_core = { version = "0.136.0", path = "../core" }
+deno_core = { version = "0.137.0", path = "../core" }
 deno_doc = "0.35.0"
 deno_emit = "0.2.0"
 deno_graph = "0.27.0"
 deno_lint = { version = "0.30.0", features = ["docs"] }
-deno_runtime = { version = "0.62.0", path = "../runtime" }
+deno_runtime = { version = "0.63.0", path = "../runtime" }
 deno_task_shell = "0.3.1"
 
 atty = "=0.2.14"
@@ -109,7 +109,7 @@ fwdansi = "=1.1.0"
 winapi = { version = "=0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [dev-dependencies]
-deno_bench_util = { version = "0.48.0", path = "../bench_util" }
+deno_bench_util = { version = "0.49.0", path = "../bench_util" }
 flaky_test = "=0.1.0"
 os_pipe = "=1.0.1"
 pretty_assertions = "=1.2.1"
