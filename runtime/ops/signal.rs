@@ -49,6 +49,8 @@ impl Resource for SignalStreamResource {
   }
 }
 
+// TODO: CtrlClose could be mapped to SIGHUP but that needs a
+// tokio::windows::signal::CtrlClose type, or something from a different crate
 #[cfg(windows)]
 enum WindowsSignal {
   Sigint(CtrlC),

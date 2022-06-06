@@ -309,8 +309,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::OpenProcess;
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::wincon::GenerateConsoleCtrlEvent;
-  use winapi::um::wincon::CTRL_BREAK_EVENT;
-  use winapi::um::wincon::CTRL_C_EVENT;
+  use winapi::um::wincon::{CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT};
   use winapi::um::winnt::PROCESS_TERMINATE;
 
   if pid < 0 {
@@ -320,12 +319,15 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
     )));
   }
 
-  if matches!(signal, "SIGINT" | "SIGBREAK") {
+  if matches!(signal, "SIGINT" | "SIGBREAK" | "SIGHUP") {
     let is_generated = unsafe {
       GenerateConsoleCtrlEvent(
         match signal {
           "SIGINT" => CTRL_C_EVENT,
           "SIGBREAK" => CTRL_BREAK_EVENT,
+          // Need tokio::windows::signal::CtrlClose or equivalent
+          // in signal.rs to get this working
+          "SIGHUP" => CTRL_CLOSE_EVENT,
           _ => unreachable!(),
         },
         pid as u32,
