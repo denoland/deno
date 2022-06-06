@@ -993,13 +993,13 @@ itest!(type_definitions_for_export {
 });
 
 itest!(type_directives_01 {
-  args: "run --reload -L debug type_directives_01.ts",
+  args: "run --reload --check=all -L debug type_directives_01.ts",
   output: "type_directives_01.ts.out",
   http_server: true,
 });
 
 itest!(type_directives_02 {
-  args: "run --reload -L debug type_directives_02.ts",
+  args: "run --reload --check=all -L debug type_directives_02.ts",
   output: "type_directives_02.ts.out",
 });
 
@@ -1157,7 +1157,7 @@ itest!(top_level_for_await_ts {
 });
 
 itest!(unstable_disabled {
-  args: "run --reload unstable.ts",
+  args: "run --reload --check unstable.ts",
   exit_code: 1,
   output: "unstable_disabled.out",
 });
@@ -2467,7 +2467,7 @@ itest!(import_assertions_dynamic_error {
 });
 
 itest!(import_assertions_type_check {
-  args: "run --allow-read import_assertions/type_check.ts",
+  args: "run --allow-read --check import_assertions/type_check.ts",
   output: "import_assertions/type_check.out",
   exit_code: 1,
 });
@@ -2488,7 +2488,7 @@ itest!(config_auto_discovered_for_local_script {
 });
 
 itest!(no_config_auto_discovery_for_local_script {
-  args: "run --quiet --no-config run/with_config/frontend_work.ts",
+  args: "run --quiet --no-config --check run/with_config/frontend_work.ts",
   output: "run/with_config/no_auto_discovery.out",
   exit_code: 1,
 });
@@ -2602,11 +2602,6 @@ itest!(unstable_ffi_15 {
   exit_code: 70,
 });
 
-itest!(future_check1 {
-  args: "run future_check.ts",
-  output: "future_check1.out",
-});
-
 itest!(future_check2 {
   args: "run --check future_check.ts",
   output: "future_check2.out",
@@ -2663,7 +2658,7 @@ itest!(complex_error {
 
 // Regression test for https://github.com/denoland/deno/issues/12143.
 itest!(js_root_with_ts_check {
-  args: "run --quiet js_root_with_ts_check.js",
+  args: "run --quiet --check js_root_with_ts_check.js",
   output: "js_root_with_ts_check.js.out",
   exit_code: 1,
 });
