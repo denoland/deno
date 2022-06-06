@@ -317,6 +317,18 @@ declare namespace Deno {
    */
   export function getUid(): number | null;
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the group id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getGid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getGid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"
