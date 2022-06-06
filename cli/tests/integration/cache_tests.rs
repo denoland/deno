@@ -27,7 +27,8 @@ itest!(cache_extensionless {
 });
 
 itest!(cache_random_extension {
-  args: "cache --reload --check=all http://localhost:4545/subdir/no_js_ext@1.0.0",
+  args:
+    "cache --reload --check=all http://localhost:4545/subdir/no_js_ext@1.0.0",
   output: "cache_random_extension.out",
   http_server: true,
 });
@@ -39,7 +40,8 @@ itest!(performance_stats {
 
 itest!(redirect_cache {
   http_server: true,
-  args: "cache --reload --check=all http://localhost:4548/subdir/redirects/a.ts",
+  args:
+    "cache --reload --check=all http://localhost:4548/subdir/redirects/a.ts",
   output: "redirect_cache.out",
 });
 
