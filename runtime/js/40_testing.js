@@ -217,14 +217,16 @@
 
       let msg = `Test case is leaking async ops.
 
-- ${ArrayPrototypeJoin(details, "\n - ")}`;
+ - ${ArrayPrototypeJoin(details, "\n - ")}`;
 
       if (!core.isOpCallTracingEnabled()) {
         msg +=
           `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
+      } else {
+        msg += "\n";
       }
 
-      throw msg;
+      throw assert(false, msg);
     };
   }
 
