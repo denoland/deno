@@ -152,6 +152,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -386,6 +387,7 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_uncaught_exception_cb: None,
+      js_format_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,

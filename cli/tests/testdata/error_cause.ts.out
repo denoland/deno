@@ -11,5 +11,5 @@ Caused by: Error: bar
     at b (file:///[WILDCARD]/error_cause.ts:7:3)
     at c (file:///[WILDCARD]/error_cause.ts:11:3)
     at file:///[WILDCARD]/error_cause.ts:14:1
-Caused by: deno
+Caused by: "deno"
 [WILDCARD]
