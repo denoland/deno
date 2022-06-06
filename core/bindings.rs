@@ -55,6 +55,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
         function: set_uncaught_exception_callback.map_fn_to(),
       },
       v8::ExternalReference {
+        function: set_format_exception_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
         function: run_microtasks.map_fn_to(),
       },
       v8::ExternalReference {
@@ -213,6 +216,12 @@ pub fn initialize_context<'s>(
     core_val,
     "setUncaughtExceptionCallback",
     set_uncaught_exception_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "setFormatExceptionCallback",
+    set_format_exception_callback,
   );
   set_func(scope, core_val, "runMicrotasks", run_microtasks);
   set_func(scope, core_val, "hasTickScheduled", has_tick_scheduled);
@@ -638,6 +647,27 @@ fn set_uncaught_exception_callback(
     if let Some(old) = JsRuntime::state(scope)
       .borrow_mut()
       .js_uncaught_exception_cb
+      .replace(new)
+    {
+      let old = v8::Local::new(scope, old);
+      rv.set(old.into());
+    }
+  }
+}
+
+/// Set a callback which formats exception messages as stored in
+/// `JsError::exception_message`. The callback is passed the error value and
+/// should return a string or `null`. If no callback is set or the callback
+/// returns `null`, the built-in default formatting will be used.
+fn set_format_exception_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if let Ok(new) = arg0_to_cb(scope, args) {
+    if let Some(old) = JsRuntime::state(scope)
+      .borrow_mut()
+      .js_format_exception_cb
       .replace(new)
     {
       let old = v8::Local::new(scope, old);
