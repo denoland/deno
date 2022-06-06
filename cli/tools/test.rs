@@ -77,6 +77,58 @@ pub enum TestMode {
   Both,
 }
 
+// TODO(nayeemrmn): This is only used for benches right now.
+#[derive(Clone, Debug, Default)]
+pub struct TestFilter {
+  pub substring: Option<String>,
+  pub regex: Option<Regex>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Vec<String>,
+}
+
+impl TestFilter {
+  pub fn includes(&self, name: &String) -> bool {
+    if let Some(substring) = &self.substring {
+      if !name.contains(substring) {
+        return false;
+      }
+    }
+    if let Some(regex) = &self.regex {
+      if !regex.is_match(name) {
+        return false;
+      }
+    }
+    if let Some(include) = &self.include {
+      if !include.contains(name) {
+        return false;
+      }
+    }
+    if self.exclude.contains(name) {
+      return false;
+    }
+    true
+  }
+
+  pub fn from_flag(flag: &Option<String>) -> Self {
+    let mut substring = None;
+    let mut regex = None;
+    if let Some(flag) = flag {
+      if flag.starts_with('/') && flag.ends_with('/') {
+        let rs = flag.trim_start_matches('/').trim_end_matches('/');
+        regex =
+          Some(Regex::new(rs).unwrap_or_else(|_| Regex::new("$^").unwrap()));
+      } else {
+        substring = Some(flag.clone());
+      }
+    }
+    Self {
+      substring,
+      regex,
+      ..Default::default()
+    }
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestLocation {
