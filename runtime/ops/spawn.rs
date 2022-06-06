@@ -76,7 +76,7 @@ pub struct ChildStatus {
   signal: Option<String>,
 }
 
-impl TryFrom<std::process::ExitStatus> for ChildStatus {
+impl TryFrom<ExitStatus> for ChildStatus {
   type Error = AnyError;
 
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {
@@ -185,10 +185,7 @@ fn op_spawn_child(
   args: SpawnArgs,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(create_command(state, args)?);
-  // TODO(@crowlkats): allow detaching processes.
-  //  currently deno will orphan a process when exiting with an error or Deno.exit()
-  // We want to kill child when it's closed
-  command.kill_on_drop(true);
+  command.kill_on_drop(false);
 
   let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");
