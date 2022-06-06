@@ -14,7 +14,6 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use std::collections::HashSet;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -242,7 +241,7 @@ where
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
 pub async fn watch_func2<T: Clone, O, F>(
-  mut paths_to_watch_receiver: mpsc::UnboundedReceiver<PathBuf>,
+  mut paths_to_watch_receiver: mpsc::UnboundedReceiver<Vec<PathBuf>>,
   mut operation: O,
   operation_args: T,
   print_config: PrintConfig,
@@ -271,20 +270,25 @@ where
 
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
-  fn add_path_to_watcher(watcher: &mut RecommendedWatcher, path: &Path) {
-    log::debug!("Watching path: {:?}", path);
+  fn add_paths_to_watcher(
+    watcher: &mut RecommendedWatcher,
+    paths: Vec<PathBuf>,
+  ) {
+    log::debug!("Watching paths: {:?}", paths);
     // Ignore any error e.g. `PathNotFound`
-    let _ = watcher.watch(path, RecursiveMode::Recursive);
+    for path in &paths {
+      let _ = watcher.watch(path, RecursiveMode::Recursive);
+    }
   }
 
   fn consume_paths_to_watch(
     watcher: &mut RecommendedWatcher,
-    receiver: &mut UnboundedReceiver<PathBuf>,
+    receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
   ) {
     loop {
       match receiver.try_recv() {
-        Ok(path) => {
-          add_path_to_watcher(watcher, &path);
+        Ok(paths) => {
+          add_paths_to_watcher(watcher, paths);
         }
         Err(e) => match e {
           mpsc::error::TryRecvError::Empty => {
@@ -303,8 +307,8 @@ where
 
     let receiver_future = async {
       loop {
-        let maybe_path = paths_to_watch_receiver.recv().await;
-        add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
+        let maybe_paths = paths_to_watch_receiver.recv().await;
+        add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
       }
     };
     let operation_future = error_handler(operation(operation_args.clone()));
@@ -328,8 +332,8 @@ where
 
     let receiver_future = async {
       loop {
-        let maybe_path = paths_to_watch_receiver.recv().await;
-        add_path_to_watcher(&mut watcher, &maybe_path.unwrap());
+        let maybe_paths = paths_to_watch_receiver.recv().await;
+        add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
       }
     };
     select! {

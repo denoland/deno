@@ -1055,7 +1055,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
 
   let operation = |(sender, main_module): (
-    tokio::sync::mpsc::UnboundedSender<PathBuf>,
+    tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
     ModuleSpecifier,
   )| {
     let flags = flags.clone();

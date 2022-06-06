@@ -100,7 +100,7 @@ impl ProcState {
 
   pub async fn build_for_file_watcher(
     flags: Arc<flags::Flags>,
-    files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<PathBuf>,
+    files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
     let ps = Self::build_with_sender(
       flags.clone(),
@@ -110,9 +110,7 @@ impl ProcState {
 
     // Add the extra files listed in the watch flag
     if let Some(watch_paths) = &flags.watch {
-      for path in watch_paths {
-        files_to_watch_sender.send(path.to_path_buf()).unwrap();
-      }
+      files_to_watch_sender.send(watch_paths.clone()).unwrap();
     }
 
     if let Ok(Some(import_map_path)) =
@@ -122,7 +120,7 @@ impl ProcState {
       )
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      files_to_watch_sender.send(import_map_path).unwrap();
+      files_to_watch_sender.send(vec![import_map_path]).unwrap();
     }
 
     Ok(ps)
@@ -130,7 +128,7 @@ impl ProcState {
 
   async fn build_with_sender(
     flags: Arc<flags::Flags>,
-    maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<PathBuf>>,
+    maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
@@ -250,7 +248,10 @@ impl ProcState {
     };
 
     let maybe_file_watcher_reporter =
-      maybe_sender.map(|sender| FileWatcherReporter { sender });
+      maybe_sender.map(|sender| FileWatcherReporter {
+        sender,
+        file_paths: Arc::new(Mutex::new(vec![])),
+      });
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -773,18 +774,24 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
 
 #[derive(Debug)]
 struct FileWatcherReporter {
-  sender: tokio::sync::mpsc::UnboundedSender<PathBuf>,
+  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  file_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl deno_graph::source::Reporter for FileWatcherReporter {
   fn on_load(
     &self,
     specifier: &ModuleSpecifier,
-    _modules_done: usize,
-    _modules_total: usize,
+    modules_done: usize,
+    modules_total: usize,
   ) {
+    let mut file_paths = self.file_paths.lock();
     if specifier.scheme() == "file" {
-      self.sender.send(specifier.to_file_path().unwrap()).unwrap();
+      file_paths.push(specifier.to_file_path().unwrap());
+    }
+
+    if modules_done == modules_total {
+      self.sender.send(file_paths.drain(..).collect()).unwrap();
     }
   }
 }
