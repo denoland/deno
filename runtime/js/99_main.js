@@ -38,6 +38,8 @@ delete Object.prototype.__proto__;
   const encoding = window.__bootstrap.encoding;
   const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const inspectArgs = window.__bootstrap.console.inspectArgs;
+  const quoteString = window.__bootstrap.console.quoteString;
   const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
@@ -210,9 +212,26 @@ delete Object.prototype.__proto__;
     return core.opSync("op_main_module");
   }
 
+  function formatException(error) {
+    if (error instanceof Error) {
+      return null;
+    } else if (typeof error == "string") {
+      return `Uncaught ${
+        inspectArgs([quoteString(error)], {
+          colors: !colors.getNoColor(),
+        })
+      }`;
+    } else {
+      return `Uncaught ${
+        inspectArgs([error], { colors: !colors.getNoColor() })
+      }`;
+    }
+  }
+
   function runtimeStart(runtimeOptions, source) {
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+    core.setFormatExceptionCallback(formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
