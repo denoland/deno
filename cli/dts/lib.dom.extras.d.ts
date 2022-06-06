@@ -7,10 +7,6 @@
 
 /// <reference no-default-lib="true"/>
 
-interface AbortSignal extends EventTarget {
-  readonly reason?: unknown;
-}
-
 declare interface URLPatternInit {
   protocol?: string;
   username?: string;

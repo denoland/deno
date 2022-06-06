@@ -10,7 +10,7 @@
     }
   },
   "command": {
-    "title": "1 reference",
+    "title": "2 references",
     "command": "deno.showReferences",
     "arguments": [
       "file:///a/file.ts",
@@ -19,6 +19,19 @@
         "character": 6
       },
       [
+        {
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 6
+            },
+            "end": {
+              "line": 0,
+              "character": 7
+            }
+          }
+        },
         {
           "uri": "file:///a/file.ts",
           "range": {
