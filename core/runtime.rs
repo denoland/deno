@@ -1806,25 +1806,6 @@ impl JsRuntime {
   }
 }
 
-pub(crate) fn script_origin<'a>(
-  s: &mut v8::HandleScope<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new(s, "").unwrap();
-  v8::ScriptOrigin::new(
-    s,
-    resource_name.into(),
-    0,
-    0,
-    false,
-    123,
-    source_map_url.into(),
-    true,
-    false,
-    false,
-  )
-}
-
 /// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
 /// execution in the realm's context.
 ///
@@ -1890,7 +1871,7 @@ impl JsRealm {
 
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
-    let origin = script_origin(scope, name);
+    let origin = bindings::script_origin(scope, name);
 
     let tc_scope = &mut v8::TryCatch::new(scope);
 

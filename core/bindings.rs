@@ -21,6 +21,26 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
     }])
   });
 
+  // TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
+pub fn script_origin<'a>(
+  s: &mut v8::HandleScope<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let source_map_url = v8::String::new(s, "").unwrap();
+  v8::ScriptOrigin::new(
+    s,
+    resource_name.into(),
+    0,
+    0,
+    false,
+    123,
+    source_map_url.into(),
+    true,
+    false,
+    false,
+  )
+}
+
 pub fn module_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
