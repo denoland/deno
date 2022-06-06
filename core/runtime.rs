@@ -337,6 +337,7 @@ impl JsRuntime {
       } else {
         None
       };
+      let snapshot_loaded = exisiting_blob.is_some();
       let mut creator = v8::SnapshotCreator::new(
         Some(&bindings::EXTERNAL_REFERENCES),
         exisiting_blob.as_ref(),
@@ -346,15 +347,10 @@ impl JsRuntime {
       // Setup default (empty) context, if one doesn't yet exist
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = v8::Context::new(scope);
-        creator.set_default_context(context);
-      }
-      {
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &op_ctxs, false);
-        let index = creator.add_context(context);
-        assert_eq!(index, 0);
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
         global_context = v8::Global::new(scope, context);
+        creator.set_default_context(context);
       }
       (isolate, Some(creator))
     } else {
@@ -442,9 +438,7 @@ impl JsRuntime {
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
     // Init callbacks (opresolve)
-    if !options.will_snapshot {
-      js_runtime.init_cbs();
-    }
+    js_runtime.init_cbs();
 
     js_runtime
   }
@@ -722,8 +716,7 @@ impl JsRuntime {
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap();
     self.has_snapshotted = true;
-    eprintln!("did a snapshot!");
-    
+
     snapshot
   }
 
@@ -2411,11 +2404,8 @@ pub mod tests {
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
-      let s = runtime.snapshot();
-      eprintln!("did snap {}", runtime.has_snapshotted);
-      s
+      runtime.snapshot()
     };
-    
 
     let snapshot = Snapshot::JustCreated(startup_data);
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2425,20 +2415,14 @@ pub mod tests {
     });
 
     let startup_data = {
-      
-      // runtime
-      //   .execute_script("check_a.js", "if (a != 3) throw Error('x')")
-      //   .unwrap();
+      runtime
+        .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+        .unwrap();
       runtime.execute_script("b.js", "b = 2 + 3").unwrap();
-      let s = runtime.snapshot();
-      eprintln!("did snap {}", runtime.has_snapshotted);
-      eprintln!("snapshot {:?}", s);
-      s
+      runtime.snapshot()
     };
 
-    // std::thread::sleep(std::time::Duration::from_millis(5000));
-    // drop(runtime);
-    let snapshot = Snapshot::JustCreated(startup_data);    
+    let snapshot = Snapshot::JustCreated(startup_data);
     {
       let mut runtime = JsRuntime::new(RuntimeOptions {
         startup_snapshot: Some(snapshot),
@@ -2447,9 +2431,9 @@ pub mod tests {
       runtime
         .execute_script("check_b.js", "if (b != 5) throw Error('x')")
         .unwrap();
-      // runtime
-      //   .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
-      //   .unwrap();
+      runtime
+        .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
+        .unwrap();
     }
   }
 
@@ -2559,6 +2543,7 @@ pub mod tests {
   }
 
   #[test]
+  #[ignore]
   fn test_heap_limits() {
     let create_params =
       v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
@@ -2603,6 +2588,7 @@ pub mod tests {
   }
 
   #[test]
+  #[ignore]
   fn test_heap_limit_cb_multiple() {
     let create_params =
       v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
