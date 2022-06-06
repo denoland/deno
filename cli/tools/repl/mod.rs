@@ -70,7 +70,7 @@ async fn read_eval_file(
     .fetch(&specifier, &mut Permissions::allow_all())
     .await?;
 
-  Ok((*file.source).clone())
+  Ok((*file.source).to_string())
 }
 
 pub async fn run(
@@ -133,7 +133,7 @@ pub async fn run(
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
-        if repl_session.is_closing().await? {
+        if repl_session.closing().await? {
           break;
         }
 

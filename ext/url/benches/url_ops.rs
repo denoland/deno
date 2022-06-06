@@ -11,9 +11,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder()
       .js(vec![(
         "setup",
-        Box::new(|| {
-          Ok(r#"const { URL } = globalThis.__bootstrap.url;"#.to_owned())
-        }),
+        "const { URL } = globalThis.__bootstrap.url;",
       )])
       .build(),
   ]

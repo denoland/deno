@@ -6,6 +6,92 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.22.2 / 2022.06.02
+
+- feat(unstable): add Deno.getGid (#14528)
+- fix(cli/dts): add `captureStackTrace` to `lib.dom.extras` (#14748)
+- fix(ext/crypto): adjust `getRandomValues` types (#14714)
+- fix(fmt): do panic for import decl with empty named imports and default import
+  (#14773)
+
+### 1.22.1 / 2022.05.27
+
+- fix(bench): update typo in bench summary (#14672)
+- fix(cli/dts): change `ChildStatus.signal` from `string` to `Deno.Signal`
+  (#14690)
+- fix(core): op metrics op_names mismatch (#14716)
+- fix(core): rethrow exception during structured cloning serialization (#14671)
+- fix(coverage): do not report transpiled files with no lines (#14699)
+- fix(ext/websocket): WebSocket dispatch single close event (#13443)
+- fix(fmt): prevent infinite loop when formatting certain binary expressions
+  (#14725)
+- fix(runtime): improve permission descriptor validation (#14676)
+- fix(vendor): handle relative imports when mapped local folder name differs
+  from remote's (#14465)
+- fix: deno task should actually use current exe for `deno` command (#14705)
+- fix: prevent Deno.exit to fail when dispatchEvent tampered (#14665)
+- fix: read raw stdin to prevent buffering (regression) (#14704)
+
+### 1.22.0 / 2022.05.18
+
+- BREAKING(unstable): Enable Deno namespace in workers by default (#14581)
+- BREAKING: Remove unstable Deno.applySourceMap API (#14473)
+- BREAKING: Remove unstable Deno.emit and Deno.formatDiagnostics APIs (#14463)
+- feat(core): deterministic snapshots (#14037)
+- feat(core): Revert "core: don't include_str extension js code (#10786)"
+  (#14614)
+- feat(ext/net): add "NS" record support in Deno.resolveDns API (#14372)
+- feat(ext/net): add `CAA` DNS record support in Deno.resolveDns() API (#14624)
+- feat(ext/net): add support for SOA records in Deno.resolveDns() API (#14534)
+- feat(ext/net): support NAPTR records in Deno.resolveDns() API (#14613)
+- feat(ext/net): support full `SOA` record interface (#14617)
+- feat(ext/web): add performance.toJSON (#14548)
+- feat(ext/web): implement static `Response.json` (#14566)
+- feat(lsp): enable linting by default (#14583)
+- feat(ops): #[op(v8)] (#14582)
+- feat(ops): allow passing scope handle to ops (#14574)
+- feat(ops): infallible / result-free ops (#14585)
+- feat(ops): sync Rc<RefCell<OpState>> (#14438)
+- feat(runtime/spawn): add `AbortSignal` support (#14538)
+- feat(serde_v8): bytes::Bytes support (#14412)
+- feat(test): Represent uncaught errors (#14513)
+- feat(test): Show Deno.test() call locations for failures (#14484)
+- feat(test): change "failures:" headers in test report (#14490)
+- feat(test): repeat test name if there's user output (#14495)
+- feat(unstable/task): resolve the current executable for the deno command
+  (#14462)
+- feat(web): add `performance.timeOrigin` (#14489)
+- feat: add --no-config flag (#14555)
+- feat: add userAgent property to Navigator's prototype (#14415)
+- feat: return a signal string instead number on ChildStatus (#14643)
+- feat: subcommands type-check only local files by default (#14623)
+- fix(core): support classifying ENOTDIR (#14646)
+- fix(ext/http): error on invalid headers (#14642)
+- fix(ext/http): make serveHttp compress for Accept-Encoding: deflate, gzip
+  (#14525)
+- fix(ext/http): no response body reader when cancelling during shutdown
+  (#14653)
+- fix(ext/http): skip auto-compression if content-encoding present (#14641)
+- fix(ext/tls): ability to ignore IP-address certificate errors (#14610)
+- fix(ext/web): throw if listener and signal are null (#14601)
+- fix(lsp): correct positions in some scenarios (#14359)
+- fix: base64 encoding of source maps with emojis (#14607)
+- perf(core): optimize encode on large strings (#14619)
+- perf(ext/http): faster accept-encoding parsing (#14654)
+- perf(ext/web): Add fast path for non-streaming TextDecoder (#14217)
+- perf(serde_v8): fast path for large strings (#14450)
+
+### 1.21.3 / 2022.05.12
+
+- fix(cli): add deno version to manual links (#14505)
+- fix(core): avoid panic on non-string Error.name (#14529)
+- fix(ext/tls): finish TLS handshake before shutting down (#14547)
+- fix(runtime): stdout and stderr encoding on Windows (#14559)
+- fix(task): accept double hyphen arg immediately following task name (#14567)
+- fix(test): do not panic on `TestOutputPipe::flush` when receiver dropped
+  (#14560)
+- fix(workers): make module evaluation result deterministic (#14553)
+
 ### 1.21.2 / 2022.05.05
 
 - fix(cli): add dom.extras lib (#14430)

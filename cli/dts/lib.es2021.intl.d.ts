@@ -28,6 +28,11 @@ declare namespace Intl {
         fractionalSecondDigits?: 0 | 1 | 2 | 3 | undefined;
     }
 
+    interface DateTimeFormat {
+        formatRange(startDate: Date | number | bigint, endDate: Date | number | bigint): string;
+        formatRangeToParts(startDate: Date | number | bigint, endDate: Date | number | bigint): DateTimeFormatPart[];
+    }
+
     interface ResolvedDateTimeFormatOptions {
         formatMatcher?: "basic" | "best fit" | "best fit";
         dateStyle?: "full" | "long" | "medium" | "short";
@@ -37,15 +42,10 @@ declare namespace Intl {
         fractionalSecondDigits?: 0 | 1 | 2 | 3;
     }
 
-    interface NumberFormat {
-        formatRange(startDate: number | bigint, endDate: number | bigint): string;
-        formatRangeToParts(startDate: number | bigint, endDate: number | bigint): NumberFormatPart[];
-    }
-
     /**
      * The locale matching algorithm to use.
      *
-     * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl#Locale_negotiation).
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
      */
     type ListFormatLocaleMatcher = "lookup" | "best fit";
 
@@ -70,11 +70,11 @@ declare namespace Intl {
      */
     interface ListFormatOptions {
         /** The locale matching algorithm to use. For information about this option, see [Intl page](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl#Locale_negotiation). */
-        localeMatcher?: ListFormatLocaleMatcher;
+        localeMatcher?: ListFormatLocaleMatcher | undefined;
         /** The format of output message. */
-        type?: ListFormatType;
+        type?: ListFormatType | undefined;
         /** The length of the internationalized message. */
-        style?: ListFormatStyle;
+        style?: ListFormatStyle | undefined;
     }
 
     interface ListFormat {

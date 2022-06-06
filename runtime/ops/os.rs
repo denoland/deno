@@ -22,6 +22,7 @@ pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
       op_exit::decl(),
       op_delete_env::decl(),
       op_get_env::decl(),
+      op_getgid::decl(),
       op_getuid::decl(),
       op_hostname::decl(),
       op_loadavg::decl(),
@@ -103,13 +104,12 @@ fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
 }
 
 #[op]
-fn op_set_exit_code(state: &mut OpState, code: i32) -> Result<(), AnyError> {
+fn op_set_exit_code(state: &mut OpState, code: i32) {
   state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
-  Ok(())
 }
 
 #[op]
-fn op_exit(state: &mut OpState) -> Result<(), AnyError> {
+fn op_exit(state: &mut OpState) {
   let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
   std::process::exit(code)
 }
@@ -224,6 +224,22 @@ fn op_system_memory_info(
     })),
     Err(_) => Ok(None),
   }
+}
+
+#[cfg(not(windows))]
+#[op]
+fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getGid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  unsafe { Ok(Some(libc::getgid())) }
+}
+
+#[cfg(windows)]
+#[op]
+fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getGid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(None)
 }
 
 #[cfg(not(windows))]

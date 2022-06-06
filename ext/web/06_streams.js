@@ -569,10 +569,14 @@
   /** @param {WritableStream} stream */
   function initializeWritableStream(stream) {
     stream[_state] = "writable";
-    stream[_storedError] = stream[_writer] = stream[_controller] =
-      stream[_inFlightWriteRequest] = stream[_closeRequest] =
-        stream[_inFlightCloseRequest] = stream[_pendingAbortRequest] =
-          undefined;
+    stream[_storedError] =
+      stream[_writer] =
+      stream[_controller] =
+      stream[_inFlightWriteRequest] =
+      stream[_closeRequest] =
+      stream[_inFlightCloseRequest] =
+      stream[_pendingAbortRequest] =
+        undefined;
     stream[_writeRequests] = [];
     stream[_backpressure] = false;
   }
@@ -2944,8 +2948,11 @@
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     resetQueue(controller);
-    controller[_started] = controller[_closeRequested] =
-      controller[_pullAgain] = controller[_pulling] = false;
+    controller[_started] =
+      controller[_closeRequested] =
+      controller[_pullAgain] =
+      controller[_pulling] =
+        false;
     controller[_strategySizeAlgorithm] = sizeAlgorithm;
     controller[_strategyHWM] = highWaterMark;
     controller[_pullAlgorithm] = pullAlgorithm;

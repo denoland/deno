@@ -225,7 +225,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 137);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -245,6 +245,55 @@ Deno.test(
     }, TypeError);
 
     await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function spawnKillOptional() {
+    const child = Deno.spawnChild(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+
+    child.kill();
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, null);
+    } else {
+      assertEquals(status.code, 143);
+      assertEquals(status.signal, "SIGTERM");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function spawnAbort() {
+    const ac = new AbortController();
+    const child = Deno.spawnChild(Deno.execPath(), {
+      args: [
+        "eval",
+        "setTimeout(console.log, 1e8)",
+      ],
+      signal: ac.signal,
+      stdout: "null",
+      stderr: "null",
+    });
+    queueMicrotask(() => ac.abort());
+    const status = await child.status;
+    assertEquals(status.success, false);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, null);
+    } else {
+      assertEquals(status.success, false);
+      assertEquals(status.code, 143);
+    }
   },
 );
 
@@ -332,8 +381,8 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { run: true } }, async function spawnNotFound() {
-  await assertRejects(
+Deno.test({ permissions: { run: true } }, function spawnNotFound() {
+  assertThrows(
     () => Deno.spawn("this file hopefully doesn't exist"),
     Deno.errors.NotFound,
   );
@@ -384,7 +433,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -403,7 +452,7 @@ Deno.test(
       assertEquals(status.signal, null);
     } else {
       assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, 9);
+      assertEquals(status.signal, "SIGKILL");
     }
   },
 );
@@ -646,8 +695,8 @@ Deno.test(
   },
 );
 
-Deno.test(async function spawnStdinPipedFails() {
-  await assertRejects(
+Deno.test(function spawnStdinPipedFails() {
+  assertThrows(
     () =>
       Deno.spawn("id", {
         stdin: "piped",

@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -97,7 +96,7 @@ impl Loader for TestLoader {
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
-        content: Arc::new(result.0.clone()),
+        content: result.0.clone().into(),
         maybe_headers: result.1.clone(),
       }),
       Err(err) => Err(err),

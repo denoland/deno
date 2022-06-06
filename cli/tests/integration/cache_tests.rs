@@ -78,3 +78,16 @@ fn relative_home_dir() {
   assert!(output.status.success());
   assert_eq!(output.stdout, b"");
 }
+
+itest!(check_local_by_default {
+  args: "cache --quiet cache/check_local_by_default.ts",
+  output: "cache/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "cache --quiet cache/check_local_by_default2.ts",
+  output: "cache/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});
