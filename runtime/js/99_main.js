@@ -587,8 +587,8 @@ delete Object.prototype.__proto__;
     } = runtimeOptions;
 
     if (isFileWatcher) {
-      os.setExitHandler((exitCode) => {
-        core.terminate(new Error(`Process exited with code: ${exitCode}`));
+      os.setExitHandler((_) => {
+        core.terminate();
       });
     }
 
