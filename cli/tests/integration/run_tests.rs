@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config --check checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -528,7 +528,7 @@ fn _090_run_permissions_request() {
 }
 
 itest!(_091_use_define_for_class_fields {
-  args: "run 091_use_define_for_class_fields.ts",
+  args: "run --check 091_use_define_for_class_fields.ts",
   output: "091_use_define_for_class_fields.ts.out",
   exit_code: 1,
 });
@@ -860,7 +860,7 @@ itest!(error_syntax_empty_trailing_line {
 });
 
 itest!(error_type_definitions {
-  args: "run --reload error_type_definitions.ts",
+  args: "run --reload --check error_type_definitions.ts",
   exit_code: 1,
   output: "error_type_definitions.ts.out",
 });
@@ -1801,6 +1801,7 @@ fn dont_cache_on_check_fail() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check=all")
     .arg("--reload")
     .arg("error_003_typescript.ts")
     .stderr(std::process::Stdio::piped())
@@ -1815,6 +1816,7 @@ fn dont_cache_on_check_fail() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check=all")
     .arg("error_003_typescript.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2407,6 +2409,7 @@ fn issue12807() {
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(&mod1_path)
     .stderr(std::process::Stdio::null())
     .stdout(std::process::Stdio::null())
@@ -2420,6 +2423,7 @@ fn issue12807() {
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(&mod1_path)
     .stderr(std::process::Stdio::null())
     .stdout(std::process::Stdio::null())

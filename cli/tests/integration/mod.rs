@@ -150,6 +150,7 @@ fn cache_test() {
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("cache")
+    .arg("--check=all")
     .arg("-L")
     .arg("debug")
     .arg(module_url.to_string())
@@ -377,6 +378,7 @@ fn ts_reload() {
   let mut initial = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("cache")
+    .arg("--check=all")
     .arg(&hello_ts)
     .spawn()
     .expect("failed to spawn script");
@@ -387,6 +389,7 @@ fn ts_reload() {
   let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("cache")
+    .arg("--check=all")
     .arg("--reload")
     .arg("-L")
     .arg("debug")
