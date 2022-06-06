@@ -21,7 +21,7 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
     }])
   });
 
-  // TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
+// TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
 pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,

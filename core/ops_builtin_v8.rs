@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+use crate::bindings::script_origin;
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
 use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
-use crate::bindings::script_origin;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRuntime;
@@ -46,6 +46,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_terminate::decl(),
     op_op_names::decl(),
     op_apply_source_map::decl(),
+    op_set_format_exception_callback::decl(),
   ]
 }
 
@@ -768,4 +769,20 @@ fn op_apply_source_map(
   } else {
     Ok(location)
   }
+}
+
+/// Set a callback which formats exception messages as stored in
+/// `JsError::exception_message`. The callback is passed the error value and
+/// should return a string or `null`. If no callback is set or the callback
+/// returns `null`, the built-in default formatting will be used.
+#[op(v8)]
+fn op_set_format_exception_callback<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  cb: serde_v8::Value<'a>,
+) -> Result<Option<serde_v8::Value<'a>>, Error> {
+  let cb = to_v8_fn(scope, cb)?;
+  let state_rc = JsRuntime::state(scope);
+  let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
+  let old = old.map(|v| v8::Local::new(scope, v));
+  Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
