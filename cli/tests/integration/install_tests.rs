@@ -14,6 +14,7 @@ fn install_basic() {
   let status = util::deno_cmd()
     .current_dir(temp_dir.path())
     .arg("install")
+    .arg("--check")
     .arg("--name")
     .arg("echo_test")
     .arg("http://localhost:4545/echo.ts")
@@ -58,6 +59,7 @@ fn install_custom_dir_env_var() {
   let status = util::deno_cmd()
     .current_dir(util::root_path()) // different cwd
     .arg("install")
+    .arg("--check")
     .arg("--name")
     .arg("echo_test")
     .arg("http://localhost:4545/echo.ts")

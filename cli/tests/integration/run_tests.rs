@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config --check checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json --check 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -644,7 +644,7 @@ itest!(async_error {
 });
 
 itest!(config {
-  args: "run --reload --config config.tsconfig.json config.ts",
+  args: "run --reload --config config.tsconfig.json --check config.ts",
   exit_code: 1,
   output: "config.ts.out",
 });
@@ -679,7 +679,7 @@ itest!(error_002 {
 });
 
 itest!(error_003_typescript {
-  args: "run --reload error_003_typescript.ts",
+  args: "run --reload --check error_003_typescript.ts",
   exit_code: 1,
   output: "error_003_typescript.ts.out",
 });
@@ -689,7 +689,7 @@ itest!(error_003_typescript {
 // should result in the same output.
 // https://github.com/denoland/deno/issues/2436
 itest!(error_003_typescript2 {
-  args: "run error_003_typescript.ts",
+  args: "run --check error_003_typescript.ts",
   exit_code: 1,
   output: "error_003_typescript.ts.out",
 });
@@ -769,7 +769,7 @@ itest!(error_016_dynamic_import_permissions2 {
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "run --reload error_017_hide_long_source_ts.ts",
+  args: "run --reload --check error_017_hide_long_source_ts.ts",
   output: "error_017_hide_long_source_ts.ts.out",
   exit_code: 1,
 });
@@ -830,7 +830,7 @@ itest!(error_026_remote_import_error {
 });
 
 itest!(error_for_await {
-  args: "run --reload error_for_await.ts",
+  args: "run --reload --check error_for_await.ts",
   output: "error_for_await.ts.out",
   exit_code: 1,
 });
