@@ -9,8 +9,13 @@ declare global {
     var libs: string[];
     var libMap: Map<string, string>;
     var base64encode: (host: ts.CompilerHost, input: string) => string;
+    var normalizePath: (path: string) => string;
     interface SourceFile {
       version?: string;
+    }
+
+    interface CompilerHost {
+      base64encode?: (data: any) => string;
     }
 
     interface Performance {
@@ -31,6 +36,7 @@ declare global {
   }
 
   interface DenoCore {
+    encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     opSync<T>(name: string, params: T): any;
     ops(): void;

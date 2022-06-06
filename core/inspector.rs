@@ -527,6 +527,7 @@ impl InspectorSession {
         // the 'v8_channel' argument cannot move.
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),
+        v8::inspector::V8InspectorClientTrustLevel::FullyTrusted,
       );
 
       Self {
