@@ -13,6 +13,7 @@ mod modules;
 mod normalize_path;
 mod ops;
 mod ops_builtin;
+mod ops_builtin_v8;
 mod ops_metrics;
 mod resources;
 mod runtime;
