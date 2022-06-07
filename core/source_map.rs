@@ -7,7 +7,7 @@ pub use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
 
-pub trait SourceMapGetter: Sync + Send {
+pub trait SourceMapGetter {
   /// Returns the raw source map file.
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>>;
   fn get_source_line(
