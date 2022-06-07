@@ -374,7 +374,7 @@ declare namespace Deno {
   /** All possible number types interfacing with foreign functions */
   type StaticNativeNumberType = Exclude<
     NativeType,
-    "void" | "u64" | "i64" | "usize" | "isize" | "pointer"
+    "void" | "pointer" | StaticNativeBigIntType
   >;
 
   /** All possible bigint types interfacing with foreign functions */
