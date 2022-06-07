@@ -19,5 +19,8 @@ and limitations under the License.
 
 
 declare namespace Intl {
-   // Empty for now
+  interface NumberFormat {
+    formatRange(start: number | bigint, end: number | bigint): string;
+    formatRangeToParts(start: number | bigint, end: number | bigint): NumberFormatPart[];
+  }
 }

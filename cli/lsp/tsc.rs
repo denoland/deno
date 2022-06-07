@@ -46,6 +46,8 @@ use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
+use serde_repr::Deserialize_repr;
+use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -623,7 +625,7 @@ impl TextSpan {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolDisplayPart {
   text: String,
@@ -785,7 +787,7 @@ impl QuickInfo {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
@@ -1618,6 +1620,7 @@ pub struct CombinedCodeActions {
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
   // is_write_access: bool,
+  #[serde(default)]
   pub is_definition: bool,
   // is_in_string: Option<bool>,
   #[serde(flatten)]
@@ -1816,14 +1819,14 @@ impl CallHierarchyOutgoingCall {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
-  // name: String,
-  // kind: ScriptElementKind,
-  // kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
+  // name: String,
+  // kind: ScriptElementKind,
+  // kind_modifiers: String,
   // code_actions: Option<Vec<CodeAction>>,
-  // source: Option<Vec<SymbolDisplayPart>>,
+  // source_display: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
@@ -1871,10 +1874,23 @@ impl CompletionEntryDetails {
   }
 }
 
+#[derive(Debug, Deserialize_repr, Serialize_repr)]
+#[repr(u32)]
+pub enum CompletionInfoFlags {
+  None = 0,
+  MayIncludeAutoImports = 1,
+  IsImportStatementCompletion = 2,
+  IsContinuation = 4,
+  ResolvedModuleSpecifiers = 8,
+  ResolvedModuleSpecifiersBeyondLimit = 16,
+  MayIncludeMethodSnippets = 32,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionInfo {
   entries: Vec<CompletionEntry>,
+  flags: Option<CompletionInfoFlags>,
   is_global_completion: bool,
   is_member_completion: bool,
   is_new_identifier_location: bool,
@@ -1946,15 +1962,25 @@ pub struct CompletionEntry {
   #[serde(skip_serializing_if = "Option::is_none")]
   insert_text: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  is_snippet: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   replacement_span: Option<TextSpan>,
   #[serde(skip_serializing_if = "Option::is_none")]
   has_action: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   source: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  source_display: Option<Vec<SymbolDisplayPart>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  label_details: Option<CompletionEntryLabelDetails>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   is_recommended: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   is_from_unchecked_file: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_package_json_import: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
 }
@@ -2138,6 +2164,15 @@ impl CompletionEntry {
       ..Default::default()
     }
   }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletionEntryLabelDetails {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  detail: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3560,7 +3595,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 66);
+    assert_eq!(assets.len(), 69);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
