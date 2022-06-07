@@ -143,7 +143,9 @@
       `Unregistered error class: "${className}"\n  ${msg}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
     );
     // Set .code if error was a known OS error, see error_codes.rs
-    err.code = code;
+    if (code) {
+      err.code = code;
+    }
     // Strip internal calls from stack trace
     ErrorCaptureStackTrace(err, buildError);
     return err;
