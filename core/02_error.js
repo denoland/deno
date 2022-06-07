@@ -201,7 +201,7 @@
       if (fileName && lineNumber != null && columnNumber != null) {
         return patchCallSite(
           callSite,
-          core.applySourceMap({
+          core.opSync("op_apply_source_map", {
             fileName,
             lineNumber,
             columnNumber,

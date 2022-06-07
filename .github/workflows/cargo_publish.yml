@@ -30,7 +30,7 @@ jobs:
       - name: Install deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.19.3
+          deno-version: v1.22.2
 
       - name: Publish
         env:

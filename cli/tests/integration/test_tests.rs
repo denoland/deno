@@ -387,3 +387,9 @@ itest!(check_local_by_default2 {
   http_server: true,
   exit_code: 1,
 });
+
+itest!(non_error_thrown {
+  args: "test --quiet test/non_error_thrown.ts",
+  output: "test/non_error_thrown.out",
+  exit_code: 1,
+});
