@@ -52,7 +52,7 @@ deno_emit = "0.2.0"
 deno_graph = "0.27.0"
 deno_lint = { version = "0.30.0", features = ["docs"] }
 deno_runtime = { version = "0.63.0", path = "../runtime" }
-deno_task_shell = "0.3.1"
+deno_task_shell = "0.3.2"
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
