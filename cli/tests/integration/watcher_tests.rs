@@ -488,6 +488,8 @@ fn run_watch() {
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
@@ -496,15 +498,15 @@ fn run_watch() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  assert_contains!(stdout_lines.next().unwrap(), "Hello world");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Hello world", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Change content of the file
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stdout_lines.next().unwrap(), "Hello world2");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("Hello world2", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -515,23 +517,23 @@ fn run_watch() {
   )
   .unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stdout_lines.next().unwrap(), '0');
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("0", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_file, "export const foo = 42;").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stdout_lines.next().unwrap(), "42");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("42", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stderr_lines.next().unwrap(), "error:");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("error:", &mut stderr_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Then restore the file
   write(
@@ -540,23 +542,23 @@ fn run_watch() {
   )
   .unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stdout_lines.next().unwrap(), "42");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("42", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Update the content of the imported file with invalid syntax
   write(&another_file, "syntax error ^^").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stderr_lines.next().unwrap(), "error:");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("error:", &mut stderr_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stdout_lines.next().unwrap(), "modified!");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("modified!", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -581,6 +583,8 @@ fn run_watch_external_watch_files() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(watch_arg)
+    .arg("-L")
+    .arg("debug")
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
@@ -589,14 +593,15 @@ fn run_watch_external_watch_files() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
-  assert_contains!(stdout_lines.next().unwrap(), "Hello world");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_for("Process started", &mut stderr_lines);
+  wait_for("Watching paths", &mut stderr_lines);
+  wait_for("Hello world", &mut stdout_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Change content of the external file
   write(&external_file_to_watch, "Hello world2").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  wait_for("Restarting", &mut stderr_lines);
   wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
@@ -680,6 +685,8 @@ fn run_watch_not_exit() {
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .env("DENO_FUTURE_CHECK", "1")
@@ -689,18 +696,15 @@ fn run_watch_not_exit() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Process started");
-  assert_contains!(stderr_lines.next().unwrap(), "error:");
-  assert_contains!(stderr_lines.next().unwrap(), "Process finished");
+  wait_for("Process started", &mut stderr_lines);
+  wait_for("error:", &mut stderr_lines);
+  wait_for("Watching paths", &mut stderr_lines);
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
 
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
-  assert_contains!(&next_line, "Restarting");
-  assert_contains!(stdout_lines.next().unwrap(), "42");
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for("42", &mut stdout_lines);
   wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
@@ -984,55 +988,6 @@ fn test_watch_module_graph_error_referrer() {
 }
 
 #[test]
-fn watch_with_no_clear_screen_flag() {
-  let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.js");
-  write(&file_to_watch, "export const foo = 0;").unwrap();
-
-  // choose deno run subcommand to test --no-clear-screen flag
-  let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--watch")
-    .arg("--no-clear-screen")
-    .arg("--unstable")
-    .arg(&file_to_watch)
-    .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
-  let (_, mut stderr_lines) = child_lines(&mut child);
-
-  let next_line = stderr_lines.next().unwrap();
-
-  // no clear screen
-  assert!(!&next_line.contains(CLEAR_SCREEN));
-  assert_contains!(&next_line, "Process started");
-  assert_contains!(
-    stderr_lines.next().unwrap(),
-    "Process finished. Restarting on file change..."
-  );
-
-  // Change content of the file
-  write(&file_to_watch, "export const bar = 0;").unwrap();
-
-  let next_line = stderr_lines.next().unwrap();
-
-  // no clear screen
-  assert!(!&next_line.contains(CLEAR_SCREEN));
-
-  assert_contains!(&next_line, "Watcher File change detected! Restarting!");
-  assert_contains!(
-    stderr_lines.next().unwrap(),
-    "Process finished. Restarting on file change..."
-  );
-
-  check_alive_then_kill(child);
-}
-
-#[test]
 fn run_watch_dynamic_imports() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1068,6 +1023,8 @@ fn run_watch_dynamic_imports() {
     .arg("--watch")
     .arg("--unstable")
     .arg("--allow-read")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .env("DENO_FUTURE_CHECK", "1")
@@ -1079,21 +1036,22 @@ fn run_watch_dynamic_imports() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Process started");
 
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "Hopefully dynamic import will be watched..."
+  wait_for(
+    "Hopefully dynamic import will be watched...",
+    &mut stdout_lines,
   );
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "I'm statically imported from the dynamic import"
+  wait_for(
+    "I'm statically imported from the dynamic import",
+    &mut stdout_lines,
   );
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "I'm dynamically imported and I cause restarts!"
+  wait_for(
+    "I'm dynamically imported and I cause restarts!",
+    &mut stdout_lines,
   );
-  eprintln!("before");
-  assert_contains!(stderr_lines.next().unwrap(), "finished");
-  eprintln!("after");
+
+  wait_for("finished", &mut stderr_lines);
+  wait_for("Watching paths", &mut stderr_lines);
+
   write(
     &file_to_watch3,
     r#"
@@ -1102,20 +1060,18 @@ fn run_watch_dynamic_imports() {
   )
   .unwrap();
 
-  eprintln!("before1");
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  eprintln!("after1");
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "Hopefully dynamic import will be watched..."
+  wait_for("Restarting", &mut stderr_lines);
+  wait_for(
+    "Hopefully dynamic import will be watched...",
+    &mut stdout_lines,
   );
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "I'm statically imported from the dynamic import and I've changed"
+  wait_for(
+    "I'm statically imported from the dynamic import and I've changed",
+    &mut stdout_lines,
   );
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "I'm dynamically imported and I cause restarts!"
+  wait_for(
+    "I'm dynamically imported and I cause restarts!",
+    &mut stdout_lines,
   );
 
   check_alive_then_kill(child);
