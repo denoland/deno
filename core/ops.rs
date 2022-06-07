@@ -3,6 +3,7 @@
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRuntime;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
@@ -124,6 +125,28 @@ impl OpError {
       message: err.to_string(),
       code: crate::error_codes::get_error_code(&err),
     }
+  }
+
+  pub fn build<'a>(
+    self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Value> {
+    let state = JsRuntime::state(scope);
+    let state = state.borrow();
+    let Self {
+      class_name,
+      message,
+      code,
+    } = self;
+    let err_cb = state.js_err_cb.as_ref().unwrap();
+    let err_cb = err_cb.open(scope);
+    let args = [
+      serde_v8::to_v8(scope, class_name).unwrap(),
+      serde_v8::to_v8(scope, message).unwrap(),
+      serde_v8::to_v8(scope, code).unwrap(),
+    ];
+    let this = v8::undefined(scope).into();
+    err_cb.call(scope, this, &args).unwrap()
   }
 }
 

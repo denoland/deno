@@ -148,6 +148,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub(crate) struct JsRuntimeState {
   global_realm: Option<JsRealm>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_err_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
@@ -383,6 +384,7 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
+      js_err_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
@@ -624,13 +626,20 @@ impl JsRuntime {
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let scope = &mut self.handle_scope();
+
     let recv_cb =
       Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
     let recv_cb = v8::Global::new(scope, recv_cb);
+
+    let err_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.buildError").unwrap();
+    let err_cb = v8::Global::new(scope, err_cb);
+
     // Put global handles in state
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
+    state.js_err_cb.replace(err_cb);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -697,6 +706,7 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut state.borrow_mut().js_err_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator

@@ -342,7 +342,7 @@ fn codegen_sync_ret(
       },
       Err(err) => {
         let err = #core::OpError::new(op_state.get_error_class_fn, err);
-        rv.set(#core::serde_v8::to_v8(scope, err).unwrap());
+        rv.set(err.build(scope));
       },
     };
   }

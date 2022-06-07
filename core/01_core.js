@@ -129,20 +129,24 @@
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
-      const className = res.$err_class_name;
-      const errorBuilder = errorMap[className];
-      const err = errorBuilder ? errorBuilder(res.message) : new Error(
-        `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-      );
-      // Set .code if error was a known OS error, see error_codes.rs
-      if (res.code) {
-        err.code = res.code;
-      }
-      // Strip unwrapOpResult() and errorBuilder() calls from stack trace
+      const err = buildError(res.$err_class_name, res.message, res.code);
+      // Strip internal calls from stack trace
       ErrorCaptureStackTrace(err, unwrapOpResult);
       throw err;
     }
     return res;
+  }
+
+  function buildError(className, msg, code) {
+    const errorBuilder = errorMap[className];
+    const err = errorBuilder ? errorBuilder(msg) : new Error(
+      `Unregistered error class: "${className}"\n  ${msg}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+    );
+    // Set .code if error was a known OS error, see error_codes.rs
+    err.code = code;
+    // Strip internal calls from stack trace
+    ErrorCaptureStackTrace(err, buildError);
+    return err;
   }
 
   function opAsync(opName, ...args) {
@@ -167,7 +171,7 @@
   }
 
   function opSync(opName, ...args) {
-    return unwrapOpResult(ops[opName](...args));
+    return ops[opName](...args);
   }
 
   function refOp(promiseId) {
@@ -228,6 +232,7 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
+    buildError,
     opresolve,
     BadResource,
     BadResourcePrototype,
