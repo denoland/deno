@@ -26,7 +26,6 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
-  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -39,6 +38,8 @@ delete Object.prototype.__proto__;
   const encoding = window.__bootstrap.encoding;
   const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const inspectArgs = window.__bootstrap.console.inspectArgs;
+  const quoteString = window.__bootstrap.console.quoteString;
   const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
@@ -211,9 +212,26 @@ delete Object.prototype.__proto__;
     return core.opSync("op_main_module");
   }
 
+  function formatException(error) {
+    if (error instanceof Error) {
+      return null;
+    } else if (typeof error == "string") {
+      return `Uncaught ${
+        inspectArgs([quoteString(error)], {
+          colors: !colors.getNoColor(),
+        })
+      }`;
+    } else {
+      return `Uncaught ${
+        inspectArgs([error], { colors: !colors.getNoColor() })
+      }`;
+    }
+  }
+
   function runtimeStart(runtimeOptions, source) {
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+    core.opSync("op_set_format_exception_callback", formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
@@ -627,7 +645,6 @@ delete Object.prototype.__proto__;
   function bootstrapWorkerRuntime(
     runtimeOptions,
     name,
-    useDenoNamespace,
     internalName,
   ) {
     if (hasBootstrapped) {
@@ -697,23 +714,18 @@ delete Object.prototype.__proto__;
       close: core.close,
       ...denoNs,
     };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        ObjectAssign(finalDenoNs, denoNsUnstable);
-      }
-      ObjectDefineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(ObjectFreeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-      ObjectFreeze(globalThis.Deno.core);
-    } else {
-      delete globalThis.Deno;
-      infra.assert(globalThis.Deno === undefined);
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
     }
+    ObjectDefineProperties(finalDenoNs, {
+      pid: util.readOnly(pid),
+      noColor: util.readOnly(noColor),
+      args: util.readOnly(ObjectFreeze(args)),
+    });
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

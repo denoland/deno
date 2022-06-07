@@ -100,6 +100,46 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
+#[cfg(target_os = "freebsd")]
+pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+  match s {
+    1 => Ok("SIGHUP"),
+    2 => Ok("SIGINT"),
+    3 => Ok("SIGQUIT"),
+    4 => Ok("SIGILL"),
+    5 => Ok("SIGTRAP"),
+    6 => Ok("SIGABRT"),
+    7 => Ok("SIGEMT"),
+    8 => Ok("SIGFPE"),
+    9 => Ok("SIGKILL"),
+    10 => Ok("SIGBUS"),
+    11 => Ok("SIGSEGV"),
+    12 => Ok("SIGSYS"),
+    13 => Ok("SIGPIPE"),
+    14 => Ok("SIGALRM"),
+    15 => Ok("SIGTERM"),
+    16 => Ok("SIGURG"),
+    17 => Ok("SIGSTOP"),
+    18 => Ok("SIGTSTP"),
+    19 => Ok("SIGCONT"),
+    20 => Ok("SIGCHLD"),
+    21 => Ok("SIGTTIN"),
+    22 => Ok("SIGTTOU"),
+    23 => Ok("SIGIO"),
+    24 => Ok("SIGXCPU"),
+    25 => Ok("SIGXFSZ"),
+    26 => Ok("SIGVTALRM"),
+    27 => Ok("SIGPROF"),
+    28 => Ok("SIGWINCH"),
+    29 => Ok("SIGINFO"),
+    30 => Ok("SIGUSR1"),
+    31 => Ok("SIGUSR2"),
+    32 => Ok("SIGTHR"),
+    33 => Ok("SIGLIBRT"),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
@@ -138,6 +178,44 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+  match s {
+    1 => Ok("SIGHUP"),
+    2 => Ok("SIGINT"),
+    3 => Ok("SIGQUIT"),
+    4 => Ok("SIGILL"),
+    5 => Ok("SIGTRAP"),
+    6 => Ok("SIGABRT"),
+    7 => Ok("SIGBUS"),
+    8 => Ok("SIGFPE"),
+    9 => Ok("SIGKILL"),
+    10 => Ok("SIGUSR1"),
+    11 => Ok("SIGSEGV"),
+    12 => Ok("SIGUSR2"),
+    13 => Ok("SIGPIPE"),
+    14 => Ok("SIGALRM"),
+    15 => Ok("SIGTERM"),
+    16 => Ok("SIGSTKFLT"),
+    17 => Ok("SIGCHLD"),
+    18 => Ok("SIGCONT"),
+    19 => Ok("SIGSTOP"),
+    20 => Ok("SIGTSTP"),
+    21 => Ok("SIGTTIN"),
+    22 => Ok("SIGTTOU"),
+    23 => Ok("SIGURG"),
+    24 => Ok("SIGXCPU"),
+    25 => Ok("SIGXFSZ"),
+    26 => Ok("SIGVTALRM"),
+    27 => Ok("SIGPROF"),
+    28 => Ok("SIGWINCH"),
+    29 => Ok("SIGIO"),
+    30 => Ok("SIGPWR"),
+    31 => Ok("SIGSYS"),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
 #[cfg(target_os = "macos")]
 pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
@@ -172,6 +250,44 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
+    _ => Err(type_error(format!("Invalid signal: {}", s))),
+  }
+}
+
+#[cfg(target_os = "macos")]
+pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+  match s {
+    1 => Ok("SIGHUP"),
+    2 => Ok("SIGINT"),
+    3 => Ok("SIGQUIT"),
+    4 => Ok("SIGILL"),
+    5 => Ok("SIGTRAP"),
+    6 => Ok("SIGABRT"),
+    7 => Ok("SIGEMT"),
+    8 => Ok("SIGFPE"),
+    9 => Ok("SIGKILL"),
+    10 => Ok("SIGBUS"),
+    11 => Ok("SIGSEGV"),
+    12 => Ok("SIGSYS"),
+    13 => Ok("SIGPIPE"),
+    14 => Ok("SIGALRM"),
+    15 => Ok("SIGTERM"),
+    16 => Ok("SIGURG"),
+    17 => Ok("SIGSTOP"),
+    18 => Ok("SIGTSTP"),
+    19 => Ok("SIGCONT"),
+    20 => Ok("SIGCHLD"),
+    21 => Ok("SIGTTIN"),
+    22 => Ok("SIGTTOU"),
+    23 => Ok("SIGIO"),
+    24 => Ok("SIGXCPU"),
+    25 => Ok("SIGXFSZ"),
+    26 => Ok("SIGVTALRM"),
+    27 => Ok("SIGPROF"),
+    28 => Ok("SIGWINCH"),
+    29 => Ok("SIGINFO"),
+    30 => Ok("SIGUSR1"),
+    31 => Ok("SIGUSR2"),
     _ => Err(type_error(format!("Invalid signal: {}", s))),
   }
 }
@@ -222,6 +338,53 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGXRES" => Ok(38),
     "SIGJVM1" => Ok(39),
     "SIGJVM2" => Ok(40),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
+  }
+}
+
+#[cfg(any(target_os = "solaris", target_os = "illumos"))]
+pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
+  match s {
+    1 => Ok("SIGHUP"),
+    2 => Ok("SIGINT"),
+    3 => Ok("SIGQUIT"),
+    4 => Ok("SIGILL"),
+    5 => Ok("SIGTRAP"),
+    6 => Ok("SIGABRT"),
+    7 => Ok("SIGEMT"),
+    8 => Ok("SIGFPE"),
+    9 => Ok("SIGKILL"),
+    10 => Ok("SIGBUS"),
+    11 => Ok("SIGSEGV"),
+    12 => Ok("SIGSYS"),
+    13 => Ok("SIGPIPE"),
+    14 => Ok("SIGALRM"),
+    15 => Ok("SIGTERM"),
+    16 => Ok("SIGUSR1"),
+    17 => Ok("SIGUSR2"),
+    18 => Ok("SIGCHLD"),
+    19 => Ok("SIGPWR"),
+    20 => Ok("SIGWINCH"),
+    21 => Ok("SIGURG"),
+    22 => Ok("SIGPOLL"),
+    23 => Ok("SIGSTOP"),
+    24 => Ok("SIGTSTP"),
+    25 => Ok("SIGCONT"),
+    26 => Ok("SIGTTIN"),
+    27 => Ok("SIGTTOU"),
+    28 => Ok("SIGVTALRM"),
+    29 => Ok("SIGPROF"),
+    30 => Ok("SIGXCPU"),
+    31 => Ok("SIGXFSZ"),
+    32 => Ok("SIGWAITING"),
+    33 => Ok("SIGLWP"),
+    34 => Ok("SIGFREEZE"),
+    35 => Ok("SIGTHAW"),
+    36 => Ok("SIGCANCEL"),
+    37 => Ok("SIGLOST"),
+    38 => Ok("SIGXRES"),
+    39 => Ok("SIGJVM1"),
+    40 => Ok("SIGJVM2"),
     _ => Err(type_error(format!("Invalid signal : {}", s))),
   }
 }

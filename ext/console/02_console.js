@@ -2322,5 +2322,6 @@
     inspect,
     wrapConsole,
     createFilteredInspectProxy,
+    quoteString,
   };
 })(this);

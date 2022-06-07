@@ -1,13 +1,12 @@
 try {
-  Deno.run({
-    cmd: ["ls"],
-  });
+  await Deno.spawn("ls");
 } catch (e) {
   console.log(e);
 }
 
-const proc = Deno.run({
-  cmd: ["curl", "--help"],
+const { status } = await Deno.spawn("curl", {
+  args: ["--help"],
   stdout: "null",
+  stderr: "inherit",
 });
-console.log((await proc.status()).success);
+console.log(status.success);

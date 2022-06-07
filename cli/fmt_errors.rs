@@ -39,7 +39,6 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   result
 }
 
-// Keep in sync with `runtime/js/40_error_stack.js`.
 fn format_frame(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name

@@ -30,6 +30,15 @@ delete Object.prototype.__proto__;
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
   const normalizedToOriginalMap = new Map();
 
+  /**
+   * @param {unknown} value
+   * @returns {value is ts.CreateSourceFileOptions}
+   */
+  function isCreateSourceFileOptions(value) {
+    return value != null && typeof value === "object" &&
+      "languageVersion" in value;
+  }
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -70,6 +79,43 @@ delete Object.prototype.__proto__;
     if (!cond) {
       throw new AssertionError(msg);
     }
+  }
+
+  // deno-fmt-ignore
+  const base64abc = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", 
+    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", 
+    "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", 
+    "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7", 
+    "8", "9", "+", "/",
+  ];
+
+  /** Taken from https://deno.land/std/encoding/base64.ts */
+  function convertToBase64(data) {
+    const uint8 = core.encode(data);
+    let result = "",
+      i;
+    const l = uint8.length;
+    for (i = 2; i < l; i += 3) {
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+      result += base64abc[((uint8[i - 1] & 0x0f) << 2) | (uint8[i] >> 6)];
+      result += base64abc[uint8[i] & 0x3f];
+    }
+    if (i === l + 1) {
+      // 1 octet yet to write
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[(uint8[i - 2] & 0x03) << 4];
+      result += "==";
+    }
+    if (i === l) {
+      // 2 octets yet to write
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+      result += base64abc[(uint8[i - 1] & 0x0f) << 2];
+      result += "=";
+    }
+    return result;
   }
 
   // In the case of the LSP, this is initialized with the assets
@@ -253,7 +299,11 @@ delete Object.prototype.__proto__;
     ) {
       debug(
         `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[languageVersion]
+          ts.ScriptTarget[
+            isCreateSourceFileOptions(languageVersion)
+              ? languageVersion.languageVersion
+              : languageVersion
+          ]
         })`,
       );
 
@@ -265,7 +315,7 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind }} */
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
       const { data, scriptKind, version } = core.opSync(
         "op_load",
         { specifier },
@@ -485,6 +535,14 @@ delete Object.prototype.__proto__;
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames }) {
+    // https://github.com/microsoft/TypeScript/issues/49150
+    ts.base64encode = function (host, input) {
+      if (host && host.base64encode) {
+        return host.base64encode(input);
+      }
+      return convertToBase64(input);
+    };
+
     setLogDebug(debugFlag, "TS");
     performanceStart();
     debug(">>> exec start", { rootNames });
@@ -702,7 +760,10 @@ delete Object.prototype.__proto__;
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if (!(e instanceof OperationCanceledError)) {
+          if (
+            !(e instanceof OperationCanceledError ||
+              e instanceof ts.OperationCanceledException)
+          ) {
             if ("stack" in e) {
               error(e.stack);
             } else {

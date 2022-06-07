@@ -191,6 +191,20 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
+    let mut exception_message = None;
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+    if let Some(format_exception_cb) = &state.js_format_exception_cb {
+      let format_exception_cb = format_exception_cb.open(scope);
+      let this = v8::undefined(scope).into();
+      let formatted = format_exception_cb.call(scope, this, &[exception]);
+      if let Some(formatted) = formatted {
+        if formatted.is_string() {
+          exception_message = Some(formatted.to_rust_string_lossy(scope));
+        }
+      }
+    }
+
     if is_instance_of_error(scope, exception) {
       // The exception is a JS Error object.
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
@@ -200,15 +214,17 @@ impl JsError {
       // Get the message by formatting error.name and error.message.
       let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
       let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
-      let exception_message = if !name.is_empty() && !message_prop.is_empty() {
-        format!("Uncaught {}: {}", name, message_prop)
-      } else if !name.is_empty() {
-        format!("Uncaught {}", name)
-      } else if !message_prop.is_empty() {
-        format!("Uncaught {}", message_prop)
-      } else {
-        "Uncaught".to_string()
-      };
+      let exception_message = exception_message.unwrap_or_else(|| {
+        if !name.is_empty() && !message_prop.is_empty() {
+          format!("Uncaught {}: {}", name, message_prop)
+        } else if !name.is_empty() {
+          format!("Uncaught {}", name)
+        } else if !message_prop.is_empty() {
+          format!("Uncaught {}", message_prop)
+        } else {
+          "Uncaught".to_string()
+        }
+      });
       let cause = cause.and_then(|cause| {
         if cause.is_undefined() || seen.contains(&cause) {
           None
@@ -334,13 +350,15 @@ impl JsError {
         aggregated,
       }
     } else {
+      let exception_message = exception_message
+        .unwrap_or_else(|| msg.get(scope).to_rust_string_lossy(scope));
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
       Self {
         name: None,
         message: None,
-        exception_message: msg.get(scope).to_rust_string_lossy(scope),
+        exception_message,
         cause: None,
         source_line: None,
         source_line_frame_index: None,

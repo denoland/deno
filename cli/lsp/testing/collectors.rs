@@ -3,9 +3,10 @@
 use super::definitions::TestDefinition;
 
 use deno_ast::swc::ast;
-use deno_ast::swc::common::Span;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
+use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::ModuleSpecifier;
 use std::collections::HashSet;
 
@@ -254,12 +255,12 @@ impl TestStepCollector {
   fn add_step<N: AsRef<str>>(
     &mut self,
     name: N,
-    span: &Span,
+    range: SourceRange,
     steps: Option<Vec<TestDefinition>>,
   ) {
     let step = TestDefinition::new_step(
       name.as_ref().to_string(),
-      *span,
+      range,
       self.parent.clone(),
       self.level,
       steps,
@@ -267,11 +268,11 @@ impl TestStepCollector {
     self.steps.push(step);
   }
 
-  fn check_call_expr(&mut self, node: &ast::CallExpr, span: &Span) {
+  fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
       check_call_expr(&self.parent, node, self.level + 1)
     {
-      self.add_step(name, span, steps);
+      self.add_step(name, range, steps);
     }
   }
 
@@ -288,7 +289,7 @@ impl Visit for TestStepCollector {
         // Identify calls to identified variables
         ast::Expr::Ident(ident) => {
           if self.vars.contains(&ident.sym.to_string()) {
-            self.check_call_expr(node, &ident.span);
+            self.check_call_expr(node, ident.range());
           }
         }
         // Identify calls to `test.step()`
@@ -298,7 +299,7 @@ impl Visit for TestStepCollector {
               if ns_prop_ident.sym.eq("step") {
                 if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
                   if ident.sym == *test_context {
-                    self.check_call_expr(node, &ns_prop_ident.span);
+                    self.check_call_expr(node, ns_prop_ident.range());
                   }
                 }
               }
@@ -386,23 +387,23 @@ impl TestCollector {
   fn add_definition<N: AsRef<str>>(
     &mut self,
     name: N,
-    span: &Span,
+    range: SourceRange,
     steps: Option<Vec<TestDefinition>>,
   ) {
     let definition = TestDefinition::new(
       &self.specifier,
       name.as_ref().to_string(),
-      *span,
+      range,
       steps,
     );
     self.definitions.push(definition);
   }
 
-  fn check_call_expr(&mut self, node: &ast::CallExpr, span: &Span) {
+  fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
       check_call_expr(self.specifier.as_str(), node, 1)
     {
-      self.add_definition(name, span, steps);
+      self.add_definition(name, range, steps);
     }
   }
 
@@ -418,7 +419,7 @@ impl Visit for TestCollector {
       match callee_expr.as_ref() {
         ast::Expr::Ident(ident) => {
           if self.vars.contains(&ident.sym.to_string()) {
-            self.check_call_expr(node, &ident.span);
+            self.check_call_expr(node, ident.range());
           }
         }
         ast::Expr::Member(member_expr) => {
@@ -426,7 +427,7 @@ impl Visit for TestCollector {
             if ns_prop_ident.sym.to_string() == "test" {
               if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
                 if ident.sym.to_string() == "Deno" {
-                  self.check_call_expr(node, &ns_prop_ident.span);
+                  self.check_call_expr(node, ns_prop_ident.range());
                 }
               }
             }
@@ -494,24 +495,20 @@ impl Visit for TestCollector {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use deno_ast::swc::common::BytePos;
-  use deno_ast::swc::common::SyntaxContext;
+  use deno_ast::StartSourcePos;
   use deno_core::resolve_url;
-  use std::sync::Arc;
 
-  pub fn new_span(lo: u32, hi: u32, ctxt: u32) -> Span {
-    Span {
-      lo: BytePos(lo),
-      hi: BytePos(hi),
-      ctxt: SyntaxContext::from_u32(ctxt),
-    }
+  pub fn new_range(start: usize, end: usize) -> SourceRange {
+    SourceRange::new(
+      StartSourcePos::START_SOURCE_POS + start,
+      StartSourcePos::START_SOURCE_POS + end,
+    )
   }
 
   #[test]
   fn test_test_collector() {
     let specifier = resolve_url("file:///a/example.ts").unwrap();
-    let source = Arc::new(
-      r#"
+    let source = r#"
       Deno.test({
         name: "test a",
         async fn(t) {
@@ -535,13 +532,11 @@ pub mod tests {
 
       const t = Deno.test;
       t("test d", () => {});
-    "#
-      .to_string(),
-    );
+    "#;
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.to_string(),
-      source: deno_ast::SourceTextInfo::new(source),
+      text_info: deno_ast::SourceTextInfo::new(source.into()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: true,
@@ -557,19 +552,19 @@ pub mod tests {
           id: "cf31850c831233526df427cdfd25b6b84b2af0d6ce5f8ee1d22c465234b46348".to_string(),
           level: 0,
           name: "test a".to_string(),
-          span: new_span(12, 16, 0),
+          range: new_range(12, 16),
           steps: Some(vec![
             TestDefinition {
               id: "4c7333a1e47721631224408c467f32751fe34b876cab5ec1f6ac71980ff15ad3".to_string(),
               level: 1,
               name: "a step".to_string(),
-              span: new_span(83, 87, 0),
+              range: new_range(83, 87),
               steps: Some(vec![
                 TestDefinition {
                   id: "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201".to_string(),
                   level: 2,
                   name: "sub step".to_string(),
-                  span: new_span(132, 136, 3),
+                  range: new_range(132, 136),
                   steps: None,
                 }
               ])
@@ -580,13 +575,13 @@ pub mod tests {
           id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
           level: 0,
           name: "useFnName".to_string(),
-          span: new_span(254, 258, 0),
+          range: new_range(254, 258),
           steps: Some(vec![
             TestDefinition {
               id: "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
               level: 1,
               name: "step c".to_string(),
-              span: new_span(313, 314, 4),
+              range: new_range(313, 314),
               steps: None,
             }
           ])
@@ -595,21 +590,21 @@ pub mod tests {
           id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
           level: 0,
           name: "test b".to_string(),
-          span: new_span(358, 362, 0),
+          range: new_range(358, 362),
           steps: None,
         },
         TestDefinition {
           id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
           level: 0,
           name: "test c".to_string(),
-          span: new_span(420, 424, 1),
+          range: new_range(420, 424),
           steps: None,
         },
         TestDefinition {
           id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
           level: 0,
           name: "test d".to_string(),
-          span: new_span(480, 481, 1),
+          range: new_range(480, 481),
           steps: None,
         }
       ]
