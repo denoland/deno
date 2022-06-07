@@ -21,7 +21,6 @@ use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
-use libffi::middle::CodePtr;
 use libffi::raw::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -38,27 +37,6 @@ use std::rc::Rc;
 
 thread_local! {
   static CREATE_SCOPE: RefCell<Option<bool>> = RefCell::new(None);
-}
-
-/// Local copy of `libffi::middle::Arg` to enable `Send`.
-#[derive(Clone, Debug)]
-#[repr(C)]
-struct FfiCallArg(*mut c_void);
-
-impl FfiCallArg {
-  /// Coerces an argument reference into the [`FfiCallArg`] type.
-  pub fn new<T>(r: &T) -> Self {
-    FfiCallArg(r as *const T as *mut c_void)
-  }
-}
-
-unsafe impl Send for FfiCallArg {}
-
-impl From<FfiCallArg> for Arg {
-  fn from(arg: FfiCallArg) -> Self {
-    // SAFETY: The types are identical
-    unsafe { std::mem::transmute::<FfiCallArg, Self>(arg) }
-  }
 }
 
 pub struct Unstable(pub bool);
@@ -268,6 +246,28 @@ union NativeValue {
   f32_value: f32,
   f64_value: f64,
   pointer: *const u8,
+}
+
+impl NativeValue {
+  unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
+    match native_type {
+      NativeType::Void => unreachable!(),
+      NativeType::U8 => Arg::new(&self.u8_value),
+      NativeType::I8 => Arg::new(&self.i8_value),
+      NativeType::U16 => Arg::new(&self.u16_value),
+      NativeType::I16 => Arg::new(&self.i16_value),
+      NativeType::U32 => Arg::new(&self.u32_value),
+      NativeType::I32 => Arg::new(&self.i32_value),
+      NativeType::U64 => Arg::new(&self.u64_value),
+      NativeType::I64 => Arg::new(&self.i64_value),
+      NativeType::USize => Arg::new(&self.usize_value),
+      NativeType::ISize => Arg::new(&self.isize_value),
+      NativeType::F32 => Arg::new(&self.f32_value),
+      NativeType::F64 => Arg::new(&self.f64_value),
+      NativeType::Pointer => Arg::new(&self.pointer),
+      NativeType::Function => Arg::new(&self.pointer),
+    }
+  }
 }
 
 unsafe impl Send for NativeValue {}
@@ -508,12 +508,12 @@ fn ffi_parse_args<'scope>(
   args: serde_v8::Value<'scope>,
   parameter_types: &Vec<NativeType>,
   resource_table: &deno_core::ResourceTable,
-) -> Result<Vec<FfiCallArg>, AnyError>
+) -> Result<Vec<NativeValue>, AnyError>
 where
   'scope: 'scope,
 {
   let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
-  let mut ffi_args: Vec<FfiCallArg> = Vec::with_capacity(parameter_types.len());
+  let mut ffi_args: Vec<NativeValue> = Vec::with_capacity(parameter_types.len());
 
   for (index, native_type) in parameter_types.iter().enumerate() {
     let value = args.get_index(scope, index as u32).unwrap();
@@ -523,75 +523,89 @@ where
       }
       NativeType::U8 => {
         let value = value.uint32_value(scope).unwrap() as u8;
-        ffi_args.push(FfiCallArg::new(&value))
+        ffi_args.push(NativeValue { u8_value: value });
       }
       NativeType::I8 => {
         let value = value.int32_value(scope).unwrap() as i8;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { i8_value: value });
       }
       NativeType::U16 => {
         let value = value.uint32_value(scope).unwrap() as u16;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { u16_value: value });
       }
       NativeType::I16 => {
         let value = value.int32_value(scope).unwrap() as i16;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { i16_value: value });
       }
       NativeType::U32 => {
         let value = value.uint32_value(scope).unwrap();
-        println!("U32 being passed: {}", value);
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { u32_value: value });
       }
       NativeType::I32 => {
         let value = value.int32_value(scope).unwrap();
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { i32_value: value });
       }
       NativeType::U64 => {
         // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as u64;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { u64_value: value });
       }
       NativeType::I64 => {
         // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as i64;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { i64_value: value });
       }
       NativeType::USize => {
         // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as usize;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { usize_value: value });
       }
       NativeType::ISize => {
         // TODO: Handle BigInt
         let value = value.integer_value(scope).unwrap() as isize;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { isize_value: value });
       }
       NativeType::F32 => {
         let value = value.number_value(scope).unwrap() as f32;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { f32_value: value });
       }
       NativeType::F64 => {
         let value = value.integer_value(scope).unwrap() as f64;
-        ffi_args.push(FfiCallArg::new(&value));
+        ffi_args.push(NativeValue { f64_value: value });
       }
       NativeType::Pointer => {
         if value.is_null() {
-          let value: *const c_void = ptr::null();
-          ffi_args.push(FfiCallArg::new(&value))
+          let value: *const u8 = ptr::null();
+          ffi_args.push(NativeValue { pointer: value })
         } else if value.is_big_int() {
           let value = v8::Local::<v8::BigInt>::try_from(value)?;
           let value = value.u64_value().0 as *const u8;
-          ffi_args.push(FfiCallArg::new(&value));
+          ffi_args.push(NativeValue { pointer: value });
         } else if value.is_array_buffer() || value.is_array_buffer_view() {
           let value: ZeroCopyBuf = serde_v8::from_v8(scope, value).unwrap();
           let value: &[u8] = &value[..];
-          ffi_args.push(FfiCallArg::new(&value.as_ptr()));
+          ffi_args.push(NativeValue { pointer: value.as_ptr() });
         } else {
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer or ArrayBufferView"));
         }
       }
       NativeType::Function => {
-        todo!();
+        if value.is_null() {
+          let value: *const u8 = ptr::null();
+          ffi_args.push(NativeValue { pointer: value })
+        } else if value.is_number() {
+          let value: ResourceId = value.uint32_value(scope).unwrap();
+          let rc = resource_table.get::<RegisteredCallbackResource>(value)?;
+          let fn_ref = rc.closure.code_ptr() as *const unsafe extern fn() as *const u8;
+          ffi_args.push(NativeValue { pointer: fn_ref });
+        } else if value.is_big_int() {
+          // Do we support this?
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          let value = value.u64_value().0 as *const u8;
+          ffi_args.push(NativeValue { pointer: value });
+        } else {
+          return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer or ArrayBufferView"));
+        }
       }
     }
   }
@@ -600,15 +614,14 @@ where
 }
 
 fn ffi_call(
-  call_args: Vec<FfiCallArg>,
+  call_args: Vec<NativeValue>,
   symbol: &Symbol,
 ) -> Result<Value, AnyError> {
   let call_args: Vec<Arg> = call_args
     .iter()
-    .map(|ffi_arg| ffi_arg.clone().into())
+    .enumerate()
+    .map(|(index, ffi_arg)| unsafe { ffi_arg.as_arg(*symbol.parameter_types.get(index).unwrap()) } )
     .collect();
-
-  dbg!(call_args.clone());
 
   Ok(match symbol.result_type {
     NativeType::Void => {
@@ -724,30 +737,29 @@ unsafe extern "C" fn deno_ffi_callback(
   });
   let func = callback.open(&mut scope);
   let result = result as *mut c_void;
-  let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
-  let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
+  let repr: &[*mut ffi_type] = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
+  let vals: &[*const c_void] = std::slice::from_raw_parts(args, cif.nargs as usize);
 
   let mut params: Vec<v8::Local<v8::Value>> = vec![];
-  for (&repr, &val) in repr.iter().zip(vals) {
-    let value = match (*repr).type_ as _ {
-      FFI_TYPE_INT => serde_v8::to_v8(&mut scope, *(val as *const i32)),
-      FFI_TYPE_FLOAT => serde_v8::to_v8(&mut scope, *(val as *const f32)),
-      FFI_TYPE_DOUBLE => serde_v8::to_v8(&mut scope, *(val as *const f64)),
+  for (repr, val) in repr.iter().zip(vals) {
+    let value = match (*(*repr)).type_ as _ {
+      FFI_TYPE_INT => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
+      FFI_TYPE_FLOAT => serde_v8::to_v8(&mut scope, *((*val) as *const f32)),
+      FFI_TYPE_DOUBLE => serde_v8::to_v8(&mut scope, *((*val) as *const f64)),
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-        let ptr = U32x2::from(*(val as *const u64));
+        let ptr = U32x2::from(*((*val) as *const u64));
         serde_v8::to_v8(&mut scope, ptr)
       }
-      FFI_TYPE_SINT8 => serde_v8::to_v8(&mut scope, *(val as *const i8)),
-      FFI_TYPE_UINT8 => serde_v8::to_v8(&mut scope, *(val as *const u8)),
-      FFI_TYPE_SINT16 => serde_v8::to_v8(&mut scope, *(val as *const i16)),
-      FFI_TYPE_UINT16 => serde_v8::to_v8(&mut scope, *(val as *const u16)),
-      FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *(val as *const i32)),
+      FFI_TYPE_SINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const i8)),
+      FFI_TYPE_UINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const u8)),
+      FFI_TYPE_SINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const i16)),
+      FFI_TYPE_UINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const u16)),
+      FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
       FFI_TYPE_UINT32 => {
-        println!("U32 being received: {:?}, {}", val as *const u32, *(val as *const u32));
-        serde_v8::to_v8(&mut scope, *(val as *const u32))
+        serde_v8::to_v8(&mut scope, *((*val) as *const u32))
       },
-      FFI_TYPE_SINT64 => serde_v8::to_v8(&mut scope, *(val as *const i64)),
-      FFI_TYPE_UINT64 => serde_v8::to_v8(&mut scope, *(val as *const u64)),
+      FFI_TYPE_SINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const i64)),
+      FFI_TYPE_UINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const u64)),
       FFI_TYPE_VOID => serde_v8::to_v8(&mut scope, ()),
       _ => {
         panic!("Unsupported parameter type")
@@ -756,14 +768,10 @@ unsafe extern "C" fn deno_ffi_callback(
     params.push(value.expect("Unable to serialize callback parameter."));
   }
 
-  let func_name = func.get_name(&mut scope).to_rust_string_lossy(&mut scope);
-
-  println!("Func name: {}", func_name);
-
   let recv = v8::undefined(&mut scope);
   let value = match func.call(&mut scope, recv.into(), &params) {
     Some(value) => value,
-    None => v8::Number::new(&mut scope, 60.0).into(),
+    None => panic!("OH SHIT"),
   };
 
   std::mem::forget(callback);
@@ -878,12 +886,15 @@ fn op_ffi_deregister_callback(state: &mut deno_core::OpState, rid: ResourceId) {
 }
 
 #[op(v8)]
-fn op_ffi_call_registered_callback(
-  scope: &mut v8::HandleScope,
+fn op_ffi_call_registered_callback<'a>(
+  scope: &mut v8::HandleScope<'a>,
   state: Rc<RefCell<deno_core::OpState>>,
   rid: ResourceId,
-  args: serde_v8::Value,
-) -> Result<Value, AnyError> {
+  args: serde_v8::Value<'a>,
+) -> Result<Value, AnyError>
+where
+  'a: 'a
+{
   let (fn_ptr, info) = {
     let state = &mut state.borrow_mut();
     let resource = state
@@ -896,7 +907,7 @@ fn op_ffi_call_registered_callback(
       *resource.closure.code_ptr() as *mut c_void;
     (fn_ptr, info)
   };
-  let call_args = ffi_parse_args(unsafe { std::mem::transmute(scope) }, args, &info.parameters, &state.borrow().resource_table)?;
+  let call_args = ffi_parse_args(scope, args, &info.parameters, &state.borrow().resource_table)?;
   CREATE_SCOPE.with(|s| {
     s.replace(Some(false));
   });
@@ -1068,13 +1079,13 @@ fn op_ffi_call(
 
 /// A non-blocking FFI call.
 //#[op(v8)]
-async fn op_ffi_call_nonblocking<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+async fn op_ffi_call_nonblocking<'a>(
+  scope: &mut v8::HandleScope<'a>,
   state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallArgs<'scope>,
+  args: FfiCallArgs<'a>,
 ) -> Result<Value, AnyError>
 where
-  'scope: 'scope,
+  'a: 'a,
 {
   let resource = state
     .borrow()
