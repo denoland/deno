@@ -48,13 +48,20 @@ fn read_all_lints(stderr_lines: &mut impl Iterator<Item = String>) -> String {
   str
 }
 
-fn wait_for(s: &str, lines: &mut impl Iterator<Item = String>) {
+fn wait_for(
+  condition: impl Fn(&str) -> bool,
+  lines: &mut impl Iterator<Item = String>,
+) {
   loop {
     let msg = lines.next().unwrap();
-    if msg.contains(s) {
+    if condition(&msg) {
       break;
     }
   }
+}
+
+fn wait_contains(s: &str, lines: &mut impl Iterator<Item = String>) {
+  wait_for(|msg| msg.contains(s), lines)
 }
 
 fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
@@ -408,7 +415,7 @@ fn bundle_js_watch() {
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  wait_for("Bundle finished", &mut stderr_lines);
+  wait_contains("Bundle finished", &mut stderr_lines);
 
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
@@ -420,14 +427,14 @@ fn bundle_js_watch() {
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  wait_for("Bundle finished", &mut stderr_lines);
+  wait_contains("Bundle finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
 
   assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "error: ");
-  wait_for("Bundle failed", &mut stderr_lines);
+  wait_contains("Bundle failed", &mut stderr_lines);
   check_alive_then_kill(deno);
 }
 
@@ -470,7 +477,7 @@ fn bundle_watch_not_exit() {
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
   assert_contains!(stderr_lines.next().unwrap(), "target.js");
 
-  wait_for("Bundle finished", &mut stderr_lines);
+  wait_contains("Bundle finished", &mut stderr_lines);
 
   // bundled file is created
   assert!(target_file.is_file());
@@ -478,7 +485,7 @@ fn bundle_watch_not_exit() {
 }
 
 #[flaky_test::flaky_test]
-fn run_watch() {
+fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "console.log('Hello world');").unwrap();
@@ -498,15 +505,21 @@ fn run_watch() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_for("Hello world", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Hello world", &mut stdout_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
 
   // Change content of the file
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("Hello world2", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("Hello world2", &mut stdout_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -517,23 +530,32 @@ fn run_watch() {
   )
   .unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("0", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("0", &mut stdout_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("another_file.js"),
+    &mut stderr_lines,
+  );
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_file, "export const foo = 42;").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("42", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("42", &mut stdout_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("error:", &mut stderr_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("error:", &mut stderr_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
 
   // Then restore the file
   write(
@@ -542,23 +564,29 @@ fn run_watch() {
   )
   .unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("42", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("42", &mut stdout_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("another_file.js"),
+    &mut stderr_lines,
+  );
 
   // Update the content of the imported file with invalid syntax
   write(&another_file, "syntax error ^^").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("error:", &mut stderr_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("error:", &mut stderr_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("another_file.js"),
+    &mut stderr_lines,
+  );
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("modified!", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("modified!", &mut stdout_lines);
+  wait_contains("Watching paths", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -593,16 +621,20 @@ fn run_watch_external_watch_files() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  wait_for("Process started", &mut stderr_lines);
-  wait_for("Watching paths", &mut stderr_lines);
-  wait_for("Hello world", &mut stdout_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Process started", &mut stderr_lines);
+  wait_contains("Hello world", &mut stdout_lines);
+  wait_for(
+    |m| {
+      m.contains("Watching paths") && m.contains("external_file_to_watch.txt")
+    },
+    &mut stderr_lines,
+  );
 
   // Change content of the external file
   write(&external_file_to_watch, "Hello world2").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("Process finished", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -696,16 +728,19 @@ fn run_watch_not_exit() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_for("Process started", &mut stderr_lines);
-  wait_for("error:", &mut stderr_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("Process started", &mut stderr_lines);
+  wait_contains("error:", &mut stderr_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for("42", &mut stdout_lines);
-  wait_for("Process finished", &mut stderr_lines);
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("42", &mut stdout_lines);
+  wait_contains("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -783,7 +818,7 @@ fn test_watch() {
     stdout_lines.next().unwrap(),
     "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.js");
   let bar_file = t.path().join("bar.js");
@@ -810,7 +845,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Change content of the file
   write(
@@ -825,7 +860,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Add test
   let another_test = t.path().join("new_test.js");
@@ -836,7 +871,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_test, "Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)")
@@ -848,7 +883,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&another_test, "syntax error ^^").unwrap();
@@ -864,7 +899,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and the test fails
   // This also confirms that it restarts when dependencies change
@@ -876,9 +911,9 @@ fn test_watch() {
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
   assert_contains!(stdout_lines.next().unwrap(), "FAILED");
-  wait_for("test result", &mut stdout_lines);
+  wait_contains("test result", &mut stdout_lines);
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Then restore the file
   write(&foo_file, "export default function foo() { 1 + 1 }").unwrap();
@@ -888,7 +923,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   // Test that circular dependencies work fine
   write(
@@ -927,7 +962,7 @@ fn test_watch_doc() {
     stdout_lines.next().unwrap(),
     "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
-  wait_for("Test finished", &mut stderr_lines);
+  wait_contains("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.ts");
   write(
@@ -983,7 +1018,7 @@ fn test_watch_module_graph_error_referrer() {
   let line3 = stderr_lines.next().unwrap();
   assert_contains!(&line3, "    at ");
   assert_contains!(&line3, "file_to_watch.js");
-  wait_for("Process finished", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -995,7 +1030,7 @@ fn run_watch_dynamic_imports() {
     &file_to_watch,
     r#"
     console.log("Hopefully dynamic import will be watched...");
-    await import("./imported.js");    
+    await import("./imported.js");
     "#,
   )
   .unwrap();
@@ -1012,7 +1047,7 @@ fn run_watch_dynamic_imports() {
   write(
     &file_to_watch3,
     r#"
-    console.log("I'm statically imported from the dynamic import"); 
+    console.log("I'm statically imported from the dynamic import");
     "#,
   )
   .unwrap();
@@ -1036,40 +1071,43 @@ fn run_watch_dynamic_imports() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Process started");
 
-  wait_for(
+  wait_contains(
     "Hopefully dynamic import will be watched...",
     &mut stdout_lines,
   );
-  wait_for(
+  wait_contains(
     "I'm statically imported from the dynamic import",
     &mut stdout_lines,
   );
-  wait_for(
+  wait_contains(
     "I'm dynamically imported and I cause restarts!",
     &mut stdout_lines,
   );
 
-  wait_for("finished", &mut stderr_lines);
-  wait_for("Watching paths", &mut stderr_lines);
+  wait_contains("finished", &mut stderr_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("imported2.js"),
+    &mut stderr_lines,
+  );
 
   write(
     &file_to_watch3,
     r#"
-    console.log("I'm statically imported from the dynamic import and I've changed"); 
+    console.log("I'm statically imported from the dynamic import and I've changed");
     "#,
   )
   .unwrap();
 
-  wait_for("Restarting", &mut stderr_lines);
-  wait_for(
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains(
     "Hopefully dynamic import will be watched...",
     &mut stdout_lines,
   );
-  wait_for(
+  wait_contains(
     "I'm statically imported from the dynamic import and I've changed",
     &mut stdout_lines,
   );
-  wait_for(
+  wait_contains(
     "I'm dynamically imported and I cause restarts!",
     &mut stdout_lines,
   );

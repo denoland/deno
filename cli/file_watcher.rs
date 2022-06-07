@@ -274,11 +274,11 @@ where
     watcher: &mut RecommendedWatcher,
     paths: Vec<PathBuf>,
   ) {
-    log::debug!("Watching paths: {:?}", paths);
     // Ignore any error e.g. `PathNotFound`
     for path in &paths {
       let _ = watcher.watch(path, RecursiveMode::Recursive);
     }
+    log::debug!("Watching paths: {:?}", paths);
   }
 
   fn consume_paths_to_watch(
