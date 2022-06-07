@@ -185,7 +185,8 @@ impl VendorTestBuilder {
       original_import_map,
     )?;
     let mut files = environment.files.borrow_mut();
-    let import_map = files.remove(&output_dir.join("import_map.json"));
+    let import_map =
+      files.remove(&output_dir.parent().unwrap().join("import_map.json"));
     let mut files = files
       .iter()
       .map(|(path, text)| (path_to_string(path), text.clone()))

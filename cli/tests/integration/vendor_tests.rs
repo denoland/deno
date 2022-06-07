@@ -145,19 +145,18 @@ fn standard_test() {
   assert!(vendor_dir.exists());
   assert!(!t.path().join("vendor").exists());
   let import_map: serde_json::Value = serde_json::from_str(
-    &fs::read_to_string(vendor_dir.join("import_map.json")).unwrap(),
+    &fs::read_to_string(t.path().join("import_map.json")).unwrap(),
   )
   .unwrap();
   assert_eq!(
     import_map,
     json!({
       "imports": {
-        "http://localhost:4545/": "./localhost_4545/",
-        "http://localhost:4545/vendor/query_reexport.ts?testing": "./localhost_4545/vendor/query_reexport.ts",
+        "http://localhost:4545/vendor/query_reexport.ts?testing": "./vendor2/localhost_4545/vendor/query_reexport.ts",
       },
       "scopes": {
-        "./localhost_4545/": {
-          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
+        "./vendor2/localhost_4545/": {
+          "./vendor2/localhost_4545/vendor/logger.ts?test": "./vendor2/localhost_4545/vendor/logger.ts"
         }
       }
     }),
@@ -171,7 +170,7 @@ fn standard_test() {
     .arg("--no-remote")
     .arg("--no-check")
     .arg("--import-map")
-    .arg("vendor2/import_map.json")
+    .arg("import_map.json")
     .arg("my_app.ts")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -218,18 +217,15 @@ fn remote_module_test() {
     .exists());
   assert!(vendor_dir.join("localhost_4545/vendor/logger.ts").exists());
   let import_map: serde_json::Value = serde_json::from_str(
-    &fs::read_to_string(vendor_dir.join("import_map.json")).unwrap(),
+    &fs::read_to_string(t.path().join("import_map.json")).unwrap(),
   )
   .unwrap();
   assert_eq!(
     import_map,
     json!({
-      "imports": {
-        "http://localhost:4545/": "./localhost_4545/",
-      },
       "scopes": {
-        "./localhost_4545/": {
-          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
+        "./vendor/localhost_4545/": {
+          "./vendor/localhost_4545/vendor/logger.ts?test": "./vendor/localhost_4545/vendor/logger.ts"
         }
       }
     }),
@@ -275,7 +271,6 @@ fn existing_import_map() {
 fn dynamic_import() {
   let _server = http_server();
   let t = TempDir::new();
-  let vendor_dir = t.path().join("vendor");
   fs::write(
     t.path().join("mod.ts"),
     "import {Logger} from 'http://localhost:4545/vendor/dynamic.ts'; new Logger().log('outputted');",
@@ -291,14 +286,14 @@ fn dynamic_import() {
     .unwrap();
   assert!(status.success());
   let import_map: serde_json::Value = serde_json::from_str(
-    &fs::read_to_string(vendor_dir.join("import_map.json")).unwrap(),
+    &fs::read_to_string(t.path().join("import_map.json")).unwrap(),
   )
   .unwrap();
   assert_eq!(
     import_map,
     json!({
       "imports": {
-        "http://localhost:4545/": "./localhost_4545/",
+        "http://localhost:4545/vendor/dynamic.ts": "./vendor/localhost_4545/vendor/dynamic.ts",
       }
     }),
   );
@@ -312,7 +307,7 @@ fn dynamic_import() {
     .arg("--no-remote")
     .arg("--no-check")
     .arg("--import-map")
-    .arg("vendor/import_map.json")
+    .arg("import_map.json")
     .arg("mod.ts")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())

@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -47,14 +48,29 @@ pub fn build(
   original_import_map: Option<ImportMap>,
 ) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
+  let base_dir = match &original_import_map {
+    Some(import_map) => import_map.base_url().clone(),
+    None => {
+      let cwd = environment.cwd()?;
+      ModuleSpecifier::from_directory_path(&cwd).unwrap()
+    }
+  };
+  if base_dir.scheme() != "file" {
+    bail!("The existing import map must be in a local directory.");
+  }
+
   let all_modules = graph.modules();
   let remote_modules = all_modules
     .iter()
     .filter(|m| is_remote_specifier(&m.specifier))
     .copied()
     .collect::<Vec<_>>();
-  let mappings =
-    Mappings::from_remote_modules(graph, &remote_modules, output_dir)?;
+  let mappings = Mappings::from_remote_modules(
+    graph,
+    &remote_modules,
+    output_dir,
+    base_dir.clone(),
+  )?;
 
   // write out all the files
   for module in &remote_modules {
@@ -88,16 +104,17 @@ pub fn build(
 
   // create the import map
   if !mappings.base_specifiers().is_empty() {
-    let cwd = environment.cwd()?;
-    let cwd_uri = ModuleSpecifier::from_directory_path(&cwd).unwrap();
     let import_map_text = build_import_map(
-      &cwd_uri,
+      &base_dir,
       graph,
       &all_modules,
       &mappings,
       original_import_map,
     );
-    environment.write_file(&cwd.join("import_map.json"), &import_map_text)?;
+    environment.write_file(
+      &base_dir.to_file_path().unwrap().join("import_map.json"),
+      &import_map_text,
+    )?;
   }
 
   Ok(remote_modules.len())
@@ -187,9 +204,9 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/",
-          "https://localhost/other.ts?test": "./localhost/other.ts",
-          "https://localhost/redirect.ts": "./localhost/mod.ts",
+          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
+          "https://localhost/other.ts?test": "./vendor/localhost/other.ts",
+          "https://localhost/redirect.ts": "./vendor/localhost/mod.ts",
         }
       }))
     );
@@ -255,17 +272,17 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/",
-          "https://localhost/redirect.ts": "./localhost/other.ts",
-          "https://other/": "./other/"
+          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
+          "https://other/mod.ts": "./vendor/other/mod.ts"
         },
         "scopes": {
-          "./localhost/": {
-            "./localhost/redirect.ts": "./localhost/other.ts",
-            "/absolute.ts": "./localhost/absolute.ts",
+          "./vendor/localhost/": {
+            "./vendor/localhost/redirect.ts": "./vendor/localhost/other.ts",
+            "/absolute.ts": "./vendor/localhost/absolute.ts",
+            "https://localhost/redirect.ts": "./vendor/localhost/other.ts",
           },
-          "./other/": {
-            "./other/sub2/other?asdf": "./other/sub2/other.js"
+          "./vendor/other/": {
+            "./vendor/other/sub2/other?asdf": "./vendor/other/sub2/other.js"
           }
         }
       }))
@@ -329,10 +346,11 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/",
-          "https://localhost/mod.TS": "./localhost/mod_2.TS",
-          "https://localhost/mod.ts": "./localhost/mod_3.ts",
-          "https://localhost/mod.ts?test": "./localhost/mod_4.ts",
+          "https://localhost/CAPS.TS": "./vendor/localhost/CAPS.TS",
+          "https://localhost/MOD.TS": "./vendor/localhost/MOD.TS",
+          "https://localhost/mod.TS": "./vendor/localhost/mod_2.TS",
+          "https://localhost/mod.ts": "./vendor/localhost/mod_3.ts",
+          "https://localhost/mod.ts?test": "./vendor/localhost/mod_4.ts",
         }
       }))
     );
@@ -371,7 +389,8 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/",
+          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
+          "https://localhost/test.ts": "./vendor/localhost/test.ts",
         }
       }))
     );
@@ -404,7 +423,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/"
+          "https://localhost/data.json": "./vendor/localhost/data.json"
         }
       }))
     );
@@ -434,7 +453,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/"
+          "https://localhost/mod.ts": "./vendor/localhost/mod.ts"
         }
       }))
     );
@@ -466,7 +485,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/"
+          "https://localhost/mod.js": "./vendor/localhost/mod.js"
         }
       }))
     );
@@ -508,7 +527,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/"
+          "https://localhost/mod.js": "./vendor/localhost/mod.js"
         }
       }))
     );
@@ -559,12 +578,11 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "http://localhost:4545/": "./localhost_4545/",
-          "http://localhost:4545/sub/logger/mod.ts?testing": "./localhost_4545/sub/logger/mod.ts",
+          "http://localhost:4545/sub/logger/mod.ts?testing": "./vendor/localhost_4545/sub/logger/mod.ts",
         },
         "scopes": {
-          "./localhost_4545/": {
-            "./localhost_4545/sub/logger/logger.ts?test": "./localhost_4545/sub/logger/logger.ts"
+          "./vendor/localhost_4545/": {
+            "./vendor/localhost_4545/sub/logger/logger.ts?test": "./vendor/localhost_4545/sub/logger/logger.ts"
           }
         }
       }))
@@ -615,8 +633,12 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/",
-          "https://localhost/std/hash/mod.ts": "./localhost/std@0.1.0/hash/mod.ts"
+          "https://localhost/subdir/sub/mod.ts": "./vendor/localhost/subdir/sub/mod.ts",
+        },
+        "scopes": {
+          "./vendor/localhost/": {
+            "https://localhost/std/hash/mod.ts": "./vendor/localhost/std@0.1.0/hash/mod.ts"
+          }
         }
       }))
     );
@@ -664,13 +686,13 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/": "./localhost/"
+          "https://localhost/mod.ts": "./vendor/localhost/mod.ts"
         },
         "scopes": {
-          "./localhost/": {
-            "./localhost/npm:test@1.0.0/mod.ts": "./localhost/npm_test@1.0.0/mod.ts",
-            "./localhost/npm:test@1.0.0/test/test!cjs?test": "./localhost/npm_test@1.0.0/test/test!cjs.js",
-            "./localhost/npm_test@1.0.0/test/test!cjs?test": "./localhost/npm_test@1.0.0/test/test!cjs.js"
+          "./vendor/localhost/": {
+            "./vendor/localhost/npm:test@1.0.0/mod.ts": "./vendor/localhost/npm_test@1.0.0/mod.ts",
+            "./vendor/localhost/npm:test@1.0.0/test/test!cjs?test": "./vendor/localhost/npm_test@1.0.0/test/test!cjs.js",
+            "./vendor/localhost/npm_test@1.0.0/test/test!cjs?test": "./vendor/localhost/npm_test@1.0.0/test/test!cjs.js"
           }
         }
       }))

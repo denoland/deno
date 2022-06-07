@@ -245,10 +245,8 @@ fn handle_dep_specifier(
       local_base_specifier.set_query(unresolved_specifier.query());
 
       imports.add(
-        mappings.relative_specifier_text(
-          mappings.output_dir(),
-          &local_base_specifier,
-        ),
+        mappings
+          .relative_specifier_text(mappings.base_dir(), &local_base_specifier),
         &specifier,
       );
 
@@ -266,7 +264,7 @@ fn handle_dep_specifier(
             value.path(),
             specifier.path_segments().unwrap().last().unwrap(),
           ));
-          mappings.relative_specifier_text(mappings.output_dir(), &value)
+          mappings.relative_specifier_text(mappings.base_dir(), &value)
         },
         &specifier,
       );
