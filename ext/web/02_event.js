@@ -1089,6 +1089,7 @@
         filename = "",
         lineno = 0,
         colno = 0,
+        error,
       } = {},
     ) {
       super(type, {
