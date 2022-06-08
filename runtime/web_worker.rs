@@ -335,7 +335,7 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub maybe_exit_code: Option<Arc<AtomicI32>>,
+  pub exit_code: Arc<AtomicI32>,
   pub stdio: Stdio,
 }
 
@@ -421,11 +421,7 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(Some(
-        options
-          .maybe_exit_code
-          .expect("Worker has access to OS ops but exit code was not passed."),
-      )),
+      ops::os::init(options.exit_code),
       ops::permissions::init(),
       ops::process::init(),
       ops::spawn::init(),

@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
-pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
+pub fn init(exit_code: Arc<AtomicI32>) -> Extension {
   Extension::builder()
     .ops(vec![
       op_env::decl(),
@@ -33,8 +33,7 @@ pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
       op_system_memory_info::decl(),
     ])
     .state(move |state| {
-      let exit_code = maybe_exit_code.clone().unwrap_or_default();
-      state.put::<Arc<AtomicI32>>(exit_code);
+      state.put::<Arc<AtomicI32>>(exit_code.clone());
       Ok(())
     })
     .build()

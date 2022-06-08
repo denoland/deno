@@ -45,6 +45,7 @@ pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  exit_code: Arc<AtomicI32>,
 }
 
 pub struct WorkerOptions {
@@ -98,6 +99,7 @@ impl MainWorker {
         Ok(())
       })
       .build();
+    let exit_code = Arc::new(AtomicI32::new(0));
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -147,7 +149,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(None),
+      ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
@@ -181,6 +183,7 @@ impl MainWorker {
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      exit_code,
     }
   }
 
@@ -314,11 +317,8 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&mut self) -> i32 {
-    let op_state_rc = self.js_runtime.op_state();
-    let op_state = op_state_rc.borrow();
-    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
-    exit_code
+  pub fn get_exit_code(&self) -> i32 {
+    self.exit_code.load(Relaxed)
   }
 
   /// Dispatches "load" event to the JavaScript runtime.
