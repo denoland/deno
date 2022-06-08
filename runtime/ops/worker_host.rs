@@ -11,6 +11,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
+use crate::worker::ExitCode;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
@@ -27,7 +28,6 @@ use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
 
 pub struct CreateWebWorkerArgs {
@@ -37,7 +37,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
-  pub exit_code: Arc<AtomicI32>,
+  pub exit_code: ExitCode,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -171,7 +171,7 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let exit_code = state.borrow::<Arc<AtomicI32>>().clone();
+  let exit_code = state.borrow::<ExitCode>().clone();
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());

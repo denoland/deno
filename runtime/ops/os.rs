@@ -2,6 +2,7 @@
 
 use super::utils::into_string;
 use crate::permissions::Permissions;
+use crate::worker::ExitCode;
 use deno_core::error::{type_error, AnyError};
 use deno_core::op;
 use deno_core::url::Url;
@@ -10,11 +11,9 @@ use deno_core::OpState;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
 
-pub fn init(exit_code: Arc<AtomicI32>) -> Extension {
+pub fn init(exit_code: ExitCode) -> Extension {
   Extension::builder()
     .ops(vec![
       op_env::decl(),
@@ -33,7 +32,7 @@ pub fn init(exit_code: Arc<AtomicI32>) -> Extension {
       op_system_memory_info::decl(),
     ])
     .state(move |state| {
-      state.put::<Arc<AtomicI32>>(exit_code.clone());
+      state.put::<ExitCode>(exit_code.clone());
       Ok(())
     })
     .build()
@@ -104,12 +103,12 @@ fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
 
 #[op]
 fn op_set_exit_code(state: &mut OpState, code: i32) {
-  state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
+  state.borrow_mut::<ExitCode>().0.store(code, Relaxed);
 }
 
 #[op]
 fn op_exit(state: &mut OpState) {
-  let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
+  let code = state.borrow::<ExitCode>().0.load(Relaxed);
   std::process::exit(code)
 }
 

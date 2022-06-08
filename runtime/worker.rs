@@ -35,6 +35,9 @@ use std::task::Poll;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
+#[derive(Clone)]
+pub struct ExitCode(pub Arc<AtomicI32>);
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -45,7 +48,7 @@ pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
-  exit_code: Arc<AtomicI32>,
+  exit_code: ExitCode,
 }
 
 pub struct WorkerOptions {
@@ -99,7 +102,7 @@ impl MainWorker {
         Ok(())
       })
       .build();
-    let exit_code = Arc::new(AtomicI32::new(0));
+    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -318,7 +321,7 @@ impl MainWorker {
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
   pub fn get_exit_code(&self) -> i32 {
-    self.exit_code.load(Relaxed)
+    self.exit_code.0.load(Relaxed)
   }
 
   /// Dispatches "load" event to the JavaScript runtime.
