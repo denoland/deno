@@ -2,10 +2,10 @@
 
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
+use crate::source_map::get_source_line;
 use crate::url::Url;
 use anyhow::Error;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
@@ -192,15 +192,20 @@ impl JsError {
     let msg = v8::Exception::create_message(scope, exception);
 
     let mut exception_message = None;
-    let state_rc = JsRuntime::state(scope);
-    let state = state_rc.borrow();
-    if let Some(format_exception_cb) = &state.js_format_exception_cb {
-      let format_exception_cb = format_exception_cb.open(scope);
-      let this = v8::undefined(scope).into();
-      let formatted = format_exception_cb.call(scope, this, &[exception]);
-      if let Some(formatted) = formatted {
-        if formatted.is_string() {
-          exception_message = Some(formatted.to_rust_string_lossy(scope));
+    // Nest this state borrow. A mutable borrow can occur when accessing `stack`
+    // in this outer scope, invoking `Error.prepareStackTrace()` which calls
+    // `op_apply_source_map`.
+    {
+      let state_rc = JsRuntime::state(scope);
+      let state = state_rc.borrow();
+      if let Some(format_exception_cb) = &state.js_format_exception_cb {
+        let format_exception_cb = format_exception_cb.open(scope);
+        let this = v8::undefined(scope).into();
+        let formatted = format_exception_cb.call(scope, this, &[exception]);
+        if let Some(formatted) = formatted {
+          if formatted.is_string() {
+            exception_message = Some(formatted.to_rust_string_lossy(scope));
+          }
         }
       }
     }
@@ -256,7 +261,7 @@ impl JsError {
       };
 
       let state_rc = JsRuntime::state(scope);
-      let state = state_rc.borrow();
+      let state = &mut *state_rc.borrow_mut();
 
       // When the stack frame array is empty, but the source location given by
       // (script_resource_name, line_number, start_column + 1) exists, this is
@@ -276,11 +281,11 @@ impl JsError {
           // V8's column numbers are 0-based, we want 1-based.
           let c = c + 1;
           if let Some(source_map_getter) = &state.source_map_getter {
-            let (f, l, c, _) = apply_source_map(
+            let (f, l, c) = apply_source_map(
               f,
               l,
               c,
-              &mut HashMap::new(),
+              &mut state.source_map_cache,
               source_map_getter.as_ref(),
             );
             frames =
@@ -301,8 +306,12 @@ impl JsError {
           {
             if !file_name.trim_start_matches('[').starts_with("deno:") {
               // Source lookup expects a 0-based line number, ours are 1-based.
-              source_line = source_map_getter
-                .get_source_line(file_name, (line_number - 1) as usize);
+              get_source_line(
+                file_name,
+                line_number,
+                &mut state.source_map_cache,
+                source_map_getter.as_ref(),
+              );
               source_line_frame_index = Some(i);
               break;
             }

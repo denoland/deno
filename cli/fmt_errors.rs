@@ -8,8 +8,6 @@ use deno_core::error::format_file_name;
 use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
 
-const SOURCE_ABBREV_THRESHOLD: usize = 150;
-
 // Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
@@ -115,8 +113,7 @@ fn format_maybe_source_line(
   let source_line = source_line.unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
   // an empty source line when displayed, so need just short circuit here.
-  // Also short-circuit on error line too long.
-  if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
+  if source_line.is_empty() {
     return "".to_string();
   }
   if source_line.contains("Couldn't format source line: ") {
