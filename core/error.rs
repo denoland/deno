@@ -260,70 +260,73 @@ impl JsError {
         None => vec![],
       };
 
-      let state_rc = JsRuntime::state(scope);
-      let state = &mut *state_rc.borrow_mut();
-
-      // When the stack frame array is empty, but the source location given by
-      // (script_resource_name, line_number, start_column + 1) exists, this is
-      // likely a syntax error. For the sake of formatting we treat it like it
-      // was given as a single stack frame.
-      if frames.is_empty() {
-        let script_resource_name = msg
-          .get_script_resource_name(scope)
-          .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
-          .map(|v| v.to_rust_string_lossy(scope));
-        let line_number: Option<i64> =
-          msg.get_line_number(scope).and_then(|v| v.try_into().ok());
-        let column_number: Option<i64> = msg.get_start_column().try_into().ok();
-        if let (Some(f), Some(l), Some(c)) =
-          (script_resource_name, line_number, column_number)
-        {
-          // V8's column numbers are 0-based, we want 1-based.
-          let c = c + 1;
-          if let Some(source_map_getter) = &state.source_map_getter {
-            let (f, l, c) = apply_source_map(
-              f,
-              l,
-              c,
-              &mut state.source_map_cache,
-              source_map_getter.as_ref(),
-            );
-            frames =
-              vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
-          } else {
-            frames =
-              vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
-          }
-        }
-      }
-
       let mut source_line = None;
       let mut source_line_frame_index = None;
-      if let Some(source_map_getter) = &state.source_map_getter {
-        for (i, frame) in frames.iter().enumerate() {
-          if let (Some(file_name), Some(line_number)) =
-            (&frame.file_name, frame.line_number)
+      {
+        let state_rc = JsRuntime::state(scope);
+        let state = &mut *state_rc.borrow_mut();
+
+        // When the stack frame array is empty, but the source location given by
+        // (script_resource_name, line_number, start_column + 1) exists, this is
+        // likely a syntax error. For the sake of formatting we treat it like it
+        // was given as a single stack frame.
+        if frames.is_empty() {
+          let script_resource_name = msg
+            .get_script_resource_name(scope)
+            .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+            .map(|v| v.to_rust_string_lossy(scope));
+          let line_number: Option<i64> =
+            msg.get_line_number(scope).and_then(|v| v.try_into().ok());
+          let column_number: Option<i64> =
+            msg.get_start_column().try_into().ok();
+          if let (Some(f), Some(l), Some(c)) =
+            (script_resource_name, line_number, column_number)
           {
-            if !file_name.trim_start_matches('[').starts_with("deno:") {
-              // Source lookup expects a 0-based line number, ours are 1-based.
-              source_line = get_source_line(
-                file_name,
-                line_number,
+            // V8's column numbers are 0-based, we want 1-based.
+            let c = c + 1;
+            if let Some(source_map_getter) = &state.source_map_getter {
+              let (f, l, c) = apply_source_map(
+                f,
+                l,
+                c,
                 &mut state.source_map_cache,
                 source_map_getter.as_ref(),
               );
-              source_line_frame_index = Some(i);
-              break;
+              frames =
+                vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+            } else {
+              frames =
+                vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
             }
           }
         }
-      } else if let Some(frame) = frames.first() {
-        if let Some(file_name) = &frame.file_name {
-          if !file_name.trim_start_matches('[').starts_with("deno:") {
-            source_line = msg
-              .get_source_line(scope)
-              .map(|v| v.to_rust_string_lossy(scope));
-            source_line_frame_index = Some(0);
+
+        if let Some(source_map_getter) = &state.source_map_getter {
+          for (i, frame) in frames.iter().enumerate() {
+            if let (Some(file_name), Some(line_number)) =
+              (&frame.file_name, frame.line_number)
+            {
+              if !file_name.trim_start_matches('[').starts_with("deno:") {
+                // Source lookup expects a 0-based line number, ours are 1-based.
+                source_line = get_source_line(
+                  file_name,
+                  line_number,
+                  &mut state.source_map_cache,
+                  source_map_getter.as_ref(),
+                );
+                source_line_frame_index = Some(i);
+                break;
+              }
+            }
+          }
+        } else if let Some(frame) = frames.first() {
+          if let Some(file_name) = &frame.file_name {
+            if !file_name.trim_start_matches('[').starts_with("deno:") {
+              source_line = msg
+                .get_source_line(scope)
+                .map(|v| v.to_rust_string_lossy(scope));
+              source_line_frame_index = Some(0);
+            }
           }
         }
       }
