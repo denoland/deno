@@ -180,6 +180,7 @@ fn build_proxy_module_source(
 mod test {
   use crate::tools::vendor::test::VendorTestBuilder;
   use deno_core::serde_json::json;
+  use import_map::ImportMap;
   use pretty_assertions::assert_eq;
 
   #[tokio::test]
@@ -731,6 +732,48 @@ mod test {
           "/vendor/localhost/npm_test@1.0.0/test/test!cjs.js",
           "console.log(5);"
         ),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map =
+      ImportMap::new(builder.url_from_file_path("/import_map2.json"));
+    original_import_map
+      .imports_mut()
+      .append(
+        "https://localhost/mod.ts".to_string(),
+        "./vendor/localhost/mod.ts".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts'; import 'https://localhost/other.ts';");
+        loader.add("/vendor/localhost/mod.ts", "console.log(5);");
+        loader.add("https://localhost/mod.ts", "console.log(6);");
+        loader.add("https://localhost/other.ts", "import './mod.ts';");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
+          "https://localhost/other.ts": "./vendor/localhost/other.ts"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.ts", "console.log(6);"),
+        ("/vendor/localhost/other.ts", "import './mod.ts';"),
       ]),
     );
   }

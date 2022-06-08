@@ -16,6 +16,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::ModuleGraph;
+use import_map::ImportMap;
 
 use super::build::VendorEnvironment;
 
@@ -156,6 +157,7 @@ pub struct VendorOutput {
 pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
   loader: TestLoader,
+  original_import_map: Option<ImportMap>,
 }
 
 impl VendorTestBuilder {
@@ -163,6 +165,14 @@ impl VendorTestBuilder {
     let mut builder = VendorTestBuilder::default();
     builder.add_entry_point("/mod.ts");
     builder
+  }
+
+  pub fn set_original_import_map(
+    &mut self,
+    import_map: ImportMap,
+  ) -> &mut Self {
+    self.original_import_map = Some(import_map);
+    self
   }
 
   pub fn add_entry_point(&mut self, entry_point: impl AsRef<str>) -> &mut Self {
@@ -173,11 +183,20 @@ impl VendorTestBuilder {
     self
   }
 
+  pub fn url_from_file_path(&self, text: &str) -> ModuleSpecifier {
+    ModuleSpecifier::from_file_path(&make_path(text)).unwrap()
+  }
+
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
     let graph = self.build_graph().await;
     let output_dir = make_path("/vendor");
     let environment = TestVendorEnvironment::default();
-    let original_import_map = None; // todo(THIS PR): this
+    let original_import_map = self.original_import_map.take();
+    let import_map_path = if let Some(import_map) = &original_import_map {
+      import_map.base_url().to_file_path().unwrap()
+    } else {
+      make_path("/").join("import_map.json")
+    };
     super::build::build(
       &graph,
       &output_dir,
@@ -185,8 +204,7 @@ impl VendorTestBuilder {
       &environment,
     )?;
     let mut files = environment.files.borrow_mut();
-    let import_map =
-      files.remove(&output_dir.parent().unwrap().join("import_map.json"));
+    let import_map = files.remove(&import_map_path);
     let mut files = files
       .iter()
       .map(|(path, text)| (path_to_string(path), text.clone()))
