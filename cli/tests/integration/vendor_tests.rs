@@ -74,12 +74,16 @@ fn output_dir_exists() {
 
 #[test]
 fn import_map_output_dir() {
+  let _server = http_server();
   let t = TempDir::new();
-  t.write("mod.ts", "");
+  t.write(
+    "mod.ts",
+    "import {Logger} from 'http://localhost:4545/vendor/logger.ts';",
+  );
   t.create_dir_all("vendor");
   t.write(
     "vendor/import_map.json",
-    "{ \"imports\": { \"https://localhost/\": \"./localhost/\" }}",
+    "{ \"imports\": { \"http://other/\": \"../other_folder/\" }}",
   );
 
   let deno = util::deno_cmd()
@@ -97,7 +101,57 @@ fn import_map_output_dir() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    "error: Using an import map found in the output directory is not supported.",
+    format!(
+      concat!("Download http://localhost:4545/vendor/logger.ts\n", "{}",),
+      success_text("1 module", "vendor/", Some("vendor/import_map.json")),
+    )
+  );
+  assert!(output.status.success());
+  assert_eq!(
+    t.read_to_string("vendor/import_map.json"),
+    r#"{
+  "imports": {
+    "http://other/": "../other_folder/",
+    "http://localhost:4545/vendor/logger.ts": "./localhost_4545/vendor/logger.ts"
+  }
+}
+"#,
+  );
+}
+
+#[test]
+fn existing_import_map_diagnostics() {
+  let t = TempDir::new();
+  t.write(
+    "mod.ts",
+    "import {Logger} from 'http://localhost:4545/vendor/logger.ts';",
+  );
+  t.create_dir_all("vendor");
+  t.write(
+    "import_map.json",
+    "{ \"bad_property\": { \"https://localhost/\": \"./localhost/\" }}",
+  );
+
+  let deno = util::deno_cmd()
+    .current_dir(t.path())
+    .env("NO_COLOR", "1")
+    .arg("vendor")
+    .arg("--force")
+    .arg("--import-map")
+    .arg("import_map.json")
+    .arg("mod.ts")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr).trim(),
+    concat!(
+      "Import map diagnostics:\n",
+      "  - Invalid top-level key \"bad_property\". Only \"imports\" and \"scopes\" can be present.\n",
+      "error: Cannot vendor when the provided import map has diagnostics."
+    )
   );
   assert!(!output.status.success());
 }
@@ -449,7 +503,11 @@ fn success_text(
           r#"invoking deno subcommands or add an `"importMap": "<file_path>"` entry "#,
           "to your deno.json file.",
         ),
-        import_map,
+        if cfg!(windows) {
+          import_map.replace('/', "\\")
+        } else {
+          import_map.to_string()
+        },
       )
     );
   }

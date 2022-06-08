@@ -23,6 +23,7 @@ pub trait VendorEnvironment {
   fn cwd(&self) -> Result<PathBuf, AnyError>;
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError>;
   fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError>;
+  fn path_exists(&self, path: &Path) -> bool;
 }
 
 pub struct RealVendorEnvironment;
@@ -39,6 +40,10 @@ impl VendorEnvironment for RealVendorEnvironment {
   fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
     std::fs::write(file_path, text)
       .with_context(|| format!("Failed writing {}", file_path.display()))
+  }
+
+  fn path_exists(&self, path: &Path) -> bool {
+    path.exists()
   }
 }
 
@@ -137,7 +142,15 @@ fn resolve_import_map_path(
     }
     None => {
       let cwd = environment.cwd()?;
-      Ok(cwd.join("import_map.json"))
+      let path = cwd.join("import_map.json");
+      if environment.path_exists(&path) {
+        bail!(concat!(
+          "An import map was found at {}, but it was not specified as a cli ",
+          "flag or in a deno.json file. Please delete it first or specify it ",
+          "when vendoring (ex. `deno vendor --import-map <path-to-import-map> ...`)."
+        ), path.display())
+      }
+      Ok(path)
     }
   }
 }
@@ -775,6 +788,38 @@ mod test {
         ("/vendor/localhost/mod.ts", "console.log(6);"),
         ("/vendor/localhost/other.ts", "import './mod.ts';"),
       ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_but_none_specified() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let err_message = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "console.log(6);");
+      })
+      .with_environment(|env| {
+        let cwd = env.cwd().unwrap();
+        env.create_dir_all(&cwd).unwrap();
+        env.write_file(&cwd.join("import_map.json"), "{}").unwrap();
+      })
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(
+      err_message.to_string(),
+      format!(
+        concat!(
+          "An import map was found at {}, but it was not specified as a ",
+          "cli flag or in a deno.json file. Please delete it first or ",
+          "specify it when vendoring (ex. `deno vendor --import-map ",
+          "<path-to-import-map> ...`)."
+        ),
+        builder.make_path("/import_map.json").display()
+      )
     );
   }
 

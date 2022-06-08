@@ -565,7 +565,8 @@ impl Inner {
           )
         })?
       };
-      let import_map = import_map_from_text(&import_map_url, &import_map_json)?;
+      let import_map =
+        import_map_from_text(&import_map_url, &import_map_json, None)?;
       self.maybe_import_map_uri = Some(import_map_url);
       self.maybe_import_map = Some(Arc::new(import_map));
     } else {

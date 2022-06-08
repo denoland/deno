@@ -146,6 +146,11 @@ impl VendorEnvironment for TestVendorEnvironment {
       .insert(file_path.to_path_buf(), text.to_string());
     Ok(())
   }
+
+  fn path_exists(&self, path: &Path) -> bool {
+    eprintln!("PATHS: {:?}", self.files.borrow());
+    self.files.borrow().contains_key(&path.to_path_buf())
+  }
 }
 
 pub struct VendorOutput {
@@ -158,6 +163,7 @@ pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
   loader: TestLoader,
   original_import_map: Option<ImportMap>,
+  environment: TestVendorEnvironment,
 }
 
 impl VendorTestBuilder {
@@ -165,6 +171,14 @@ impl VendorTestBuilder {
     let mut builder = VendorTestBuilder::default();
     builder.add_entry_point("/mod.ts");
     builder
+  }
+
+  pub fn url_from_file_path(&self, text: &str) -> ModuleSpecifier {
+    ModuleSpecifier::from_file_path(&make_path(text)).unwrap()
+  }
+
+  pub fn make_path(&self, text: &str) -> PathBuf {
+    make_path(text)
   }
 
   pub fn set_original_import_map(
@@ -183,14 +197,9 @@ impl VendorTestBuilder {
     self
   }
 
-  pub fn url_from_file_path(&self, text: &str) -> ModuleSpecifier {
-    ModuleSpecifier::from_file_path(&make_path(text)).unwrap()
-  }
-
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
     let graph = self.build_graph().await;
     let output_dir = make_path("/vendor");
-    let environment = TestVendorEnvironment::default();
     let original_import_map = self.original_import_map.take();
     let import_map_path = if let Some(import_map) = &original_import_map {
       import_map.base_url().to_file_path().unwrap()
@@ -201,9 +210,9 @@ impl VendorTestBuilder {
       &graph,
       &output_dir,
       original_import_map,
-      &environment,
+      &self.environment,
     )?;
-    let mut files = environment.files.borrow_mut();
+    let mut files = self.environment.files.borrow_mut();
     let import_map = files.remove(&import_map_path);
     let mut files = files
       .iter()
@@ -220,6 +229,14 @@ impl VendorTestBuilder {
 
   pub fn with_loader(&mut self, action: impl Fn(&mut TestLoader)) -> &mut Self {
     action(&mut self.loader);
+    self
+  }
+
+  pub fn with_environment(
+    &mut self,
+    action: impl Fn(&mut dyn VendorEnvironment),
+  ) -> &mut Self {
+    action(&mut self.environment);
     self
   }
 
