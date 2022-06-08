@@ -4,14 +4,28 @@ use deno_core::futures::prelude::*;
 use influxdb2::models::DataPoint;
 use influxdb2::Client;
 use influxdb2::RequestError;
+use once_cell::sync::OnceCell;
 
-use once_cell::sync::Lazy;
+static CLIENT: OnceCell<Option<Client>> = OnceCell::new();
 
-static CLIENT: Lazy<Client> = Lazy::new(|| {
-  Client::new("http://localhost:8086", "test", "BDOmgmajHvIRLQjF_w3lv1NedJ19UUz4snag9FZEViDQycQD3mOQbGoGZmtLvjBEZVY7HvwlSo62dW_oLceXZQ==")
-});
-
+/// Send metrics to InfluxDB "benchmarks" bucket. This function is a no-op if the
+/// `CI` environment variable is not set.
 pub async fn submit(points: Vec<DataPoint>) -> Result<(), RequestError> {
-  CLIENT.write("test2", stream::iter(points)).await?;
+  let client: &Option<Client> = CLIENT.get_or_init(|| {
+    dotenv::dotenv().ok();
+    // Only run on the CI
+    if std::env::var("CI").is_err() {
+      return None;
+    }
+    Some(Client::new(
+      std::env::var("INFLUXDB_HOST").unwrap(),
+      std::env::var("INFLUXDB_ORG").unwrap(),
+      std::env::var("INFLUXDB_API_TOKEN").unwrap(),
+    ))
+  });
+
+  if let Some(client) = client {
+    client.write("benchmarks", stream::iter(points)).await?;
+  }
   Ok(())
 }

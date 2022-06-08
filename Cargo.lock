@@ -898,6 +898,7 @@ version = "0.49.0"
 dependencies = [
  "bencher",
  "deno_core",
+ "dotenv",
  "influxdb2",
  "once_cell",
  "tokio",
