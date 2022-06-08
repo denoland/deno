@@ -18,7 +18,6 @@ use crate::lockfile;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::tools::vendor::specifiers::is_remote_specifier_text;
 
 mod analyze;
 mod build;
@@ -41,33 +40,39 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     )
   });
   let graph = create_graph(&ps, &flags, &maybe_import_map).await?;
-  let vendored_count = build::build(
+  let build_result = build::build(
     &graph,
     &output_dir,
-    &build::RealVendorEnvironment,
     maybe_import_map,
+    &build::RealVendorEnvironment,
   )?;
 
   eprintln!(
-    r#"Vendored {} {} into {} directory.
-
-To use vendored modules, specify the `--import-map` flag when invoking deno subcommands:
-  deno run -A --import-map {} {}"#,
-    vendored_count,
-    if vendored_count == 1 {
+    concat!("Vendored {} {} into {} directory.",),
+    build_result.vendored_count,
+    if build_result.vendored_count == 1 {
       "module"
     } else {
       "modules"
     },
     raw_output_dir.display(),
-    raw_output_dir.join("import_map.json").display(),
-    flags
-      .specifiers
-      .iter()
-      .map(|s| s.as_str())
-      .find(|s| !is_remote_specifier_text(s))
-      .unwrap_or("main.ts"),
   );
+  if let Some(import_map_path) = build_result.import_map_path {
+    let cwd = std::env::current_dir().unwrap();
+    let import_map_path_str = import_map_path.display().to_string();
+    let relative_cwd_path = import_map_path_str
+      .trim_start_matches(&cwd.display().to_string())
+      .trim_start_matches('\\')
+      .trim_start_matches('/');
+    eprintln!(
+      concat!(
+        "\nTo use vendored modules, specify the `--import-map {}` flag when ",
+        r#"invoking deno subcommands or add an `"importMap": "<file_path>"` "#,
+        "entry to your deno.json file.",
+      ),
+      relative_cwd_path,
+    );
+  }
 
   Ok(())
 }

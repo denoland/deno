@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -36,28 +37,29 @@ impl VendorEnvironment for RealVendorEnvironment {
   }
 
   fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
-    Ok(std::fs::write(file_path, text)?)
+    std::fs::write(file_path, text)
+      .with_context(|| format!("Failed writing {}", file_path.display()))
   }
+}
+
+pub struct VendorBuildResult {
+  pub vendored_count: usize,
+  pub import_map_path: Option<PathBuf>,
 }
 
 /// Vendors remote modules and returns how many were vendored.
 pub fn build(
   graph: &ModuleGraph,
   output_dir: &Path,
-  environment: &impl VendorEnvironment,
   original_import_map: Option<ImportMap>,
-) -> Result<usize, AnyError> {
+  environment: &impl VendorEnvironment,
+) -> Result<VendorBuildResult, AnyError> {
   assert!(output_dir.is_absolute());
-  let base_dir = match &original_import_map {
-    Some(import_map) => import_map.base_url().clone(),
-    None => {
-      let cwd = environment.cwd()?;
-      ModuleSpecifier::from_directory_path(&cwd).unwrap()
-    }
-  };
-  if base_dir.scheme() != "file" {
-    bail!("The existing import map must be in a local directory.");
-  }
+  let import_map_path =
+    resolve_import_map_path(&original_import_map, environment)?;
+  let base_dir =
+    ModuleSpecifier::from_directory_path(import_map_path.parent().unwrap())
+      .unwrap();
 
   let all_modules = graph.modules();
   let remote_modules = all_modules
@@ -65,12 +67,8 @@ pub fn build(
     .filter(|m| is_remote_specifier(&m.specifier))
     .copied()
     .collect::<Vec<_>>();
-  let mappings = Mappings::from_remote_modules(
-    graph,
-    &remote_modules,
-    output_dir,
-    base_dir.clone(),
-  )?;
+  let mappings =
+    Mappings::from_remote_modules(graph, &remote_modules, output_dir)?;
 
   // write out all the files
   for module in &remote_modules {
@@ -102,8 +100,8 @@ pub fn build(
     environment.write_file(&proxy_path, &text)?;
   }
 
-  // create the import map
-  if !mappings.base_specifiers().is_empty() {
+  // create the import map if necessary
+  let import_map_path = if !mappings.base_specifiers().is_empty() {
     let import_map_text = build_import_map(
       &base_dir,
       graph,
@@ -111,13 +109,37 @@ pub fn build(
       &mappings,
       original_import_map,
     );
-    environment.write_file(
-      &base_dir.to_file_path().unwrap().join("import_map.json"),
-      &import_map_text,
-    )?;
-  }
+    environment.write_file(&import_map_path, &import_map_text)?;
+    Some(import_map_path)
+  } else {
+    None
+  };
 
-  Ok(remote_modules.len())
+  Ok(VendorBuildResult {
+    vendored_count: remote_modules.len(),
+    import_map_path,
+  })
+}
+
+fn resolve_import_map_path(
+  original_import_map: &Option<ImportMap>,
+  environment: &impl VendorEnvironment,
+) -> Result<PathBuf, AnyError> {
+  match &original_import_map {
+    Some(import_map) => {
+      if import_map.base_url().scheme() != "file" {
+        bail!(
+          "The existing import map must be in a local directory (Found: {}).",
+          import_map.base_url()
+        );
+      }
+      Ok(import_map.base_url().to_file_path().unwrap())
+    }
+    None => {
+      let cwd = environment.cwd()?;
+      Ok(cwd.join("import_map.json"))
+    }
+  }
 }
 
 fn build_proxy_module_source(

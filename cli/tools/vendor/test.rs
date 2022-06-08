@@ -181,8 +181,8 @@ impl VendorTestBuilder {
     super::build::build(
       &graph,
       &output_dir,
-      &environment,
       original_import_map,
+      &environment,
     )?;
     let mut files = environment.files.borrow_mut();
     let import_map =

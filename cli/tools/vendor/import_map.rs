@@ -23,13 +23,17 @@ struct ImportMapBuilder<'a> {
 }
 
 impl<'a> ImportMapBuilder<'a> {
-  pub fn new(base: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
+  pub fn new(base_dir: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     ImportMapBuilder {
-      base,
+      base: base_dir,
       mappings,
-      imports: ImportsBuilder::new(base, mappings),
+      imports: ImportsBuilder::new(base_dir, mappings),
       scopes: Default::default(),
     }
+  }
+
+  pub fn base_dir(&self) -> &ModuleSpecifier {
+    self.base
   }
 
   pub fn scope(
@@ -74,7 +78,7 @@ impl<'a> ImportMapBuilder<'a> {
 }
 
 struct ImportsBuilder<'a> {
-  base: &'a ModuleSpecifier,
+  base_dir: &'a ModuleSpecifier,
   mappings: &'a Mappings,
   imports: IndexMap<String, String>,
 }
@@ -82,14 +86,16 @@ struct ImportsBuilder<'a> {
 impl<'a> ImportsBuilder<'a> {
   pub fn new(base: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     Self {
-      base,
+      base_dir: base,
       mappings,
       imports: Default::default(),
     }
   }
 
   pub fn add(&mut self, key: String, specifier: &ModuleSpecifier) {
-    let value = self.mappings.relative_specifier_text(self.base, specifier);
+    let value = self
+      .mappings
+      .relative_specifier_text(self.base_dir, specifier);
 
     // skip creating identity entries
     if key != value {
@@ -99,13 +105,13 @@ impl<'a> ImportsBuilder<'a> {
 }
 
 pub fn build_import_map(
-  base: &ModuleSpecifier,
+  base_dir: &ModuleSpecifier,
   graph: &ModuleGraph,
   modules: &[&Module],
   mappings: &Mappings,
   original_import_map: Option<ImportMap>,
 ) -> String {
-  let mut builder = ImportMapBuilder::new(base, mappings);
+  let mut builder = ImportMapBuilder::new(base_dir, mappings);
   visit_modules(graph, modules, mappings, &mut builder);
 
   builder.into_import_map(original_import_map).to_json()
@@ -200,7 +206,7 @@ fn handle_dep_specifier(
   }
 
   // add an entry for every local module referrencing a remote
-  if !is_remote_specifier(&referrer) {
+  if !is_remote_specifier(referrer) {
     import_map.imports.add(text.to_string(), &specifier);
     return;
   }
@@ -227,6 +233,7 @@ fn handle_dep_specifier(
       return;
     }
 
+    let base_dir = import_map.base_dir().clone();
     let imports = import_map.scope(base_specifier);
     if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
@@ -245,8 +252,7 @@ fn handle_dep_specifier(
       local_base_specifier.set_query(unresolved_specifier.query());
 
       imports.add(
-        mappings
-          .relative_specifier_text(mappings.base_dir(), &local_base_specifier),
+        mappings.relative_specifier_text(&base_dir, &local_base_specifier),
         &specifier,
       );
 
@@ -264,7 +270,7 @@ fn handle_dep_specifier(
             value.path(),
             specifier.path_segments().unwrap().last().unwrap(),
           ));
-          mappings.relative_specifier_text(mappings.base_dir(), &value)
+          mappings.relative_specifier_text(&base_dir, &value)
         },
         &specifier,
       );

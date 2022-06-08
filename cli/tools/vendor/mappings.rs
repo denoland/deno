@@ -28,7 +28,6 @@ pub struct ProxiedModule {
 
 /// Constructs and holds the remote specifier to local path mappings.
 pub struct Mappings {
-  base_dir: ModuleSpecifier,
   mappings: HashMap<ModuleSpecifier, PathBuf>,
   base_specifiers: Vec<ModuleSpecifier>,
   proxies: HashMap<ModuleSpecifier, ProxiedModule>,
@@ -39,7 +38,6 @@ impl Mappings {
     graph: &ModuleGraph,
     remote_modules: &[&Module],
     output_dir: &Path,
-    base_dir: ModuleSpecifier,
   ) -> Result<Self, AnyError> {
     let partitioned_specifiers =
       partition_by_root_specifiers(remote_modules.iter().map(|m| &m.specifier));
@@ -105,15 +103,10 @@ impl Mappings {
     }
 
     Ok(Self {
-      base_dir,
       mappings,
       base_specifiers,
       proxies,
     })
-  }
-
-  pub fn base_dir(&self) -> &ModuleSpecifier {
-    &self.base_dir
   }
 
   pub fn local_uri(&self, specifier: &ModuleSpecifier) -> ModuleSpecifier {
