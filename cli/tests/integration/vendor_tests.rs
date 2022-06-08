@@ -3,7 +3,6 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use pretty_assertions::assert_eq;
-use std::fs;
 use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
@@ -265,10 +264,8 @@ fn remote_module_test() {
     .join("localhost_4545/vendor/query_reexport.ts")
     .exists());
   assert!(vendor_dir.join("localhost_4545/vendor/logger.ts").exists());
-  let import_map: serde_json::Value = serde_json::from_str(
-    &fs::read_to_string(t.path().join("import_map.json")).unwrap(),
-  )
-  .unwrap();
+  let import_map: serde_json::Value =
+    serde_json::from_str(&t.read_to_string("import_map.json")).unwrap();
   assert_eq!(
     import_map,
     json!({
