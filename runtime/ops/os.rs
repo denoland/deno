@@ -11,7 +11,6 @@ use deno_core::OpState;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use std::sync::atomic::Ordering::Relaxed;
 
 pub fn init(exit_code: ExitCode) -> Extension {
   Extension::builder()
@@ -103,12 +102,12 @@ fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
 
 #[op]
 fn op_set_exit_code(state: &mut OpState, code: i32) {
-  state.borrow_mut::<ExitCode>().0.store(code, Relaxed);
+  state.borrow_mut::<ExitCode>().set(code);
 }
 
 #[op]
 fn op_exit(state: &mut OpState) {
-  let code = state.borrow::<ExitCode>().0.load(Relaxed);
+  let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
 }
 
