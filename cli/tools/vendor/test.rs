@@ -17,6 +17,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleKind;
 use import_map::ImportMap;
 
 use crate::resolver::ImportMapResolver;
@@ -203,26 +204,28 @@ impl VendorTestBuilder {
 
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
     let output_dir = make_path("/vendor");
-    self.original_import_map =
-      self.original_import_map.take().map(|import_map| {
-        import_map.with_folder_removed(
-          &ModuleSpecifier::from_directory_path(&output_dir).unwrap(),
-        )
-      });
-    let graph = self.build_graph().await;
-    let original_import_map = self.original_import_map.clone();
-    let import_map_path = if let Some(import_map) = &original_import_map {
+    let roots = self
+      .entry_points
+      .iter()
+      .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
+      .collect();
+    let loader = self.loader.clone();
+    super::build::build(
+      &output_dir,
+      self.original_import_map.as_ref(),
+      &self.environment,
+      |original_import_map| {
+        build_test_graph(roots, original_import_map.clone(), loader.clone())
+      },
+    )
+    .await?;
+
+    let mut files = self.environment.files.borrow_mut();
+    let import_map_path = if let Some(import_map) = &self.original_import_map {
       import_map.base_url().to_file_path().unwrap()
     } else {
       make_path("/").join("import_map.json")
     };
-    super::build::build(
-      &graph,
-      &output_dir,
-      original_import_map,
-      &self.environment,
-    )?;
-    let mut files = self.environment.files.borrow_mut();
     let import_map = files.remove(&import_map_path);
     let mut files = files
       .iter()
@@ -249,31 +252,29 @@ impl VendorTestBuilder {
     action(&mut self.environment);
     self
   }
+}
 
-  async fn build_graph(&mut self) -> ModuleGraph {
-    let resolver = self
-      .original_import_map
-      .clone()
-      .map(|m| ImportMapResolver::new(Arc::new(m)));
-    let graph = deno_graph::create_graph(
-      self
-        .entry_points
-        .iter()
-        .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
-        .collect(),
+async fn build_test_graph(
+  roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  original_import_map: Option<ImportMap>,
+  mut loader: TestLoader,
+) -> Result<ModuleGraph, AnyError> {
+  let resolver = original_import_map
+    .clone()
+    .map(|m| ImportMapResolver::new(Arc::new(m)));
+  Ok(
+    deno_graph::create_graph(
+      roots,
       false,
       None,
-      &mut self.loader,
+      &mut loader,
       resolver.as_ref().map(|im| im.as_resolver()),
       None,
       None,
       None,
     )
-    .await;
-    graph.lock().unwrap();
-    graph.valid().unwrap();
-    graph
-  }
+    .await,
+  )
 }
 
 fn make_path(text: &str) -> PathBuf {

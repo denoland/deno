@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -53,18 +54,29 @@ pub struct VendorBuildResult {
 }
 
 /// Vendors remote modules and returns how many were vendored.
-pub fn build(
-  graph: &ModuleGraph,
+pub async fn build<
+  RBuildGraph: Future<Output = Result<ModuleGraph, AnyError>> + 'static,
+>(
   output_dir: &Path,
-  original_import_map: Option<ImportMap>,
+  original_import_map: Option<&ImportMap>,
   environment: &impl VendorEnvironment,
+  build_graph: impl FnOnce(&Option<ImportMap>) -> RBuildGraph,
 ) -> Result<VendorBuildResult, AnyError> {
   assert!(output_dir.is_absolute());
+  let original_import_map = original_import_map.map(|m| {
+    m.with_folder_removed(
+      &ModuleSpecifier::from_directory_path(&output_dir).unwrap(),
+    )
+  });
   let import_map_path =
     resolve_import_map_path(&original_import_map, environment)?;
   let base_dir =
     ModuleSpecifier::from_directory_path(import_map_path.parent().unwrap())
       .unwrap();
+
+  let graph = build_graph(&original_import_map).await?;
+  graph.lock()?;
+  graph.valid()?;
 
   let all_modules = graph.modules();
   let remote_modules = all_modules
@@ -73,7 +85,7 @@ pub fn build(
     .copied()
     .collect::<Vec<_>>();
   let mappings =
-    Mappings::from_remote_modules(graph, &remote_modules, output_dir)?;
+    Mappings::from_remote_modules(&graph, &remote_modules, output_dir)?;
 
   // write out all the files
   for module in &remote_modules {
@@ -109,7 +121,7 @@ pub fn build(
   let import_map_path = if !mappings.base_specifiers().is_empty() {
     let import_map_text = build_import_map(
       &base_dir,
-      graph,
+      &graph,
       &all_modules,
       &mappings,
       original_import_map,
