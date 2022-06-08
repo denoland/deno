@@ -3,7 +3,7 @@
 use super::utils::into_string;
 use crate::permissions::Permissions;
 use crate::worker::ExitCode;
-use deno_core::error::{type_error, AnyError};
+use deno_core::error::{generic_error, type_error, AnyError};
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
@@ -33,6 +33,32 @@ pub fn init(exit_code: ExitCode) -> Extension {
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
       Ok(())
+    })
+    .build()
+}
+
+pub fn init_for_worker() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      op_env::decl(),
+      op_exec_path::decl(),
+      op_exit::decl(),
+      op_delete_env::decl(),
+      op_get_env::decl(),
+      op_getgid::decl(),
+      op_getuid::decl(),
+      op_hostname::decl(),
+      op_loadavg::decl(),
+      op_network_interfaces::decl(),
+      op_os_release::decl(),
+      op_set_env::decl(),
+      op_set_exit_code::decl(),
+      op_system_memory_info::decl(),
+    ])
+    .middleware(|op| match op.name {
+      "op_exit" => op_exit_for_worker::decl(),
+      "op_set_exit_code" => op_set_exit_code_for_worker::decl(),
+      _ => op,
     })
     .build()
 }
@@ -109,6 +135,20 @@ fn op_set_exit_code(state: &mut OpState, code: i32) {
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
+}
+
+#[op]
+fn op_set_exit_code_for_worker(_code: i32) -> Result<(), AnyError> {
+  Err(generic_error(
+    "op_set_exit_code is not supported in worker contexts",
+  ))
+}
+
+#[op]
+fn op_exit_for_worker() -> Result<(), AnyError> {
+  Err(generic_error(
+    "Deno.exit() is not supported in worker contexts",
+  ))
 }
 
 #[op]
