@@ -62,3 +62,13 @@ try {
     } thrown for not-found-example.com`,
   );
 }
+
+try {
+  await Deno.resolveDns("not-supported-example.com", "DS", nameServer);
+} catch (e) {
+  console.log(
+    `Error ${
+      e instanceof Error ? e.name : "[non-error]"
+    } thrown for not-found-example.com`,
+  );
+}
