@@ -18,6 +18,10 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
+      CI: true
+      INFLUXDB_HOST: ${{ secrets.INFLUXDB_HOST }}
+      INFLUXDB_ORG: ${{ secrets.INFLUXDB_ORG }}
+      INFLUXDB_API_TOKEN: ${{ secrets.INFLUXDB_API_TOKEN }}
 
     steps:
       - name: Clone repository
