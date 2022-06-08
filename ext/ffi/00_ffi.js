@@ -6,12 +6,13 @@
   const __bootstrap = window.__bootstrap;
   const {
     ArrayBufferPrototype,
-    Uint8Array,
     BigInt,
+    Error,
     Number,
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     TypeError,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
   function pack64(value) {
@@ -183,7 +184,9 @@
         if (ObjectPrototypeIsPrototypeOf(RegisteredCallback, arg)) {
           parameters.push(arg);
         } else {
-          throw new TypeError("Invalid ffi arg value, expected RegisteredCallback");
+          throw new TypeError(
+            "Invalid ffi arg value, expected RegisteredCallback",
+          );
         }
       } else {
         parameters.push(arg);
@@ -259,7 +262,9 @@
 
     constructor(definition, callback) {
       if (definition.nonblocking) {
-        throw new TypeError("Invalid ffi RegisteredCallback, cannot be nonblocking");
+        throw new TypeError(
+          "Invalid ffi RegisteredCallback, cannot be nonblocking",
+        );
       }
       this.#rid = core.opSync("op_ffi_register_callback", definition, callback);
       this.definition = definition;
@@ -274,7 +279,11 @@
       if (this.definition.nonblocking) {
         throw new Error("Unreachable");
       } else {
-        const result = core.opSync("op_ffi_call_registered_callback", this.#rid, parameters);
+        const result = core.opSync(
+          "op_ffi_call_registered_callback",
+          this.#rid,
+          parameters,
+        );
 
         if (this.definition.result === "pointer") {
           return new UnsafePointer(unpackU64(result));

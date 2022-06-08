@@ -507,7 +507,7 @@ impl<'scope> FfiCallPtrArgs<'scope> {
 fn ffi_parse_args<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   args: serde_v8::Value<'scope>,
-  parameter_types: &Vec<NativeType>,
+  parameter_types: &[NativeType],
   resource_table: &deno_core::ResourceTable,
 ) -> Result<Vec<NativeValue>, AnyError>
 where
@@ -526,48 +526,48 @@ where
       NativeType::U8 => {
         let value = value
           .uint32_value(scope)
-          .ok_or(type_error("Invalid FFI u8 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI u8 type, expected number"))?
           as u8;
         ffi_args.push(NativeValue { u8_value: value });
       }
       NativeType::I8 => {
         let value = value
           .int32_value(scope)
-          .ok_or(type_error("Invalid FFI i8 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI i8 type, expected number"))?
           as i8;
         ffi_args.push(NativeValue { i8_value: value });
       }
       NativeType::U16 => {
         let value = value
           .uint32_value(scope)
-          .ok_or(type_error("Invalid FFI u16 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI u16 type, expected number"))?
           as u16;
         ffi_args.push(NativeValue { u16_value: value });
       }
       NativeType::I16 => {
         let value = value
           .int32_value(scope)
-          .ok_or(type_error("Invalid FFI i16 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI i16 type, expected number"))?
           as i16;
         ffi_args.push(NativeValue { i16_value: value });
       }
       NativeType::U32 => {
         let value = value
           .uint32_value(scope)
-          .ok_or(type_error("Invalid FFI u32 type, expected number"))?;
+          .ok_or_else(|| type_error("Invalid FFI u32 type, expected number"))?;
         ffi_args.push(NativeValue { u32_value: value });
       }
       NativeType::I32 => {
         let value = value
           .int32_value(scope)
-          .ok_or(type_error("Invalid FFI i32 type, expected number"))?;
+          .ok_or_else(|| type_error("Invalid FFI i32 type, expected number"))?;
         ffi_args.push(NativeValue { i32_value: value });
       }
       NativeType::U64 => {
         // TODO: Handle BigInt
         let value = value
           .integer_value(scope)
-          .ok_or(type_error("Invalid FFI u64 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI u64 type, expected number"))?
           as u64;
         ffi_args.push(NativeValue { u64_value: value });
       }
@@ -575,7 +575,7 @@ where
         // TODO: Handle BigInt
         let value = value
           .integer_value(scope)
-          .ok_or(type_error("Invalid FFI i64 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI i64 type, expected number"))?
           as i64;
         ffi_args.push(NativeValue { i64_value: value });
       }
@@ -583,7 +583,7 @@ where
         // TODO: Handle BigInt
         let value = value
           .integer_value(scope)
-          .ok_or(type_error("Invalid FFI usize type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI usize type, expected number"))?
           as usize;
         ffi_args.push(NativeValue { usize_value: value });
       }
@@ -591,21 +591,21 @@ where
         // TODO: Handle BigInt
         let value = value
           .integer_value(scope)
-          .ok_or(type_error("Invalid FFI isize type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI isize type, expected number"))?
           as isize;
         ffi_args.push(NativeValue { isize_value: value });
       }
       NativeType::F32 => {
         let value = value
           .number_value(scope)
-          .ok_or(type_error("Invalid FFI f32 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI f32 type, expected number"))?
           as f32;
         ffi_args.push(NativeValue { f32_value: value });
       }
       NativeType::F64 => {
         let value = value
           .integer_value(scope)
-          .ok_or(type_error("Invalid FFI f64 type, expected number"))?
+          .ok_or_else(|| type_error("Invalid FFI f64 type, expected number"))?
           as f64;
         ffi_args.push(NativeValue { f64_value: value });
       }
@@ -816,7 +816,6 @@ unsafe extern "C" fn deno_ffi_callback(
   };
 
   std::mem::forget(callback);
-  std::mem::forget(context);
 
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
@@ -902,12 +901,12 @@ fn op_ffi_register_callback(
       context,
       isolate,
       parameters: args.parameters.clone(),
-      result: args.result.clone(),
+      result: args.result,
     }))
   };
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
-    libffi::middle::Type::from(args.result.clone()),
+    libffi::middle::Type::from(args.result),
   );
 
   let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
@@ -973,7 +972,7 @@ where
   CREATE_SCOPE.with(|s| {
     s.replace(Some(true));
   });
-  Ok(result.into())
+  Ok(result)
 }
 
 #[op(v8)]
@@ -1001,6 +1000,7 @@ where
 }
 
 //#[op(v8)]
+#[allow(dead_code)]
 async fn op_ffi_call_ptr_nonblocking<'a, FP>(
   scope: &mut v8::HandleScope<'a>,
   state: Rc<RefCell<deno_core::OpState>>,
@@ -1122,6 +1122,7 @@ fn op_ffi_call(
 
 /// A non-blocking FFI call.
 //#[op(v8)]
+#[allow(dead_code)]
 fn op_ffi_call_nonblocking<'a>(
   scope: &mut v8::HandleScope<'a>,
   state: &mut deno_core::OpState,
@@ -1152,9 +1153,7 @@ fn op_ffi_call_nonblocking<'a>(
     };
     ffi_call(call_args, &symbol)
   });
-  async move {
-    join_handle.await?
-  }
+  async move { join_handle.await? }
 }
 
 #[op]
