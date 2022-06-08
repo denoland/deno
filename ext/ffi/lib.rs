@@ -6,6 +6,7 @@ use deno_core::error::generic_error;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
 
@@ -1007,7 +1008,7 @@ async fn op_ffi_call_ptr_nonblocking<'a, FP>(
 ) -> Result<Value, AnyError>
 where
   FP: FfiPermissions + 'static,
-  'a: 'a
+  'a: 'a,
 {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
@@ -1019,16 +1020,14 @@ where
 
   let symbol = args.get_symbol();
   let call_args = ffi_parse_args(
-      scope,
-      args.parameters,
-      &args.def.parameters,
-      &state.borrow_mut().resource_table
+    scope,
+    args.parameters,
+    &args.def.parameters,
+    &state.borrow_mut().resource_table,
   )?;
-  tokio::task::spawn_blocking(move || {
-    ffi_call(call_args, &symbol)
-  })
-  .await
-  .unwrap()
+  tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol))
+    .await
+    .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -1123,32 +1122,39 @@ fn op_ffi_call(
 
 /// A non-blocking FFI call.
 //#[op(v8)]
-async fn op_ffi_call_nonblocking<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallArgs<'a>,
-) -> Result<Value, AnyError>
-where
-  'a: 'a,
-{
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-  let symbols = &resource.symbols;
-  let symbol = symbols
-    .get(&args.symbol)
-    .ok_or_else(bad_resource_id)?
-    .clone();
+fn op_ffi_call_nonblocking(
+  scope: &mut v8::HandleScope,
+  state: &mut deno_core::OpState,
+  args: FfiCallArgs,
+) -> impl Future<Output = Result<Value, AnyError>> + 'static {
+  let block = || -> Result<(Symbol, Vec<NativeValue>), AnyError> {
+    let resource = state
+      .resource_table
+      .get::<DynamicLibraryResource>(args.rid)?;
+    let symbols = &resource.symbols;
+    let symbol = symbols.get(&args.symbol).ok_or_else(bad_resource_id)?;
 
-  let call_args = ffi_parse_args(
-    scope,
-    args.parameters,
-    &symbol.parameter_types,
-    &state.borrow().resource_table,
-  )?;
+    Ok((
+      symbol.clone(),
+      ffi_parse_args(
+        unsafe { std::mem::transmute(scope) },
+        args.parameters,
+        &symbol.parameter_types,
+        &state.resource_table,
+      )?,
+    ))
+  }();
 
-  tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol)).await?
+  let join_handle = tokio::task::spawn_blocking(move || {
+    let (symbol, call_args) = match block {
+      Ok((sym, c_args)) => (sym, c_args),
+      Err(err) => return Err(err),
+    };
+    ffi_call(call_args, &symbol)
+  });
+  async move {
+    join_handle.await?
+  }
 }
 
 #[op]
