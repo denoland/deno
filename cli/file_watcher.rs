@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
 
 const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
@@ -234,6 +235,117 @@ where
   }
 }
 
+/// Creates a file watcher.
+///
+/// - `operation` is the actual operation we want to run every time the watcher detects file
+/// changes. For example, in the case where we would like to bundle, then `operation` would
+/// have the logic for it like bundling the code.
+pub async fn watch_func2<T: Clone, O, F>(
+  mut paths_to_watch_receiver: mpsc::UnboundedReceiver<Vec<PathBuf>>,
+  mut operation: O,
+  operation_args: T,
+  print_config: PrintConfig,
+) -> Result<(), AnyError>
+where
+  O: FnMut(T) -> F,
+  F: Future<Output = Result<(), AnyError>>,
+{
+  let (watcher_sender, mut watcher_receiver) =
+    DebouncedReceiver::new_with_sender();
+
+  let PrintConfig {
+    job_name,
+    clear_screen,
+  } = print_config;
+
+  let print_after_restart = || {
+    if clear_screen {
+      eprint!("{}", CLEAR_SCREEN);
+    }
+    info!(
+      "{} File change detected! Restarting!",
+      colors::intense_blue("Watcher"),
+    );
+  };
+
+  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+
+  fn add_paths_to_watcher(
+    watcher: &mut RecommendedWatcher,
+    paths: Vec<PathBuf>,
+  ) {
+    // Ignore any error e.g. `PathNotFound`
+    for path in &paths {
+      let _ = watcher.watch(path, RecursiveMode::Recursive);
+    }
+    log::debug!("Watching paths: {:?}", paths);
+  }
+
+  fn consume_paths_to_watch(
+    watcher: &mut RecommendedWatcher,
+    receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+  ) {
+    loop {
+      match receiver.try_recv() {
+        Ok(paths) => {
+          add_paths_to_watcher(watcher, paths);
+        }
+        Err(e) => match e {
+          mpsc::error::TryRecvError::Empty => {
+            break;
+          }
+          // there must be at least one receiver alive
+          _ => unreachable!(),
+        },
+      }
+    }
+  }
+
+  loop {
+    let mut watcher = new_watcher2(watcher_sender.clone())?;
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
+
+    let receiver_future = async {
+      loop {
+        let maybe_paths = paths_to_watch_receiver.recv().await;
+        add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
+      }
+    };
+    let operation_future = error_handler(operation(operation_args.clone()));
+
+    select! {
+      _ = receiver_future => {},
+      _ = watcher_receiver.recv() => {
+        print_after_restart();
+        continue;
+      },
+      _ = operation_future => {
+        // TODO(bartlomieju): print exit code here?
+        info!(
+          "{} {} finished. Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+        );
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
+      },
+    };
+
+    let receiver_future = async {
+      loop {
+        let maybe_paths = paths_to_watch_receiver.recv().await;
+        add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
+      }
+    };
+    select! {
+      _ = receiver_future => {},
+      _ = watcher_receiver.recv() => {
+        print_after_restart();
+        continue;
+      },
+    };
+  }
+}
+
 fn new_watcher(
   paths: &[PathBuf],
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
@@ -262,6 +374,31 @@ fn new_watcher(
     // Ignore any error e.g. `PathNotFound`
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
+
+  Ok(watcher)
+}
+
+fn new_watcher2(
+  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+) -> Result<RecommendedWatcher, AnyError> {
+  let mut watcher: RecommendedWatcher =
+    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
+      if let Ok(event) = res {
+        if matches!(
+          event.kind,
+          EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) {
+          let paths = event
+            .paths
+            .iter()
+            .filter_map(|path| canonicalize_path(path).ok())
+            .collect();
+          sender.send(paths).unwrap();
+        }
+      }
+    })?;
+
+  watcher.configure(Config::PreciseEvents(true)).unwrap();
 
   Ok(watcher)
 }
