@@ -128,6 +128,18 @@ pub struct PrintConfig {
   pub clear_screen: bool,
 }
 
+fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
+  move || {
+    if clear_screen {
+      eprint!("{}", CLEAR_SCREEN);
+    }
+    info!(
+      "{} File change detected! Restarting!",
+      colors::intense_blue("Watcher"),
+    );
+  }
+}
+
 /// Creates a file watcher, which will call `resolver` with every file change.
 ///
 /// - `resolver` is used for resolving file paths to be watched at every restarting
@@ -161,15 +173,7 @@ where
   let mut paths_to_watch;
   let mut resolution_result;
 
-  let print_after_restart = || {
-    if clear_screen {
-      eprint!("{}", CLEAR_SCREEN);
-    }
-    info!(
-      "{} File change detected! Restarting!",
-      colors::intense_blue("Watcher"),
-    );
-  };
+  let print_after_restart = create_print_after_restart_fn(clear_screen);
 
   match resolver(None).await {
     ResolutionResult::Ignore => {
@@ -202,7 +206,8 @@ where
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
-    let watcher = new_watcher(&paths_to_watch, sender.clone())?;
+    let mut watcher = new_watcher(sender.clone())?;
+    add_paths_to_watcher(&mut watcher, &paths_to_watch);
 
     match resolution_result {
       Ok(operation_arg) => {
@@ -271,28 +276,9 @@ where
     clear_screen,
   } = print_config;
 
-  let print_after_restart = || {
-    if clear_screen {
-      eprint!("{}", CLEAR_SCREEN);
-    }
-    info!(
-      "{} File change detected! Restarting!",
-      colors::intense_blue("Watcher"),
-    );
-  };
+  let print_after_restart = create_print_after_restart_fn(clear_screen);
 
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
-
-  fn add_paths_to_watcher(
-    watcher: &mut RecommendedWatcher,
-    paths: Vec<PathBuf>,
-  ) {
-    // Ignore any error e.g. `PathNotFound`
-    for path in &paths {
-      let _ = watcher.watch(path, RecursiveMode::Recursive);
-    }
-    log::debug!("Watching paths: {:?}", paths);
-  }
 
   fn consume_paths_to_watch(
     watcher: &mut RecommendedWatcher,
@@ -301,7 +287,7 @@ where
     loop {
       match receiver.try_recv() {
         Ok(paths) => {
-          add_paths_to_watcher(watcher, paths);
+          add_paths_to_watcher(watcher, &paths);
         }
         Err(e) => match e {
           mpsc::error::TryRecvError::Empty => {
@@ -315,13 +301,13 @@ where
   }
 
   loop {
-    let mut watcher = new_watcher2(watcher_sender.clone())?;
+    let mut watcher = new_watcher(watcher_sender.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
 
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_receiver.recv().await;
-        add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
     let operation_future = error_handler2(operation(operation_args.clone()));
@@ -346,7 +332,7 @@ where
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_receiver.recv().await;
-        add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
     select! {
@@ -360,7 +346,6 @@ where
 }
 
 fn new_watcher(
-  paths: &[PathBuf],
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
   let mut watcher: RecommendedWatcher =
@@ -382,13 +367,15 @@ fn new_watcher(
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
-  log::debug!("Watching paths: {:?}", paths);
+  Ok(watcher)
+}
+
+fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
+  // Ignore any error e.g. `PathNotFound`
   for path in paths {
-    // Ignore any error e.g. `PathNotFound`
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
-
-  Ok(watcher)
+  log::debug!("Watching paths: {:?}", paths);
 }
 
 fn new_watcher2(
