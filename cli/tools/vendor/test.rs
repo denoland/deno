@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -17,6 +18,8 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::ModuleGraph;
 use import_map::ImportMap;
+
+use crate::resolver::ImportMapResolver;
 
 use super::build::VendorEnvironment;
 
@@ -173,12 +176,13 @@ impl VendorTestBuilder {
     builder
   }
 
-  pub fn url_from_file_path(&self, text: &str) -> ModuleSpecifier {
-    ModuleSpecifier::from_file_path(&make_path(text)).unwrap()
+  pub fn new_import_map(&self, base_path: &str) -> ImportMap {
+    let base = ModuleSpecifier::from_file_path(&make_path(base_path)).unwrap();
+    ImportMap::new(base)
   }
 
-  pub fn make_path(&self, text: &str) -> PathBuf {
-    make_path(text)
+  pub fn display_path(&self, text: &str) -> String {
+    make_path(text).display().to_string()
   }
 
   pub fn set_original_import_map(
@@ -198,9 +202,15 @@ impl VendorTestBuilder {
   }
 
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
-    let graph = self.build_graph().await;
     let output_dir = make_path("/vendor");
-    let original_import_map = self.original_import_map.take();
+    self.original_import_map =
+      self.original_import_map.take().map(|import_map| {
+        import_map.with_folder_removed(
+          &ModuleSpecifier::from_directory_path(&output_dir).unwrap(),
+        )
+      });
+    let graph = self.build_graph().await;
+    let original_import_map = self.original_import_map.clone();
     let import_map_path = if let Some(import_map) = &original_import_map {
       import_map.base_url().to_file_path().unwrap()
     } else {
@@ -241,6 +251,10 @@ impl VendorTestBuilder {
   }
 
   async fn build_graph(&mut self) -> ModuleGraph {
+    let resolver = self
+      .original_import_map
+      .clone()
+      .map(|m| ImportMapResolver::new(Arc::new(m)));
     let graph = deno_graph::create_graph(
       self
         .entry_points
@@ -250,7 +264,7 @@ impl VendorTestBuilder {
       false,
       None,
       &mut self.loader,
-      None,
+      resolver.as_ref().map(|im| im.as_resolver()),
       None,
       None,
       None,

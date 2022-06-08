@@ -193,7 +193,6 @@ fn build_proxy_module_source(
 mod test {
   use crate::tools::vendor::test::VendorTestBuilder;
   use deno_core::serde_json::json;
-  use import_map::ImportMap;
   use pretty_assertions::assert_eq;
 
   #[tokio::test]
@@ -752,8 +751,7 @@ mod test {
   #[tokio::test]
   async fn existing_import_map() {
     let mut builder = VendorTestBuilder::with_default_setup();
-    let mut original_import_map =
-      ImportMap::new(builder.url_from_file_path("/import_map2.json"));
+    let mut original_import_map = builder.new_import_map("/import_map2.json");
     original_import_map
       .imports_mut()
       .append(
@@ -792,6 +790,86 @@ mod test {
   }
 
   #[tokio::test]
+  async fn existing_import_map_mapped_bare_specifier() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    original_import_map
+      .imports_mut()
+      .append("std/".to_string(), "https://deno.land/std/".to_string())
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'std/mod.ts';");
+        loader.add("https://deno.land/std/mod.ts", "export function test() {}");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "std/": "https://deno.land/std/",
+          "std/mod.ts": "./vendor/deno.land/std/mod.ts"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[(
+        "/vendor/deno.land/std/mod.ts",
+        "export function test() {}"
+      )]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_switching_imported_dep() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    original_import_map
+      .imports_mut()
+      .append("std/".to_string(), "https://deno.land/std/".to_string())
+      .unwrap();
+    original_import_map
+      .imports_mut()
+      .append(
+        "std/mod.ts".to_string(),
+        "./vendor/deno.land/std/mod.ts".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'std/other.ts';");
+        loader.add("https://deno.land/std/other.ts", "export function f() {}");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      // won't have mod.ts in here anymore
+      Some(json!({
+        "imports": {
+          "std/": "https://deno.land/std/",
+          "std/other.ts": "./vendor/deno.land/std/other.ts"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[(
+        "/vendor/deno.land/std/other.ts",
+        "export function f() {}"
+      )]),
+    );
+  }
+
+  #[tokio::test]
   async fn existing_import_map_but_none_specified() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let err_message = builder
@@ -818,7 +896,7 @@ mod test {
           "specify it when vendoring (ex. `deno vendor --import-map ",
           "<path-to-import-map> ...`)."
         ),
-        builder.make_path("/import_map.json").display()
+        builder.display_path("/import_map.json")
       )
     );
   }
