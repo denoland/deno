@@ -45,7 +45,7 @@ const remote = Deno.dlopen(
 remote.symbols.method1(0);
 // @ts-expect-error: Invalid return type
 <number> remote.symbols.method1(0, 0);
-<void> remote.symbols.method1(0, 0);
+<void> remote.symbols.method1(0n, 0n);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method2(null);
@@ -53,11 +53,11 @@ remote.symbols.method2(void 0);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method3(null);
-remote.symbols.method3(0);
+remote.symbols.method3(0n);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method4(null);
-remote.symbols.method4(0);
+remote.symbols.method4(0n);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method5(null);
@@ -73,7 +73,7 @@ remote.symbols.method7(0);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method8(null);
-remote.symbols.method8(0);
+remote.symbols.method8(0n);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method9(null);
@@ -89,7 +89,7 @@ remote.symbols.method11(0);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method12(null);
-remote.symbols.method12(0);
+remote.symbols.method12(0n);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method13(null);
@@ -107,12 +107,12 @@ remote.symbols.method15({} as Deno.UnsafePointer);
 const result = remote.symbols.method16();
 // @ts-expect-error: Invalid argument
 let r_0: string = result;
-let r_1: number = result;
+let r_1: number | bigint = result;
 
 const result2 = remote.symbols.method17();
 // @ts-expect-error: Invalid argument
 result2.then((_0: string) => {});
-result2.then((_1: number) => {});
+result2.then((_1: number | bigint) => {});
 
 const result3 = remote.symbols.method18();
 // @ts-expect-error: Invalid argument
@@ -138,16 +138,16 @@ fnptr.call(0, null);
 
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;
-const static1_right: number = remote.symbols.static1;
+const static1_right: bigint = remote.symbols.static1;
 // @ts-expect-error: Invalid member type
 const static2_wrong: null = remote.symbols.static2;
 const static2_right: Deno.UnsafePointer = remote.symbols.static2;
 // @ts-expect-error: Invalid member type
 const static3_wrong: null = remote.symbols.static3;
-const static3_right: number = remote.symbols.static3;
+const static3_right: bigint = remote.symbols.static3;
 // @ts-expect-error: Invalid member type
 const static4_wrong: null = remote.symbols.static4;
-const static4_right: number = remote.symbols.static4;
+const static4_right: bigint = remote.symbols.static4;
 // @ts-expect-error: Invalid member type
 const static5_wrong: null = remote.symbols.static5;
 const static5_right: number = remote.symbols.static5;
@@ -159,7 +159,7 @@ const static7_wrong: null = remote.symbols.static7;
 const static7_right: number = remote.symbols.static7;
 // @ts-expect-error: Invalid member type
 const static8_wrong: null = remote.symbols.static8;
-const static8_right: number = remote.symbols.static8;
+const static8_right: bigint = remote.symbols.static8;
 // @ts-expect-error: Invalid member type
 const static9_wrong: null = remote.symbols.static9;
 const static9_right: number = remote.symbols.static9;
@@ -171,7 +171,7 @@ const static11_wrong: null = remote.symbols.static11;
 const static11_right: number = remote.symbols.static11;
 // @ts-expect-error: Invalid member type
 const static12_wrong: null = remote.symbols.static12;
-const static12_right: number = remote.symbols.static12;
+const static12_right: bigint = remote.symbols.static12;
 // @ts-expect-error: Invalid member type
 const static13_wrong: null = remote.symbols.static13;
 const static13_right: number = remote.symbols.static13;
