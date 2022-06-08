@@ -306,7 +306,7 @@ impl JsError {
           {
             if !file_name.trim_start_matches('[').starts_with("deno:") {
               // Source lookup expects a 0-based line number, ours are 1-based.
-              get_source_line(
+              source_line = get_source_line(
                 file_name,
                 line_number,
                 &mut state.source_map_cache,
