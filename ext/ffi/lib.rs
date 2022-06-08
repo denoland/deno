@@ -1122,10 +1122,10 @@ fn op_ffi_call(
 
 /// A non-blocking FFI call.
 //#[op(v8)]
-fn op_ffi_call_nonblocking(
-  scope: &mut v8::HandleScope,
+fn op_ffi_call_nonblocking<'a>(
+  scope: &mut v8::HandleScope<'a>,
   state: &mut deno_core::OpState,
-  args: FfiCallArgs,
+  args: FfiCallArgs<'a>,
 ) -> impl Future<Output = Result<Value, AnyError>> + 'static {
   let block = || -> Result<(Symbol, Vec<NativeValue>), AnyError> {
     let resource = state
@@ -1137,7 +1137,7 @@ fn op_ffi_call_nonblocking(
     Ok((
       symbol.clone(),
       ffi_parse_args(
-        unsafe { std::mem::transmute(scope) },
+        scope,
         args.parameters,
         &symbol.parameter_types,
         &state.resource_table,
