@@ -11,6 +11,7 @@
     Number,
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
+    Symbol,
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
@@ -181,8 +182,8 @@
 
         parameters.push(arg);
       } else if (type === "function") {
-        if (ObjectPrototypeIsPrototypeOf(RegisteredCallback, arg)) {
-          parameters.push(arg);
+        if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
+          parameters.push(arg[_rid]);
         } else {
           throw new TypeError(
             "Invalid ffi arg value, expected RegisteredCallback",
@@ -255,8 +256,10 @@
     }
   }
 
+  const _rid = Symbol("[[rid]]");
+
   class RegisteredCallback {
-    #rid;
+    [_rid];
     definition;
     callback;
 
@@ -266,7 +269,7 @@
           "Invalid ffi RegisteredCallback, cannot be nonblocking",
         );
       }
-      this.#rid = core.opSync("op_ffi_register_callback", definition, callback);
+      this[_rid] = core.opSync("op_ffi_register_callback", definition, callback);
       this.definition = definition;
       this.callback = callback;
     }
@@ -281,7 +284,7 @@
       } else {
         const result = core.opSync(
           "op_ffi_call_registered_callback",
-          this.#rid,
+          this[_rid],
           parameters,
         );
 
@@ -294,9 +297,11 @@
     }
 
     close() {
-      core.close(this.#rid);
+      core.close(this[_rid]);
     }
   }
+
+  const RegisteredCallbackPrototype = RegisteredCallback.prototype;
 
   function registerCallback(definition, callback) {
     if (!definition || !callback) {
