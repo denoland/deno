@@ -16,7 +16,7 @@ use super::specifiers::is_remote_specifier;
 use super::specifiers::is_remote_specifier_text;
 
 struct ImportMapBuilder<'a> {
-  base: &'a ModuleSpecifier,
+  base_dir: &'a ModuleSpecifier,
   mappings: &'a Mappings,
   imports: ImportsBuilder<'a>,
   scopes: IndexMap<String, ImportsBuilder<'a>>,
@@ -25,7 +25,7 @@ struct ImportMapBuilder<'a> {
 impl<'a> ImportMapBuilder<'a> {
   pub fn new(base_dir: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     ImportMapBuilder {
-      base: base_dir,
+      base_dir,
       mappings,
       imports: ImportsBuilder::new(base_dir, mappings),
       scopes: Default::default(),
@@ -33,7 +33,7 @@ impl<'a> ImportMapBuilder<'a> {
   }
 
   pub fn base_dir(&self) -> &ModuleSpecifier {
-    self.base
+    self.base_dir
   }
 
   pub fn scope(
@@ -45,17 +45,17 @@ impl<'a> ImportMapBuilder<'a> {
       .entry(
         self
           .mappings
-          .relative_specifier_text(self.base, base_specifier),
+          .relative_specifier_text(self.base_dir, base_specifier),
       )
-      .or_insert_with(|| ImportsBuilder::new(self.base, self.mappings))
+      .or_insert_with(|| ImportsBuilder::new(self.base_dir, self.mappings))
   }
 
   pub fn into_import_map(
     self,
     original_import_map: Option<ImportMap>,
   ) -> ImportMap {
-    let mut import_map =
-      original_import_map.unwrap_or_else(|| ImportMap::new(self.base.clone()));
+    let mut import_map = original_import_map
+      .unwrap_or_else(|| ImportMap::new(self.base_dir.clone()));
 
     let imports = import_map.imports_mut();
     for (key, value) in self.imports.imports {
@@ -84,9 +84,9 @@ struct ImportsBuilder<'a> {
 }
 
 impl<'a> ImportsBuilder<'a> {
-  pub fn new(base: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
+  pub fn new(base_dir: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     Self {
-      base_dir: base,
+      base_dir,
       mappings,
       imports: Default::default(),
     }

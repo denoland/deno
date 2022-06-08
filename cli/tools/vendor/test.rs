@@ -152,7 +152,6 @@ impl VendorEnvironment for TestVendorEnvironment {
   }
 
   fn path_exists(&self, path: &Path) -> bool {
-    eprintln!("PATHS: {:?}", self.files.borrow());
     self.files.borrow().contains_key(&path.to_path_buf())
   }
 }
