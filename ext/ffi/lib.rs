@@ -581,18 +581,16 @@ where
       }
       NativeType::USize => {
         // TODO: Handle BigInt
-        let value = value
-          .integer_value(scope)
-          .ok_or_else(|| type_error("Invalid FFI usize type, expected number"))?
-          as usize;
+        let value = value.integer_value(scope).ok_or_else(|| {
+          type_error("Invalid FFI usize type, expected number")
+        })? as usize;
         ffi_args.push(NativeValue { usize_value: value });
       }
       NativeType::ISize => {
         // TODO: Handle BigInt
-        let value = value
-          .integer_value(scope)
-          .ok_or_else(|| type_error("Invalid FFI isize type, expected number"))?
-          as isize;
+        let value = value.integer_value(scope).ok_or_else(|| {
+          type_error("Invalid FFI isize type, expected number")
+        })? as isize;
         ffi_args.push(NativeValue { isize_value: value });
       }
       NativeType::F32 => {

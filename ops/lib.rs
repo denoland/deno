@@ -76,10 +76,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let mut generics = func.sig.generics.clone();
   let scope_lifetime =
     syn::LifetimeDef::new(syn::Lifetime::new("'scope", Span::call_site()));
-  if !generics
-    .lifetimes()
-    .any(|def| *def == scope_lifetime)
-  {
+  if !generics.lifetimes().any(|def| *def == scope_lifetime) {
     generics
       .params
       .push(syn::GenericParam::Lifetime(scope_lifetime));
