@@ -76,6 +76,19 @@ where
   }
 }
 
+async fn error_handler2<F>(watch_future: F) -> i32
+where
+  F: Future<Output = Result<i32, AnyError>>,
+{
+  let result = watch_future.await;
+  if let Err(err) = result {
+    let msg = format!("{}: {}", colors::red_bold("error"), err);
+    eprintln!("{}", msg);
+    return 1;
+  }
+  result.unwrap()
+}
+
 pub enum ResolutionResult<T> {
   Restart {
     paths_to_watch: Vec<PathBuf>,
@@ -248,7 +261,7 @@ pub async fn watch_func2<T: Clone, O, F>(
 ) -> Result<(), AnyError>
 where
   O: FnMut(T) -> F,
-  F: Future<Output = Result<(), AnyError>>,
+  F: Future<Output = Result<i32, AnyError>>,
 {
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
@@ -311,7 +324,7 @@ where
         add_paths_to_watcher(&mut watcher, maybe_paths.unwrap());
       }
     };
-    let operation_future = error_handler(operation(operation_args.clone()));
+    let operation_future = error_handler2(operation(operation_args.clone()));
 
     select! {
       _ = receiver_future => {},
@@ -319,12 +332,12 @@ where
         print_after_restart();
         continue;
       },
-      _ = operation_future => {
-        // TODO(bartlomieju): print exit code here?
+      exit_code = operation_future => {
         info!(
-          "{} {} finished. Restarting on file change...",
+          "{} {} finished with exit code {}. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
+          exit_code,
         );
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },

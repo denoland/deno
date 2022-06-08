@@ -19,7 +19,7 @@ fn init_proc_state(ps: ProcState) -> Extension {
   let is_file_watcher = ps.flags.watch.is_some();
 
   let mut ext = Extension::builder();
-  
+
   ext.state(move |state| {
     state.put(ps.clone());
     Ok(())

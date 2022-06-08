@@ -606,9 +606,9 @@ delete Object.prototype.__proto__;
     } = runtimeOptions;
 
     if (isFileWatcher) {
-      // os.setExitHandler((_) => {
-      //   core.terminate();
-      // });
+      os.setExitHandler((_) => {
+        core.terminate();
+      });
     }
 
     colors.setNoColor(noColor || !isTty);
