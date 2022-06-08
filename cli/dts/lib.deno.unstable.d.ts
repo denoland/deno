@@ -372,17 +372,25 @@ declare namespace Deno {
   }
 
   /** All possible number types interfacing with foreign functions */
-  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
+  type StaticNativeNumberType = Exclude<
+    NativeType,
+    "void" | "pointer" | StaticNativeBigIntType
+  >;
+
+  /** All possible bigint types interfacing with foreign functions */
+  type StaticNativeBigIntType = "u64" | "i64" | "usize" | "isize";
 
   /** Infers a foreign function return type */
   type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
     ? void
+    : T extends StaticNativeBigIntType ? bigint
     : T extends StaticNativeNumberType ? number
     : T extends "pointer" ? UnsafePointer
     : never;
 
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
-    : T extends StaticNativeNumberType ? number
+    : T extends StaticNativeNumberType | StaticNativeBigIntType
+      ? number | bigint
     : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
     : unknown;
 

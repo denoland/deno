@@ -20,9 +20,15 @@ function assertArrayEquals(a1, a2) {
 function main() {
   const emptyString = "";
   const emptyStringSerialized = [255, 15, 34, 0];
-  assertArrayEquals(Deno.core.serialize(emptyString), emptyStringSerialized);
+  assertArrayEquals(
+    Deno.core.opSync("op_serialize", emptyString),
+    emptyStringSerialized,
+  );
   assert(
-    Deno.core.deserialize(new Uint8Array(emptyStringSerialized)) ===
+    Deno.core.opSync(
+      "op_deserialize",
+      new Uint8Array(emptyStringSerialized),
+    ) ===
       emptyString,
   );
 
@@ -33,12 +39,13 @@ function main() {
     34, 1, 97, 48, 95, 36, 0, 4,
   ];
   assertArrayEquals(
-    Deno.core.serialize(primitiveValueArray),
+    Deno.core.opSync("op_serialize", primitiveValueArray),
     primitiveValueArraySerialized,
   );
 
   assertArrayEquals(
-    Deno.core.deserialize(
+    Deno.core.opSync(
+      "op_deserialize",
       new Uint8Array(primitiveValueArraySerialized),
     ),
     primitiveValueArray,
@@ -56,11 +63,12 @@ function main() {
   ];
 
   assertArrayEquals(
-    Deno.core.serialize(circularObject),
+    Deno.core.opSync("op_serialize", circularObject),
     circularObjectSerialized,
   );
 
-  const deserializedCircularObject = Deno.core.deserialize(
+  const deserializedCircularObject = Deno.core.opSync(
+    "op_deserialize",
     new Uint8Array(circularObjectSerialized),
   );
   assert(deserializedCircularObject.test == deserializedCircularObject);
