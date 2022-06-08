@@ -377,28 +377,3 @@ fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
   }
   log::debug!("Watching paths: {:?}", paths);
 }
-
-fn new_watcher2(
-  sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
-) -> Result<RecommendedWatcher, AnyError> {
-  let mut watcher: RecommendedWatcher =
-    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
-      if let Ok(event) = res {
-        if matches!(
-          event.kind,
-          EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-        ) {
-          let paths = event
-            .paths
-            .iter()
-            .filter_map(|path| canonicalize_path(path).ok())
-            .collect();
-          sender.send(paths).unwrap();
-        }
-      }
-    })?;
-
-  watcher.configure(Config::PreciseEvents(true)).unwrap();
-
-  Ok(watcher)
-}
