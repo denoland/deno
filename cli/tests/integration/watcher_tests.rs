@@ -484,7 +484,7 @@ fn bundle_watch_not_exit() {
   check_alive_then_kill(deno);
 }
 
-#[flaky_test::flaky_test]
+#[test]
 fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -662,6 +662,8 @@ fn run_watch_load_unload_events() {
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .env("DENO_FUTURE_CHECK", "1")
@@ -672,7 +674,11 @@ fn run_watch_load_unload_events() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   // Wait for the first load event to fire
-  assert_contains!(stdout_lines.next().unwrap(), "load");
+  wait_contains("load", &mut stdout_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
 
   // Change content of the file, this time without an interval to keep it alive.
   write(
@@ -690,18 +696,16 @@ fn run_watch_load_unload_events() {
   .unwrap();
 
   // Wait for the restart
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Process started");
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  wait_contains("Restarting", &mut stderr_lines);
 
   // Confirm that the unload event was dispatched from the first run
-  assert_contains!(stdout_lines.next().unwrap(), "unload");
+  wait_contains("unload", &mut stdout_lines);
 
   // Followed by the load event of the second run
-  assert_contains!(stdout_lines.next().unwrap(), "load");
+  wait_contains("load", &mut stdout_lines);
 
   // Which is then unloaded as there is nothing keeping it alive.
-  assert_contains!(stdout_lines.next().unwrap(), "unload");
+  wait_contains("unload", &mut stdout_lines);
   check_alive_then_kill(child);
 }
 
@@ -795,7 +799,7 @@ fn run_watch_with_import_map_and_relative_paths() {
   check_alive_then_kill(child);
 }
 
-#[flaky_test]
+#[test]
 fn test_watch() {
   let t = TempDir::new();
 
