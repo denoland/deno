@@ -3,6 +3,7 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use pretty_assertions::assert_eq;
+use std::path::PathBuf;
 use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
@@ -96,7 +97,14 @@ fn import_map_output_dir() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    "error: Using an import map found in the output directory is not supported.",
+    format!(
+      concat!(
+        "error: Specifying an import map file ({}) in the deno vendor ",
+        "output directory is not supported. Please specify no import ",
+        "map or one located outside this directory.",
+      ),
+      PathBuf::from("vendor").join("import_map.json").display(),
+    ),
   );
   assert!(!output.status.success());
 }

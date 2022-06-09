@@ -90,10 +90,20 @@ fn validate_output_dir(
       })?;
 
     if import_map_path.starts_with(&output_dir) {
-      // We don't allow using the output directory to help generate the new state
-      // of itself because this may lead to cryptic error messages.
+      let cwd = std::env::current_dir()?;
+      // We don't allow using the output directory to help generate the
+      // new state because this may lead to cryptic error messages.
       bail!(
-        "Using an import map found in the output directory is not supported."
+        concat!(
+          "Specifying an import map file ({}) in the deno vendor output ",
+          "directory is not supported. Please specify no import map or one ",
+          "located outside this directory."
+        ),
+        import_map_path
+          .strip_prefix(&cwd)
+          .unwrap_or(&import_map_path)
+          .display()
+          .to_string(),
       );
     }
   }
