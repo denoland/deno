@@ -129,7 +129,7 @@ fn op_exit(state: &mut OpState) {
 #[op]
 fn op_set_exit_code_for_worker(_code: i32) -> Result<(), AnyError> {
   Err(generic_error(
-    "op_set_exit_code is not supported in worker contexts",
+    "Deno.exit() is not supported in worker contexts",
   ))
 }
 

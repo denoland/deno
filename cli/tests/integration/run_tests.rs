@@ -916,10 +916,9 @@ itest!(set_exit_code_2 {
   exit_code: 42,
 });
 
-itest!(set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read set_exit_code_in_worker.ts",
+itest!(op_exit_op_set_exit_code_in_worker {
+  args: "run --no-check --unstable --allow-read op_exit_op_set_exit_code_in_worker.ts",
   output: "empty.out",
-  exit_code: 42,
 });
 
 itest!(deno_exit_tampering {
