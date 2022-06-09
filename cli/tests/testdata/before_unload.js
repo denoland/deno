@@ -2,7 +2,7 @@ let count = 0;
 
 console.log("0");
 
-window.addEventListener("beforeunload", () => {
+globalThis.addEventListener("beforeunload", () => {
   console.log("GOT EVENT");
   if (count === 0 || count === 1) {
     setTimeout(() => {
