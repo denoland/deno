@@ -4,12 +4,14 @@ use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
 use crate::flags::TaskFlags;
+use crate::fs_util;
 use crate::proc_state::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 fn get_tasks_config(
@@ -71,7 +73,10 @@ pub async fn execute_script(
     return Ok(1);
   }
 
-  let cwd = config_file_path.parent().unwrap();
+  let cwd = match task_flags.cwd {
+    Some(path) => fs_util::canonicalize_path(&PathBuf::from(path))?,
+    None => config_file_path.parent().unwrap().to_owned(),
+  };
   let task_name = task_flags.task;
   let maybe_script = tasks_config.get(&task_name);
 
@@ -95,7 +100,7 @@ pub async fn execute_script(
     let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
-    let exit_code = deno_task_shell::execute(seq_list, env_vars, cwd).await;
+    let exit_code = deno_task_shell::execute(seq_list, env_vars, &cwd).await;
     Ok(exit_code)
   } else {
     eprintln!("Task not found: {}", task_name);
