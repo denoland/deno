@@ -323,13 +323,14 @@ mod test {
       Some(json!({
         "imports": {
           "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
-          "https://other/mod.ts": "./vendor/other/mod.ts"
+          "https://other/mod.ts": "./vendor/other/mod.ts",
+          "https://localhost/other.ts": "./vendor/localhost/other.ts",
+          "https://localhost/redirect.ts": "./vendor/localhost/other.ts",
         },
         "scopes": {
           "./vendor/localhost/": {
             "./vendor/localhost/redirect.ts": "./vendor/localhost/other.ts",
             "/absolute.ts": "./vendor/localhost/absolute.ts",
-            "https://localhost/redirect.ts": "./vendor/localhost/other.ts",
           },
           "./vendor/other/": {
             "./vendor/other/sub2/other?asdf": "./vendor/other/sub2/other.js"
@@ -684,12 +685,8 @@ mod test {
       Some(json!({
         "imports": {
           "https://localhost/subdir/sub/mod.ts": "./vendor/localhost/subdir/sub/mod.ts",
-        },
-        "scopes": {
-          "./vendor/localhost/": {
             "https://localhost/std/hash/mod.ts": "./vendor/localhost/std@0.1.0/hash/mod.ts"
-          }
-        }
+        },
       }))
     );
     assert_eq!(

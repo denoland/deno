@@ -219,15 +219,7 @@ fn handle_dep_specifier(
       panic!("Expected {} to start with {}", text, base_specifier);
     }
 
-    let sub_path = &text[base_specifier.as_str().len()..];
-    let expected_relative_specifier_text =
-      mappings.relative_path(base_specifier, &specifier);
-    if expected_relative_specifier_text == sub_path {
-      return;
-    }
-
-    let imports = import_map.scope(base_specifier);
-    imports.add(text.to_string(), &specifier);
+    import_map.imports.add(text.to_string(), &specifier);
   } else {
     let expected_relative_specifier_text =
       mappings.relative_specifier_text(referrer, &specifier);
