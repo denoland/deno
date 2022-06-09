@@ -102,43 +102,6 @@ fn import_map_output_dir() {
 }
 
 #[test]
-fn existing_import_map_diagnostics() {
-  let t = TempDir::new();
-  t.write(
-    "mod.ts",
-    "import {Logger} from 'http://localhost:4545/vendor/logger.ts';",
-  );
-  t.create_dir_all("vendor");
-  t.write(
-    "import_map.json",
-    "{ \"bad_property\": { \"https://localhost/\": \"./localhost/\" }}",
-  );
-
-  let deno = util::deno_cmd()
-    .current_dir(t.path())
-    .env("NO_COLOR", "1")
-    .arg("vendor")
-    .arg("--force")
-    .arg("--import-map")
-    .arg("import_map.json")
-    .arg("mod.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr).trim(),
-    concat!(
-      "Import map diagnostics:\n",
-      "  - Invalid top-level key \"bad_property\". Only \"imports\" and \"scopes\" can be present.\n",
-      "error: Cannot vendor when the provided import map has diagnostics."
-    )
-  );
-  assert!(!output.status.success());
-}
-
-#[test]
 fn standard_test() {
   let _server = http_server();
   let t = TempDir::new();

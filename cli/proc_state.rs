@@ -13,7 +13,6 @@ use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
-use crate::flags::DenoSubcommand;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
@@ -26,7 +25,6 @@ use crate::version;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -207,11 +205,8 @@ impl ProcState {
             "Unable to load '{}' import map",
             import_map_specifier
           ))?;
-        let import_map = import_map_from_text(
-          &import_map_specifier,
-          &file.source,
-          Some(&flags),
-        )?;
+        let import_map =
+          import_map_from_text(&import_map_specifier, &file.source)?;
         Some(Arc::new(import_map))
       } else {
         None
@@ -741,7 +736,6 @@ impl SourceMapGetter for ProcState {
 pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
-  flags: Option<&flags::Flags>,
 ) -> Result<ImportMap, AnyError> {
   let result = parse_from_json(specifier, json_text)?;
   if !result.diagnostics.is_empty() {
@@ -754,15 +748,6 @@ pub fn import_map_from_text(
         .collect::<Vec<_>>()
         .join("\n")
     );
-
-    // `deno vendor` creates a new import map from the existing one
-    // and doesn't keep track of stuff like invalid properties in
-    // the import map. For that reason, error if there are any diagnostics.
-    if let Some(flags) = flags {
-      if matches!(flags.subcommand, DenoSubcommand::Vendor(_)) {
-        bail!("Cannot vendor when the provided import map has diagnostics.");
-      }
-    }
   }
   Ok(result.import_map)
 }
