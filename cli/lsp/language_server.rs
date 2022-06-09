@@ -797,7 +797,7 @@ impl Inner {
       let watch_registration_options =
         DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.json{c}".to_string(),
+            glob_pattern: "**/*.{json,jsonc}".to_string(),
             kind: Some(WatchKind::Change),
           }],
         };
