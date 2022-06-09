@@ -366,8 +366,6 @@ impl MainWorker {
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime.
-  ///
-  /// Any async work dispatched here will keep the event loop alive.
   pub fn dispatch_beforeunload_event(
     &mut self,
     script_name: &str,
