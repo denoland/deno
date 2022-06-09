@@ -497,8 +497,8 @@ fn success_text(
       format!(
         concat!(
           "\n\nTo use vendored modules, specify the `--import-map {}` flag when ",
-          r#"invoking deno subcommands or add an `"importMap": "<file_path>"` entry "#,
-          "to your deno.json file.",
+          r#"invoking deno subcommands or add an `"importMap": "<path_to_import_map>"` "#,
+          "entry to your deno.json file.",
         ),
         if cfg!(windows) {
           import_map.replace('/', "\\")

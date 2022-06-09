@@ -61,7 +61,7 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     eprintln!(
       concat!(
         "\nTo use vendored modules, specify the `--import-map {}` flag when ",
-        r#"invoking deno subcommands or add an `"importMap": "<file_path>"` "#,
+        r#"invoking deno subcommands or add an `"importMap": "<path_to_import_map>"` "#,
         "entry to your deno.json file.",
       ),
       relative_cwd_path,

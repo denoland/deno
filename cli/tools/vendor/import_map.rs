@@ -65,10 +65,12 @@ impl<'a> ImportMapBuilder<'a> {
     }
 
     for (scope_key, scope_value) in self.scopes {
-      let imports = import_map.get_or_append_scope_mut(&scope_key).unwrap();
-      for (key, value) in scope_value.imports {
-        if !imports.contains(&key) {
-          imports.append(key, value).unwrap();
+      if !scope_value.imports.is_empty() {
+        let imports = import_map.get_or_append_scope_mut(&scope_key).unwrap();
+        for (key, value) in scope_value.imports {
+          if !imports.contains(&key) {
+            imports.append(key, value).unwrap();
+          }
         }
       }
     }

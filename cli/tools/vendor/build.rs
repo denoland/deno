@@ -156,11 +156,14 @@ fn resolve_import_map_path(
       let cwd = environment.cwd()?;
       let path = cwd.join("import_map.json");
       if environment.path_exists(&path) {
-        bail!(concat!(
+        bail!(
+          concat!(
           "An import map was found at {}, but it was not specified as a cli ",
           "flag or in a deno.json file. Please delete it first or specify it ",
-          "when vendoring (ex. `deno vendor --import-map <path-to-import-map> ...`)."
-        ), path.display())
+          "when vendoring (ex. `deno vendor --import-map import_map.json ...`)."
+        ),
+          path.display()
+        )
       }
       Ok(path)
     }
@@ -906,7 +909,7 @@ mod test {
           "An import map was found at {}, but it was not specified as a ",
           "cli flag or in a deno.json file. Please delete it first or ",
           "specify it when vendoring (ex. `deno vendor --import-map ",
-          "<path-to-import-map> ...`)."
+          "import_map.json ...`)."
         ),
         builder.display_path("/import_map.json")
       )
