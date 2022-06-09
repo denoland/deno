@@ -2,10 +2,9 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use ::import_map::ImportMap;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
@@ -31,40 +30,33 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
     None => PathBuf::from("vendor/"),
   };
   let output_dir = fs_util::resolve_from_cwd(&raw_output_dir)?;
-  validate_output_dir(&output_dir, &flags)?;
-  let maybe_import_map = ps.maybe_import_map.clone();
-  let build_result = build::build(
+  validate_output_dir(&output_dir, &flags, &ps)?;
+  let graph = create_graph(&ps, &flags).await?;
+  let vendored_count = build::build(
+    graph,
     &output_dir,
-    maybe_import_map.as_deref(),
+    ps.maybe_import_map.as_deref(),
     &build::RealVendorEnvironment,
-    move |maybe_import_map| create_graph(ps, flags, maybe_import_map.clone()),
-  )
-  .await?;
+  )?;
 
   eprintln!(
     concat!("Vendored {} {} into {} directory.",),
-    build_result.vendored_count,
-    if build_result.vendored_count == 1 {
+    vendored_count,
+    if vendored_count == 1 {
       "module"
     } else {
       "modules"
     },
     raw_output_dir.display(),
   );
-  if let Some(import_map_path) = build_result.import_map_path {
-    let cwd = std::env::current_dir().unwrap();
-    let import_map_path_str = import_map_path.display().to_string();
-    let relative_cwd_path = import_map_path_str
-      .trim_start_matches(&cwd.display().to_string())
-      .trim_start_matches('\\')
-      .trim_start_matches('/');
+  if vendored_count > 0 {
     eprintln!(
       concat!(
         "\nTo use vendored modules, specify the `--import-map {}` flag when ",
-        r#"invoking deno subcommands or add an `"importMap": "<path_to_import_map>"` "#,
+        r#"invoking deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,
         "entry to your deno.json file.",
       ),
-      relative_cwd_path,
+      raw_output_dir.join("import_map.json").display(),
     );
   }
 
@@ -74,12 +66,36 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
 fn validate_output_dir(
   output_dir: &Path,
   flags: &VendorFlags,
+  ps: &ProcState,
 ) -> Result<(), AnyError> {
   if !flags.force && !is_dir_empty(output_dir)? {
     bail!(concat!(
       "Output directory was not empty. Please specify an empty directory or use ",
       "--force to ignore this error and potentially overwrite its contents.",
     ));
+  }
+
+  // check the import map
+  if let Some(import_map_path) = ps
+    .maybe_import_map
+    .as_ref()
+    .and_then(|m| m.base_url().to_file_path().ok())
+    .and_then(|p| fs_util::canonicalize_path(&p).ok())
+  {
+    // make the output directory in order to canonicalize it for the check below
+    std::fs::create_dir_all(&output_dir)?;
+    let output_dir =
+      fs_util::canonicalize_path(output_dir).with_context(|| {
+        format!("Failed to canonicalize: {}", output_dir.display())
+      })?;
+
+    if import_map_path.starts_with(&output_dir) {
+      // We don't allow using the output directory to help generate the new state
+      // of itself because this may lead to cryptic error messages.
+      bail!(
+        "Using an import map found in the output directory is not supported."
+      );
+    }
   }
 
   Ok(())
@@ -96,9 +112,8 @@ fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
 }
 
 async fn create_graph(
-  ps: ProcState,
-  flags: VendorFlags,
-  maybe_import_map: Option<ImportMap>,
+  ps: &ProcState,
+  flags: &VendorFlags,
 ) -> Result<deno_graph::ModuleGraph, AnyError> {
   let entry_points = flags
     .specifiers
@@ -123,9 +138,10 @@ async fn create_graph(
   } else {
     None
   };
-  let maybe_import_map_resolver = maybe_import_map
+  let maybe_import_map_resolver = ps
+    .maybe_import_map
     .clone()
-    .map(|m| ImportMapResolver::new(Arc::new(m)));
+    .map(|m| ImportMapResolver::new(m));
   let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
     cf.to_maybe_jsx_import_source_module()
       .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
@@ -138,17 +154,17 @@ async fn create_graph(
       .map(|im| im.as_resolver())
   };
 
-  let graph = deno_graph::create_graph(
-    entry_points,
-    false,
-    maybe_imports,
-    &mut cache,
-    maybe_resolver,
-    maybe_locker,
-    None,
-    None,
+  Ok(
+    deno_graph::create_graph(
+      entry_points,
+      false,
+      maybe_imports,
+      &mut cache,
+      maybe_resolver,
+      maybe_locker,
+      None,
+      None,
+    )
+    .await,
   )
-  .await;
-
-  Ok(graph)
 }

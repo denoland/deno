@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,6 +11,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use import_map::ImportMap;
+use import_map::SpecifierMap;
 
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
@@ -48,36 +48,26 @@ impl VendorEnvironment for RealVendorEnvironment {
   }
 }
 
-pub struct VendorBuildResult {
-  pub vendored_count: usize,
-  pub import_map_path: Option<PathBuf>,
-}
-
 /// Vendors remote modules and returns how many were vendored.
-pub async fn build<
-  RBuildGraph: Future<Output = Result<ModuleGraph, AnyError>> + 'static,
->(
+pub fn build(
+  graph: ModuleGraph,
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
   environment: &impl VendorEnvironment,
-  build_graph: impl FnOnce(&Option<ImportMap>) -> RBuildGraph,
-) -> Result<VendorBuildResult, AnyError> {
+) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
-  let original_import_map = original_import_map.map(|m| {
-    m.with_folder_removed(
-      &ModuleSpecifier::from_directory_path(&output_dir).unwrap(),
-    )
-  });
-  let import_map_path =
-    resolve_import_map_path(&original_import_map, environment)?;
-  let base_dir =
-    ModuleSpecifier::from_directory_path(import_map_path.parent().unwrap())
-      .unwrap();
+  let output_dir_specifier =
+    ModuleSpecifier::from_directory_path(output_dir).unwrap();
 
-  let graph = build_graph(&original_import_map).await?;
+  if let Some(original_im) = &original_import_map {
+    validate_original_import_map(original_im, &output_dir_specifier)?;
+  }
+
+  // build the graph
   graph.lock()?;
   graph.valid()?;
 
+  // figure out how to map remote modules to local
   let all_modules = graph.modules();
   let remote_modules = all_modules
     .iter()
@@ -118,56 +108,56 @@ pub async fn build<
   }
 
   // create the import map if necessary
-  let import_map_path = if !mappings.base_specifiers().is_empty() {
+  if remote_modules.len() > 0 {
+    let import_map_path = output_dir.join("import_map.json");
     let import_map_text = build_import_map(
-      &base_dir,
+      &output_dir_specifier,
       &graph,
       &all_modules,
       &mappings,
       original_import_map,
     );
     environment.write_file(&import_map_path, &import_map_text)?;
-    Some(import_map_path)
-  } else {
-    None
-  };
+  }
 
-  Ok(VendorBuildResult {
-    vendored_count: remote_modules.len(),
-    import_map_path,
-  })
+  Ok(remote_modules.len())
 }
 
-fn resolve_import_map_path(
-  original_import_map: &Option<ImportMap>,
-  environment: &impl VendorEnvironment,
-) -> Result<PathBuf, AnyError> {
-  match &original_import_map {
-    Some(import_map) => {
-      if import_map.base_url().scheme() != "file" {
-        bail!(
-          "The existing import map must be in a local directory (Found: {}).",
-          import_map.base_url()
-        );
+fn validate_original_import_map(
+  import_map: &ImportMap,
+  output_dir: &ModuleSpecifier,
+) -> Result<(), AnyError> {
+  fn validate_imports(
+    imports: &SpecifierMap,
+    output_dir: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    for entry in imports.entries() {
+      if let Some(value) = entry.value {
+        if value.as_str().starts_with(output_dir.as_str()) {
+          bail!(
+            "Providing an existing import map with entries for the output directory is not supported (\"{}\": \"{}\").",
+            entry.raw_key,
+            entry.raw_value.unwrap_or("<INVALID>"),
+          );
+        }
       }
-      Ok(import_map.base_url().to_file_path().unwrap())
     }
-    None => {
-      let cwd = environment.cwd()?;
-      let path = cwd.join("import_map.json");
-      if environment.path_exists(&path) {
-        bail!(
-          concat!(
-          "An import map was found at {}, but it was not specified as a cli ",
-          "flag or in a deno.json file. Please delete it first or specify it ",
-          "when vendoring (ex. `deno vendor --import-map import_map.json ...`)."
-        ),
-          path.display()
-        )
-      }
-      Ok(path)
-    }
+    Ok(())
   }
+
+  validate_imports(import_map.imports(), output_dir)?;
+
+  for scope in import_map.scopes() {
+    if scope.key.starts_with(output_dir.as_str()) {
+      bail!(
+        "Providing an existing import map with a scope for the output directory is not supported (\"{}\").",
+        scope.raw_key,
+      );
+    }
+    validate_imports(scope.imports, output_dir)?;
+  }
+
+  Ok(())
 }
 
 fn build_proxy_module_source(
@@ -254,9 +244,9 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
-          "https://localhost/other.ts?test": "./vendor/localhost/other.ts",
-          "https://localhost/redirect.ts": "./vendor/localhost/mod.ts",
+          "https://localhost/mod.ts": "./localhost/mod.ts",
+          "https://localhost/other.ts?test": "./localhost/other.ts",
+          "https://localhost/redirect.ts": "./localhost/mod.ts",
         }
       }))
     );
@@ -322,18 +312,18 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
-          "https://other/mod.ts": "./vendor/other/mod.ts",
-          "https://localhost/other.ts": "./vendor/localhost/other.ts",
-          "https://localhost/redirect.ts": "./vendor/localhost/other.ts",
+          "https://localhost/mod.ts": "./localhost/mod.ts",
+          "https://other/mod.ts": "./other/mod.ts",
+          "https://localhost/other.ts": "./localhost/other.ts",
+          "https://localhost/redirect.ts": "./localhost/other.ts",
         },
         "scopes": {
-          "./vendor/localhost/": {
-            "./vendor/localhost/redirect.ts": "./vendor/localhost/other.ts",
-            "/absolute.ts": "./vendor/localhost/absolute.ts",
+          "./localhost/": {
+            "./localhost/redirect.ts": "./localhost/other.ts",
+            "/absolute.ts": "./localhost/absolute.ts",
           },
-          "./vendor/other/": {
-            "./vendor/other/sub2/other?asdf": "./vendor/other/sub2/other.js"
+          "./other/": {
+            "./other/sub2/other?asdf": "./other/sub2/other.js"
           }
         }
       }))
@@ -397,11 +387,11 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/CAPS.TS": "./vendor/localhost/CAPS.TS",
-          "https://localhost/MOD.TS": "./vendor/localhost/MOD.TS",
-          "https://localhost/mod.TS": "./vendor/localhost/mod_2.TS",
-          "https://localhost/mod.ts": "./vendor/localhost/mod_3.ts",
-          "https://localhost/mod.ts?test": "./vendor/localhost/mod_4.ts",
+          "https://localhost/CAPS.TS": "./localhost/CAPS.TS",
+          "https://localhost/MOD.TS": "./localhost/MOD.TS",
+          "https://localhost/mod.TS": "./localhost/mod_2.TS",
+          "https://localhost/mod.ts": "./localhost/mod_3.ts",
+          "https://localhost/mod.ts?test": "./localhost/mod_4.ts",
         }
       }))
     );
@@ -440,8 +430,8 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
-          "https://localhost/test.ts": "./vendor/localhost/test.ts",
+          "https://localhost/mod.ts": "./localhost/mod.ts",
+          "https://localhost/test.ts": "./localhost/test.ts",
         }
       }))
     );
@@ -474,7 +464,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/data.json": "./vendor/localhost/data.json"
+          "https://localhost/data.json": "./localhost/data.json"
         }
       }))
     );
@@ -504,7 +494,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./vendor/localhost/mod.ts"
+          "https://localhost/mod.ts": "./localhost/mod.ts"
         }
       }))
     );
@@ -536,7 +526,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.js": "./vendor/localhost/mod.js"
+          "https://localhost/mod.js": "./localhost/mod.js"
         }
       }))
     );
@@ -578,7 +568,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.js": "./vendor/localhost/mod.js"
+          "https://localhost/mod.js": "./localhost/mod.js"
         }
       }))
     );
@@ -629,11 +619,11 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "http://localhost:4545/sub/logger/mod.ts?testing": "./vendor/localhost_4545/sub/logger/mod.ts",
+          "http://localhost:4545/sub/logger/mod.ts?testing": "./localhost_4545/sub/logger/mod.ts",
         },
         "scopes": {
-          "./vendor/localhost_4545/": {
-            "./vendor/localhost_4545/sub/logger/logger.ts?test": "./vendor/localhost_4545/sub/logger/logger.ts"
+          "./localhost_4545/": {
+            "./localhost_4545/sub/logger/logger.ts?test": "./localhost_4545/sub/logger/logger.ts"
           }
         }
       }))
@@ -684,8 +674,8 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/subdir/sub/mod.ts": "./vendor/localhost/subdir/sub/mod.ts",
-            "https://localhost/std/hash/mod.ts": "./vendor/localhost/std@0.1.0/hash/mod.ts"
+          "https://localhost/subdir/sub/mod.ts": "./localhost/subdir/sub/mod.ts",
+            "https://localhost/std/hash/mod.ts": "./localhost/std@0.1.0/hash/mod.ts"
         },
       }))
     );
@@ -733,13 +723,13 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./vendor/localhost/mod.ts"
+          "https://localhost/mod.ts": "./localhost/mod.ts"
         },
         "scopes": {
-          "./vendor/localhost/": {
-            "./vendor/localhost/npm:test@1.0.0/mod.ts": "./vendor/localhost/npm_test@1.0.0/mod.ts",
-            "./vendor/localhost/npm:test@1.0.0/test/test!cjs?test": "./vendor/localhost/npm_test@1.0.0/test/test!cjs.js",
-            "./vendor/localhost/npm_test@1.0.0/test/test!cjs?test": "./vendor/localhost/npm_test@1.0.0/test/test!cjs.js"
+          "./localhost/": {
+            "./localhost/npm:test@1.0.0/mod.ts": "./localhost/npm_test@1.0.0/mod.ts",
+            "./localhost/npm:test@1.0.0/test/test!cjs?test": "./localhost/npm_test@1.0.0/test/test!cjs.js",
+            "./localhost/npm_test@1.0.0/test/test!cjs?test": "./localhost/npm_test@1.0.0/test/test!cjs.js"
           }
         }
       }))
@@ -761,20 +751,38 @@ mod test {
   }
 
   #[tokio::test]
-  async fn existing_import_map() {
+  async fn existing_import_map_basic() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let mut original_import_map = builder.new_import_map("/import_map2.json");
     original_import_map
       .imports_mut()
       .append(
         "https://localhost/mod.ts".to_string(),
-        "./vendor/localhost/mod.ts".to_string(),
+        "./local_vendor/mod.ts".to_string(),
       )
       .unwrap();
+    let local_vendor_scope = original_import_map
+      .get_or_append_scope_mut("./local_vendor/")
+      .unwrap();
+    local_vendor_scope
+      .append(
+        "https://localhost/logger.ts".to_string(),
+        "./local_vendor/logger.ts".to_string(),
+      )
+      .unwrap();
+    local_vendor_scope
+      .append(
+        "/console_logger.ts".to_string(),
+        "./local_vendor/console_logger.ts".to_string(),
+      )
+      .unwrap();
+    //todo(THISPR): remote scope, local vendor folder
     let output = builder
       .with_loader(|loader| {
         loader.add("/mod.ts", "import 'https://localhost/mod.ts'; import 'https://localhost/other.ts';");
-        loader.add("/vendor/localhost/mod.ts", "console.log(5);");
+        loader.add("/local_vendor/mod.ts", "import 'https://localhost/logger.ts'; import '/console_logger.ts'; console.log(5);");
+        loader.add("/local_vendor/logger.ts", "export class Logger {}");
+        loader.add("/local_vendor/console_logger.ts", "export class ConsoleLogger {}");
         loader.add("https://localhost/mod.ts", "console.log(6);");
         loader.add("https://localhost/other.ts", "import './mod.ts';");
       })
@@ -787,17 +795,20 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./vendor/localhost/mod.ts",
-          "https://localhost/other.ts": "./vendor/localhost/other.ts"
+          "https://localhost/mod.ts": "../local_vendor/mod.ts",
+          "https://localhost/other.ts": "./localhost/other.ts"
         },
+        "scopes": {
+          "../local_vendor/": {
+            "https://localhost/logger.ts": "../local_vendor/logger.ts",
+            "/console_logger.ts": "../local_vendor/console_logger.ts",
+          }
+        }
       }))
     );
     assert_eq!(
       output.files,
-      to_file_vec(&[
-        ("/vendor/localhost/mod.ts", "console.log(6);"),
-        ("/vendor/localhost/other.ts", "import './mod.ts';"),
-      ]),
+      to_file_vec(&[("/vendor/localhost/other.ts", "import './mod.ts';")]),
     );
   }
 
@@ -805,14 +816,22 @@ mod test {
   async fn existing_import_map_mapped_bare_specifier() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let mut original_import_map = builder.new_import_map("/import_map.json");
-    original_import_map
-      .imports_mut()
+    let imports = original_import_map.imports_mut();
+    imports
+      .append("$fresh".to_string(), "https://localhost/fresh".to_string())
+      .unwrap();
+    imports
       .append("std/".to_string(), "https://deno.land/std/".to_string())
       .unwrap();
     let output = builder
       .with_loader(|loader| {
-        loader.add("/mod.ts", "import 'std/mod.ts';");
+        loader.add("/mod.ts", "import 'std/mod.ts'; import '$fresh';");
         loader.add("https://deno.land/std/mod.ts", "export function test() {}");
+        loader.add_with_headers(
+          "https://localhost/fresh",
+          "export function fresh() {}",
+          &[("content-type", "application/typescript")],
+        );
       })
       .set_original_import_map(original_import_map.clone())
       .build()
@@ -823,28 +842,24 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "std/": "https://deno.land/std/",
-          "std/mod.ts": "./vendor/deno.land/std/mod.ts"
+          "$fresh": "./localhost/fresh.ts",
+          "std/mod.ts": "./deno.land/std/mod.ts",
         },
       }))
     );
     assert_eq!(
       output.files,
-      to_file_vec(&[(
-        "/vendor/deno.land/std/mod.ts",
-        "export function test() {}"
-      )]),
+      to_file_vec(&[
+        ("/vendor/deno.land/std/mod.ts", "export function test() {}"),
+        ("/vendor/localhost/fresh.ts", "export function fresh() {}")
+      ]),
     );
   }
 
   #[tokio::test]
-  async fn existing_import_map_switching_imported_dep() {
+  async fn existing_import_map_imports_output_dir() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let mut original_import_map = builder.new_import_map("/import_map.json");
-    original_import_map
-      .imports_mut()
-      .append("std/".to_string(), "https://deno.land/std/".to_string())
-      .unwrap();
     original_import_map
       .imports_mut()
       .append(
@@ -852,63 +867,83 @@ mod test {
         "./vendor/deno.land/std/mod.ts".to_string(),
       )
       .unwrap();
-    let output = builder
+    let err = builder
       .with_loader(|loader| {
-        loader.add("/mod.ts", "import 'std/other.ts';");
-        loader.add("https://deno.land/std/other.ts", "export function f() {}");
+        loader.add("/mod.ts", "import 'std/mod.ts';");
+        loader.add("/vendor/deno.land/std/mod.ts", "export function f() {}");
+        loader.add("https://deno.land/std/mod.ts", "export function f() {}");
       })
       .set_original_import_map(original_import_map.clone())
-      .build()
-      .await
-      .unwrap();
-
-    assert_eq!(
-      output.import_map,
-      // won't have mod.ts in here anymore
-      Some(json!({
-        "imports": {
-          "std/": "https://deno.land/std/",
-          "std/other.ts": "./vendor/deno.land/std/other.ts"
-        },
-      }))
-    );
-    assert_eq!(
-      output.files,
-      to_file_vec(&[(
-        "/vendor/deno.land/std/other.ts",
-        "export function f() {}"
-      )]),
-    );
-  }
-
-  #[tokio::test]
-  async fn existing_import_map_but_none_specified() {
-    let mut builder = VendorTestBuilder::with_default_setup();
-    let err_message = builder
-      .with_loader(|loader| {
-        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
-        loader.add("https://localhost/mod.ts", "console.log(6);");
-      })
-      .with_environment(|env| {
-        let cwd = env.cwd().unwrap();
-        env.create_dir_all(&cwd).unwrap();
-        env.write_file(&cwd.join("import_map.json"), "{}").unwrap();
-      })
       .build()
       .await
       .err()
       .unwrap();
 
     assert_eq!(
-      err_message.to_string(),
-      format!(
-        concat!(
-          "An import map was found at {}, but it was not specified as a ",
-          "cli flag or in a deno.json file. Please delete it first or ",
-          "specify it when vendoring (ex. `deno vendor --import-map ",
-          "import_map.json ...`)."
-        ),
-        builder.display_path("/import_map.json")
+      err.to_string(),
+      concat!(
+        "Providing an existing import map with entries for the output ",
+        "directory is not supported ",
+        "(\"std/mod.ts\": \"./vendor/deno.land/std/mod.ts\").",
+      )
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_scopes_entry_output_dir() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let scopes = original_import_map
+      .get_or_append_scope_mut("./other/")
+      .unwrap();
+    scopes
+      .append("/mod.ts".to_string(), "./vendor/mod.ts".to_string())
+      .unwrap();
+    let err = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "console.log(5);");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(
+      err.to_string(),
+      concat!(
+        "Providing an existing import map with entries for the output ",
+        "directory is not supported ",
+        "(\"/mod.ts\": \"./vendor/mod.ts\").",
+      )
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_scopes_key_output_dir() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let scopes = original_import_map
+      .get_or_append_scope_mut("./vendor/")
+      .unwrap();
+    scopes
+      .append("/mod.ts".to_string(), "./vendor/mod.ts".to_string())
+      .unwrap();
+    let err = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "console.log(5);");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(
+      err.to_string(),
+      concat!(
+        "Providing an existing import map with a scope for the output ",
+        "directory is not supported (\"./vendor/\").",
       )
     );
   }

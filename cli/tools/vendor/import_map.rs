@@ -9,7 +9,9 @@ use deno_graph::Position;
 use deno_graph::Range;
 use deno_graph::Resolved;
 use import_map::ImportMap;
+use import_map::SpecifierMap;
 use indexmap::IndexMap;
+use log::warn;
 
 use super::mappings::Mappings;
 use super::specifiers::is_remote_specifier;
@@ -52,10 +54,75 @@ impl<'a> ImportMapBuilder<'a> {
 
   pub fn into_import_map(
     self,
-    original_import_map: Option<ImportMap>,
+    original_import_map: Option<&ImportMap>,
   ) -> ImportMap {
-    let mut import_map = original_import_map
-      .unwrap_or_else(|| ImportMap::new(self.base_dir.clone()));
+    fn get_local_imports(
+      new_relative_path: &str,
+      original_imports: &SpecifierMap,
+    ) -> Vec<(String, String)> {
+      let mut result = Vec::new();
+      for entry in original_imports.entries() {
+        if let Some(raw_value) = entry.raw_value {
+          if raw_value.starts_with("./") || raw_value.starts_with("../") {
+            let sub_index = raw_value.find('/').unwrap() + 1;
+            result.push((
+              entry.raw_key.to_string(),
+              format!("{}{}", new_relative_path, &raw_value[sub_index..]),
+            ));
+          }
+        }
+      }
+      result
+    }
+
+    fn add_local_imports<'a>(
+      new_relative_path: &str,
+      original_imports: &SpecifierMap,
+      get_new_imports: impl FnOnce() -> &'a mut SpecifierMap,
+    ) {
+      let local_imports =
+        get_local_imports(new_relative_path, original_imports);
+      if !local_imports.is_empty() {
+        let new_imports = get_new_imports();
+        for (key, value) in local_imports {
+          if let Err(warning) = new_imports.append(key, value) {
+            warn!("{}", warning);
+          }
+        }
+      }
+    }
+
+    let mut import_map = ImportMap::new(self.base_dir.clone());
+
+    if let Some(original_im) = original_import_map {
+      let original_base_dir = ModuleSpecifier::from_directory_path(
+        original_im
+          .base_url()
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .unwrap(),
+      )
+      .unwrap();
+      let new_relative_path = self
+        .mappings
+        .relative_specifier_text(self.base_dir, &original_base_dir);
+      // add the imports
+      add_local_imports(&new_relative_path, original_im.imports(), || {
+        import_map.imports_mut()
+      });
+
+      for scope in original_im.scopes() {
+        if scope.raw_key.starts_with("./") || scope.raw_key.starts_with("../") {
+          let sub_index = scope.raw_key.find('/').unwrap() + 1;
+          let new_key =
+            format!("{}{}", new_relative_path, &scope.raw_key[sub_index..]);
+          add_local_imports(&new_relative_path, scope.imports, || {
+            import_map.get_or_append_scope_mut(&new_key).unwrap()
+          });
+        }
+      }
+    }
 
     let imports = import_map.imports_mut();
     for (key, value) in self.imports.imports {
@@ -111,7 +178,7 @@ pub fn build_import_map(
   graph: &ModuleGraph,
   modules: &[&Module],
   mappings: &Mappings,
-  original_import_map: Option<ImportMap>,
+  original_import_map: Option<&ImportMap>,
 ) -> String {
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
   visit_modules(graph, modules, mappings, &mut builder);

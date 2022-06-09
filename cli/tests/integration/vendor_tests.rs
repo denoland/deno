@@ -73,16 +73,12 @@ fn output_dir_exists() {
 
 #[test]
 fn import_map_output_dir() {
-  let _server = http_server();
   let t = TempDir::new();
-  t.write(
-    "mod.ts",
-    "import {Logger} from 'http://localhost:4545/vendor/logger.ts';",
-  );
+  t.write("mod.ts", "");
   t.create_dir_all("vendor");
   t.write(
     "vendor/import_map.json",
-    "{ \"imports\": { \"http://other/\": \"../other_folder/\" }}",
+    "{ \"imports\": { \"https://localhost/\": \"./localhost/\" }}",
   );
 
   let deno = util::deno_cmd()
@@ -100,22 +96,9 @@ fn import_map_output_dir() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    format!(
-      concat!("Download http://localhost:4545/vendor/logger.ts\n", "{}",),
-      success_text("1 module", "vendor/", Some("vendor/import_map.json")),
-    )
+    "error: Using an import map found in the output directory is not supported.",
   );
-  assert!(output.status.success());
-  assert_eq!(
-    t.read_to_string("vendor/import_map.json"),
-    r#"{
-  "imports": {
-    "http://other/": "../other_folder/",
-    "http://localhost:4545/vendor/logger.ts": "./localhost_4545/vendor/logger.ts"
-  }
-}
-"#,
-  );
+  assert!(!output.status.success());
 }
 
 #[test]
@@ -185,7 +168,7 @@ fn standard_test() {
         "Download http://localhost:4545/vendor/logger.ts?test\n",
         "{}",
       ),
-      success_text("2 modules", "vendor2", Some("import_map.json")),
+      success_text("2 modules", "vendor2", true),
     )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
@@ -194,16 +177,16 @@ fn standard_test() {
   assert!(vendor_dir.exists());
   assert!(!t.path().join("vendor").exists());
   let import_map: serde_json::Value =
-    serde_json::from_str(&t.read_to_string("import_map.json")).unwrap();
+    serde_json::from_str(&t.read_to_string("vendor2/import_map.json")).unwrap();
   assert_eq!(
     import_map,
     json!({
       "imports": {
-        "http://localhost:4545/vendor/query_reexport.ts?testing": "./vendor2/localhost_4545/vendor/query_reexport.ts",
+        "http://localhost:4545/vendor/query_reexport.ts?testing": "./localhost_4545/vendor/query_reexport.ts",
       },
       "scopes": {
-        "./vendor2/localhost_4545/": {
-          "./vendor2/localhost_4545/vendor/logger.ts?test": "./vendor2/localhost_4545/vendor/logger.ts"
+        "./localhost_4545/": {
+          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
         }
       }
     }),
@@ -218,7 +201,7 @@ fn standard_test() {
     .arg("--check")
     .arg("--quiet")
     .arg("--import-map")
-    .arg("import_map.json")
+    .arg("vendor2/import_map.json")
     .arg("my_app.ts")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -254,7 +237,7 @@ fn remote_module_test() {
         "Download http://localhost:4545/vendor/logger.ts?test\n",
         "{}",
       ),
-      success_text("2 modules", "vendor/", Some("import_map.json")),
+      success_text("2 modules", "vendor/", true),
     )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
@@ -265,13 +248,13 @@ fn remote_module_test() {
     .exists());
   assert!(vendor_dir.join("localhost_4545/vendor/logger.ts").exists());
   let import_map: serde_json::Value =
-    serde_json::from_str(&t.read_to_string("import_map.json")).unwrap();
+    serde_json::from_str(&t.read_to_string("vendor/import_map.json")).unwrap();
   assert_eq!(
     import_map,
     json!({
       "scopes": {
-        "./vendor/localhost_4545/": {
-          "./vendor/localhost_4545/vendor/logger.ts?test": "./vendor/localhost_4545/vendor/logger.ts"
+        "./localhost_4545/": {
+          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
         }
       }
     }),
@@ -306,7 +289,7 @@ fn existing_import_map_no_remote() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    success_text("0 modules", "vendor/", None)
+    success_text("0 modules", "vendor/", false)
   );
   assert!(output.status.success());
   // it should not have found any remote dependencies because
@@ -335,10 +318,10 @@ fn existing_import_map_with_remote() {
   assert!(status.success());
 
   assert_eq!(
-    t.read_to_string("import_map.json"),
+    t.read_to_string("vendor/import_map.json"),
     r#"{
   "imports": {
-    "http://localhost:4545/vendor/logger.ts": "./vendor/localhost_4545/vendor/logger.ts"
+    "http://localhost:4545/vendor/logger.ts": "./localhost_4545/vendor/logger.ts"
   }
 }
 "#,
@@ -351,16 +334,17 @@ fn existing_import_map_with_remote() {
       "import {Logger as OtherLogger} from 'http://localhost:4545/vendor/mod.ts';\n",
     ),
   );
-  t.rename("import_map.json", "import_map2.json");
 
-  // now vendor with the existing import map
+  // now vendor with the existing import map in a separate vendor directory
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .env("NO_COLOR", "1")
     .current_dir(t.path())
     .arg("vendor")
     .arg("mod.ts")
     .arg("--import-map")
-    .arg("import_map2.json")
+    .arg("vendor/import_map.json")
+    .arg("--output")
+    .arg("vendor2")
     .arg("--force")
     .stderr(Stdio::piped())
     .spawn()
@@ -370,17 +354,17 @@ fn existing_import_map_with_remote() {
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
       concat!("Download http://localhost:4545/vendor/mod.ts\n", "{}",),
-      success_text("2 modules", "vendor/", Some("import_map2.json")),
+      success_text("1 module", "vendor2", true),
     )
   );
   assert!(output.status.success());
 
   assert_eq!(
-    t.read_to_string("import_map2.json"),
+    t.read_to_string("vendor2/import_map.json"),
     r#"{
   "imports": {
-    "http://localhost:4545/vendor/logger.ts": "./vendor/localhost_4545/vendor/logger.ts",
-    "http://localhost:4545/vendor/mod.ts": "./vendor/localhost_4545/vendor/mod.ts"
+    "http://localhost:4545/vendor/logger.ts": "../vendor/localhost_4545/vendor/logger.ts",
+    "http://localhost:4545/vendor/mod.ts": "./localhost_4545/vendor/mod.ts"
   }
 }
 "#,
@@ -393,7 +377,7 @@ fn existing_import_map_with_remote() {
     .arg("--check")
     .arg("--no-remote")
     .arg("--import-map")
-    .arg("import_map2.json")
+    .arg("vendor2/import_map.json")
     .arg("mod.ts")
     .spawn()
     .unwrap()
@@ -421,12 +405,12 @@ fn dynamic_import() {
     .unwrap();
   assert!(status.success());
   let import_map: serde_json::Value =
-    serde_json::from_str(&t.read_to_string("import_map.json")).unwrap();
+    serde_json::from_str(&t.read_to_string("vendor/import_map.json")).unwrap();
   assert_eq!(
     import_map,
     json!({
       "imports": {
-        "http://localhost:4545/vendor/dynamic.ts": "./vendor/localhost_4545/vendor/dynamic.ts",
+        "http://localhost:4545/vendor/dynamic.ts": "./localhost_4545/vendor/dynamic.ts",
       }
     }),
   );
@@ -441,7 +425,7 @@ fn dynamic_import() {
     .arg("--check")
     .arg("--quiet")
     .arg("--import-map")
-    .arg("import_map.json")
+    .arg("vendor/import_map.json")
     .arg("mod.ts")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -479,32 +463,28 @@ fn dynamic_non_analyzable_import() {
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
       "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts\n{}",
-      success_text("1 module", "vendor/", Some("import_map.json")),
+      success_text("1 module", "vendor/", true),
     )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
   assert!(output.status.success());
 }
 
-fn success_text(
-  module_count: &str,
-  dir: &str,
-  import_map: Option<&str>,
-) -> String {
+fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
   let mut text = format!("Vendored {} into {} directory.", module_count, dir);
-  if let Some(import_map) = import_map {
+  if has_import_map {
     text.push_str(&
       format!(
         concat!(
-          "\n\nTo use vendored modules, specify the `--import-map {}` flag when ",
-          r#"invoking deno subcommands or add an `"importMap": "<path_to_import_map>"` "#,
+          "\n\nTo use vendored modules, specify the `--import-map {}import_map.json` flag when ",
+          r#"invoking deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,
           "entry to your deno.json file.",
         ),
-        if cfg!(windows) {
-          import_map.replace('/', "\\")
+        if dir != "vendor/" {
+          format!("{}{}", dir.trim_end_matches('/'), if cfg!(windows) { '\\' } else {'/'})
         } else {
-          import_map.to_string()
-        },
+          dir.to_string()
+        }
       )
     );
   }
