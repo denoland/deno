@@ -185,10 +185,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .build()
 }
 
-
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-struct NativeTypeFunction {
-}
+struct NativeTypeFunction {}
 
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
@@ -637,9 +635,10 @@ where
         } else if value.is_number() {
           let value: ResourceId = value.uint32_value(scope).unwrap();
           let rc = resource_table.get::<RegisteredCallbackResource>(value)?;
-          let function =
-            *rc.closure.code_ptr();
-          ffi_args.push(NativeValue { pointer: function as u64 as *const u8 });
+          let function = *rc.closure.code_ptr();
+          ffi_args.push(NativeValue {
+            pointer: function as usize as *const u8,
+          });
         } else if value.is_big_int() {
           // Do we support this?
           let value = v8::Local::<v8::BigInt>::try_from(value)?;
@@ -803,7 +802,9 @@ unsafe extern "C" fn deno_ffi_callback(
       FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
       FFI_TYPE_UINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const u32)),
       FFI_TYPE_SINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const i64)),
-      FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const u64)),
+      FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64 => {
+        serde_v8::to_v8(&mut scope, *((*val) as *const u64))
+      }
       FFI_TYPE_VOID => serde_v8::to_v8(&mut scope, ()),
       _ => {
         panic!("Unsupported parameter type")
@@ -819,7 +820,7 @@ unsafe extern "C" fn deno_ffi_callback(
   };
 
   std::mem::forget(callback);
-  
+
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
       *(result as *mut i32) = serde_v8::from_v8(&mut scope, value)
@@ -1116,13 +1117,13 @@ fn op_ffi_call(
     let resource = state
       .resource_table
       .get::<DynamicLibraryResource>(args.rid)?;
-  
+
     let symbol = resource
       .symbols
       .get(&args.symbol)
       .ok_or_else(bad_resource_id)?
       .clone();
-  
+
     let call_args = ffi_parse_args(
       unsafe { std::mem::transmute(scope) },
       args.parameters,

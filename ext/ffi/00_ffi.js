@@ -181,7 +181,9 @@
         }
 
         parameters.push(arg);
-      } else if (typeof type === "object" && type !== null && "function" in type) {
+      } else if (
+        typeof type === "object" && type !== null && "function" in type
+      ) {
         if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
           parameters.push(arg[_rid]);
         } else {
@@ -269,7 +271,11 @@
           "Invalid ffi RegisteredCallback, cannot be nonblocking",
         );
       }
-      this[_rid] = core.opSync("op_ffi_register_callback", definition, callback);
+      this[_rid] = core.opSync(
+        "op_ffi_register_callback",
+        definition,
+        callback,
+      );
       this.definition = definition;
       this.callback = callback;
     }
