@@ -11,12 +11,14 @@ pub enum Error {
 
   ExpectedBoolean,
   ExpectedInteger,
+  ExpectedNumber,
   ExpectedString,
   ExpectedArray,
   ExpectedMap,
   ExpectedEnum,
   ExpectedObject,
   ExpectedBuffer,
+  ExpectedDetachable,
 
   ExpectedUtf8,
   ExpectedLatin1,

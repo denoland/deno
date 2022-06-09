@@ -2,7 +2,7 @@
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
-use lspower::lsp;
+use tower_lsp::lsp_types as lsp;
 
 pub const CACHE_REQUEST: &str = "deno/cache";
 pub const PERFORMANCE_REQUEST: &str = "deno/performance";

@@ -30,15 +30,15 @@
   const _urlObject = Symbol("url object");
 
   // WARNING: must match rust code's UrlSetter::*
-  const SET_HASH = 1;
-  const SET_HOST = 2;
-  const SET_HOSTNAME = 3;
-  const SET_PASSWORD = 4;
-  const SET_PATHNAME = 5;
-  const SET_PORT = 6;
-  const SET_PROTOCOL = 7;
-  const SET_SEARCH = 8;
-  const SET_USERNAME = 9;
+  const SET_HASH = 0;
+  const SET_HOST = 1;
+  const SET_HOSTNAME = 2;
+  const SET_PASSWORD = 3;
+  const SET_PATHNAME = 4;
+  const SET_PORT = 5;
+  const SET_PROTOCOL = 6;
+  const SET_SEARCH = 7;
+  const SET_USERNAME = 8;
 
   // Helper functions
   function opUrlReparse(href, setter, value) {

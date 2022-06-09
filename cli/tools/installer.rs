@@ -1,8 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::flags::ConfigFlag;
 use crate::flags::Flags;
 use crate::flags::InstallFlags;
-use crate::flags::TypecheckMode;
+use crate::flags::TypeCheckMode;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -306,12 +307,10 @@ fn resolve_shim_data(
 
   // we should avoid a default branch here to ensure we continue to cover any
   // changes to this flag.
-  match flags.typecheck_mode {
-    TypecheckMode::All => (),
-    TypecheckMode::None => executable_args.push("--no-check".to_string()),
-    TypecheckMode::Local => {
-      executable_args.push("--no-check=remote".to_string())
-    }
+  match flags.type_check_mode {
+    TypeCheckMode::All => executable_args.push("--check=all".to_string()),
+    TypeCheckMode::None => {}
+    TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
   if flags.unstable {
@@ -332,6 +331,10 @@ fn resolve_shim_data(
 
   if flags.no_prompt {
     executable_args.push("--no-prompt".to_string());
+  }
+
+  if flags.compat {
+    executable_args.push("--compat".to_string());
   }
 
   if !flags.v8_flags.is_empty() {
@@ -357,7 +360,7 @@ fn resolve_shim_data(
     executable_args.push(import_map_url.to_string());
   }
 
-  if let Some(config_path) = &flags.config_path {
+  if let ConfigFlag::Path(config_path) = &flags.config_flag {
     let mut copy_path = file_path.clone();
     copy_path.set_extension("tsconfig.json");
     executable_args.push("--config".to_string());
@@ -400,9 +403,10 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::flags::ConfigFlag;
   use std::process::Command;
-  use tempfile::TempDir;
   use test_util::testdata_path;
+  use test_util::TempDir;
 
   #[test]
   fn install_infer_name_from_url() {
@@ -479,7 +483,7 @@ mod tests {
 
   #[test]
   fn install_unstable() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -509,11 +513,12 @@ mod tests {
     println!("this is the file path {:?}", content);
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--check" "--unstable" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content
-        .contains(r#"run --unstable 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(
+        r#"run --check --unstable 'http://localhost:4545/echo_server.ts'"#
+      ));
     }
   }
 
@@ -534,7 +539,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--check", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -555,7 +560,7 @@ mod tests {
     assert_eq!(shim_data.name, "subdir");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/subdir/main.ts",]
+      vec!["run", "--check", "http://localhost:4545/subdir/main.ts",]
     );
   }
 
@@ -576,7 +581,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_test");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--check", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -586,8 +591,9 @@ mod tests {
       &Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
+        compat: true,
         ..Flags::default()
       },
       &InstallFlags {
@@ -608,7 +614,7 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
-        "--no-check",
+        "--compat",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]
@@ -634,7 +640,12 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-prompt", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--check",
+        "--no-prompt",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 
@@ -657,13 +668,18 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--allow-all", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--allow-all",
+        "--check",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 
   #[test]
   fn install_local_module() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let local_module = env::current_dir().unwrap().join("echo_server.ts");
@@ -694,7 +710,7 @@ mod tests {
 
   #[test]
   fn install_force() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -755,7 +771,7 @@ mod tests {
 
   #[test]
   fn install_with_config() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let config_file_path = temp_dir.path().join("test_tsconfig.json");
     let config = "{}";
@@ -765,7 +781,9 @@ mod tests {
 
     let result = install(
       Flags {
-        config_path: Some(config_file_path.to_string_lossy().to_string()),
+        config_flag: ConfigFlag::Path(
+          config_file_path.to_string_lossy().to_string(),
+        ),
         ..Flags::default()
       },
       InstallFlags {
@@ -791,7 +809,7 @@ mod tests {
   #[cfg(not(windows))]
   #[test]
   fn install_shell_escaping() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
@@ -818,15 +836,14 @@ mod tests {
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(
-        content.contains(r#"run 'http://localhost:4545/echo_server.ts' '"'"#)
-      );
+      assert!(content
+        .contains(r#"run --check 'http://localhost:4545/echo_server.ts' '"'"#));
     }
   }
 
   #[test]
   fn install_unicode() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let unicode_dir = temp_dir.path().join("Magnús");
@@ -866,7 +883,7 @@ mod tests {
 
   #[test]
   fn install_with_import_map() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let import_map_path = temp_dir.path().join("import_map.json");
     let import_map_url = Url::from_file_path(&import_map_path).unwrap();
@@ -914,7 +931,7 @@ mod tests {
   // Regression test for https://github.com/denoland/deno/issues/10556.
   #[test]
   fn install_file_url() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
     let file_module_string =
@@ -939,9 +956,10 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let mut expected_string = format!("run '{}'", &file_module_string);
+    let mut expected_string = format!("run --check '{}'", &file_module_string);
     if cfg!(windows) {
-      expected_string = format!("\"run\" \"{}\"", &file_module_string);
+      expected_string =
+        format!("\"run\" \"--check\" \"{}\"", &file_module_string);
     }
 
     let content = fs::read_to_string(file_path).unwrap();
@@ -950,7 +968,7 @@ mod tests {
 
   #[test]
   fn uninstall_basic() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 

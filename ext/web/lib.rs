@@ -12,6 +12,7 @@ use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::ByteString;
+use deno_core::CancelHandle;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -89,6 +90,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_base64_atob::decl(),
       op_base64_btoa::decl(),
       op_encoding_normalize_label::decl(),
+      op_encoding_decode_single::decl(),
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
       op_encoding_encode_into::decl(),
@@ -107,6 +109,7 @@ pub fn init<P: TimersPermission + 'static>(
       compression::op_compression_finish::decl(),
       op_now::decl::<P>(),
       op_timer_handle::decl(),
+      op_cancel_handle::decl(),
       op_sleep::decl(),
       op_sleep_sync::decl::<P>(),
     ])
@@ -129,8 +132,7 @@ fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
 }
 
 #[op]
-fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
-  let mut s = s.0;
+fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
   s.retain(|c| !c.is_ascii_whitespace());
 
   // If padding is expected, fail if not 4-byte aligned
@@ -140,7 +142,7 @@ fn op_base64_atob(s: ByteString) -> Result<ByteString, AnyError> {
     );
   }
 
-  Ok(ByteString(b64_decode(&s)?))
+  Ok(b64_decode(&s)?.into())
 }
 
 fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
@@ -179,13 +181,13 @@ fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
 }
 
 #[op]
-fn op_base64_encode(s: ZeroCopyBuf) -> Result<String, AnyError> {
-  Ok(b64_encode(&s))
+fn op_base64_encode(s: ZeroCopyBuf) -> String {
+  b64_encode(&s)
 }
 
 #[op]
-fn op_base64_btoa(s: ByteString) -> Result<String, AnyError> {
-  Ok(b64_encode(&s))
+fn op_base64_btoa(s: ByteString) -> String {
+  b64_encode(s)
 }
 
 fn b64_encode(s: impl AsRef<[u8]>) -> String {
@@ -212,6 +214,64 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
       ))
     })?;
   Ok(encoding.name().to_lowercase())
+}
+
+#[op]
+fn op_encoding_decode_single(
+  data: ZeroCopyBuf,
+  options: DecoderOptions,
+) -> Result<U16String, AnyError> {
+  let DecoderOptions {
+    label,
+    ignore_bom,
+    fatal,
+  } = options;
+
+  let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
+    range_error(format!(
+      "The encoding label provided ('{}') is invalid.",
+      label
+    ))
+  })?;
+
+  let mut decoder = if ignore_bom {
+    encoding.new_decoder_without_bom_handling()
+  } else {
+    encoding.new_decoder_with_bom_removal()
+  };
+
+  let max_buffer_length = decoder
+    .max_utf16_buffer_length(data.len())
+    .ok_or_else(|| range_error("Value too large to decode."))?;
+
+  let mut output = vec![0; max_buffer_length];
+
+  if fatal {
+    let (result, _, written) =
+      decoder.decode_to_utf16_without_replacement(&data, &mut output, true);
+    match result {
+      DecoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output.into())
+      }
+      DecoderResult::OutputFull => {
+        Err(range_error("Provided buffer too small."))
+      }
+      DecoderResult::Malformed(_, _) => {
+        Err(type_error("The encoded data is not valid."))
+      }
+    }
+  } else {
+    let (result, _, written, _) =
+      decoder.decode_to_utf16(&data, &mut output, true);
+    match result {
+      CoderResult::InputEmpty => {
+        output.truncate(written);
+        Ok(output.into())
+      }
+      CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
+    }
+  }
 }
 
 #[op]
@@ -270,7 +330,7 @@ fn op_encoding_decode(
     .max_utf16_buffer_length(data.len())
     .ok_or_else(|| range_error("Value too large to decode."))?;
 
-  let mut output = U16String::with_zeroes(max_buffer_length);
+  let mut output = vec![0; max_buffer_length];
 
   if fatal {
     let (result, _, written) =
@@ -278,7 +338,7 @@ fn op_encoding_decode(
     match result {
       DecoderResult::InputEmpty => {
         output.truncate(written);
-        Ok(output)
+        Ok(output.into())
       }
       DecoderResult::OutputFull => {
         Err(range_error("Provided buffer too small."))
@@ -293,7 +353,7 @@ fn op_encoding_decode(
     match result {
       CoderResult::InputEmpty => {
         output.truncate(written);
-        Ok(output)
+        Ok(output.into())
       }
       CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
     }
@@ -322,7 +382,7 @@ struct EncodeIntoResult {
 fn op_encoding_encode_into(
   input: String,
   mut buffer: ZeroCopyBuf,
-) -> Result<EncodeIntoResult, AnyError> {
+) -> EncodeIntoResult {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
   // that point.
@@ -346,11 +406,17 @@ fn op_encoding_encode_into(
 
   buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
 
-  Ok(EncodeIntoResult {
+  EncodeIntoResult {
     // The `read` output parameter is measured in UTF-16 code units.
     read: input[..boundary].encode_utf16().count(),
     written: boundary,
-  })
+  }
+}
+
+/// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
+#[op]
+pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
+  state.resource_table.add(CancelHandle::new())
 }
 
 pub fn get_declaration() -> PathBuf {

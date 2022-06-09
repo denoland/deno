@@ -275,7 +275,7 @@ interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
    * and false otherwise. */
   readonly aborted: boolean;
-  readonly reason?: unknown;
+  readonly reason: any;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
@@ -630,6 +630,7 @@ interface WritableStreamErrorCallback {
 interface WritableStream<W = any> {
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
@@ -729,7 +730,7 @@ declare class MessageEvent<T = any> extends Event {
    */
   readonly lastEventId: string;
   /**
-   * Returns transfered ports.
+   * Returns transferred ports.
    */
   readonly ports: ReadonlyArray<MessagePort>;
   constructor(type: string, eventInitDict?: MessageEventInit);
@@ -890,3 +891,22 @@ declare class DecompressionStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
+
+/** Dispatch an uncaught exception. Similar to a synchronous version of:
+ * ```ts
+ * setTimeout(() => { throw error; }, 0);
+ * ```
+ * The error can not be caught with a `try/catch` block. An error event will
+ * be dispatched to the global scope. You can prevent the error from being
+ * reported to the console with `Event.prototype.preventDefault()`:
+ * ```ts
+ * addEventListener("error", (event) => {
+ *   event.preventDefault();
+ * });
+ * reportError(new Error("foo")); // Will not be reported.
+ * ```
+ * In Deno, this error will terminate the process if not intercepted like above.
+ */
+declare function reportError(
+  error: any,
+): void;

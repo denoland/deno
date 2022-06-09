@@ -2,13 +2,13 @@
 
 use std::fs;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn install_basic() {
   let _guard = util::http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
   let status = util::deno_cmd()
@@ -41,16 +41,18 @@ fn install_basic() {
   assert_eq!(content.chars().last().unwrap(), '\n');
 
   if cfg!(windows) {
-    assert!(content.contains(r#""run" "http://localhost:4545/echo.ts""#));
+    assert!(
+      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    );
   } else {
-    assert!(content.contains(r#"run 'http://localhost:4545/echo.ts'"#));
+    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
   }
 }
 
 #[test]
 fn install_custom_dir_env_var() {
   let _guard = util::http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
   let status = util::deno_cmd()
@@ -79,15 +81,17 @@ fn install_custom_dir_env_var() {
 
   let content = fs::read_to_string(file_path).unwrap();
   if cfg!(windows) {
-    assert!(content.contains(r#""run" "http://localhost:4545/echo.ts""#));
+    assert!(
+      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    );
   } else {
-    assert!(content.contains(r#"run 'http://localhost:4545/echo.ts'"#));
+    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
   }
 }
 
 #[test]
 fn installer_test_local_module_run() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let status = util::deno_cmd()
@@ -124,7 +128,7 @@ fn installer_test_local_module_run() {
 #[test]
 fn installer_test_remote_module_run() {
   let _g = util::http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let status = util::deno_cmd()
@@ -156,4 +160,51 @@ fn installer_test_remote_module_run() {
     .unwrap()
     .trim()
     .ends_with("hello, foo"));
+}
+
+#[test]
+fn check_local_by_default() {
+  let _guard = util::http_server();
+  let temp_dir = TempDir::new();
+  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+
+  let status = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("install")
+    .arg(util::testdata_path().join("./install/check_local_by_default.ts"))
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .status()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn check_local_by_default2() {
+  let _guard = util::http_server();
+  let temp_dir = TempDir::new();
+  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+
+  let output = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("install")
+    .arg(util::testdata_path().join("./install/check_local_by_default2.ts"))
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("NO_COLOR", "1"),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stdout.is_empty());
+  assert!(stderr.contains(
+    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
+  ));
 }

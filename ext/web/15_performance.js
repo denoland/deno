@@ -10,6 +10,7 @@
     ArrayPrototypeSlice,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
+    ReflectHas,
     Symbol,
     SymbolFor,
     TypeError,
@@ -23,6 +24,7 @@
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = SymbolFor("Deno.customInspect");
   let performanceEntries = [];
+  let timeOrigin;
 
   webidl.converters["PerformanceMarkOptions"] = webidl
     .createDictionaryConverter(
@@ -75,6 +77,10 @@
     }
     return webidl.converters.DOMString(V, opts);
   };
+
+  function setTimeOrigin(origin) {
+    timeOrigin = origin;
+  }
 
   function findMostRecent(
     name,
@@ -326,6 +332,11 @@
       webidl.illegalConstructor();
     }
 
+    get timeOrigin() {
+      webidl.assertBranded(this, PerformancePrototype);
+      return timeOrigin;
+    }
+
     clearMarks(markName = undefined) {
       webidl.assertBranded(this, PerformancePrototype);
       if (markName !== undefined) {
@@ -470,17 +481,17 @@
           throw new TypeError("Options cannot be passed with endMark.");
         }
         if (
-          !("start" in startOrMeasureOptions) &&
-          !("end" in startOrMeasureOptions)
+          !ReflectHas(startOrMeasureOptions, "start") &&
+          !ReflectHas(startOrMeasureOptions, "end")
         ) {
           throw new TypeError(
             "A start or end mark must be supplied in options.",
           );
         }
         if (
-          "start" in startOrMeasureOptions &&
-          "duration" in startOrMeasureOptions &&
-          "end" in startOrMeasureOptions
+          ReflectHas(startOrMeasureOptions, "start") &&
+          ReflectHas(startOrMeasureOptions, "duration") &&
+          ReflectHas(startOrMeasureOptions, "end")
         ) {
           throw new TypeError(
             "Cannot specify start, end, and duration together in options.",
@@ -492,13 +503,13 @@
         endTime = convertMarkToTimestamp(endMark);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        "end" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "end")
       ) {
         endTime = convertMarkToTimestamp(startOrMeasureOptions.end);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        "start" in startOrMeasureOptions &&
-        "duration" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "start") &&
+        ReflectHas(startOrMeasureOptions, "duration")
       ) {
         const start = convertMarkToTimestamp(startOrMeasureOptions.start);
         const duration = convertMarkToTimestamp(startOrMeasureOptions.duration);
@@ -509,13 +520,13 @@
       let startTime;
       if (
         typeof startOrMeasureOptions === "object" &&
-        "start" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "start")
       ) {
         startTime = convertMarkToTimestamp(startOrMeasureOptions.start);
       } else if (
         typeof startOrMeasureOptions === "object" &&
-        "end" in startOrMeasureOptions &&
-        "duration" in startOrMeasureOptions
+        ReflectHas(startOrMeasureOptions, "end") &&
+        ReflectHas(startOrMeasureOptions, "duration")
       ) {
         const end = convertMarkToTimestamp(startOrMeasureOptions.end);
         const duration = convertMarkToTimestamp(startOrMeasureOptions.duration);
@@ -545,7 +556,9 @@
 
     toJSON() {
       webidl.assertBranded(this, PerformancePrototype);
-      return {};
+      return {
+        timeOrigin: this.timeOrigin,
+      };
     }
 
     [customInspect](inspect) {
@@ -565,5 +578,6 @@
     PerformanceMeasure,
     Performance,
     performance: webidl.createBranded(Performance),
+    setTimeOrigin,
   };
 })(this);

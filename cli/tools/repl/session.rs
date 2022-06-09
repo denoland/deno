@@ -41,6 +41,8 @@ Object.defineProperty(globalThis, "_error", {
    console.log("Last thrown error is no longer saved to _error.");
   },
 });
+
+globalThis.clear = console.clear.bind(console);
 "#;
 
 pub enum EvaluationOutput {
@@ -114,7 +116,7 @@ impl ReplSession {
     Ok(repl_session)
   }
 
-  pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
+  pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let closed = self
       .evaluate_expression("(this.closed)")
       .await?
@@ -330,7 +332,7 @@ impl ReplSession {
   ) -> Result<TsEvaluateResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
-      source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
+      text_info: deno_ast::SourceTextInfo::from_string(expression.to_string()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,

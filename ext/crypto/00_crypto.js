@@ -984,28 +984,43 @@
 
       const algorithmName = key[_algorithm].name;
 
+      let result;
+
       switch (algorithmName) {
         case "HMAC": {
-          return exportKeyHMAC(format, key, innerKey);
+          result = exportKeyHMAC(format, key, innerKey);
+          break;
         }
         case "RSASSA-PKCS1-v1_5":
         case "RSA-PSS":
         case "RSA-OAEP": {
-          return exportKeyRSA(format, key, innerKey);
+          result = exportKeyRSA(format, key, innerKey);
+          break;
         }
         case "ECDH":
         case "ECDSA": {
-          return exportKeyEC(format, key, innerKey);
+          result = exportKeyEC(format, key, innerKey);
+          break;
         }
         case "AES-CTR":
         case "AES-CBC":
         case "AES-GCM":
         case "AES-KW": {
-          return exportKeyAES(format, key, innerKey);
+          result = exportKeyAES(format, key, innerKey);
+          break;
         }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
+
+      if (key.extractable === false) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
+      return result;
     }
 
     /**
@@ -3418,6 +3433,24 @@
 
   function exportKeyEC(format, key, innerKey) {
     switch (format) {
+      case "raw": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = core.opSync("op_crypto_export_key", {
+          algorithm: key[_algorithm].name,
+          namedCurve: key[_algorithm].namedCurve,
+          format: "raw",
+        }, innerKey);
+
+        return data.buffer;
+      }
       case "pkcs8": {
         // 1.
         if (key[_type] !== "private") {

@@ -1,0 +1,18 @@
+[WILDCARD]/bench/group_baseline.ts
+benchmark           time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------------ -----------------------------
+noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+summary
+  noo[WILDCARD]
+   [WILDCARD]x [WILDCARD] than noo[WILDCARD]
+
+noop3 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+parse url 2x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+parse url 200x [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+
+summary
+  parse url 2x
+   [WILDCARD]x slower than noop3
+   [WILDCARD]x faster than parse url 200x

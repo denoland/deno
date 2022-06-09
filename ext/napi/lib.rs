@@ -481,6 +481,8 @@ impl op_napi_open {
       v8_fn_ptr: Self::v8_fn_ptr(),
       enabled: true,
       is_async: false,
+      is_v8: true,
+      is_unstable: true,
     }
   }
 

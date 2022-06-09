@@ -2,12 +2,12 @@
 
 use std::fs::File;
 use std::process::Command;
-use tempfile::TempDir;
 use test_util as util;
+use test_util::TempDir;
 
 #[test]
 fn compile() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("welcome.exe")
   } else {
@@ -38,7 +38,7 @@ fn compile() {
 
 #[test]
 fn standalone_args() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -74,7 +74,7 @@ fn standalone_args() {
 
 #[test]
 fn standalone_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -105,9 +105,12 @@ fn standalone_error() {
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
   let stderr = String::from_utf8(output.stderr).unwrap();
+  let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Error: boom!\n    at boom (file://"));
+  assert!(stderr.contains("error: Uncaught Error: boom!"));
+  assert!(stderr.contains("throw new Error(\"boom!\");"));
+  assert!(stderr.contains("\n    at boom (file://"));
   assert!(stderr.contains("standalone_error.ts:2:11"));
   assert!(stderr.contains("at foo (file://"));
   assert!(stderr.contains("standalone_error.ts:5:5"));
@@ -116,7 +119,7 @@ fn standalone_error() {
 
 #[test]
 fn standalone_error_module_with_imports() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("error.exe")
   } else {
@@ -148,15 +151,18 @@ fn standalone_error_module_with_imports() {
   println!("{:#?}", &output);
   assert_eq!(output.stdout, b"hello\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
+  let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Error: boom!\n    at file://"));
+  assert!(stderr.contains("error: Uncaught Error: boom!"));
+  assert!(stderr.contains("throw new Error(\"boom!\");"));
+  assert!(stderr.contains("\n    at file://"));
   assert!(stderr.contains("standalone_error_module_with_imports_2.ts:2:7"));
 }
 
 #[test]
 fn standalone_load_datauri() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("load_datauri.exe")
   } else {
@@ -186,13 +192,14 @@ fn standalone_load_datauri() {
   assert_eq!(output.stdout, b"Hello Deno!\n");
 }
 
+// https://github.com/denoland/deno/issues/13704
 #[test]
-fn standalone_compiler_ops() {
-  let dir = TempDir::new().unwrap();
+fn standalone_follow_redirects() {
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
-    dir.path().join("standalone_compiler_ops.exe")
+    dir.path().join("follow_redirects.exe")
   } else {
-    dir.path().join("standalone_compiler_ops")
+    dir.path().join("follow_redirects")
   };
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -200,7 +207,7 @@ fn standalone_compiler_ops() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_compiler_ops.ts")
+    .arg("./standalone_follow_redirects.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -215,50 +222,12 @@ fn standalone_compiler_ops() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
-}
-
-#[test]
-fn compile_with_directory_output_flag() {
-  let dir = TempDir::new().unwrap();
-  let output_path = if cfg!(windows) {
-    dir.path().join(r"args\random\")
-  } else {
-    dir.path().join("args/random/")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&output_path)
-    .arg("./standalone_compiler_ops.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let exe = if cfg!(windows) {
-    output_path.join("standalone_compiler_ops.exe")
-  } else {
-    output_path.join("standalone_compiler_ops")
-  };
-  assert!(&exe.exists());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
+  assert_eq!(output.stdout, b"Hello\n");
 }
 
 #[test]
 fn compile_with_file_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let output_path = if cfg!(windows) {
     dir.path().join(r"args\")
   } else {
@@ -293,7 +262,7 @@ fn compile_with_file_exists_error() {
 
 #[test]
 fn compile_with_directory_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -327,7 +296,7 @@ fn compile_with_directory_exists_error() {
 
 #[test]
 fn compile_with_conflict_file_exists_error() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -365,7 +334,7 @@ fn compile_with_conflict_file_exists_error() {
 
 #[test]
 fn compile_and_overwrite_file() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("args.exe")
   } else {
@@ -403,7 +372,7 @@ fn compile_and_overwrite_file() {
 
 #[test]
 fn standalone_runtime_flags() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("flags.exe")
   } else {
@@ -442,7 +411,7 @@ fn standalone_runtime_flags() {
 
 #[test]
 fn standalone_import_map() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("import_map.exe")
   } else {
@@ -477,7 +446,7 @@ fn standalone_import_map() {
 #[test]
 // https://github.com/denoland/deno/issues/12670
 fn skip_rebundle() {
-  let dir = TempDir::new().unwrap();
+  let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("hello_world.exe")
   } else {
@@ -509,4 +478,53 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, "Hello World\n".as_bytes());
+}
+
+#[test]
+fn check_local_by_default() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/check_local_by_default.ts"))
+    .status()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn check_local_by_default2() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .env("NO_COLOR", "1")
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/check_local_by_default2.ts"))
+    .output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stdout.is_empty());
+  assert!(stderr.contains(
+    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
+  ));
 }

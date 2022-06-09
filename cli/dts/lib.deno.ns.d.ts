@@ -250,6 +250,19 @@ declare namespace Deno {
   }
 
   export interface TestContext {
+    /**
+     * The current test name.
+     */
+    name: string;
+    /**
+     * File Uri of the current test code.
+     */
+    origin: string;
+    /**
+     * Parent test context.
+     */
+    parent?: TestContext;
+
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
      * The returned promise never rejects unless the arguments are invalid.
@@ -270,6 +283,9 @@ declare namespace Deno {
 
   export interface TestStepDefinition {
     fn: (t: TestContext) => void | Promise<void>;
+    /**
+     * The current test name.
+     */
     name: string;
     ignore?: boolean;
     /** Check that the number of async completed ops after the test step is the same
@@ -287,6 +303,9 @@ declare namespace Deno {
 
   export interface TestDefinition {
     fn: (t: TestContext) => void | Promise<void>;
+    /**
+     * The current test name.
+     */
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -602,8 +621,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use iter() from https://deno.land/std/io/util.ts to turn a Reader into an
-     * AsyncIterator.
+     * Use `itereateReader` from from https://deno.land/std/streams/conversion.ts to
+     * turn a Reader into an AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
@@ -627,8 +646,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use iterSync() from https://deno.land/std/io/util.ts to turn a ReaderSync
-     * into an Iterator.
+     * Use `iterateReaderSync()` from from https://deno.land/std/streams/conversion.ts
+     * to turn a ReaderSync into an Iterator.
      */
     readSync(p: Uint8Array): number | null;
   }
@@ -864,7 +883,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use Deno.readAllSync() instead.
+   * work with this directly, but rather use
+   * `readAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -888,7 +908,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use Deno.readAll() instead.
+   * work with this directly, but rather use
+   * `readAll()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -927,7 +948,7 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAll() instead.
+   * `writeAll()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -2408,13 +2429,14 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
+  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
    * const p = Deno.run({
-   *   cmd: ["echo", "hello"],
+   *   cmd: ["curl", "https://example.com"],
    * });
+   * const status = await p.status();
    * ```
    *
    * Subprocess uses same working directory as parent process unless `opt.cwd`
@@ -2472,6 +2494,8 @@ declare namespace Deno {
     getters?: boolean;
     /** Show an object's non-enumerable properties. Defaults to false. */
     showHidden?: boolean;
+    /** The maximum length of a string before it is truncated with an ellipsis */
+    strAbbreviateSize?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by
@@ -2932,9 +2956,13 @@ declare namespace Deno {
     | "A"
     | "AAAA"
     | "ANAME"
+    | "CAA"
     | "CNAME"
     | "MX"
+    | "NAPTR"
+    | "NS"
     | "PTR"
+    | "SOA"
     | "SRV"
     | "TXT";
 
@@ -2950,10 +2978,38 @@ declare namespace Deno {
     };
   }
 
+  /** If `resolveDns` is called with "CAA" record type specified, it will return an array of this interface. */
+  export interface CAARecord {
+    critical: boolean;
+    tag: string;
+    value: string;
+  }
+
   /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
   export interface MXRecord {
     preference: number;
     exchange: string;
+  }
+
+  /** If `resolveDns` is called with "NAPTR" record type specified, it will return an array of this interface. */
+  export interface NAPTRRecord {
+    order: number;
+    preference: number;
+    flags: string;
+    services: string;
+    regexp: string;
+    replacement: string;
+  }
+
+  /** If `resolveDns` is called with "SOA" record type specified, it will return an array of this interface. */
+  export interface SOARecord {
+    mname: string;
+    rname: string;
+    serial: number;
+    refresh: number;
+    retry: number;
+    expire: number;
+    minimum: number;
   }
 
   /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
@@ -2966,15 +3022,33 @@ declare namespace Deno {
 
   export function resolveDns(
     query: string,
-    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "CAA",
+    options?: ResolveDnsOptions,
+  ): Promise<CAARecord[]>;
 
   export function resolveDns(
     query: string,
     recordType: "MX",
     options?: ResolveDnsOptions,
   ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "NAPTR",
+    options?: ResolveDnsOptions,
+  ): Promise<NAPTRRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SOA",
+    options?: ResolveDnsOptions,
+  ): Promise<SOARecord[]>;
 
   export function resolveDns(
     query: string,
@@ -3009,5 +3083,13 @@ declare namespace Deno {
     query: string,
     recordType: RecordType,
     options?: ResolveDnsOptions,
-  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
+  ): Promise<
+    | string[]
+    | CAARecord[]
+    | MXRecord[]
+    | NAPTRRecord[]
+    | SOARecord[]
+    | SRVRecord[]
+    | string[][]
+  >;
 }
