@@ -269,27 +269,52 @@ fn handle_dep_specifier(
   mappings: &Mappings,
 ) {
   let specifier = graph.resolve(unresolved_specifier);
-  // do not handle specifiers pointing at local modules
-  if !is_remote_specifier(&specifier) {
-    return;
+  // check if it's referencing a remote module
+  if is_remote_specifier(&specifier) {
+    handle_remote_dep_specifier(
+      text,
+      unresolved_specifier,
+      &specifier,
+      import_map,
+      referrer,
+      mappings,
+    )
+  } else {
+    handle_local_dep_specifier(
+      text,
+      unresolved_specifier,
+      &specifier,
+      import_map,
+      referrer,
+      mappings,
+    );
   }
+}
 
-  // add an entry for every local module referrencing a remote
+fn handle_remote_dep_specifier(
+  text: &str,
+  unresolved_specifier: &ModuleSpecifier,
+  specifier: &ModuleSpecifier,
+  import_map: &mut ImportMapBuilder,
+  referrer: &ModuleSpecifier,
+  mappings: &Mappings,
+) {
   if !is_remote_specifier(referrer) {
-    import_map.imports.add(text.to_string(), &specifier);
+    // add an entry for every local module referrencing a remote
+    import_map.imports.add(text.to_string(), specifier);
     return;
   }
 
-  let base_specifier = mappings.base_specifier(&specifier);
+  let base_specifier = mappings.base_specifier(specifier);
   if is_remote_specifier_text(text) {
     if !text.starts_with(base_specifier.as_str()) {
       panic!("Expected {} to start with {}", text, base_specifier);
     }
 
-    import_map.imports.add(text.to_string(), &specifier);
+    import_map.imports.add(text.to_string(), specifier);
   } else {
     let expected_relative_specifier_text =
-      mappings.relative_specifier_text(referrer, &specifier);
+      mappings.relative_specifier_text(referrer, specifier);
     if expected_relative_specifier_text == text {
       return;
     }
@@ -299,7 +324,6 @@ fn handle_dep_specifier(
     if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
       let mut local_base_specifier = mappings.local_uri(base_specifier);
-      local_base_specifier.set_query(unresolved_specifier.query());
       local_base_specifier = local_base_specifier
         // path includes "/" so make it relative
         .join(&format!(".{}", unresolved_specifier.path()))
@@ -314,14 +338,14 @@ fn handle_dep_specifier(
 
       imports.add(
         mappings.relative_specifier_text(&base_dir, &local_base_specifier),
-        &specifier,
+        specifier,
       );
 
       // add a mapping that uses the local directory name and the remote
       // filename in order to support files importing this relatively
       imports.add(
         {
-          let local_path = mappings.local_path(&specifier);
+          let local_path = mappings.local_path(specifier);
           let mut value =
             ModuleSpecifier::from_directory_path(local_path.parent().unwrap())
               .unwrap();
@@ -333,12 +357,53 @@ fn handle_dep_specifier(
           ));
           mappings.relative_specifier_text(&base_dir, &value)
         },
-        &specifier,
+        specifier,
       );
     } else {
       // absolute (`/`) or bare specifier should be left as-is
-      imports.add(text.to_string(), &specifier);
+      imports.add(text.to_string(), specifier);
     }
+  }
+}
+
+fn handle_local_dep_specifier(
+  text: &str,
+  unresolved_specifier: &ModuleSpecifier,
+  specifier: &ModuleSpecifier,
+  import_map: &mut ImportMapBuilder,
+  referrer: &ModuleSpecifier,
+  mappings: &Mappings,
+) {
+  if !is_remote_specifier(referrer) {
+    // do not handle local modules referencing local modules
+    return;
+  }
+
+  // The remote module is referencing a local file. This could occur via an
+  // existing import map. In this case, we'll have to add an import map
+  // entry in order to map the path back to the local path once vendored.
+  let base_dir = import_map.base_dir().clone();
+  let base_specifier = mappings.base_specifier(referrer);
+  let imports = import_map.scope(base_specifier);
+
+  if text.starts_with("./") || text.starts_with("../") {
+    let referrer_local_uri = mappings.local_uri(referrer);
+    let mut specifier_local_uri =
+      referrer_local_uri.join(text).unwrap_or_else(|_| {
+        panic!(
+          "Error joining {} to {}",
+          unresolved_specifier.path(),
+          referrer_local_uri
+        )
+      });
+    specifier_local_uri.set_query(unresolved_specifier.query());
+
+    imports.add(
+      mappings.relative_specifier_text(&base_dir, &specifier_local_uri),
+      specifier,
+    );
+  } else {
+    imports.add(text.to_string(), specifier);
   }
 }
 

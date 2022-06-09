@@ -138,10 +138,8 @@ async fn create_graph(
   } else {
     None
   };
-  let maybe_import_map_resolver = ps
-    .maybe_import_map
-    .clone()
-    .map(|m| ImportMapResolver::new(m));
+  let maybe_import_map_resolver =
+    ps.maybe_import_map.clone().map(ImportMapResolver::new);
   let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
     cf.to_maybe_jsx_import_source_module()
       .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))

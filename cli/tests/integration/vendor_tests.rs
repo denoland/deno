@@ -298,7 +298,7 @@ fn existing_import_map_no_remote() {
 }
 
 #[test]
-fn existing_import_map_with_remote() {
+fn existing_import_map_mixed_with_remote() {
   let _server = http_server();
   let deno_dir = new_deno_dir();
   let t = TempDir::new();
@@ -345,7 +345,6 @@ fn existing_import_map_with_remote() {
     .arg("vendor/import_map.json")
     .arg("--output")
     .arg("vendor2")
-    .arg("--force")
     .stderr(Stdio::piped())
     .spawn()
     .unwrap();
@@ -359,12 +358,19 @@ fn existing_import_map_with_remote() {
   );
   assert!(output.status.success());
 
+  // tricky scenario here where the output directory now contains a mapping
+  // back to the previous vendor location
   assert_eq!(
     t.read_to_string("vendor2/import_map.json"),
     r#"{
   "imports": {
     "http://localhost:4545/vendor/logger.ts": "../vendor/localhost_4545/vendor/logger.ts",
     "http://localhost:4545/vendor/mod.ts": "./localhost_4545/vendor/mod.ts"
+  },
+  "scopes": {
+    "./localhost_4545/": {
+      "./localhost_4545/vendor/logger.ts": "../vendor/localhost_4545/vendor/logger.ts"
+    }
   }
 }
 "#,

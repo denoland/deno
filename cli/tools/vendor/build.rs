@@ -108,7 +108,7 @@ pub fn build(
   }
 
   // create the import map if necessary
-  if remote_modules.len() > 0 {
+  if !remote_modules.is_empty() {
     let import_map_path = output_dir.join("import_map.json");
     let import_map_text = build_import_map(
       &output_dir_specifier,
@@ -776,7 +776,7 @@ mod test {
         "./local_vendor/console_logger.ts".to_string(),
       )
       .unwrap();
-    //todo(THISPR): remote scope, local vendor folder
+
     let output = builder
       .with_loader(|loader| {
         loader.add("/mod.ts", "import 'https://localhost/mod.ts'; import 'https://localhost/other.ts';");
@@ -802,7 +802,10 @@ mod test {
           "../local_vendor/": {
             "https://localhost/logger.ts": "../local_vendor/logger.ts",
             "/console_logger.ts": "../local_vendor/console_logger.ts",
-          }
+          },
+          "./localhost/": {
+            "./localhost/mod.ts": "../local_vendor/mod.ts",
+          },
         }
       }))
     );
@@ -853,6 +856,51 @@ mod test {
         ("/vendor/deno.land/std/mod.ts", "export function test() {}"),
         ("/vendor/localhost/fresh.ts", "export function fresh() {}")
       ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_remote_absolute_specifier_local() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "https://localhost/logger.ts?test".to_string(),
+        "./local/logger.ts".to_string(),
+      )
+      .unwrap();
+
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts'; import 'https://localhost/logger.ts?test';");
+        loader.add("/local/logger.ts", "export class Logger {}");
+        // absolute specifier in a remote module that will point at ./local/logger.ts
+        loader.add("https://localhost/mod.ts", "import '/logger.ts?test';");
+        loader.add("https://localhost/logger.ts?test", "export class Logger {}");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/logger.ts?test": "../local/logger.ts",
+          "https://localhost/mod.ts": "./localhost/mod.ts",
+        },
+        "scopes": {
+          "./localhost/": {
+            "/logger.ts?test": "../local/logger.ts",
+          },
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/localhost/mod.ts", "import '/logger.ts?test';")]),
     );
   }
 
