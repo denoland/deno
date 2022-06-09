@@ -185,6 +185,11 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .build()
 }
 
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+struct NativeTypeFunction {
+}
+
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -204,7 +209,7 @@ enum NativeType {
   F32,
   F64,
   Pointer,
-  Function,
+  Function(NativeTypeFunction),
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -224,7 +229,7 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
       NativeType::Pointer => libffi::middle::Type::pointer(),
-      NativeType::Function => libffi::middle::Type::pointer(),
+      NativeType::Function(_) => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -266,7 +271,7 @@ impl NativeValue {
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
       NativeType::Pointer => Arg::new(&self.pointer),
-      NativeType::Function => Arg::new(&self.pointer),
+      NativeType::Function(_) => Arg::new(&self.pointer),
     }
   }
 }
@@ -625,16 +630,16 @@ where
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer, or ArrayBufferView"));
         }
       }
-      NativeType::Function => {
+      NativeType::Function(_) => {
         if value.is_null() {
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
         } else if value.is_number() {
           let value: ResourceId = value.uint32_value(scope).unwrap();
           let rc = resource_table.get::<RegisteredCallbackResource>(value)?;
-          let fn_ref =
-            rc.closure.code_ptr() as *const unsafe extern "C" fn() as *const u8;
-          ffi_args.push(NativeValue { pointer: fn_ref });
+          let function =
+            *rc.closure.code_ptr();
+          ffi_args.push(NativeValue { pointer: function as u64 as *const u8 });
         } else if value.is_big_int() {
           // Do we support this?
           let value = v8::Local::<v8::BigInt>::try_from(value)?;
@@ -710,7 +715,7 @@ fn ffi_call(
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
-    NativeType::Pointer | NativeType::Function => {
+    NativeType::Pointer | NativeType::Function(_) => {
       json!(U32x2::from(unsafe {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
@@ -787,10 +792,10 @@ unsafe extern "C" fn deno_ffi_callback(
       FFI_TYPE_INT => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
       FFI_TYPE_FLOAT => serde_v8::to_v8(&mut scope, *((*val) as *const f32)),
       FFI_TYPE_DOUBLE => serde_v8::to_v8(&mut scope, *((*val) as *const f64)),
-      FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-        let ptr = U32x2::from(*((*val) as *const u64));
-        serde_v8::to_v8(&mut scope, ptr)
-      }
+      // FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
+      //   let ptr = U32x2::from(*((*val) as *const u64));
+      //   serde_v8::to_v8(&mut scope, ptr)
+      // }
       FFI_TYPE_SINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const i8)),
       FFI_TYPE_UINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const u8)),
       FFI_TYPE_SINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const i16)),
@@ -798,7 +803,7 @@ unsafe extern "C" fn deno_ffi_callback(
       FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
       FFI_TYPE_UINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const u32)),
       FFI_TYPE_SINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const i64)),
-      FFI_TYPE_UINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const u64)),
+      FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const u64)),
       FFI_TYPE_VOID => serde_v8::to_v8(&mut scope, ()),
       _ => {
         panic!("Unsupported parameter type")
@@ -814,7 +819,7 @@ unsafe extern "C" fn deno_ffi_callback(
   };
 
   std::mem::forget(callback);
-
+  
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
       *(result as *mut i32) = serde_v8::from_v8(&mut scope, value)
@@ -994,7 +999,14 @@ where
     &symbol.parameter_types,
     &state.resource_table,
   )?;
-  ffi_call(call_args, &symbol)
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(false));
+  });
+  let result = ffi_call(call_args, &symbol);
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(true));
+  });
+  result
 }
 
 //#[op(v8)]
@@ -1087,7 +1099,7 @@ fn op_ffi_get_static(
     NativeType::F64 => {
       json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
     }
-    NativeType::Pointer | NativeType::Function => {
+    NativeType::Pointer | NativeType::Function(_) => {
       json!(U32x2::from(data_ptr as *const u8 as u64))
     }
   })
@@ -1096,26 +1108,38 @@ fn op_ffi_get_static(
 #[op(v8)]
 fn op_ffi_call(
   scope: &mut v8::HandleScope,
-  state: &mut deno_core::OpState,
+  state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
 ) -> Result<Value, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
+  let (symbol, call_args) = {
+    let state = &mut state.borrow_mut();
+    let resource = state
+      .resource_table
+      .get::<DynamicLibraryResource>(args.rid)?;
+  
+    let symbol = resource
+      .symbols
+      .get(&args.symbol)
+      .ok_or_else(bad_resource_id)?
+      .clone();
+  
+    let call_args = ffi_parse_args(
+      unsafe { std::mem::transmute(scope) },
+      args.parameters,
+      &symbol.parameter_types,
+      &state.resource_table,
+    )?;
+    (symbol, call_args)
+  };
 
-  let symbol = resource
-    .symbols
-    .get(&args.symbol)
-    .ok_or_else(bad_resource_id)?;
-
-  let call_args = ffi_parse_args(
-    unsafe { std::mem::transmute(scope) },
-    args.parameters,
-    &symbol.parameter_types,
-    &state.resource_table,
-  )?;
-
-  ffi_call(call_args, symbol)
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(false));
+  });
+  let result = ffi_call(call_args, &symbol);
+  CREATE_SCOPE.with(|s| {
+    s.replace(Some(true));
+  });
+  result
 }
 
 /// A non-blocking FFI call.

@@ -181,7 +181,7 @@
         }
 
         parameters.push(arg);
-      } else if (type === "function") {
+      } else if (typeof type === "object" && type !== null && "function" in type) {
         if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
           parameters.push(arg[_rid]);
         } else {
