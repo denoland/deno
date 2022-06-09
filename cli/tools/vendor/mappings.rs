@@ -182,6 +182,10 @@ impl Mappings {
     }
   }
 
+  pub fn base_specifiers(&self) -> &Vec<ModuleSpecifier> {
+    &self.base_specifiers
+  }
+
   pub fn base_specifier(
     &self,
     child_specifier: &ModuleSpecifier,

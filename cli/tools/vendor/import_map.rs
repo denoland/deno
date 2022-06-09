@@ -183,6 +183,12 @@ pub fn build_import_map(
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
   visit_modules(graph, modules, mappings, &mut builder);
 
+  for base_specifier in mappings.base_specifiers() {
+    builder
+      .imports
+      .add(base_specifier.to_string(), base_specifier);
+  }
+
   builder.into_import_map(original_import_map).to_json()
 }
 
@@ -299,19 +305,18 @@ fn handle_remote_dep_specifier(
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
 ) {
-  if !is_remote_specifier(referrer) {
-    // add an entry for every local module referrencing a remote
-    import_map.imports.add(text.to_string(), specifier);
-    return;
-  }
-
-  let base_specifier = mappings.base_specifier(specifier);
   if is_remote_specifier_text(text) {
+    let base_specifier = mappings.base_specifier(specifier);
     if !text.starts_with(base_specifier.as_str()) {
       panic!("Expected {} to start with {}", text, base_specifier);
     }
 
-    import_map.imports.add(text.to_string(), specifier);
+    let sub_path = &text[base_specifier.as_str().len()..];
+    let expected_relative_specifier_text =
+      mappings.relative_path(base_specifier, specifier);
+    if expected_relative_specifier_text != sub_path {
+      import_map.imports.add(text.to_string(), specifier);
+    }
   } else {
     let expected_relative_specifier_text =
       mappings.relative_specifier_text(referrer, specifier);
@@ -319,6 +324,15 @@ fn handle_remote_dep_specifier(
       return;
     }
 
+    if !is_remote_specifier(referrer) {
+      // local module referencing a remote module using
+      // non-remote specifier text means it was something in
+      // the original import map, so add a mapping to it
+      import_map.imports.add(text.to_string(), specifier);
+      return;
+    }
+
+    let base_specifier = mappings.base_specifier(specifier);
     let base_dir = import_map.base_dir().clone();
     let imports = import_map.scope(base_specifier);
     if text.starts_with("./") || text.starts_with("../") {

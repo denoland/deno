@@ -244,9 +244,9 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./localhost/mod.ts",
           "https://localhost/other.ts?test": "./localhost/other.ts",
           "https://localhost/redirect.ts": "./localhost/mod.ts",
+          "https://localhost/": "./localhost/",
         }
       }))
     );
@@ -312,10 +312,9 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./localhost/mod.ts",
-          "https://other/mod.ts": "./other/mod.ts",
-          "https://localhost/other.ts": "./localhost/other.ts",
+          "https://localhost/": "./localhost/",
           "https://localhost/redirect.ts": "./localhost/other.ts",
+          "https://other/": "./other/",
         },
         "scopes": {
           "./localhost/": {
@@ -387,11 +386,10 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/CAPS.TS": "./localhost/CAPS.TS",
-          "https://localhost/MOD.TS": "./localhost/MOD.TS",
           "https://localhost/mod.TS": "./localhost/mod_2.TS",
           "https://localhost/mod.ts": "./localhost/mod_3.ts",
           "https://localhost/mod.ts?test": "./localhost/mod_4.ts",
+          "https://localhost/": "./localhost/",
         }
       }))
     );
@@ -430,8 +428,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./localhost/mod.ts",
-          "https://localhost/test.ts": "./localhost/test.ts",
+          "https://localhost/": "./localhost/",
         }
       }))
     );
@@ -464,7 +461,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/data.json": "./localhost/data.json"
+          "https://localhost/": "./localhost/"
         }
       }))
     );
@@ -494,7 +491,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./localhost/mod.ts"
+          "https://localhost/": "./localhost/"
         }
       }))
     );
@@ -526,7 +523,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.js": "./localhost/mod.js"
+          "https://localhost/": "./localhost/"
         }
       }))
     );
@@ -568,7 +565,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.js": "./localhost/mod.js"
+          "https://localhost/": "./localhost/"
         }
       }))
     );
@@ -620,6 +617,7 @@ mod test {
       Some(json!({
         "imports": {
           "http://localhost:4545/sub/logger/mod.ts?testing": "./localhost_4545/sub/logger/mod.ts",
+          "http://localhost:4545/": "./localhost_4545/",
         },
         "scopes": {
           "./localhost_4545/": {
@@ -674,8 +672,8 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/subdir/sub/mod.ts": "./localhost/subdir/sub/mod.ts",
-            "https://localhost/std/hash/mod.ts": "./localhost/std@0.1.0/hash/mod.ts"
+          "https://localhost/std/hash/mod.ts": "./localhost/std@0.1.0/hash/mod.ts",
+          "https://localhost/": "./localhost/",
         },
       }))
     );
@@ -723,7 +721,7 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
-          "https://localhost/mod.ts": "./localhost/mod.ts"
+          "https://localhost/": "./localhost/"
         },
         "scopes": {
           "./localhost/": {
@@ -796,7 +794,7 @@ mod test {
       Some(json!({
         "imports": {
           "https://localhost/mod.ts": "../local_vendor/mod.ts",
-          "https://localhost/other.ts": "./localhost/other.ts"
+          "https://localhost/": "./localhost/"
         },
         "scopes": {
           "../local_vendor/": {
@@ -845,6 +843,8 @@ mod test {
       output.import_map,
       Some(json!({
         "imports": {
+          "https://deno.land/": "./deno.land/",
+          "https://localhost/": "./localhost/",
           "$fresh": "./localhost/fresh.ts",
           "std/mod.ts": "./deno.land/std/mod.ts",
         },
@@ -889,7 +889,7 @@ mod test {
       Some(json!({
         "imports": {
           "https://localhost/logger.ts?test": "../local/logger.ts",
-          "https://localhost/mod.ts": "./localhost/mod.ts",
+          "https://localhost/": "./localhost/",
         },
         "scopes": {
           "./localhost/": {

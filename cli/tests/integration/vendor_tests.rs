@@ -146,6 +146,7 @@ fn standard_test() {
     json!({
       "imports": {
         "http://localhost:4545/vendor/query_reexport.ts?testing": "./localhost_4545/vendor/query_reexport.ts",
+        "http://localhost:4545/": "./localhost_4545/",
       },
       "scopes": {
         "./localhost_4545/": {
@@ -215,9 +216,12 @@ fn remote_module_test() {
   assert_eq!(
     import_map,
     json!({
+      "imports": {
+        "http://localhost:4545/": "./localhost_4545/",
+      },
       "scopes": {
         "./localhost_4545/": {
-          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts"
+          "./localhost_4545/vendor/logger.ts?test": "./localhost_4545/vendor/logger.ts",
         }
       }
     }),
@@ -284,6 +288,17 @@ fn existing_import_map_mixed_with_remote() {
     t.read_to_string("vendor/import_map.json"),
     r#"{
   "imports": {
+    "http://localhost:4545/": "./localhost_4545/"
+  }
+}
+"#,
+  );
+
+  // make the import map specific to support vendoring mod.ts in the next step
+  t.write(
+    "vendor/import_map.json",
+    r#"{
+  "imports": {
     "http://localhost:4545/vendor/logger.ts": "./localhost_4545/vendor/logger.ts"
   }
 }
@@ -328,7 +343,7 @@ fn existing_import_map_mixed_with_remote() {
     r#"{
   "imports": {
     "http://localhost:4545/vendor/logger.ts": "../vendor/localhost_4545/vendor/logger.ts",
-    "http://localhost:4545/vendor/mod.ts": "./localhost_4545/vendor/mod.ts"
+    "http://localhost:4545/": "./localhost_4545/"
   },
   "scopes": {
     "./localhost_4545/": {
@@ -379,7 +394,7 @@ fn dynamic_import() {
     import_map,
     json!({
       "imports": {
-        "http://localhost:4545/vendor/dynamic.ts": "./localhost_4545/vendor/dynamic.ts",
+        "http://localhost:4545/": "./localhost_4545/",
       }
     }),
   );
