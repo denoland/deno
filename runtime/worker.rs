@@ -364,6 +364,22 @@ impl MainWorker {
       "dispatchEvent(new Event('unload'))",
     )
   }
+
+  /// Dispatches "beforeunload" event to the JavaScript runtime.
+  ///
+  /// Any async work dispatched here will keep the event loop alive.
+  pub fn dispatch_beforeunload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('beforeunload'))",
+    )
+  }
 }
 
 #[cfg(test)]

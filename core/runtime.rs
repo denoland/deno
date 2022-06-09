@@ -1000,6 +1000,30 @@ Pending dynamic modules:\n".to_string();
 
     Poll::Pending
   }
+
+  pub fn event_loop_has_work(&mut self) -> bool {
+    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    let state = state_rc.borrow_mut();
+    let module_map = module_map_rc.borrow();
+
+    let has_pending_refed_ops =
+      state.pending_ops.len() > state.unrefed_ops.len();
+    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
+    let has_pending_dyn_module_evaluation =
+      !state.pending_dyn_mod_evaluate.is_empty();
+    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
+    let has_pending_background_tasks =
+      self.v8_isolate().has_pending_background_tasks();
+    let has_tick_scheduled = state.has_tick_scheduled;
+
+    has_pending_refed_ops
+      || has_pending_dyn_imports
+      || has_pending_dyn_module_evaluation
+      || has_pending_module_evaluation
+      || has_pending_background_tasks
+      || has_tick_scheduled
+  }
 }
 
 extern "C" fn near_heap_limit_callback<F>(

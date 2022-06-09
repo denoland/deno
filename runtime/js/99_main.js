@@ -580,6 +580,7 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(window, "error");
     defineEventHandler(window, "load");
+    defineEventHandler(window, "beforeunload");
     defineEventHandler(window, "unload");
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");

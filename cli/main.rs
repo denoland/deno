@@ -1174,9 +1174,18 @@ async fn run_command(
   }
 
   worker.dispatch_load_event(&located_script_name!())?;
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
+
+  loop {
+    worker
+      .run_event_loop(maybe_coverage_collector.is_none())
+      .await?;
+    worker.dispatch_beforeunload_event(&located_script_name!())?;
+
+    if !worker.js_runtime.event_loop_has_work() {
+      break;
+    }
+  }
+
   worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
