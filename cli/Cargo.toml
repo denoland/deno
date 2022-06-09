@@ -92,6 +92,15 @@ secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name 
 semver-parser = "=0.10.2"
 serde = { version = "=1.0.136", features = ["derive"] }
 shell-escape = "=0.1.5"
+# temporary pins because swc did a broken publish
+swc_common = "=0.18.5"
+swc_ecma_codegen = "=0.108.2"
+swc_ecma_codegen_macros = "=0.7.0"
+swc_ecma_loader = "=0.30.1"
+swc_ecma_parser = "=0.104.0"
+swc_ecma_transforms_base = "=0.85.0"
+swc_ecma_transforms_typescript = "=0.117.0"
+swc_ecma_utils = "=0.85.0"
 text-size = "=1.1.0"
 text_lines = "=0.4.1"
 tokio = { version = "=1.17", features = ["full"] }
