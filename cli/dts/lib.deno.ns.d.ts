@@ -3046,7 +3046,35 @@ declare namespace Deno {
 
   export function resolveDns(
     query: string,
-    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
+    recordType:
+      | "A"
+      | "AAAA"
+      | "ANAME"
+      | "ANY"
+      | "AXFR"
+      | "CDNSKEY"
+      | "CDS"
+      | "CSYNC"
+      | "DNSKEY"
+      | "DS"
+      | "HINFO"
+      | "HTTPS"
+      | "IXFR"
+      | "KEY"
+      | "NSEC"
+      | "NSEC3"
+      | "NSEC3PARAM"
+      | "OPENGPGKEY"
+      | "OPT"
+      | "NULL"
+      | "RRSIG"
+      | "SIG"
+      | "SSHFP"
+      | "SVCB"
+      | "TLSA"
+      | "TXT"
+      | "Unknown"
+      | "ZERO",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
 
