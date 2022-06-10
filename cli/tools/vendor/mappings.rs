@@ -14,6 +14,7 @@ use deno_graph::Position;
 use deno_graph::Resolved;
 
 use crate::fs_util::path_with_stem_suffix;
+use crate::fs_util::relative_specifier;
 
 use super::specifiers::dir_name_for_root;
 use super::specifiers::get_unique_path;
@@ -140,46 +141,14 @@ impl Mappings {
     }
   }
 
-  pub fn relative_path(
-    &self,
-    from: &ModuleSpecifier,
-    to: &ModuleSpecifier,
-  ) -> String {
-    let mut from = self.local_uri(from);
-    let to = self.local_uri(to);
-    let is_dir = to.path().ends_with('/');
-
-    if is_dir && from == to {
-      return "./".to_string();
-    }
-
-    // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
-    if !from.path().ends_with('/') {
-      let local_path = self.local_path(&from);
-      from = ModuleSpecifier::from_directory_path(local_path.parent().unwrap())
-        .unwrap();
-    }
-
-    // workaround for url crate not adding a trailing slash for a directory
-    // it seems to be fixed once a version greater than 2.2.2 is released
-    let mut text = from.make_relative(&to).unwrap();
-    if is_dir && !text.ends_with('/') && to.query().is_none() {
-      text.push('/');
-    }
-    text
-  }
-
   pub fn relative_specifier_text(
     &self,
     from: &ModuleSpecifier,
     to: &ModuleSpecifier,
   ) -> String {
-    let relative_path = self.relative_path(from, to);
-    if relative_path.starts_with("../") || relative_path.starts_with("./") {
-      relative_path
-    } else {
-      format!("./{}", relative_path)
-    }
+    let from = self.local_uri(from);
+    let to = self.local_uri(to);
+    relative_specifier(&from, &to).unwrap()
   }
 
   pub fn base_specifiers(&self) -> &Vec<ModuleSpecifier> {

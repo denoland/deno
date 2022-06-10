@@ -312,9 +312,10 @@ fn handle_remote_dep_specifier(
     }
 
     let sub_path = &text[base_specifier.as_str().len()..];
-    let expected_relative_specifier_text =
-      mappings.relative_path(base_specifier, specifier);
-    if expected_relative_specifier_text != sub_path {
+    let relative_text =
+      mappings.relative_specifier_text(base_specifier, specifier);
+    let expected_sub_path = relative_text.trim_start_matches("./");
+    if expected_sub_path != sub_path {
       import_map.imports.add(text.to_string(), specifier);
     }
   } else {
