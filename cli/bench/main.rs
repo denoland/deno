@@ -497,7 +497,7 @@ async fn main() -> Result<()> {
     write_metrics_hashmap(&mut datapoints, "max_memory", &max_memory);
   }
 
-  deno_bench_util::metrics::submit(datapoints).await?;
+  deno_bench_util::metrics::submit(datapoints).await.unwrap();
   Ok(())
 }
 
