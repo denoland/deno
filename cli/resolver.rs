@@ -34,8 +34,11 @@ impl Resolver for ImportMapResolver {
         // todo(THIS PR): remove - temp debugging
         if resolved_specifier.as_str().contains("../") {
           panic!(
-            "RESOLVER Specifier contained ../: {} - {} - {}",
-            resolved_specifier, specifier, referrer
+            "RESOLVER Specifier contained ../: {} - {} - {} - {}",
+            resolved_specifier,
+            specifier,
+            referrer,
+            self.0.base_url()
           );
         }
         ResolveResponse::Specifier(resolved_specifier)
