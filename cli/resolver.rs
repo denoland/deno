@@ -30,19 +30,7 @@ impl Resolver for ImportMapResolver {
     referrer: &ModuleSpecifier,
   ) -> ResolveResponse {
     match self.0.resolve(specifier, referrer) {
-      Ok(resolved_specifier) => {
-        // todo(THIS PR): remove - temp debugging
-        if resolved_specifier.as_str().contains("../") {
-          panic!(
-            "RESOLVER Specifier contained ../: {} - {} - {} - {}",
-            resolved_specifier,
-            specifier,
-            referrer,
-            self.0.base_url()
-          );
-        }
-        ResolveResponse::Specifier(resolved_specifier)
-      }
+      Ok(resolved_specifier) => ResolveResponse::Specifier(resolved_specifier),
       Err(err) => ResolveResponse::Err(err.into()),
     }
   }
