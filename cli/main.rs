@@ -179,7 +179,7 @@ fn create_web_worker_callback(
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      maybe_exit_code: args.maybe_exit_code,
+      exit_code: args.exit_code,
       stdio: stdio.clone(),
     };
 
@@ -758,7 +758,7 @@ fn bundle_module_graph(
   graph: &deno_graph::ModuleGraph,
   ps: &ProcState,
   flags: &Flags,
-) -> Result<(String, Option<String>), AnyError> {
+) -> Result<deno_emit::BundleEmit, AnyError> {
   info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
 
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
@@ -772,11 +772,11 @@ fn bundle_module_graph(
     }
   }
 
-  emit::bundle(
+  deno_emit::bundle_graph(
     graph,
-    emit::BundleOptions {
-      bundle_type: emit::BundleType::Module,
-      ts_config,
+    deno_emit::BundleOptions {
+      bundle_type: deno_emit::BundleType::Module,
+      emit_options: ts_config.into(),
       emit_ignore_directives: true,
     },
   )
@@ -836,12 +836,11 @@ async fn bundle_command(
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let out_file = bundle_flags.out_file.clone();
     async move {
-      let (bundle_emit, maybe_bundle_map) =
-        bundle_module_graph(graph.as_ref(), &ps, &ps.flags)?;
+      let bundle_output = bundle_module_graph(graph.as_ref(), &ps, &ps.flags)?;
       debug!(">>>>> bundle END");
 
       if let Some(out_file) = out_file.as_ref() {
-        let output_bytes = bundle_emit.as_bytes();
+        let output_bytes = bundle_output.code.as_bytes();
         let output_len = output_bytes.len();
         fs_util::write_file(out_file, output_bytes, 0o644)?;
         info!(
@@ -850,7 +849,7 @@ async fn bundle_command(
           out_file,
           colors::gray(display::human_size(output_len as f64))
         );
-        if let Some(bundle_map) = maybe_bundle_map {
+        if let Some(bundle_map) = bundle_output.maybe_map {
           let map_bytes = bundle_map.as_bytes();
           let map_len = map_bytes.len();
           let ext = if let Some(curr_ext) = out_file.extension() {
@@ -868,7 +867,7 @@ async fn bundle_command(
           );
         }
       } else {
-        println!("{}", bundle_emit);
+        println!("{}", bundle_output.code);
       }
 
       Ok(())
@@ -996,100 +995,6 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
-  let flags = Arc::new(flags);
-  let resolver = |_| {
-    let script1 = script.clone();
-    let script2 = script.clone();
-    let flags = flags.clone();
-    let watch_flag = flags.watch.clone();
-    async move {
-      let main_module = resolve_url_or_path(&script1)?;
-      let ps = ProcState::build(flags).await?;
-      let mut cache = cache::FetchCacher::new(
-        ps.dir.gen_cache.clone(),
-        ps.file_fetcher.clone(),
-        Permissions::allow_all(),
-        Permissions::allow_all(),
-      );
-      let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-      let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
-        config_file.to_maybe_imports()?
-      } else {
-        None
-      };
-      let maybe_import_map_resolver =
-        ps.maybe_import_map.clone().map(ImportMapResolver::new);
-      let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      });
-      let maybe_resolver = if maybe_jsx_resolver.is_some() {
-        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-      } else {
-        maybe_import_map_resolver
-          .as_ref()
-          .map(|im| im.as_resolver())
-      };
-      let graph = deno_graph::create_graph(
-        vec![(main_module.clone(), deno_graph::ModuleKind::Esm)],
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await;
-      let check_js = ps
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| cf.get_check_js())
-        .unwrap_or(false);
-      graph_valid(
-        &graph,
-        ps.flags.type_check_mode != flags::TypeCheckMode::None,
-        check_js,
-      )?;
-
-      // Find all local files in graph
-      let mut paths_to_watch: Vec<PathBuf> = graph
-        .specifiers()
-        .iter()
-        .filter_map(|(_, r)| {
-          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
-        })
-        .collect();
-
-      // Add the extra files listed in the watch flag
-      if let Some(watch_paths) = watch_flag {
-        paths_to_watch.extend(watch_paths);
-      }
-
-      if let Ok(Some(import_map_path)) =
-        config_file::resolve_import_map_specifier(
-          ps.flags.import_map_path.as_deref(),
-          ps.maybe_config_file.as_ref(),
-        )
-        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-      {
-        paths_to_watch.push(import_map_path);
-      }
-
-      Ok((paths_to_watch, main_module, ps))
-    }
-    .map(move |result| match result {
-      Ok((paths_to_watch, module_info, ps)) => ResolutionResult::Restart {
-        paths_to_watch,
-        result: Ok((ps, module_info)),
-      },
-      Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(script2)],
-        result: Err(e),
-      },
-    })
-  };
-
   /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
   /// state of any pending events and emitting accordingly on drop in the case of a future
   /// cancellation.
@@ -1145,10 +1050,19 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   }
 
-  let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
+  let flags = Arc::new(flags);
+  let main_module = resolve_url_or_path(&script)?;
+  let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+
+  let operation = |(sender, main_module): (
+    tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+    ModuleSpecifier,
+  )| {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options());
     async move {
+      let ps = ProcState::build_for_file_watcher(flags.clone(), sender.clone())
+        .await?;
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
@@ -1168,15 +1082,17 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   };
 
-  file_watcher::watch_func(
-    resolver,
+  file_watcher::watch_func2(
+    receiver,
     operation,
+    (sender, main_module),
     file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,
     },
   )
   .await?;
+
   Ok(0)
 }
 

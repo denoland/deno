@@ -220,7 +220,7 @@
     timerInfo.promiseId =
       sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
     if (!timerInfo.isRef) {
-      core.unrefOp(timerInfo.promiseId);
+      core.opSync("op_unref_op", timerInfo.promiseId);
     }
 
     /** @type {ScheduledTimer} */
@@ -353,7 +353,7 @@
       return;
     }
     timerInfo.isRef = true;
-    core.refOp(timerInfo.promiseId);
+    core.opSync("op_ref_op", timerInfo.promiseId);
   }
 
   function unrefTimer(id) {
@@ -362,7 +362,7 @@
       return;
     }
     timerInfo.isRef = false;
-    core.unrefOp(timerInfo.promiseId);
+    core.opSync("op_unref_op", timerInfo.promiseId);
   }
 
   window.__bootstrap.timers = {

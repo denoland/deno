@@ -152,6 +152,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -386,6 +387,7 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_uncaught_exception_cb: None,
+      js_format_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
@@ -1994,6 +1996,9 @@ pub mod tests {
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
+      get_error_class_fn: Some(&|error| {
+        crate::error::get_custom_error_class(error).unwrap()
+      }),
       ..Default::default()
     });
 
@@ -2072,8 +2077,8 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.unrefOp(p1[promiseIdSymbol]);
-        Deno.core.unrefOp(p2[promiseIdSymbol]);
+        Deno.core.opSync("op_unref_op", p1[promiseIdSymbol]);
+        Deno.core.opSync("op_unref_op", p2[promiseIdSymbol]);
         "#,
       )
       .unwrap();
@@ -2088,8 +2093,8 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.refOp(p1[promiseIdSymbol]);
-        Deno.core.refOp(p2[promiseIdSymbol]);
+        Deno.core.opSync("op_ref_op", p1[promiseIdSymbol]);
+        Deno.core.opSync("op_ref_op", p2[promiseIdSymbol]);
         "#,
       )
       .unwrap();
@@ -2794,26 +2799,11 @@ assertEquals(1, notify_return_value);
         "is_proxy.js",
         r#"
       (function () {
-        const { isProxy } = Deno.core;
         const o = { a: 1, b: 2};
         const p = new Proxy(o, {});
-        return isProxy(p) && !isProxy(o) && !isProxy(42);
+        return Deno.core.opSync("op_is_proxy", p) && !Deno.core.opSync("op_is_proxy", o) && !Deno.core.opSync("op_is_proxy", 42);
       })()
     "#,
-      )
-      .unwrap();
-    let mut scope = runtime.handle_scope();
-    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
-    assert!(all_true.is_true());
-  }
-
-  #[test]
-  fn test_binding_names() {
-    let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    let all_true: v8::Global<v8::Value> = runtime
-      .execute_script(
-        "binding_names.js",
-        "Deno.core.encode.toString() === 'function encode() { [native code] }'",
       )
       .unwrap();
     let mut scope = runtime.handle_scope();
@@ -2888,16 +2878,16 @@ assertEquals(1, notify_return_value);
         r#"
         (async function () {
           const results = [];
-          Deno.core.setMacrotaskCallback(() => {
+          Deno.core.opSync("op_set_macrotask_callback", () => {
             results.push("macrotask");
             return true;
           });
-          Deno.core.setNextTickCallback(() => {
+          Deno.core.opSync("op_set_next_tick_callback", () => {
             results.push("nextTick");
-            Deno.core.setHasTickScheduled(false);
+            Deno.core.opSync("op_set_has_tick_scheduled", false);
           });
 
-          Deno.core.setHasTickScheduled(true);
+          Deno.core.opSync("op_set_has_tick_scheduled", true);
           await Deno.core.opAsync('op_async_sleep');
           if (results[0] != "nextTick") {
             throw new Error(`expected nextTick, got: ${results[0]}`);
@@ -2920,10 +2910,10 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "multiple_macrotasks_and_nextticks.js",
         r#"
-        Deno.core.setMacrotaskCallback(() => { return true; });
-        Deno.core.setMacrotaskCallback(() => { return true; });
-        Deno.core.setNextTickCallback(() => {});
-        Deno.core.setNextTickCallback(() => {});
+        Deno.core.opSync("op_set_macrotask_callback", () => { return true; });
+        Deno.core.opSync("op_set_macrotask_callback", () => { return true; });
+        Deno.core.opSync("op_set_next_tick_callback", () => {});
+        Deno.core.opSync("op_set_next_tick_callback", () => {});
         "#,
       )
       .unwrap();
@@ -2966,12 +2956,12 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "has_tick_scheduled.js",
         r#"
-          Deno.core.setMacrotaskCallback(() => {
+          Deno.core.opSync("op_set_macrotask_callback", () => {
             Deno.core.opSync("op_macrotask");
             return true; // We're done.
           });
-          Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
-          Deno.core.setHasTickScheduled(true);
+          Deno.core.opSync("op_set_next_tick_callback", () => Deno.core.opSync("op_next_tick"));
+          Deno.core.opSync("op_set_has_tick_scheduled", true);
           "#,
       )
       .unwrap();
@@ -3107,7 +3097,7 @@ assertEquals(1, notify_return_value);
         "promise_reject_callback.js",
         r#"
         // Note: |promise| is not the promise created below, it's a child.
-        Deno.core.setPromiseRejectCallback((type, promise, reason) => {
+        Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
           if (type !== /* PromiseRejectWithNoHandler */ 0) {
             throw Error("unexpected type: " + type);
           }
@@ -3118,7 +3108,7 @@ assertEquals(1, notify_return_value);
           throw Error("promiseReject"); // Triggers uncaughtException handler.
         });
 
-        Deno.core.setUncaughtExceptionCallback((err) => {
+        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
           if (err.message !== "promiseReject") throw err;
           Deno.core.opSync("op_uncaught_exception");
         });
@@ -3137,13 +3127,13 @@ assertEquals(1, notify_return_value);
         "promise_reject_callback.js",
         r#"
         {
-          const prev = Deno.core.setPromiseRejectCallback((...args) => {
+          const prev = Deno.core.opSync("op_set_promise_reject_callback", (...args) => {
             prev(...args);
           });
         }
 
         {
-          const prev = Deno.core.setUncaughtExceptionCallback((...args) => {
+          const prev = Deno.core.opSync("op_set_uncaught_exception_callback", (...args) => {
             prev(...args);
             throw Error("fail");
           });
@@ -3405,5 +3395,53 @@ assertEquals(1, notify_return_value);
 
     let scope = &mut realm.handle_scope(&mut runtime);
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
+  }
+
+  #[test]
+  fn js_realm_sync_ops() {
+    // Test that returning a ZeroCopyBuf and throwing an exception from a sync
+    // op result in objects with prototypes from the right realm. Note that we
+    // don't test the result of returning structs, because they will be
+    // serialized to objects with null prototype.
+
+    #[op]
+    fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
+      if !fail {
+        Ok(ZeroCopyBuf::empty())
+      } else {
+        Err(crate::error::type_error("Test"))
+      }
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      get_error_class_fn: Some(&|error| {
+        crate::error::get_custom_error_class(error).unwrap()
+      }),
+      ..Default::default()
+    });
+    let new_realm = runtime.create_realm().unwrap();
+
+    // Test in both realms
+    for realm in [runtime.global_realm(), new_realm].into_iter() {
+      let ret = realm
+        .execute_script(
+          &mut runtime,
+          "",
+          r#"
+            const buf = Deno.core.opSync("op_test", false);
+            let err;
+            try {
+              Deno.core.opSync("op_test", true);
+            } catch(e) {
+              err = e;
+            }
+            buf instanceof Uint8Array && buf.byteLength === 0 &&
+            err instanceof TypeError && err.message === "Test"
+          "#,
+        )
+        .unwrap();
+      assert!(ret.open(runtime.v8_isolate()).is_true());
+    }
   }
 }

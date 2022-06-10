@@ -108,7 +108,7 @@ impl OpResult {
   }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpError {
   #[serde(rename = "$err_class_name")]

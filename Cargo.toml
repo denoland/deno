@@ -42,7 +42,6 @@ lto = true
 opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
-#
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 

@@ -1,1 +1,1 @@
-throw {};
+throw { foo: "bar" };
