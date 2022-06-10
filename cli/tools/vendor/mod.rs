@@ -90,7 +90,8 @@ fn validate_output_dir(
       })?;
 
     if import_map_path.starts_with(&output_dir) {
-      let cwd = std::env::current_dir()?;
+      // canonicalize to make the test for this pass on the CI
+      let cwd = fs_util::canonicalize_path(&std::env::current_dir()?)?;
       // We don't allow using the output directory to help generate the
       // new state because this may lead to cryptic error messages.
       bail!(
