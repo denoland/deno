@@ -503,25 +503,22 @@ fn update_existing_config_test() {
   assert!(output.status.success());
 
   // try running the output with `--no-remote` and not specifying a `--vendor`
-  let mut deno = util::deno_cmd()
+  let deno = util::deno_cmd()
     .current_dir(t.path())
     .env("NO_COLOR", "1")
     .arg("run")
-    .arg("-L")
-    .arg("debug")
     .arg("--no-remote")
     .arg("--check")
     .arg("--quiet")
     .arg("my_app.ts")
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap();
-  let _output = deno.wait().unwrap();
-  // todo(this pr): remove... temporary for debugging
-  /*assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "");
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "");
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted");
-  assert!(output.status.success());*/
+  assert!(output.status.success());
 }
 
 fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {

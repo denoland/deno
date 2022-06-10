@@ -340,6 +340,14 @@ pub fn check_and_maybe_emit(
     return Ok(Default::default());
   }
   let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
+
+  // todo(THIS PR): REMOVE THIS - debugging on the CI because I can't reproduce this locally
+  for (specifier, _) in &root_names {
+    if specifier.as_str().contains("../") {
+      panic!("Specifier contained ../: {}", specifier);
+    }
+  }
+
   if options.log_checks {
     for (root, _) in roots {
       let root_str = root.to_string();
