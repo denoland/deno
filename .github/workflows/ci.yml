@@ -34,10 +34,6 @@ jobs:
             profile: release
             use_sysroot: true
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
-            job: bench
-            profile: release
-            use_sysroot: true
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
@@ -499,12 +495,6 @@ jobs:
         run: |
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
-
-      - name: Worker info
-        if: matrix.job == 'bench'
-        run: |
-          cat /proc/cpuinfo
-          cat /proc/meminfo
 
       - name: Upload release to dl.deno.land (unix)
         if: |

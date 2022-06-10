@@ -35,5 +35,10 @@ jobs:
       - name: Build release
         run: cargo build --release --locked --all-targets
       
+      - name: Worker info
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
+
       - name: Run and Post benchmarks
         run: cargo bench --locked
