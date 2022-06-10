@@ -37,7 +37,7 @@ use std::ptr;
 use std::rc::Rc;
 
 thread_local! {
-  static CREATE_SCOPE: RefCell<Option<bool>> = RefCell::new(None);
+  static IS_EVENT_LOOP_THREAD: RefCell<bool> = RefCell::new(false);
 }
 
 pub struct Unstable(pub bool);
@@ -96,7 +96,7 @@ impl DynamicLibraryResource {
     name: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
-    CREATE_SCOPE.with(|s| s.replace(Some(true)));
+    IS_EVENT_LOOP_THREAD.with(|s| s.replace(true));
     let symbol = match &foreign_fn.name {
       Some(symbol) => symbol,
       None => &name,
@@ -761,23 +761,17 @@ unsafe extern "C" fn deno_ffi_callback(
     NonNull<v8::Context>,
     v8::Local<v8::Context>,
   >(info.context);
-  let mut cb_scope = v8::CallbackScope::new(context);
-  let mut scope = CREATE_SCOPE.with(|s| match *s.borrow() {
-    Some(create_scope) => {
-      if create_scope {
-        // Call from main thread without an active scope.
-        // This shouldn't really be possible but here we are.
-        v8::HandleScope::with_context(isolate, context)
-      } else {
-        // Call from main thread with an active scope in existence, piggyback on it.
-        v8::HandleScope::new(&mut cb_scope)
-      }
-    }
-    None => {
+  IS_EVENT_LOOP_THREAD.with(|is_event_loop_thread| {
+    if !(*is_event_loop_thread.borrow()) {
       // Call from another thread, PANIC IN THE DISCO!
       todo!("Call from another thread");
     }
   });
+  // Call from main thread: Presume a scope exists already.
+  // If there wasn't then deno_ffi_callback would be getting called
+  // by eg. an FFI side interrupt but it's not clear if that's possible.
+  let mut cb_scope = v8::CallbackScope::new(context);
+  let mut scope = v8::HandleScope::new(&mut cb_scope);
   let func = callback.open(&mut scope);
   let result = result as *mut c_void;
   let repr: &[*mut ffi_type] =
@@ -955,9 +949,6 @@ where
     &info.parameters,
     &state.borrow().resource_table,
   )?;
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(false));
-  });
   let cif = libffi::middle::Cif::new(
     info
       .parameters
@@ -972,11 +963,7 @@ where
     parameter_types: info.parameters.clone(),
     result_type: info.result,
   };
-  let result = ffi_call(call_args, &symbol)?;
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(true));
-  });
-  Ok(result)
+  ffi_call(call_args, &symbol)
 }
 
 #[op(v8)]
@@ -1000,14 +987,7 @@ where
     &symbol.parameter_types,
     &state.resource_table,
   )?;
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(false));
-  });
-  let result = ffi_call(call_args, &symbol);
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(true));
-  });
-  result
+  ffi_call(call_args, &symbol)
 }
 
 //#[op(v8)]
@@ -1133,14 +1113,7 @@ fn op_ffi_call(
     (symbol, call_args)
   };
 
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(false));
-  });
-  let result = ffi_call(call_args, &symbol);
-  CREATE_SCOPE.with(|s| {
-    s.replace(Some(true));
-  });
-  result
+  ffi_call(call_args, &symbol)
 }
 
 /// A non-blocking FFI call.
