@@ -7,7 +7,7 @@ on:
 
 jobs:
   bench:
-    name: wpt / ${{ matrix.os }} / ${{ matrix.deno-version }}
+    name: bench / ${{ matrix.os }} / ${{ matrix.deno-version }}
     if: github.repository == 'denoland/deno'
     runs-on: ${{ matrix.os }}
     strategy:

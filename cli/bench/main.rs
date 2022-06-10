@@ -3,8 +3,8 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use influxdb2::models::data_point::FieldValue;
-use influxdb2::models::DataPoint;
+use influxdb_client::Point;
+use influxdb_client::Value as FieldValue;
 use std::collections::HashMap;
 use std::convert::From;
 use std::env;
@@ -369,12 +369,12 @@ fn cargo_deps() -> usize {
 }
 
 fn write_metrics_hashmap<T: Into<FieldValue> + Copy>(
-  datapoints: &mut Vec<DataPoint>,
+  datapoints: &mut Vec<Point>,
   name: &str,
   map: &HashMap<String, T>,
 ) {
   for (k, v) in map.iter() {
-    datapoints.push(DataPoint::builder(name).field(k, *v).build().unwrap());
+    datapoints.push(Point::new(name).field(k, *v));
   }
 }
 
