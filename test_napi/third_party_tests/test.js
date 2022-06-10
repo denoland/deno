@@ -111,9 +111,8 @@ Deno.test("@swc/core transform", () => {
 
 Deno.test("lmdb", () => {
   const { open } = require("lmdb");
-  console.log(open)
+  console.log(open);
 });
-
 
 Deno.test("@prisma/engines", async () => {
   const engine = require("@prisma/engines");
@@ -157,7 +156,6 @@ Deno.test("@prisma/engines", async () => {
   await qEngine.connect({ enableRawQueries: true });
   await qEngine.disconnect();
 });
-
 
 Deno.test("snappy", () => {
   const snappy = require("snappy");

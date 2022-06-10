@@ -1924,8 +1924,10 @@ fn napi_reject_deferred(
   // SAFETY: Isolate is still alive unless the module is doing something weird,
   // global data is the size of a pointer.
   // Global pointer is obtained from napi_create_promise
-  let resolver =
-    transmute::<NonNull<v8::PromiseResolver>, v8::Local<v8::PromiseResolver>>(deferred_ptr);
+  let resolver = transmute::<
+    NonNull<v8::PromiseResolver>,
+    v8::Local<v8::PromiseResolver>,
+  >(deferred_ptr);
   resolver
     .reject(
       &mut env.scope(),
@@ -1959,8 +1961,10 @@ fn napi_resolve_deferred(
   // SAFETY: Isolate is still alive unless the module is doing something weird,
   // global data is the size of a pointer.
   // Global pointer is obtained from napi_create_promise
-  let resolver =
-    transmute::<NonNull<v8::PromiseResolver>, v8::Local<v8::PromiseResolver>>(deferred_ptr);
+  let resolver = transmute::<
+    NonNull<v8::PromiseResolver>,
+    v8::Local<v8::PromiseResolver>,
+  >(deferred_ptr);
   resolver
     .resolve(
       &mut env.scope(),
