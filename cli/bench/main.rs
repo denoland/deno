@@ -429,8 +429,8 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"cargo_deps") {
-    // TODO
-    let _cargo_deps = cargo_deps();
+    let cargo_deps = cargo_deps();
+    datapoints.push(Point::new("cargo_deps").field("count", cargo_deps as i64));
   }
 
   if benchmarks.contains(&"lsp") {

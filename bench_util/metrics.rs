@@ -22,7 +22,7 @@ pub async fn submit(points: Vec<Point>) -> Result<(), InfluxError> {
         std::env::var("INFLUXDB_HOST").unwrap(),
         std::env::var("INFLUXDB_API_TOKEN").unwrap(),
       )
-      .with_org_id(std::env::var("INFLUXDB_ORG").unwrap())
+      .with_org(std::env::var("INFLUXDB_ORG").unwrap())
       .with_bucket("benchmarks"),
     )
   });
