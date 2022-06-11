@@ -1057,7 +1057,7 @@ where
 {
   let (symbol, call_args) = {
     let mut state = state.borrow_mut();
-    check_unstable(state.borrow(), "Deno.UnsafeFnPointer#call");
+    //check_unstable(state.borrow(), "Deno.UnsafeFnPointer#call");
 
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
@@ -1149,27 +1149,19 @@ where
   })
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FfiGetArgs {
-  rid: ResourceId,
-  name: String,
-  r#type: NativeType,
-}
-
 #[op(v8)]
 fn op_ffi_get_static<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  args: FfiGetArgs,
+  rid: ResourceId,
+  name: String,
+  static_type: NativeType,
 ) -> Result<serde_v8::Value<'scope>, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
+  let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
-  let data_ptr = resource.get_static(args.name)? as *const u8;
+  let data_ptr = resource.get_static(name)? as *const u8;
 
-  Ok(match args.r#type {
+  Ok(match static_type {
     NativeType::Void => {
       return Err(type_error("Invalid FFI static type 'void'"));
     }
