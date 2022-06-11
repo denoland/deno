@@ -185,8 +185,8 @@ itest!(fmt_stdin {
 
 itest!(fmt_stdin_markdown {
   args: "fmt --ext=md -",
-  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n"),
-  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"),
+  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"),
+  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"),
 });
 
 itest!(fmt_stdin_json {
