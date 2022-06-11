@@ -20,6 +20,30 @@ fn eval_p() {
   assert_eq!("3", stdout_str);
 }
 
+// Make sure that snapshot flags don't affect runtime.
+#[test]
+fn eval_randomness() {
+  let mut numbers = Vec::with_capacity(10);
+  for _ in 0..10 {
+    let output = util::deno_cmd()
+      .arg("eval")
+      .arg("-p")
+      .arg("Math.random()")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let stdout_str = util::strip_ansi_codes(
+      std::str::from_utf8(&output.stdout).unwrap().trim(),
+    );
+    numbers.push(stdout_str.to_string());
+  }
+  numbers.dedup();
+  assert!(numbers.len() > 1);
+}
+
 itest!(_029_eval {
   args: "eval console.log(\"hello\")",
   output: "029_eval.out",
@@ -41,4 +65,17 @@ itest!(_041_dyn_import_eval {
 itest!(v8_flags_eval {
   args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
   output: "v8_flags.js.out",
+});
+
+itest!(check_local_by_default {
+  args: "eval --quiet import('http://localhost:4545/subdir/type_error.ts').then(console.log);",
+  output: "eval/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "eval --quiet import('./eval/check_local_by_default2.ts').then(console.log);",
+  output: "eval/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
 });

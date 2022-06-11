@@ -69,7 +69,7 @@ impl ModuleLoader for TypescriptModuleLoader {
       let code = if should_transpile {
         let parsed = deno_ast::parse_module(ParseParams {
           specifier: module_specifier.to_string(),
-          source: SourceTextInfo::from_string(code),
+          text_info: SourceTextInfo::from_string(code),
           media_type,
           capture_tokens: false,
           scope_analysis: false,
@@ -80,7 +80,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         code
       };
       let module = ModuleSource {
-        code,
+        code: code.into_bytes().into_boxed_slice(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),

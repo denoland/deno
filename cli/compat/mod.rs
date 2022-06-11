@@ -11,16 +11,13 @@ use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
-use std::sync::Arc;
 
 pub use esm_resolver::check_if_should_use_esm_loader;
 pub use esm_resolver::NodeEsmResolver;
 
-// TODO(bartlomieju): this needs to be bumped manually for
-// each release, a better mechanism is preferable, but it's a quick and dirty
-// solution to avoid printing `X-Deno-Warning` headers when the compat layer is
-// downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.131.0/";
+// WARNING: Ensure this is the only deno_std version reference as this
+// is automatically updated by the version bump workflow.
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.143.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -174,7 +171,7 @@ pub async fn translate_cjs_to_esm(
 ) -> Result<String, AnyError> {
   let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
     specifier: specifier.to_string(),
-    source: deno_ast::SourceTextInfo::new(Arc::new(code)),
+    text_info: deno_ast::SourceTextInfo::new(code.into()),
     media_type,
     capture_tokens: true,
     scope_analysis: false,
@@ -205,7 +202,7 @@ pub async fn translate_cjs_to_esm(
     {
       let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
         specifier: reexport_specifier.to_string(),
-        source: deno_ast::SourceTextInfo::new(reexport_file.source),
+        text_info: deno_ast::SourceTextInfo::new(reexport_file.source),
         media_type: reexport_file.media_type,
         capture_tokens: true,
         scope_analysis: false,
@@ -241,7 +238,7 @@ pub async fn translate_cjs_to_esm(
       .replace('\'', "\\\'")
       .replace('\"', "\\\"")
   ));
-  source.push("export default mod".to_string());
+  source.push("export default mod;".to_string());
 
   for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
     // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,

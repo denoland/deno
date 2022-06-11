@@ -45,6 +45,11 @@ fn check_unstable(state: &OpState, api_name: &str) {
   }
 }
 
+pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
+  let state = state.borrow();
+  check_unstable(&state, api_name)
+}
+
 pub trait FfiPermissions {
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
 }
@@ -144,8 +149,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_get_static::decl(),
       op_ffi_call::decl(),
       op_ffi_call_nonblocking::decl(),
-      op_ffi_call_ptr::decl(),
-      op_ffi_call_ptr_nonblocking::decl(),
+      op_ffi_call_ptr::decl::<P>(),
+      op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
@@ -306,6 +311,11 @@ impl NativeValue {
 }
 
 fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
+  if value.is_array() {
+    let value = U32x2::try_from(value)?;
+    return T::try_from(u64::from(value)).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to an unsigned integer, got {:?}", value)));
+  }
+
   match value.as_u64().and_then(|v| T::try_from(v).ok()) {
     Some(value) => Ok(value),
     None => Err(type_error(format!(
@@ -316,6 +326,11 @@ fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
 }
 
 fn value_as_int<T: TryFrom<i64>>(value: Value) -> Result<T, AnyError> {
+  if value.is_array() {
+    let value = U32x2::try_from(value)?;
+    return T::try_from(u64::from(value) as i64).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to a signed integer, got {:?}", value)));
+  }
+
   match value.as_i64().and_then(|v| T::try_from(v).ok()) {
     Some(value) => Ok(value),
     None => Err(type_error(format!(
@@ -351,6 +366,25 @@ impl From<u64> for U32x2 {
 impl From<U32x2> for u64 {
   fn from(value: U32x2) -> Self {
     (value.0 as u64) << 32 | value.1 as u64
+  }
+}
+
+impl TryFrom<Value> for U32x2 {
+  type Error = AnyError;
+
+  fn try_from(value: Value) -> Result<Self, Self::Error> {
+    if let Some(value) = value.as_array() {
+      if let Some(hi) = value[0].as_u64() {
+        if let Some(lo) = value[1].as_u64() {
+          return Ok(U32x2(hi as u32, lo as u32));
+        }
+      }
+    }
+
+    Err(type_error(format!(
+      "Expected FFI argument to be a signed integer, but got {:?}",
+      value
+    )))
   }
 }
 
@@ -622,16 +656,24 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
     }
     NativeType::U64 => {
-      json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<u64>(symbol.ptr, &call_args)
+      }))
     }
     NativeType::I64 => {
-      json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<i64>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::USize => {
-      json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<usize>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::ISize => {
-      json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<isize>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::F32 => {
       json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
@@ -648,15 +690,38 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 }
 
 #[op]
-fn op_ffi_call_ptr(args: FfiCallPtrArgs) -> Result<Value, AnyError> {
+fn op_ffi_call_ptr<FP>(
+  state: &mut deno_core::OpState,
+  args: FfiCallPtrArgs,
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafeFnPointer#call");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   let symbol = args.get_symbol();
   ffi_call(args.into(), &symbol)
 }
 
 #[op]
-async fn op_ffi_call_ptr_nonblocking(
+async fn op_ffi_call_ptr_nonblocking<FP>(
+  state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallPtrArgs,
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
+
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check(None)?;
+  }
+
   let symbol = args.get_symbol();
   tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
     .await
@@ -774,6 +839,8 @@ fn op_ffi_ptr_of<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointer#of");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -788,6 +855,8 @@ fn op_ffi_buf_copy_into<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#copyInto");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -810,6 +879,8 @@ fn op_ffi_cstr_read<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getCString");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -825,6 +896,8 @@ fn op_ffi_read_u8<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getUint8");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -839,6 +912,8 @@ fn op_ffi_read_i8<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getInt8");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -853,6 +928,8 @@ fn op_ffi_read_u16<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getUint16");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -867,6 +944,8 @@ fn op_ffi_read_i16<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getInt16");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -881,6 +960,8 @@ fn op_ffi_read_u32<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getUint32");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -895,6 +976,8 @@ fn op_ffi_read_i32<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getInt32");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -909,6 +992,8 @@ fn op_ffi_read_u64<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -925,6 +1010,8 @@ fn op_ffi_read_f32<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getFloat32");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -939,6 +1026,8 @@ fn op_ffi_read_f64<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable(state, "Deno.UnsafePointerView#getFloat64");
+
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 

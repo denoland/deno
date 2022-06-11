@@ -6,6 +6,206 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.22.3 / 2022.06.09
+
+- fix(ext/fetch): remove deprecation of `URL` in deno `fetch` (#14769)
+- fix(http/upgradewebsocket): check for open state for idle timeout (#14813)
+- fix(lsp): change glob to watch json and jsonc files (#14828)
+- fix(lsp): handle get diagnostic errors better (#14776)
+- fix(task): support parsing quotes in a word (#14807)
+- fix: Format non-error exceptions (#14604)
+- fix: watch dynamic imports in --watch (#14775)
+
+### 1.22.2 / 2022.06.02
+
+- feat(unstable): add Deno.getGid (#14528)
+- fix(cli/dts): add `captureStackTrace` to `lib.dom.extras` (#14748)
+- fix(ext/crypto): adjust `getRandomValues` types (#14714)
+- fix(fmt): do panic for import decl with empty named imports and default import
+  (#14773)
+
+### 1.22.1 / 2022.05.27
+
+- fix(bench): update typo in bench summary (#14672)
+- fix(cli/dts): change `ChildStatus.signal` from `string` to `Deno.Signal`
+  (#14690)
+- fix(core): op metrics op_names mismatch (#14716)
+- fix(core): rethrow exception during structured cloning serialization (#14671)
+- fix(coverage): do not report transpiled files with no lines (#14699)
+- fix(ext/websocket): WebSocket dispatch single close event (#13443)
+- fix(fmt): prevent infinite loop when formatting certain binary expressions
+  (#14725)
+- fix(runtime): improve permission descriptor validation (#14676)
+- fix(vendor): handle relative imports when mapped local folder name differs
+  from remote's (#14465)
+- fix: deno task should actually use current exe for `deno` command (#14705)
+- fix: prevent Deno.exit to fail when dispatchEvent tampered (#14665)
+- fix: read raw stdin to prevent buffering (regression) (#14704)
+
+### 1.22.0 / 2022.05.18
+
+- BREAKING(unstable): Enable Deno namespace in workers by default (#14581)
+- BREAKING: Remove unstable Deno.applySourceMap API (#14473)
+- BREAKING: Remove unstable Deno.emit and Deno.formatDiagnostics APIs (#14463)
+- feat(core): deterministic snapshots (#14037)
+- feat(core): Revert "core: don't include_str extension js code (#10786)"
+  (#14614)
+- feat(ext/net): add "NS" record support in Deno.resolveDns API (#14372)
+- feat(ext/net): add `CAA` DNS record support in Deno.resolveDns() API (#14624)
+- feat(ext/net): add support for SOA records in Deno.resolveDns() API (#14534)
+- feat(ext/net): support NAPTR records in Deno.resolveDns() API (#14613)
+- feat(ext/net): support full `SOA` record interface (#14617)
+- feat(ext/web): add performance.toJSON (#14548)
+- feat(ext/web): implement static `Response.json` (#14566)
+- feat(lsp): enable linting by default (#14583)
+- feat(ops): #[op(v8)] (#14582)
+- feat(ops): allow passing scope handle to ops (#14574)
+- feat(ops): infallible / result-free ops (#14585)
+- feat(ops): sync Rc<RefCell<OpState>> (#14438)
+- feat(runtime/spawn): add `AbortSignal` support (#14538)
+- feat(serde_v8): bytes::Bytes support (#14412)
+- feat(test): Represent uncaught errors (#14513)
+- feat(test): Show Deno.test() call locations for failures (#14484)
+- feat(test): change "failures:" headers in test report (#14490)
+- feat(test): repeat test name if there's user output (#14495)
+- feat(unstable/task): resolve the current executable for the deno command
+  (#14462)
+- feat(web): add `performance.timeOrigin` (#14489)
+- feat: add --no-config flag (#14555)
+- feat: add userAgent property to Navigator's prototype (#14415)
+- feat: return a signal string instead number on ChildStatus (#14643)
+- feat: subcommands type-check only local files by default (#14623)
+- fix(core): support classifying ENOTDIR (#14646)
+- fix(ext/http): error on invalid headers (#14642)
+- fix(ext/http): make serveHttp compress for Accept-Encoding: deflate, gzip
+  (#14525)
+- fix(ext/http): no response body reader when cancelling during shutdown
+  (#14653)
+- fix(ext/http): skip auto-compression if content-encoding present (#14641)
+- fix(ext/tls): ability to ignore IP-address certificate errors (#14610)
+- fix(ext/web): throw if listener and signal are null (#14601)
+- fix(lsp): correct positions in some scenarios (#14359)
+- fix: base64 encoding of source maps with emojis (#14607)
+- perf(core): optimize encode on large strings (#14619)
+- perf(ext/http): faster accept-encoding parsing (#14654)
+- perf(ext/web): Add fast path for non-streaming TextDecoder (#14217)
+- perf(serde_v8): fast path for large strings (#14450)
+
+### 1.21.3 / 2022.05.12
+
+- fix(cli): add deno version to manual links (#14505)
+- fix(core): avoid panic on non-string Error.name (#14529)
+- fix(ext/tls): finish TLS handshake before shutting down (#14547)
+- fix(runtime): stdout and stderr encoding on Windows (#14559)
+- fix(task): accept double hyphen arg immediately following task name (#14567)
+- fix(test): do not panic on `TestOutputPipe::flush` when receiver dropped
+  (#14560)
+- fix(workers): make module evaluation result deterministic (#14553)
+
+### 1.21.2 / 2022.05.05
+
+- fix(cli): add dom.extras lib (#14430)
+- fix(coverage): exclude .snap files (#14480)
+- fix(ext/http): explicitly close resource after reading (#14471)
+- fix(runtime): lossy utf8 readTextFile (#14456)
+- fix(task): allow hyphen values after task name (#14434)
+- fix(task): support forwarding lone double hyphen (#14436)
+- fix(test): actually capture stdout and stderr in workers (#14435)
+- fix(test/bench): accept file protocol module specifier CLI args (#14429)
+- fix(vendor): do not panic on relative specifier with scheme-like folder name
+  (#14453)
+- fix: improve formatting jsdocs with asterisk as first char on line (#14446)
+
+### 1.21.1 / 2022.04.28
+
+- Reland "feat(ext/http): stream auto resp body compression" (#14345)
+- Reland "perf(http): optimize ReadableStreams backed by a resource" (#14346)
+- feat(ext/console): Add string abbreviation size option for "Deno.inspect"
+  (#14384)
+- fix(ext/console): Compact empty iterables when calling Deno.inspect with
+  compact false (#14387)
+- fix: change shade of "gray" color in eye-catchers (#14309)
+- fix(bench): eliminate sanitizeExit overhead (#14361)
+- fix(bench): report pending summary before clearing (#14369)
+- fix(bench): reset reporter context (#14360)
+- fix(cli): wrap long line of the env variables help (#14422)
+- fix(ext/http): truncate read bytes when streaming bodies (#14389)
+- fix(runtime/js/spawn): Pass stdio options for spawn() and spawnSync() (#14358)
+- fix(test): capture inherited stdout and stderr for subprocesses in test output
+  (#14395)
+- fix(test): capture worker stdout and stderr in test output (#14410)
+- fix(watcher): don't clear screen on start (#14351)
+- fix(workers): Make `worker.terminate()` not block the current thread (#13941)
+- fix: `deno task` forward double hyphen (#14419)
+- perf(ext/http): fast path for uncompressed bodies (#14366)
+- perf(ext/http): faster is_content_compressible (#14383)
+- perf(runtime): read entire files in single ops (#14261)
+- perf(serde_v8): zero-copy StringOrBuffer (#14381)
+
+### 1.21.0 / 2022.04.20
+
+- feat(bench): update API, new console reporter (#14305)
+- feat(cli/fmt): ignore .git folder when formatting files (#14138)
+- feat(core): Add initial support for realms (#14019)
+- feat(ext/net): Deno.upgradeHttp handles unix connections (#13987)
+- feat(ext/web): add globalThis.reportError() (#13799)
+- feat(repl): Don't type check when importing modules (#14112)
+- feat(repl): add "--eval-file" flag to execute a script file on startup
+  (#14247)
+- feat(repl): add global clear() function (#14332)
+- feat(runtime): two-tier subprocess API (#11618)
+- feat(test): Add "name", "origin" and "parent" to "Deno.TestContext" (#14007)
+- feat(test): Improve testing report output (#14255)
+- feat(test): format user code output (#14271)
+- feat(test): skip internal stack frames for errors (#14302)
+- feat(test): use structured data for JavaScript errors in tests (#14287)
+- feat: Add "deno check" subcommand for type checking (#14072)
+- feat: Add DENO_NO_PROMPT variable (#14209)
+- feat: Better formatting for AggregateError (#14285)
+- fix(cli/emit): Check JS roots with // @ts-check (#14090)
+- fix(cli/tools/test): Prefix test module paths with "./" (#14301)
+- fix(fmt): regression where some short if stmt headers being split on multiple
+  lines (#14292)
+- fix(permissions): fallback to denied access if the permission prompt fails
+  (#14235)
+- fix: `--watch` was losing items (#14317)
+- fix: panic when trying to pledge permissions before restoring previous pledge
+  (#14306)
+- perf(fmt/lint): incremental formatting and linting (#14314)
+- perf(runtime): bypass tokio file and bump op buffer size to 64K (#14319)
+- perf: move `Deno.writeTextFile` and like functions to Rust (#14221)
+- upgrade: rusty_v8 0.42.0 (#14334)
+
+### 1.20.6 / 2022.04.14
+
+- fix(serde_v8): more robust number deserialization (#14216)
+- fix(test): Don't error on missing op details (#14184)
+- fix: upgrade to swc_ecmascript 0.143 (#14238)
+
+### 1.20.5 / 2022.04.07
+
+- feat(lsp/unstable): add experimental testing API (#13798)
+- feat(lsp/unstable): support tasks in the config file (#14139)
+- feat(unstable): add ref/unref to Listener (#13961)
+- fix(cli/install): preserve compat flag (#14223)
+- fix(ext/crypto): check extractable in exportKey (#14222)
+
+### 1.20.4 / 2022.03.31
+
+- fix(compile): follow redirects when resolving (#14161)
+- fix(ext/fetch): extend deprecated fetch() overload with `string | Request`
+  (#14134)
+- fix(lsp): watch .jsonc files (#14135)
+- fix(runtime/ops/signal.rs): Add Solaris signals (#13931)
+- fix(task): handle `PATHEXT` with trailing semi-colon (#14140)
+- perf: micro-optimize core.encode (#14120)
+
+### 1.20.3 / 2022.03.25
+
+- fix(ext/fetch): deprecate URL as the first arg in types (#14113)
+- fix(ext/ffi): enforce unstable check on ops (#14115)
+- fix(runtime): do not modify user provided `cmd` array in `Deno.run` (#14109)
+
 ### 1.20.2 / 2022.03.24
 
 - feat(lsp): support deno.enablePaths setting (#13978)

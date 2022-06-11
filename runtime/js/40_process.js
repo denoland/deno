@@ -9,8 +9,8 @@
   const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
+    ArrayPrototypeSlice,
     TypeError,
-    isNaN,
     ObjectEntries,
     String,
   } = window.__bootstrap.primordials;
@@ -94,10 +94,6 @@
     }
   }
 
-  function isRid(arg) {
-    return !isNaN(arg);
-  }
-
   function run({
     cmd,
     cwd = undefined,
@@ -110,7 +106,7 @@
     stdin = "inherit",
   }) {
     if (cmd[0] != null) {
-      cmd[0] = pathFromURL(cmd[0]);
+      cmd = [pathFromURL(cmd[0]), ...ArrayPrototypeSlice(cmd, 1)];
     }
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),
@@ -119,12 +115,9 @@
       env: ObjectEntries(env),
       gid,
       uid,
-      stdin: isRid(stdin) ? "" : stdin,
-      stdout: isRid(stdout) ? "" : stdout,
-      stderr: isRid(stderr) ? "" : stderr,
-      stdinRid: isRid(stdin) ? stdin : 0,
-      stdoutRid: isRid(stdout) ? stdout : 0,
-      stderrRid: isRid(stderr) ? stderr : 0,
+      stdin,
+      stdout,
+      stderr,
     });
     return new Process(res);
   }

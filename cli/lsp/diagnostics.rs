@@ -27,7 +27,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
@@ -35,6 +34,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types as lsp;
 
 pub type SnapshotForDiagnostics =
   (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
@@ -884,7 +884,7 @@ mod tests {
   use crate::lsp::language_server::StateSnapshot;
   use std::path::Path;
   use std::path::PathBuf;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
@@ -898,7 +898,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     StateSnapshot {
@@ -922,9 +922,9 @@ mod tests {
   }
 
   fn setup(
+    temp_dir: &TempDir,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (StateSnapshot, PathBuf) {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = mock_state_snapshot(sources, &location);
     (state_snapshot, location)
@@ -932,16 +932,20 @@ mod tests {
 
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
+    let temp_dir = TempDir::new();
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    let (snapshot, _) = setup(&[(
-      "file:///a.ts",
-      r#"import * as b from "./b.ts";
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"import * as b from "./b.ts";
 let a: any = "a";
 let c: number = "a";
 "#,
-      1,
-      LanguageId::TypeScript,
-    )]);
+        1,
+        LanguageId::TypeScript,
+      )],
+    );
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
 
@@ -1026,12 +1030,16 @@ let c: number = "a";
 
   #[tokio::test]
   async fn test_cancelled_ts_diagnostics_request() {
-    let (snapshot, _) = setup(&[(
-      "file:///a.ts",
-      r#"export let a: string = 5;"#,
-      1,
-      LanguageId::TypeScript,
-    )]);
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"export let a: string = 5;"#,
+        1,
+        LanguageId::TypeScript,
+      )],
+    );
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
 

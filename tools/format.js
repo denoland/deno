@@ -5,14 +5,14 @@ import { getPrebuiltToolPath, join, ROOT_PATH } from "./util.js";
 async function dprint() {
   const configFile = join(ROOT_PATH, ".dprint.json");
   const execPath = getPrebuiltToolPath("dprint");
-  const p = Deno.run({
-    cmd: [execPath, "fmt", "--config=" + configFile],
+  const { status } = await Deno.spawn(execPath, {
+    args: ["fmt", "--config=" + configFile],
+    stdout: "inherit",
+    stderr: "inherit",
   });
-  const { success } = await p.status();
-  if (!success) {
+  if (!status.success) {
     throw new Error("dprint failed");
   }
-  p.close();
 }
 
 async function main() {
@@ -20,17 +20,15 @@ async function main() {
   await dprint();
 
   if (Deno.args.includes("--check")) {
-    const git = Deno.run({
-      cmd: ["git", "status", "-uno", "--porcelain", "--ignore-submodules"],
-      stdout: "piped",
+    const { status, stdout } = await Deno.spawn("git", {
+      args: ["status", "-uno", "--porcelain", "--ignore-submodules"],
+      stderr: "inherit",
     });
 
-    const { success } = await git.status();
-    if (!success) {
+    if (!status.success) {
       throw new Error("git status failed");
     }
-    const out = new TextDecoder().decode(await git.output());
-    git.close();
+    const out = new TextDecoder().decode(stdout);
 
     if (out) {
       console.log("run tools/format.js");

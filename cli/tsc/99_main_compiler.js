@@ -30,6 +30,15 @@ delete Object.prototype.__proto__;
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
   const normalizedToOriginalMap = new Map();
 
+  /**
+   * @param {unknown} value
+   * @returns {value is ts.CreateSourceFileOptions}
+   */
+  function isCreateSourceFileOptions(value) {
+    return value != null && typeof value === "object" &&
+      "languageVersion" in value;
+  }
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -72,6 +81,45 @@ delete Object.prototype.__proto__;
     }
   }
 
+  // deno-fmt-ignore
+  const base64abc = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", 
+    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", 
+    "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", 
+    "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7", 
+    "8", "9", "+", "/",
+  ];
+
+  /** Taken from https://deno.land/std/encoding/base64.ts */
+  function convertToBase64(data) {
+    const uint8 = core.encode(data);
+    let result = "",
+      i;
+    const l = uint8.length;
+    for (i = 2; i < l; i += 3) {
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+      result += base64abc[((uint8[i - 1] & 0x0f) << 2) | (uint8[i] >> 6)];
+      result += base64abc[uint8[i] & 0x3f];
+    }
+    if (i === l + 1) {
+      // 1 octet yet to write
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[(uint8[i - 2] & 0x03) << 4];
+      result += "==";
+    }
+    if (i === l) {
+      // 2 octets yet to write
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+      result += base64abc[(uint8[i - 1] & 0x0f) << 2];
+      result += "=";
+    }
+    return result;
+  }
+
+  // In the case of the LSP, this is initialized with the assets
+  // when snapshotting and never added to or removed after that.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
@@ -186,62 +234,6 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
-  class ScriptSnapshot {
-    /** @type {string} */
-    specifier;
-    /** @type {string} */
-    version;
-    /**
-     * @param {string} specifier
-     * @param {string} version
-     */
-    constructor(specifier, version) {
-      this.specifier = specifier;
-      this.version = version;
-    }
-    /**
-     * @param {number} start
-     * @param {number} end
-     * @returns {string}
-     */
-    getText(start, end) {
-      const { specifier, version } = this;
-      debug(
-        `snapshot.getText(${start}, ${end}) specifier: ${specifier} version: ${version}`,
-      );
-      return core.opSync("op_get_text", { specifier, version, start, end });
-    }
-    /**
-     * @returns {number}
-     */
-    getLength() {
-      const { specifier, version } = this;
-      debug(`snapshot.getLength() specifier: ${specifier} version: ${version}`);
-      return core.opSync("op_get_length", { specifier, version });
-    }
-    /**
-     * @param {ScriptSnapshot} oldSnapshot
-     * @returns {ts.TextChangeRange | undefined}
-     */
-    getChangeRange(oldSnapshot) {
-      const { specifier, version } = this;
-      const { version: oldVersion } = oldSnapshot;
-      const oldLength = oldSnapshot.getLength();
-      debug(
-        `snapshot.getLength() specifier: ${specifier} oldVersion: ${oldVersion} version: ${version}`,
-      );
-      return core.opSync(
-        "op_get_change_range",
-        { specifier, oldLength, oldVersion, version },
-      );
-    }
-    dispose() {
-      const { specifier, version } = this;
-      debug(`snapshot.dispose() specifier: ${specifier} version: ${version}`);
-      core.opSync("op_dispose", { specifier, version });
-    }
-  }
-
   /** Error thrown on cancellation. */
   class OperationCanceledError extends Error {
   }
@@ -307,19 +299,24 @@ delete Object.prototype.__proto__;
     ) {
       debug(
         `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[languageVersion]
+          ts.ScriptTarget[
+            isCreateSourceFileOptions(languageVersion)
+              ? languageVersion.languageVersion
+              : languageVersion
+          ]
         })`,
       );
+
+      // Needs the original specifier
+      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+
       let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile;
       }
 
-      // Needs the original specifier
-      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-
-      /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
-      const { data, hash, scriptKind } = core.opSync(
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
+      const { data, scriptKind, version } = core.opSync(
         "op_load",
         { specifier },
       );
@@ -335,8 +332,9 @@ delete Object.prototype.__proto__;
         scriptKind,
       );
       sourceFile.moduleName = specifier;
-      sourceFile.version = hash;
+      sourceFile.version = version;
       sourceFileCache.set(specifier, sourceFile);
+      scriptVersionCache.set(specifier, version);
       return sourceFile;
     },
     getDefaultLibFileName() {
@@ -445,11 +443,17 @@ delete Object.prototype.__proto__;
           },
         };
       }
-      const version = host.getScriptVersion(specifier);
-      if (version != null) {
-        return new ScriptSnapshot(specifier, version);
+
+      const fileInfo = core.opSync(
+        "op_load",
+        { specifier },
+      );
+      if (fileInfo) {
+        scriptVersionCache.set(specifier, fileInfo.version);
+        return ts.ScriptSnapshot.fromString(fileInfo.data);
+      } else {
+        return undefined;
       }
-      return undefined;
     },
   };
 
@@ -531,6 +535,14 @@ delete Object.prototype.__proto__;
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames }) {
+    // https://github.com/microsoft/TypeScript/issues/49150
+    ts.base64encode = function (host, input) {
+      if (host && host.base64encode) {
+        return host.base64encode(input);
+      }
+      return convertToBase64(input);
+    };
+
     setLogDebug(debugFlag, "TS");
     performanceStart();
     debug(">>> exec start", { rootNames });
@@ -611,12 +623,17 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getAsset": {
-        const sourceFile = host.getSourceFile(
-          request.specifier,
-          ts.ScriptTarget.ESNext,
-        );
-        return respond(id, sourceFile && sourceFile.text);
+      case "getAssets": {
+        const assets = [];
+        for (const sourceFile of sourceFileCache.values()) {
+          if (sourceFile.fileName.startsWith(ASSETS)) {
+            assets.push({
+              specifier: sourceFile.fileName,
+              text: sourceFile.text,
+            });
+          }
+        }
+        return respond(id, assets);
       }
       case "getApplicableRefactors": {
         return respond(
@@ -743,7 +760,10 @@ delete Object.prototype.__proto__;
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if (!(e instanceof OperationCanceledError)) {
+          if (
+            !(e instanceof OperationCanceledError ||
+              e instanceof ts.OperationCanceledException)
+          ) {
             if ("stack" in e) {
               error(e.stack);
             } else {

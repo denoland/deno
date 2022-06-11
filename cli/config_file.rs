@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::flags::ConfigFlag;
+use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
 use crate::fs_util::specifier_parent;
 use crate::fs_util::specifier_to_file_path;
@@ -161,21 +163,25 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
 /// Filenames that Deno will recognize when discovering config.
 const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
-pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
-  if let Some(config_path) = flags.config_path.as_ref() {
-    Ok(Some(ConfigFile::read(config_path)?))
-  } else if let Some(config_path_args) = flags.config_path_args() {
-    let mut checked = HashSet::new();
-    for f in config_path_args {
-      if let Some(cf) = discover_from(&f, &mut checked)? {
-        return Ok(Some(cf));
+pub fn discover(flags: &Flags) -> Result<Option<ConfigFile>, AnyError> {
+  match &flags.config_flag {
+    ConfigFlag::Disabled => Ok(None),
+    ConfigFlag::Path(config_path) => Ok(Some(ConfigFile::read(config_path)?)),
+    ConfigFlag::Discover => {
+      if let Some(config_path_args) = flags.config_path_args() {
+        let mut checked = HashSet::new();
+        for f in config_path_args {
+          if let Some(cf) = discover_from(&f, &mut checked)? {
+            return Ok(Some(cf));
+          }
+        }
+        // From CWD walk up to root looking for deno.json or deno.jsonc
+        let cwd = std::env::current_dir()?;
+        discover_from(&cwd, &mut checked)
+      } else {
+        Ok(None)
       }
     }
-    // From CWD walk up to root looking for deno.json or deno.jsonc
-    let cwd = std::env::current_dir()?;
-    discover_from(&cwd, &mut checked)
-  } else {
-    Ok(None)
   }
 }
 
@@ -480,7 +486,7 @@ pub struct LintConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
   Always,
@@ -488,7 +494,7 @@ pub enum ProseWrap {
   Preserve,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
   pub use_tabs: Option<bool>,
@@ -647,6 +653,25 @@ impl ConfigFile {
     } else {
       Ok(None)
     }
+  }
+
+  /// Return any tasks that are defined in the configuration file as a sequence
+  /// of JSON objects providing the name of the task and the arguments of the
+  /// task in a detail field.
+  pub fn to_lsp_tasks(&self) -> Option<Value> {
+    let value = self.json.tasks.clone()?;
+    let tasks: BTreeMap<String, String> = serde_json::from_value(value).ok()?;
+    Some(
+      tasks
+        .into_iter()
+        .map(|(key, value)| {
+          json!({
+            "name": key,
+            "detail": value,
+          })
+        })
+        .collect(),
+    )
   }
 
   pub fn to_tasks_config(
