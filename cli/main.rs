@@ -37,6 +37,7 @@ mod unix_util;
 mod version;
 mod windows_util;
 
+use crate::compat::NodeEsmResolver;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BenchFlags;
@@ -85,6 +86,7 @@ use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::Resolver;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::PreloadModuleCb;
@@ -672,13 +674,22 @@ async fn create_graph_and_maybe_check(
   } else {
     None
   };
+  let maybe_node_resolver = ps.flags.compat.then(|| {
+    NodeEsmResolver::new(
+      ps.maybe_import_map.clone().map(ImportMapResolver::new),
+    )
+  });
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
   let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
     cf.to_maybe_jsx_import_source_module()
       .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
   });
-  let maybe_resolver = if maybe_jsx_resolver.is_some() {
+  let maybe_resolver: Option<&dyn Resolver> = if maybe_node_resolver.is_some() {
+    maybe_node_resolver
+      .as_ref()
+      .map(NodeEsmResolver::as_resolver)
+  } else if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
     maybe_import_map_resolver

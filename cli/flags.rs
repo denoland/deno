@@ -715,6 +715,7 @@ glob {*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
 
 fn bundle_subcommand<'a>() -> Command<'a> {
   compile_args(Command::new("bundle"))
+    .arg(compat_arg())
     .arg(
       Arg::new("source_file")
         .takes_value(true)
@@ -2207,6 +2208,7 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
+  compat_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 

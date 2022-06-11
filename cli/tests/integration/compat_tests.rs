@@ -118,6 +118,13 @@ itest!(cjs_esm_interop_dynamic {
   envs: vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())],
 });
 
+itest!(bundle_compat {
+  args: "bundle --unstable --compat compat/bundle_compat.js",
+  // Output should match input, don't include compat std in bundle:
+  output: "compat/bundle_compat.js",
+  exit_code: 0,
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(
