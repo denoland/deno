@@ -1746,6 +1746,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(lock_arg())
     .arg(lock_write_arg())
     .arg(ca_file_arg())
+    .arg(compat_arg())
 }
 
 fn permission_args(app: Command) -> Command {
@@ -2237,6 +2238,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_without_no_check_parse(flags, matches);
+  compat_arg_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
