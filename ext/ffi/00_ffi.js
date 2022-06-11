@@ -8,26 +8,12 @@
     ArrayBufferPrototype,
     BigInt,
     Error,
-    Number,
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     Symbol,
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
-
-  function pack64(value) {
-    return [Number(value >> 32n) >>> 0, Number(value & 0xFFFFFFFFn)];
-  }
-
-  function unpackU64([hi, lo]) {
-    return BigInt(hi) << 32n | BigInt(lo);
-  }
-
-  function unpackI64([hi, lo]) {
-    const u64 = unpackU64([hi, lo]);
-    return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
-  }
 
   class UnsafePointerView {
     pointer;
@@ -39,77 +25,77 @@
     getUint8(offset = 0) {
       return core.opSync(
         "op_ffi_read_u8",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getInt8(offset = 0) {
       return core.opSync(
         "op_ffi_read_i8",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getUint16(offset = 0) {
       return core.opSync(
         "op_ffi_read_u16",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getInt16(offset = 0) {
       return core.opSync(
         "op_ffi_read_i16",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getUint32(offset = 0) {
       return core.opSync(
         "op_ffi_read_u32",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getInt32(offset = 0) {
       return core.opSync(
         "op_ffi_read_i32",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getBigUint64(offset = 0) {
-      return unpackU64(core.opSync(
+      return core.opSync(
         "op_ffi_read_u64",
-        pack64(this.pointer.value + BigInt(offset)),
-      ));
+        this.pointer.value + BigInt(offset),
+      );
     }
 
     getBigInt64(offset = 0) {
-      return unpackI64(core.opSync(
+      return core.opSync(
         "op_ffi_read_u64",
-        pack64(this.pointer.value + BigInt(offset)),
-      ));
+        this.pointer.value + BigInt(offset),
+      );
     }
 
     getFloat32(offset = 0) {
       return core.opSync(
         "op_ffi_read_f32",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getFloat64(offset = 0) {
       return core.opSync(
         "op_ffi_read_f64",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
     getCString(offset = 0) {
       return core.opSync(
         "op_ffi_cstr_read",
-        pack64(this.pointer.value + BigInt(offset)),
+        this.pointer.value + BigInt(offset),
       );
     }
 
@@ -120,11 +106,12 @@
     }
 
     copyInto(destination, offset = 0) {
-      core.opSync("op_ffi_buf_copy_into", [
-        pack64(this.pointer.value + BigInt(offset)),
+      core.opSync(
+        "op_ffi_buf_copy_into",
+        this.pointer.value + BigInt(offset),
         destination,
         destination.byteLength,
-      ]);
+      );
     }
   }
 
@@ -132,12 +119,15 @@
     value;
 
     constructor(value) {
+      if (typeof value === "number") {
+        value = BigInt(value);
+      }
       this.value = value;
     }
 
     static of(typedArray) {
       return new UnsafePointer(
-        unpackU64(core.opSync("op_ffi_ptr_of", typedArray)),
+        core.opSync("op_ffi_ptr_of", typedArray),
       );
     }
 
@@ -202,15 +192,7 @@
   function unpackResult(type, result) {
     switch (type) {
       case "pointer":
-        return new UnsafePointer(unpackU64(result));
-      case "u64":
-        return unpackU64(result);
-      case "i64":
-        return unpackI64(result);
-      case "usize":
-        return unpackU64(result);
-      case "isize":
-        return unpackI64(result);
+        return new UnsafePointer(result);
       default:
         return result;
     }
@@ -231,26 +213,28 @@
         args,
       );
       if (this.definition.nonblocking) {
-        const promise = core.opAsync("op_ffi_call_ptr_nonblocking", {
-          pointer: this.pointer.value,
-          def: this.definition,
+        const promise = core.opAsync(
+          "op_ffi_call_ptr_nonblocking",
+          this.pointer.value,
+          this.definition,
           parameters,
-        });
+        );
 
         if (this.definition.result === "pointer") {
-          return promise.then((value) => new UnsafePointer(unpackU64(value)));
+          return promise.then((value) => new UnsafePointer(value));
         }
 
         return promise;
       } else {
-        const result = core.opSync("op_ffi_call_ptr", {
-          pointer: this.pointer.value,
-          def: this.definition,
+        const result = core.opSync(
+          "op_ffi_call_ptr",
+          this.pointer.value,
+          this.definition,
           parameters,
-        });
+        );
 
         if (this.definition.result === "pointer") {
-          return new UnsafePointer(unpackU64(result));
+          return new UnsafePointer(result);
         }
 
         return result;
@@ -295,7 +279,7 @@
         );
 
         if (this.definition.result === "pointer") {
-          return new UnsafePointer(unpackU64(result));
+          return new UnsafePointer(result);
         }
 
         return result;
@@ -335,19 +319,12 @@
           const name = symbols[symbol].name || symbol;
           let value = core.opSync(
             "op_ffi_get_static",
-            {
-              rid: this.#rid,
-              name,
-              type,
-            },
+            this.#rid,
+            name,
+            type,
           );
-          if (type === "pointer" || type === "u64") {
-            value = unpackU64(value);
-            if (type === "pointer") {
-              value = new UnsafePointer(value);
-            }
-          } else if (type === "i64") {
-            value = unpackI64(value);
+          if (type === "pointer") {
+            value = new UnsafePointer(value);
           }
           ObjectDefineProperty(
             this.symbols,
@@ -370,11 +347,12 @@
           const { parameters } = prepareArgs(types, args);
 
           if (isNonBlocking) {
-            const promise = core.opAsync("op_ffi_call_nonblocking", {
-              rid: this.#rid,
+            const promise = core.opAsync(
+              "op_ffi_call_nonblocking",
+              this.#rid,
               symbol,
               parameters,
-            });
+            );
 
             if (resultType === "pointer") {
               return promise.then((result) => unpackResult(resultType, result));
@@ -382,11 +360,12 @@
 
             return promise;
           } else {
-            const result = core.opSync("op_ffi_call", {
-              rid: this.#rid,
+            const result = core.opSync(
+              "op_ffi_call",
+              this.#rid,
               symbol,
               parameters,
-            });
+            );
 
             return unpackResult(resultType, result);
           }

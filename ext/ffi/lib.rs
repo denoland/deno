@@ -10,8 +10,8 @@ use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
 
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+//use deno_core::serde_json::json;
+//use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
@@ -24,7 +24,7 @@ use libffi::middle::Arg;
 use libffi::middle::Cif;
 use libffi::raw::*;
 use serde::Deserialize;
-use serde::Serialize;
+//use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -185,9 +185,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .build()
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-struct NativeTypeFunction {}
-
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -207,7 +204,7 @@ enum NativeType {
   F32,
   F64,
   Pointer,
-  Function(NativeTypeFunction),
+  Function {},
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -227,7 +224,7 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
       NativeType::Pointer => libffi::middle::Type::pointer(),
-      NativeType::Function(_) => libffi::middle::Type::pointer(),
+      NativeType::Function {} => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -236,7 +233,7 @@ impl From<NativeType> for libffi::middle::Type {
 /// to libffi argument types.
 #[repr(C)]
 union NativeValue {
-  //void_value: (),
+  void_value: (),
   u8_value: u8,
   i8_value: i8,
   u16_value: u16,
@@ -268,47 +265,117 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer => Arg::new(&self.pointer),
-      NativeType::Function(_) => Arg::new(&self.pointer),
+      NativeType::Pointer | NativeType::Function {} => Arg::new(&self.pointer),
+    }
+  }
+
+  fn to_v8<'scope>(
+    &self,
+    scope: &mut v8::HandleScope<'scope>,
+    native_type: NativeType,
+  ) -> serde_v8::Value<'scope> {
+    match native_type {
+      NativeType::Void => {
+        let local_value = v8::undefined(scope);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::U8 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.u8_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::I8 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.i8_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::U16 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.u16_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::I16 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.i16_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::U32 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.u32_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::I32 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.i32_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::U64 => {
+        let local_value =
+          v8::BigInt::new_from_u64(scope, unsafe { self.u64_value });
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::I64 => {
+        let local_value =
+          v8::BigInt::new_from_i64(scope, unsafe { self.i64_value });
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::USize => {
+        let local_value =
+          v8::BigInt::new_from_u64(scope, unsafe { self.usize_value } as u64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::ISize => {
+        let local_value =
+          v8::BigInt::new_from_i64(scope, unsafe { self.isize_value } as i64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::F32 => {
+        let local_value =
+          v8::Number::new(scope, unsafe { self.f32_value } as f64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::F64 => {
+        let local_value = v8::Number::new(scope, unsafe { self.f64_value });
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
+      NativeType::Pointer | NativeType::Function {} => {
+        let local_value =
+          v8::BigInt::new_from_u64(scope, unsafe { self.pointer } as u64);
+        serde_v8::Value {
+          v8_value: local_value.into(),
+        }
+      }
     }
   }
 }
 
 unsafe impl Send for NativeValue {}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-struct U32x2(u32, u32);
-
-impl From<u64> for U32x2 {
-  fn from(value: u64) -> Self {
-    Self((value >> 32) as u32, value as u32)
-  }
-}
-
-impl From<U32x2> for u64 {
-  fn from(value: U32x2) -> Self {
-    (value.0 as u64) << 32 | value.1 as u64
-  }
-}
-
-impl TryFrom<Value> for U32x2 {
-  type Error = AnyError;
-
-  fn try_from(value: Value) -> Result<Self, Self::Error> {
-    if let Some(value) = value.as_array() {
-      if let Some(hi) = value[0].as_u64() {
-        if let Some(lo) = value[1].as_u64() {
-          return Ok(U32x2(hi as u32, lo as u32));
-        }
-      }
-    }
-
-    Err(type_error(format!(
-      "Expected FFI argument to be a signed integer, but got {:?}",
-      value
-    )))
-  }
-}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -457,53 +524,22 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FfiCallArgs<'scope> {
-  rid: ResourceId,
-  symbol: String,
-  parameters: serde_v8::Value<'scope>,
-}
+fn get_symbol_for_ptr(fn_ptr: u64, def: ForeignFunction) -> Symbol {
+  let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+  let cif = libffi::middle::Cif::new(
+    def
+      .parameters
+      .clone()
+      .into_iter()
+      .map(libffi::middle::Type::from),
+    def.result.into(),
+  );
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FfiCallPtrArgs<'scope> {
-  pointer: U32x2,
-  def: ForeignFunction,
-  parameters: serde_v8::Value<'scope>,
-}
-
-impl<'scope> From<FfiCallPtrArgs<'scope>> for FfiCallArgs<'scope> {
-  fn from(args: FfiCallPtrArgs<'scope>) -> Self {
-    FfiCallArgs {
-      rid: 0,
-      symbol: String::new(),
-      parameters: args.parameters,
-      //buffers: args.buffers,
-    }
-  }
-}
-
-impl<'scope> FfiCallPtrArgs<'scope> {
-  fn get_symbol(&self) -> Symbol {
-    let fn_ptr: u64 = self.pointer.into();
-    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
-    let cif = libffi::middle::Cif::new(
-      self
-        .def
-        .parameters
-        .clone()
-        .into_iter()
-        .map(libffi::middle::Type::from),
-      self.def.result.into(),
-    );
-
-    Symbol {
-      cif,
-      ptr,
-      parameter_types: self.def.parameters.clone(),
-      result_type: self.def.result,
-    }
+  Symbol {
+    cif,
+    ptr,
+    parameter_types: def.parameters.clone(),
+    result_type: def.result,
   }
 }
 
@@ -628,7 +664,7 @@ where
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer, or ArrayBufferView"));
         }
       }
-      NativeType::Function(_) => {
+      NativeType::Function {} => {
         if value.is_null() {
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
@@ -656,69 +692,62 @@ where
 
 fn ffi_call(
   call_args: Vec<NativeValue>,
-  symbol: &Symbol,
-) -> Result<Value, AnyError> {
+  cif: &libffi::middle::Cif,
+  fun_ptr: libffi::middle::CodePtr,
+  parameter_types: &[NativeType],
+  result_type: NativeType,
+) -> Result<NativeValue, AnyError> {
   let call_args: Vec<Arg> = call_args
     .iter()
     .enumerate()
     .map(|(index, ffi_arg)| unsafe {
-      ffi_arg.as_arg(*symbol.parameter_types.get(index).unwrap())
+      ffi_arg.as_arg(*parameter_types.get(index).unwrap())
     })
     .collect();
 
-  Ok(match symbol.result_type {
-    NativeType::Void => {
-      json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) })
-    }
-    NativeType::U8 => {
-      json!(unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) })
-    }
-    NativeType::I8 => {
-      json!(unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) })
-    }
-    NativeType::U16 => {
-      json!(unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) })
-    }
-    NativeType::I16 => {
-      json!(unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) })
-    }
-    NativeType::U32 => {
-      json!(unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) })
-    }
-    NativeType::I32 => {
-      json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
-    }
-    NativeType::U64 => {
-      json!(U32x2::from(unsafe {
-        symbol.cif.call::<u64>(symbol.ptr, &call_args)
-      }))
-    }
-    NativeType::I64 => {
-      json!(U32x2::from(unsafe {
-        symbol.cif.call::<i64>(symbol.ptr, &call_args)
-      } as u64))
-    }
-    NativeType::USize => {
-      json!(U32x2::from(unsafe {
-        symbol.cif.call::<usize>(symbol.ptr, &call_args)
-      } as u64))
-    }
-    NativeType::ISize => {
-      json!(U32x2::from(unsafe {
-        symbol.cif.call::<isize>(symbol.ptr, &call_args)
-      } as u64))
-    }
-    NativeType::F32 => {
-      json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
-    }
-    NativeType::F64 => {
-      json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
-    }
-    NativeType::Pointer | NativeType::Function(_) => {
-      json!(U32x2::from(unsafe {
-        symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
-      } as u64))
-    }
+  Ok(match result_type {
+    NativeType::Void => NativeValue {
+      void_value: unsafe { cif.call::<()>(fun_ptr, &call_args) },
+    },
+    NativeType::U8 => NativeValue {
+      u8_value: unsafe { cif.call::<u8>(fun_ptr, &call_args) },
+    },
+    NativeType::I8 => NativeValue {
+      i8_value: unsafe { cif.call::<i8>(fun_ptr, &call_args) },
+    },
+    NativeType::U16 => NativeValue {
+      u16_value: unsafe { cif.call::<u16>(fun_ptr, &call_args) },
+    },
+    NativeType::I16 => NativeValue {
+      i16_value: unsafe { cif.call::<i16>(fun_ptr, &call_args) },
+    },
+    NativeType::U32 => NativeValue {
+      u32_value: unsafe { cif.call::<u32>(fun_ptr, &call_args) },
+    },
+    NativeType::I32 => NativeValue {
+      i32_value: unsafe { cif.call::<i32>(fun_ptr, &call_args) },
+    },
+    NativeType::U64 => NativeValue {
+      u64_value: unsafe { cif.call::<u64>(fun_ptr, &call_args) },
+    },
+    NativeType::I64 => NativeValue {
+      i64_value: unsafe { cif.call::<i64>(fun_ptr, &call_args) },
+    },
+    NativeType::USize => NativeValue {
+      usize_value: unsafe { cif.call::<usize>(fun_ptr, &call_args) },
+    },
+    NativeType::ISize => NativeValue {
+      isize_value: unsafe { cif.call::<isize>(fun_ptr, &call_args) },
+    },
+    NativeType::F32 => NativeValue {
+      f32_value: unsafe { cif.call::<f32>(fun_ptr, &call_args) },
+    },
+    NativeType::F64 => NativeValue {
+      f64_value: unsafe { cif.call::<f64>(fun_ptr, &call_args) },
+    },
+    NativeType::Pointer | NativeType::Function {} => NativeValue {
+      pointer: unsafe { cif.call::<*const u8>(fun_ptr, &call_args) },
+    },
   })
 }
 
@@ -785,33 +814,85 @@ unsafe extern "C" fn deno_ffi_callback(
       FFI_TYPE_INT => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
       FFI_TYPE_FLOAT => serde_v8::to_v8(&mut scope, *((*val) as *const f32)),
       FFI_TYPE_DOUBLE => serde_v8::to_v8(&mut scope, *((*val) as *const f64)),
-      // FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-      //   let ptr = U32x2::from(*((*val) as *const u64));
-      //   serde_v8::to_v8(&mut scope, ptr)
-      // }
       FFI_TYPE_SINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const i8)),
       FFI_TYPE_UINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const u8)),
       FFI_TYPE_SINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const i16)),
       FFI_TYPE_UINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const u16)),
       FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
       FFI_TYPE_UINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const u32)),
-      FFI_TYPE_SINT64 => serde_v8::to_v8(&mut scope, *((*val) as *const i64)),
+      FFI_TYPE_SINT64 => {
+        let result = *((*val) as *const i64);
+        Ok(v8::BigInt::new_from_i64(&mut scope, result).into())
+      }
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64 => {
-        serde_v8::to_v8(&mut scope, *((*val) as *const u64))
+        let result = *((*val) as *const u64);
+        Ok(v8::BigInt::new_from_u64(&mut scope, result).into())
       }
       FFI_TYPE_VOID => serde_v8::to_v8(&mut scope, ()),
       _ => {
-        panic!("Unsupported parameter type")
+        unreachable!()
       }
     };
     params.push(value.expect("Unable to serialize callback parameter."));
   }
 
   let recv = v8::undefined(&mut scope);
-  let value = match func.call(&mut scope, recv.into(), &params) {
-    Some(value) => value,
-    None => panic!("OH SHIT"),
-  };
+  let call_result = func.call(&mut scope, recv.into(), &params);
+  if call_result.is_none() {
+    // JS function threw an exception. Set the return value to zero and return.
+    // TODO: Somehow get the exception back into JS
+    match (*cif.rtype).type_ as _ {
+      FFI_TYPE_INT | FFI_TYPE_SINT32 => {
+        *(result as *mut i32) = 0;
+        return;
+      }
+      FFI_TYPE_FLOAT => {
+        *(result as *mut f32) = 0.0;
+        return;
+      }
+      FFI_TYPE_DOUBLE => {
+        *(result as *mut f64) = 0.0;
+        return;
+      }
+      FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
+        *(result as *mut u64) = 0;
+        return;
+      }
+      FFI_TYPE_SINT8 => {
+        *(result as *mut i8) = 0;
+        return;
+      }
+      FFI_TYPE_UINT8 => {
+        *(result as *mut u8) = 0;
+        return;
+      }
+      FFI_TYPE_SINT16 => {
+        *(result as *mut i16) = 0;
+        return;
+      }
+      FFI_TYPE_UINT16 => {
+        *(result as *mut u16) = 0;
+        return;
+      }
+      FFI_TYPE_UINT32 => {
+        *(result as *mut u32) = 0;
+        return;
+      }
+      FFI_TYPE_SINT64 => {
+        *(result as *mut i64) = 0;
+        return;
+      }
+      FFI_TYPE_UINT64 => {
+        *(result as *mut u64) = 0;
+        return;
+      }
+      FFI_TYPE_VOID => {}
+      _ => {
+        panic!("Unsupported callback return type")
+      }
+    };
+  }
+  let value = call_result.unwrap();
 
   std::mem::forget(callback);
 
@@ -829,9 +910,8 @@ unsafe extern "C" fn deno_ffi_callback(
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-      let u32x2: U32x2 = serde_v8::from_v8(&mut scope, value)
+      *(result as *mut u64) = serde_v8::from_v8(&mut scope, value)
         .expect("Unable to deserialize result parameter.");
-      *(result as *mut u64) = u64::from(u32x2);
     }
     FFI_TYPE_SINT8 => {
       *(result as *mut i8) = serde_v8::from_v8(&mut scope, value)
@@ -915,12 +995,17 @@ fn op_ffi_register_callback(
 }
 
 #[op]
-fn op_ffi_deregister_callback(state: &mut deno_core::OpState, rid: ResourceId) {
-  state
-    .resource_table
-    .take::<RegisteredCallbackResource>(rid)
-    .unwrap()
-    .close();
+fn op_ffi_deregister_callback(
+  state: &mut deno_core::OpState,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let resource = state.resource_table.take::<RegisteredCallbackResource>(rid);
+
+  if resource.is_err() {
+    return Err(bad_resource_id());
+  }
+  resource.unwrap().close();
+  Ok(())
 }
 
 #[op(v8)]
@@ -929,26 +1014,22 @@ fn op_ffi_call_registered_callback<'a>(
   state: Rc<RefCell<deno_core::OpState>>,
   rid: ResourceId,
   args: serde_v8::Value<'a>,
-) -> Result<Value, AnyError>
+) -> Result<serde_v8::Value<'a>, AnyError>
 where
   'a: 'a,
 {
-  let (fn_ptr, info) = {
-    let state = &mut state.borrow_mut();
+  let (fn_ptr, info, call_args) = {
+    let state = &mut state.borrow();
     let resource = state
       .resource_table
       .get::<RegisteredCallbackResource>(rid)?;
     let info: &CallbackInfo = unsafe { &*resource.info };
 
     let fn_ptr = *resource.closure.code_ptr() as *mut c_void;
-    (fn_ptr, info)
+    let call_args =
+      ffi_parse_args(scope, args, &info.parameters, &state.resource_table)?;
+    (fn_ptr, info, call_args)
   };
-  let call_args = ffi_parse_args(
-    scope,
-    args,
-    &info.parameters,
-    &state.borrow().resource_table,
-  )?;
   let cif = libffi::middle::Cif::new(
     info
       .parameters
@@ -957,66 +1038,114 @@ where
       .map(libffi::middle::Type::from),
     info.result.into(),
   );
-  let symbol = Symbol {
-    cif,
-    ptr: libffi::middle::CodePtr::from_ptr(fn_ptr),
-    parameter_types: info.parameters.clone(),
-    result_type: info.result,
-  };
-  ffi_call(call_args, &symbol)
+  let fun_ptr = libffi::middle::CodePtr::from_ptr(fn_ptr);
+  let result =
+    ffi_call(call_args, &cif, fun_ptr, &info.parameters, info.result)?;
+  Ok(result.to_v8(scope, info.result))
 }
 
 #[op(v8)]
-fn op_ffi_call_ptr<FP>(
-  scope: &mut v8::HandleScope,
-  state: &mut deno_core::OpState,
-  args: FfiCallPtrArgs,
-) -> Result<Value, AnyError>
+fn op_ffi_call_ptr<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: Rc<RefCell<deno_core::OpState>>,
+  pointer: u64,
+  def: ForeignFunction,
+  parameters: serde_v8::Value<'scope>,
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafeFnPointer#call");
+  let (symbol, call_args) = {
+    let mut state = state.borrow_mut();
+    check_unstable(state.borrow(), "Deno.UnsafeFnPointer#call");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check(None)?;
 
-  let symbol = args.get_symbol();
-  let call_args = ffi_parse_args(
-    unsafe { std::mem::transmute(scope) },
-    args.parameters,
+    let symbol = get_symbol_for_ptr(pointer, def);
+    let call_args = ffi_parse_args(
+      scope,
+      parameters,
+      &symbol.parameter_types,
+      &state.resource_table,
+    )?;
+    (symbol, call_args)
+  };
+  let result = ffi_call(
+    call_args,
+    &symbol.cif,
+    symbol.ptr,
     &symbol.parameter_types,
-    &state.resource_table,
+    symbol.result_type,
   )?;
-  ffi_call(call_args, &symbol)
+  let result = result.to_v8(scope, symbol.result_type);
+  Ok(result)
 }
 
 #[op(v8)]
 fn op_ffi_call_ptr_nonblocking<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallPtrArgs<'scope>,
-) -> Result<impl Future<Output = Result<Value, AnyError>>, AnyError>
+  pointer: u64,
+  def: ForeignFunction,
+  parameters: serde_v8::Value<'scope>,
+) -> Result<
+  impl Future<Output = Result<serde_v8::Value<'static>, AnyError>>,
+  AnyError,
+>
 where
   FP: FfiPermissions + 'static,
 {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
-  {
+  let (symbol, call_args) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
-  }
 
-  let symbol = args.get_symbol();
-  let call_args = ffi_parse_args(
-    scope,
-    args.parameters,
-    &args.def.parameters,
-    &state.borrow_mut().resource_table,
-  )?;
+    let symbol = get_symbol_for_ptr(pointer, def);
+    let call_args = ffi_parse_args(
+      scope,
+      parameters,
+      &symbol.parameter_types,
+      &state.resource_table,
+    )?;
+    (symbol, call_args)
+  };
+
+  // Start the other blocking thread first...
+  let result_type = symbol.result_type;
+  let join_handle = tokio::task::spawn_blocking(move || {
+    let Symbol {
+      cif,
+      ptr,
+      parameter_types,
+      ..
+    } = symbol.clone();
+    ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
+  });
+
+  // ...then prepare for handling its result.
+  let isolate_ptr: *mut v8::Isolate = {
+    let isolate: &mut v8::Isolate = &mut *scope;
+    isolate
+  };
+  let isolate = unsafe { &mut *isolate_ptr };
+  let context =
+    v8::Global::new(isolate, scope.get_current_context()).into_raw();
 
   Ok(async move {
-    tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol)).await?
+    let result = join_handle.await??;
+    let context = unsafe {
+      std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
+        context,
+      )
+    };
+    let mut cb_scope = unsafe { v8::CallbackScope::new(context) };
+    let mut scope = v8::HandleScope::new(&mut cb_scope);
+    let result =
+      result.to_v8(unsafe { std::mem::transmute(&mut scope) }, result_type);
+    Ok(result)
   })
 }
 
@@ -1028,11 +1157,12 @@ struct FfiGetArgs {
   r#type: NativeType,
 }
 
-#[op]
-fn op_ffi_get_static(
+#[op(v8)]
+fn op_ffi_get_static<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   args: FfiGetArgs,
-) -> Result<Value, AnyError> {
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   let resource = state
     .resource_table
     .get::<DynamicLibraryResource>(args.rid)?;
@@ -1041,110 +1171,182 @@ fn op_ffi_get_static(
 
   Ok(match args.r#type {
     NativeType::Void => {
-      unreachable!();
+      return Err(type_error("Invalid FFI static type 'void'"));
     }
     NativeType::U8 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u8) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u8) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::I8 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i8) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i8) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::U16 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u16) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u16) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::I16 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i16) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i16) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::U32 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u32) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u32) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::I32 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i32) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i32) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::U64 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u64) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u64) };
+      let big_int = v8::BigInt::new_from_u64(scope, result);
+      serde_v8::from_v8(scope, big_int.into())?
     }
     NativeType::I64 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i64) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i64) };
+      let big_int = v8::BigInt::new_from_i64(scope, result);
+      serde_v8::from_v8(scope, big_int.into())?
     }
     NativeType::USize => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const usize) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
+      let big_int = v8::BigInt::new_from_u64(scope, result as u64);
+      serde_v8::from_v8(scope, big_int.into())?
     }
     NativeType::ISize => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const isize) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
+      let big_int = v8::BigInt::new_from_i64(scope, result as i64);
+      serde_v8::from_v8(scope, big_int.into())?
     }
     NativeType::F32 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const f32) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const f32) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
     NativeType::F64 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const f64) };
+      let number = v8::Number::new(scope, result as f64);
+      serde_v8::from_v8(scope, number.into())?
     }
-    NativeType::Pointer | NativeType::Function(_) => {
-      json!(U32x2::from(data_ptr as *const u8 as u64))
+    NativeType::Pointer | NativeType::Function {} => {
+      let result = data_ptr as *const u8 as u64;
+      let big_int = v8::BigInt::new_from_u64(scope, result);
+      serde_v8::from_v8(scope, big_int.into())?
     }
   })
 }
 
 #[op(v8)]
-fn op_ffi_call(
-  scope: &mut v8::HandleScope,
+fn op_ffi_call<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallArgs,
-) -> Result<Value, AnyError> {
+  rid: ResourceId,
+  symbol: String,
+  parameters: serde_v8::Value<'scope>,
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   let (symbol, call_args) = {
-    let state = &mut state.borrow_mut();
-    let resource = state
-      .resource_table
-      .get::<DynamicLibraryResource>(args.rid)?;
+    let state = &mut state.borrow();
+    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
     let symbol = resource
       .symbols
-      .get(&args.symbol)
+      .get(&symbol)
       .ok_or_else(bad_resource_id)?
       .clone();
 
     let call_args = ffi_parse_args(
-      unsafe { std::mem::transmute(scope) },
-      args.parameters,
+      scope,
+      parameters,
       &symbol.parameter_types,
       &state.resource_table,
     )?;
     (symbol, call_args)
   };
 
-  ffi_call(call_args, &symbol)
+  let result = ffi_call(
+    call_args,
+    &symbol.cif,
+    symbol.ptr,
+    &symbol.parameter_types,
+    symbol.result_type,
+  )?;
+  let result = result.to_v8(scope, symbol.result_type);
+  Ok(result)
 }
 
 /// A non-blocking FFI call.
 #[op(v8)]
 fn op_ffi_call_nonblocking<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
-  args: FfiCallArgs<'scope>,
-) -> Result<impl Future<Output = Result<Value, AnyError>> + 'static, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-  let symbols = &resource.symbols;
-  let symbol = symbols.get(&args.symbol).ok_or_else(bad_resource_id)?;
-  let symbol = symbol.clone();
-  let call_args = ffi_parse_args(
-    scope,
-    args.parameters,
-    &symbol.parameter_types,
-    &state.resource_table,
-  )?;
+  state: Rc<RefCell<deno_core::OpState>>,
+  rid: ResourceId,
+  symbol: String,
+  parameters: serde_v8::Value<'scope>,
+) -> Result<
+  impl Future<Output = Result<serde_v8::Value<'static>, AnyError>> + 'static,
+  AnyError,
+> {
+  let (symbol, call_args) = {
+    let state = state.borrow();
+    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
+    let symbols = &resource.symbols;
+    let symbol = symbols.get(&symbol).ok_or_else(bad_resource_id)?.clone();
+    let call_args = ffi_parse_args(
+      scope,
+      parameters,
+      &symbol.parameter_types,
+      &state.resource_table,
+    )?;
+    (symbol, call_args)
+  };
 
-  let join_handle =
-    tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol));
-  Ok(async move { join_handle.await? })
+  // Start the other blocking thread first...
+  let result_type = symbol.result_type;
+  let join_handle = tokio::task::spawn_blocking(move || {
+    let Symbol {
+      cif,
+      ptr,
+      parameter_types,
+      ..
+    } = symbol.clone();
+    ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
+  });
+
+  // ...then prepare for handling its result.
+  let isolate_ptr: *mut v8::Isolate = {
+    let isolate: &mut v8::Isolate = &mut *scope;
+    isolate
+  };
+  let isolate = unsafe { &mut *isolate_ptr };
+  let context =
+    v8::Global::new(isolate, scope.get_current_context()).into_raw();
+
+  Ok(async move {
+    let result = join_handle.await??;
+    let context = unsafe {
+      std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
+        context,
+      )
+    };
+    let mut cb_scope = unsafe { v8::CallbackScope::new(context) };
+    let mut scope = v8::HandleScope::new(&mut cb_scope);
+    let result =
+      result.to_v8(unsafe { std::mem::transmute(&mut scope) }, result_type);
+    Ok(result)
+  })
 }
 
-#[op]
-fn op_ffi_ptr_of<FP>(
+#[op(v8)]
+fn op_ffi_ptr_of<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   buf: ZeroCopyBuf,
-) -> Result<U32x2, AnyError>
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -1153,13 +1355,19 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(U32x2::from(buf.as_ptr() as u64))
+  let big_int = v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64);
+  //Ok(serde_v8::from_v8(scope, big_int.into())?)
+  Ok(serde_v8::Value {
+    v8_value: big_int.into(),
+  })
 }
 
 #[op]
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
-  (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
+  src: u64,
+  mut dst: ZeroCopyBuf,
+  len: usize,
 ) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1174,7 +1382,7 @@ where
       "Destination length is smaller than source length",
     ))
   } else {
-    let src = u64::from(src) as *const u8;
+    let src = src as *const u8;
     unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
     Ok(())
   }
@@ -1183,7 +1391,7 @@ where
 #[op]
 fn op_ffi_cstr_read<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<String, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1193,14 +1401,14 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = u64::from(ptr) as *const c_char;
+  let ptr = ptr as *const c_char;
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
 #[op]
 fn op_ffi_read_u8<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<u8, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1210,13 +1418,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u8) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const u8) })
 }
 
 #[op]
 fn op_ffi_read_i8<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<i8, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1226,13 +1434,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i8) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const i8) })
 }
 
 #[op]
 fn op_ffi_read_u16<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<u16, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1242,13 +1450,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u16) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const u16) })
 }
 
 #[op]
 fn op_ffi_read_i16<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<i16, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1258,13 +1466,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i16) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const i16) })
 }
 
 #[op]
 fn op_ffi_read_u32<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1274,13 +1482,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u32) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const u32) })
 }
 
 #[op]
 fn op_ffi_read_i32<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1290,31 +1498,34 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i32) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const i32) })
 }
 
-#[op]
-fn op_ffi_read_u64<FP>(
+#[op(v8)]
+fn op_ffi_read_u64<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  ptr: U32x2,
-) -> Result<U32x2, AnyError>
+  ptr: u64,
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
+  'scope: 'scope,
 {
   check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
 
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(U32x2::from(unsafe {
-    ptr::read_unaligned(u64::from(ptr) as *const u64)
-  }))
+  let result = unsafe { ptr::read_unaligned(ptr as *const u64) };
+
+  let big_int = v8::BigInt::new_from_u64(scope, result);
+  Ok(serde_v8::from_v8(scope, big_int.into())?)
 }
 
 #[op]
 fn op_ffi_read_f32<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<f32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1324,13 +1535,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f32) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const f32) })
 }
 
 #[op]
 fn op_ffi_read_f64<FP>(
   state: &mut deno_core::OpState,
-  ptr: U32x2,
+  ptr: u64,
 ) -> Result<f64, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1340,7 +1551,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f64) })
+  Ok(unsafe { ptr::read_unaligned(ptr as *const f64) })
 }
 
 #[cfg(test)]
