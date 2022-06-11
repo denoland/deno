@@ -158,9 +158,9 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_load::decl::<P>(),
       op_ffi_get_static::decl(),
       op_ffi_call::decl(),
-      //op_ffi_call_nonblocking::decl(),
+      op_ffi_call_nonblocking::decl(),
       op_ffi_call_ptr::decl::<P>(),
-      //op_ffi_call_ptr_nonblocking::decl::<P>(),
+      op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
@@ -990,16 +990,14 @@ where
   ffi_call(call_args, &symbol)
 }
 
-//#[op(v8)]
-#[allow(dead_code)]
-async fn op_ffi_call_ptr_nonblocking<'a, FP>(
-  scope: &mut v8::HandleScope<'a>,
+#[op(v8)]
+fn op_ffi_call_ptr_nonblocking<'scope, FP>(
+  scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<deno_core::OpState>>,
-  args: FfiCallPtrArgs<'a>,
-) -> Result<Value, AnyError>
+  args: FfiCallPtrArgs<'scope>,
+) -> Result<impl Future<Output = Result<Value, AnyError>>, AnyError>
 where
   FP: FfiPermissions + 'static,
-  'a: 'a,
 {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
@@ -1016,9 +1014,10 @@ where
     &args.def.parameters,
     &state.borrow_mut().resource_table,
   )?;
-  tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol))
-    .await
-    .unwrap()
+
+  Ok(async move {
+    tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol)).await?
+  })
 }
 
 #[derive(Deserialize)]
