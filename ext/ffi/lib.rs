@@ -9,6 +9,8 @@ use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
 
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 //use deno_core::serde_json::json;
 //use deno_core::serde_json::Value;
 use deno_core::serde_v8;
@@ -23,6 +25,7 @@ use libffi::middle::Arg;
 use libffi::middle::Cif;
 use libffi::raw::*;
 use serde::Deserialize;
+use serde::Serialize;
 //use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -268,6 +271,53 @@ impl NativeValue {
     }
   }
 
+  fn to_value(self, native_type: NativeType) -> Value {
+    match native_type {
+      NativeType::Void => {
+        json!(())
+      }
+      NativeType::U8 => {
+        json!(unsafe { self.u8_value })
+      }
+      NativeType::I8 => {
+        json!(unsafe { self.i8_value })
+      }
+      NativeType::U16 => {
+        json!(unsafe { self.u16_value })
+      }
+      NativeType::I16 => {
+        json!(unsafe { self.i16_value })
+      }
+      NativeType::U32 => {
+        json!(unsafe { self.u32_value })
+      }
+      NativeType::I32 => {
+        json!(unsafe { self.i32_value })
+      }
+      NativeType::U64 => {
+        json!(U32x2::from(unsafe { self.u64_value }))
+      }
+      NativeType::I64 => {
+        json!(U32x2::from(unsafe { self.i64_value } as u64))
+      }
+      NativeType::USize => {
+        json!(U32x2::from(unsafe { self.usize_value } as u64))
+      }
+      NativeType::ISize => {
+        json!(U32x2::from(unsafe { self.isize_value } as u64))
+      }
+      NativeType::F32 => {
+        json!(unsafe { self.f32_value })
+      }
+      NativeType::F64 => {
+        json!(unsafe { self.f64_value })
+      }
+      NativeType::Pointer | NativeType::Function {} => {
+        json!(U32x2::from(unsafe { self.pointer } as u64))
+      }
+    }
+  }
+
   fn to_v8<'scope>(
     &self,
     scope: &mut v8::HandleScope<'scope>,
@@ -351,6 +401,15 @@ impl NativeValue {
 }
 
 unsafe impl Send for NativeValue {}
+
+#[derive(Serialize, Debug, Clone, Copy)]
+struct U32x2(u32, u32);
+
+impl From<u64> for U32x2 {
+  fn from(value: u64) -> Self {
+    Self((value >> 32) as u32, value as u32)
+  }
+}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -990,7 +1049,12 @@ fn op_ffi_deregister_callback(
   state: &mut deno_core::OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  Ok(state.resource_table.take::<RegisteredCallbackResource>(rid)?.close())
+  Ok(
+    state
+      .resource_table
+      .take::<RegisteredCallbackResource>(rid)?
+      .close(),
+  )
 }
 
 #[op(v8)]
@@ -1074,10 +1138,7 @@ fn op_ffi_call_ptr_nonblocking<'scope, FP>(
   pointer: u64,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
-) -> Result<
-  impl Future<Output = Result<serde_v8::Value<'static>, AnyError>>,
-  AnyError,
->
+) -> Result<impl Future<Output = Result<Value, AnyError>>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -1098,7 +1159,6 @@ where
     (symbol, call_args)
   };
 
-  // Start the other blocking thread first...
   let result_type = symbol.result_type;
   let join_handle = tokio::task::spawn_blocking(move || {
     let Symbol {
@@ -1110,27 +1170,9 @@ where
     ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
   });
 
-  // ...then prepare for handling its result.
-  let isolate_ptr: *mut v8::Isolate = {
-    let isolate: &mut v8::Isolate = &mut *scope;
-    isolate
-  };
-  let isolate = unsafe { &mut *isolate_ptr };
-  let context =
-    v8::Global::new(isolate, scope.get_current_context()).into_raw();
-
   Ok(async move {
     let result = join_handle.await??;
-    let context = unsafe {
-      std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
-        context,
-      )
-    };
-    let mut cb_scope = unsafe { v8::CallbackScope::new(context) };
-    let mut scope = v8::HandleScope::new(&mut cb_scope);
-    let result =
-      result.to_v8(unsafe { std::mem::transmute(&mut scope) }, result_type);
-    Ok(result)
+    Ok(result.to_value(result_type))
   })
 }
 
@@ -1264,15 +1306,15 @@ fn op_ffi_call_nonblocking<'scope>(
   rid: ResourceId,
   symbol: String,
   parameters: serde_v8::Value<'scope>,
-) -> Result<
-  impl Future<Output = Result<serde_v8::Value<'static>, AnyError>> + 'static,
-  AnyError,
-> {
+) -> Result<impl Future<Output = Result<Value, AnyError>> + 'static, AnyError> {
   let (symbol, call_args) = {
     let state = state.borrow();
     let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
     let symbols = &resource.symbols;
-    let symbol = symbols.get(&symbol).ok_or_else(|| type_error("Invalid FFI symbol name"))?.clone();
+    let symbol = symbols
+      .get(&symbol)
+      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
+      .clone();
     let call_args = ffi_parse_args(
       scope,
       parameters,
@@ -1282,7 +1324,6 @@ fn op_ffi_call_nonblocking<'scope>(
     (symbol, call_args)
   };
 
-  // Start the other blocking thread first...
   let result_type = symbol.result_type;
   let join_handle = tokio::task::spawn_blocking(move || {
     let Symbol {
@@ -1294,27 +1335,9 @@ fn op_ffi_call_nonblocking<'scope>(
     ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
   });
 
-  // ...then prepare for handling its result.
-  let isolate_ptr: *mut v8::Isolate = {
-    let isolate: &mut v8::Isolate = &mut *scope;
-    isolate
-  };
-  let isolate = unsafe { &mut *isolate_ptr };
-  let context =
-    v8::Global::new(isolate, scope.get_current_context()).into_raw();
-
   Ok(async move {
     let result = join_handle.await??;
-    let context = unsafe {
-      std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
-        context,
-      )
-    };
-    let mut cb_scope = unsafe { v8::CallbackScope::new(context) };
-    let mut scope = v8::HandleScope::new(&mut cb_scope);
-    let result =
-      result.to_v8(unsafe { std::mem::transmute(&mut scope) }, result_type);
-    Ok(result)
+    Ok(result.to_value(result_type))
   })
 }
 

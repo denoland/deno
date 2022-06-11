@@ -15,6 +15,15 @@
     Uint8Array,
   } = window.__bootstrap.primordials;
 
+  function unpackU64([hi, lo]) {
+    return BigInt(hi) << 32n | BigInt(lo);
+  }
+
+  function unpackI64([hi, lo]) {
+    const u64 = unpackU64([hi, lo]);
+    return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
+  }
+
   class UnsafePointerView {
     pointer;
 
@@ -153,12 +162,26 @@
           throw new TypeError(`Expected FFI argument to be an unsigned integer, but got '${arg}'`)
         }
         parameters.push(arg);
+      } else if (type === "i8" || type === "i16" || type === "i32") {
+        if (!Number.isInteger(arg)) {
+          throw new TypeError(`Expected FFI argument to be a signed integer, but got '${arg}'`)
+        }
+        parameters.push(arg);
       } else if (type === "u64" || type === "usize") {
-        if (Number.isInteger(arg) && arg >= 0 || typeof arg === "bigint" && arg >= 0n) {
-          parameters.push(arg);
-        } else {
+        if (!(Number.isInteger(arg) && arg >= 0 || typeof arg === "bigint" && 0n <= arg && arg <= 0xffffffffffffffffn)) {
           throw new TypeError(`Expected FFI argument to be an unsigned integer, but got '${arg}'`)
         }
+        parameters.push(arg);
+      } else if (type == "i64" || type === "isize") {
+        if (!(Number.isInteger(arg) || typeof arg === "bigint" && -1n * 2n ** 63n <= arg && arg <= 2n ** 63n - 1n)) {
+          throw new TypeError(`Expected FFI argument to be a signed integer, but got '${arg}'`)
+        }
+        parameters.push(arg);
+      } else if (type === "f32" || type === "f64") {
+        if (!Number.isFinite(arg)) {
+          throw new TypeError(`Expected FFI argument to be a number, but got '${arg}'`)
+        }
+        parameters.push(arg);
       } else if (type === "pointer") {
         if (
           ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
@@ -171,39 +194,36 @@
           parameters.push(null);
         } else {
           throw new TypeError(
-            "Invalid ffi arg value, expected TypedArray, UnsafePointer or null",
+            "Expected FFI argument to be TypedArray, UnsafePointer or null",
           );
         }
-      } else if (typeof arg === "bigint") {
-        if (arg > 0xffffffffffffffffn) {
-          throw new TypeError(
-            "Invalid ffi arg value, it needs to be less than 0xffffffffffffffff",
-          );
-        }
-
-        parameters.push(arg);
       } else if (
         typeof type === "object" && type !== null && "function" in type
       ) {
-        if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
-          parameters.push(arg[_rid]);
-        } else {
+        if (!ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
           throw new TypeError(
-            "Invalid ffi arg value, expected RegisteredCallback",
+            "Expected FFI argument to be RegisteredCallback",
           );
         }
+        parameters.push(arg[_rid]);
       } else {
-        parameters.push(arg);
+        throw new TypeError(`Invalid FFI argument type '${type}'`);
       }
     }
 
-    return { parameters };
+    return parameters;
   }
 
   function unpackResult(type, result) {
     switch (type) {
+      case "isize":
+      case "i64":
+        return unpackI64(result);
+      case "usize":
+      case "u64":
+        return unpackU64(result);
       case "pointer":
-        return new UnsafePointer(result);
+        return new UnsafePointer(unpackU64(result));
       default:
         return result;
     }
@@ -219,10 +239,11 @@
     }
 
     call(...args) {
-      const { parameters } = prepareArgs(
+      const parameters = prepareArgs(
         this.definition.parameters,
         args,
       );
+      const resultType = this.definition.result;
       if (this.definition.nonblocking) {
         const promise = core.opAsync(
           "op_ffi_call_ptr_nonblocking",
@@ -231,8 +252,8 @@
           parameters,
         );
 
-        if (this.definition.result === "pointer") {
-          return promise.then((value) => new UnsafePointer(value));
+        if (resultType === "pointer" || resultType === "u64" || resultType === "i64" || resultType === "usize" || resultType === "isize") {
+          return promise.then((result) => unpackResult(resultType, result));
         }
 
         return promise;
@@ -244,7 +265,7 @@
           parameters,
         );
 
-        if (this.definition.result === "pointer") {
+        if (resultType === "pointer") {
           return new UnsafePointer(result);
         }
 
@@ -276,7 +297,7 @@
     }
 
     call(...args) {
-      const { parameters } = prepareArgs(
+      const parameters = prepareArgs(
         this.definition.parameters,
         args,
       );
@@ -355,7 +376,7 @@
         const resultType = symbols[symbol].result;
 
         const fn = (...args) => {
-          const { parameters } = prepareArgs(types, args);
+          const parameters = prepareArgs(types, args);
 
           if (isNonBlocking) {
             const promise = core.opAsync(
@@ -365,7 +386,7 @@
               parameters,
             );
 
-            if (resultType === "pointer") {
+            if (resultType === "pointer" || resultType === "u64" || resultType === "i64" || resultType === "usize" || resultType === "isize") {
               return promise.then((result) => unpackResult(resultType, result));
             }
 
@@ -378,7 +399,11 @@
               parameters,
             );
 
-            return unpackResult(resultType, result);
+            if (resultType === "pointer") {
+              return new UnsafePointer(result);
+            }
+
+            return result;
           }
         };
 

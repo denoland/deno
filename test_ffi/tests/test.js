@@ -52,6 +52,14 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
+  "add_u32_nonblocking": { name: "add_u32", parameters: ["u32", "u32"], result: "u32", nonblocking: true },
+  "add_i32_nonblocking": { name: "add_i32", parameters: ["i32", "i32"], result: "i32", nonblocking: true },
+  "add_u64_nonblocking": { name: "add_u64", parameters: ["u64", "u64"], result: "u64", nonblocking: true },
+  "add_i64_nonblocking": { name: "add_i64", parameters: ["i64", "i64"], result: "i64", nonblocking: true },
+  "add_usize_nonblocking": { name: "add_usize", parameters: ["usize", "usize"], result: "usize", nonblocking: true },
+  "add_isize_nonblocking": { name: "add_isize", parameters: ["isize", "isize"], result: "isize", nonblocking: true },
+  "add_f32_nonblocking": { name: "add_f32", parameters: ["f32", "f32"], result: "f32", nonblocking: true },
+  "add_f64_nonblocking": { name: "add_f64", parameters: ["f64", "f64"], result: "f64", nonblocking: true },
   "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
   "sleep_nonblocking": {
     name: "sleep_blocking",
@@ -154,6 +162,15 @@ console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+
+// Test adders as nonblocking calls
+console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
+console.log(await dylib.symbols.add_u64_nonblocking(0xffffffffn, 0xffffffffn));
+console.log(await dylib.symbols.add_i64_nonblocking(-0xffffffffn, -0xffffffffn));
+console.log(await dylib.symbols.add_usize_nonblocking(0xffffffffn, 0xffffffffn));
+console.log(await dylib.symbols.add_isize_nonblocking(-0xffffffffn, -0xffffffffn));
+console.log(await dylib.symbols.add_f32_nonblocking(123.123, 456.789));
+console.log(await dylib.symbols.add_f64_nonblocking(123.123, 456.789));
 
 // test mutating sync calls
 
