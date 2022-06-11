@@ -8,6 +8,8 @@
     ArrayBufferPrototype,
     BigInt,
     Error,
+    NumberIsFinite,
+    NumberIsInteger,
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     Symbol,
@@ -158,28 +160,45 @@
       const arg = args[i];
 
       if (type === "u8" || type === "u16" || type === "u32") {
-        if (!Number.isInteger(arg) || arg < 0) {
-          throw new TypeError(`Expected FFI argument to be an unsigned integer, but got '${arg}'`)
+        if (!NumberIsInteger(arg) || arg < 0) {
+          throw new TypeError(
+            `Expected FFI argument to be an unsigned integer, but got '${arg}'`,
+          );
         }
         parameters.push(arg);
       } else if (type === "i8" || type === "i16" || type === "i32") {
-        if (!Number.isInteger(arg)) {
-          throw new TypeError(`Expected FFI argument to be a signed integer, but got '${arg}'`)
+        if (!NumberIsInteger(arg)) {
+          throw new TypeError(
+            `Expected FFI argument to be a signed integer, but got '${arg}'`,
+          );
         }
         parameters.push(arg);
       } else if (type === "u64" || type === "usize") {
-        if (!(Number.isInteger(arg) && arg >= 0 || typeof arg === "bigint" && 0n <= arg && arg <= 0xffffffffffffffffn)) {
-          throw new TypeError(`Expected FFI argument to be an unsigned integer, but got '${arg}'`)
+        if (
+          !(NumberIsInteger(arg) && arg >= 0 ||
+            typeof arg === "bigint" && 0n <= arg && arg <= 0xffffffffffffffffn)
+        ) {
+          throw new TypeError(
+            `Expected FFI argument to be an unsigned integer, but got '${arg}'`,
+          );
         }
         parameters.push(arg);
       } else if (type == "i64" || type === "isize") {
-        if (!(Number.isInteger(arg) || typeof arg === "bigint" && -1n * 2n ** 63n <= arg && arg <= 2n ** 63n - 1n)) {
-          throw new TypeError(`Expected FFI argument to be a signed integer, but got '${arg}'`)
+        if (
+          !(NumberIsInteger(arg) ||
+            typeof arg === "bigint" && -1n * 2n ** 63n <= arg &&
+              arg <= 2n ** 63n - 1n)
+        ) {
+          throw new TypeError(
+            `Expected FFI argument to be a signed integer, but got '${arg}'`,
+          );
         }
         parameters.push(arg);
       } else if (type === "f32" || type === "f64") {
-        if (!Number.isFinite(arg)) {
-          throw new TypeError(`Expected FFI argument to be a number, but got '${arg}'`)
+        if (!NumberIsFinite(arg)) {
+          throw new TypeError(
+            `Expected FFI argument to be a number, but got '${arg}'`,
+          );
         }
         parameters.push(arg);
       } else if (type === "pointer") {
@@ -252,7 +271,11 @@
           parameters,
         );
 
-        if (resultType === "pointer" || resultType === "u64" || resultType === "i64" || resultType === "usize" || resultType === "isize") {
+        if (
+          resultType === "pointer" || resultType === "u64" ||
+          resultType === "i64" || resultType === "usize" ||
+          resultType === "isize"
+        ) {
           return promise.then((result) => unpackResult(resultType, result));
         }
 
@@ -386,7 +409,11 @@
               parameters,
             );
 
-            if (resultType === "pointer" || resultType === "u64" || resultType === "i64" || resultType === "usize" || resultType === "isize") {
+            if (
+              resultType === "pointer" || resultType === "u64" ||
+              resultType === "i64" || resultType === "usize" ||
+              resultType === "isize"
+            ) {
               return promise.then((result) => unpackResult(resultType, result));
             }
 
