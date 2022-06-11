@@ -1117,39 +1117,28 @@ fn op_ffi_call(
 }
 
 /// A non-blocking FFI call.
-//#[op(v8)]
-#[allow(dead_code)]
-fn op_ffi_call_nonblocking<'a>(
-  scope: &mut v8::HandleScope<'a>,
+#[op(v8)]
+fn op_ffi_call_nonblocking<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  args: FfiCallArgs<'a>,
-) -> impl Future<Output = Result<Value, AnyError>> + 'static {
-  let block = || -> Result<(Symbol, Vec<NativeValue>), AnyError> {
-    let resource = state
-      .resource_table
-      .get::<DynamicLibraryResource>(args.rid)?;
-    let symbols = &resource.symbols;
-    let symbol = symbols.get(&args.symbol).ok_or_else(bad_resource_id)?;
+  args: FfiCallArgs<'scope>,
+) -> Result<impl Future<Output = Result<Value, AnyError>> + 'static, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+  let symbols = &resource.symbols;
+  let symbol = symbols.get(&args.symbol).ok_or_else(bad_resource_id)?;
+  let symbol = symbol.clone();
+  let call_args = ffi_parse_args(
+    scope,
+    args.parameters,
+    &symbol.parameter_types,
+    &state.resource_table,
+  )?;
 
-    Ok((
-      symbol.clone(),
-      ffi_parse_args(
-        scope,
-        args.parameters,
-        &symbol.parameter_types,
-        &state.resource_table,
-      )?,
-    ))
-  }();
-
-  let join_handle = tokio::task::spawn_blocking(move || {
-    let (symbol, call_args) = match block {
-      Ok((sym, c_args)) => (sym, c_args),
-      Err(err) => return Err(err),
-    };
-    ffi_call(call_args, &symbol)
-  });
-  async move { join_handle.await? }
+  let join_handle =
+    tokio::task::spawn_blocking(move || ffi_call(call_args, &symbol));
+  Ok(async move { join_handle.await? })
 }
 
 #[op]
