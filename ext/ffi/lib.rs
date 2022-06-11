@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use core::ptr::NonNull;
-use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
@@ -276,100 +275,76 @@ impl NativeValue {
   ) -> serde_v8::Value<'scope> {
     match native_type {
       NativeType::Void => {
-        let local_value = v8::undefined(scope);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> = v8::undefined(scope).into();
+        local_value.into()
       }
       NativeType::U8 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.u8_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.u8_value } as f64).into();
+        local_value.into()
       }
       NativeType::I8 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.i8_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.i8_value } as f64).into();
+        local_value.into()
       }
       NativeType::U16 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.u16_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.u16_value } as f64).into();
+        local_value.into()
       }
       NativeType::I16 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.i16_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.i16_value } as f64).into();
+        local_value.into()
       }
       NativeType::U32 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.u32_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.u32_value } as f64).into();
+        local_value.into()
       }
       NativeType::I32 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.i32_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.i32_value } as f64).into();
+        local_value.into()
       }
       NativeType::U64 => {
-        let local_value =
-          v8::BigInt::new_from_u64(scope, unsafe { self.u64_value });
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::BigInt::new_from_u64(scope, unsafe { self.u64_value }).into();
+        local_value.into()
       }
       NativeType::I64 => {
-        let local_value =
-          v8::BigInt::new_from_i64(scope, unsafe { self.i64_value });
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::BigInt::new_from_i64(scope, unsafe { self.i64_value }).into();
+        local_value.into()
       }
       NativeType::USize => {
-        let local_value =
-          v8::BigInt::new_from_u64(scope, unsafe { self.usize_value } as u64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::BigInt::new_from_u64(scope, unsafe { self.usize_value } as u64)
+            .into();
+        local_value.into()
       }
       NativeType::ISize => {
-        let local_value =
-          v8::BigInt::new_from_i64(scope, unsafe { self.isize_value } as i64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::BigInt::new_from_i64(scope, unsafe { self.isize_value } as i64)
+            .into();
+        local_value.into()
       }
       NativeType::F32 => {
-        let local_value =
-          v8::Number::new(scope, unsafe { self.f32_value } as f64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.f32_value } as f64).into();
+        local_value.into()
       }
       NativeType::F64 => {
-        let local_value = v8::Number::new(scope, unsafe { self.f64_value });
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::Number::new(scope, unsafe { self.f64_value }).into();
+        local_value.into()
       }
       NativeType::Pointer | NativeType::Function {} => {
-        let local_value =
-          v8::BigInt::new_from_u64(scope, unsafe { self.pointer } as u64);
-        serde_v8::Value {
-          v8_value: local_value.into(),
-        }
+        let local_value: v8::Local<v8::Value> =
+          v8::BigInt::new_from_u64(scope, unsafe { self.pointer } as u64)
+            .into();
+        local_value.into()
       }
     }
   }
@@ -564,72 +539,88 @@ where
       }
       NativeType::U8 => {
         let value = value
-          .uint32_value(scope)
+          .number_value(scope)
           .ok_or_else(|| type_error("Invalid FFI u8 type, expected number"))?
           as u8;
         ffi_args.push(NativeValue { u8_value: value });
       }
       NativeType::I8 => {
         let value = value
-          .int32_value(scope)
+          .number_value(scope)
           .ok_or_else(|| type_error("Invalid FFI i8 type, expected number"))?
           as i8;
         ffi_args.push(NativeValue { i8_value: value });
       }
       NativeType::U16 => {
         let value = value
-          .uint32_value(scope)
+          .number_value(scope)
           .ok_or_else(|| type_error("Invalid FFI u16 type, expected number"))?
           as u16;
         ffi_args.push(NativeValue { u16_value: value });
       }
       NativeType::I16 => {
         let value = value
-          .int32_value(scope)
+          .number_value(scope)
           .ok_or_else(|| type_error("Invalid FFI i16 type, expected number"))?
           as i16;
         ffi_args.push(NativeValue { i16_value: value });
       }
       NativeType::U32 => {
         let value = value
-          .uint32_value(scope)
-          .ok_or_else(|| type_error("Invalid FFI u32 type, expected number"))?;
+          .number_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI u32 type, expected number"))?
+          as u32;
         ffi_args.push(NativeValue { u32_value: value });
       }
       NativeType::I32 => {
         let value = value
-          .int32_value(scope)
-          .ok_or_else(|| type_error("Invalid FFI i32 type, expected number"))?;
+          .number_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI i32 type, expected number"))?
+          as i32;
         ffi_args.push(NativeValue { i32_value: value });
       }
       NativeType::U64 => {
-        // TODO: Handle BigInt
-        let value = value
-          .integer_value(scope)
-          .ok_or_else(|| type_error("Invalid FFI u64 type, expected number"))?
-          as u64;
+        let value: u64 = if value.is_big_int() {
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          value.u64_value().0
+        } else {
+          value.integer_value(scope).ok_or_else(|| {
+            type_error("Invalid FFI u64 type, expected number")
+          })? as u64
+        };
         ffi_args.push(NativeValue { u64_value: value });
       }
       NativeType::I64 => {
-        // TODO: Handle BigInt
-        let value = value
-          .integer_value(scope)
-          .ok_or_else(|| type_error("Invalid FFI i64 type, expected number"))?
-          as i64;
+        let value: i64 = if value.is_big_int() {
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          value.i64_value().0
+        } else {
+          value.integer_value(scope).ok_or_else(|| {
+            type_error("Invalid FFI i64 type, expected number")
+          })? as i64
+        };
         ffi_args.push(NativeValue { i64_value: value });
       }
       NativeType::USize => {
-        // TODO: Handle BigInt
-        let value = value.integer_value(scope).ok_or_else(|| {
-          type_error("Invalid FFI usize type, expected number")
-        })? as usize;
+        let value: usize = if value.is_big_int() {
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          value.u64_value().0 as usize
+        } else {
+          value.integer_value(scope).ok_or_else(|| {
+            type_error("Invalid FFI usize type, expected number")
+          })? as usize
+        };
         ffi_args.push(NativeValue { usize_value: value });
       }
       NativeType::ISize => {
-        // TODO: Handle BigInt
-        let value = value.integer_value(scope).ok_or_else(|| {
-          type_error("Invalid FFI isize type, expected number")
-        })? as isize;
+        let value: isize = if value.is_big_int() {
+          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          value.i64_value().0 as isize
+        } else {
+          value.integer_value(scope).ok_or_else(|| {
+            type_error("Invalid FFI isize type, expected number")
+          })? as isize
+        };
         ffi_args.push(NativeValue { isize_value: value });
       }
       NativeType::F32 => {
@@ -641,7 +632,7 @@ where
       }
       NativeType::F64 => {
         let value = value
-          .integer_value(scope)
+          .number_value(scope)
           .ok_or_else(|| type_error("Invalid FFI f64 type, expected number"))?
           as f64;
         ffi_args.push(NativeValue { f64_value: value });
@@ -669,7 +660,7 @@ where
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
         } else if value.is_number() {
-          let value: ResourceId = value.uint32_value(scope).unwrap();
+          let value: ResourceId = value.number_value(scope).unwrap() as u32;
           let rc = resource_table.get::<RegisteredCallbackResource>(value)?;
           let function = *rc.closure.code_ptr();
           ffi_args.push(NativeValue {
@@ -999,13 +990,7 @@ fn op_ffi_deregister_callback(
   state: &mut deno_core::OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let resource = state.resource_table.take::<RegisteredCallbackResource>(rid);
-
-  if resource.is_err() {
-    return Err(bad_resource_id());
-  }
-  resource.unwrap().close();
-  Ok(())
+  Ok(state.resource_table.take::<RegisteredCallbackResource>(rid)?.close())
 }
 
 #[op(v8)]
@@ -1248,7 +1233,7 @@ fn op_ffi_call<'scope>(
     let symbol = resource
       .symbols
       .get(&symbol)
-      .ok_or_else(bad_resource_id)?
+      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
       .clone();
 
     let call_args = ffi_parse_args(
@@ -1287,7 +1272,7 @@ fn op_ffi_call_nonblocking<'scope>(
     let state = state.borrow();
     let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
     let symbols = &resource.symbols;
-    let symbol = symbols.get(&symbol).ok_or_else(bad_resource_id)?.clone();
+    let symbol = symbols.get(&symbol).ok_or_else(|| type_error("Invalid FFI symbol name"))?.clone();
     let call_args = ffi_parse_args(
       scope,
       parameters,
@@ -1347,11 +1332,9 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let big_int = v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64);
-  //Ok(serde_v8::from_v8(scope, big_int.into())?)
-  Ok(serde_v8::Value {
-    v8_value: big_int.into(),
-  })
+  let big_int: v8::Local<v8::Value> =
+    v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64).into();
+  Ok(big_int.into())
 }
 
 #[op]
@@ -1510,8 +1493,9 @@ where
 
   let result = unsafe { ptr::read_unaligned(ptr as *const u64) };
 
-  let big_int = v8::BigInt::new_from_u64(scope, result);
-  Ok(serde_v8::from_v8(scope, big_int.into())?)
+  let big_int: v8::Local<v8::Value> =
+    v8::BigInt::new_from_u64(scope, result).into();
+  Ok(big_int.into())
 }
 
 #[op]

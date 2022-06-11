@@ -70,6 +70,7 @@ fn basic() {
     Before\n\
     true\n\
     Static u32: 42\n\
+    Static i64: -1242464576485n\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
     After\n\

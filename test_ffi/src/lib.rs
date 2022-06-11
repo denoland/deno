@@ -116,6 +116,9 @@ pub extern "C" fn get_sleep_blocking_ptr() -> *const c_void {
 #[no_mangle]
 pub static static_u32: u32 = 42;
 
+#[no_mangle]
+pub static static_i64: i64 = -1242464576485;
+
 #[repr(C)]
 pub struct Structure {
   _data: u32,

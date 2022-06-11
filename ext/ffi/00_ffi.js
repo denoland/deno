@@ -148,7 +148,18 @@
       const type = types[i];
       const arg = args[i];
 
-      if (type === "pointer") {
+      if (type === "u8" || type === "u16" || type === "u32") {
+        if (!Number.isInteger(arg) || arg < 0) {
+          throw new TypeError(`Expected FFI argument to be an unsigned integer, but got '${arg}'`)
+        }
+        parameters.push(arg);
+      } else if (type === "u64" || type === "usize") {
+        if (Number.isInteger(arg) && arg >= 0 || typeof arg === "bigint" && arg >= 0n) {
+          parameters.push(arg);
+        } else {
+          throw new TypeError(`Expected FFI argument to be an unsigned integer, but got '${arg}'`)
+        }
+      } else if (type === "pointer") {
         if (
           ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
           arg.byteLength !== undefined

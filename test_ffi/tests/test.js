@@ -76,6 +76,9 @@ const dylib = Deno.dlopen(libPath, {
   "static_u32": {
     type: "u32",
   },
+  "static_i64": {
+    type: "i64",
+  },
   "static_ptr": {
     type: "pointer",
   },
@@ -135,14 +138,14 @@ assertThrows(
     dylib.symbols.add_u32(-1, 100);
   },
   TypeError,
-  "Expected FFI argument to be an unsigned integer, but got Number(-1)",
+  "Expected FFI argument to be an unsigned integer, but got '-1'",
 );
 assertThrows(
   () => {
     dylib.symbols.add_u32(null, 100);
   },
   TypeError,
-  "Expected FFI argument to be an unsigned integer, but got Null",
+  "Expected FFI argument to be an unsigned integer, but got 'null'",
 );
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -208,6 +211,7 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 console.log("Static u32:", dylib.symbols.static_u32);
+console.log("Static i64:", dylib.symbols.static_i64);
 console.log(
   "Static ptr:",
   dylib.symbols.static_ptr instanceof Deno.UnsafePointer,
