@@ -6,12 +6,15 @@
   const __bootstrap = window.__bootstrap;
   const {
     ArrayBufferPrototype,
+    ArrayPrototypePush,
+    ArrayPrototypeSome,
     BigInt,
     Error,
     NumberIsFinite,
     NumberIsInteger,
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
+    PromisePrototypeThen,
     Symbol,
     TypeError,
     Uint8Array,
@@ -165,14 +168,14 @@
             `Expected FFI argument to be an unsigned integer, but got '${arg}'`,
           );
         }
-        parameters.push(arg);
+        ArrayPrototypePush(parameters, arg);
       } else if (type === "i8" || type === "i16" || type === "i32") {
         if (!NumberIsInteger(arg)) {
           throw new TypeError(
             `Expected FFI argument to be a signed integer, but got '${arg}'`,
           );
         }
-        parameters.push(arg);
+        ArrayPrototypePush(parameters, arg);
       } else if (type === "u64" || type === "usize") {
         if (
           !(NumberIsInteger(arg) && arg >= 0 ||
@@ -182,7 +185,7 @@
             `Expected FFI argument to be an unsigned integer, but got '${arg}'`,
           );
         }
-        parameters.push(arg);
+        ArrayPrototypePush(parameters, arg);
       } else if (type == "i64" || type === "isize") {
         if (
           !(NumberIsInteger(arg) ||
@@ -193,24 +196,24 @@
             `Expected FFI argument to be a signed integer, but got '${arg}'`,
           );
         }
-        parameters.push(arg);
+        ArrayPrototypePush(parameters, arg);
       } else if (type === "f32" || type === "f64") {
         if (!NumberIsFinite(arg)) {
           throw new TypeError(
             `Expected FFI argument to be a number, but got '${arg}'`,
           );
         }
-        parameters.push(arg);
+        ArrayPrototypePush(parameters, arg);
       } else if (type === "pointer") {
         if (
           ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
           arg.byteLength !== undefined
         ) {
-          parameters.push(arg);
+          ArrayPrototypePush(parameters, arg);
         } else if (ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)) {
-          parameters.push(arg.value);
+          ArrayPrototypePush(parameters, arg.value);
         } else if (arg === null) {
-          parameters.push(null);
+          ArrayPrototypePush(parameters, null);
         } else {
           throw new TypeError(
             "Expected FFI argument to be TypedArray, UnsafePointer or null",
@@ -220,16 +223,16 @@
         typeof type === "object" && type !== null && "function" in type
       ) {
         if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
-          parameters.push(arg[_rid]);
+          ArrayPrototypePush(parameters, arg[_rid]);
         } else if (arg === null) {
           // nullptr
-          parameters.push(null);
+          ArrayPrototypePush(parameters, null);
         } else if (
           ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, arg) ||
           ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)
         ) {
           // Foreign function given to us, we're passing it on
-          parameters.push(arg.value);
+          ArrayPrototypePush(parameters, arg.value);
         } else {
           throw new TypeError(
             "Expected FFI argument to be RegisteredCallback, UnsafeFn",
@@ -286,7 +289,10 @@
           resultType === "i64" || resultType === "usize" ||
           resultType === "isize"
         ) {
-          return promise.then((result) => unpackResult(resultType, result));
+          return PromisePrototypeThen(
+            promise,
+            (result) => unpackResult(resultType, result),
+          );
         }
 
         return promise;
@@ -311,9 +317,57 @@
 
   const _rid = Symbol("[[rid]]");
 
+  function isPointerType(type) {
+    return type === "pointer" ||
+      typeof type === "object" && type !== null && "function" in type;
+  }
+
+  function convertArgs(types, args) {
+    const parameters = [];
+    if (types.length === 0) {
+      return parameters;
+    }
+
+    for (let i = 0; i < types.length; i++) {
+      const type = types[i];
+      const arg = args[i];
+      ArrayPrototypePush(
+        parameters,
+        isPointerType(type) ? new UnsafePointer(arg) : arg,
+      );
+    }
+
+    return parameters;
+  }
+
+  function unwrapResult(result) {
+    if (
+      ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, result) ||
+      ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, result) ||
+      ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, result)
+    ) {
+      // Foreign function given to us, we're passing it on
+      ArrayPrototypePush(parameters, result.value);
+    }
+    return result;
+  }
+
+  function createInternalCallback(definition, callback) {
+    const mustUnwrap = isPointerType(definition.result);
+    return (...args) => {
+      const convertedArgs = convertArgs(definition.parameters, args);
+      const result = callback(...convertedArgs);
+      if (mustUnwrap) {
+        return unwrapResult(result);
+      }
+      return result;
+    };
+  }
+
   class RegisteredCallback {
     [_rid];
     #value;
+    #internal;
     definition;
     callback;
 
@@ -323,13 +377,20 @@
           "Invalid ffi RegisteredCallback, cannot be nonblocking",
         );
       }
+      const needsWrapping = isPointerType(definition.result) ||
+        ArrayPrototypeSome(definition.parameters, isPointerType);
+      const internalCallback = needsWrapping
+        ? createInternalCallback(definition, callback)
+        : callback;
+
       this[_rid] = core.opSync(
         "op_ffi_register_callback",
         definition,
-        callback,
+        internalCallback,
       );
       this.definition = definition;
       this.callback = callback;
+      this.#internal = internalCallback;
     }
 
     call(...args) {
@@ -435,7 +496,10 @@
             );
 
             if (needsUnpacking) {
-              return promise.then((result) => unpackResult(resultType, result));
+              return PromisePrototypeThen(
+                promise,
+                (result) => unpackResult(resultType, result),
+              );
             }
 
             return promise;
