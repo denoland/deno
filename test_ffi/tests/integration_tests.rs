@@ -76,6 +76,14 @@ fn basic() {
     true\n\
     Before\n\
     true\n\
+    logCallback\n\
+    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    u8: 8\n\
+    buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    logCallback\n\
+    30\n\
+    STORED_FUNCTION cleared\n\
+    STORED_FUNCTION_2 cleared\n\
     Static u32: 42\n\
     Static i64: -1242464576485n\n\
     Static ptr: true\n\

@@ -113,6 +113,85 @@ pub extern "C" fn get_sleep_blocking_ptr() -> *const c_void {
   sleep_blocking as *const c_void
 }
 
+#[no_mangle]
+pub extern "C" fn call_fn_ptr(func: Option<extern "C" fn()>) {
+  if func.is_none() {
+    return;
+  }
+  let func = func.unwrap();
+  func();
+}
+
+#[no_mangle]
+pub extern "C" fn call_fn_ptr_many_parameters(
+  func: Option<
+    extern "C" fn(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, *const u8),
+  >,
+) {
+  if func.is_none() {
+    return;
+  }
+  let func = func.unwrap();
+  func(1, -1, 2, -2, 3, -3, 4, -4, 0.5, -0.5, BUFFER.as_ptr());
+}
+
+#[no_mangle]
+pub extern "C" fn call_fn_ptr_return_u8(func: Option<extern "C" fn() -> u8>) {
+  if func.is_none() {
+    return;
+  }
+  let func = func.unwrap();
+  println!("u8: {}", func());
+}
+
+#[no_mangle]
+pub extern "C" fn call_fn_ptr_return_buffer(
+  func: Option<extern "C" fn() -> *const u8>,
+) {
+  if func.is_none() {
+    return;
+  }
+  let func = func.unwrap();
+  let ptr = func();
+  let buf = unsafe { std::slice::from_raw_parts(ptr, 8) };
+  println!("buf: {:?}", buf);
+}
+
+static mut STORED_FUNCTION: Option<extern "C" fn()> = None;
+static mut STORED_FUNCTION_2: Option<extern "C" fn(u8) -> u8> = None;
+
+#[no_mangle]
+pub extern "C" fn store_function(func: Option<extern "C" fn()>) {
+  unsafe { STORED_FUNCTION = func };
+  if func.is_none() {
+    println!("STORED_FUNCTION cleared");
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn store_function_2(func: Option<extern "C" fn(u8) -> u8>) {
+  unsafe { STORED_FUNCTION_2 = func };
+  if func.is_none() {
+    println!("STORED_FUNCTION_2 cleared");
+  }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn call_stored_function() {
+  if STORED_FUNCTION.is_none() {
+    return;
+  }
+  STORED_FUNCTION.unwrap()();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn call_stored_function_2(arg: u8) {
+  if STORED_FUNCTION_2.is_none() {
+    return;
+  }
+  println!("{}", STORED_FUNCTION_2.unwrap()(arg));
+}
+
 // FFI performance helper functions
 #[no_mangle]
 pub extern "C" fn nop() {}
