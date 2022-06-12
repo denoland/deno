@@ -1092,10 +1092,11 @@ fn op_ffi_call_ptr<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
+
   let symbol = get_symbol_for_ptr(pointer, &def);
   let call_args = {
     let mut state = state.borrow_mut();
-    check_unstable(state.borrow(), "Deno.UnsafeFnPointer#call");
 
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
