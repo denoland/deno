@@ -78,6 +78,32 @@ struct Symbol {
 unsafe impl Send for Symbol {}
 unsafe impl Sync for Symbol {}
 
+#[derive(Clone)]
+struct PtrSymbol {
+  cif: libffi::middle::Cif,
+  ptr: libffi::middle::CodePtr,
+}
+
+impl PtrSymbol {
+  fn new(fn_ptr: u64, def: &ForeignFunction) -> Self {
+    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+    let cif = libffi::middle::Cif::new(
+      def
+        .parameters
+        .clone()
+        .into_iter()
+        .map(libffi::middle::Type::from),
+      def.result.into(),
+    );
+
+    Self { cif, ptr }
+  }
+}
+
+#[allow(clippy::non_send_fields_in_send_ty)]
+unsafe impl Send for PtrSymbol {}
+unsafe impl Sync for PtrSymbol {}
+
 struct DynamicLibraryResource {
   lib: Library,
   symbols: HashMap<String, Symbol>,
@@ -539,26 +565,6 @@ where
   }
 
   Ok(state.resource_table.add(resource))
-}
-
-fn get_symbol_for_ptr(fn_ptr: u64, def: &ForeignFunction) -> Symbol {
-  let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
-  let cif = libffi::middle::Cif::new(
-    def
-      .parameters
-      .clone()
-      .into_iter()
-      .map(libffi::middle::Type::from),
-    def.result.into(),
-  );
-
-  Symbol {
-    cif,
-    ptr,
-    /// Purposefully avoid cloning the definition parameters; this is never used.
-    parameter_types: vec![],
-    result_type: def.result,
-  }
 }
 
 fn ffi_parse_args<'scope>(
@@ -1094,20 +1100,15 @@ where
 {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
-  let symbol = get_symbol_for_ptr(pointer, &def);
+  let symbol = PtrSymbol::new(pointer, &def);
   let call_args = {
     let mut state = state.borrow_mut();
-
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
 
-    ffi_parse_args(
-      scope,
-      parameters,
-      &symbol.parameter_types,
-      &state.resource_table,
-    )?
+    ffi_parse_args(scope, parameters, &def.parameters, &state.resource_table)?
   };
+
   let result = ffi_call(
     call_args,
     &symbol.cif,
@@ -1132,36 +1133,25 @@ where
 {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
-  let symbol = get_symbol_for_ptr(pointer, &def);
+  let symbol = PtrSymbol::new(pointer, &def);
   let call_args = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
 
-    ffi_parse_args(
-      scope,
-      parameters,
-      &symbol.parameter_types,
-      &state.resource_table,
-    )?
+    ffi_parse_args(scope, parameters, &def.parameters, &state.resource_table)?
   };
 
-  let result_type = symbol.result_type;
   let join_handle = tokio::task::spawn_blocking(move || {
-    let Symbol {
-      cif,
-      ptr,
-      parameter_types,
-      ..
-    } = symbol.clone();
-    ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
+    let PtrSymbol { cif, ptr } = symbol.clone();
+    ffi_call(call_args, &cif, ptr, &def.parameters, def.result)
   });
 
   Ok(async move {
     let result = join_handle
       .await
       .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
-    Ok(result.to_value(result_type))
+    Ok(result.to_value(def.result))
   })
 }
 
