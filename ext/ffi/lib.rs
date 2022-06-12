@@ -842,9 +842,16 @@ unsafe extern "C" fn deno_ffi_callback(
       todo!("Call from another thread");
     }
   });
-  // Call from main thread: Presume a scope exists already.
-  // If there wasn't then deno_ffi_callback would be getting called
-  // by eg. an FFI side interrupt but it's not clear if that's possible.
+  // Call from main thread. If this callback is being triggered due to a
+  // function call coming from Deno itself, then this callback will build
+  // ontop of that stack.
+  // If this callback is being triggered outside of Deno (for example from a
+  // signal handler) then this will either create an empty new stack if
+  // Deno currently has nothing running and is waiting for promises to resolve,
+  // or will (very incorrectly) build ontop of whatever stack exists.
+  // The callback will even be called through from a `while (true)` liveloop, but
+  // it somehow cannot change the values that the loop sees, even if they both
+  // refer the same `let bool_value`.
   let mut cb_scope = v8::CallbackScope::new(context);
   let mut scope = v8::HandleScope::new(&mut cb_scope);
   let func = callback.open(&mut scope);
