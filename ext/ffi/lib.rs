@@ -883,112 +883,126 @@ unsafe extern "C" fn deno_ffi_callback(
 
   let recv = v8::undefined(&mut scope);
   let call_result = func.call(&mut scope, recv.into(), &params);
+  std::mem::forget(callback);
+
+  if (*cif.rtype).type_ == FFI_TYPE_VOID as u16 {
+    return;
+  }
+
   if call_result.is_none() {
     // JS function threw an exception. Set the return value to zero and return.
     // TODO: Somehow get the exception back into JS
     match (*cif.rtype).type_ as _ {
-      FFI_TYPE_INT | FFI_TYPE_SINT32 => {
-        *(result as *mut i32) = 0;
-        return;
+      FFI_TYPE_INT | FFI_TYPE_SINT32 | FFI_TYPE_UINT32 => {
+        // zero is equal for signed and unsigned alike
+        *(result as *mut u32) = 0;
       }
       FFI_TYPE_FLOAT => {
         *(result as *mut f32) = 0.0;
-        return;
       }
       FFI_TYPE_DOUBLE => {
         *(result as *mut f64) = 0.0;
-        return;
       }
-      FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-        *(result as *mut u64) = 0;
-        return;
-      }
-      FFI_TYPE_SINT8 => {
-        *(result as *mut i8) = 0;
-        return;
-      }
-      FFI_TYPE_UINT8 => {
+      FFI_TYPE_SINT8 | FFI_TYPE_UINT8 => {
+        // zero is equal for signed and unsigned alike
         *(result as *mut u8) = 0;
-        return;
       }
-      FFI_TYPE_SINT16 => {
-        *(result as *mut i16) = 0;
-        return;
-      }
-      FFI_TYPE_UINT16 => {
+      FFI_TYPE_SINT16 | FFI_TYPE_UINT16 => {
+        // zero is equal for signed and unsigned alike
         *(result as *mut u16) = 0;
-        return;
       }
-      FFI_TYPE_UINT32 => {
-        *(result as *mut u32) = 0;
-        return;
-      }
-      FFI_TYPE_SINT64 => {
-        *(result as *mut i64) = 0;
-        return;
-      }
-      FFI_TYPE_UINT64 => {
+      FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64
+      | FFI_TYPE_SINT64 => {
         *(result as *mut u64) = 0;
-        return;
       }
-      FFI_TYPE_VOID => {}
+      FFI_TYPE_VOID => {
+        // nop
+      }
       _ => {
-        panic!("Unsupported callback return type")
+        unreachable!();
       }
     };
+    return;
   }
   let value = call_result.unwrap();
 
-  std::mem::forget(callback);
-
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
-      *(result as *mut i32) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut i32) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as i32;
     }
     FFI_TYPE_FLOAT => {
-      *(result as *mut f32) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut f32) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as f32;
     }
     FFI_TYPE_DOUBLE => {
-      *(result as *mut f64) = serde_v8::from_v8(&mut scope, value)
+      *(result as *mut f64) = value.number_value(&mut scope)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-      *(result as *mut u64) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      if value.is_array_buffer() | value.is_array_buffer_view() {
+        let value: ZeroCopyBuf = serde_v8::from_v8(&mut scope, value)
+          .expect("Unable to deserialize result parameter.");
+        let value: &[u8] = &value[..];
+        *(result as *mut *const u8) = value.as_ptr();
+      } else if value.is_big_int() | value.is_big_int_object() {
+        let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+        *(result as *mut u64) = value.u64_value().0;
+      } else if value.is_null() {
+        *(result as *mut *const c_void) = ptr::null();
+      } else if value.is_object() {
+        let value = v8::Local::<v8::Object>::try_from(value).unwrap();
+        let value_key = v8::String::new(&mut scope, "value").unwrap();
+        let value_field = value
+          .get(&mut scope, value_key.into())
+          .expect("Unable to deserialize result parameter.");
+        let value = v8::Local::<v8::BigInt>::try_from(value_field)
+          .expect("Unable to deserialize result parameter.");
+        *(result as *mut u64) = value.u64_value().0;
+      } else {
+        // Fallthrough: Probably someone returned a number but this could
+        // also be eg. a string. This is essentially UB.
+        *(result as *mut u64) = value.number_value(&mut scope).expect("Unable to deserialize result parameter.") as u64;
+      }
     }
     FFI_TYPE_SINT8 => {
-      *(result as *mut i8) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut i8) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as i8;
     }
     FFI_TYPE_UINT8 => {
-      *(result as *mut u8) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut u8) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as u8;
     }
     FFI_TYPE_SINT16 => {
-      *(result as *mut i16) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut i16) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as i16;
     }
     FFI_TYPE_UINT16 => {
-      *(result as *mut u16) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut u16) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as u16;
     }
     FFI_TYPE_UINT32 => {
-      *(result as *mut u32) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut u32) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as u32;
     }
     FFI_TYPE_SINT64 => {
-      *(result as *mut i64) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      if value.is_big_int() | value.is_big_int_object() {
+        let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+        *(result as *mut u64) = value.u64_value().0;
+      } else {
+        *(result as *mut i64) = value.number_value(&mut scope)
+          .expect("Unable to deserialize result parameter.") as i64;
+      }
     }
     FFI_TYPE_UINT64 => {
-      *(result as *mut u64) = serde_v8::from_v8(&mut scope, value)
-        .expect("Unable to deserialize result parameter.");
+      *(result as *mut u64) = value.number_value(&mut scope)
+        .expect("Unable to deserialize result parameter.") as u64;
     }
-    FFI_TYPE_VOID => {}
+    FFI_TYPE_VOID => {
+      // nop
+    }
     _ => {
-      panic!("Unsupported callback return type")
+        unreachable!();
     }
   };
 }
