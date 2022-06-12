@@ -124,35 +124,52 @@ const dylib = Deno.dlopen(libPath, {
   // Callback function
   call_fn_ptr: {
     parameters: [{ function: { parameters: [], result: "void" } }],
-    result: "void"
+    result: "void",
   },
   call_fn_ptr_many_parameters: {
-    parameters: [{ function: { parameters: ["u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "f32", "f64", "pointer"], result: "void" } }],
-    result: "void"
+    parameters: [{
+      function: {
+        parameters: [
+          "u8",
+          "i8",
+          "u16",
+          "i16",
+          "u32",
+          "i32",
+          "u64",
+          "i64",
+          "f32",
+          "f64",
+          "pointer",
+        ],
+        result: "void",
+      },
+    }],
+    result: "void",
   },
   call_fn_ptr_return_u8: {
     parameters: [{ function: { parameters: [], result: "u8" } }],
-    result: "void"
+    result: "void",
   },
   call_fn_ptr_return_buffer: {
     parameters: [{ function: { parameters: [], result: "pointer" } }],
-    result: "void"
+    result: "void",
   },
   store_function: {
     parameters: [{ function: { parameters: [], result: "void" } }],
-    result: "void"
+    result: "void",
   },
   store_function_2: {
     parameters: [{ function: { parameters: ["u8"], result: "u8" } }],
-    result: "void"
+    result: "void",
   },
   call_stored_function: {
     parameters: [],
-    result: "void"
+    result: "void",
   },
   call_stored_function_2: {
     parameters: ["u8"],
-    result: "void"
+    result: "void",
   },
   // Statics
   "static_u32": {
@@ -308,20 +325,45 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 // Test calls with callback parameters
-const logCallback = Deno.registerCallback({ parameters: [], result: "void" }, () => console.log("logCallback"));
-const logManyParametersCallback = Deno.registerCallback({ parameters: ["u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "f32", "f64", "pointer"], result: "void" },
-  (u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, pointer) => {
-    const view = new Deno.UnsafePointerView(new Deno.UnsafePointer(pointer));
-    const copy_buffer = new Uint8Array(8);
-    view.copyInto(copy_buffer);
-    console.log(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, ...copy_buffer);
-  }
+const logCallback = Deno.registerCallback(
+  { parameters: [], result: "void" },
+  () => console.log("logCallback"),
 );
-const returnU8Callback = Deno.registerCallback({ parameters: [], result: "u8" }, () => 8);
-const returnBufferCallback = Deno.registerCallback({ parameters: [], result: "pointer" }, () => {
+const logManyParametersCallback = Deno.registerCallback({
+  parameters: [
+    "u8",
+    "i8",
+    "u16",
+    "i16",
+    "u32",
+    "i32",
+    "u64",
+    "i64",
+    "f32",
+    "f64",
+    "pointer",
+  ],
+  result: "void",
+}, (u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, pointer) => {
+  const view = new Deno.UnsafePointerView(new Deno.UnsafePointer(pointer));
+  const copy_buffer = new Uint8Array(8);
+  view.copyInto(copy_buffer);
+  console.log(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, ...copy_buffer);
+});
+const returnU8Callback = Deno.registerCallback(
+  { parameters: [], result: "u8" },
+  () => 8,
+);
+const returnBufferCallback = Deno.registerCallback({
+  parameters: [],
+  result: "pointer",
+}, () => {
   return buffer;
 });
-const add10Callback = Deno.registerCallback({ parameters: ["u8"], result: "u8" }, (value) => value + 10);
+const add10Callback = Deno.registerCallback({
+  parameters: ["u8"],
+  result: "u8",
+}, (value) => value + 10);
 
 dylib.symbols.call_fn_ptr(logCallback);
 dylib.symbols.call_fn_ptr_many_parameters(logManyParametersCallback);
@@ -332,9 +374,12 @@ dylib.symbols.call_stored_function();
 dylib.symbols.store_function_2(add10Callback);
 dylib.symbols.call_stored_function_2(20);
 
-const nestedCallback = Deno.registerCallback({ parameters: [], result: "void" }, () => {
-  dylib.symbols.call_stored_function_2(10);
-});
+const nestedCallback = Deno.registerCallback(
+  { parameters: [], result: "void" },
+  () => {
+    dylib.symbols.call_stored_function_2(10);
+  },
+);
 dylib.symbols.store_function(nestedCallback);
 
 dylib.symbols.store_function(null);

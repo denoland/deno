@@ -144,6 +144,7 @@ pub extern "C" fn call_fn_ptr_return_u8(func: Option<extern "C" fn() -> u8>) {
   println!("u8: {}", func());
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn call_fn_ptr_return_buffer(
   func: Option<extern "C" fn() -> *const u8>,
@@ -177,19 +178,23 @@ pub extern "C" fn store_function_2(func: Option<extern "C" fn(u8) -> u8>) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn call_stored_function() {
-  if STORED_FUNCTION.is_none() {
-    return;
+pub extern "C" fn call_stored_function() {
+  unsafe {
+    if STORED_FUNCTION.is_none() {
+      return;
+    }
+    STORED_FUNCTION.unwrap()();
   }
-  STORED_FUNCTION.unwrap()();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn call_stored_function_2(arg: u8) {
-  if STORED_FUNCTION_2.is_none() {
-    return;
+pub extern "C" fn call_stored_function_2(arg: u8) {
+  unsafe {
+    if STORED_FUNCTION_2.is_none() {
+      return;
+    }
+    println!("{}", STORED_FUNCTION_2.unwrap()(arg));
   }
-  println!("{}", STORED_FUNCTION_2.unwrap()(arg));
 }
 
 // FFI performance helper functions
