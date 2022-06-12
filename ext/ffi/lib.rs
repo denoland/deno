@@ -191,6 +191,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_call_ptr::decl::<P>(),
       op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
+      op_ffi_ptr_of_cb::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
       op_ffi_read_u8::decl::<P>(),
@@ -1368,12 +1369,36 @@ where
   FP: FfiPermissions + 'static,
 {
   check_unstable(state, "Deno.UnsafePointer#of");
-
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
   let big_int: v8::Local<v8::Value> =
     v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64).into();
+  Ok(big_int.into())
+}
+
+#[op(v8)]
+fn op_ffi_ptr_of_cb<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: &mut deno_core::OpState,
+  rid: ResourceId,
+) -> Result<serde_v8::Value<'scope>, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.RegisterableCallback.value");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  let resource = state
+    .resource_table
+    .get::<RegisteredCallbackResource>(rid)?;
+
+  let big_int: v8::Local<v8::Value> = v8::BigInt::new_from_u64(
+    scope,
+    *resource.closure.code_ptr() as usize as u64,
+  )
+  .into();
   Ok(big_int.into())
 }
 

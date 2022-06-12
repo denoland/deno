@@ -313,6 +313,7 @@
 
   class RegisteredCallback {
     [_rid];
+    #value;
     definition;
     callback;
 
@@ -355,6 +356,13 @@
 
     close() {
       core.close(this[_rid]);
+    }
+
+    get value() {
+      if (!this.#value) {
+        this.#value = core.opSync("op_ffi_ptr_of_cb", this[_rid]);
+      }
+      return this.#value;
     }
   }
 
