@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use core::ptr::NonNull;
+use deno_core::anyhow::anyhow;
 use deno_core::error::generic_error;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
@@ -271,29 +272,15 @@ impl NativeValue {
     }
   }
 
-  fn to_value(self, native_type: NativeType) -> Value {
+  fn to_value(&self, native_type: NativeType) -> Value {
     match native_type {
-      NativeType::Void => {
-        json!(())
-      }
-      NativeType::U8 => {
-        json!(unsafe { self.u8_value })
-      }
-      NativeType::I8 => {
-        json!(unsafe { self.i8_value })
-      }
-      NativeType::U16 => {
-        json!(unsafe { self.u16_value })
-      }
-      NativeType::I16 => {
-        json!(unsafe { self.i16_value })
-      }
-      NativeType::U32 => {
-        json!(unsafe { self.u32_value })
-      }
-      NativeType::I32 => {
-        json!(unsafe { self.i32_value })
-      }
+      NativeType::Void => Value::Null,
+      NativeType::U8 => Value::from(unsafe { self.u8_value }),
+      NativeType::I8 => Value::from(unsafe { self.i8_value }),
+      NativeType::U16 => Value::from(unsafe { self.u16_value }),
+      NativeType::I16 => Value::from(unsafe { self.i16_value }),
+      NativeType::U32 => Value::from(unsafe { self.u32_value }),
+      NativeType::I32 => Value::from(unsafe { self.i32_value }),
       NativeType::U64 => {
         json!(U32x2::from(unsafe { self.u64_value }))
       }
@@ -306,12 +293,8 @@ impl NativeValue {
       NativeType::ISize => {
         json!(U32x2::from(unsafe { self.isize_value } as u64))
       }
-      NativeType::F32 => {
-        json!(unsafe { self.f32_value })
-      }
-      NativeType::F64 => {
-        json!(unsafe { self.f64_value })
-      }
+      NativeType::F32 => Value::from(unsafe { self.f32_value }),
+      NativeType::F64 => Value::from(unsafe { self.f64_value }),
       NativeType::Pointer | NativeType::Function {} => {
         json!(U32x2::from(unsafe { self.pointer } as u64))
       }
@@ -558,7 +541,7 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-fn get_symbol_for_ptr(fn_ptr: u64, def: ForeignFunction) -> Symbol {
+fn get_symbol_for_ptr(fn_ptr: u64, def: &ForeignFunction) -> Symbol {
   let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
   let cif = libffi::middle::Cif::new(
     def
@@ -572,7 +555,8 @@ fn get_symbol_for_ptr(fn_ptr: u64, def: ForeignFunction) -> Symbol {
   Symbol {
     cif,
     ptr,
-    parameter_types: def.parameters.clone(),
+    /// Purposefully avoid cloning the definition parameters; this is never used.
+    parameter_types: vec![],
     result_type: def.result,
   }
 }
@@ -586,7 +570,12 @@ fn ffi_parse_args<'scope>(
 where
   'scope: 'scope,
 {
-  let args = v8::Local::<v8::Array>::try_from(args.v8_value).unwrap();
+  if parameter_types.is_empty() {
+    return Ok(vec![]);
+  }
+
+  let args = v8::Local::<v8::Array>::try_from(args.v8_value)
+    .map_err(|_| type_error("Invalid FFI parameters, expected Array"))?;
   let mut ffi_args: Vec<NativeValue> =
     Vec::with_capacity(parameter_types.len());
 
@@ -726,8 +715,8 @@ where
             pointer: function as usize as *const u8,
           });
         } else if value.is_big_int() {
-          // Do we support this?
-          let value = v8::Local::<v8::BigInt>::try_from(value)?;
+          // Do we support this? This would be a foreign function pointer given to us by an FFI library.
+          let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
           let value = value.u64_value().0 as *const u8;
           ffi_args.push(NativeValue { pointer: value });
         } else {
@@ -1049,12 +1038,11 @@ fn op_ffi_deregister_callback(
   state: &mut deno_core::OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  Ok(
-    state
-      .resource_table
-      .take::<RegisteredCallbackResource>(rid)?
-      .close(),
-  )
+  state
+    .resource_table
+    .take::<RegisteredCallbackResource>(rid)?
+    .close();
+  Ok(())
 }
 
 #[op(v8)]
@@ -1104,30 +1092,29 @@ fn op_ffi_call_ptr<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
-  let (symbol, call_args) = {
+  let symbol = get_symbol_for_ptr(pointer, &def);
+  let call_args = {
     let mut state = state.borrow_mut();
-    //check_unstable(state.borrow(), "Deno.UnsafeFnPointer#call");
+    check_unstable(state.borrow(), "Deno.UnsafeFnPointer#call");
 
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
 
-    let symbol = get_symbol_for_ptr(pointer, def);
-    let call_args = ffi_parse_args(
+    ffi_parse_args(
       scope,
       parameters,
       &symbol.parameter_types,
       &state.resource_table,
-    )?;
-    (symbol, call_args)
+    )?
   };
   let result = ffi_call(
     call_args,
     &symbol.cif,
     symbol.ptr,
-    &symbol.parameter_types,
-    symbol.result_type,
+    &def.parameters,
+    def.result,
   )?;
-  let result = result.to_v8(scope, symbol.result_type);
+  let result = result.to_v8(scope, def.result);
   Ok(result)
 }
 
@@ -1144,19 +1131,18 @@ where
 {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
 
-  let (symbol, call_args) = {
+  let symbol = get_symbol_for_ptr(pointer, &def);
+  let call_args = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
     permissions.check(None)?;
 
-    let symbol = get_symbol_for_ptr(pointer, def);
-    let call_args = ffi_parse_args(
+    ffi_parse_args(
       scope,
       parameters,
       &symbol.parameter_types,
       &state.resource_table,
-    )?;
-    (symbol, call_args)
+    )?
   };
 
   let result_type = symbol.result_type;
@@ -1171,7 +1157,9 @@ where
   });
 
   Ok(async move {
-    let result = join_handle.await??;
+    let result = join_handle
+      .await
+      .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
     Ok(result.to_value(result_type))
   })
 }
@@ -1336,7 +1324,9 @@ fn op_ffi_call_nonblocking<'scope>(
   });
 
   Ok(async move {
-    let result = join_handle.await??;
+    let result = join_handle
+      .await
+      .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
     Ok(result.to_value(result_type))
   })
 }

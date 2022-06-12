@@ -219,12 +219,22 @@
       } else if (
         typeof type === "object" && type !== null && "function" in type
       ) {
-        if (!ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
+        if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
+          parameters.push(arg[_rid]);
+        } else if (arg === null) {
+          // nullptr
+          parameters.push(null);
+        } else if (
+          ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, arg) ||
+          ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)
+        ) {
+          // Foreign function given to us, we're passing it on
+          parameters.push(arg.value);
+        } else {
           throw new TypeError(
-            "Expected FFI argument to be RegisteredCallback",
+            "Expected FFI argument to be RegisteredCallback, UnsafeFn",
           );
         }
-        parameters.push(arg[_rid]);
       } else {
         throw new TypeError(`Invalid FFI argument type '${type}'`);
       }
@@ -296,6 +306,8 @@
       }
     }
   }
+
+  const UnsafeFnPointerPrototype = UnsafeFnPointer.prototype;
 
   const _rid = Symbol("[[rid]]");
 
@@ -398,10 +410,15 @@
         const types = symbols[symbol].parameters;
         const resultType = symbols[symbol].result;
 
-        const fn = (...args) => {
-          const parameters = prepareArgs(types, args);
+        let fn;
+        if (isNonBlocking) {
+          const needsUnpacking = resultType === "pointer" ||
+            resultType === "u64" ||
+            resultType === "i64" || resultType === "usize" ||
+            resultType === "isize";
+          fn = (...args) => {
+            const parameters = prepareArgs(types, args);
 
-          if (isNonBlocking) {
             const promise = core.opAsync(
               "op_ffi_call_nonblocking",
               this.#rid,
@@ -409,16 +426,16 @@
               parameters,
             );
 
-            if (
-              resultType === "pointer" || resultType === "u64" ||
-              resultType === "i64" || resultType === "usize" ||
-              resultType === "isize"
-            ) {
+            if (needsUnpacking) {
               return promise.then((result) => unpackResult(resultType, result));
             }
 
             return promise;
-          } else {
+          };
+        } else {
+          fn = (...args) => {
+            const parameters = prepareArgs(types, args);
+
             const result = core.opSync(
               "op_ffi_call",
               this.#rid,
@@ -431,8 +448,8 @@
             }
 
             return result;
-          }
-        };
+          };
+        }
 
         ObjectDefineProperty(
           this.symbols,

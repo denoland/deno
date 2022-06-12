@@ -208,7 +208,8 @@ pub extern "C" fn return_isize() -> isize {
 
 #[no_mangle]
 pub extern "C" fn return_f32() -> f32 {
-  0.20000000298023223876953125
+  #[allow(clippy::excessive_precision)]
+  0.20298023223876953125
 }
 
 #[no_mangle]
