@@ -4,6 +4,7 @@ use crate::cache;
 use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
+use crate::config_file;
 use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
@@ -56,6 +57,7 @@ use log::warn;
 use std::collections::HashSet;
 use std::env;
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -81,6 +83,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
+  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
 }
 
 impl Deref for ProcState {
@@ -92,6 +95,41 @@ impl Deref for ProcState {
 
 impl ProcState {
   pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
+    Self::build_with_sender(flags, None).await
+  }
+
+  pub async fn build_for_file_watcher(
+    flags: Arc<flags::Flags>,
+    files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  ) -> Result<Self, AnyError> {
+    let ps = Self::build_with_sender(
+      flags.clone(),
+      Some(files_to_watch_sender.clone()),
+    )
+    .await?;
+
+    // Add the extra files listed in the watch flag
+    if let Some(watch_paths) = &flags.watch {
+      files_to_watch_sender.send(watch_paths.clone()).unwrap();
+    }
+
+    if let Ok(Some(import_map_path)) =
+      config_file::resolve_import_map_specifier(
+        ps.flags.import_map_path.as_deref(),
+        ps.maybe_config_file.as_ref(),
+      )
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+    {
+      files_to_watch_sender.send(vec![import_map_path]).unwrap();
+    }
+
+    Ok(ps)
+  }
+
+  async fn build_with_sender(
+    flags: Arc<flags::Flags>,
+    maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
+  ) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -209,6 +247,12 @@ impl ProcState {
       None
     };
 
+    let maybe_file_watcher_reporter =
+      maybe_sender.map(|sender| FileWatcherReporter {
+        sender,
+        file_paths: Arc::new(Mutex::new(vec![])),
+      });
+
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
@@ -225,6 +269,7 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       maybe_resolver,
+      maybe_file_watcher_reporter,
     })))
   }
 
@@ -358,6 +403,13 @@ impl ProcState {
       reload: reload_on_watch,
     };
 
+    let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
+      if let Some(reporter) = &self.maybe_file_watcher_reporter {
+        Some(reporter)
+      } else {
+        None
+      };
+
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -366,7 +418,7 @@ impl ProcState {
       maybe_resolver,
       maybe_locker,
       None,
-      None,
+      maybe_file_watcher_reporter,
     )
     .await;
 
@@ -717,5 +769,29 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
     }
   } else {
     None
+  }
+}
+
+#[derive(Debug)]
+struct FileWatcherReporter {
+  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  file_paths: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl deno_graph::source::Reporter for FileWatcherReporter {
+  fn on_load(
+    &self,
+    specifier: &ModuleSpecifier,
+    modules_done: usize,
+    modules_total: usize,
+  ) {
+    let mut file_paths = self.file_paths.lock();
+    if specifier.scheme() == "file" {
+      file_paths.push(specifier.to_file_path().unwrap());
+    }
+
+    if modules_done == modules_total {
+      self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
   }
 }

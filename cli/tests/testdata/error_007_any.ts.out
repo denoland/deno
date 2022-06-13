@@ -1,1 +1,1 @@
-[WILDCARD]error: Uncaught #<Object>
+[WILDCARD]error: Uncaught { foo: "bar" }
