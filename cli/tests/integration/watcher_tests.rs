@@ -1113,3 +1113,76 @@ fn run_watch_dynamic_imports() {
 
   check_alive_then_kill(child);
 }
+
+#[test]
+fn run_deno_exit() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(
+    &file_to_watch,
+    r#"
+    const code = 121;
+    console.log("This program will exit with code", code);
+    Deno.exit(code);
+    "#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(stderr_lines.next().unwrap(), "Process started");
+
+  wait_contains("This program will exit with code 121", &mut stdout_lines);
+  wait_contains("finished with exit code 121", &mut stderr_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
+
+  write(
+    &file_to_watch,
+    r#"
+    throw new Error("boom!");
+    "#,
+  )
+  .unwrap();
+
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("error: Error: boom!", &mut stderr_lines);
+  wait_contains("file_to_watch.js:2:11", &mut stderr_lines);
+  wait_contains("finished with exit code 1", &mut stderr_lines);
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
+    &mut stderr_lines,
+  );
+
+  write(
+    &file_to_watch,
+    r#"
+    const code = 0;
+    console.log("This program will exit with code", code);
+    Deno.exit(code);
+    "#,
+  )
+  .unwrap();
+
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("This program will exit with code 0", &mut stdout_lines);
+  wait_contains("finished with exit code 0", &mut stderr_lines);
+
+  check_alive_then_kill(child);
+}
