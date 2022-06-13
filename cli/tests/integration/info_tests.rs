@@ -124,3 +124,8 @@ itest!(deno_info_types_header_direct {
   output: "info/types_header.out",
   http_server: true,
 });
+
+itest!(deno_info_with_config_override {
+  args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
+  output: "info/with_config/with_config.out",
+});
