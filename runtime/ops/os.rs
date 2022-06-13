@@ -3,6 +3,7 @@
 use super::utils::into_string;
 use crate::permissions::Permissions;
 use crate::worker::ExitCode;
+use crate::worker::MainWorkerHandle;
 use deno_core::error::{type_error, AnyError};
 use deno_core::url::Url;
 use deno_core::Extension;
@@ -11,6 +12,7 @@ use deno_core::{op, ExtensionBuilder};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 
 fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
   builder.ops(vec![
@@ -127,8 +129,8 @@ fn op_set_exit_code(state: &mut OpState, code: i32) {
 
 #[op]
 fn op_exit(state: &mut OpState) {
-  let code = state.borrow::<ExitCode>().get();
-  std::process::exit(code)
+  let handle = state.borrow_mut::<Arc<MainWorkerHandle>>();
+  handle.exit();
 }
 
 #[op]

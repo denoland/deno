@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
@@ -27,6 +28,7 @@ use deno_web::BlobStore;
 use log::debug;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
@@ -47,6 +49,21 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
+pub(crate) struct MainWorkerHandle {
+  isolate_handle: v8::IsolateHandle,
+  has_exited: AtomicBool,
+}
+
+impl MainWorkerHandle {
+  pub fn exit(&self) {
+    // First terminate JavaScript execution...
+    self.isolate_handle.terminate_execution();
+    // ... now mark that we've exited
+    self.has_exited.store(true, Relaxed);
+  }
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -58,6 +75,7 @@ pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
   exit_code: ExitCode,
+  handle: Arc<MainWorkerHandle>,
 }
 
 pub struct WorkerOptions {
@@ -184,6 +202,16 @@ impl MainWorker {
       ..Default::default()
     });
 
+    let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
+    let handle = Arc::new(MainWorkerHandle {
+      isolate_handle,
+      has_exited: AtomicBool::new(false),
+    });
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Arc<MainWorkerHandle>>(handle.clone());
+
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
@@ -196,6 +224,7 @@ impl MainWorker {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
       exit_code,
+      handle,
     }
   }
 
@@ -245,7 +274,14 @@ impl MainWorker {
 
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        maybe_result.expect("Module evaluation result not provided.")
+        let result = maybe_result.expect("Module evaluation result not provided.");
+        // If `Deno.exit()` was called, the JsRuntime would return "execution terminated"
+        // error. Ignore it and instead let the caller check for actual exit code
+        // with `get_exit_code()` method.
+        if self.handle.has_exited.load(Relaxed) {
+          return Ok(());
+        }
+        result
       }
 
       event_loop_result = self.run_event_loop(false) => {
@@ -306,7 +342,16 @@ impl MainWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    self.js_runtime.run_event_loop(wait_for_inspector).await
+    let result = self.js_runtime.run_event_loop(wait_for_inspector).await;
+
+    // If `Deno.exit()` was called, the JsRuntime would return "execution terminated"
+    // error. Ignore it and instead let the caller check for actual exit code
+    // with `get_exit_code()` method.
+    if self.handle.has_exited.load(Relaxed) {
+      return Ok(());
+    }
+
+    result
   }
 
   /// A utility function that runs provided future concurrently with the event loop.
@@ -388,7 +433,6 @@ mod tests {
         ts_version: "x".to_string(),
         unstable: false,
         user_agent: "x".to_string(),
-        is_file_watcher: false,
       },
       extensions: vec![],
       unsafely_ignore_certificate_errors: None,

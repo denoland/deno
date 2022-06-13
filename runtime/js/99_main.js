@@ -601,14 +601,7 @@ delete Object.prototype.__proto__;
       unstableFlag,
       cpuCount,
       userAgent: userAgentInfo,
-      isFileWatcher,
     } = runtimeOptions;
-
-    if (isFileWatcher) {
-      os.setExitHandler((_) => {
-        core.terminate();
-      });
-    }
 
     colors.setNoColor(noColor || !isTty);
     if (locationHref != null) {

@@ -21,7 +21,6 @@ pub struct BootstrapOptions {
   pub ts_version: String,
   pub unstable: bool,
   pub user_agent: String,
-  pub is_file_watcher: bool,
 }
 
 impl BootstrapOptions {
@@ -45,7 +44,6 @@ impl BootstrapOptions {
       "target": env!("TARGET"),
       "v8Version": deno_core::v8_version(),
       "userAgent": self.user_agent,
-      "isFileWatcher": self.is_file_watcher,
     });
     serde_json::to_string_pretty(&payload).unwrap()
   }

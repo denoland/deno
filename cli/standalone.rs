@@ -287,7 +287,6 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
       user_agent: version::get_user_agent(),
-      is_file_watcher: false,
     },
     extensions: ops::cli_exts(ps.clone()),
     unsafely_ignore_certificate_errors: metadata
