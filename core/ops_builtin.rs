@@ -1,3 +1,4 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::include_js_files;
@@ -36,7 +37,9 @@ pub(crate) fn init_builtins() -> Extension {
       op_shutdown::decl(),
       op_metrics::decl(),
       op_format_file_name::decl(),
+      op_is_proxy::decl(),
     ])
+    .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
 }
 
@@ -180,4 +183,9 @@ async fn op_shutdown(
 #[op]
 fn op_format_file_name(file_name: String) -> String {
   format_file_name(&file_name)
+}
+
+#[op]
+fn op_is_proxy(value: serde_v8::Value) -> bool {
+  value.v8_value.is_proxy()
 }
