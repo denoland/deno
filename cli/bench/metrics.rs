@@ -20,9 +20,9 @@ static GIT_HASH: Lazy<String> = Lazy::new(|| {
 struct Metric {
   name: String,
   value: i64,
+  sha1: String,
   #[serde(rename = "type")]
   type_: String,
-  sha1: String,
   time: i64,
 }
 
@@ -90,7 +90,7 @@ impl Reporter {
         .objects()
         .insert(object, "deno_benchmark_data")
         .name(&format!("{}.csv", *GIT_HASH))
-        .param("uploadType", "media")
+        .param("uploadType", "multipart")
         .upload(&mut reader, "text/csv".parse().unwrap())
         .await
         .unwrap();
