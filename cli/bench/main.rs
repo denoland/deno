@@ -3,8 +3,6 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use influxdb_client::Point;
-use influxdb_client::Value as FieldValue;
 use std::collections::HashMap;
 use std::convert::From;
 use std::env;
@@ -17,6 +15,7 @@ use std::time::SystemTime;
 
 mod http;
 mod lsp;
+mod metrics;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -157,7 +156,7 @@ const RESULT_KEYS: &[&str] =
 fn run_exec_time(
   deno_exe: &Path,
   target_dir: &Path,
-) -> Result<HashMap<String, HashMap<String, f64>>> {
+) -> Result<HashMap<String, HashMap<String, i64>>> {
   let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
@@ -198,7 +197,7 @@ fn run_exec_time(
     true,
   );
 
-  let mut results = HashMap::<String, HashMap<String, f64>>::new();
+  let mut results = HashMap::<String, HashMap<String, i64>>::new();
   let hyperfine_results = read_json(benchmark_file)?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
@@ -215,7 +214,7 @@ fn run_exec_time(
       data
         .into_iter()
         .filter(|(key, _)| RESULT_KEYS.contains(&key.as_str()))
-        .map(|(key, val)| (key, val.as_f64().unwrap()))
+        .map(|(key, val)| (key, val.as_i64().unwrap()))
         .collect(),
     );
   }
@@ -368,16 +367,6 @@ fn cargo_deps() -> usize {
   count
 }
 
-fn write_metrics_hashmap<T: Into<FieldValue> + Copy>(
-  datapoints: &mut Vec<Point>,
-  name: &str,
-  map: &HashMap<String, T>,
-) {
-  for (k, v) in map.iter() {
-    datapoints.push(Point::new(name).field(k, *v));
-  }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
   let mut args = env::args();
@@ -408,34 +397,33 @@ async fn main() -> Result<()> {
   let deno_exe = test_util::deno_exe_path();
 
   env::set_current_dir(&test_util::root_path())?;
-
-  let mut datapoints = vec![];
+  let mut reporter = metrics::Reporter::new().await;
 
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
-    write_metrics_hashmap(&mut datapoints, "bundle_size", &bundle_size);
+    reporter.write("bundle_size", &bundle_size);
   }
 
   if benchmarks.contains(&"exec_time") {
     let exec_times = run_exec_time(&deno_exe, &target_dir)?;
     for (name, data) in exec_times.iter() {
-      write_metrics_hashmap(&mut datapoints, name, data);
+      reporter.write_one("exec_time", name, *data.get("mean").unwrap());
     }
   }
 
   if benchmarks.contains(&"binary_size") {
     let binary_sizes = get_binary_sizes(&target_dir)?;
-    write_metrics_hashmap(&mut datapoints, "binary_size", &binary_sizes);
+    reporter.write("binary_size", &binary_sizes);
   }
 
   if benchmarks.contains(&"cargo_deps") {
     let cargo_deps = cargo_deps();
-    datapoints.push(Point::new("cargo_deps").field("count", cargo_deps as i64));
+    reporter.write_one("cargo_deps", "cargo_deps", cargo_deps as i64);
   }
 
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
-    write_metrics_hashmap(&mut datapoints, "lsp_exec_times", &lsp_exec_times);
+    reporter.write("lsp_exec_times", &lsp_exec_times);
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
@@ -444,14 +432,14 @@ async fn main() -> Result<()> {
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
       .collect();
-    write_metrics_hashmap(&mut datapoints, "req_per_sec", &req_per_sec);
+    reporter.write("req_per_sec", &req_per_sec);
 
     let max_latency = stats
       .iter()
-      .map(|(name, result)| (name.clone(), result.latency))
+      .map(|(name, result)| (name.clone(), result.latency as i64))
       .collect();
 
-    write_metrics_hashmap(&mut datapoints, "max_latency", &max_latency);
+    reporter.write("max_latency", &max_latency);
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {
@@ -488,16 +476,17 @@ async fn main() -> Result<()> {
       syscall_count.insert(name.to_string(), total as i64);
     }
 
-    write_metrics_hashmap(&mut datapoints, "thread_count", &thread_count);
-    write_metrics_hashmap(&mut datapoints, "syscall_count", &syscall_count);
+    reporter.write("thread_count", &thread_count);
+    reporter.write("syscall_count", &syscall_count);
   }
 
   if benchmarks.contains(&"mem_usage") {
     let max_memory = run_max_mem_benchmark(&deno_exe)?;
-    write_metrics_hashmap(&mut datapoints, "max_memory", &max_memory);
+    reporter.write("max_memory", &max_memory);
   }
 
-  deno_bench_util::metrics::submit(datapoints).await.unwrap();
+  reporter.submit().await;
+
   Ok(())
 }
 
