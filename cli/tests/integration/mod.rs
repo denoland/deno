@@ -812,11 +812,12 @@ async fn test_resolve_dns() {
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;
-  use trust_dns_server::authority::Catalog;
-  use trust_dns_server::authority::ZoneType;
   use trust_dns_server::proto::rr::Name;
   use trust_dns_server::store::in_memory::InMemoryAuthority;
   use trust_dns_server::ServerFuture;
+  use openssl::rsa::Rsa;
+  use trust_dns_client::rr::dnssec::*;
+  use trust_dns_server::authority::{Authority, ZoneType, Catalog};
 
   const DNS_PORT: u16 = 4553;
 
@@ -835,12 +836,22 @@ async fn test_resolve_dns() {
       panic!("failed to parse: {:?}", records.err())
     }
     let (origin, records) = records.unwrap();
-    let authority = Box::new(Arc::new(
-      InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
-        .unwrap(),
-    ));
+    let mut authority = InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
+        .unwrap();
+    let rsa = Rsa::generate(2048).unwrap();
+    let key = KeyPair::from_rsa(rsa).unwrap();
+    let dnskey = key.to_dnskey(Algorithm::RSASHA256).unwrap();
+    let signer = SigSigner::dnssec(
+        dnskey,
+        key,
+        authority.origin().clone().into(),
+        Duration::new(604800,0),
+    );
+    authority.add_zone_signing_key_mut(signer);
+    authority.secure_zone_mut();
+
     let mut catalog: Catalog = Catalog::new();
-    catalog.upsert(Name::root().into(), authority);
+    catalog.upsert(Name::root().into(), Box::new(Arc::new(authority)));
 
     let mut server_fut = ServerFuture::new(catalog);
     let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));

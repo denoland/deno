@@ -64,11 +64,7 @@ try {
 }
 
 try {
-  await Deno.resolveDns("not-supported-example.com", "DS", nameServer);
+  await Deno.resolveDns("example.com", "DNSKEY", nameServer);
 } catch (e) {
-  console.log(
-    `Error ${
-      e instanceof Error ? e.name : "[non-error]"
-    } thrown for not-found-example.com`,
-  );
+  console.log(e.message);
 }
