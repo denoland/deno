@@ -145,10 +145,10 @@ assertThrows(
   "Expected FFI argument to be an unsigned integer, but got Null",
 );
 console.log(dylib.symbols.add_i32(123, 456));
-console.log(dylib.symbols.add_u64(123, 456));
-console.log(dylib.symbols.add_i64(123, 456));
-console.log(dylib.symbols.add_usize(123, 456));
-console.log(dylib.symbols.add_isize(123, 456));
+console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
+console.log(dylib.symbols.add_i64(-0xffffffffn, -0xffffffffn));
+console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
+console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
