@@ -753,17 +753,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * SleepSync puts the main thread to sleep synchronously for a given amount of
-   * time in milliseconds.
-   *
-   * ```ts
-   * Deno.sleepSync(10);
-   * ```
-   */
-  export function sleepSync(millis: number): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
    * A generic transport listener for message-oriented protocols. */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
