@@ -325,11 +325,11 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 // Test calls with callback parameters
-const logCallback = Deno.registerCallback(
+const logCallback = new Deno.RegisteredCallback(
   { parameters: [], result: "void" },
   () => console.log("logCallback"),
 );
-const logManyParametersCallback = Deno.registerCallback({
+const logManyParametersCallback = new Deno.RegisteredCallback({
   parameters: [
     "u8",
     "i8",
@@ -350,17 +350,17 @@ const logManyParametersCallback = Deno.registerCallback({
   view.copyInto(copy_buffer);
   console.log(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, ...copy_buffer);
 });
-const returnU8Callback = Deno.registerCallback(
+const returnU8Callback = new Deno.RegisteredCallback(
   { parameters: [], result: "u8" },
   () => 8,
 );
-const returnBufferCallback = Deno.registerCallback({
+const returnBufferCallback = new Deno.RegisteredCallback({
   parameters: [],
   result: "pointer",
 }, () => {
   return buffer;
 });
-const add10Callback = Deno.registerCallback({
+const add10Callback = new Deno.RegisteredCallback({
   parameters: ["u8"],
   result: "u8",
 }, (value) => value + 10);
@@ -374,7 +374,7 @@ dylib.symbols.call_stored_function();
 dylib.symbols.store_function_2(add10Callback);
 dylib.symbols.call_stored_function_2(20);
 
-const nestedCallback = Deno.registerCallback(
+const nestedCallback = new Deno.RegisteredCallback(
   { parameters: [], result: "void" },
   () => {
     dylib.symbols.call_stored_function_2(10);

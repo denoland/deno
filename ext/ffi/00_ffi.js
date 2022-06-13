@@ -9,7 +9,6 @@
     ArrayPrototypePush,
     ArrayPrototypeSome,
     BigInt,
-    Error,
     NumberIsFinite,
     NumberIsInteger,
     ObjectDefineProperty,
@@ -223,19 +222,24 @@
         typeof type === "object" && type !== null && "function" in type
       ) {
         if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
-          ArrayPrototypePush(parameters, arg[_rid]);
+          // Own registered callback, pass the pointer value
+          ArrayPrototypePush(parameters, arg.pointer.value);
         } else if (arg === null) {
           // nullptr
           ArrayPrototypePush(parameters, null);
         } else if (
-          ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, arg) ||
+          ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, arg)
+        ) {
+          // Foreign function, pass the pointer value
+          ArrayPrototypePush(parameters, arg.pointer.value);
+        } else if (
           ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)
         ) {
-          // Foreign function given to us, we're passing it on
+          // Foreign function, pass the pointer value
           ArrayPrototypePush(parameters, arg.value);
         } else {
           throw new TypeError(
-            "Expected FFI argument to be RegisteredCallback, UnsafeFn",
+            "Expected FFI argument to be RegisteredCallback, UnsafeFnPointer, UnsafePointer or null",
           );
         }
       } else {
@@ -246,7 +250,13 @@
     return parameters;
   }
 
-  function unpackResult(type, result) {
+  function unpackNonblockingReturnValue(type, result) {
+    if (
+      typeof type === "object" && type !== null && "function" in type ||
+      type === "pointer"
+    ) {
+      return new UnsafePointer(unpackU64(result));
+    }
     switch (type) {
       case "isize":
       case "i64":
@@ -254,8 +264,6 @@
       case "usize":
       case "u64":
         return unpackU64(result);
-      case "pointer":
-        return new UnsafePointer(unpackU64(result));
       default:
         return result;
     }
@@ -285,13 +293,11 @@
         );
 
         if (
-          resultType === "pointer" || resultType === "u64" ||
-          resultType === "i64" || resultType === "usize" ||
-          resultType === "isize"
+          isReturnedAsBigInt(resultType)
         ) {
           return PromisePrototypeThen(
             promise,
-            (result) => unpackResult(resultType, result),
+            (result) => unpackNonblockingReturnValue(resultType, result),
           );
         }
 
@@ -304,7 +310,7 @@
           parameters,
         );
 
-        if (resultType === "pointer") {
+        if (isPointerType(resultType)) {
           return new UnsafePointer(result);
         }
 
@@ -315,14 +321,17 @@
 
   const UnsafeFnPointerPrototype = UnsafeFnPointer.prototype;
 
-  const _rid = Symbol("[[rid]]");
-
   function isPointerType(type) {
     return type === "pointer" ||
       typeof type === "object" && type !== null && "function" in type;
   }
 
-  function convertArgs(types, args) {
+  function isReturnedAsBigInt(type) {
+    return isPointerType(type) || type === "u64" || type === "i64" ||
+      type === "usize" || type === "isize";
+  }
+
+  function prepareRegisteredCallbackParameters(types, args) {
     const parameters = [];
     if (types.length === 0) {
       return parameters;
@@ -340,14 +349,24 @@
     return parameters;
   }
 
-  function unwrapResult(result) {
+  function unwrapRegisteredCallbackReturnValue(result) {
     if (
-      ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, result) ||
-      ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, result) ||
+      ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, result)
+    ) {
+      // Foreign function, return the pointer value
+      ArrayPrototypePush(parameters, result.value);
+    } else if (
+      ObjectPrototypeIsPrototypeOf(UnsafeFnPointerPrototype, result)
+    ) {
+      // Foreign function, return the pointer value
+      ArrayPrototypePush(parameters, result.pointer.value);
+    } else if (
       ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, result)
     ) {
-      // Foreign function given to us, we're passing it on
-      ArrayPrototypePush(parameters, result.value);
+      // Own registered callback, return the pointer value.
+      // Note that returning the ResourceId here would not work as
+      // the Rust side code cannot access OpState to get the resource.
+      ArrayPrototypePush(parameters, result.pointer.value);
     }
     return result;
   }
@@ -355,21 +374,26 @@
   function createInternalCallback(definition, callback) {
     const mustUnwrap = isPointerType(definition.result);
     return (...args) => {
-      const convertedArgs = convertArgs(definition.parameters, args);
+      const convertedArgs = prepareRegisteredCallbackParameters(
+        definition.parameters,
+        args,
+      );
       const result = callback(...convertedArgs);
       if (mustUnwrap) {
-        return unwrapResult(result);
+        return unwrapRegisteredCallbackReturnValue(result);
       }
       return result;
     };
   }
 
+  const _rid = Symbol("[[rid]]");
+
   class RegisteredCallback {
     [_rid];
-    #value;
     #internal;
     definition;
     callback;
+    pointer;
 
     constructor(definition, callback) {
       if (definition.nonblocking) {
@@ -383,58 +407,24 @@
         ? createInternalCallback(definition, callback)
         : callback;
 
-      this[_rid] = core.opSync(
+      const [rid, pointer] = core.opSync(
         "op_ffi_register_callback",
         definition,
         internalCallback,
       );
+      this[_rid] = rid;
+      this.pointer = new UnsafePointer(unpackU64(pointer));
+      this.#internal = internalCallback;
       this.definition = definition;
       this.callback = callback;
-      this.#internal = internalCallback;
-    }
-
-    call(...args) {
-      const parameters = prepareArgs(
-        this.definition.parameters,
-        args,
-      );
-      if (this.definition.nonblocking) {
-        throw new Error("Unreachable");
-      } else {
-        const result = core.opSync(
-          "op_ffi_call_registered_callback",
-          this[_rid],
-          parameters,
-        );
-
-        if (this.definition.result === "pointer") {
-          return new UnsafePointer(result);
-        }
-
-        return result;
-      }
     }
 
     close() {
       core.close(this[_rid]);
     }
-
-    get value() {
-      if (!this.#value) {
-        this.#value = core.opSync("op_ffi_ptr_of_cb", this[_rid]);
-      }
-      return this.#value;
-    }
   }
 
   const RegisteredCallbackPrototype = RegisteredCallback.prototype;
-
-  function registerCallback(definition, callback) {
-    if (!definition || !callback) {
-      throw new TypeError("Invalid arguments");
-    }
-    return new RegisteredCallback(definition, callback);
-  }
 
   class DynamicLibrary {
     #rid;
@@ -481,10 +471,7 @@
 
         let fn;
         if (isNonBlocking) {
-          const needsUnpacking = resultType === "pointer" ||
-            resultType === "u64" ||
-            resultType === "i64" || resultType === "usize" ||
-            resultType === "isize";
+          const needsUnpacking = isReturnedAsBigInt(resultType);
           fn = (...args) => {
             const parameters = prepareArgs(types, args);
 
@@ -498,13 +485,14 @@
             if (needsUnpacking) {
               return PromisePrototypeThen(
                 promise,
-                (result) => unpackResult(resultType, result),
+                (result) => unpackNonblockingReturnValue(resultType, result),
               );
             }
 
             return promise;
           };
         } else {
+          const mustWrap = isPointerType(resultType);
           fn = (...args) => {
             const parameters = prepareArgs(types, args);
 
@@ -515,7 +503,7 @@
               parameters,
             );
 
-            if (resultType === "pointer") {
+            if (mustWrap) {
               return new UnsafePointer(result);
             }
 
@@ -549,7 +537,7 @@
 
   window.__bootstrap.ffi = {
     dlopen,
-    registerCallback,
+    RegisteredCallback,
     UnsafePointer,
     UnsafePointerView,
     UnsafeFnPointer,

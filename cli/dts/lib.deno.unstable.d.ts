@@ -519,6 +519,31 @@ declare namespace Deno {
     >;
   }
 
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * A registered callback for passing JavaScript functions
+   * as C function pointers to ffi calls.
+   *
+   * The function pointer remains valid until the `close()` method is called.
+   */
+  export class RegisteredCallback<Fn extends ForeignFunction> {
+    constructor(
+      definition: Fn,
+      callback: (
+        ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+      ) => StaticForeignFunctionResult<Fn["result"]>,
+    );
+
+    pointer: UnsafePointer;
+    definition: Fn;
+    callback: (
+      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+    ) => StaticForeignFunctionResult<Fn["result"]>;
+
+    close(): void;
+  }
+
   /** A dynamic library resource */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
     /** All of the registered library along with functions for calling them */

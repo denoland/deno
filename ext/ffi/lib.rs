@@ -1050,7 +1050,7 @@ fn op_ffi_register_callback(
   scope: &mut v8::HandleScope,
   args: RegisterCallbackArgs,
   cb: serde_v8::Value<'_>,
-) -> Result<ResourceId, AnyError> {
+) -> Result<(ResourceId, U32x2), AnyError> {
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
@@ -1078,10 +1078,11 @@ fn op_ffi_register_callback(
   );
 
   let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
+  let u3x2 = U32x2::from(*closure.code_ptr() as usize as u64);
 
   let resource = RegisteredCallbackResource { closure, info };
 
-  Ok(state.resource_table.add(resource))
+  Ok((state.resource_table.add(resource), u3x2))
 }
 
 #[op]
