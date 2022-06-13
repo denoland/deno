@@ -994,7 +994,7 @@ unsafe extern "C" fn deno_ffi_callback(
     FFI_TYPE_SINT64 => {
       if value.is_big_int() {
         let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
-        *(result as *mut u64) = value.u64_value().0;
+        *(result as *mut i64) = value.i64_value().0;
       } else {
         *(result as *mut i64) = value
           .number_value(&mut scope)
@@ -1003,10 +1003,15 @@ unsafe extern "C" fn deno_ffi_callback(
       }
     }
     FFI_TYPE_UINT64 => {
-      *(result as *mut u64) = value
-        .number_value(&mut scope)
-        .expect("Unable to deserialize result parameter.")
-        as u64;
+      if value.is_big_int() {
+        let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+        *(result as *mut u64) = value.u64_value().0;
+      } else {
+        *(result as *mut u64) = value
+          .number_value(&mut scope)
+          .expect("Unable to deserialize result parameter.")
+          as u64;
+      }
     }
     FFI_TYPE_VOID => {
       // nop
