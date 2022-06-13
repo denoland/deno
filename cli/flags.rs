@@ -1196,6 +1196,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hide(true))
+    .args(config_args())
     .arg(import_map_arg())
     .arg(
       Arg::new("json")
@@ -2438,6 +2439,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
+  config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
@@ -3859,6 +3861,19 @@ mod tests {
           json: true,
           file: None
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "info", "--config", "tsconfig.json"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info(InfoFlags {
+          json: false,
+          file: None
+        }),
+        config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         ..Flags::default()
       }
     );
