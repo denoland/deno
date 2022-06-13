@@ -44,7 +44,7 @@ pub fn benchmark(
     if name.starts_with("node") {
       // node <path> <port>
       res.insert(
-        name,
+        file_stem.to_string(),
         run(
           &["node", path, &port.to_string()],
           port,
@@ -56,7 +56,7 @@ pub fn benchmark(
     } else {
       // deno run -A --unstable <path> <addr>
       res.insert(
-        name,
+        file_stem.to_string(),
         run(
           &[
             deno_exe,
