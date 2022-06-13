@@ -14,7 +14,6 @@
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
-    Symbol,
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
@@ -386,10 +385,8 @@
     };
   }
 
-  const _rid = Symbol("[[rid]]");
-
   class RegisteredCallback {
-    [_rid];
+    #rid;
     #internal;
     definition;
     callback;
@@ -412,7 +409,7 @@
         definition,
         internalCallback,
       );
-      this[_rid] = rid;
+      this.#rid = rid;
       this.pointer = new UnsafePointer(unpackU64(pointer));
       this.#internal = internalCallback;
       this.definition = definition;
@@ -420,7 +417,7 @@
     }
 
     close() {
-      core.close(this[_rid]);
+      core.close(this.#rid);
     }
   }
 
