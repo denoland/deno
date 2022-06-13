@@ -17,9 +17,9 @@ path = "lib.rs"
 deno_core = { version = "0.136.0", path = "../../core" }
 deno_tls = { version = "0.41.0", path = "../tls" }
 log = "0.4.16"
+openssl = { version = "0.10", features = ["vendored"] }
 serde = { version = "1.0.136", features = ["derive"] }
 socket2 = "0.4.4"
 tokio = { version = "1.17", features = ["full"] }
-openssl = { version = "0.10", features = ["vendored"] }
 trust-dns-proto = { version = "=0.21.2" }
 trust-dns-resolver = { version = "=0.21.2", features = ["tokio-runtime", "serde-config"] }
