@@ -1,16 +1,13 @@
-import { deferred } from "../../../test_util/std/async/deferred.ts";
+// Set exit code to some value, we'll ensure that `Deno.exit()` and
+// setting exit code in worker context is a no-op and is an alias for
+// `self.close()`.
+
+// @ts-ignore Deno.core doesn't have type-defs
+Deno.core.opSync("op_set_exit_code", 21);
 
 const worker = new Worker(
   new URL("op_exit_op_set_exit_code_worker.js", import.meta.url).href,
   { type: "module" },
 );
 
-const promise1 = deferred();
-worker.onmessage = (e) => {
-  if (e.data != "ok") {
-    promise1.reject("not ok");
-  }
-  promise1.resolve();
-};
-await promise1;
-worker.terminate();
+worker.postMessage("go");

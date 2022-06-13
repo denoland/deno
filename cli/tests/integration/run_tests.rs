@@ -918,6 +918,7 @@ itest!(set_exit_code_2 {
 
 itest!(op_exit_op_set_exit_code_in_worker {
   args: "run --no-check --unstable --allow-read op_exit_op_set_exit_code_in_worker.ts",
+  exit_code: 21,
   output: "empty.out",
 });
 

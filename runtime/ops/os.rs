@@ -3,7 +3,7 @@
 use super::utils::into_string;
 use crate::permissions::Permissions;
 use crate::worker::ExitCode;
-use deno_core::error::{generic_error, type_error, AnyError};
+use deno_core::error::{type_error, AnyError};
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -45,11 +45,16 @@ pub fn init_for_worker() -> Extension {
   let mut builder = Extension::builder();
   init_ops(&mut builder)
     .middleware(|op| match op.name {
-      "op_exit" => op_exit_for_worker::decl(),
-      "op_set_exit_code" => op_set_exit_code_for_worker::decl(),
+      "op_exit" => noop_op::decl(),
+      "op_set_exit_code" => noop_op::decl(),
       _ => op,
     })
     .build()
+}
+
+#[op]
+fn noop_op(_code: i32) -> Result<(), AnyError> {
+  Ok(())
 }
 
 #[op]
@@ -124,20 +129,6 @@ fn op_set_exit_code(state: &mut OpState, code: i32) {
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
-}
-
-#[op]
-fn op_set_exit_code_for_worker(_code: i32) -> Result<(), AnyError> {
-  Err(generic_error(
-    "Deno.exit() is not supported in worker contexts",
-  ))
-}
-
-#[op]
-fn op_exit_for_worker() -> Result<(), AnyError> {
-  Err(generic_error(
-    "Deno.exit() is not supported in worker contexts",
-  ))
 }
 
 #[op]
