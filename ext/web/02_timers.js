@@ -28,10 +28,6 @@
     return core.opSync("op_now");
   }
 
-  function sleepSync(millis = 0) {
-    return core.opSync("op_sleep_sync", millis);
-  }
-
   // ---------------------------------------------------------------------------
 
   /**
@@ -372,7 +368,6 @@
     clearInterval,
     handleTimerMacrotask,
     opNow,
-    sleepSync,
     refTimer,
     unrefTimer,
   };
