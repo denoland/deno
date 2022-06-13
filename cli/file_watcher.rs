@@ -76,7 +76,7 @@ where
   }
 }
 
-async fn error_handler2<F>(watch_future: F) -> i32
+async fn error_handler_with_exit_code<F>(watch_future: F) -> i32
 where
   F: Future<Output = Result<i32, AnyError>>,
 {
@@ -310,7 +310,8 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
-    let operation_future = error_handler2(operation(operation_args.clone()));
+    let operation_future =
+      error_handler_with_exit_code(operation(operation_args.clone()));
 
     select! {
       _ = receiver_future => {},

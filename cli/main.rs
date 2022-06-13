@@ -1062,20 +1062,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         flags.compat,
       );
 
-      let result = executor.execute(&main_module).await;
-      let mut exit_code = executor.worker.get_exit_code();
-
-      if let Err(err) = result {
-        // `Deno.exit()` was called
-        // TODO(bartlomieju): this is brittle
-        if err.to_string() != "Uncaught Error: execution terminated" {
-          let msg = format!("{}: {}", colors::red_bold("error"), err);
-          eprintln!("{}", msg);
-          exit_code = 1;
-        }
-      }
-
-      Ok(exit_code)
+      executor.execute(&main_module).await?;
+      Ok(executor.worker.get_exit_code())
     }
   };
 
