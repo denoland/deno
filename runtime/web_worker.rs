@@ -6,7 +6,6 @@ use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::tokio_util::run_basic;
-use crate::worker::ExitCode;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -335,7 +334,6 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub exit_code: ExitCode,
   pub stdio: Stdio,
 }
 
@@ -421,7 +419,7 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(options.exit_code),
+      ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
       ops::spawn::init(),

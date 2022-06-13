@@ -178,7 +178,6 @@ fn create_web_worker_callback(
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      exit_code: args.exit_code,
       stdio: stdio.clone(),
     };
 

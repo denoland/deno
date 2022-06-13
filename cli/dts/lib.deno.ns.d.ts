@@ -480,6 +480,8 @@ declare namespace Deno {
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
+   * In worker contexts this is an alias to `self.close();`.
+   *
    * ```ts
    * Deno.exit(5);
    * ```
