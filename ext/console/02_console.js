@@ -335,7 +335,7 @@
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
     ) {
-      return String(value[customInspect](inspect));
+      return String(value[customInspect](inspect, inspectOptions, level));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
@@ -1258,7 +1258,7 @@
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
     ) {
-      return String(value[customInspect](inspect));
+      return String(value[customInspect](inspect, inspectOptions, level));
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in extensions/web we don't want to depend on public
@@ -1273,7 +1273,9 @@
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[privateCustomInspect](inspect));
+      return String(
+        value[privateCustomInspect](inspect, inspectOptions, level),
+      );
     }
     if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
       return inspectError(value, maybeColor(colors.cyan, inspectOptions));
