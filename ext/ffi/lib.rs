@@ -858,30 +858,53 @@ unsafe extern "C" fn deno_ffi_callback(
 
   let mut params: Vec<v8::Local<v8::Value>> = vec![];
   for (repr, val) in repr.iter().zip(vals) {
-    let value = match (*(*repr)).type_ as _ {
-      FFI_TYPE_INT => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
-      FFI_TYPE_FLOAT => serde_v8::to_v8(&mut scope, *((*val) as *const f32)),
-      FFI_TYPE_DOUBLE => serde_v8::to_v8(&mut scope, *((*val) as *const f64)),
-      FFI_TYPE_SINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const i8)),
-      FFI_TYPE_UINT8 => serde_v8::to_v8(&mut scope, *((*val) as *const u8)),
-      FFI_TYPE_SINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const i16)),
-      FFI_TYPE_UINT16 => serde_v8::to_v8(&mut scope, *((*val) as *const u16)),
-      FFI_TYPE_SINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const i32)),
-      FFI_TYPE_UINT32 => serde_v8::to_v8(&mut scope, *((*val) as *const u32)),
+    let value: v8::Local<v8::Value> = match (*(*repr)).type_ as _ {
+      FFI_TYPE_FLOAT => {
+        let value = *((*val) as *const f32);
+        v8::Number::new(&mut scope, value as f64).into()
+      }
+      FFI_TYPE_DOUBLE => {
+        let value = *((*val) as *const f64);
+        v8::Number::new(&mut scope, value).into()
+      }
+      FFI_TYPE_SINT8 => {
+        let value = *((*val) as *const i8);
+        v8::Integer::new(&mut scope, value as i32).into()
+      }
+      FFI_TYPE_UINT8 => {
+        let value = *((*val) as *const u8);
+        v8::Integer::new_from_unsigned(&mut scope, value as u32).into()
+      }
+      FFI_TYPE_SINT16 => {
+        let value = *((*val) as *const i16);
+        v8::Integer::new(&mut scope, value as i32).into()
+      }
+      FFI_TYPE_UINT16 => {
+        let value = *((*val) as *const u16);
+        v8::Integer::new_from_unsigned(&mut scope, value as u32).into()
+      }
+      FFI_TYPE_INT | FFI_TYPE_SINT32 => {
+        let value = *((*val) as *const i32);
+        v8::Integer::new(&mut scope, value).into()
+      }
+      FFI_TYPE_UINT32 => {
+        let value = *((*val) as *const u32);
+        v8::Integer::new_from_unsigned(&mut scope, value).into()
+      }
       FFI_TYPE_SINT64 => {
         let result = *((*val) as *const i64);
-        Ok(v8::BigInt::new_from_i64(&mut scope, result).into())
+        v8::BigInt::new_from_i64(&mut scope, result).into()
       }
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64 => {
         let result = *((*val) as *const u64);
-        Ok(v8::BigInt::new_from_u64(&mut scope, result).into())
+        v8::BigInt::new_from_u64(&mut scope, result).into()
       }
-      FFI_TYPE_VOID => serde_v8::to_v8(&mut scope, ()),
+      FFI_TYPE_VOID => v8::undefined(&mut scope).into(),
       _ => {
         unreachable!()
       }
     };
-    params.push(value.expect("Unable to serialize callback parameter."));
+    params.push(value);
   }
 
   let recv = v8::undefined(&mut scope);
@@ -933,7 +956,7 @@ unsafe extern "C" fn deno_ffi_callback(
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
       *(result as *mut i32) = value
-        .number_value(&mut scope)
+        .int32_value(&mut scope)
         .expect("Unable to deserialize result parameter.")
         as i32;
     }
@@ -963,40 +986,39 @@ unsafe extern "C" fn deno_ffi_callback(
         // Fallthrough: Probably someone returned a number but this could
         // also be eg. a string. This is essentially UB.
         *(result as *mut u64) = value
-          .number_value(&mut scope)
+          .integer_value(&mut scope)
           .expect("Unable to deserialize result parameter.")
           as u64;
       }
     }
     FFI_TYPE_SINT8 => {
       *(result as *mut i8) = value
-        .number_value(&mut scope)
+        .int32_value(&mut scope)
         .expect("Unable to deserialize result parameter.")
         as i8;
     }
     FFI_TYPE_UINT8 => {
       *(result as *mut u8) = value
-        .number_value(&mut scope)
+        .uint32_value(&mut scope)
         .expect("Unable to deserialize result parameter.")
         as u8;
     }
     FFI_TYPE_SINT16 => {
       *(result as *mut i16) = value
-        .number_value(&mut scope)
+        .int32_value(&mut scope)
         .expect("Unable to deserialize result parameter.")
         as i16;
     }
     FFI_TYPE_UINT16 => {
       *(result as *mut u16) = value
-        .number_value(&mut scope)
+        .uint32_value(&mut scope)
         .expect("Unable to deserialize result parameter.")
         as u16;
     }
     FFI_TYPE_UINT32 => {
       *(result as *mut u32) = value
-        .number_value(&mut scope)
-        .expect("Unable to deserialize result parameter.")
-        as u32;
+        .uint32_value(&mut scope)
+        .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_SINT64 => {
       if value.is_big_int() {
@@ -1004,7 +1026,7 @@ unsafe extern "C" fn deno_ffi_callback(
         *(result as *mut i64) = value.i64_value().0;
       } else {
         *(result as *mut i64) = value
-          .number_value(&mut scope)
+          .integer_value(&mut scope)
           .expect("Unable to deserialize result parameter.")
           as i64;
       }
@@ -1015,7 +1037,7 @@ unsafe extern "C" fn deno_ffi_callback(
         *(result as *mut u64) = value.u64_value().0;
       } else {
         *(result as *mut u64) = value
-          .number_value(&mut scope)
+          .integer_value(&mut scope)
           .expect("Unable to deserialize result parameter.")
           as u64;
       }
