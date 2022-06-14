@@ -786,12 +786,12 @@ fn ffi_call(
   })
 }
 
-struct RegisteredCallbackResource {
+struct UnsafeCallbackResource {
   closure: libffi::middle::Closure<'static>,
   info: *const CallbackInfo,
 }
 
-impl Resource for RegisteredCallbackResource {
+impl Resource for UnsafeCallbackResource {
   fn name(&self) -> Cow<str> {
     "registeredcallback".into()
   }
@@ -826,7 +826,9 @@ unsafe extern "C" fn deno_ffi_callback(
   IS_EVENT_LOOP_THREAD.with(|is_event_loop_thread| {
     if !(*is_event_loop_thread.borrow()) {
       // Call from another thread, not yet supported.
-      eprintln!("Calling Deno FFI's registered callbacks from other threads is not supported");
+      eprintln!(
+        "Calling Deno FFI's callbacks from other threads is not supported"
+      );
       std::process::exit(1);
     }
   });
@@ -1057,7 +1059,7 @@ fn op_ffi_register_callback(
   // TODO(@aapoalas): Use BigInt later
   let u3x2 = U32x2::from(*closure.code_ptr() as usize as u64);
 
-  let resource = RegisteredCallbackResource { closure, info };
+  let resource = UnsafeCallbackResource { closure, info };
 
   Ok((state.resource_table.add(resource), u3x2))
 }
@@ -1069,7 +1071,7 @@ fn op_ffi_deregister_callback(
 ) -> Result<(), AnyError> {
   state
     .resource_table
-    .take::<RegisteredCallbackResource>(rid)?
+    .take::<UnsafeCallbackResource>(rid)?
     .close();
   Ok(())
 }
@@ -1327,9 +1329,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let resource = state
-    .resource_table
-    .get::<RegisteredCallbackResource>(rid)?;
+  let resource = state.resource_table.get::<UnsafeCallbackResource>(rid)?;
 
   let big_int: v8::Local<v8::Value> = v8::BigInt::new_from_u64(
     scope,

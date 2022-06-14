@@ -220,7 +220,7 @@
       } else if (
         typeof type === "object" && type !== null && "function" in type
       ) {
-        if (ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, arg)) {
+        if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, arg)) {
           // Own registered callback, pass the pointer value
           ArrayPrototypePush(parameters, arg.pointer.value);
         } else if (arg === null) {
@@ -238,7 +238,7 @@
           ArrayPrototypePush(parameters, arg.value);
         } else {
           throw new TypeError(
-            "Expected FFI argument to be RegisteredCallback, UnsafeFnPointer, UnsafePointer or null",
+            "Expected FFI argument to be UnsafeCallback, UnsafeFnPointer, UnsafePointer or null",
           );
         }
       } else {
@@ -330,7 +330,7 @@
       type === "usize" || type === "isize";
   }
 
-  function prepareRegisteredCallbackParameters(types, args) {
+  function prepareUnsafeCallbackParameters(types, args) {
     const parameters = [];
     if (types.length === 0) {
       return parameters;
@@ -348,7 +348,7 @@
     return parameters;
   }
 
-  function unwrapRegisteredCallbackReturnValue(result) {
+  function unwrapUnsafeCallbackReturnValue(result) {
     if (
       ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, result)
     ) {
@@ -360,7 +360,7 @@
       // Foreign function, return the pointer value
       ArrayPrototypePush(parameters, result.pointer.value);
     } else if (
-      ObjectPrototypeIsPrototypeOf(RegisteredCallbackPrototype, result)
+      ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, result)
     ) {
       // Own registered callback, return the pointer value.
       // Note that returning the ResourceId here would not work as
@@ -373,19 +373,19 @@
   function createInternalCallback(definition, callback) {
     const mustUnwrap = isPointerType(definition.result);
     return (...args) => {
-      const convertedArgs = prepareRegisteredCallbackParameters(
+      const convertedArgs = prepareUnsafeCallbackParameters(
         definition.parameters,
         args,
       );
       const result = callback(...convertedArgs);
       if (mustUnwrap) {
-        return unwrapRegisteredCallbackReturnValue(result);
+        return unwrapUnsafeCallbackReturnValue(result);
       }
       return result;
     };
   }
 
-  class RegisteredCallback {
+  class UnsafeCallback {
     #rid;
     #internal;
     definition;
@@ -395,7 +395,7 @@
     constructor(definition, callback) {
       if (definition.nonblocking) {
         throw new TypeError(
-          "Invalid ffi RegisteredCallback, cannot be nonblocking",
+          "Invalid UnsafeCallback, cannot be nonblocking",
         );
       }
       const needsWrapping = isPointerType(definition.result) ||
@@ -421,7 +421,7 @@
     }
   }
 
-  const RegisteredCallbackPrototype = RegisteredCallback.prototype;
+  const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
   class DynamicLibrary {
     #rid;
@@ -534,7 +534,7 @@
 
   window.__bootstrap.ffi = {
     dlopen,
-    RegisteredCallback,
+    UnsafeCallback,
     UnsafePointer,
     UnsafePointerView,
     UnsafeFnPointer,

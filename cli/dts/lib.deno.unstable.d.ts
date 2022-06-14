@@ -522,12 +522,12 @@ declare namespace Deno {
   /**
    * **UNSTABLE**: Unsafe and new API, beware!
    *
-   * A registered callback for passing JavaScript functions
+   * An unsafe function pointer for passing JavaScript functions
    * as C function pointers to ffi calls.
    *
    * The function pointer remains valid until the `close()` method is called.
    */
-  export class RegisteredCallback<Fn extends ForeignFunction> {
+  export class UnsafeCallback<Fn extends ForeignFunction> {
     constructor(
       definition: Fn,
       callback: (
