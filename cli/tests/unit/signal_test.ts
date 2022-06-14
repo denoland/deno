@@ -204,10 +204,10 @@ Deno.test(
   function windowsThrowsOnNegativeProcessIdTest() {
     assertThrows(
       () => {
-        Deno.kill(-1, "SIGINT");
+        Deno.kill(-1, "SIGKILL");
       },
       TypeError,
-      "Invalid process id (pid) -1 for signal SIGINT.",
+      "Invalid pid",
     );
   },
 );
@@ -225,7 +225,7 @@ Deno.test(
         Deno.kill(0, signal);
       },
       TypeError,
-      `Cannot use ${signal} on PID 0`,
+      `Invalid pid`,
     );
 
     signal = "SIGTERM";
@@ -234,7 +234,7 @@ Deno.test(
         Deno.kill(0, signal);
       },
       TypeError,
-      `Cannot use ${signal} on PID 0`,
+      `Invalid pid`,
     );
   },
 );
