@@ -336,32 +336,37 @@ impl NativeValue {
       }
       NativeType::U8 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.u8_value } as f64).into();
+          v8::Integer::new_from_unsigned(scope, unsafe { self.u8_value }
+            as u32)
+          .into();
         local_value.into()
       }
       NativeType::I8 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.i8_value } as f64).into();
+          v8::Integer::new(scope, unsafe { self.i8_value } as i32).into();
         local_value.into()
       }
       NativeType::U16 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.u16_value } as f64).into();
+          v8::Integer::new_from_unsigned(scope, unsafe { self.u16_value }
+            as u32)
+          .into();
         local_value.into()
       }
       NativeType::I16 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.i16_value } as f64).into();
+          v8::Integer::new(scope, unsafe { self.i16_value } as i32).into();
         local_value.into()
       }
       NativeType::U32 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.u32_value } as f64).into();
+          v8::Integer::new_from_unsigned(scope, unsafe { self.u32_value })
+            .into();
         local_value.into()
       }
       NativeType::I32 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.i32_value } as f64).into();
+          v8::Integer::new(scope, unsafe { self.i32_value }).into();
         local_value.into()
       }
       NativeType::U64 => {
@@ -589,42 +594,42 @@ where
       }
       NativeType::U8 => {
         let value = value
-          .number_value(scope)
+          .uint32_value(scope)
           .ok_or_else(|| type_error("Invalid FFI u8 type, expected number"))?
           as u8;
         ffi_args.push(NativeValue { u8_value: value });
       }
       NativeType::I8 => {
         let value = value
-          .number_value(scope)
+          .int32_value(scope)
           .ok_or_else(|| type_error("Invalid FFI i8 type, expected number"))?
           as i8;
         ffi_args.push(NativeValue { i8_value: value });
       }
       NativeType::U16 => {
         let value = value
-          .number_value(scope)
+          .uint32_value(scope)
           .ok_or_else(|| type_error("Invalid FFI u16 type, expected number"))?
           as u16;
         ffi_args.push(NativeValue { u16_value: value });
       }
       NativeType::I16 => {
         let value = value
-          .number_value(scope)
+          .int32_value(scope)
           .ok_or_else(|| type_error("Invalid FFI i16 type, expected number"))?
           as i16;
         ffi_args.push(NativeValue { i16_value: value });
       }
       NativeType::U32 => {
         let value = value
-          .number_value(scope)
+          .uint32_value(scope)
           .ok_or_else(|| type_error("Invalid FFI u32 type, expected number"))?
           as u32;
         ffi_args.push(NativeValue { u32_value: value });
       }
       NativeType::I32 => {
         let value = value
-          .number_value(scope)
+          .int32_value(scope)
           .ok_or_else(|| type_error("Invalid FFI i32 type, expected number"))?
           as i32;
         ffi_args.push(NativeValue { i32_value: value });
