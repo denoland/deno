@@ -423,7 +423,7 @@ async fn main() -> Result<()> {
 
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
-    reporter.write("lsp_exec_times", &lsp_exec_times);
+    reporter.write("lsp_exec_time", &lsp_exec_times);
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {

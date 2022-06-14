@@ -70,7 +70,7 @@ impl Reporter {
         type_: type_.to_string(),
         value,
         sha1: GIT_HASH.clone(),
-        time: chrono::Utc::now().timestamp(),
+        time: chrono::Utc::now().timestamp_millis(),
       })
       .unwrap();
   }
