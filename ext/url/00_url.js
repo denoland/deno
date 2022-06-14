@@ -322,7 +322,7 @@
       this[_url] = opUrlParse(url, base);
     }
 
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
       const object = {
         href: this.href,
         origin: this.origin,
@@ -336,7 +336,7 @@
         hash: this.hash,
         search: this.search,
       };
-      return `${this.constructor.name} ${inspect(object)}`;
+      return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
     }
 
     #updateSearchParams() {
