@@ -34,28 +34,28 @@ pub struct Reporter {
 impl Reporter {
   pub async fn new() -> Self {
     dotenv::dotenv().ok();
-    let gcloud_client = match std::env::var("CI") {
-      Ok(_) => {
-        let key_str = std::env::var("GOOGLE_SVC_KEY").unwrap();
-        let secret = oauth2::parse_service_account_key(key_str)
-          .expect("Failed to load service account key");
-        let auth =
-          oauth2::authenticator::ServiceAccountAuthenticator::builder(secret)
-            .build()
-            .await
-            .unwrap();
-        let client = hyper::Client::builder().build(
-          hyper_rustls::HttpsConnectorBuilder::new()
-            .with_native_roots()
-            .https_or_http()
-            .enable_http1()
-            .enable_http2()
-            .build(),
-        );
-        Some(Storage::new(client, auth))
-      }
-      Err(_) => None,
-    };
+    let gcloud_client =
+      match std::env::var("CI").map(|_| std::env::var("GOOGLE_SVC_KEY")) {
+        Ok(Ok(key_str)) => {
+          let secret = oauth2::parse_service_account_key(key_str)
+            .expect("Failed to load service account key");
+          let auth =
+            oauth2::authenticator::ServiceAccountAuthenticator::builder(secret)
+              .build()
+              .await
+              .unwrap();
+          let client = hyper::Client::builder().build(
+            hyper_rustls::HttpsConnectorBuilder::new()
+              .with_native_roots()
+              .https_or_http()
+              .enable_http1()
+              .enable_http2()
+              .build(),
+          );
+          Some(Storage::new(client, auth))
+        }
+        _ => None,
+      };
     Self {
       wtr: csv::Writer::from_writer(vec![]),
       gcloud_client,

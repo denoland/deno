@@ -34,6 +34,10 @@ jobs:
             profile: release
             use_sysroot: true
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+            job: bench
+            profile: release
+            use_sysroot: true
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
@@ -488,6 +492,10 @@ jobs:
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
+      - name: Run benchmarks
+        if: matrix.job == 'bench' && !startsWith(github.ref, 'refs/tags/')
+        run: cargo bench --locked
+
       - name: Build product size info
         if: matrix.job != 'lint' && matrix.profile != 'fastci' &&
           github.repository == 'denoland/deno' &&
@@ -495,6 +503,12 @@ jobs:
         run: |
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
+
+      - name: Worker info
+        if: matrix.job == 'bench'
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
 
       - name: Upload release to dl.deno.land (unix)
         if: |
