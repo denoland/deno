@@ -293,8 +293,7 @@ impl MainWorker {
           return Ok(());
         }
         let maybe_result = receiver.await;
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        result
+        maybe_result.expect("Module evaluation result not provided.")
       }
     }
   }
