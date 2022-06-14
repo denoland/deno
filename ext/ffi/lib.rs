@@ -710,7 +710,6 @@ where
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
         } else if value.is_big_int() {
-          // Do we support this? This would be a foreign function pointer given to us by an FFI library.
           let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
           let value = value.u64_value().0 as *const u8;
           ffi_args.push(NativeValue { pointer: value });
@@ -826,8 +825,9 @@ unsafe extern "C" fn deno_ffi_callback(
   >(info.context);
   IS_EVENT_LOOP_THREAD.with(|is_event_loop_thread| {
     if !(*is_event_loop_thread.borrow()) {
-      // Call from another thread, PANIC IN THE DISCO!
-      todo!("Call from another thread");
+      // Call from another thread, not yet supported.
+      eprintln!("Calling Deno FFI's registered callbacks from other threads is not supported");
+      std::process::exit(1);
     }
   });
   // Call from main thread. If this callback is being triggered due to a
@@ -1038,28 +1038,23 @@ fn op_ffi_register_callback(
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
-  let info = {
-    let isolate_ptr: *mut v8::Isolate = {
-      let isolate: &mut v8::Isolate = &mut *scope;
-      isolate
-    };
-    let isolate = unsafe { &mut *isolate_ptr };
-    let callback = v8::Global::new(isolate, cb).into_raw();
-    let context =
-      v8::Global::new(isolate, scope.get_current_context()).into_raw();
+  let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
+  let callback = v8::Global::new(scope, cb).into_raw();
+  let current_context = scope.get_current_context();
+  let context = v8::Global::new(scope, current_context).into_raw();
 
-    Box::leak(Box::new(CallbackInfo {
-      callback,
-      context,
-      isolate,
-    }))
-  };
+  let info = Box::leak(Box::new(CallbackInfo {
+    callback,
+    context,
+    isolate,
+  }));
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
     libffi::middle::Type::from(args.result),
   );
 
   let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
+  // TODO(@aapoalas): Use BigInt later
   let u3x2 = U32x2::from(*closure.code_ptr() as usize as u64);
 
   let resource = RegisteredCallbackResource { closure, info };
