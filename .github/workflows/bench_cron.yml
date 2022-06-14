@@ -2,7 +2,7 @@ name: bench
 
 on:
   schedule:
-    - cron: 0 0 * * *
+    - cron: 0 0,6,12 * * *
   workflow_dispatch:
 
 jobs:
