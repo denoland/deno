@@ -68,3 +68,9 @@ try {
 } catch (e) {
   console.log(e.message);
 }
+
+try {
+  await Deno.resolveDns("example.com", "HINFO", nameServer);
+} catch (e) {
+  console.log(e.message);
+}
