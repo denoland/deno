@@ -126,7 +126,6 @@
     networkInterfaces: __bootstrap.os.networkInterfaces,
     getGid: __bootstrap.os.getGid,
     getUid: __bootstrap.os.getUid,
-    sleepSync: __bootstrap.timers.sleepSync,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,

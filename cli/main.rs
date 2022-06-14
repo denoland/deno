@@ -51,7 +51,6 @@ use crate::flags::DocFlags;
 use crate::flags::EvalFlags;
 use crate::flags::Flags;
 use crate::flags::FmtFlags;
-use crate::flags::FutureTypeCheckMode;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
@@ -179,7 +178,6 @@ fn create_web_worker_callback(
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      exit_code: args.exit_code,
       stdio: stdio.clone(),
     };
 
@@ -586,18 +584,6 @@ async fn check_command(
   flags: Flags,
   check_flags: CheckFlags,
 ) -> Result<i32, AnyError> {
-  // NOTE(bartlomieju): currently just an alias for `deno cache`, but
-  // it will be changed in Deno 2.0.
-  let mut flags = flags.clone();
-
-  // In `deno check` the default mode is to check only
-  // local modules, with `--remote` we check remote modules too.
-  flags.type_check_mode = if check_flags.remote {
-    TypeCheckMode::All
-  } else {
-    TypeCheckMode::Local
-  };
-
   cache_command(
     flags,
     CacheFlags {
@@ -1430,7 +1416,7 @@ pub fn main() {
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
-    let mut flags = match flags::flags_from_vec(args) {
+    let flags = match flags::flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
         if err.kind() == clap::ErrorKind::DisplayHelp
@@ -1446,26 +1432,6 @@ pub fn main() {
     }
 
     logger::init(flags.log_level);
-
-    // TODO(bartlomieju): v1.22 is a "pivot version" in terms of default
-    // type checking mode. We're opting into type checking only local
-    // files by default and in v1.23 we're not gonna type check at all by default.
-    // So right now, we're still allowing to use `--no-check` flag and if it is
-    // present, we opt into the "old" behavior. Additionally, if
-    // "DENO_FUTURE_CHECK" env var is present we're switching to the new behavior
-    // of skipping type checking completely if no `--check` flag is present.
-    let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
-    if let Some(env_var) = future_check_env_var {
-      if env_var == "1" && !flags.has_check_flag {
-        flags.type_check_mode = TypeCheckMode::None;
-      }
-    } else if !flags.has_no_check_flag {
-      flags.type_check_mode = match &flags.future_type_check_mode {
-        FutureTypeCheckMode::None => TypeCheckMode::None,
-        FutureTypeCheckMode::All => TypeCheckMode::All,
-        FutureTypeCheckMode::Local => TypeCheckMode::Local,
-      }
-    }
 
     let exit_code = get_subcommand(flags).await;
 
