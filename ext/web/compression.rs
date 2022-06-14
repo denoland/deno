@@ -6,6 +6,8 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use flate2::write::DeflateDecoder;
+use flate2::write::DeflateEncoder;
 use flate2::write::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::write::ZlibDecoder;
@@ -19,10 +21,13 @@ use std::rc::Rc;
 #[derive(Debug)]
 struct CompressionResource(RefCell<Inner>);
 
+/// https://wicg.github.io/compression/#supported-formats
 #[derive(Debug)]
 enum Inner {
   DeflateDecoder(ZlibDecoder<Vec<u8>>),
   DeflateEncoder(ZlibEncoder<Vec<u8>>),
+  DeflateRawDecoder(DeflateDecoder<Vec<u8>>),
+  DeflateRawEncoder(DeflateEncoder<Vec<u8>>),
   GzDecoder(GzDecoder<Vec<u8>>),
   GzEncoder(GzEncoder<Vec<u8>>),
 }
@@ -44,6 +49,10 @@ pub fn op_compression_new(
     ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
     ("deflate", false) => {
       Inner::DeflateEncoder(ZlibEncoder::new(w, Compression::default()))
+    }
+    ("deflate-raw", true) => Inner::DeflateRawDecoder(DeflateDecoder::new(w)),
+    ("deflate-raw", false) => {
+      Inner::DeflateRawEncoder(DeflateEncoder::new(w, Compression::default()))
     }
     ("gzip", true) => Inner::GzDecoder(GzDecoder::new(w)),
     ("gzip", false) => {
@@ -74,6 +83,16 @@ pub fn op_compression_write(
       d.flush()?;
       d.get_mut().drain(..)
     }
+    Inner::DeflateRawDecoder(d) => {
+      d.write_all(&input)?;
+      d.flush()?;
+      d.get_mut().drain(..)
+    }
+    Inner::DeflateRawEncoder(d) => {
+      d.write_all(&input)?;
+      d.flush()?;
+      d.get_mut().drain(..)
+    }
     Inner::GzDecoder(d) => {
       d.write_all(&input)?;
       d.flush()?;
@@ -100,6 +119,8 @@ pub fn op_compression_finish(
   let out: Vec<u8> = match inner {
     Inner::DeflateDecoder(d) => d.finish()?,
     Inner::DeflateEncoder(d) => d.finish()?,
+    Inner::DeflateRawDecoder(d) => d.finish()?,
+    Inner::DeflateRawEncoder(d) => d.finish()?,
     Inner::GzDecoder(d) => d.finish()?,
     Inner::GzEncoder(d) => d.finish()?,
   };
