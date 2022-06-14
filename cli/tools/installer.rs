@@ -513,12 +513,11 @@ mod tests {
     println!("this is the file path {:?}", content);
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--check" "--unstable" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content.contains(
-        r#"run --check --unstable 'http://localhost:4545/echo_server.ts'"#
-      ));
+      assert!(content
+        .contains(r#"run --unstable 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -539,7 +538,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--check", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -560,7 +559,7 @@ mod tests {
     assert_eq!(shim_data.name, "subdir");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--check", "http://localhost:4545/subdir/main.ts",]
+      vec!["run", "http://localhost:4545/subdir/main.ts",]
     );
   }
 
@@ -581,7 +580,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_test");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--check", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -640,12 +639,7 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec![
-        "run",
-        "--check",
-        "--no-prompt",
-        "http://localhost:4545/echo_server.ts",
-      ]
+      vec!["run", "--no-prompt", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -668,12 +662,7 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec![
-        "run",
-        "--allow-all",
-        "--check",
-        "http://localhost:4545/echo_server.ts",
-      ]
+      vec!["run", "--allow-all", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -836,8 +825,9 @@ mod tests {
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(content
-        .contains(r#"run --check 'http://localhost:4545/echo_server.ts' '"'"#));
+      assert!(
+        content.contains(r#"run 'http://localhost:4545/echo_server.ts' '"'"#)
+      );
     }
   }
 
@@ -956,10 +946,9 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let mut expected_string = format!("run --check '{}'", &file_module_string);
+    let mut expected_string = format!("run '{}'", &file_module_string);
     if cfg!(windows) {
-      expected_string =
-        format!("\"run\" \"--check\" \"{}\"", &file_module_string);
+      expected_string = format!("\"run\" \"{}\"", &file_module_string);
     }
 
     let content = fs::read_to_string(file_path).unwrap();

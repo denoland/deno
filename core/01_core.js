@@ -24,11 +24,9 @@
     StringPrototypeSlice,
     ObjectAssign,
     SymbolFor,
+    setQueueMicrotask,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-
-  // Available on start due to bindings.
-  const { refOp_, unrefOp_ } = window.Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -176,51 +174,31 @@
     if (!hasPromise(promiseId)) {
       return;
     }
-    refOp_(promiseId);
+    opSync("op_ref_op", promiseId);
   }
 
   function unrefOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    unrefOp_(promiseId);
+    opSync("op_unref_op", promiseId);
   }
 
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
   }
 
-  function read(rid, buf) {
-    return opAsync("op_read", rid, buf);
-  }
-
-  function write(rid, buf) {
-    return opAsync("op_write", rid, buf);
-  }
-
-  function shutdown(rid) {
-    return opAsync("op_shutdown", rid);
-  }
-
-  function close(rid) {
-    opSync("op_close", rid);
-  }
-
-  function tryClose(rid) {
-    opSync("op_try_close", rid);
-  }
-
-  function print(str, isErr = false) {
-    opSync("op_print", str, isErr);
-  }
-
   function metrics() {
     const [aggregate, perOps] = opSync("op_metrics");
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      core.opNames(),
+      core.opSync("op_op_names"),
       (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;
+  }
+
+  function queueMicrotask(...args) {
+    return opSync("op_queue_microtask", ...args);
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -246,12 +224,6 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
-    close,
-    tryClose,
-    read,
-    write,
-    shutdown,
-    print,
     resources,
     metrics,
     registerErrorBuilder,
@@ -266,8 +238,41 @@
     opCallTraces,
     refOp,
     unrefOp,
+    close: opSync.bind(null, "op_close"),
+    tryClose: opSync.bind(null, "op_try_close"),
+    read: opAsync.bind(null, "op_read"),
+    write: opAsync.bind(null, "op_write"),
+    shutdown: opAsync.bind(null, "op_shutdown"),
+    print: opSync.bind(null, "op_print"),
+    setMacrotaskCallback: opSync.bind(null, "op_set_macrotask_callback"),
+    setNextTickCallback: opSync.bind(null, "op_set_next_tick_callback"),
+    runMicrotasks: opSync.bind(null, "op_run_microtasks"),
+    hasTickScheduled: opSync.bind(null, "op_has_tick_scheduled"),
+    setHasTickScheduled: opSync.bind(null, "op_set_has_tick_scheduled"),
+    evalContext: opSync.bind(null, "op_eval_context"),
+    createHostObject: opSync.bind(null, "op_create_host_object"),
+    encode: opSync.bind(null, "op_encode"),
+    decode: opSync.bind(null, "op_decode"),
+    serialize: opSync.bind(null, "op_serialize"),
+    deserialize: opSync.bind(null, "op_deserialize"),
+    getPromiseDetails: opSync.bind(null, "op_get_promise_details"),
+    getProxyDetails: opSync.bind(null, "op_get_proxy_details"),
+    isProxy: opSync.bind(null, "op_is_proxy"),
+    memoryUsage: opSync.bind(null, "op_memory_usage"),
+    setWasmStreamingCallback: opSync.bind(
+      null,
+      "op_set_wasm_streaming_callback",
+    ),
+    abortWasmStreaming: opSync.bind(null, "op_abort_wasm_streaming"),
+    destructureError: opSync.bind(null, "op_destructure_error"),
+    terminate: opSync.bind(null, "op_terminate"),
+    opNames: opSync.bind(null, "op_op_names"),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
   ObjectAssign(globalThis.Deno, { core });
+
+  // Direct bindings on `globalThis`
+  ObjectAssign(globalThis, { queueMicrotask });
+  setQueueMicrotask(queueMicrotask);
 })(globalThis);

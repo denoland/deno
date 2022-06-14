@@ -480,6 +480,8 @@ declare namespace Deno {
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
+   * In worker contexts this is an alias to `self.close();`.
+   *
    * ```ts
    * Deno.exit(5);
    * ```
@@ -621,8 +623,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use iter() from https://deno.land/std/io/util.ts to turn a Reader into an
-     * AsyncIterator.
+     * Use `itereateReader` from from https://deno.land/std/streams/conversion.ts to
+     * turn a Reader into an AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
@@ -646,8 +648,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use iterSync() from https://deno.land/std/io/util.ts to turn a ReaderSync
-     * into an Iterator.
+     * Use `iterateReaderSync()` from from https://deno.land/std/streams/conversion.ts
+     * to turn a ReaderSync into an Iterator.
      */
     readSync(p: Uint8Array): number | null;
   }
@@ -883,7 +885,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use Deno.readAllSync() instead.
+   * work with this directly, but rather use
+   * `readAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -907,7 +910,8 @@ declare namespace Deno {
    * not indicate EOF.
    *
    * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use Deno.readAll() instead.
+   * work with this directly, but rather use
+   * `readAll()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -946,7 +950,7 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAll() instead.
+   * `writeAll()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -2340,6 +2344,7 @@ declare namespace Deno {
   export type Signal =
     | "SIGABRT"
     | "SIGALRM"
+    | "SIGBREAK"
     | "SIGBUS"
     | "SIGCHLD"
     | "SIGCONT"
@@ -2380,7 +2385,7 @@ declare namespace Deno {
    * });
    * ```
    *
-   * NOTE: This functionality is not yet implemented on Windows.
+   * NOTE: On Windows only SIGINT (ctrl+c) and SIGBREAK (ctrl+break) are supported.
    */
   export function addSignalListener(signal: Signal, handler: () => void): void;
 
@@ -2395,7 +2400,7 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * NOTE: This functionality is not yet implemented on Windows.
+   * NOTE: On Windows only SIGINT (ctrl+c) and SIGBREAK (ctrl+break) are supported.
    */
   export function removeSignalListener(
     signal: Signal,
@@ -2427,13 +2432,14 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
+  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
    * const p = Deno.run({
-   *   cmd: ["echo", "hello"],
+   *   cmd: ["curl", "https://example.com"],
    * });
+   * const status = await p.status();
    * ```
    *
    * Subprocess uses same working directory as parent process unless `opt.cwd`
@@ -2850,7 +2856,7 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const conn = await Deno.listen({ port: 80 });
+   * const conn = Deno.listen({ port: 80 });
    * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
@@ -2902,7 +2908,7 @@ declare namespace Deno {
    * upgrade to be successful.
    *
    * ```ts
-   * const conn = await Deno.listen({ port: 80 });
+   * const conn = Deno.listen({ port: 80 });
    * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
@@ -2934,7 +2940,8 @@ declare namespace Deno {
   /** Send a signal to process under given `pid`.
    *
    * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
+   * identified by `pid`. An error will be thrown if a negative
+   * `pid` is used on Windows.
    *
    * ```ts
    * const p = Deno.run({
