@@ -1158,17 +1158,21 @@ async fn run_command(
     worker.execute_main_module(&main_module).await?;
   }
 
-  worker.dispatch_load_event(&located_script_name!())?;
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
-  worker.dispatch_unload_event(&located_script_name!())?;
-
-  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+  if !worker.has_exited() {
+    worker.dispatch_load_event(&located_script_name!())?;
     worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .run_event_loop(maybe_coverage_collector.is_none())
       .await?;
+    worker.dispatch_unload_event(&located_script_name!())?;
+    // FIXME(bartlomieju): it should be possible to finish coverage collection even if worker
+    // has exited
+    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      worker
+        .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+        .await?;
+    }
   }
+
   Ok(worker.get_exit_code())
 }
 

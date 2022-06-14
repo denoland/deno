@@ -278,7 +278,7 @@ impl MainWorker {
         // If `Deno.exit()` was called, the JsRuntime would return "execution terminated"
         // error. Ignore it and instead let the caller check for actual exit code
         // with `get_exit_code()` method.
-        if self.handle.has_exited.load(Relaxed) {
+        if self.has_exited() {
           return Ok(());
         }
         result
@@ -286,8 +286,15 @@ impl MainWorker {
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
+        // If `Deno.exit()` was called, the JsRuntime would return "execution terminated"
+        // error. Ignore it and instead let the caller check for actual exit code
+        // with `get_exit_code()` method.
+        if self.has_exited() {
+          return Ok(());
+        }
         let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
+        let result = maybe_result.expect("Module evaluation result not provided.");
+        result
       }
     }
   }
@@ -338,16 +345,19 @@ impl MainWorker {
     self.js_runtime.poll_event_loop(cx, wait_for_inspector)
   }
 
+  pub fn has_exited(&self) -> bool {
+    self.handle.has_exited.load(Relaxed)
+  }
+
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
     let result = self.js_runtime.run_event_loop(wait_for_inspector).await;
-
     // If `Deno.exit()` was called, the JsRuntime would return "execution terminated"
     // error. Ignore it and instead let the caller check for actual exit code
     // with `get_exit_code()` method.
-    if self.handle.has_exited.load(Relaxed) {
+    if self.has_exited() {
       return Ok(());
     }
 
