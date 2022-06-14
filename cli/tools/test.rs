@@ -617,19 +617,40 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
-    println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
+
+    let mut summary_result = String::new();
+
+    summary_result.push_str(&format!(
+      "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    ));
+
+    let ignored_steps = get_steps_text(summary.ignored_steps);
+    if summary.ignored > 0 || !ignored_steps.is_empty() {
+      summary_result
+        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
+    };
+
+    if summary.measured > 0 {
+      summary_result.push_str(&format!(" | {} measured", summary.measured,))
+    };
+
+    if summary.filtered_out > 0 {
+      summary_result
+        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+    };
+
+    println!(
+      "\n{} | {} {}\n",
+      status,
+      summary_result,
+      colors::gray(format!(
+        "({})",
+        display::human_elapsed(elapsed.as_millis())
+      )),
     );
     self.in_new_line = true;
   }
