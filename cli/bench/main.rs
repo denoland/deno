@@ -214,7 +214,7 @@ fn run_exec_time(
       data
         .into_iter()
         .filter(|(key, _)| RESULT_KEYS.contains(&key.as_str()))
-        .map(|(key, val)| (key, val.as_i64().unwrap()))
+        .map(|(key, val)| (key, val.as_f64().unwrap() as i64))
         .collect(),
     );
   }
@@ -384,7 +384,9 @@ async fn main() -> Result<()> {
 
   let filter = args.nth(1);
   if let Some(filter) = filter {
-    benchmarks.retain(|s| s == &filter);
+    if filter != "--bench" {
+      benchmarks.retain(|s| s == &filter);
+    }
   }
 
   if !args.any(|s| s == "--bench") {
