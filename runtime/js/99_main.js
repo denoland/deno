@@ -581,7 +581,6 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "error");
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
-
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
     // This prevents the recursive dispatches of unload events.
@@ -682,6 +681,11 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(self, "message");
     defineEventHandler(self, "error", undefined, true);
+    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
+    // code using an op in worker context is a no-op.
+    os.setExitHandler((_exitCode) => {
+      workerClose();
+    });
 
     runtimeStart(
       runtimeOptions,
