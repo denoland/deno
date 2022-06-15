@@ -806,7 +806,6 @@ impl Resource for UnsafeCallbackResource {
     let isolate = unsafe { info.isolate.as_mut().unwrap() };
     unsafe { v8::Global::from_raw(isolate, info.callback) };
     unsafe { v8::Global::from_raw(isolate, info.context) };
-    drop(self)
   }
 }
 
