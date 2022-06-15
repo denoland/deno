@@ -23,7 +23,6 @@ pub struct EmitMetadata {
 }
 
 pub enum CacheType {
-  Declaration,
   Emit,
   SourceMap,
   TypeScriptBuildInfo,
@@ -181,7 +180,6 @@ impl Cacher for FetchCacher {
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
     let extension = match cache_type {
-      CacheType::Declaration => "d.ts",
       CacheType::Emit => "js",
       CacheType::SourceMap => "js.map",
       CacheType::TypeScriptBuildInfo => "buildinfo",
@@ -206,7 +204,6 @@ impl Cacher for FetchCacher {
     value: String,
   ) -> Result<(), AnyError> {
     let extension = match cache_type {
-      CacheType::Declaration => "d.ts",
       CacheType::Emit => "js",
       CacheType::SourceMap => "js.map",
       CacheType::TypeScriptBuildInfo => "buildinfo",

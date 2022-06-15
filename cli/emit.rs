@@ -443,11 +443,6 @@ pub fn check_and_maybe_emit(
           MediaType::SourceMap => {
             cache.set(CacheType::SourceMap, &specifier, emit.data)?;
           }
-          // this only occurs with the runtime emit, but we are using the same
-          // code paths, so we handle it here.
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            cache.set(CacheType::Declaration, &specifier, emit.data)?;
-          }
           _ => unreachable!(
             "unexpected media_type {} {}",
             emit.media_type, specifier
