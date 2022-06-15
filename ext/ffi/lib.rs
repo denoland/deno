@@ -795,10 +795,16 @@ impl Resource for UnsafeCallbackResource {
   }
 
   fn close(self: Rc<Self>) {
-    let info = unsafe { Box::from_raw(self.info as *mut CallbackInfo) };
-    let isolate = unsafe { info.isolate.as_mut().unwrap() };
-    unsafe { v8::Global::from_raw(isolate, info.callback) };
-    unsafe { v8::Global::from_raw(isolate, info.context) };
+    // SAFETY: This drops the closure and the callback info associated with it.
+    // Any retained function pointers to the closure become dangling pointers.
+    // It is up to the user to know that it is safe to call the `close()` on the
+    // UnsafeCallback instance.
+    unsafe {
+      let info = Box::from_raw(self.info as *mut CallbackInfo);
+      let isolate = info.isolate.as_mut().unwrap();
+      v8::Global::from_raw(isolate, info.callback);
+      v8::Global::from_raw(isolate, info.context);
+    }
   }
 }
 
