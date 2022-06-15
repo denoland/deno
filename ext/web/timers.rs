@@ -82,12 +82,3 @@ pub async fn op_sleep(
     .await?;
   Ok(())
 }
-
-#[op]
-pub fn op_sleep_sync<TP>(state: &mut OpState, millis: u64)
-where
-  TP: TimersPermission + 'static,
-{
-  state.borrow::<TP>().check_unstable(state, "Deno.sleepSync");
-  std::thread::sleep(Duration::from_millis(millis));
-}

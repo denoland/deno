@@ -884,7 +884,14 @@ Deno.test(async function consoleTestStringifyPromises() {
 
 Deno.test(function consoleTestWithCustomInspector() {
   class A {
-    [customInspect](): string {
+    [customInspect](
+      inspect: unknown,
+      options: Deno.InspectOptions,
+      depth: number,
+    ): string {
+      assertEquals(typeof inspect, "function");
+      assertEquals(typeof options, "object");
+      assertEquals(depth, 0);
       return "b";
     }
   }

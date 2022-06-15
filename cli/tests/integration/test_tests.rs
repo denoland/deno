@@ -17,7 +17,7 @@ fn no_color() {
   assert!(out.contains("success ... ok"));
   assert!(out.contains("fail ... FAILED"));
   assert!(out.contains("ignored ... ignored"));
-  assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
+  assert!(out.contains("FAILED | 1 passed | 1 failed | 1 ignored"));
 }
 
 itest!(overloads {

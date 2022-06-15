@@ -16,6 +16,7 @@
     "CompressionFormat",
     [
       "deflate",
+      "deflate-raw",
       "gzip",
     ],
   );

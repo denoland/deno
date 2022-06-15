@@ -52,7 +52,6 @@ pub use crate::message_port::MessagePort;
 
 use crate::timers::op_now;
 use crate::timers::op_sleep;
-use crate::timers::op_sleep_sync;
 use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
@@ -111,7 +110,6 @@ pub fn init<P: TimersPermission + 'static>(
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
       op_sleep::decl(),
-      op_sleep_sync::decl::<P>(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
