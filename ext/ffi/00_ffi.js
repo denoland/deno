@@ -410,7 +410,7 @@
         internalCallback,
       );
       this.#rid = rid;
-      this.pointer = new UnsafePointer(unpackU64(pointer));
+      this.pointer = new UnsafePointer(pointer);
       this.#internal = internalCallback;
       this.definition = definition;
       this.callback = callback;

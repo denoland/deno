@@ -1058,12 +1058,12 @@ struct RegisterCallbackArgs {
 }
 
 #[op(v8)]
-fn op_ffi_unsafe_callback_create<FP>(
+fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut deno_core::OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::HandleScope<'scope>,
   args: RegisterCallbackArgs,
-  cb: serde_v8::Value<'_>,
-) -> Result<(ResourceId, U32x2), AnyError>
+  cb: serde_v8::Value<'scope>,
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -1090,12 +1090,18 @@ where
   );
 
   let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
-  // TODO(@aapoalas): Use BigInt later
-  let u3x2 = U32x2::from(*closure.code_ptr() as usize as u64);
-
+  let ptr = *closure.code_ptr() as usize as u64;
   let resource = UnsafeCallbackResource { closure, info };
+  let rid = state.resource_table.add(resource);
 
-  Ok((state.resource_table.add(resource), u3x2))
+  let rid_local = v8::Integer::new_from_unsigned(scope, rid);
+  let ptr_local = v8::BigInt::new_from_u64(scope, ptr);
+  let array = v8::Array::new(scope, 2);
+  array.set_index(scope, 0, rid_local.into());
+  array.set_index(scope, 1, ptr_local.into());
+  let array_value: v8::Local<v8::Value> = array.into();
+
+  Ok(array_value.into())
 }
 
 #[op(v8)]
