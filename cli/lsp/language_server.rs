@@ -649,6 +649,7 @@ impl Inner {
       "jsx": "react",
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
+      "moduleDetection": "force",
       "noEmit": true,
       "resolveJsonModule": true,
       "strict": true,
