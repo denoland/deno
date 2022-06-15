@@ -37,7 +37,7 @@ use std::ptr;
 use std::rc::Rc;
 
 thread_local! {
-  static IS_EVENT_LOOP_THREAD: RefCell<bool> = RefCell::new(false);
+  static IS_ISOLATE_THREAD: RefCell<bool> = RefCell::new(false);
 }
 
 pub struct Unstable(pub bool);
@@ -122,7 +122,7 @@ impl DynamicLibraryResource {
     name: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
-    IS_EVENT_LOOP_THREAD.with(|s| s.replace(true));
+    IS_ISOLATE_THREAD.with(|s| s.replace(true));
     let symbol = match &foreign_fn.name {
       Some(symbol) => symbol,
       None => &name,
@@ -200,8 +200,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_u64::decl::<P>(),
       op_ffi_read_f32::decl::<P>(),
       op_ffi_read_f64::decl::<P>(),
-      op_ffi_register_callback::decl(),
-      op_ffi_deregister_callback::decl(),
+      op_ffi_unsafe_callback_create::decl(),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -295,36 +294,38 @@ impl NativeValue {
     }
   }
 
-  fn to_value(&self, native_type: NativeType) -> Value {
+  // SAFETY: native_type must correspond to the type of value represented by the union field
+  unsafe fn to_value(&self, native_type: NativeType) -> Value {
     match native_type {
       NativeType::Void => Value::Null,
-      NativeType::U8 => Value::from(unsafe { self.u8_value }),
-      NativeType::I8 => Value::from(unsafe { self.i8_value }),
-      NativeType::U16 => Value::from(unsafe { self.u16_value }),
-      NativeType::I16 => Value::from(unsafe { self.i16_value }),
-      NativeType::U32 => Value::from(unsafe { self.u32_value }),
-      NativeType::I32 => Value::from(unsafe { self.i32_value }),
+      NativeType::U8 => Value::from(self.u8_value),
+      NativeType::I8 => Value::from(self.i8_value),
+      NativeType::U16 => Value::from(self.u16_value),
+      NativeType::I16 => Value::from(self.i16_value),
+      NativeType::U32 => Value::from(self.u32_value),
+      NativeType::I32 => Value::from(self.i32_value),
       NativeType::U64 => {
-        json!(U32x2::from(unsafe { self.u64_value }))
+        json!(U32x2::from(self.u64_value))
       }
       NativeType::I64 => {
-        json!(U32x2::from(unsafe { self.i64_value } as u64))
+        json!(U32x2::from(self.i64_value as u64))
       }
       NativeType::USize => {
-        json!(U32x2::from(unsafe { self.usize_value } as u64))
+        json!(U32x2::from(self.usize_value as u64))
       }
       NativeType::ISize => {
-        json!(U32x2::from(unsafe { self.isize_value } as u64))
+        json!(U32x2::from(self.isize_value as u64))
       }
-      NativeType::F32 => Value::from(unsafe { self.f32_value }),
-      NativeType::F64 => Value::from(unsafe { self.f64_value }),
+      NativeType::F32 => Value::from(self.f32_value),
+      NativeType::F64 => Value::from(self.f64_value),
       NativeType::Pointer | NativeType::Function {} => {
-        json!(U32x2::from(unsafe { self.pointer } as u64))
+        json!(U32x2::from(self.pointer as u64))
       }
     }
   }
 
-  fn to_v8<'scope>(
+  // SAFETY: native_type must correspond to the type of value represented by the union field
+  unsafe fn to_v8<'scope>(
     &self,
     scope: &mut v8::HandleScope<'scope>,
     native_type: NativeType,
@@ -336,75 +337,67 @@ impl NativeValue {
       }
       NativeType::U8 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, unsafe { self.u8_value }
-            as u32)
-          .into();
+          v8::Integer::new_from_unsigned(scope, self.u8_value as u32).into();
         local_value.into()
       }
       NativeType::I8 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, unsafe { self.i8_value } as i32).into();
+          v8::Integer::new(scope, self.i8_value as i32).into();
         local_value.into()
       }
       NativeType::U16 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, unsafe { self.u16_value }
-            as u32)
-          .into();
+          v8::Integer::new_from_unsigned(scope, self.u16_value as u32).into();
         local_value.into()
       }
       NativeType::I16 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, unsafe { self.i16_value } as i32).into();
+          v8::Integer::new(scope, self.i16_value as i32).into();
         local_value.into()
       }
       NativeType::U32 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, unsafe { self.u32_value })
-            .into();
+          v8::Integer::new_from_unsigned(scope, self.u32_value).into();
         local_value.into()
       }
       NativeType::I32 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, unsafe { self.i32_value }).into();
+          v8::Integer::new(scope, self.i32_value).into();
         local_value.into()
       }
       NativeType::U64 => {
         let local_value: v8::Local<v8::Value> =
-          v8::BigInt::new_from_u64(scope, unsafe { self.u64_value }).into();
+          v8::BigInt::new_from_u64(scope, self.u64_value).into();
         local_value.into()
       }
       NativeType::I64 => {
         let local_value: v8::Local<v8::Value> =
-          v8::BigInt::new_from_i64(scope, unsafe { self.i64_value }).into();
+          v8::BigInt::new_from_i64(scope, self.i64_value).into();
         local_value.into()
       }
       NativeType::USize => {
         let local_value: v8::Local<v8::Value> =
-          v8::BigInt::new_from_u64(scope, unsafe { self.usize_value } as u64)
-            .into();
+          v8::BigInt::new_from_u64(scope, self.usize_value as u64).into();
         local_value.into()
       }
       NativeType::ISize => {
         let local_value: v8::Local<v8::Value> =
-          v8::BigInt::new_from_i64(scope, unsafe { self.isize_value } as i64)
-            .into();
+          v8::BigInt::new_from_i64(scope, self.isize_value as i64).into();
         local_value.into()
       }
       NativeType::F32 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.f32_value } as f64).into();
+          v8::Number::new(scope, self.f32_value as f64).into();
         local_value.into()
       }
       NativeType::F64 => {
         let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, unsafe { self.f64_value }).into();
+          v8::Number::new(scope, self.f64_value).into();
         local_value.into()
       }
       NativeType::Pointer | NativeType::Function {} => {
         let local_value: v8::Local<v8::Value> =
-          v8::BigInt::new_from_u64(scope, unsafe { self.pointer } as u64)
-            .into();
+          v8::BigInt::new_from_u64(scope, self.pointer as u64).into();
         local_value.into()
       }
     }
@@ -798,7 +791,7 @@ struct UnsafeCallbackResource {
 
 impl Resource for UnsafeCallbackResource {
   fn name(&self) -> Cow<str> {
-    "registeredcallback".into()
+    "unsafecallback".into()
   }
 
   fn close(self: Rc<Self>) {
@@ -827,7 +820,7 @@ unsafe extern "C" fn deno_ffi_callback(
     NonNull<v8::Context>,
     v8::Local<v8::Context>,
   >(info.context);
-  IS_EVENT_LOOP_THREAD.with(|is_event_loop_thread| {
+  IS_ISOLATE_THREAD.with(|is_event_loop_thread| {
     if !(*is_event_loop_thread.borrow()) {
       // Call from another thread, not yet supported.
       eprintln!(
@@ -1057,7 +1050,7 @@ struct RegisterCallbackArgs {
 }
 
 #[op(v8)]
-fn op_ffi_register_callback(
+fn op_ffi_unsafe_callback_create(
   state: &mut deno_core::OpState,
   scope: &mut v8::HandleScope,
   args: RegisterCallbackArgs,
@@ -1090,18 +1083,6 @@ fn op_ffi_register_callback(
   Ok((state.resource_table.add(resource), u3x2))
 }
 
-#[op]
-fn op_ffi_deregister_callback(
-  state: &mut deno_core::OpState,
-  rid: ResourceId,
-) -> Result<(), AnyError> {
-  state
-    .resource_table
-    .take::<UnsafeCallbackResource>(rid)?
-    .close();
-  Ok(())
-}
-
 #[op(v8)]
 fn op_ffi_call_ptr<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
@@ -1130,7 +1111,8 @@ where
     &def.parameters,
     def.result,
   )?;
-  let result = result.to_v8(scope, def.result);
+  // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+  let result = unsafe { result.to_v8(scope, def.result) };
   Ok(result)
 }
 
@@ -1164,7 +1146,8 @@ where
     let result = join_handle
       .await
       .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
-    Ok(result.to_value(def.result))
+    // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+    Ok(unsafe { result.to_value(def.result) })
   })
 }
 
@@ -1280,7 +1263,8 @@ fn op_ffi_call<'scope>(
     &symbol.parameter_types,
     symbol.result_type,
   )?;
-  let result = result.to_v8(scope, symbol.result_type);
+  // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+  let result = unsafe { result.to_v8(scope, symbol.result_type) };
   Ok(result)
 }
 
@@ -1320,7 +1304,8 @@ fn op_ffi_call_nonblocking<'scope>(
     let result = join_handle
       .await
       .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
-    Ok(result.to_value(result_type))
+    // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+    Ok(unsafe { result.to_value(result_type) })
   })
 }
 

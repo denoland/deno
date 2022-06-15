@@ -405,7 +405,7 @@
         : callback;
 
       const [rid, pointer] = core.opSync(
-        "op_ffi_register_callback",
+        "op_ffi_unsafe_callback_create",
         definition,
         internalCallback,
       );
