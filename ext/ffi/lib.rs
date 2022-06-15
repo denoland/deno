@@ -188,7 +188,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_call_ptr::decl::<P>(),
       op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
-      op_ffi_ptr_of_cb::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
       op_ffi_read_u8::decl::<P>(),
@@ -200,7 +199,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_u64::decl::<P>(),
       op_ffi_read_f32::decl::<P>(),
       op_ffi_read_f64::decl::<P>(),
-      op_ffi_unsafe_callback_create::decl(),
+      op_ffi_unsafe_callback_create::decl::<P>(),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -785,6 +784,9 @@ fn ffi_call(
 }
 
 struct UnsafeCallbackResource {
+  // Closure is never directly touched, but it keeps the C callback alive
+  // until `close()` method is called.
+  #[allow(dead_code)]
   closure: libffi::middle::Closure<'static>,
   info: *const CallbackInfo,
 }
@@ -1056,12 +1058,19 @@ struct RegisterCallbackArgs {
 }
 
 #[op(v8)]
-fn op_ffi_unsafe_callback_create(
+fn op_ffi_unsafe_callback_create<FP>(
   state: &mut deno_core::OpState,
   scope: &mut v8::HandleScope,
   args: RegisterCallbackArgs,
   cb: serde_v8::Value<'_>,
-) -> Result<(ResourceId, U32x2), AnyError> {
+) -> Result<(ResourceId, U32x2), AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafeCallback");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
@@ -1330,29 +1339,6 @@ where
 
   let big_int: v8::Local<v8::Value> =
     v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64).into();
-  Ok(big_int.into())
-}
-
-#[op(v8)]
-fn op_ffi_ptr_of_cb<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
-  rid: ResourceId,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.RegisterableCallback.value");
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  let resource = state.resource_table.get::<UnsafeCallbackResource>(rid)?;
-
-  let big_int: v8::Local<v8::Value> = v8::BigInt::new_from_u64(
-    scope,
-    *resource.closure.code_ptr() as usize as u64,
-  )
-  .into();
   Ok(big_int.into())
 }
 
