@@ -104,8 +104,8 @@ swc_ecma_transforms_typescript = "=0.117.0"
 swc_ecma_utils = "=0.85.0"
 text-size = "=1.1.0"
 text_lines = "=0.4.1"
-tokio = { version = "=1.17", features = ["full"] }
-tokio-util = "=0.7.1"
+tokio = { version = "=1.19", features = ["full"] }
+tokio-util = "=0.7.2"
 tower-lsp = "=0.17.0"
 twox-hash = "=1.6.2"
 typed-arena = "2.0.1"
