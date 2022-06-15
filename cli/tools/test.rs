@@ -884,8 +884,6 @@ fn extract_files_from_regex_blocks(
         file_source.push_str(&format!("{}\n", text.as_str()));
       }
 
-      file_source.push_str("export {};");
-
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
         specifier,

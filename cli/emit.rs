@@ -197,6 +197,9 @@ pub fn get_ts_config(
   } else {
     ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
   };
+  ts_config.merge(&json!({
+    "moduleDetection": "force",
+  }));
   Ok((ts_config, maybe_ignored_options))
 }
 
