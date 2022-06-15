@@ -73,7 +73,14 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let MacroArgs { is_unstable, is_v8 } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
-  let generics = &func.sig.generics;
+  let mut generics = func.sig.generics.clone();
+  let scope_lifetime =
+    syn::LifetimeDef::new(syn::Lifetime::new("'scope", Span::call_site()));
+  if !generics.lifetimes().any(|def| *def == scope_lifetime) {
+    generics
+      .params
+      .push(syn::GenericParam::Lifetime(scope_lifetime));
+  }
   let type_params = exclude_lifetime_params(&func.sig.generics.params);
   let where_clause = &func.sig.generics.where_clause;
 
@@ -131,7 +138,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
       #original_func
 
       pub fn v8_func #generics (
-        scope: &mut #core::v8::HandleScope,
+        scope: &mut #core::v8::HandleScope<'scope>,
         args: #core::v8::FunctionCallbackArguments,
         mut rv: #core::v8::ReturnValue,
       ) #where_clause {
@@ -145,32 +152,49 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 fn codegen_v8_async(
   core: &TokenStream2,
   f: &syn::ItemFn,
-  _margs: MacroArgs,
+  margs: MacroArgs,
   asyncness: bool,
 ) -> TokenStream2 {
-  let arg0 = f.sig.inputs.first();
-  let uses_opstate = arg0.map(is_rc_refcell_opstate).unwrap_or_default();
-  let args_head = if uses_opstate {
-    quote! { state, }
-  } else {
-    quote! {}
-  };
-  let rust_i0 = if uses_opstate { 1 } else { 0 };
+  let MacroArgs { is_v8, .. } = margs;
+  let special_args = f
+    .sig
+    .inputs
+    .iter()
+    .map_while(|a| {
+      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+    })
+    .collect::<Vec<_>>();
+  let rust_i0 = special_args.len();
+  let args_head = special_args.into_iter().collect::<TokenStream2>();
+
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  let (pre_result, result_fut) = match asyncness {
+  let (pre_result, mut result_fut) = match asyncness {
     true => (
       quote! {},
-      quote! { Self::call::<#type_params>(#args_head #args_tail) },
+      quote! { Self::call::<#type_params>(#args_head #args_tail).await; },
     ),
     false => (
       quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
-      quote! { result_fut },
+      quote! { result_fut.await; },
     ),
   };
   let result_wrapper = match is_result(&f.sig.output) {
-    true => quote! {},
+    true => {
+      // Support `Result<impl Future<Output = Result<T, AnyError>> + 'static, AnyError>`
+      if !asyncness {
+        result_fut = quote! { result_fut; };
+        quote! {
+          let result = match result {
+            Ok(fut) => fut.await,
+            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+          };
+        }
+      } else {
+        quote! {}
+      }
+    }
     false => quote! { let result = Ok(result); },
   };
 
@@ -209,10 +233,28 @@ fn codegen_v8_async(
 
     #pre_result
     #core::_ops::queue_async_op(scope, async move {
-      let result = #result_fut.await;
+      let result = #result_fut
       #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
+  }
+}
+
+fn scope_arg(arg: &FnArg) -> Option<TokenStream2> {
+  if is_handle_scope(arg) {
+    Some(quote! { scope, })
+  } else {
+    None
+  }
+}
+
+fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
+  match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => {
+      Some(quote! { &mut ctx.state.borrow_mut(), })
+    }
+    _ => None,
   }
 }
 
@@ -223,20 +265,6 @@ fn codegen_v8_sync(
   margs: MacroArgs,
 ) -> TokenStream2 {
   let MacroArgs { is_v8, .. } = margs;
-  let scope_arg = |arg: &FnArg| {
-    if is_handle_scope(arg) {
-      Some(quote! { scope, })
-    } else {
-      None
-    }
-  };
-  let opstate_arg = |arg: &FnArg| match arg {
-    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
-    arg if is_mut_ref_opstate(arg) => {
-      Some(quote! { &mut ctx.state.borrow_mut(), })
-    }
-    _ => None,
-  };
   let special_args = f
     .sig
     .inputs
@@ -386,6 +414,7 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
   tokens(arg).ends_with(": & mut OpState")
     || tokens(arg).ends_with(": & mut deno_core :: OpState")
+    || tokens(arg).ends_with("mut OpState")
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
@@ -398,6 +427,8 @@ fn is_handle_scope(arg: &syn::FnArg) -> bool {
     || tokens(arg).ends_with(": & mut v8 :: HandleScope < 'a >")
     || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope")
     || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope < 'a >")
+    || tokens(arg).contains("mut v8 :: HandleScope")
+    || tokens(arg).ends_with(": & mut v8 :: HandeScope < 'scope >")
 }
 
 fn is_future(ty: impl ToTokens) -> bool {
