@@ -392,11 +392,10 @@ declare namespace Deno {
     : T extends StaticNativeNumberType | StaticNativeBigIntType
       ? number | bigint
     : T extends "pointer" ? UnsafePointer | TypedArray | null
-    : T extends
-      NativeCallbackType<
-        infer U extends readonly NativeType[],
-        infer V extends NativeParameterType
-      > ? UnsafeCallback<U, V> | UnsafePointer | null
+    : T extends NativeCallbackType<
+      infer U extends readonly NativeType[],
+      infer V extends NativeParameterType
+    > ? UnsafeCallback<U, V> | UnsafePointer | null
     : unknown;
 
   /** Infers a foreign function parameter list. */
