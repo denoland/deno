@@ -15,5 +15,5 @@ pub fn is_canary() -> bool {
 }
 
 pub fn get_user_agent() -> String {
-  format!("Deno/{}", deno())
+  "Deno".to_string()
 }

@@ -587,7 +587,7 @@ Deno.test({ permissions: { net: true } }, async function fetchUserAgent() {
     method: "POST",
     body: new TextEncoder().encode(data),
   });
-  assertEquals(response.headers.get("user-agent"), `Deno/${Deno.version.deno}`);
+  assertEquals(response.headers.get("user-agent"), "Deno");
   await response.text();
 });
 
@@ -643,7 +643,7 @@ Deno.test(
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
-      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      `user-agent: Deno\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
@@ -678,7 +678,7 @@ Deno.test(
       "foo: Bar\r\n",
       "content-type: text/plain;charset=UTF-8\r\n",
       "accept: */*\r\n",
-      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      `user-agent: Deno\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.length}\r\n\r\n`,
@@ -715,7 +715,7 @@ Deno.test(
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
-      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      `user-agent: Deno\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.byteLength}\r\n\r\n`,
@@ -1031,7 +1031,7 @@ Deno.test(
     });
     assertEquals(
       response.headers.get("user-agent"),
-      `Deno/${Deno.version.deno}`,
+      "Deno",
     );
     await response.text();
     client.close();
@@ -1072,7 +1072,7 @@ Deno.test(
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
-      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      `user-agent: Deno\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
@@ -1247,7 +1247,7 @@ Deno.test(
     });
     assertEquals(
       response.headers.get("user-agent"),
-      `Deno/${Deno.version.deno}`,
+      "Deno",
     );
     await response.text();
     client.close();
