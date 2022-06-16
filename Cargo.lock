@@ -1056,9 +1056,11 @@ dependencies = [
 name = "deno_ops"
 version = "0.17.0"
 dependencies = [
+ "once_cell",
  "proc-macro-crate",
  "proc-macro2 1.0.38",
  "quote 1.0.18",
+ "regex",
  "syn 1.0.93",
 ]
 
