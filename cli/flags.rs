@@ -234,7 +234,7 @@ impl Default for DenoSubcommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeCheckMode {
-  /// type-check all modules.
+  /// Type-check all modules.
   All,
   /// Skip type-checking of all modules. The default value for "deno run" and
   /// several other subcommands.
@@ -2038,7 +2038,7 @@ fn check_arg<'a>() -> Arg<'a> {
     .require_equals(true)
     .min_values(0)
     .value_name("CHECK_TYPE")
-    .help("type-check modules")
+    .help("Type-check modules")
     .long_help(
       "Type-check modules.
 
