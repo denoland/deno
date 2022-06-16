@@ -758,7 +758,9 @@
       benchDesc.filteredOut = filteredOut;
 
       ArrayPrototypePush(benchDescs, benchDesc);
-    } catch {}
+    } catch {
+      // Ignore missing ops
+    }
   }
 
   /**
