@@ -4589,175 +4589,31 @@
     ]
   },
   "compression": {
-    "compression-bad-chunks.tentative.any.html": [
-      "chunk of type undefined should error the stream for deflate-raw",
-      "chunk of type null should error the stream for deflate-raw",
-      "chunk of type numeric should error the stream for deflate-raw",
-      "chunk of type object, not BufferSource should error the stream for deflate-raw",
-      "chunk of type array should error the stream for deflate-raw",
-      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
-      "chunk of type shared Uint8Array should error the stream for deflate-raw"
-    ],
-    "compression-bad-chunks.tentative.any.worker.html": [
-      "chunk of type undefined should error the stream for deflate-raw",
-      "chunk of type null should error the stream for deflate-raw",
-      "chunk of type numeric should error the stream for deflate-raw",
-      "chunk of type object, not BufferSource should error the stream for deflate-raw",
-      "chunk of type array should error the stream for deflate-raw",
-      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
-      "chunk of type shared Uint8Array should error the stream for deflate-raw"
-    ],
-    "compression-including-empty-chunk.tentative.any.html": [
-      "the result of compressing [,Hello,Hello] with deflate-raw should be 'HelloHello'",
-      "the result of compressing [Hello,,Hello] with deflate-raw should be 'HelloHello'",
-      "the result of compressing [Hello,Hello,] with deflate-raw should be 'HelloHello'"
-    ],
-    "compression-including-empty-chunk.tentative.any.worker.html": [
-      "the result of compressing [,Hello,Hello] with deflate-raw should be 'HelloHello'",
-      "the result of compressing [Hello,,Hello] with deflate-raw should be 'HelloHello'",
-      "the result of compressing [Hello,Hello,] with deflate-raw should be 'HelloHello'"
-    ],
-    "compression-multiple-chunks.tentative.any.html": [
-      "compressing 2 chunks with deflate-raw should work",
-      "compressing 3 chunks with deflate-raw should work",
-      "compressing 4 chunks with deflate-raw should work",
-      "compressing 5 chunks with deflate-raw should work",
-      "compressing 6 chunks with deflate-raw should work",
-      "compressing 7 chunks with deflate-raw should work",
-      "compressing 8 chunks with deflate-raw should work",
-      "compressing 9 chunks with deflate-raw should work",
-      "compressing 10 chunks with deflate-raw should work",
-      "compressing 11 chunks with deflate-raw should work",
-      "compressing 12 chunks with deflate-raw should work",
-      "compressing 13 chunks with deflate-raw should work",
-      "compressing 14 chunks with deflate-raw should work",
-      "compressing 15 chunks with deflate-raw should work",
-      "compressing 16 chunks with deflate-raw should work"
-    ],
-    "compression-multiple-chunks.tentative.any.worker.html": [
-      "compressing 2 chunks with deflate-raw should work",
-      "compressing 3 chunks with deflate-raw should work",
-      "compressing 4 chunks with deflate-raw should work",
-      "compressing 5 chunks with deflate-raw should work",
-      "compressing 6 chunks with deflate-raw should work",
-      "compressing 7 chunks with deflate-raw should work",
-      "compressing 8 chunks with deflate-raw should work",
-      "compressing 9 chunks with deflate-raw should work",
-      "compressing 10 chunks with deflate-raw should work",
-      "compressing 11 chunks with deflate-raw should work",
-      "compressing 12 chunks with deflate-raw should work",
-      "compressing 13 chunks with deflate-raw should work",
-      "compressing 14 chunks with deflate-raw should work",
-      "compressing 15 chunks with deflate-raw should work",
-      "compressing 16 chunks with deflate-raw should work"
-    ],
-    "compression-output-length.tentative.any.html": [
-      "the length of deflated (with -raw) data should be shorter than that of the original data"
-    ],
-    "compression-output-length.tentative.any.worker.html": [
-      "the length of deflated (with -raw) data should be shorter than that of the original data"
-    ],
+    "compression-bad-chunks.tentative.any.html": true,
+    "compression-bad-chunks.tentative.any.worker.html": true,
+    "compression-including-empty-chunk.tentative.any.html": true,
+    "compression-including-empty-chunk.tentative.any.worker.html": true,
+    "compression-multiple-chunks.tentative.any.html": true,
+    "compression-multiple-chunks.tentative.any.worker.html": true,
+    "compression-output-length.tentative.any.html": true,
+    "compression-output-length.tentative.any.worker.html": true,
     "compression-stream.tentative.any.html": true,
     "compression-stream.tentative.any.worker.html": true,
     "compression-with-detach.tentative.window.html": true,
-    "decompression-bad-chunks.tentative.any.html": [
-      "chunk of type undefined should error the stream for deflate-raw",
-      "chunk of type null should error the stream for deflate-raw",
-      "chunk of type numeric should error the stream for deflate-raw",
-      "chunk of type object, not BufferSource should error the stream for deflate-raw",
-      "chunk of type array should error the stream for deflate-raw",
-      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
-      "chunk of type shared Uint8Array should error the stream for deflate-raw",
-      "chunk of type invalid deflate bytes should error the stream for deflate-raw",
-      "chunk of type invalid gzip bytes should error the stream for deflate-raw"
-    ],
-    "decompression-bad-chunks.tentative.any.worker.html": [
-      "chunk of type undefined should error the stream for deflate-raw",
-      "chunk of type null should error the stream for deflate-raw",
-      "chunk of type numeric should error the stream for deflate-raw",
-      "chunk of type object, not BufferSource should error the stream for deflate-raw",
-      "chunk of type array should error the stream for deflate-raw",
-      "chunk of type SharedArrayBuffer should error the stream for deflate-raw",
-      "chunk of type shared Uint8Array should error the stream for deflate-raw",
-      "chunk of type invalid deflate bytes should error the stream for deflate-raw",
-      "chunk of type invalid gzip bytes should error the stream for deflate-raw"
-    ],
-    "decompression-buffersource.tentative.any.html": [
-      "chunk of type ArrayBuffer should work for deflate-raw",
-      "chunk of type Int8Array should work for deflate-raw",
-      "chunk of type Uint8Array should work for deflate-raw",
-      "chunk of type Uint8ClampedArray should work for deflate-raw",
-      "chunk of type Int16Array should work for deflate-raw",
-      "chunk of type Uint16Array should work for deflate-raw",
-      "chunk of type Int32Array should work for deflate-raw",
-      "chunk of type Uint32Array should work for deflate-raw",
-      "chunk of type Float32Array should work for deflate-raw",
-      "chunk of type Float64Array should work for deflate-raw",
-      "chunk of type DataView should work for deflate-raw"
-    ],
-    "decompression-buffersource.tentative.any.worker.html": [
-      "chunk of type ArrayBuffer should work for deflate-raw",
-      "chunk of type Int8Array should work for deflate-raw",
-      "chunk of type Uint8Array should work for deflate-raw",
-      "chunk of type Uint8ClampedArray should work for deflate-raw",
-      "chunk of type Int16Array should work for deflate-raw",
-      "chunk of type Uint16Array should work for deflate-raw",
-      "chunk of type Int32Array should work for deflate-raw",
-      "chunk of type Uint32Array should work for deflate-raw",
-      "chunk of type Float32Array should work for deflate-raw",
-      "chunk of type Float64Array should work for deflate-raw",
-      "chunk of type DataView should work for deflate-raw"
-    ],
+    "decompression-bad-chunks.tentative.any.html": true,
+    "decompression-bad-chunks.tentative.any.worker.html": true,
+    "decompression-buffersource.tentative.any.html": true,
+    "decompression-buffersource.tentative.any.worker.html": true,
     "decompression-constructor-error.tentative.any.html": true,
     "decompression-constructor-error.tentative.any.worker.html": true,
-    "decompression-correct-input.tentative.any.html": [
-      "decompressing deflated (with -raw) input should work"
-    ],
-    "decompression-correct-input.tentative.any.worker.html": [
-      "decompressing deflated (with -raw) input should work"
-    ],
+    "decompression-correct-input.tentative.any.html": true,
+    "decompression-correct-input.tentative.any.worker.html": true,
     "decompression-corrupt-input.tentative.any.html": true,
     "decompression-corrupt-input.tentative.any.worker.html": true,
-    "decompression-empty-input.tentative.any.html": [
-      "decompressing deflate-raw empty input should work"
-    ],
-    "decompression-empty-input.tentative.any.worker.html": [
-      "decompressing deflate-raw empty input should work"
-    ],
-    "decompression-split-chunk.tentative.any.html": [
-      "decompressing splitted chunk into pieces of size 1 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 2 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 3 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 4 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 5 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 6 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 7 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 8 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 9 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 10 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 11 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 12 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 13 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 14 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 15 should work in deflate-raw"
-    ],
-    "decompression-split-chunk.tentative.any.worker.html": [
-      "decompressing splitted chunk into pieces of size 1 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 2 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 3 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 4 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 5 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 6 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 7 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 8 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 9 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 10 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 11 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 12 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 13 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 14 should work in deflate-raw",
-      "decompressing splitted chunk into pieces of size 15 should work in deflate-raw"
-    ],
+    "decompression-empty-input.tentative.any.html": true,
+    "decompression-empty-input.tentative.any.worker.html": true,
+    "decompression-split-chunk.tentative.any.html": true,
+    "decompression-split-chunk.tentative.any.worker.html": true,
     "decompression-uint8array-output.tentative.any.html": true,
     "decompression-uint8array-output.tentative.any.worker.html": true,
     "decompression-with-detach.tentative.window.html": true,

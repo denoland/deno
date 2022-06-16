@@ -14,10 +14,15 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::Cmd;
 use rustyline::CompletionType;
 use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
+use rustyline::EventHandler;
+use rustyline::KeyCode;
+use rustyline::KeyEvent;
+use rustyline::Modifiers;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -360,6 +365,10 @@ impl ReplEditor {
     let mut editor = Editor::with_config(editor_config);
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
+      EventHandler::Simple(Cmd::Newline),
+    );
 
     ReplEditor {
       inner: Arc::new(Mutex::new(editor)),

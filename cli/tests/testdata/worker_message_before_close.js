@@ -24,5 +24,3 @@ globalThis.addEventListener("unload", () => {
     );
   }
 });
-
-export {};
