@@ -76,7 +76,7 @@ fn generate_key_rsa(
     .to_pkcs1_der()
     .map_err(|_| operation_error("Failed to serialize RSA key"))?;
 
-  Ok(private_key.as_ref().to_vec())
+  Ok(private_key.as_bytes().to_vec())
 }
 
 fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {
