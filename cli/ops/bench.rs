@@ -21,7 +21,6 @@ use uuid::Uuid;
 pub fn init(
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
-  unstable: bool,
 ) -> Extension {
   Extension::builder()
     .ops(vec![
@@ -31,34 +30,13 @@ pub fn init(
       op_register_bench::decl(),
       op_dispatch_bench_event::decl(),
       op_bench_now::decl(),
-      op_bench_check_unstable::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
       state.put(filter.clone());
-      state.put(Unstable(unstable));
       Ok(())
     })
     .build()
-}
-
-pub struct Unstable(pub bool);
-
-fn check_unstable(state: &OpState, api_name: &str) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
-    );
-    std::process::exit(70);
-  }
-}
-
-#[op]
-fn op_bench_check_unstable(state: &mut OpState) {
-  check_unstable(state, "Deno.bench");
 }
 
 #[derive(Clone)]

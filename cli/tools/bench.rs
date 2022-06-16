@@ -366,7 +366,7 @@ async fn bench_specifier(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::bench::init(channel.clone(), filter, ps.flags.unstable)],
+    vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
   );
 

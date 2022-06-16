@@ -669,7 +669,6 @@
     optionsOrFn,
     maybeFn,
   ) {
-    core.opSync("op_bench_check_unstable");
     let benchDesc;
     const defaults = {
       ignore: false,
