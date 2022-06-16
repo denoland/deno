@@ -748,15 +748,17 @@
       benchDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    benchDesc.origin = getBenchOrigin();
-    const AsyncFunction = (async () => {}).constructor;
-    benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
+    try {
+      benchDesc.origin = getBenchOrigin();
+      const AsyncFunction = (async () => {}).constructor;
+      benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
 
-    const { id, filteredOut } = core.opSync("op_register_bench", benchDesc);
-    benchDesc.id = id;
-    benchDesc.filteredOut = filteredOut;
+      const { id, filteredOut } = core.opSync("op_register_bench", benchDesc);
+      benchDesc.id = id;
+      benchDesc.filteredOut = filteredOut;
 
-    ArrayPrototypePush(benchDescs, benchDesc);
+      ArrayPrototypePush(benchDescs, benchDesc); 
+    } catch {}
   }
 
   /**
