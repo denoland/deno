@@ -4,12 +4,6 @@ use crate::itest;
 use deno_core::url::Url;
 use test_util as util;
 
-itest!(requires_unstable {
-  args: "bench bench/requires_unstable.js",
-  exit_code: 70,
-  output: "bench/requires_unstable.out",
-});
-
 itest!(overloads {
   args: "bench --unstable bench/overloads.ts",
   exit_code: 0,

@@ -1,1 +1,0 @@
-Deno.bench("bench0", () => {});
