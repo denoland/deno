@@ -151,7 +151,7 @@ fn decrypt_aes_cbc(
     128 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
-      let cipher = Aes128CbcDec::new_from_slices(&key, &iv).map_err(|_| {
+      let cipher = Aes128CbcDec::new_from_slices(key, &iv).map_err(|_| {
         custom_error(
           "DOMExceptionOperationError",
           "Invalid key or iv".to_string(),
@@ -168,7 +168,7 @@ fn decrypt_aes_cbc(
     192 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes192CbcDec = cbc::Decryptor<aes::Aes192>;
-      let cipher = Aes192CbcDec::new_from_slices(&key, &iv).map_err(|_| {
+      let cipher = Aes192CbcDec::new_from_slices(key, &iv).map_err(|_| {
         custom_error(
           "DOMExceptionOperationError",
           "Invalid key or iv".to_string(),
@@ -185,7 +185,7 @@ fn decrypt_aes_cbc(
     256 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
-      let cipher = Aes256CbcDec::new_from_slices(&key, &iv).map_err(|_| {
+      let cipher = Aes256CbcDec::new_from_slices(key, &iv).map_err(|_| {
         custom_error(
           "DOMExceptionOperationError",
           "Invalid key or iv".to_string(),

@@ -153,7 +153,7 @@ fn encrypt_aes_cbc(
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 
-      let cipher = Aes128CbcEnc::new_from_slices(&key, &iv)
+      let cipher = Aes128CbcEnc::new_from_slices(key, &iv)
         .map_err(|_| operation_error("invalid key or iv".to_string()))?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }
@@ -161,7 +161,7 @@ fn encrypt_aes_cbc(
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes192CbcEnc = cbc::Encryptor<aes::Aes192>;
 
-      let cipher = Aes192CbcEnc::new_from_slices(&key, &iv)
+      let cipher = Aes192CbcEnc::new_from_slices(key, &iv)
         .map_err(|_| operation_error("invalid key or iv".to_string()))?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }
@@ -169,7 +169,7 @@ fn encrypt_aes_cbc(
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
 
-      let cipher = Aes256CbcEnc::new_from_slices(&key, &iv)
+      let cipher = Aes256CbcEnc::new_from_slices(key, &iv)
         .map_err(|_| operation_error("invalid key or iv".to_string()))?;
       cipher.encrypt_padded_vec_mut::<Pkcs7>(data)
     }

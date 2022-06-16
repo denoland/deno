@@ -421,7 +421,7 @@ fn import_key_rsapss(
           .map_err(|_| not_supported_error("malformed parameters"))?;
 
           let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
+          match hash_alg.oid {
             // id-sha1
             ID_SHA1_OID => Some(ShaHash::Sha1),
             // id-sha256
@@ -431,9 +431,7 @@ fn import_key_rsapss(
             // id-sha256
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
-          };
-
-          hash
+          }
         }
         _ => return Err(data_error("unsupported algorithm")),
       };
@@ -506,7 +504,7 @@ fn import_key_rsaoaep(
           .map_err(|_| data_error("malformed parameters"))?;
 
           let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
+          match hash_alg.oid {
             // id-sha1
             ID_SHA1_OID => Some(ShaHash::Sha1),
             // id-sha256
@@ -516,9 +514,7 @@ fn import_key_rsaoaep(
             // id-sha256
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
-          };
-
-          hash
+          }
         }
         _ => return Err(data_error("unsupported algorithm")),
       };
@@ -580,7 +576,7 @@ fn import_key_rsaoaep(
           .map_err(|_| not_supported_error("malformed parameters"))?;
 
           let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
+          match hash_alg.oid {
             // id-sha1
             ID_SHA1_OID => Some(ShaHash::Sha1),
             // id-sha256
@@ -590,8 +586,7 @@ fn import_key_rsaoaep(
             // id-sha256
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
-          };
-          hash
+          }
         }
         _ => return Err(data_error("unsupported algorithm")),
       };
@@ -884,7 +879,6 @@ fn import_key_ec(
               p256::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
                 data_error("invalid P-256 eliptic curve SPKI data")
               })?;
-
             if point.is_identity() {
               return Err(data_error("invalid P-256 eliptic curve point"));
             }
@@ -919,7 +913,7 @@ fn import_key_ec(
       }
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(encoded_key.to_vec()?.into()),
+        raw_data: RawKeyData::Public(encoded_key.into()),
       })
     }
     KeyData::JwkPublicEc { .. } | KeyData::JwkPrivateEc { .. } => {
