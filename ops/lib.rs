@@ -1,4 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
@@ -6,6 +7,7 @@ use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
 use quote::quote;
 use quote::ToTokens;
+use regex::Regex;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use syn::FnArg;
@@ -412,23 +414,24 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 }
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
-  tokens(arg).ends_with(": & mut OpState")
-    || tokens(arg).ends_with(": & mut deno_core :: OpState")
-    || tokens(arg).ends_with("mut OpState")
+  static RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#": & mut (?:deno_core :: )?OpState$"#).unwrap());
+  RE.is_match(&tokens(arg))
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
-  tokens(arg).ends_with(": Rc < RefCell < OpState > >")
-    || tokens(arg).ends_with(": Rc < RefCell < deno_core :: OpState > >")
+  static RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#).unwrap()
+  });
+  RE.is_match(&tokens(arg))
 }
 
 fn is_handle_scope(arg: &syn::FnArg) -> bool {
-  tokens(arg).ends_with(": & mut v8 :: HandleScope")
-    || tokens(arg).ends_with(": & mut v8 :: HandleScope < 'a >")
-    || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope")
-    || tokens(arg).ends_with(": & mut deno_core :: v8 :: HandleScope < 'a >")
-    || tokens(arg).contains("mut v8 :: HandleScope")
-    || tokens(arg).ends_with(": & mut v8 :: HandeScope < 'scope >")
+  static RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#)
+      .unwrap()
+  });
+  RE.is_match(&tokens(arg))
 }
 
 fn is_future(ty: impl ToTokens) -> bool {
