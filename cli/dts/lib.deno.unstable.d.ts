@@ -343,9 +343,7 @@ declare namespace Deno {
 
   type NativeParameterType =
     | NativeType
-    | {
-      function: Omit<ForeignFunction, "nonblocking">;
-    };
+    | NativeCallbackType;
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
@@ -393,7 +391,12 @@ declare namespace Deno {
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
     : T extends StaticNativeNumberType | StaticNativeBigIntType
       ? number | bigint
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
+    : T extends "pointer" ? UnsafePointer | TypedArray | null
+    : T extends
+      NativeCallbackType<
+        infer U extends readonly NativeType[],
+        infer V extends NativeParameterType
+      > ? UnsafeCallback<U, V> | UnsafePointer | null
     : unknown;
 
   /** Infers a foreign function parameter list. */
@@ -519,6 +522,59 @@ declare namespace Deno {
     >;
   }
 
+  export interface UnsafeCallbackDefinition<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    parameters: Parameters;
+    result: Result;
+  }
+
+  interface NativeCallbackType<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    readonly function: UnsafeCallbackDefinition<Parameters, Result>;
+  }
+
+  type UnsafeCallbackParameters<T extends readonly NativeType[]> = T extends []
+    ? []
+    : T extends
+      readonly [infer U extends NativeType, ...(infer V extends NativeType[])]
+      ? [
+        UnsafeCallbackParameter<U>,
+        ...UnsafeCallbackParameters<V>,
+      ]
+    : never;
+
+  type UnsafeCallbackParameter<T extends NativeType> = T extends
+    StaticNativeBigIntType ? bigint
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer
+    : never;
+
+  type UnsafeCallbackResult<T extends NativeParameterType> = T extends "void"
+    ? void
+    : T extends StaticNativeBigIntType ? number | bigint
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer | TypedArray | null
+    : T extends NativeCallbackType<
+      infer U extends readonly NativeType[],
+      infer V extends NativeParameterType
+    > ? UnsafeCallback<U, V> | UnsafePointer | null
+    : never;
+
+  type UnsafeCallbackFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > = Result extends NativeParameterType
+    ? Parameters extends readonly [] ? () => UnsafeCallbackResult<Result>
+    : Parameters extends readonly NativeType[] ? (
+      ...args: UnsafeCallbackParameters<Parameters>
+    ) => UnsafeCallbackResult<Result>
+    : never
+    : never;
+
   /**
    * **UNSTABLE**: Unsafe and new API, beware!
    *
@@ -527,19 +583,18 @@ declare namespace Deno {
    *
    * The function pointer remains valid until the `close()` method is called.
    */
-  export class UnsafeCallback<Fn extends ForeignFunction> {
+  export class UnsafeCallback<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
     constructor(
-      definition: Fn,
-      callback: (
-        ...args: StaticForeignFunctionParameters<Fn["parameters"]>
-      ) => StaticForeignFunctionResult<Fn["result"]>,
+      definition: UnsafeCallbackDefinition<Parameters, Result>,
+      callback: UnsafeCallbackFunction<Parameters, Result>,
     );
 
     pointer: UnsafePointer;
-    definition: Fn;
-    callback: (
-      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
-    ) => StaticForeignFunctionResult<Fn["result"]>;
+    definition: UnsafeCallbackDefinition<Parameters, Result>;
+    callback: UnsafeCallbackFunction<Parameters, Result>;
 
     close(): void;
   }
