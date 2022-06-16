@@ -2040,9 +2040,10 @@ fn check_arg<'a>() -> Arg<'a> {
     .value_name("CHECK_TYPE")
     .help("Type check modules")
     .long_help(
-      "Type check modules.
-Currently this is a default behavior to type check modules, but in future releases
-Deno will not automatically type check without the --check flag.
+      "Type-check modules.
+
+Deno does not type-check modules automatically from v1.23 onwards. Pass this \
+flag to enable type-checking or use the 'deno check' subcommand.
 
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.",
