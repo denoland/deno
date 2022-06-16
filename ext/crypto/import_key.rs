@@ -782,14 +782,11 @@ fn import_key_ec(
         EcNamedCurve::P256 | EcNamedCurve::P384 => {
           let pk = PrivateKeyInfo::from_der(data.as_ref())
             .map_err(|_| data_error("expected valid PKCS#8 data"))?;
-          //let ec_private_key = sec1::EcPrivateKey::from_der(pk.private_key)?;
           pk.algorithm
             .parameters
             .ok_or_else(|| data_error("malformed parameters"))?
             .oid()
             .unwrap()
-          //.named_curve()
-          //.unwrap()
         }
         EcNamedCurve::P521 => {
           return Err(data_error("Unsupported named curve"))
