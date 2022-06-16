@@ -115,6 +115,7 @@ pub struct FmtFlags {
   pub indent_width: Option<NonZeroU8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
+  pub concurrent_jobs: NonZeroUsize,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -147,6 +148,7 @@ pub struct LintFlags {
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
+  pub concurrent_jobs: NonZeroUsize,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -1128,6 +1130,19 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .possible_values(&["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
+    .arg(
+      Arg::new("jobs")
+        .short('j')
+        .long("jobs")
+        .help("Number of parallel workers, defaults to # of CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .min_values(0)
+        .max_values(1)
+        .takes_value(true)
+        .validator(|val: &str| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("jobs should be a non zero unsigned integer".to_string()),
+        }),
+    )
 }
 
 fn info_subcommand<'a>() -> Command<'a> {
@@ -1365,6 +1380,19 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple_occurrences(true)
         .required(false)
         .value_hint(ValueHint::AnyPath),
+    )
+    .arg(
+      Arg::new("jobs")
+        .short('j')
+        .long("jobs")
+        .help("Number of parallel workers, defaults to # of CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .min_values(0)
+        .max_values(1)
+        .takes_value(true)
+        .validator(|val: &str| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("jobs should be a non zero unsigned integer".to_string()),
+        }),
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
@@ -2399,6 +2427,8 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  let concurrent_jobs = concurrent_jobs_flag_parse(matches);
+
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
     ext,
@@ -2409,6 +2439,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     indent_width,
     single_quote,
     prose_wrap,
+    concurrent_jobs,
   });
 }
 
@@ -2496,6 +2527,9 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .map(|f| f.map(String::from).collect());
 
   let json = matches.is_present("json");
+
+  let concurrent_jobs = concurrent_jobs_flag_parse(matches);
+
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
     rules,
@@ -2503,6 +2537,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     maybe_rules_include,
     maybe_rules_exclude,
     ignore,
+    concurrent_jobs,
     json,
   });
 }
@@ -2652,16 +2687,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     }
   }
 
-  let concurrent_jobs = if matches.is_present("jobs") {
-    if let Some(value) = matches.value_of("jobs") {
-      value.parse().unwrap()
-    } else {
-      std::thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::new(1).unwrap())
-    }
-  } else {
-    NonZeroUsize::new(1).unwrap()
-  };
+  let concurrent_jobs = concurrent_jobs_flag_parse(matches);
 
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
@@ -3026,6 +3052,20 @@ fn watch_arg_parse(
   }
 }
 
+fn concurrent_jobs_flag_parse(matches: &clap::ArgMatches) -> NonZeroUsize {
+  let concurrent_jobs = if matches.is_present("jobs") {
+    if let Some(value) = matches.value_of("jobs") {
+      value.parse().unwrap()
+    } else {
+      std::thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::new(1).unwrap())
+    }
+  } else {
+    NonZeroUsize::new(1).unwrap()
+  };
+  concurrent_jobs
+}
+
 // TODO(ry) move this to utility module and add test.
 /// Strips fragment part of URL. Panics on bad URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
@@ -3348,6 +3388,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3367,6 +3408,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3386,6 +3428,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3405,6 +3448,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3426,6 +3470,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -3454,6 +3499,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3474,6 +3520,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -3501,6 +3548,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         watch: Some(vec![]),
@@ -3533,10 +3581,34 @@ mod tests {
           indent_width: Some(NonZeroU8::new(4).unwrap()),
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "script_1.ts", "--jobs=4"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![PathBuf::from("script_1.ts"),],
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+          concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "script_1.ts", "--jobs=0"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -3556,6 +3628,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3582,6 +3655,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3610,6 +3684,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -3633,6 +3708,7 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3650,6 +3726,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3673,6 +3750,7 @@ mod tests {
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3690,6 +3768,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         ..Flags::default()
       }
@@ -3714,11 +3793,33 @@ mod tests {
           maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "lint", "script_1.ts", "--jobs=4",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: vec![PathBuf::from("script_1.ts"),],
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "lint", "script_1.ts", "--jobs=0",]);
+    assert!(r.is_err());
   }
 
   #[test]
