@@ -34,7 +34,6 @@ fn bundle_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
@@ -77,7 +76,6 @@ fn bundle_exports_no_check() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
@@ -110,7 +108,6 @@ fn bundle_circular() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -143,7 +140,6 @@ fn bundle_single_module() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -186,7 +182,6 @@ fn bundle_tla() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
@@ -219,7 +214,6 @@ fn bundle_js() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -294,7 +288,6 @@ fn bundle_import_map() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&test)
@@ -340,7 +333,6 @@ fn bundle_import_map_no_check() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
@@ -373,7 +365,6 @@ fn bundle_json_module() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -406,7 +397,6 @@ fn bundle_json_module_escape_sub() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -455,4 +445,17 @@ itest!(bundle_export_specifier_with_alias {
 itest!(bundle_ignore_directives {
   args: "bundle subdir/mod1.ts",
   output: "bundle_ignore_directives.test.out",
+});
+
+itest!(check_local_by_default {
+  args: "bundle --quiet bundle/check_local_by_default.ts",
+  output: "bundle/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "bundle --quiet bundle/check_local_by_default2.ts",
+  output: "bundle/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
 });

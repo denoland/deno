@@ -29,6 +29,7 @@ use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -36,6 +37,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -75,11 +77,72 @@ pub enum TestMode {
   Both,
 }
 
+// TODO(nayeemrmn): This is only used for benches right now.
+#[derive(Clone, Debug, Default)]
+pub struct TestFilter {
+  pub substring: Option<String>,
+  pub regex: Option<Regex>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Vec<String>,
+}
+
+impl TestFilter {
+  pub fn includes(&self, name: &String) -> bool {
+    if let Some(substring) = &self.substring {
+      if !name.contains(substring) {
+        return false;
+      }
+    }
+    if let Some(regex) = &self.regex {
+      if !regex.is_match(name) {
+        return false;
+      }
+    }
+    if let Some(include) = &self.include {
+      if !include.contains(name) {
+        return false;
+      }
+    }
+    if self.exclude.contains(name) {
+      return false;
+    }
+    true
+  }
+
+  pub fn from_flag(flag: &Option<String>) -> Self {
+    let mut substring = None;
+    let mut regex = None;
+    if let Some(flag) = flag {
+      if flag.starts_with('/') && flag.ends_with('/') {
+        let rs = flag.trim_start_matches('/').trim_end_matches('/');
+        regex =
+          Some(Regex::new(rs).unwrap_or_else(|_| Regex::new("$^").unwrap()));
+      } else {
+        substring = Some(flag.clone());
+      }
+    }
+    Self {
+      substring,
+      regex,
+      ..Default::default()
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestLocation {
+  pub file_name: String,
+  pub line_number: u32,
+  pub column_number: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
+  pub location: TestLocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -140,6 +203,7 @@ pub enum TestEvent {
   Wait(TestDescription),
   Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
+  UncaughtError(String, Box<JsError>),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
 }
@@ -157,6 +221,7 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, Box<JsError>)>,
+  pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,6 +248,7 @@ impl TestSummary {
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
+      uncaught_errors: Vec::new(),
     }
   }
 
@@ -205,6 +271,7 @@ pub trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
+  fn report_uncaught_error(&mut self, origin: &str, error: &JsError);
   fn report_step_wait(&mut self, description: &TestStepDescription);
   fn report_step_result(
     &mut self,
@@ -224,10 +291,11 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
-  in_test_count: usize,
+  in_new_line: bool,
   last_wait_output_level: usize,
   cwd: Url,
   did_have_user_output: bool,
+  started_tests: bool,
 }
 
 impl PrettyTestReporter {
@@ -235,16 +303,18 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
-      in_test_count: 0,
+      in_new_line: true,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
+      started_tests: false,
     }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
     print!("{} ...", description.name);
+    self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
@@ -269,6 +339,7 @@ impl PrettyTestReporter {
       println!();
     }
     print!("{}{} ...", "  ".repeat(description.level), description.name);
+    self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = description.level;
@@ -294,6 +365,10 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
+    if wrote_user_output {
+      print!("{} ... ", description.name);
+    }
+
     println!(
       "{} {}",
       status,
@@ -302,15 +377,18 @@ impl PrettyTestReporter {
 
     if let Some(js_error) = result.error() {
       let err_string = format_test_error(js_error);
+      let err_string = format!("{}: {}", colors::red_bold("error"), err_string);
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
     }
+    self.in_new_line = true;
   }
 
   fn write_output_end(&mut self) -> bool {
     if self.did_have_user_output {
       println!("{}", colors::gray("----- output end -----"));
+      self.in_new_line = true;
       self.did_have_user_output = false;
       true
     } else {
@@ -331,13 +409,14 @@ impl TestReporter for PrettyTestReporter {
         self.to_relative_path_or_remote_url(&plan.origin)
       ))
     );
+    self.in_new_line = true;
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       self.force_report_wait(description);
     }
-    self.in_test_count += 1;
+    self.started_tests = true;
   }
 
   fn report_output(&mut self, output: &[u8]) {
@@ -345,10 +424,11 @@ impl TestReporter for PrettyTestReporter {
       return;
     }
 
-    if !self.did_have_user_output && self.in_test_count > 0 {
+    if !self.did_have_user_output && self.started_tests {
       self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("------- output -------"));
+      self.in_new_line = true;
     }
 
     // output everything to stdout in order to prevent
@@ -362,8 +442,6 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
-    self.in_test_count -= 1;
-
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -393,6 +471,10 @@ impl TestReporter for PrettyTestReporter {
       print!(" ");
     }
 
+    if wrote_user_output {
+      print!("{} ... ", description.name);
+    }
+
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
@@ -404,6 +486,21 @@ impl TestReporter for PrettyTestReporter {
       status,
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
+    self.in_new_line = true;
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, _error: &JsError) {
+    if !self.in_new_line {
+      println!();
+    }
+    println!(
+      "Uncaught error from {} {}",
+      self.to_relative_path_or_remote_url(origin),
+      colors::red("FAILED")
+    );
+    self.in_new_line = true;
+    self.last_wait_output_level = 0;
+    self.did_have_user_output = false;
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
@@ -440,39 +537,68 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
-    if !summary.failures.is_empty() {
-      println!("\nfailures:\n");
+    if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
+      #[allow(clippy::type_complexity)] // Type alias doesn't look better here
+      let mut failures_by_origin: BTreeMap<
+        String,
+        (Vec<(&TestDescription, &JsError)>, Option<&JsError>),
+      > = BTreeMap::default();
+      let mut failure_titles = vec![];
       for (description, js_error) in &summary.failures {
-        println!(
-          "{} {} {}",
-          colors::gray(
-            self.to_relative_path_or_remote_url(&description.origin)
-          ),
-          colors::gray(">"),
-          description.name
-        );
-        println!("{}", format_test_error(js_error));
-        println!();
-      }
-
-      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
-        BTreeMap::default();
-      for (description, _) in &summary.failures {
-        let test_names = grouped_by_origin
+        let (failures, _) = failures_by_origin
           .entry(description.origin.clone())
           .or_default();
-        test_names.push(description.name.clone());
+        failures.push((description, js_error.as_ref()));
       }
-
-      println!("failures:\n");
-      for (origin, test_names) in &grouped_by_origin {
-        println!(
-          "\t{}",
-          colors::gray(self.to_relative_path_or_remote_url(origin))
-        );
-        for test_name in test_names {
-          println!("\t{}", test_name);
+      for (origin, js_error) in &summary.uncaught_errors {
+        let (_, uncaught_error) =
+          failures_by_origin.entry(origin.clone()).or_default();
+        let _ = uncaught_error.insert(js_error.as_ref());
+      }
+      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+      for (origin, (failures, uncaught_error)) in failures_by_origin {
+        for (description, js_error) in failures {
+          let failure_title = format!(
+            "{} {}",
+            &description.name,
+            colors::gray(format!(
+              "=> {}:{}:{}",
+              self.to_relative_path_or_remote_url(
+                &description.location.file_name
+              ),
+              description.location.line_number,
+              description.location.column_number
+            ))
+          );
+          println!("{}", &failure_title);
+          println!(
+            "{}: {}",
+            colors::red_bold("error"),
+            format_test_error(js_error)
+          );
+          println!();
+          failure_titles.push(failure_title);
         }
+        if let Some(js_error) = uncaught_error {
+          let failure_title = format!(
+            "{} (uncaught error)",
+            self.to_relative_path_or_remote_url(&origin)
+          );
+          println!("{}", &failure_title);
+          println!(
+            "{}: {}",
+            colors::red_bold("error"),
+            format_test_error(js_error)
+          );
+          println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
+          println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+          println!();
+          failure_titles.push(failure_title);
+        }
+      }
+      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
+      for failure_title in failure_titles {
+        println!("{}", failure_title);
       }
     }
 
@@ -491,20 +617,42 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
-    println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
+
+    let mut summary_result = String::new();
+
+    summary_result.push_str(&format!(
+      "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    ));
+
+    let ignored_steps = get_steps_text(summary.ignored_steps);
+    if summary.ignored > 0 || !ignored_steps.is_empty() {
+      summary_result
+        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
+    };
+
+    if summary.measured > 0 {
+      summary_result.push_str(&format!(" | {} measured", summary.measured,))
+    };
+
+    if summary.filtered_out > 0 {
+      summary_result
+        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+    };
+
+    println!(
+      "\n{} | {} {}\n",
+      status,
+      summary_result,
+      colors::gray(format!(
+        "({})",
+        display::human_elapsed(elapsed.as_millis())
+      )),
     );
+    self.in_new_line = true;
   }
 }
 
@@ -581,7 +729,7 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  sender: TestEventSender,
+  sender: &TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
@@ -736,8 +884,6 @@ fn extract_files_from_regex_blocks(
         file_source.push_str(&format!("{}\n", text.as_str()));
       }
 
-      file_source.push_str("export {};");
-
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
         specifier,
@@ -751,7 +897,7 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: Arc::new(file_source),
+        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
       })
@@ -763,12 +909,12 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: Arc<String>,
+  source: Arc<str>,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source: deno_ast::SourceTextInfo::new(source),
+    text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -792,7 +938,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.source().line_index(comment.span.lo),
+        parsed_source.text_info().line_index(comment.start()),
         &blocks_regex,
         &lines_regex,
       )
@@ -954,14 +1100,30 @@ async fn test_specifiers(
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
-      let sender = sender.clone();
+      let mut sender = sender.clone();
       let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let future =
-          test_specifier(ps, permissions, specifier, mode, sender, options);
-
-        run_basic(future)
+        let origin = specifier.to_string();
+        let file_result = run_basic(test_specifier(
+          ps,
+          permissions,
+          specifier,
+          mode,
+          &sender,
+          options,
+        ));
+        if let Err(error) = file_result {
+          if error.is::<JsError>() {
+            sender.send(TestEvent::UncaughtError(
+              origin,
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ))?;
+          } else {
+            return Err(error);
+          }
+        }
+        Ok(())
       })
     });
 
@@ -1014,6 +1176,12 @@ async fn test_specifiers(
             }
 
             reporter.report_result(&description, &result, elapsed);
+          }
+
+          TestEvent::UncaughtError(origin, error) => {
+            reporter.report_uncaught_error(&origin, &error);
+            summary.failed += 1;
+            summary.uncaught_errors.push((origin, error));
           }
 
           TestEvent::StepWait(description) => {
@@ -1449,43 +1617,28 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
+#[derive(Clone)]
 pub struct TestEventSender {
   sender: UnboundedSender<TestEvent>,
-  stdout_writer: os_pipe::PipeWriter,
-  stderr_writer: os_pipe::PipeWriter,
-}
-
-impl Clone for TestEventSender {
-  fn clone(&self) -> Self {
-    Self {
-      sender: self.sender.clone(),
-      stdout_writer: self.stdout_writer.try_clone().unwrap(),
-      stderr_writer: self.stderr_writer.try_clone().unwrap(),
-    }
-  }
+  stdout_writer: TestOutputPipe,
+  stderr_writer: TestOutputPipe,
 }
 
 impl TestEventSender {
   pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
-    let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
-    let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
-
-    start_output_redirect_thread(stdout_reader, sender.clone());
-    start_output_redirect_thread(stderr_reader, sender.clone());
-
     Self {
+      stdout_writer: TestOutputPipe::new(sender.clone()),
+      stderr_writer: TestOutputPipe::new(sender.clone()),
       sender,
-      stdout_writer,
-      stderr_writer,
     }
   }
 
   pub fn stdout(&self) -> std::fs::File {
-    pipe_writer_to_file(self.stdout_writer.try_clone().unwrap())
+    self.stdout_writer.as_file()
   }
 
   pub fn stderr(&self) -> std::fs::File {
-    pipe_writer_to_file(self.stderr_writer.try_clone().unwrap())
+    self.stderr_writer.as_file()
   }
 
   pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
@@ -1497,12 +1650,64 @@ impl TestEventSender {
         | TestEvent::StepWait(_)
         | TestEvent::StepResult(_, _, _)
     ) {
-      self.stdout_writer.flush().unwrap();
-      self.stderr_writer.flush().unwrap();
+      self.flush_stdout_and_stderr();
     }
 
     self.sender.send(message)?;
     Ok(())
+  }
+
+  fn flush_stdout_and_stderr(&mut self) {
+    self.stdout_writer.flush();
+    self.stderr_writer.flush();
+  }
+}
+
+// use a string that if it ends up in the output won't affect how things are displayed
+const ZERO_WIDTH_SPACE: &str = "\u{200B}";
+
+struct TestOutputPipe {
+  writer: os_pipe::PipeWriter,
+  state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+}
+
+impl Clone for TestOutputPipe {
+  fn clone(&self) -> Self {
+    Self {
+      writer: self.writer.try_clone().unwrap(),
+      state: self.state.clone(),
+    }
+  }
+}
+
+impl TestOutputPipe {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (reader, writer) = os_pipe::pipe().unwrap();
+    let state = Arc::new(Mutex::new(None));
+
+    start_output_redirect_thread(reader, sender, state.clone());
+
+    Self { writer, state }
+  }
+
+  pub fn flush(&mut self) {
+    // We want to wake up the other thread and have it respond back
+    // that it's done clearing out its pipe before returning.
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if let Some(sender) = self.state.lock().replace(sender) {
+      let _ = sender.send(()); // just in case
+    }
+    // Bit of a hack to send a zero width space in order to wake
+    // the thread up. It seems that sending zero bytes here does
+    // not work on windows.
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
+    self.writer.flush().unwrap();
+    // ignore the error as it might have been picked up and closed
+    let _ = receiver.recv();
+  }
+
+  pub fn as_file(&self) -> std::fs::File {
+    pipe_writer_to_file(self.writer.try_clone().unwrap())
   }
 }
 
@@ -1525,6 +1730,7 @@ fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
 fn start_output_redirect_thread(
   mut pipe_reader: os_pipe::PipeReader,
   sender: UnboundedSender<TestEvent>,
+  flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 ) {
   tokio::task::spawn_blocking(move || loop {
     let mut buffer = [0; 512];
@@ -1532,12 +1738,24 @@ fn start_output_redirect_thread(
       Ok(0) | Err(_) => break,
       Ok(size) => size,
     };
+    let oneshot_sender = flush_state.lock().take();
+    let mut data = &buffer[0..size];
+    if data.ends_with(ZERO_WIDTH_SPACE.as_bytes()) {
+      data = &data[0..data.len() - ZERO_WIDTH_SPACE.len()];
+    }
 
-    if sender
-      .send(TestEvent::Output(buffer[0..size].to_vec()))
-      .is_err()
+    if !data.is_empty()
+      && sender
+        .send(TestEvent::Output(buffer[0..size].to_vec()))
+        .is_err()
     {
       break;
+    }
+
+    // Always respond back if this was set. Ideally we would also check to
+    // ensure the pipe reader is empty before sending back this response.
+    if let Some(sender) = oneshot_sender {
+      let _ignore = sender.send(());
     }
   });
 }

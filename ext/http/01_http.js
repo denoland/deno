@@ -270,17 +270,19 @@
             throw new TypeError("Unreachable");
           }
           const resourceRid = getReadableStreamRid(respBody);
+          let reader;
           if (resourceRid) {
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }
-            const reader = respBody.getReader(); // Aquire JS lock.
+            reader = respBody.getReader(); // Aquire JS lock.
             try {
               await core.opAsync(
                 "op_http_write_resource",
                 streamRid,
                 resourceRid,
               );
+              core.tryClose(resourceRid);
               readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
@@ -295,7 +297,7 @@
               throw error;
             }
           } else {
-            const reader = respBody.getReader();
+            reader = respBody.getReader();
             while (true) {
               const { value, done } = await reader.read();
               if (done) break;
@@ -355,32 +357,18 @@
 
           httpConn.close();
 
-          if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", wsRid);
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          ws.dispatchEvent(event);
 
-            ws[_readyState] = WebSocket.CLOSED;
-
-            const errEvent = new ErrorEvent("error");
-            ws.dispatchEvent(errEvent);
-
-            const event = new CloseEvent("close");
-            ws.dispatchEvent(event);
-
-            core.tryClose(wsRid);
-          } else {
-            ws[_readyState] = WebSocket.OPEN;
-            const event = new Event("open");
-            ws.dispatchEvent(event);
-
-            ws[_eventLoop]();
-            if (ws[_idleTimeoutDuration]) {
-              ws.addEventListener(
-                "close",
-                () => clearTimeout(ws[_idleTimeoutTimeout]),
-              );
-            }
-            ws[_serverHandleIdleTimeout]();
+          ws[_eventLoop]();
+          if (ws[_idleTimeoutDuration]) {
+            ws.addEventListener(
+              "close",
+              () => clearTimeout(ws[_idleTimeoutTimeout]),
+            );
           }
+          ws[_serverHandleIdleTimeout]();
         }
       } finally {
         if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {

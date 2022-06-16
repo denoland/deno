@@ -8,23 +8,20 @@ import {
 } from "../test_util/std/path/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync, walk } from "../test_util/std/fs/mod.ts";
-export { readLines } from "../test_util/std/io/mod.ts";
+export { TextLineStream } from "../test_util/std/streams/delimiter.ts";
 export { delay } from "../test_util/std/async/delay.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
-async function getFilesFromGit(baseDir, cmd) {
-  const p = Deno.run({
-    cmd,
-    stdout: "piped",
+async function getFilesFromGit(baseDir, args) {
+  const { status, stdout } = await Deno.spawn("git", {
+    stderr: "inherit",
+    args,
   });
-  const output = new TextDecoder().decode(await p.output());
-  const { success } = await p.status();
-  if (!success) {
+  const output = new TextDecoder().decode(stdout);
+  if (!status.success) {
     throw new Error("gitLsFiles failed");
   }
-
-  p.close();
 
   const files = output.split("\0").filter((line) => line.length > 0).map(
     (filePath) => {
@@ -38,7 +35,6 @@ async function getFilesFromGit(baseDir, cmd) {
 function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
-    "git",
     "-C",
     baseDir,
     "ls-files",
@@ -57,7 +53,6 @@ function gitLsFiles(baseDir, patterns) {
 function gitStaged(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
-    "git",
     "-C",
     baseDir,
     "diff",

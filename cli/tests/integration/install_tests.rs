@@ -14,6 +14,7 @@ fn install_basic() {
   let status = util::deno_cmd()
     .current_dir(temp_dir.path())
     .arg("install")
+    .arg("--check")
     .arg("--name")
     .arg("echo_test")
     .arg("http://localhost:4545/echo.ts")
@@ -41,9 +42,11 @@ fn install_basic() {
   assert_eq!(content.chars().last().unwrap(), '\n');
 
   if cfg!(windows) {
-    assert!(content.contains(r#""run" "http://localhost:4545/echo.ts""#));
+    assert!(
+      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    );
   } else {
-    assert!(content.contains(r#"run 'http://localhost:4545/echo.ts'"#));
+    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
   }
 }
 
@@ -56,6 +59,7 @@ fn install_custom_dir_env_var() {
   let status = util::deno_cmd()
     .current_dir(util::root_path()) // different cwd
     .arg("install")
+    .arg("--check")
     .arg("--name")
     .arg("echo_test")
     .arg("http://localhost:4545/echo.ts")
@@ -79,9 +83,11 @@ fn install_custom_dir_env_var() {
 
   let content = fs::read_to_string(file_path).unwrap();
   if cfg!(windows) {
-    assert!(content.contains(r#""run" "http://localhost:4545/echo.ts""#));
+    assert!(
+      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    );
   } else {
-    assert!(content.contains(r#"run 'http://localhost:4545/echo.ts'"#));
+    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
   }
 }
 
@@ -156,4 +162,45 @@ fn installer_test_remote_module_run() {
     .unwrap()
     .trim()
     .ends_with("hello, foo"));
+}
+
+#[test]
+fn check_local_by_default() {
+  let _guard = util::http_server();
+  let temp_dir = TempDir::new();
+  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+
+  let status = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("install")
+    .arg(util::testdata_path().join("./install/check_local_by_default.ts"))
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .status()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn check_local_by_default2() {
+  let _guard = util::http_server();
+  let temp_dir = TempDir::new();
+  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+
+  let status = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("install")
+    .arg(util::testdata_path().join("./install/check_local_by_default2.ts"))
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("NO_COLOR", "1"),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .status()
+    .unwrap();
+  assert!(status.success());
 }

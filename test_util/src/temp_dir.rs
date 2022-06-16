@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
@@ -83,5 +84,24 @@ impl TempDir {
   pub fn path(&self) -> &Path {
     let inner = &self.0;
     inner.0.as_path()
+  }
+
+  pub fn create_dir_all(&self, path: impl AsRef<Path>) {
+    fs::create_dir_all(self.path().join(path)).unwrap();
+  }
+
+  pub fn read_to_string(&self, path: impl AsRef<Path>) -> String {
+    let file_path = self.path().join(path);
+    fs::read_to_string(&file_path)
+      .with_context(|| format!("Could not find file: {}", file_path.display()))
+      .unwrap()
+  }
+
+  pub fn rename(&self, from: impl AsRef<Path>, to: impl AsRef<Path>) {
+    fs::rename(self.path().join(from), self.path().join(to)).unwrap();
+  }
+
+  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<str>) {
+    fs::write(self.path().join(path), text.as_ref()).unwrap();
   }
 }

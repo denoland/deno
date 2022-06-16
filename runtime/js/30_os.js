@@ -8,6 +8,8 @@
     SymbolFor,
   } = window.__bootstrap.primordials;
 
+  const windowDispatchEvent = window.dispatchEvent.bind(window);
+
   function loadavg() {
     return core.opSync("op_loadavg");
   }
@@ -26,6 +28,10 @@
 
   function networkInterfaces() {
     return core.opSync("op_network_interfaces");
+  }
+
+  function getGid() {
+    return core.opSync("op_getgid");
   }
 
   function getUid() {
@@ -51,7 +57,7 @@
     if (!window[SymbolFor("isUnloadDispatched")]) {
       // Invokes the `unload` hooks before exiting
       // ref: https://github.com/denoland/deno/issues/3603
-      window.dispatchEvent(new Event("unload"));
+      windowDispatchEvent(new Event("unload"));
     }
 
     if (exitHandler) {
@@ -92,6 +98,7 @@
     env,
     execPath,
     exit,
+    getGid,
     getUid,
     hostname,
     loadavg,

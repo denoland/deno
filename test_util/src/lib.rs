@@ -1737,6 +1737,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
+  pub env_clear: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1766,6 +1767,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args.iter());
+    if self.env_clear {
+      command.env_clear();
+    }
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
@@ -1818,6 +1822,13 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     }
 
     actual = strip_ansi_codes(&actual).to_string();
+
+    // deno test's output capturing flushes with a zero-width space in order to
+    // synchronize the output pipes. Occassionally this zero width space
+    // might end up in the output so strip it from the output comparison here.
+    if args.get(0) == Some(&"test") {
+      actual = actual.replace('\u{200B}', "");
+    }
 
     let expected = if let Some(s) = self.output_str {
       s.to_owned()

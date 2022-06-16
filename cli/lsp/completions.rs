@@ -97,13 +97,15 @@ fn to_narrow_lsp_range(
   text_info: &SourceTextInfo,
   range: &deno_graph::Range,
 ) -> lsp::Range {
-  let end_byte_index = text_info.byte_index(LineAndColumnIndex {
-    line_index: range.end.line,
-    column_index: range.end.character,
-  });
+  let end_byte_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
+      line_index: range.end.line,
+      column_index: range.end.character,
+    })
+    .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
   let has_trailing_quote =
-    matches!(text_bytes[end_byte_index.0 as usize - 1], b'"' | b'\'');
+    matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -206,8 +208,8 @@ fn get_base_import_map_completions(
   import_map: &ImportMap,
 ) -> Vec<lsp::CompletionItem> {
   import_map
-    .imports_keys()
-    .iter()
+    .imports()
+    .keys()
     .map(|key| {
       // for some strange reason, keys that start with `/` get stored in the
       // import map as `file:///`, and so when we pull the keys out, we need to
@@ -251,7 +253,7 @@ fn get_import_map_completions(
   if !text.is_empty() {
     if let Some(import_map) = maybe_import_map {
       let mut items = Vec::new();
-      for key in import_map.imports_keys() {
+      for key in import_map.imports().keys() {
         // for some reason, the import_map stores keys that begin with `/` as
         // `file:///` in its index, so we have to reverse that here
         let key = if key.starts_with("file://") {
@@ -577,7 +579,6 @@ mod tests {
   use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_documents(
@@ -593,7 +594,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     let http_cache = HttpCache::new(location);

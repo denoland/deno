@@ -52,7 +52,7 @@ function parseCss(cssString: string): Css {
   return parseCss_(cssString);
 }
 
-function parseCssColor(colorString: string): Css {
+function parseCssColor(colorString: string): [number, number, number] | null {
   return parseCssColor_(colorString);
 }
 
@@ -884,7 +884,12 @@ Deno.test(async function consoleTestStringifyPromises() {
 
 Deno.test(function consoleTestWithCustomInspector() {
   class A {
-    [customInspect](): string {
+    [customInspect](
+      inspect: unknown,
+      options: Deno.InspectOptions,
+    ): string {
+      assertEquals(typeof inspect, "function");
+      assertEquals(typeof options, "object");
       return "b";
     }
   }
