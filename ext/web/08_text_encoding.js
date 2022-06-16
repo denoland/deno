@@ -143,7 +143,7 @@
           stream: options.stream,
         });
       } finally {
-        if (!options.stream && this.#rid) {
+        if (!options.stream && this.#rid !== null) {
           core.close(this.#rid);
           this.#rid = null;
         }
