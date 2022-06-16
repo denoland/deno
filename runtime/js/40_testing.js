@@ -757,7 +757,7 @@
       benchDesc.id = id;
       benchDesc.filteredOut = filteredOut;
 
-      ArrayPrototypePush(benchDescs, benchDesc); 
+      ArrayPrototypePush(benchDescs, benchDesc);
     } catch {}
   }
 
