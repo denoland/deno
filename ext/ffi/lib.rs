@@ -848,7 +848,7 @@ unsafe extern "C" fn deno_ffi_callback(
   // it somehow cannot change the values that the loop sees, even if they both
   // refer the same `let bool_value`.
   let mut cb_scope = v8::CallbackScope::new(context);
-  let mut scope = v8::TryCatch::new(&mut cb_scope);
+  let mut scope = v8::HandleScope::new(&mut cb_scope);
   let func = callback.open(&mut scope);
   let result = result as *mut c_void;
   let repr: &[*mut ffi_type] =
@@ -913,6 +913,8 @@ unsafe extern "C" fn deno_ffi_callback(
 
   if call_result.is_none() {
     // JS function threw an exception. Set the return value to zero and return.
+    // The exception continue propagating up the call chain when the event loop
+    // resumes.
     match (*cif.rtype).type_ as _ {
       FFI_TYPE_INT | FFI_TYPE_SINT32 | FFI_TYPE_UINT32 => {
         // zero is equal for signed and unsigned alike
@@ -943,11 +945,6 @@ unsafe extern "C" fn deno_ffi_callback(
         unreachable!();
       }
     };
-
-    if scope.has_caught() {
-      // Rethrow exception to pass it up the call chain, if one exists.
-      scope.rethrow();
-    }
 
     return;
   }
