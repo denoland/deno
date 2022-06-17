@@ -81,7 +81,10 @@ declare namespace Deno {
    * });
    * ```
    */
-  export function bench(name: string, fn: () => void | Promise<void>): void;
+  export function bench(
+    name: string,
+    fn: () => void | Promise<void>,
+  ): void;
 
   /** Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
@@ -198,7 +201,9 @@ declare namespace Deno {
    * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
    * ```
    */
-  export function consoleSize(rid: number): {
+  export function consoleSize(
+    rid: number,
+  ): {
     columns: number;
     rows: number;
   };
@@ -418,10 +423,8 @@ declare namespace Deno {
       : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
       : never;
 
-  type ConditionalAsync<
-    IsAsync extends boolean | undefined,
-    T,
-  > = IsAsync extends true ? Promise<T> : T;
+  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
 
   /** Infers a foreign library interface */
   type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
@@ -933,8 +936,12 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
-  export function connect(options: ConnectOptions): Promise<TcpConn>;
-  export function connect(options: UnixConnectOptions): Promise<UnixConn>;
+  export function connect(
+    options: ConnectOptions,
+  ): Promise<TcpConn>;
+  export function connect(
+    options: UnixConnectOptions,
+  ): Promise<UnixConn>;
 
   export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */
