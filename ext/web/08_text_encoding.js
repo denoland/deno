@@ -58,7 +58,7 @@
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
       this.#singlePassUTF8 = this.#encoding === "utf-8" &&
-        this.#fatal === false && this.#ignoreBOM === false;
+        this.#fatal === false;
       this[webidl.brand] = webidl.brand;
     }
 
@@ -130,7 +130,12 @@
         // Optimize for the common case of decoding single utf-8 input.
         if (!options.stream && this.#rid === null) {
           if (this.#singlePassUTF8 === true) {
-            return core.decode(input);
+            try {
+              return core.decode(input, this.#ignoreBOM);
+            } catch (e) {
+              // RangeError is thrown if input exceeds the maximum length.
+              throw new TypeError("buffer exxceeds maximum length");
+            }
           }
 
           return core.opSync(

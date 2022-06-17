@@ -240,16 +240,21 @@ fn op_encode<'a>(
 fn op_decode<'a>(
   scope: &mut v8::HandleScope<'a>,
   zero_copy: ZeroCopyBuf,
+  ignore_bom: Option<bool>,
 ) -> Result<serde_v8::Value<'a>, Error> {
   let buf = &zero_copy;
 
   // Strip BOM
-  let buf =
-    if buf.len() >= 3 && buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf {
-      &buf[3..]
-    } else {
-      buf
-    };
+  let buf = if ignore_bom.is_some()
+    && buf.len() >= 3
+    && buf[0] == 0xef
+    && buf[1] == 0xbb
+    && buf[2] == 0xbf
+  {
+    &buf[3..]
+  } else {
+    buf
+  };
 
   // If `String::new_from_utf8()` returns `None`, this means that the
   // length of the decoded string would be longer than what V8 can
