@@ -23,6 +23,7 @@
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
+    TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
 
@@ -132,7 +133,7 @@
           if (this.#singlePassUTF8 === true) {
             try {
               return core.decode(input, this.#ignoreBOM);
-            } catch (e) {
+            } catch (_) {
               // RangeError is thrown if input exceeds the maximum length.
               throw new TypeError("buffer exceeds maximum length");
             }
