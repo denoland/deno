@@ -9,6 +9,7 @@
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
+use serde_v8;
 
 fn main() {
   let mut runtime = JsRuntime::new(RuntimeOptions::default());
