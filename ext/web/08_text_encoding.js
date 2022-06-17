@@ -33,6 +33,8 @@
     #fatal;
     /** @type {boolean} */
     #ignoreBOM;
+    /** @type {boolean} */
+    #singlePassUTF8;
 
     /** @type {number | null} */
     #rid = null;
@@ -55,6 +57,8 @@
       this.#encoding = encoding;
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
+      this.#singlePassUTF8 = this.#encoding === "utf-8" &&
+        this.#fatal === false && this.#ignoreBOM === false;
       this[webidl.brand] = webidl.brand;
     }
 
@@ -123,12 +127,19 @@
           input = new Uint8Array(input);
         }
 
+        // Optimize for the common case of decoding single utf-8 input.
         if (!options.stream && this.#rid === null) {
-          return core.opSync("op_encoding_decode_single", input, {
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          if (this.#singlePassUTF8 === true) {
+            return core.decode(input);
+          }
+
+          return core.opSync(
+            "op_encoding_decode_single",
+            input,
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
 
         if (this.#rid === null) {

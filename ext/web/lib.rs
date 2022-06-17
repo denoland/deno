@@ -217,14 +217,10 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
 #[op]
 fn op_encoding_decode_single(
   data: ZeroCopyBuf,
-  options: DecoderOptions,
+  label: String,
+  ignore_bom: bool,
+  fatal: bool,
 ) -> Result<U16String, AnyError> {
-  let DecoderOptions {
-    label,
-    ignore_bom,
-    fatal,
-  } = options;
-
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{}') is invalid.",

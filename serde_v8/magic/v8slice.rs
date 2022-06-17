@@ -71,7 +71,9 @@ pub(crate) fn to_ranged_buffer<'s>(
   value: v8::Local<v8::Value>,
 ) -> Result<(v8::Local<'s, v8::ArrayBuffer>, Range<usize>), v8::DataError> {
   if value.is_array_buffer_view() {
-    let view: v8::Local<v8::ArrayBufferView> = value.try_into()?;
+    // SAFETY: is_array_buffer_view() check above
+    let view: v8::Local<v8::ArrayBufferView> =
+      unsafe { v8::Local::cast(value) };
     let (offset, len) = (view.byte_offset(), view.byte_length());
     let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
       expected: "view to have a buffer",
