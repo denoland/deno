@@ -456,6 +456,6 @@ Deno.test(function testThrowsErrorWhenBufferExceedsMaxLength() {
       new TextDecoder().decode(bytes);
     },
     TypeError,
-    "buffer exceeds maximum length",
+    "The string is too long to decode",
   );
 });

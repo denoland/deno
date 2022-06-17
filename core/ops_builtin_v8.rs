@@ -240,7 +240,7 @@ fn op_encode<'a>(
 fn op_decode<'a>(
   scope: &mut v8::HandleScope<'a>,
   zero_copy: ZeroCopyBuf,
-  ignore_bom: Option<bool>,
+  ignore_bom: Option<()>,
 ) -> Result<serde_v8::Value<'a>, Error> {
   let buf = &zero_copy;
 

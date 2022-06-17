@@ -135,7 +135,7 @@
               return core.decode(input, this.#ignoreBOM);
             } catch (_) {
               // RangeError is thrown if input exceeds the maximum length.
-              throw new TypeError("buffer exceeds maximum length");
+              throw new TypeError("The string is too long to decode");
             }
           }
 
@@ -143,8 +143,8 @@
             "op_encoding_decode_single",
             input,
             this.#encoding,
-            this.#fatal,
             this.#ignoreBOM,
+            this.#fatal,
           );
         }
 
