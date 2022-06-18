@@ -2,7 +2,7 @@ running 2 tests from ./compat/test_runner/esm.mjs
 Correct assertion ... ok ([WILDCARD])
 Failed assertion ... FAILED ([WILDCARD])
 
-failures:
+ ERRORS 
 
 Failed assertion => ./compat/test_runner/esm.mjs:[WILDCARD]
 error: AssertionError: Values are not strictly equal:
@@ -18,10 +18,10 @@ error: AssertionError: Values are not strictly equal:
           ^
 [WILDCARD]
 
-failures:
+ FAILURES 
 
 Failed assertion => ./compat/test_runner/esm.mjs:[WILDCARD]
 
-test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 1 passed | 1 failed ([WILDCARD])
 
 error: Test failed

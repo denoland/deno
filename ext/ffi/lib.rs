@@ -311,6 +311,11 @@ impl NativeValue {
 }
 
 fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
+  if value.is_array() {
+    let value = U32x2::try_from(value)?;
+    return T::try_from(u64::from(value)).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to an unsigned integer, got {:?}", value)));
+  }
+
   match value.as_u64().and_then(|v| T::try_from(v).ok()) {
     Some(value) => Ok(value),
     None => Err(type_error(format!(
@@ -321,6 +326,11 @@ fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
 }
 
 fn value_as_int<T: TryFrom<i64>>(value: Value) -> Result<T, AnyError> {
+  if value.is_array() {
+    let value = U32x2::try_from(value)?;
+    return T::try_from(u64::from(value) as i64).map_err(|_| type_error(format!("Found U32x2 FFI argument but it could not be converted to a signed integer, got {:?}", value)));
+  }
+
   match value.as_i64().and_then(|v| T::try_from(v).ok()) {
     Some(value) => Ok(value),
     None => Err(type_error(format!(
@@ -356,6 +366,25 @@ impl From<u64> for U32x2 {
 impl From<U32x2> for u64 {
   fn from(value: U32x2) -> Self {
     (value.0 as u64) << 32 | value.1 as u64
+  }
+}
+
+impl TryFrom<Value> for U32x2 {
+  type Error = AnyError;
+
+  fn try_from(value: Value) -> Result<Self, Self::Error> {
+    if let Some(value) = value.as_array() {
+      if let Some(hi) = value[0].as_u64() {
+        if let Some(lo) = value[1].as_u64() {
+          return Ok(U32x2(hi as u32, lo as u32));
+        }
+      }
+    }
+
+    Err(type_error(format!(
+      "Expected FFI argument to be a signed integer, but got {:?}",
+      value
+    )))
   }
 }
 
@@ -627,16 +656,24 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
     }
     NativeType::U64 => {
-      json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<u64>(symbol.ptr, &call_args)
+      }))
     }
     NativeType::I64 => {
-      json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<i64>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::USize => {
-      json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<usize>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::ISize => {
-      json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) })
+      json!(U32x2::from(unsafe {
+        symbol.cif.call::<isize>(symbol.ptr, &call_args)
+      } as u64))
     }
     NativeType::F32 => {
       json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })

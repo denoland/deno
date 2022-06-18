@@ -27,6 +27,15 @@ Deno.test(function timeOrigin() {
   assert(Date.now() >= origin);
 });
 
+Deno.test(function performanceToJSON() {
+  const json = performance.toJSON();
+
+  assert("timeOrigin" in json);
+  assert(json.timeOrigin === performance.timeOrigin);
+  // check there are no other keys
+  assertEquals(Object.keys(json).length, 1);
+});
+
 Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);
@@ -130,4 +139,17 @@ Deno.test(function performanceMeasureIllegalConstructor() {
     TypeError,
     "Illegal constructor",
   );
+});
+
+Deno.test(function performanceIsEventTarget() {
+  assert(performance instanceof EventTarget);
+
+  return new Promise((resolve) => {
+    const handler = () => {
+      resolve();
+    };
+
+    performance.addEventListener("test", handler, { once: true });
+    performance.dispatchEvent(new Event("test"));
+  });
 });

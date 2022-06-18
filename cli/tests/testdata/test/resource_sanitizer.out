@@ -2,7 +2,7 @@ Check [WILDCARD]/test/resource_sanitizer.ts
 running 1 test from ./test/resource_sanitizer.ts
 leak ... FAILED ([WILDCARD])
 
-failures:
+ ERRORS 
 
 leak => ./test/resource_sanitizer.ts:[WILDCARD]
 error: AssertionError: Test case is leaking 2 resources:
@@ -12,10 +12,10 @@ error: AssertionError: Test case is leaking 2 resources:
 
     at [WILDCARD]
 
-failures:
+ FAILURES 
 
 leak => ./test/resource_sanitizer.ts:[WILDCARD]
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed | 1 failed ([WILDCARD])
 
 error: Test failed

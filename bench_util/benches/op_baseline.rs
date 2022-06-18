@@ -2,14 +2,8 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::{benchmark_group, Bencher};
 use deno_bench_util::{bench_js_async, bench_js_sync};
 
-use deno_core::error::AnyError;
 use deno_core::op;
-
 use deno_core::Extension;
-use deno_core::OpState;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 fn setup() -> Vec<Extension> {
   vec![Extension::builder()
@@ -22,19 +16,17 @@ fn setup() -> Vec<Extension> {
 }
 
 #[op]
-fn op_nop() -> Result<(), AnyError> {
-  Ok(())
-}
+fn op_nop() {}
 
 #[op]
-fn op_pi_json() -> Result<i64, AnyError> {
-  Ok(314159)
+fn op_pi_json() -> i64 {
+  314159
 }
 
 // this is a function since async closures aren't stable
 #[op]
-async fn op_pi_async(_: Rc<RefCell<OpState>>) -> Result<i64, AnyError> {
-  Ok(314159)
+async fn op_pi_async() -> i64 {
+  314159
 }
 
 fn bench_op_pi_json(b: &mut Bencher) {

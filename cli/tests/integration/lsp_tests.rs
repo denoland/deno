@@ -1401,7 +1401,9 @@ fn lsp_hover_change_mbc() {
               },
               "end": {
                 "line": 1,
-                "character": 13
+                // the LSP uses utf16 encoded characters indexes, so
+                // after the deno emoiji is character index 15
+                "character": 15
               }
             },
             "text": ""
@@ -1425,7 +1427,7 @@ fn lsp_hover_change_mbc() {
         },
         "position": {
           "line": 2,
-          "character": 14
+          "character": 15
         }
       }),
     )
@@ -1444,11 +1446,11 @@ fn lsp_hover_change_mbc() {
       "range": {
         "start": {
           "line": 2,
-          "character": 13,
+          "character": 15,
         },
         "end": {
           "line": 2,
-          "character": 14,
+          "character": 16,
         },
       }
     }))
@@ -2054,7 +2056,7 @@ fn lsp_hover_jsdoc_symbol_link() {
           "language": "typescript",
           "value": "function a(): void"
         },
-        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
+        "JSDoc [hello](file:///a/file.ts#L1,10) and [`b`](file:///a/file.ts#L5,7)"
       ],
       "range": {
         "start": {
@@ -4284,7 +4286,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert_eq!(res.averages.len(), 14);
+    assert_eq!(res.averages.len(), 13);
   } else {
     panic!("unexpected result");
   }
@@ -5470,13 +5472,30 @@ Deno.test({
   assert!(res.is_ok());
   let (method, notification) = res.unwrap();
   assert_eq!(method, "deno/testRunProgress");
+  let notification_value = notification
+    .as_ref()
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("message")
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("value")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  // deno test's output capturing flushes with a zero-width space in order to
+  // synchronize the output pipes. Occassionally this zero width space
+  // might end up in the output so strip it from the output comparison here.
+  assert_eq!(notification_value.replace('\u{200B}', ""), "test a\r\n");
   assert_eq!(
     notification,
     Some(json!({
       "id": 1,
       "message": {
         "type": "output",
-        "value": "test a\r\n",
+        "value": notification_value,
         "test": {
           "textDocument": {
             "uri": specifier,

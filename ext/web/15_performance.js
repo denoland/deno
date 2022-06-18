@@ -327,12 +327,18 @@
   }
   webidl.configurePrototype(PerformanceMeasure);
   const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
-  class Performance {
-    constructor() {
-      webidl.illegalConstructor();
+  class Performance extends EventTarget {
+    constructor(key = null) {
+      if (key != illegalConstructorKey) {
+        webidl.illegalConstructor();
+      }
+
+      super();
+      this[webidl.brand] = webidl.brand;
     }
 
     get timeOrigin() {
+      webidl.assertBranded(this, PerformancePrototype);
       return timeOrigin;
     }
 
@@ -555,7 +561,9 @@
 
     toJSON() {
       webidl.assertBranded(this, PerformancePrototype);
-      return {};
+      return {
+        timeOrigin: this.timeOrigin,
+      };
     }
 
     [customInspect](inspect) {
@@ -569,12 +577,17 @@
   webidl.configurePrototype(Performance);
   const PerformancePrototype = Performance.prototype;
 
+  webidl.converters["Performance"] = webidl.createInterfaceConverter(
+    "Performance",
+    PerformancePrototype,
+  );
+
   window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,
     Performance,
-    performance: webidl.createBranded(Performance),
+    performance: new Performance(illegalConstructorKey),
     setTimeOrigin,
   };
 })(this);

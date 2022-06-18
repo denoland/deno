@@ -8,5 +8,5 @@ foo ... ok ([WILDCARD])
 running 1 test from ./test/filter/c_test.ts
 foo ... ok ([WILDCARD])
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out ([WILDCARD])
+ok | 3 passed | 0 failed | 6 filtered out ([WILDCARD])
 

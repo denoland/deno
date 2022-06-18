@@ -33,25 +33,31 @@ function main() {
     108, 100
   ];
 
-  const empty = Deno.core.encode("");
+  const empty = Deno.core.opSync("op_encode", "");
   if (empty.length !== 0) throw new Error("assert");
 
-  assertArrayEquals(Array.from(Deno.core.encode("𝓽𝓮𝔁𝓽")), fixture1);
   assertArrayEquals(
-    Array.from(Deno.core.encode("Hello \udc12\ud834 World")),
+    Array.from(Deno.core.opSync("op_encode", "𝓽𝓮𝔁𝓽")),
+    fixture1,
+  );
+  assertArrayEquals(
+    Array.from(Deno.core.opSync("op_encode", "Hello \udc12\ud834 World")),
     fixture2,
   );
 
-  const emptyBuf = Deno.core.decode(new Uint8Array(0));
+  const emptyBuf = Deno.core.opSync("op_decode", new Uint8Array(0));
   if (emptyBuf !== "") throw new Error("assert");
 
-  assert(Deno.core.decode(new Uint8Array(fixture1)) === "𝓽𝓮𝔁𝓽");
-  assert(Deno.core.decode(new Uint8Array(fixture2)) === "Hello �� World");
+  assert(Deno.core.opSync("op_decode", new Uint8Array(fixture1)) === "𝓽𝓮𝔁𝓽");
+  assert(
+    Deno.core.opSync("op_decode", new Uint8Array(fixture2)) ===
+      "Hello �� World",
+  );
 
   // See https://github.com/denoland/deno/issues/6649
   let thrown = false;
   try {
-    Deno.core.decode(new Uint8Array(2 ** 29));
+    Deno.core.opSync("op_decode", new Uint8Array(2 ** 29));
   } catch (e) {
     thrown = true;
     assert(e instanceof RangeError);

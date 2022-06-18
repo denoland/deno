@@ -26,12 +26,10 @@ fn setup() -> Vec<Extension> {
     deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder()
     .js(vec![
-      ("setup",
-        Box::new(|| Ok(r#"
-        const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
-        Deno.core.setMacrotaskCallback(handleTimerMacrotask);
-        "#.to_owned())),
-      ),
+      ("setup", r#"
+      const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
+      Deno.core.setMacrotaskCallback(handleTimerMacrotask);
+      "#),
     ])
     .state(|state| {
       state.put(Permissions{});

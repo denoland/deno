@@ -177,6 +177,12 @@ itest!(fmt_check_ignore {
   exit_code: 0,
 });
 
+itest!(fmt_check_parse_error {
+  args: "fmt --check fmt/parse_error/parse_error.ts",
+  output: "fmt/fmt_check_parse_error.out",
+  exit_code: 1,
+});
+
 itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
@@ -185,8 +191,8 @@ itest!(fmt_stdin {
 
 itest!(fmt_stdin_markdown {
   args: "fmt --ext=md -",
-  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n"),
-  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"),
+  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"),
+  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"),
 });
 
 itest!(fmt_stdin_json {

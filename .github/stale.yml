@@ -20,12 +20,12 @@ exemptMilestones: true
 staleLabel: stale
 
 markComment: >
-  This issue has been [automatically marked as stale](https://probot.github.io/apps/stale/#how-it-works)
+  This issue has been [automatically marked as stale](https://github.com/marketplace/stale)
   because it has not had recent activity. It will be closed in 7 days if no
   further activity occurs. Thank you for your contributions.
 
 pulls:
   markComment: >
-    This pull request has been [automatically marked as stale](https://probot.github.io/apps/stale/#how-it-works)
+    This pull request has been [automatically marked as stale](https://github.com/marketplace/stale)
     because it has not had recent activity. It will be closed in 7 days if no
     further activity occurs. Thank you for your contributions.
