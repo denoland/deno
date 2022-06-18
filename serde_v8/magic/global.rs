@@ -4,8 +4,6 @@ use crate::magic::transl8::impl_magic;
 use crate::magic::transl8::FromV8;
 use crate::magic::transl8::ToV8;
 
-/// serde_v8::Value allows passing through `v8::Value`s untouched
-/// when de/serializing & allows mixing rust & v8 values in structs, tuples...
 pub struct Global {
   pub v8_value: v8::Global<v8::Value>,
 }
