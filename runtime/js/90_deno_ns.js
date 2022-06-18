@@ -152,5 +152,7 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    openPty: __bootstrap.pty.openPty,
+    Pty: __bootstrap.pty.Pty,
   };
 })(this);

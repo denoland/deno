@@ -40,6 +40,7 @@
       stdin,
       stdout,
       stderr,
+      pty,
     });
     return new Child(illegalConstructorKey, {
       ...child,
@@ -192,6 +193,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
+    pty = undefined,
   } = {}) {
     if (stdin === "piped") {
       throw new TypeError(
@@ -209,6 +211,7 @@
       stdin,
       stdout,
       stderr,
+      pty,
     });
   }
 
