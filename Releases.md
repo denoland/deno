@@ -6,6 +6,33 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.23.0 / 2022.06.15
+
+- BREAKING: remove `Intl.v8BreakIterator` (#14864)
+- BREAKING: Remove unstable Deno.sleepSync (#14719)
+- Deno.exit() is an alias to self.close() in worker contexts (#14826)
+- feat(console): pass options and depth to custom inspects (#14855)
+- feat(ext/crypto): export elliptic keys as "raw" (#14764)
+- feat(ext/ffi): support passing and returning bigints (#14523)
+- feat(fmt): remove some unnecessary parens in types (#14841)
+- feat(fmt): support formatting cjs, cts, mjs, and mts files (#14837)
+- feat(ops): 'hybrid' ops - sync returning future (#14640)
+- feat(repl): Add key binding to force a new line (#14536)
+- feat(runtime/signal): implement SIGINT and SIGBREAK for windows (#14694)
+- feat(task): add `--cwd` flag for configuring the working directory (#14823)
+- feat(task): support redirects, cat, xargs (#14859)
+- feat(test): update test summary report (#14629)
+- feat(vendor): support using an existing import map (#14836)
+- feat: make Child.kill argument optional (#14669)
+- feat: no type-check by default (#14691)
+- feat: update to TypeScript 4.7 (#14242)
+- feat(web): enable deflate-raw compression format (#14863)
+- fix(check): use "moduleDetection": "force" (#14875)
+- fix(cli): add config flag to `deno info` (#14706)
+- fix(console): constrol inspect() indent with option (#14867)
+- fix(url): properly indent when inspecting URLs (#14867)
+- upgrade: v8 10.4.132.5 (#14874)
+
 ### 1.22.3 / 2022.06.09
 
 - fix(ext/fetch): remove deprecation of `URL` in deno `fetch` (#14769)

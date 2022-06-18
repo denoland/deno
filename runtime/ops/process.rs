@@ -301,6 +301,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
+  use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::minwindef::TRUE;
   use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
@@ -308,45 +309,14 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::handleapi::CloseHandle;
   use winapi::um::processthreadsapi::OpenProcess;
   use winapi::um::processthreadsapi::TerminateProcess;
-  use winapi::um::wincon::GenerateConsoleCtrlEvent;
-  use winapi::um::wincon::{CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT};
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if pid < 0 {
-    return Err(type_error(format!(
-      "Invalid process id (pid) {} for signal {}.",
-      pid, signal
-    )));
-  }
-
-  if matches!(signal, "SIGINT" | "SIGBREAK" | "SIGHUP") {
-    let is_generated = unsafe {
-      GenerateConsoleCtrlEvent(
-        match signal {
-          "SIGINT" => CTRL_C_EVENT,
-          "SIGBREAK" => CTRL_BREAK_EVENT,
-          // Need tokio::windows::signal::CtrlClose or equivalent
-          // in signal.rs to get this working
-          "SIGHUP" => CTRL_CLOSE_EVENT,
-          _ => unreachable!(),
-        },
-        pid as u32,
-      )
-    };
-    match is_generated {
-      FALSE => {
-        Err(Error::from_raw_os_error(unsafe { GetLastError() } as i32).into())
-      }
-      TRUE => Ok(()),
-      _ => unreachable!(),
-    }
-  } else if matches!(signal, "SIGKILL" | "SIGTERM") {
-    // PID 0 = System Idle Process and can't be opened.
-    if pid == 0 {
-      return Err(type_error(format!("Cannot use {} on PID 0", signal)));
-    }
-
-    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as u32) };
+  if !matches!(signal, "SIGKILL" | "SIGTERM") {
+    Err(type_error(format!("Invalid signal: {}", signal)))
+  } else if pid <= 0 {
+    Err(type_error("Invalid pid"))
+  } else {
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
 
     if handle.is_null() {
       let err = match unsafe { GetLastError() } {
@@ -363,11 +333,6 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
         _ => unreachable!(),
       }
     }
-  } else {
-    Err(type_error(format!(
-      "Signal {} is unsupported on Windows.",
-      signal
-    )))
   }
 }
 

@@ -18,5 +18,12 @@ window.add_completion_callback((_tests, harnessStatus) => {
   while (bytesWritten < data.byteLength) {
     bytesWritten += Deno.stderr.writeSync(data.subarray(bytesWritten));
   }
+
+  // TODO(cjihrig): Restore the prototype of globalThis to be an EventTarget
+  // again. There are WPTs that change the prototype, which causes brand
+  // checking to fail. Once the globalThis prototype is frozen properly, this
+  // line can be removed.
+  Object.setPrototypeOf(globalThis, EventTarget.prototype);
+
   Deno.exit(harnessStatus.status === 0 ? 0 : 1);
 });
