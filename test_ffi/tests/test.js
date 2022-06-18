@@ -364,6 +364,20 @@ const add10Callback = new Deno.UnsafeCallback({
   parameters: ["u8"],
   result: "u8",
 }, (value) => value + 10);
+const throwCallback = new Deno.UnsafeCallback({
+  parameters: [],
+  result: "void",
+}, () => {
+  throw new TypeError("hi");
+});
+
+assertThrows(
+  () => {
+    dylib.symbols.call_fn_ptr(throwCallback);
+  },
+  TypeError,
+  "hi",
+);
 
 dylib.symbols.call_fn_ptr(logCallback);
 dylib.symbols.call_fn_ptr_many_parameters(logManyParametersCallback);

@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
+const targetDir = "./target/release" ||
+  Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
   darwin: ["lib", "dylib"],
   linux: ["lib", "so"],
