@@ -53,6 +53,6 @@ bar 2 => ./test/uncaught_errors_2.ts:3:6
 bar 3 => ./test/uncaught_errors_2.ts:6:6
 ./test/uncaught_errors_3.ts (uncaught error)
 
-test result: FAILED. 2 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 2 passed | 5 failed ([WILDCARD])
 
 error: Test failed

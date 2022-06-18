@@ -140,3 +140,16 @@ Deno.test(function performanceMeasureIllegalConstructor() {
     "Illegal constructor",
   );
 });
+
+Deno.test(function performanceIsEventTarget() {
+  assert(performance instanceof EventTarget);
+
+  return new Promise((resolve) => {
+    const handler = () => {
+      resolve();
+    };
+
+    performance.addEventListener("test", handler, { once: true });
+    performance.dispatchEvent(new Event("test"));
+  });
+});
