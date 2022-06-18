@@ -1,0 +1,6 @@
+Error checking: [WILDCARD]
+   Line 2, column 7: Expected '{', got '<eof>'
+
+  class Test
+        ~~~~
+error: Found 1 not formatted file in 1 file
