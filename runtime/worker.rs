@@ -381,12 +381,10 @@ impl MainWorker {
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "var $beforeUnloadEv = new Event('beforeunload', { cancelable: true }); 
-      dispatchEvent($beforeUnloadEv); 
-      $beforeUnloadEv.defaultPrevented",
+      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
     )?;
     let local_value = value.open(&mut self.js_runtime.handle_scope());
-    Ok(local_value.is_true())
+    Ok(local_value.is_false())
   }
 }
 
