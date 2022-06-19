@@ -197,6 +197,9 @@ pub fn get_ts_config(
   } else {
     ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
   };
+  ts_config.merge(&json!({
+    "moduleDetection": "force",
+  }));
   Ok((ts_config, maybe_ignored_options))
 }
 
@@ -442,11 +445,6 @@ pub fn check_and_maybe_emit(
           }
           MediaType::SourceMap => {
             cache.set(CacheType::SourceMap, &specifier, emit.data)?;
-          }
-          // this only occurs with the runtime emit, but we are using the same
-          // code paths, so we handle it here.
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            cache.set(CacheType::Declaration, &specifier, emit.data)?;
           }
           _ => unreachable!(
             "unexpected media_type {} {}",

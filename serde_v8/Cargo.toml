@@ -1,7 +1,7 @@
 # Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "serde_v8"
-version = "0.49.0"
+version = "0.50.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -16,7 +16,7 @@ path = "lib.rs"
 bytes = "1"
 derive_more = "0.99.17"
 serde = { version = "1.0.136", features = ["derive"] }
-v8 = "0.43.1"
+v8 = "0.44.1"
 
 [dev-dependencies]
 bencher = "0.1"

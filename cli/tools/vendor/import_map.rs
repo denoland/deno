@@ -1,42 +1,41 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeMap;
-
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
-use deno_core::serde_json;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use serde::Serialize;
+use import_map::ImportMap;
+use import_map::SpecifierMap;
+use indexmap::IndexMap;
+use log::warn;
 
 use super::mappings::Mappings;
 use super::specifiers::is_remote_specifier;
 use super::specifiers::is_remote_specifier_text;
 
-#[derive(Serialize)]
-struct SerializableImportMap {
-  imports: BTreeMap<String, String>,
-  #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-  scopes: BTreeMap<String, BTreeMap<String, String>>,
-}
-
 struct ImportMapBuilder<'a> {
+  base_dir: &'a ModuleSpecifier,
   mappings: &'a Mappings,
   imports: ImportsBuilder<'a>,
-  scopes: BTreeMap<String, ImportsBuilder<'a>>,
+  scopes: IndexMap<String, ImportsBuilder<'a>>,
 }
 
 impl<'a> ImportMapBuilder<'a> {
-  pub fn new(mappings: &'a Mappings) -> Self {
+  pub fn new(base_dir: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     ImportMapBuilder {
+      base_dir,
       mappings,
-      imports: ImportsBuilder::new(mappings),
+      imports: ImportsBuilder::new(base_dir, mappings),
       scopes: Default::default(),
     }
+  }
+
+  pub fn base_dir(&self) -> &ModuleSpecifier {
+    self.base_dir
   }
 
   pub fn scope(
@@ -48,38 +47,115 @@ impl<'a> ImportMapBuilder<'a> {
       .entry(
         self
           .mappings
-          .relative_specifier_text(self.mappings.output_dir(), base_specifier),
+          .relative_specifier_text(self.base_dir, base_specifier),
       )
-      .or_insert_with(|| ImportsBuilder::new(self.mappings))
+      .or_insert_with(|| ImportsBuilder::new(self.base_dir, self.mappings))
   }
 
-  pub fn into_serializable(self) -> SerializableImportMap {
-    SerializableImportMap {
-      imports: self.imports.imports,
-      scopes: self
-        .scopes
-        .into_iter()
-        .map(|(key, value)| (key, value.imports))
-        .collect(),
+  pub fn into_import_map(
+    self,
+    original_import_map: Option<&ImportMap>,
+  ) -> ImportMap {
+    fn get_local_imports(
+      new_relative_path: &str,
+      original_imports: &SpecifierMap,
+    ) -> Vec<(String, String)> {
+      let mut result = Vec::new();
+      for entry in original_imports.entries() {
+        if let Some(raw_value) = entry.raw_value {
+          if raw_value.starts_with("./") || raw_value.starts_with("../") {
+            let sub_index = raw_value.find('/').unwrap() + 1;
+            result.push((
+              entry.raw_key.to_string(),
+              format!("{}{}", new_relative_path, &raw_value[sub_index..]),
+            ));
+          }
+        }
+      }
+      result
     }
-  }
 
-  pub fn into_file_text(self) -> String {
-    let mut text =
-      serde_json::to_string_pretty(&self.into_serializable()).unwrap();
-    text.push('\n');
-    text
+    fn add_local_imports<'a>(
+      new_relative_path: &str,
+      original_imports: &SpecifierMap,
+      get_new_imports: impl FnOnce() -> &'a mut SpecifierMap,
+    ) {
+      let local_imports =
+        get_local_imports(new_relative_path, original_imports);
+      if !local_imports.is_empty() {
+        let new_imports = get_new_imports();
+        for (key, value) in local_imports {
+          if let Err(warning) = new_imports.append(key, value) {
+            warn!("{}", warning);
+          }
+        }
+      }
+    }
+
+    let mut import_map = ImportMap::new(self.base_dir.clone());
+
+    if let Some(original_im) = original_import_map {
+      let original_base_dir = ModuleSpecifier::from_directory_path(
+        original_im
+          .base_url()
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .unwrap(),
+      )
+      .unwrap();
+      let new_relative_path = self
+        .mappings
+        .relative_specifier_text(self.base_dir, &original_base_dir);
+      // add the imports
+      add_local_imports(&new_relative_path, original_im.imports(), || {
+        import_map.imports_mut()
+      });
+
+      for scope in original_im.scopes() {
+        if scope.raw_key.starts_with("./") || scope.raw_key.starts_with("../") {
+          let sub_index = scope.raw_key.find('/').unwrap() + 1;
+          let new_key =
+            format!("{}{}", new_relative_path, &scope.raw_key[sub_index..]);
+          add_local_imports(&new_relative_path, scope.imports, || {
+            import_map.get_or_append_scope_mut(&new_key).unwrap()
+          });
+        }
+      }
+    }
+
+    let imports = import_map.imports_mut();
+    for (key, value) in self.imports.imports {
+      if !imports.contains(&key) {
+        imports.append(key, value).unwrap();
+      }
+    }
+
+    for (scope_key, scope_value) in self.scopes {
+      if !scope_value.imports.is_empty() {
+        let imports = import_map.get_or_append_scope_mut(&scope_key).unwrap();
+        for (key, value) in scope_value.imports {
+          if !imports.contains(&key) {
+            imports.append(key, value).unwrap();
+          }
+        }
+      }
+    }
+
+    import_map
   }
 }
 
 struct ImportsBuilder<'a> {
+  base_dir: &'a ModuleSpecifier,
   mappings: &'a Mappings,
-  imports: BTreeMap<String, String>,
+  imports: IndexMap<String, String>,
 }
 
 impl<'a> ImportsBuilder<'a> {
-  pub fn new(mappings: &'a Mappings) -> Self {
+  pub fn new(base_dir: &'a ModuleSpecifier, mappings: &'a Mappings) -> Self {
     Self {
+      base_dir,
       mappings,
       imports: Default::default(),
     }
@@ -88,7 +164,7 @@ impl<'a> ImportsBuilder<'a> {
   pub fn add(&mut self, key: String, specifier: &ModuleSpecifier) {
     let value = self
       .mappings
-      .relative_specifier_text(self.mappings.output_dir(), specifier);
+      .relative_specifier_text(self.base_dir, specifier);
 
     // skip creating identity entries
     if key != value {
@@ -98,20 +174,22 @@ impl<'a> ImportsBuilder<'a> {
 }
 
 pub fn build_import_map(
+  base_dir: &ModuleSpecifier,
   graph: &ModuleGraph,
   modules: &[&Module],
   mappings: &Mappings,
+  original_import_map: Option<&ImportMap>,
 ) -> String {
-  let mut import_map = ImportMapBuilder::new(mappings);
-  visit_modules(graph, modules, mappings, &mut import_map);
+  let mut builder = ImportMapBuilder::new(base_dir, mappings);
+  visit_modules(graph, modules, mappings, &mut builder);
 
   for base_specifier in mappings.base_specifiers() {
-    import_map
+    builder
       .imports
       .add(base_specifier.to_string(), base_specifier);
   }
 
-  import_map.into_file_text()
+  builder.into_import_map(original_import_map).to_json()
 }
 
 fn visit_modules(
@@ -197,37 +275,70 @@ fn handle_dep_specifier(
   mappings: &Mappings,
 ) {
   let specifier = graph.resolve(unresolved_specifier);
-  // do not handle specifiers pointing at local modules
-  if !is_remote_specifier(&specifier) {
-    return;
+  // check if it's referencing a remote module
+  if is_remote_specifier(&specifier) {
+    handle_remote_dep_specifier(
+      text,
+      unresolved_specifier,
+      &specifier,
+      import_map,
+      referrer,
+      mappings,
+    )
+  } else {
+    handle_local_dep_specifier(
+      text,
+      unresolved_specifier,
+      &specifier,
+      import_map,
+      referrer,
+      mappings,
+    );
   }
+}
 
-  let base_specifier = mappings.base_specifier(&specifier);
+fn handle_remote_dep_specifier(
+  text: &str,
+  unresolved_specifier: &ModuleSpecifier,
+  specifier: &ModuleSpecifier,
+  import_map: &mut ImportMapBuilder,
+  referrer: &ModuleSpecifier,
+  mappings: &Mappings,
+) {
   if is_remote_specifier_text(text) {
+    let base_specifier = mappings.base_specifier(specifier);
     if !text.starts_with(base_specifier.as_str()) {
       panic!("Expected {} to start with {}", text, base_specifier);
     }
 
     let sub_path = &text[base_specifier.as_str().len()..];
-    let expected_relative_specifier_text =
-      mappings.relative_path(base_specifier, &specifier);
-    if expected_relative_specifier_text == sub_path {
-      return;
+    let relative_text =
+      mappings.relative_specifier_text(base_specifier, specifier);
+    let expected_sub_path = relative_text.trim_start_matches("./");
+    if expected_sub_path != sub_path {
+      import_map.imports.add(text.to_string(), specifier);
     }
-
-    import_map.imports.add(text.to_string(), &specifier);
   } else {
     let expected_relative_specifier_text =
-      mappings.relative_specifier_text(referrer, &specifier);
+      mappings.relative_specifier_text(referrer, specifier);
     if expected_relative_specifier_text == text {
       return;
     }
 
+    if !is_remote_specifier(referrer) {
+      // local module referencing a remote module using
+      // non-remote specifier text means it was something in
+      // the original import map, so add a mapping to it
+      import_map.imports.add(text.to_string(), specifier);
+      return;
+    }
+
+    let base_specifier = mappings.base_specifier(specifier);
+    let base_dir = import_map.base_dir().clone();
     let imports = import_map.scope(base_specifier);
     if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
       let mut local_base_specifier = mappings.local_uri(base_specifier);
-      local_base_specifier.set_query(unresolved_specifier.query());
       local_base_specifier = local_base_specifier
         // path includes "/" so make it relative
         .join(&format!(".{}", unresolved_specifier.path()))
@@ -241,18 +352,15 @@ fn handle_dep_specifier(
       local_base_specifier.set_query(unresolved_specifier.query());
 
       imports.add(
-        mappings.relative_specifier_text(
-          mappings.output_dir(),
-          &local_base_specifier,
-        ),
-        &specifier,
+        mappings.relative_specifier_text(&base_dir, &local_base_specifier),
+        specifier,
       );
 
       // add a mapping that uses the local directory name and the remote
       // filename in order to support files importing this relatively
       imports.add(
         {
-          let local_path = mappings.local_path(&specifier);
+          let local_path = mappings.local_path(specifier);
           let mut value =
             ModuleSpecifier::from_directory_path(local_path.parent().unwrap())
               .unwrap();
@@ -262,14 +370,55 @@ fn handle_dep_specifier(
             value.path(),
             specifier.path_segments().unwrap().last().unwrap(),
           ));
-          mappings.relative_specifier_text(mappings.output_dir(), &value)
+          mappings.relative_specifier_text(&base_dir, &value)
         },
-        &specifier,
+        specifier,
       );
     } else {
       // absolute (`/`) or bare specifier should be left as-is
-      imports.add(text.to_string(), &specifier);
+      imports.add(text.to_string(), specifier);
     }
+  }
+}
+
+fn handle_local_dep_specifier(
+  text: &str,
+  unresolved_specifier: &ModuleSpecifier,
+  specifier: &ModuleSpecifier,
+  import_map: &mut ImportMapBuilder,
+  referrer: &ModuleSpecifier,
+  mappings: &Mappings,
+) {
+  if !is_remote_specifier(referrer) {
+    // do not handle local modules referencing local modules
+    return;
+  }
+
+  // The remote module is referencing a local file. This could occur via an
+  // existing import map. In this case, we'll have to add an import map
+  // entry in order to map the path back to the local path once vendored.
+  let base_dir = import_map.base_dir().clone();
+  let base_specifier = mappings.base_specifier(referrer);
+  let imports = import_map.scope(base_specifier);
+
+  if text.starts_with("./") || text.starts_with("../") {
+    let referrer_local_uri = mappings.local_uri(referrer);
+    let mut specifier_local_uri =
+      referrer_local_uri.join(text).unwrap_or_else(|_| {
+        panic!(
+          "Error joining {} to {}",
+          unresolved_specifier.path(),
+          referrer_local_uri
+        )
+      });
+    specifier_local_uri.set_query(unresolved_specifier.query());
+
+    imports.add(
+      mappings.relative_specifier_text(&base_dir, &specifier_local_uri),
+      specifier,
+    );
+  } else {
+    imports.add(text.to_string(), specifier);
   }
 }
 
