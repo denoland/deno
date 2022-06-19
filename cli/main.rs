@@ -638,9 +638,8 @@ async fn eval_command(
   worker.dispatch_load_event(&located_script_name!())?;
   loop {
     worker.run_event_loop(false).await?;
-    worker.dispatch_beforeunload_event(&located_script_name!())?;
 
-    if !worker.js_runtime.event_loop_has_work() {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
       break;
     }
   }
@@ -982,9 +981,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   worker.dispatch_load_event(&located_script_name!())?;
   loop {
     worker.run_event_loop(false).await?;
-    worker.dispatch_beforeunload_event(&located_script_name!())?;
-
-    if !worker.js_runtime.event_loop_has_work() {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
       break;
     }
   }
@@ -1028,11 +1025,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
 
       let result = loop {
         let result = self.worker.run_event_loop(false).await;
-        self
+        if !self
           .worker
-          .dispatch_beforeunload_event(&located_script_name!())?;
-
-        if !self.worker.js_runtime.event_loop_has_work() {
+          .dispatch_beforeunload_event(&located_script_name!())?
+        {
           break result;
         }
       };
@@ -1188,9 +1184,7 @@ async fn run_command(
     worker
       .run_event_loop(maybe_coverage_collector.is_none())
       .await?;
-    worker.dispatch_beforeunload_event(&located_script_name!())?;
-
-    if !worker.js_runtime.event_loop_has_work() {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
       break;
     }
   }

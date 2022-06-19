@@ -401,9 +401,7 @@ async fn bench_specifier(
   worker.js_runtime.resolve_value(bench_result).await?;
 
   loop {
-    worker.dispatch_beforeunload_event(&located_script_name!())?;
-
-    if !worker.js_runtime.event_loop_has_work() {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
       break;
     }
     worker.run_event_loop(false).await?;

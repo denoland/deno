@@ -318,9 +318,7 @@ pub async fn run(
 
   loop {
     worker.run_event_loop(false).await?;
-    worker.dispatch_beforeunload_event(&located_script_name!())?;
-
-    if !worker.js_runtime.event_loop_has_work() {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
       break;
     }
   }
