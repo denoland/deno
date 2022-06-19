@@ -1,7 +1,7 @@
 # Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "deno_bench_util"
-version = "0.50.0"
+version = "0.51.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -15,8 +15,8 @@ path = "lib.rs"
 
 [dependencies]
 bencher = "0.1"
-deno_core = { version = "0.138.0", path = "../core" }
-tokio = { version = "1.17", features = ["full"] }
+deno_core = { version = "0.139.0", path = "../core" }
+tokio = { version = "1.19", features = ["full"] }
 
 [[bench]]
 name = "op_baseline"

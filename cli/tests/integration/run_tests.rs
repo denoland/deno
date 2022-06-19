@@ -2704,3 +2704,8 @@ itest!(error_name_non_string {
   output: "error_name_non_string.js.out",
   exit_code: 1,
 });
+
+itest!(custom_inspect_url {
+  args: "run custom_inspect_url.js",
+  output: "custom_inspect_url.js.out",
+});

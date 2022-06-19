@@ -32,3 +32,8 @@ itest!(check_all_local {
   output_str: Some(""),
   http_server: true,
 });
+
+itest!(module_detection_force {
+  args: "check --quiet module_detection_force.ts",
+  output_str: Some(""),
+});

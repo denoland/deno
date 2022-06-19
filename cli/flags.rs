@@ -234,12 +234,12 @@ impl Default for DenoSubcommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeCheckMode {
-  /// Type check all modules.
+  /// Type-check all modules.
   All,
-  /// Skip type checking of all modules. The default value for "deno run" and
+  /// Skip type-checking of all modules. The default value for "deno run" and
   /// several other subcommands.
   None,
-  /// Only type check local modules. The default value for "deno test" and
+  /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
   Local,
 }
@@ -1486,7 +1486,7 @@ fn test_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("doc")
         .long("doc")
-        .help("UNSTABLE: type check code blocks")
+        .help("UNSTABLE: type-check code blocks")
         .takes_value(false),
     )
     .arg(
@@ -2023,7 +2023,7 @@ fn no_check_arg<'a>() -> Arg<'a> {
     .min_values(0)
     .value_name("NO_CHECK_TYPE")
     .long("no-check")
-    .help("Skip type checking modules")
+    .help("Skip type-checking modules")
     .long_help(
       "Skip type-checking. If the value of '--no-check=remote' is supplied, \
       diagnostic errors from remote modules will be ignored.",
@@ -2038,11 +2038,12 @@ fn check_arg<'a>() -> Arg<'a> {
     .require_equals(true)
     .min_values(0)
     .value_name("CHECK_TYPE")
-    .help("Type check modules")
+    .help("Type-check modules")
     .long_help(
-      "Type check modules.
-Currently this is a default behavior to type check modules, but in future releases
-Deno will not automatically type check without the --check flag.
+      "Type-check modules.
+
+Deno does not type-check modules automatically from v1.23 onwards. Pass this \
+flag to enable type-checking or use the 'deno check' subcommand.
 
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.",

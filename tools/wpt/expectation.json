@@ -1161,20 +1161,12 @@
   "hr-time": {
     "monotonic-clock.any.html": true,
     "monotonic-clock.any.worker.html": true,
-    "basic.any.html": [
-      "Performance interface extends EventTarget."
-    ],
-    "basic.any.worker.html": [
-      "Performance interface extends EventTarget."
-    ],
+    "basic.any.html": true,
+    "basic.any.worker.html": true,
     "idlharness.any.html": [
-      "Performance interface: existence and properties of interface object",
-      "Performance interface: existence and properties of interface prototype object",
       "Window interface: attribute performance"
     ],
     "idlharness.any.worker.html": [
-      "Performance interface: existence and properties of interface object",
-      "Performance interface: existence and properties of interface prototype object",
       "WorkerGlobalScope interface: attribute performance",
       "WorkerGlobalScope interface: self must inherit property \"performance\" with the proper type"
     ],
@@ -3026,12 +3018,8 @@
         ],
         "text-utf8.any.html": true,
         "text-utf8.any.worker.html": true,
-        "accept-header.any.html": [
-          "Request through fetch should have a 'accept-language' header"
-        ],
-        "accept-header.any.worker.html": [
-          "Request through fetch should have a 'accept-language' header"
-        ],
+        "accept-header.any.html": true,
+        "accept-header.any.worker.html": true,
         "conditional-get.any.html": false,
         "conditional-get.any.worker.html": false,
         "error-after-response.any.html": false,
