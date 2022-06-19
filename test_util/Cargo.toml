@@ -27,7 +27,7 @@ regex = "1.5.5"
 rustls-pemfile = "1.0.0"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
-tokio = { version = "1.17", features = ["full"] }
+tokio = { version = "1.19", features = ["full"] }
 tokio-rustls = "0.23"
 tokio-tungstenite = "0.16"
 

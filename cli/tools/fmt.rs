@@ -194,6 +194,10 @@ fn format_markdown(
           | "tsx"
           | "js"
           | "jsx"
+          | "cjs"
+          | "cts"
+          | "mjs"
+          | "mts"
           | "javascript"
           | "typescript"
           | "json"
@@ -312,6 +316,7 @@ async fn check_source_files(
           incremental_cache.update_file(&file_path, &file_text);
         }
         Err(e) => {
+          not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
           eprintln!("Error checking: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
@@ -707,7 +712,10 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "tsx"
         | "js"
         | "jsx"
+        | "cjs"
+        | "cts"
         | "mjs"
+        | "mts"
         | "json"
         | "jsonc"
         | "md"

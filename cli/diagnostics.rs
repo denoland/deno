@@ -52,7 +52,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "setRaw",
   "shutdown",
   "Signal",
-  "sleepSync",
   "startTls",
   "systemMemoryInfo",
   "umask",
