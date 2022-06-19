@@ -411,6 +411,7 @@ console.log("Static ptr value:", view.getUint32());
 
 function cleanup() {
   dylib.close();
+  throwCallback.close();
   logCallback.close();
   logManyParametersCallback.close();
   returnU8Callback.close();
