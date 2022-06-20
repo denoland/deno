@@ -170,8 +170,8 @@ impl<S: 'static> From<S> for WriteOnlyResource<S> {
 }
 
 impl<S> WriteOnlyResource<S>
-where
-  S: AsyncWrite + Unpin + 'static,
+  where
+    S: AsyncWrite + Unpin + 'static,
 {
   pub fn borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<S> {
     RcRef::map(self, |r| &r.stream).borrow_mut()
@@ -210,8 +210,8 @@ impl<S: 'static> From<S> for ReadOnlyResource<S> {
 }
 
 impl<S> ReadOnlyResource<S>
-where
-  S: AsyncRead + Unpin + 'static,
+  where
+    S: AsyncRead + Unpin + 'static,
 {
   pub fn borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<S> {
     RcRef::map(self, |r| &r.stream).borrow_mut()
@@ -306,6 +306,8 @@ enum StdFileResourceInner {
   // the functionality in Rust's std/src/sys/windows/stdio.rs
   Stdout,
   Stderr,
+  // todo(imjamesb): A Pty struct should be passed into here.
+  Pty,
 }
 
 impl StdFileResourceInner {
@@ -321,6 +323,7 @@ impl StdFileResourceInner {
       }
       Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
       Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
+      Self::Pty => Err(ErrorKind::Unsupported.into()),
     }
   }
 
@@ -348,6 +351,7 @@ impl Read for StdFileResourceInner {
       Self::File(file) | Self::Stdin(file) => file.lock().read(buf),
       Self::Stdout => Err(ErrorKind::Unsupported.into()),
       Self::Stderr => Err(ErrorKind::Unsupported.into()),
+      Self::Pty => Err(ErrorKind::Unsupported.into()),
     }
   }
 }
@@ -359,6 +363,7 @@ impl Write for StdFileResourceInner {
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().write(buf),
       Self::Stderr => std::io::stderr().write(buf),
+      Self::Pty => Err(ErrorKind::Unsupported.into()),
     }
   }
 
@@ -368,6 +373,7 @@ impl Write for StdFileResourceInner {
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().flush(),
       Self::Stderr => std::io::stderr().flush(),
+      Self::Pty => Err(ErrorKind::Unsupported.into()),
     }
   }
 }
@@ -405,6 +411,7 @@ impl StdFileResource {
       StdFileResourceInner::Stderr => {
         Arc::new(Mutex::new(STDERR_HANDLE.try_clone().unwrap()))
       }
+      StdFileResourceInner::Pty => Err(ErrorKind::Unsupported.into())
     }
   }
 
@@ -422,7 +429,7 @@ impl StdFileResource {
         Ok((inner.read(&mut buf)?, buf))
       },
     )
-    .await?
+      .await?
   }
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
@@ -437,8 +444,8 @@ impl StdFileResource {
     rid: ResourceId,
     mut f: F,
   ) -> Result<R, AnyError>
-  where
-    F: FnMut(StdFileResourceInner) -> Result<R, AnyError>,
+    where
+      F: FnMut(StdFileResourceInner) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     f(resource.inner.clone())
@@ -449,8 +456,8 @@ impl StdFileResource {
     rid: ResourceId,
     f: F,
   ) -> Result<R, AnyError>
-  where
-    F: FnMut(&mut StdFile) -> Result<R, AnyError>,
+    where
+      F: FnMut(&mut StdFile) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     resource.inner.with_file(f)

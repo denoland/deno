@@ -19,6 +19,7 @@ use deno_core::error::custom_error;
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
+
 #[cfg(windows)]
 const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
   | wincon::ENABLE_ECHO_INPUT
@@ -184,7 +185,7 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
   Ok(isatty)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ConsoleSize {
   columns: u32,
   rows: u32,
