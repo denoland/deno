@@ -307,7 +307,6 @@ enum StdFileResourceInner {
   // the functionality in Rust's std/src/sys/windows/stdio.rs
   Stdout,
   Stderr,
-  // todo(imjamesb): A Pty struct should be passed into here.
   Pty(Arc<Mutex<Pty>>),
 }
 
