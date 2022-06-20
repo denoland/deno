@@ -346,9 +346,14 @@ declare namespace Deno {
     | "f64"
     | "pointer";
 
+  type NativeParameterType =
+    | NativeType
+    | NativeCallbackType;
+
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Parameters extends readonly NativeParameterType[] =
+      readonly NativeParameterType[],
     Result extends NativeType = NativeType,
     NonBlocking extends boolean = boolean,
   > {
@@ -385,17 +390,20 @@ declare namespace Deno {
     ? void
     : T extends StaticNativeBigIntType ? bigint
     : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? UnsafePointer
+    : T extends "pointer" ? bigint
     : never;
 
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
     : T extends StaticNativeNumberType | StaticNativeBigIntType
       ? number | bigint
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
+    : T extends "pointer" ? bigint | TypedArray | null
+    : T extends NativeCallbackType ? bigint | null
     : unknown;
 
   /** Infers a foreign function parameter list. */
-  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+  type StaticForeignFunctionParameters<
+    T extends readonly NativeParameterType[],
+  > = [
     ...{
       [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
     },
@@ -438,19 +446,10 @@ declare namespace Deno {
    * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
    */
   export class UnsafePointer {
-    constructor(value: bigint);
-
-    value: bigint;
-
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(typedArray: TypedArray): UnsafePointer;
-
-    /**
-     * Returns the value of the pointer which is useful in certain scenarios.
-     */
-    valueOf(): bigint;
+    static of(value: Deno.UnsafeCallback | TypedArray): bigint;
   }
 
   /** **UNSTABLE**: Unsafe and new API, beware!
@@ -461,9 +460,9 @@ declare namespace Deno {
    * (numbers, strings and raw bytes).
    */
   export class UnsafePointerView {
-    constructor(pointer: UnsafePointer);
+    constructor(pointer: bigint);
 
-    pointer: UnsafePointer;
+    pointer: bigint;
 
     /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
     getUint8(offset?: number): number;
@@ -500,10 +499,10 @@ declare namespace Deno {
    * present as symbols.
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
-    pointer: UnsafePointer;
+    pointer: bigint;
     definition: Fn;
 
-    constructor(pointer: UnsafePointer, definition: Fn);
+    constructor(pointer: bigint, definition: Fn);
 
     call(
       ...args: StaticForeignFunctionParameters<Fn["parameters"]>
@@ -511,6 +510,80 @@ declare namespace Deno {
       Fn["nonblocking"],
       StaticForeignFunctionResult<Fn["result"]>
     >;
+  }
+
+  export interface UnsafeCallbackDefinition<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    parameters: Parameters;
+    result: Result;
+  }
+
+  interface NativeCallbackType<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    readonly function: UnsafeCallbackDefinition<Parameters, Result>;
+  }
+
+  type UnsafeCallbackParameters<T extends readonly NativeType[]> = T extends []
+    ? []
+    : T extends
+      readonly [infer U extends NativeType, ...(infer V extends NativeType[])]
+      ? [
+        UnsafeCallbackParameter<U>,
+        ...UnsafeCallbackParameters<V>,
+      ]
+    : never;
+
+  type UnsafeCallbackParameter<T extends NativeType> = T extends
+    StaticNativeBigIntType ? bigint
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? bigint
+    : never;
+
+  type UnsafeCallbackResult<T extends NativeParameterType> = T extends "void"
+    ? void
+    : T extends StaticNativeBigIntType ? number | bigint
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? bigint | TypedArray | null
+    : T extends NativeCallbackType ? bigint | null
+    : never;
+
+  type UnsafeCallbackFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > = Result extends NativeParameterType
+    ? Parameters extends readonly [] ? () => UnsafeCallbackResult<Result>
+    : Parameters extends readonly NativeType[] ? (
+      ...args: UnsafeCallbackParameters<Parameters>
+    ) => UnsafeCallbackResult<Result>
+    : never
+    : never;
+
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe function pointer for passing JavaScript functions
+   * as C function pointers to ffi calls.
+   *
+   * The function pointer remains valid until the `close()` method is called.
+   */
+  export class UnsafeCallback<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    constructor(
+      definition: UnsafeCallbackDefinition<Parameters, Result>,
+      callback: UnsafeCallbackFunction<Parameters, Result>,
+    );
+
+    pointer: bigint;
+    definition: UnsafeCallbackDefinition<Parameters, Result>;
+    callback: UnsafeCallbackFunction<Parameters, Result>;
+
+    close(): void;
   }
 
   /** A dynamic library resource */

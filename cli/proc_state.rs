@@ -609,8 +609,8 @@ impl ProcState {
     );
 
     let graph_data = self.graph_data.read();
-    let found = graph_data.follow_redirect(&specifier);
-    match graph_data.get(&found) {
+    let found_url = graph_data.follow_redirect(&specifier);
+    match graph_data.get(&found_url) {
       Some(ModuleEntry::Module {
         code, media_type, ..
       }) => {
@@ -627,25 +627,32 @@ impl ProcState {
               code.to_string()
             }
           }
-          MediaType::Dts => "".to_string(),
-          _ => {
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx => {
             let emit_path = self
               .dir
               .gen_cache
-              .get_cache_filename_with_extension(&found, "js")
+              .get_cache_filename_with_extension(&found_url, "js")
               .unwrap_or_else(|| {
-                unreachable!("Unable to get cache filename: {}", &found)
+                unreachable!("Unable to get cache filename: {}", &found_url)
               });
             match self.dir.gen_cache.get(&emit_path) {
               Ok(b) => String::from_utf8(b).unwrap(),
-              Err(_) => unreachable!("Unexpected missing emit: {}", found),
+              Err(_) => unreachable!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag or deleting your DENO_DIR.", found_url),
             }
+          }
+          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
+            panic!("Unexpected media type {} for {}", media_type, found_url)
           }
         };
         Ok(ModuleSource {
           code: code.into_bytes().into_boxed_slice(),
           module_url_specified: specifier.to_string(),
-          module_url_found: found.to_string(),
+          module_url_found: found_url.to_string(),
           module_type: match media_type {
             MediaType::Json => ModuleType::Json,
             _ => ModuleType::JavaScript,
@@ -694,11 +701,9 @@ impl SourceMapGetter for ProcState {
         _ => return None,
       }
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        let code = String::from_utf8(code).unwrap();
-        source_map_from_code(code).or(maybe_map)
+        source_map_from_code(&code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None, false) {
-        let code = String::from_utf8(source.code.to_vec()).unwrap();
-        source_map_from_code(code)
+        source_map_from_code(&source.code)
       } else {
         None
       }
@@ -756,21 +761,14 @@ pub fn import_map_from_text(
   Ok(result.import_map)
 }
 
-fn source_map_from_code(code: String) -> Option<Vec<u8>> {
-  let lines: Vec<&str> = code.split('\n').collect();
-  if let Some(last_line) = lines.last() {
-    if last_line
-      .starts_with("//# sourceMappingURL=data:application/json;base64,")
-    {
-      let input = last_line.trim_start_matches(
-        "//# sourceMappingURL=data:application/json;base64,",
-      );
-      let decoded_map = base64::decode(input)
-        .expect("Unable to decode source map from emitted file.");
-      Some(decoded_map)
-    } else {
-      None
-    }
+fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
+  static PREFIX: &[u8] = b"//# sourceMappingURL=data:application/json;base64,";
+  let last_line = code.rsplitn(2, |u| u == &b'\n').next().unwrap();
+  if last_line.starts_with(PREFIX) {
+    let input = last_line.split_at(PREFIX.len()).1;
+    let decoded_map = base64::decode(input)
+      .expect("Unable to decode source map from emitted file.");
+    Some(decoded_map)
   } else {
     None
   }
