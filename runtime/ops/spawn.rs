@@ -17,7 +17,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::process::ExitStatus;
+use std::process::{ExitStatus, Stdio as ProcStdio};
 use std::rc::Rc;
 
 #[cfg(unix)]
@@ -66,6 +66,7 @@ pub struct ChildStdio {
   stdin: Stdio,
   stdout: Stdio,
   stderr: Stdio,
+  tty: Option<ResourceId>,
 }
 
 #[derive(Serialize)]
@@ -82,9 +83,9 @@ impl TryFrom<std::process::ExitStatus> for ChildStatus {
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {
     let code = status.code();
     #[cfg(unix)]
-    let signal = status.signal();
+      let signal = status.signal();
     #[cfg(not(unix))]
-    let signal: Option<i32> = None;
+      let signal: Option<i32> = None;
 
     let status = if let Some(signal) = signal {
       ChildStatus {
@@ -156,15 +157,31 @@ fn create_command(
     });
   }
 
-  command.stdin(args.stdio.stdin.as_stdio());
-  command.stdout(match args.stdio.stdout {
-    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
-  command.stderr(match args.stdio.stderr {
-    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
+  if let Some(tty_rid) = args.stdio.tty {
+    super::check_unstable(state, "Deno.spawn.tty");
+    command.stdin(match args.stdio.stdin {
+      Stdio::Null => ProcStdio::null(),
+      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?
+    });
+    command.stdout(match args.stdio.stdout {
+      Stdio::Null => ProcStdio::null(),
+      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?
+    });
+    command.stderr(match args.stdio.stderr {
+      Stdio::Null => ProcStdio::null(),
+      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?
+    });
+  } else {
+    command.stdin(args.stdio.stdin.as_stdio());
+    command.stdout(match args.stdio.stdout {
+      Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
+      value => value.as_stdio(),
+    });
+    command.stderr(match args.stdio.stderr {
+      Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
+      value => value.as_stdio(),
+    });
+  }
 
   Ok(command)
 }
