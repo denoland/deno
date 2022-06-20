@@ -6,7 +6,7 @@ const remote = Deno.dlopen(
   "dummy_lib.so",
   {
     method1: { parameters: ["usize", "usize"], result: "void" },
-    method2: { parameters: ["void"], result: "void" },
+    method2: { parameters: [], result: "void" },
     method3: { parameters: ["usize"], result: "void" },
     method4: { parameters: ["isize"], result: "void" },
     method5: { parameters: ["u8"], result: "void" },
@@ -25,24 +25,17 @@ const remote = Deno.dlopen(
     method18: { parameters: [], result: "pointer" },
     method19: { parameters: [], result: "pointer", nonblocking: true },
     method20: {
-      parameters: [{
-        function: { parameters: ["u8", "u32", "pointer"], result: "void" },
-      }],
+      parameters: ["pointer"],
       result: "void",
     },
     method21: {
       parameters: [
-        { function: { parameters: [], result: "u8" } },
+        "pointer",
       ],
       result: "void",
     },
     method22: {
-      parameters: [{
-        function: {
-          parameters: [],
-          result: { function: { parameters: [], result: "u8" } },
-        },
-      }],
+      parameters: ["pointer"],
       result: "void",
     },
     static1: { type: "usize" },
@@ -65,7 +58,7 @@ const remote = Deno.dlopen(
 Deno.dlopen(
   "dummy_lib_2.so",
   // @ts-expect-error: Returning a function pointer
-  // is declared using "pointer" + UnsafeFnPointer
+  // is declared using "pointer" or "function" + UnsafeFnPointer
   {
     wrong_method1: {
       parameters: [],
@@ -85,9 +78,9 @@ remote.symbols.method1(0);
 <number> remote.symbols.method1(0, 0);
 <void> remote.symbols.method1(0n, 0n);
 
-// @ts-expect-error: Invalid argument
+// @ts-expect-error: Expected 0 arguments, but got 1.
 remote.symbols.method2(null);
-remote.symbols.method2(void 0);
+remote.symbols.method2();
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method3(null);
@@ -140,7 +133,7 @@ remote.symbols.method14(0);
 // @ts-expect-error: Invalid argument
 remote.symbols.method15(0);
 remote.symbols.method15(new Uint16Array(1));
-remote.symbols.method15({} as Deno.UnsafePointer);
+remote.symbols.method15(0n);
 
 const result = remote.symbols.method16();
 // @ts-expect-error: Invalid argument
@@ -162,9 +155,8 @@ const result4 = remote.symbols.method19();
 result4.then((_0: Deno.TypedArray) => {});
 result4.then((_1: Deno.UnsafePointer) => {});
 
-const ptr = new Deno.UnsafePointer(0n);
 const fnptr = new Deno.UnsafeFnPointer(
-  ptr,
+  0n,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -180,7 +172,7 @@ const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
     result: "void",
   } as const,
   // @ts-expect-error: i8 is not a pointer
-  (_: Deno.UnsafePointer) => {},
+  (_: bigint) => {},
 );
 const unsafe_callback_wrong2 = new Deno.UnsafeCallback(
   {
@@ -223,15 +215,10 @@ const unsafe_callback_right2 = new Deno.UnsafeCallback(
 const unsafe_callback_right3 = new Deno.UnsafeCallback(
   {
     parameters: [],
-    result: {
-      function: {
-        parameters: [],
-        result: "u8",
-      },
-    },
+    result: "function",
   } as const,
-  // Callbacks can return other callbacks, if really wanted.
-  () => unsafe_callback_right2,
+  // Callbacks can return other callbacks' pointers, if really wanted.
+  () => unsafe_callback_right2.pointer,
 );
 const unsafe_callback_right4 = new Deno.UnsafeCallback(
   {
@@ -252,21 +239,9 @@ const unsafe_callback_right5 = new Deno.UnsafeCallback(
 remote.symbols.method20();
 // nullptr is okay
 remote.symbols.method20(null);
-// Foreign function ptr received as UnsafePointer is okay
-remote.symbols.method20({} as Deno.UnsafePointer);
-// @ts-expect-error: Callback does not match the parameter
+// @ts-expect-error: Callback cannot be passed directly
 remote.symbols.method20(unsafe_callback_right2);
-remote.symbols.method20(unsafe_callback_right1);
-// @ts-expect-error: Callback must match return value as well
-remote.symbols.method20(unsafe_callback_right4);
-// @ts-expect-error: Subtle differences in parameter types are not allowed (i32 vs u32)
-remote.symbols.method20(unsafe_callback_right5);
-remote.symbols.method21(unsafe_callback_right2);
-remote.symbols.method22(unsafe_callback_right3);
-// @ts-expect-error: Callback returns a callback with the wrong return value
-remote.symbols.method21(unsafe_callback_right3);
-// @ts-expect-error: Callback returns a callback with the wrong return value
-remote.symbols.method22(unsafe_callback_right2);
+remote.symbols.method20(unsafe_callback_right1.pointer);
 
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;
