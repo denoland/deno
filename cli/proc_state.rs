@@ -609,8 +609,8 @@ impl ProcState {
     );
 
     let graph_data = self.graph_data.read();
-    let found = graph_data.follow_redirect(&specifier);
-    match graph_data.get(&found) {
+    let found_url = graph_data.follow_redirect(&specifier);
+    match graph_data.get(&found_url) {
       Some(ModuleEntry::Module {
         code, media_type, ..
       }) => {
@@ -627,25 +627,32 @@ impl ProcState {
               code.to_string()
             }
           }
-          MediaType::Dts => "".to_string(),
-          _ => {
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx => {
             let emit_path = self
               .dir
               .gen_cache
-              .get_cache_filename_with_extension(&found, "js")
+              .get_cache_filename_with_extension(&found_url, "js")
               .unwrap_or_else(|| {
-                unreachable!("Unable to get cache filename: {}", &found)
+                unreachable!("Unable to get cache filename: {}", &found_url)
               });
             match self.dir.gen_cache.get(&emit_path) {
               Ok(b) => String::from_utf8(b).unwrap(),
-              Err(_) => unreachable!("Unexpected missing emit: {}", found),
+              Err(_) => unreachable!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag or deleting your DENO_DIR.", found_url),
             }
+          }
+          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
+            panic!("Unexpected media type {} for {}", media_type, found_url)
           }
         };
         Ok(ModuleSource {
           code: code.into_bytes().into_boxed_slice(),
           module_url_specified: specifier.to_string(),
-          module_url_found: found.to_string(),
+          module_url_found: found_url.to_string(),
           module_type: match media_type {
             MediaType::Json => ModuleType::Json,
             _ => ModuleType::JavaScript,
