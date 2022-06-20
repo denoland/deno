@@ -203,10 +203,67 @@ declare namespace Deno {
    */
   export function consoleSize(
     rid: number,
-  ): {
+  ): ConsoleSize;
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Sets the size of the console.
+   *
+   * ```ts
+   * Deno.resizeConsole(Deno.stdout.rid, {
+   *   rows: 20,
+   *   columns: 80,
+   * });
+   * ```
+   */
+  export function resizeConsole(
+    rid: number,
+    size: ConsoleSize,
+  ): void;
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Opens a new Pty interface.
+   *
+   * ```ts
+   * const pty = Deno.openPty({
+   *   rows: 20,
+   *   columns: 80,
+   * });
+   *
+   * await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     `
+   *       const size = Deno.consoleSize(Deno.stdout.rid);
+   *       console.log("%sx%s", size.columns, size.rows);
+   *     `
+   *   ],
+   *   tty: pty.rid,
+   * });
+   *
+   * const reader = pty.readable.getReader();
+   * const { value } = await reader.read();
+   * assertEquals(value, "20x80\n");
+   * Deno.close(pty.rid);
+   * ```
+   */
+  export function openPty(options: ConsoleSize): Pty;
+
+  /** A Pty fork with readable and writable streams. */
+  export interface Pty {
+    rid: number;
+    readable: ReadableStream<Uint8Array>;
+    writable: WritableStream<Uint8Array>;
+  }
+
+  /** The size of a console or a tty. */
+  export interface ConsoleSize {
     columns: number;
     rows: number;
-  };
+  }
 
   /** **Unstable**  There are questions around which permission this needs. And
    * maybe should be renamed (loadAverage?)
