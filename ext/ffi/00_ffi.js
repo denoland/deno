@@ -290,14 +290,13 @@
             return promise;
           };
         } else {
-          fn = (...parameters) => {
-            return core.opSync(
+          fn = (...parameters) =>
+            core.opSync(
               "op_ffi_call",
               this.#rid,
               symbol,
               parameters,
             );
-          };
         }
 
         ObjectDefineProperty(
