@@ -11,6 +11,7 @@ pub mod runtime;
 pub mod signal;
 pub mod spawn;
 pub mod tty;
+pub mod pty;
 mod utils;
 pub mod web_worker;
 pub mod worker_host;
@@ -43,6 +44,7 @@ impl UnstableChecker {
     }
   }
 }
+
 /// Helper for checking unstable features. Used for sync ops.
 pub fn check_unstable(state: &OpState, api_name: &str) {
   state.borrow::<UnstableChecker>().check_unstable(api_name)

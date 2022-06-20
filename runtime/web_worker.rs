@@ -53,14 +53,16 @@ pub enum WebWorkerType {
 }
 
 #[derive(
-  Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
+Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
 pub struct WorkerId(u32);
+
 impl fmt::Display for WorkerId {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "worker-{}", self.0)
   }
 }
+
 impl WorkerId {
   pub fn next(&self) -> Option<WorkerId> {
     self.0.checked_add(1).map(WorkerId)
@@ -79,8 +81,8 @@ use deno_core::serde::Serializer;
 
 impl Serialize for WorkerControlEvent {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
+    where
+      S: Serializer,
   {
     let type_id = match &self {
       WorkerControlEvent::TerminalError(_) => 1_i32,
@@ -425,6 +427,7 @@ impl WebWorker {
       ops::spawn::init(),
       ops::signal::init(),
       ops::tty::init(),
+      ops::pty::init(),
       deno_http::init(),
       ops::http::init(),
       // Permissions ext (worker specific state)

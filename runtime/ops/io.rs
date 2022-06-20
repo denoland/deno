@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::pty::Pty;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
@@ -307,12 +308,16 @@ enum StdFileResourceInner {
   Stdout,
   Stderr,
   // todo(imjamesb): A Pty struct should be passed into here.
-  Pty,
+  Pty(Arc<Mutex<Pty>>),
 }
 
 impl StdFileResourceInner {
   pub fn file(fs_file: StdFile) -> Self {
     StdFileResourceInner::File(Arc::new(Mutex::new(fs_file)))
+  }
+
+  pub fn pty(pty: Pty) -> Self {
+    StdFileResourceInner::Pty(Arc::new(Mutex::new(pty)))
   }
 
   pub fn with_file<R>(&self, mut f: impl FnMut(&mut StdFile) -> R) -> R {
@@ -323,7 +328,7 @@ impl StdFileResourceInner {
       }
       Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
       Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
-      Self::Pty => Err(ErrorKind::Unsupported.into()),
+      Self::Pty(pty) => f(&mut unsafe { StdFile::from_raw_fd(pty.lock().master_fd) })
     }
   }
 
@@ -351,7 +356,7 @@ impl Read for StdFileResourceInner {
       Self::File(file) | Self::Stdin(file) => file.lock().read(buf),
       Self::Stdout => Err(ErrorKind::Unsupported.into()),
       Self::Stderr => Err(ErrorKind::Unsupported.into()),
-      Self::Pty => Err(ErrorKind::Unsupported.into()),
+      Self::Pty(pty) => Pty::read(pty.lock().master_fd, buf),
     }
   }
 }
@@ -363,7 +368,7 @@ impl Write for StdFileResourceInner {
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().write(buf),
       Self::Stderr => std::io::stderr().write(buf),
-      Self::Pty => Err(ErrorKind::Unsupported.into()),
+      Self::Pty(pty) => Pty::write(pty.lock().master_fd, buf),
     }
   }
 
@@ -373,7 +378,7 @@ impl Write for StdFileResourceInner {
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().flush(),
       Self::Stderr => std::io::stderr().flush(),
-      Self::Pty => Err(ErrorKind::Unsupported.into()),
+      Self::Pty(_) => Err(ErrorKind::Unsupported.into()),
     }
   }
 }
@@ -401,6 +406,14 @@ impl StdFileResource {
     }
   }
 
+  pub fn pty(pty: Pty) -> Self {
+    Self {
+      inner: StdFileResourceInner::pty(pty),
+      metadata: Default::default(),
+      name: "pty".to_string(),
+    }
+  }
+
   pub fn std_file(&self) -> Arc<Mutex<StdFile>> {
     match &self.inner {
       StdFileResourceInner::File(fs_file)
@@ -411,7 +424,9 @@ impl StdFileResource {
       StdFileResourceInner::Stderr => {
         Arc::new(Mutex::new(STDERR_HANDLE.try_clone().unwrap()))
       }
-      StdFileResourceInner::Pty => Err(ErrorKind::Unsupported.into())
+      StdFileResourceInner::Pty(pty) => {
+        Arc::new(Mutex::new(unsafe { StdFile::from_raw_fd(pty.lock().master_fd) }))
+      }
     }
   }
 
