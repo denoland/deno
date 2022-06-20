@@ -360,7 +360,7 @@ declare namespace Deno {
     | NativePointerType
     | NativeFunctionType;
 
-  type NativeResultType = NativeType | NativeVoidType;
+  export type NativeResultType = NativeType | NativeVoidType;
 
   /** Type conversion for foreign symbol parameters and unsafe callback return types */
   type ToNativeType<T extends NativeType = NativeType> = T extends
