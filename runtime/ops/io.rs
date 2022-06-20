@@ -495,6 +495,10 @@ impl StdFileResource {
         let file = file.lock().try_clone()?;
         Ok(file.into())
       }
+      StdFileResourceInner::Pty(pty) => {
+        let file = pty.file.try_clone().unwrap();
+        Ok(file.into())
+      }
       _ => Ok(std::process::Stdio::inherit()),
     })
   }
