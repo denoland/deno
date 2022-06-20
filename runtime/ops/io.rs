@@ -377,7 +377,7 @@ impl Write for StdFileResourceInner {
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().flush(),
       Self::Stderr => std::io::stderr().flush(),
-      Self::Pty(_) => Err(ErrorKind::Unsupported.into()),
+      Self::Pty(_) => Ok(()),
     }
   }
 }

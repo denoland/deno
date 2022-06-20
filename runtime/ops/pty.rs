@@ -54,6 +54,7 @@ impl Pty {
     if size == -1 {
       Err(IoError::last_os_error())
     } else {
+      println!("{}", self.master_fd);
       Ok(size as usize)
     }
   }
@@ -96,5 +97,6 @@ fn op_pty_open(
   super::check_unstable(state, "Deno.openPty");
   let pty = Pty::new(args)?;
   let resource = StdFileResource::pty(pty);
-  Ok(state.resource_table.add(resource))
+  let rid = state.resource_table.add(resource);
+  Ok(rid)
 }
