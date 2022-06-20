@@ -186,9 +186,9 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ConsoleSize {
-  columns: u32,
-  rows: u32,
+pub struct ConsoleSize {
+  pub columns: u32,
+  pub rows: u32,
 }
 
 #[op]
