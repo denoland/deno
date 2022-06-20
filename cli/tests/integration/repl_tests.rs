@@ -804,3 +804,25 @@ fn pty_clear_function() {
     assert!(output.contains("3234"));
   });
 }
+
+#[test]
+fn pty_tab_handler() {
+  // If the last character is **not** whitespace, we show the completions
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("a\t\t");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert!(output.contains("addEventListener"));
+    assert!(output.contains("alert"));
+    assert!(output.contains("atob"));
+  });
+  // If the last character is whitespace, we just insert a tab
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("a \t\t"); // last character is whitespace
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert!(!output.contains("addEventListener"));
+    assert!(!output.contains("alert"));
+    assert!(!output.contains("atob"));
+  });
+}
