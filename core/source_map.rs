@@ -37,8 +37,6 @@ pub fn apply_source_map<G: SourceMapGetter + ?Sized>(
   let default_pos = (file_name.clone(), line_number, column_number);
   let maybe_source_map =
     cache.maps.entry(file_name.clone()).or_insert_with(|| {
-      // TODO(kitsonk) parsed source maps should probably be cached in state in
-      // the module meta data.
       getter
         .get_source_map(&file_name)
         .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
