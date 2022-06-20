@@ -1058,8 +1058,8 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
- "syn 1.0.96",
  "regex",
+ "syn 1.0.96",
 ]
 
 [[package]]
