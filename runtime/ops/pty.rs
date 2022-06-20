@@ -39,7 +39,7 @@ impl Pty {
         &mut slave_fd,
         null_mut(),
         null_mut(),
-        &mut size,
+        &size,
       )
     } != 0
     {
