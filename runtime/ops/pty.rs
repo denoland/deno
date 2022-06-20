@@ -53,18 +53,15 @@ impl Pty {
     }
   }
 
-  #[cfg(unix)]
   pub fn read(&self, buf: &mut [u8]) -> Result<usize, IoError> {
     let size = unsafe { libc::read(self.master_fd, buf.as_mut_ptr() as *mut _, buf.len()) };
     if size == -1 {
       Err(IoError::last_os_error())
     } else {
-      println!("{}", self.master_fd);
       Ok(size as usize)
     }
   }
 
-  #[cfg(unix)]
   pub fn write(&self, buf: &[u8]) -> Result<usize, IoError> {
     let size = unsafe { libc::write(self.master_fd, buf.as_ptr() as *const _, buf.len()) };
     if size == -1 {
@@ -74,7 +71,6 @@ impl Pty {
     }
   }
 
-  #[cfg(unix)]
   pub fn close(&mut self) {
     unsafe {
       libc::close(self.slave_fd);
