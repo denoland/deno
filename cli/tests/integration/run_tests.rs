@@ -2713,11 +2713,7 @@ itest!(custom_inspect_url {
 #[test]
 fn running_declaration_files() {
   let temp_dir = TempDir::new();
-  let files = vec![
-    "file.d.ts",
-    "file.d.cts",
-    "file.d.mts",
-  ];
+  let files = vec!["file.d.ts", "file.d.cts", "file.d.mts"];
 
   for file in files {
     temp_dir.write(file, "");
