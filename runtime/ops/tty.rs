@@ -225,7 +225,9 @@ fn op_console_size(
     {
       use std::os::unix::io::AsRawFd;
 
+      println!("before");
       let fd = std_file.as_raw_fd();
+      println!("{}, after", fd);
       unsafe {
         let mut size: libc::winsize = std::mem::zeroed();
         if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {

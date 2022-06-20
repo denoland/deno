@@ -327,7 +327,7 @@ impl StdFileResourceInner {
       }
       Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
       Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
-      Self::Pty(pty) => f(&mut unsafe { StdFile::from_raw_fd(pty.master_fd) })
+      Self::Pty(pty) => f(&mut pty.file.try_clone().unwrap()),
     }
   }
 
