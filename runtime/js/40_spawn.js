@@ -28,7 +28,7 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
-    pty = undefined,
+    tty = undefined,
   } = {}) {
     const child = core.opSync("op_spawn_child", {
       cmd: pathFromURL(command),
@@ -41,7 +41,7 @@
       stdin,
       stdout,
       stderr,
-      pty,
+      tty,
     });
     return new Child(illegalConstructorKey, {
       ...child,
@@ -194,7 +194,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
-    pty = undefined,
+    tty = undefined,
   } = {}) {
     if (stdin === "piped") {
       throw new TypeError(
@@ -212,7 +212,7 @@
       stdin,
       stdout,
       stderr,
-      pty,
+      tty,
     });
   }
 
