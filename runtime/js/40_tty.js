@@ -21,9 +21,14 @@
     core.opSync("op_set_raw", { rid, mode, options: rOptions });
   }
 
+  function resizeConsole(rid, size) {
+    core.opSync("op_resize_console", { rid, size });
+  }
+
   window.__bootstrap.tty = {
     consoleSize,
     isatty,
     setRaw,
+    resizeConsole,
   };
 })(this);

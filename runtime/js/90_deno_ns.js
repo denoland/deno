@@ -118,6 +118,7 @@
   __bootstrap.denoNsUnstable = {
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
+    resizeConsole: __bootstrap.tty.resizeConsole,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     loadavg: __bootstrap.os.loadavg,
     hostname: __bootstrap.os.hostname,

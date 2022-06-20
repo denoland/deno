@@ -47,6 +47,7 @@ pub fn init() -> Extension {
       op_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
+      op_resize_console::decl(),
     ])
     .build()
 }
@@ -225,9 +226,7 @@ fn op_console_size(
     {
       use std::os::unix::io::AsRawFd;
 
-      println!("before");
       let fd = std_file.as_raw_fd();
-      println!("{}, after", fd);
       unsafe {
         let mut size: libc::winsize = std::mem::zeroed();
         if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
@@ -244,4 +243,40 @@ fn op_console_size(
   })?;
 
   Ok(size)
+}
+
+#[derive(Deserialize)]
+pub struct ResizeConsoleArgs {
+  rid: ResourceId,
+  size: ConsoleSize,
+}
+
+#[op]
+fn op_resize_console(
+  state: &mut OpState,
+  args: ResizeConsoleArgs,
+) -> Result<(), AnyError> {
+  super::check_unstable(state, "Deno.resizeConsole");
+
+  StdFileResource::with_file(state, args.rid, move |std_file| {
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+
+      let fd = std_file.as_raw_fd();
+      let size = libc::winsize {
+        ws_row: args.size.rows as u16,
+        ws_col: args.size.columns as u16,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+      };
+      if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &size as *const _) }
+        != 0
+      {
+        Err(Error::last_os_error().into())
+      } else {
+        Ok(())
+      }
+    }
+  })
 }
