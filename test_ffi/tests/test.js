@@ -52,6 +52,54 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
+  "add_u32_nonblocking": {
+    name: "add_u32",
+    parameters: ["u32", "u32"],
+    result: "u32",
+    nonblocking: true,
+  },
+  "add_i32_nonblocking": {
+    name: "add_i32",
+    parameters: ["i32", "i32"],
+    result: "i32",
+    nonblocking: true,
+  },
+  "add_u64_nonblocking": {
+    name: "add_u64",
+    parameters: ["u64", "u64"],
+    result: "u64",
+    nonblocking: true,
+  },
+  "add_i64_nonblocking": {
+    name: "add_i64",
+    parameters: ["i64", "i64"],
+    result: "i64",
+    nonblocking: true,
+  },
+  "add_usize_nonblocking": {
+    name: "add_usize",
+    parameters: ["usize", "usize"],
+    result: "usize",
+    nonblocking: true,
+  },
+  "add_isize_nonblocking": {
+    name: "add_isize",
+    parameters: ["isize", "isize"],
+    result: "isize",
+    nonblocking: true,
+  },
+  "add_f32_nonblocking": {
+    name: "add_f32",
+    parameters: ["f32", "f32"],
+    result: "f32",
+    nonblocking: true,
+  },
+  "add_f64_nonblocking": {
+    name: "add_f64",
+    parameters: ["f64", "f64"],
+    result: "f64",
+    nonblocking: true,
+  },
   "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
   "sleep_nonblocking": {
     name: "sleep_blocking",
@@ -73,8 +121,62 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [],
     result: "pointer",
   },
+  // Callback function
+  call_fn_ptr: {
+    parameters: [{ function: { parameters: [], result: "void" } }],
+    result: "void",
+  },
+  call_fn_ptr_many_parameters: {
+    parameters: [{
+      function: {
+        parameters: [
+          "u8",
+          "i8",
+          "u16",
+          "i16",
+          "u32",
+          "i32",
+          "u64",
+          "i64",
+          "f32",
+          "f64",
+          "pointer",
+        ],
+        result: "void",
+      },
+    }],
+    result: "void",
+  },
+  call_fn_ptr_return_u8: {
+    parameters: [{ function: { parameters: [], result: "u8" } }],
+    result: "void",
+  },
+  call_fn_ptr_return_buffer: {
+    parameters: [{ function: { parameters: [], result: "pointer" } }],
+    result: "void",
+  },
+  store_function: {
+    parameters: [{ function: { parameters: [], result: "void" } }],
+    result: "void",
+  },
+  store_function_2: {
+    parameters: [{ function: { parameters: ["u8"], result: "u8" } }],
+    result: "void",
+  },
+  call_stored_function: {
+    parameters: [],
+    result: "void",
+  },
+  call_stored_function_2: {
+    parameters: ["u8"],
+    result: "void",
+  },
+  // Statics
   "static_u32": {
     type: "u32",
+  },
+  "static_i64": {
+    type: "i64",
   },
   "static_ptr": {
     type: "pointer",
@@ -135,14 +237,14 @@ assertThrows(
     dylib.symbols.add_u32(-1, 100);
   },
   TypeError,
-  "Expected FFI argument to be an unsigned integer, but got Number(-1)",
+  "Expected FFI argument to be an unsigned integer, but got '-1'",
 );
 assertThrows(
   () => {
     dylib.symbols.add_u32(null, 100);
   },
   TypeError,
-  "Expected FFI argument to be an unsigned integer, but got Null",
+  "Expected FFI argument to be an unsigned integer, but got 'null'",
 );
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -151,6 +253,21 @@ console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+
+// Test adders as nonblocking calls
+console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
+console.log(await dylib.symbols.add_u64_nonblocking(0xffffffffn, 0xffffffffn));
+console.log(
+  await dylib.symbols.add_i64_nonblocking(-0xffffffffn, -0xffffffffn),
+);
+console.log(
+  await dylib.symbols.add_usize_nonblocking(0xffffffffn, 0xffffffffn),
+);
+console.log(
+  await dylib.symbols.add_isize_nonblocking(-0xffffffffn, -0xffffffffn),
+);
+console.log(await dylib.symbols.add_f32_nonblocking(123.123, 456.789));
+console.log(await dylib.symbols.add_f64_nonblocking(123.123, 456.789));
 
 // test mutating sync calls
 
@@ -207,7 +324,84 @@ dylib.symbols.sleep_nonblocking(100).then(() => {
 console.log("Before");
 console.log(performance.now() - start < 100);
 
+// Test calls with callback parameters
+const logCallback = new Deno.UnsafeCallback(
+  { parameters: [], result: "void" },
+  () => console.log("logCallback"),
+);
+const logManyParametersCallback = new Deno.UnsafeCallback({
+  parameters: [
+    "u8",
+    "i8",
+    "u16",
+    "i16",
+    "u32",
+    "i32",
+    "u64",
+    "i64",
+    "f32",
+    "f64",
+    "pointer",
+  ],
+  result: "void",
+}, (u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, pointer) => {
+  const view = new Deno.UnsafePointerView(new Deno.UnsafePointer(pointer));
+  const copy_buffer = new Uint8Array(8);
+  view.copyInto(copy_buffer);
+  console.log(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, ...copy_buffer);
+});
+const returnU8Callback = new Deno.UnsafeCallback(
+  { parameters: [], result: "u8" },
+  () => 8,
+);
+const returnBufferCallback = new Deno.UnsafeCallback({
+  parameters: [],
+  result: "pointer",
+}, () => {
+  return buffer;
+});
+const add10Callback = new Deno.UnsafeCallback({
+  parameters: ["u8"],
+  result: "u8",
+}, (value) => value + 10);
+const throwCallback = new Deno.UnsafeCallback({
+  parameters: [],
+  result: "void",
+}, () => {
+  throw new TypeError("hi");
+});
+
+assertThrows(
+  () => {
+    dylib.symbols.call_fn_ptr(throwCallback);
+  },
+  TypeError,
+  "hi",
+);
+
+dylib.symbols.call_fn_ptr(logCallback);
+dylib.symbols.call_fn_ptr_many_parameters(logManyParametersCallback);
+dylib.symbols.call_fn_ptr_return_u8(returnU8Callback);
+dylib.symbols.call_fn_ptr_return_buffer(returnBufferCallback);
+dylib.symbols.store_function(logCallback);
+dylib.symbols.call_stored_function();
+dylib.symbols.store_function_2(add10Callback);
+dylib.symbols.call_stored_function_2(20);
+
+const nestedCallback = new Deno.UnsafeCallback(
+  { parameters: [], result: "void" },
+  () => {
+    dylib.symbols.call_stored_function_2(10);
+  },
+);
+dylib.symbols.store_function(nestedCallback);
+
+dylib.symbols.store_function(null);
+dylib.symbols.store_function_2(null);
+
+// Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
+console.log("Static i64:", dylib.symbols.static_i64);
 console.log(
   "Static ptr:",
   dylib.symbols.static_ptr instanceof Deno.UnsafePointer,
@@ -217,6 +411,13 @@ console.log("Static ptr value:", view.getUint32());
 
 function cleanup() {
   dylib.close();
+  throwCallback.close();
+  logCallback.close();
+  logManyParametersCallback.close();
+  returnU8Callback.close();
+  returnBufferCallback.close();
+  add10Callback.close();
+  nestedCallback.close();
 
   const resourcesPost = Deno.resources();
 

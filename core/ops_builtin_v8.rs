@@ -752,14 +752,14 @@ fn op_apply_source_map(
   location: Location,
 ) -> Result<Location, Error> {
   let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let state = &mut *state_rc.borrow_mut();
   if let Some(source_map_getter) = &state.source_map_getter {
     let mut location = location;
-    let (f, l, c, _) = apply_source_map_(
+    let (f, l, c) = apply_source_map_(
       location.file_name,
       location.line_number.into(),
       location.column_number.into(),
-      &mut Default::default(),
+      &mut state.source_map_cache,
       source_map_getter.as_ref(),
     );
     location.file_name = f;
