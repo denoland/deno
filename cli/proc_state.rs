@@ -694,11 +694,9 @@ impl SourceMapGetter for ProcState {
         _ => return None,
       }
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        let code = String::from_utf8(code).unwrap();
-        source_map_from_code(code).or(maybe_map)
+        source_map_from_code(&code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None, false) {
-        let code = String::from_utf8(source.code.to_vec()).unwrap();
-        source_map_from_code(code)
+        source_map_from_code(&source.code)
       } else {
         None
       }
@@ -756,21 +754,14 @@ pub fn import_map_from_text(
   Ok(result.import_map)
 }
 
-fn source_map_from_code(code: String) -> Option<Vec<u8>> {
-  let lines: Vec<&str> = code.split('\n').collect();
-  if let Some(last_line) = lines.last() {
-    if last_line
-      .starts_with("//# sourceMappingURL=data:application/json;base64,")
-    {
-      let input = last_line.trim_start_matches(
-        "//# sourceMappingURL=data:application/json;base64,",
-      );
-      let decoded_map = base64::decode(input)
-        .expect("Unable to decode source map from emitted file.");
-      Some(decoded_map)
-    } else {
-      None
-    }
+fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
+  static PREFIX: &[u8] = b"//# sourceMappingURL=data:application/json;base64,";
+  let last_line = code.rsplitn(2, |u| u == &b'\n').next().unwrap();
+  if last_line.starts_with(PREFIX) {
+    let input = last_line.split_at(PREFIX.len()).1;
+    let decoded_map = base64::decode(input)
+      .expect("Unable to decode source map from emitted file.");
+    Some(decoded_map)
   } else {
     None
   }
