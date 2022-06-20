@@ -346,9 +346,14 @@ declare namespace Deno {
     | "f64"
     | "pointer";
 
+  type NativeParameterType =
+    | NativeType
+    | NativeCallbackType;
+
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Parameters extends readonly NativeParameterType[] =
+      readonly NativeParameterType[],
     Result extends NativeType = NativeType,
     NonBlocking extends boolean = boolean,
   > {
@@ -391,11 +396,17 @@ declare namespace Deno {
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
     : T extends StaticNativeNumberType | StaticNativeBigIntType
       ? number | bigint
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
+    : T extends "pointer" ? UnsafePointer | TypedArray | null
+    : T extends NativeCallbackType<
+      infer U extends readonly NativeType[],
+      infer V extends NativeParameterType
+    > ? UnsafeCallback<U, V> | UnsafePointer | null
     : unknown;
 
   /** Infers a foreign function parameter list. */
-  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+  type StaticForeignFunctionParameters<
+    T extends readonly NativeParameterType[],
+  > = [
     ...{
       [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
     },
@@ -511,6 +522,83 @@ declare namespace Deno {
       Fn["nonblocking"],
       StaticForeignFunctionResult<Fn["result"]>
     >;
+  }
+
+  export interface UnsafeCallbackDefinition<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    parameters: Parameters;
+    result: Result;
+  }
+
+  interface NativeCallbackType<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    readonly function: UnsafeCallbackDefinition<Parameters, Result>;
+  }
+
+  type UnsafeCallbackParameters<T extends readonly NativeType[]> = T extends []
+    ? []
+    : T extends
+      readonly [infer U extends NativeType, ...(infer V extends NativeType[])]
+      ? [
+        UnsafeCallbackParameter<U>,
+        ...UnsafeCallbackParameters<V>,
+      ]
+    : never;
+
+  type UnsafeCallbackParameter<T extends NativeType> = T extends
+    StaticNativeBigIntType ? bigint
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer
+    : never;
+
+  type UnsafeCallbackResult<T extends NativeParameterType> = T extends "void"
+    ? void
+    : T extends StaticNativeBigIntType ? number | bigint
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer | TypedArray | null
+    : T extends NativeCallbackType<
+      infer U extends readonly NativeType[],
+      infer V extends NativeParameterType
+    > ? UnsafeCallback<U, V> | UnsafePointer | null
+    : never;
+
+  type UnsafeCallbackFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > = Result extends NativeParameterType
+    ? Parameters extends readonly [] ? () => UnsafeCallbackResult<Result>
+    : Parameters extends readonly NativeType[] ? (
+      ...args: UnsafeCallbackParameters<Parameters>
+    ) => UnsafeCallbackResult<Result>
+    : never
+    : never;
+
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe function pointer for passing JavaScript functions
+   * as C function pointers to ffi calls.
+   *
+   * The function pointer remains valid until the `close()` method is called.
+   */
+  export class UnsafeCallback<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeParameterType = NativeParameterType,
+  > {
+    constructor(
+      definition: UnsafeCallbackDefinition<Parameters, Result>,
+      callback: UnsafeCallbackFunction<Parameters, Result>,
+    );
+
+    pointer: UnsafePointer;
+    definition: UnsafeCallbackDefinition<Parameters, Result>;
+    callback: UnsafeCallbackFunction<Parameters, Result>;
+
+    close(): void;
   }
 
   /** A dynamic library resource */
