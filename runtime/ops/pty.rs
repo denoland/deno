@@ -27,7 +27,7 @@ impl Pty {
   pub fn new(size: ConsoleSize) -> Result<Pty, IoError> {
     let mut master_fd: RawFd = -1;
     let mut slave_fd: RawFd = -1;
-    let mut size = libc::winsize {
+    let size = libc::winsize {
       ws_row: size.rows as u16,
       ws_col: size.columns as u16,
       ws_ypixel: 0,
@@ -39,7 +39,7 @@ impl Pty {
         &mut slave_fd,
         null_mut(),
         null_mut(),
-        &mut size,
+        &size,
       )
     } != 0
     {
