@@ -181,11 +181,6 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    if (pty !== undefined) {
-      throw new TypeError(
-        "Psuedo-terminals is not supported for this function, use 'Deno.spawnChild' instead",
-      );
-    }
     return spawnChild(command, options).output();
   }
 
@@ -206,11 +201,6 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    if (pty !== undefined) {
-      throw new TypeError(
-        "Psuedo-terminals is not supported for this function, use 'Deno.spawnChild' instead",
-      );
-    }
     return core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
@@ -222,6 +212,7 @@
       stdin,
       stdout,
       stderr,
+      pty,
     });
   }
 
