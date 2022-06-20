@@ -452,6 +452,10 @@
         ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
       }
 
+      if (!requestObject.headers.has("Accept-Language")) {
+        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
+      }
+
       // 12.
       opPromise = PromisePrototypeCatch(
         PromisePrototypeThen(

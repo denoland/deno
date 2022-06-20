@@ -76,7 +76,6 @@
     "op_dgram_recv": ["receive a datagram message", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
     "op_dgram_send": ["send a datagram message", "awaiting the result of `Deno.DatagramConn#send` call"],
     "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
-    "op_emit": ["transpile code", "awaiting the result of a `Deno.emit` call"],
     "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
     "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
@@ -212,14 +211,16 @@
 
       let msg = `Test case is leaking async ops.
 
-- ${ArrayPrototypeJoin(details, "\n - ")}`;
+ - ${ArrayPrototypeJoin(details, "\n - ")}`;
 
       if (!core.isOpCallTracingEnabled()) {
         msg +=
           `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
+      } else {
+        msg += "\n";
       }
 
-      throw msg;
+      throw assert(false, msg);
     };
   }
 
