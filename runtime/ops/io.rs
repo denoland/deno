@@ -307,7 +307,7 @@ enum StdFileResourceInner {
   // the functionality in Rust's std/src/sys/windows/stdio.rs
   Stdout,
   Stderr,
-  Pty(Arc<Mutex<Pty>>),
+  Pty(Pty),
 }
 
 impl StdFileResourceInner {
@@ -316,7 +316,7 @@ impl StdFileResourceInner {
   }
 
   pub fn pty(pty: Pty) -> Self {
-    StdFileResourceInner::Pty(Arc::new(Mutex::new(pty)))
+    StdFileResourceInner::Pty(pty)
   }
 
   pub fn with_file<R>(&self, mut f: impl FnMut(&mut StdFile) -> R) -> R {
@@ -327,7 +327,7 @@ impl StdFileResourceInner {
       }
       Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
       Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
-      Self::Pty(pty) => f(&mut unsafe { StdFile::from_raw_fd(pty.lock().master_fd) })
+      Self::Pty(pty) => f(&mut unsafe { StdFile::from_raw_fd(pty.master_fd) })
     }
   }
 
@@ -355,7 +355,7 @@ impl Read for StdFileResourceInner {
       Self::File(file) | Self::Stdin(file) => file.lock().read(buf),
       Self::Stdout => Err(ErrorKind::Unsupported.into()),
       Self::Stderr => Err(ErrorKind::Unsupported.into()),
-      Self::Pty(pty) => Pty::read(pty.lock().master_fd, buf),
+      Self::Pty(pty) => pty.read(buf),
     }
   }
 }
@@ -367,7 +367,7 @@ impl Write for StdFileResourceInner {
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
       Self::Stdout => std::io::stdout().write(buf),
       Self::Stderr => std::io::stderr().write(buf),
-      Self::Pty(pty) => Pty::write(pty.lock().master_fd, buf),
+      Self::Pty(pty) => pty.write(buf),
     }
   }
 
@@ -424,7 +424,7 @@ impl StdFileResource {
         Arc::new(Mutex::new(STDERR_HANDLE.try_clone().unwrap()))
       }
       StdFileResourceInner::Pty(pty) => {
-        Arc::new(Mutex::new(unsafe { StdFile::from_raw_fd(pty.lock().master_fd) }))
+        Arc::new(Mutex::new(unsafe { StdFile::from_raw_fd(pty.master_fd) }))
       }
     }
   }

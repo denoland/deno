@@ -49,8 +49,8 @@ impl Pty {
   }
 
   #[cfg(unix)]
-  pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, IoError> {
-    let size = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut _, buf.len()) };
+  pub fn read(&self, buf: &mut [u8]) -> Result<usize, IoError> {
+    let size = unsafe { libc::read(self.master_fd, buf.as_mut_ptr() as *mut _, buf.len()) };
     if size == -1 {
       Err(IoError::last_os_error())
     } else {
@@ -59,8 +59,8 @@ impl Pty {
   }
 
   #[cfg(unix)]
-  pub fn write(fd: RawFd, buf: &[u8]) -> Result<usize, IoError> {
-    let size = unsafe { libc::write(fd, buf.as_ptr() as *const _, buf.len()) };
+  pub fn write(&self, buf: &[u8]) -> Result<usize, IoError> {
+    let size = unsafe { libc::write(self.master_fd, buf.as_ptr() as *const _, buf.len()) };
     if size == -1 {
       Err(IoError::last_os_error())
     } else {
@@ -76,6 +76,15 @@ impl Pty {
     }
     self.slave_fd = -1;
     self.master_fd = -1;
+  }
+}
+
+impl Clone for Pty {
+  fn clone(&self) -> Self {
+    Pty {
+      master_fd: self.master_fd.clone(),
+      slave_fd: self.slave_fd.clone(),
+    }
   }
 }
 
