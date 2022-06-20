@@ -23,6 +23,7 @@ use rustyline::EventHandler;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
+use rustyline::{ConditionalEventHandler, Event, EventContext, RepeatCount};
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -369,6 +370,10 @@ impl ReplEditor {
       KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
       EventHandler::Simple(Cmd::Newline),
     );
+    editor.bind_sequence(
+      KeyEvent::from('\t'),
+      EventHandler::Conditional(Box::new(TabEventHandler)),
+    );
 
     ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
@@ -389,5 +394,35 @@ impl ReplEditor {
 
     self.inner.lock().save_history(&self.history_file_path)?;
     Ok(())
+  }
+}
+
+/// A custom tab key event handler
+/// It uses a heuristic to determine if the user is requesting completion or if they want to insert an actual tab
+/// The heuristic goes like this:
+///   - If the last character before the cursor is whitespace, the the user wants to insert a tab
+///   - Else the user is requesting completion
+struct TabEventHandler;
+impl ConditionalEventHandler for TabEventHandler {
+  fn handle(
+    &self,
+    evt: &Event,
+    n: RepeatCount,
+    _: bool,
+    ctx: &EventContext,
+  ) -> Option<Cmd> {
+    debug_assert_eq!(*evt, Event::from(KeyEvent::from('\t')));
+    if ctx.line().is_empty()
+      || ctx.line()[..ctx.pos()]
+        .chars()
+        .rev()
+        .next()
+        .filter(|c| c.is_whitespace())
+        .is_some()
+    {
+      Some(Cmd::Insert(n, "\t".into()))
+    } else {
+      None // default complete
+    }
   }
 }
