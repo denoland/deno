@@ -171,8 +171,8 @@ impl<S: 'static> From<S> for WriteOnlyResource<S> {
 }
 
 impl<S> WriteOnlyResource<S>
-  where
-    S: AsyncWrite + Unpin + 'static,
+where
+  S: AsyncWrite + Unpin + 'static,
 {
   pub fn borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<S> {
     RcRef::map(self, |r| &r.stream).borrow_mut()
@@ -211,8 +211,8 @@ impl<S: 'static> From<S> for ReadOnlyResource<S> {
 }
 
 impl<S> ReadOnlyResource<S>
-  where
-    S: AsyncRead + Unpin + 'static,
+where
+  S: AsyncRead + Unpin + 'static,
 {
   pub fn borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<S> {
     RcRef::map(self, |r| &r.stream).borrow_mut()
@@ -443,7 +443,7 @@ impl StdFileResource {
         Ok((inner.read(&mut buf)?, buf))
       },
     )
-      .await?
+    .await?
   }
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
@@ -458,8 +458,8 @@ impl StdFileResource {
     rid: ResourceId,
     mut f: F,
   ) -> Result<R, AnyError>
-    where
-      F: FnMut(StdFileResourceInner) -> Result<R, AnyError>,
+  where
+    F: FnMut(StdFileResourceInner) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     f(resource.inner.clone())
@@ -470,8 +470,8 @@ impl StdFileResource {
     rid: ResourceId,
     f: F,
   ) -> Result<R, AnyError>
-    where
-      F: FnMut(&mut StdFile) -> Result<R, AnyError>,
+  where
+    F: FnMut(&mut StdFile) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     resource.inner.with_file(f)

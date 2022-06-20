@@ -270,9 +270,7 @@ fn op_resize_console(
         ws_xpixel: 0,
         ws_ypixel: 0,
       };
-      if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &size as *const _) }
-        != 0
-      {
+      if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &size as *const _) } != 0 {
         Err(Error::last_os_error().into())
       } else {
         Ok(())

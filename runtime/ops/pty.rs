@@ -1,13 +1,13 @@
 use super::tty::ConsoleSize;
-use deno_core::{op, error::AnyError, Extension, ResourceId, OpState};
+use crate::ops::io::StdFileResource;
+use deno_core::{error::AnyError, op, Extension, OpState, ResourceId};
 #[cfg(unix)]
 use std::{
-  io::Error as IoError,
-  os::unix::prelude::{RawFd, FromRawFd},
-  ptr::null_mut,
   fs::File,
+  io::Error as IoError,
+  os::unix::prelude::{FromRawFd, RawFd},
+  ptr::null_mut,
 };
-use crate::ops::io::StdFileResource;
 
 pub fn init() -> Extension {
   Extension::builder().ops(vec![op_pty_open::decl()]).build()
@@ -54,7 +54,9 @@ impl Pty {
   }
 
   pub fn read(&self, buf: &mut [u8]) -> Result<usize, IoError> {
-    let size = unsafe { libc::read(self.master_fd, buf.as_mut_ptr() as *mut _, buf.len()) };
+    let size = unsafe {
+      libc::read(self.master_fd, buf.as_mut_ptr() as *mut _, buf.len())
+    };
     if size == -1 {
       Err(IoError::last_os_error())
     } else {
@@ -63,7 +65,9 @@ impl Pty {
   }
 
   pub fn write(&self, buf: &[u8]) -> Result<usize, IoError> {
-    let size = unsafe { libc::write(self.master_fd, buf.as_ptr() as *const _, buf.len()) };
+    let size = unsafe {
+      libc::write(self.master_fd, buf.as_ptr() as *const _, buf.len())
+    };
     if size == -1 {
       Err(IoError::last_os_error())
     } else {
@@ -84,8 +88,8 @@ impl Pty {
 impl Clone for Pty {
   fn clone(&self) -> Self {
     Pty {
-      master_fd: self.master_fd.clone(),
-      slave_fd: self.slave_fd.clone(),
+      master_fd: self.master_fd,
+      slave_fd: self.slave_fd,
       file: self.file.try_clone().unwrap(),
     }
   }

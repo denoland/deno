@@ -53,7 +53,7 @@ pub enum WebWorkerType {
 }
 
 #[derive(
-Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
+  Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
 pub struct WorkerId(u32);
 
@@ -81,8 +81,8 @@ use deno_core::serde::Serializer;
 
 impl Serialize for WorkerControlEvent {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-      S: Serializer,
+  where
+    S: Serializer,
   {
     let type_id = match &self {
       WorkerControlEvent::TerminalError(_) => 1_i32,

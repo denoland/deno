@@ -2,16 +2,8 @@
 "use strict";
 ((window) => {
   const core = window.Deno.core;
-  const { pathFromURL } = window.__bootstrap.util;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
-  const {
-    ArrayPrototypeMap,
-    ObjectEntries,
-    String,
-    TypeError,
-    Uint8Array,
-    PromiseAll,
-  } = window.__bootstrap.primordials;
+  const { TypeError } = window.__bootstrap.primordials;
   const { readableStreamForRid, writableStreamForRid } =
     window.__bootstrap.streamUtils;
 

@@ -83,9 +83,9 @@ impl TryFrom<std::process::ExitStatus> for ChildStatus {
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {
     let code = status.code();
     #[cfg(unix)]
-      let signal = status.signal();
+    let signal = status.signal();
     #[cfg(not(unix))]
-      let signal: Option<i32> = None;
+    let signal: Option<i32> = None;
 
     let status = if let Some(signal) = signal {
       ChildStatus {
@@ -161,15 +161,15 @@ fn create_command(
     super::check_unstable(state, "Deno.spawn.tty");
     command.stdin(match args.stdio.stdin {
       Stdio::Null => ProcStdio::null(),
-      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?
+      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?,
     });
     command.stdout(match args.stdio.stdout {
       Stdio::Null => ProcStdio::null(),
-      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?
+      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?,
     });
     command.stderr(match args.stdio.stderr {
       Stdio::Null => ProcStdio::null(),
-      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?
+      _ => StdioOrRid::Rid(tty_rid).as_stdio(state)?,
     });
   } else {
     command.stdin(args.stdio.stdin.as_stdio());

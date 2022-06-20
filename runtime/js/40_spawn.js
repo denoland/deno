@@ -28,6 +28,7 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
+    pty = undefined,
   } = {}) {
     const child = core.opSync("op_spawn_child", {
       cmd: pathFromURL(command),
@@ -40,6 +41,7 @@
       stdin,
       stdout,
       stderr,
+      pty,
     });
     return new Child(illegalConstructorKey, {
       ...child,
@@ -179,6 +181,11 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
+    if (pty !== undefined) {
+      throw new TypeError(
+        "Psuedo-terminals is not supported for this function, use 'Deno.spawnChild' instead",
+      );
+    }
     return spawnChild(command, options).output();
   }
 
@@ -192,10 +199,16 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
+    pty = undefined,
   } = {}) {
     if (stdin === "piped") {
       throw new TypeError(
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+      );
+    }
+    if (pty !== undefined) {
+      throw new TypeError(
+        "Psuedo-terminals is not supported for this function, use 'Deno.spawnChild' instead",
       );
     }
     return core.opSync("op_spawn_sync", {

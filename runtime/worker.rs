@@ -320,7 +320,7 @@ impl MainWorker {
   /// Useful when using a local inspector session.
   pub async fn with_event_loop<'a, T>(
     &mut self,
-    mut fut: Pin<Box<dyn Future<Output=T> + 'a>>,
+    mut fut: Pin<Box<dyn Future<Output = T> + 'a>>,
   ) -> T {
     loop {
       tokio::select! {
@@ -329,8 +329,7 @@ impl MainWorker {
           return result;
         }
         _ = self.run_event_loop(false) => {}
-      }
-      ;
+      };
     }
   }
 
