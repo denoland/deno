@@ -674,7 +674,8 @@ impl SourceMapGetter for ProcState {
         _ => return None,
       }
       if let Some(cache_data) = self.dir.gen_cache.get_emit_data(&specifier) {
-        source_map_from_code(cache_data.text.as_bytes()).or_else(|| cache_data.map.map(|t| t.into_bytes()))
+        source_map_from_code(cache_data.text.as_bytes())
+          .or_else(|| cache_data.map.map(|t| t.into_bytes()))
       } else if let Ok(source) = self.load(specifier, None, false) {
         source_map_from_code(&source.code)
       } else {

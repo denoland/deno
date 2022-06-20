@@ -506,7 +506,7 @@ pub fn check_and_maybe_emit(
 
     // combine the emitted files into groups based on their specifier and media type
     let mut emit_data_items: HashMap<ModuleSpecifier, SpecifierEmitData> =
-      Default::default();
+      HashMap::with_capacity(response.emitted_files.len());
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -611,12 +611,9 @@ pub fn emit(
       module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
       &config_bytes,
     );
-    let is_valid =
-      cache
-        .get_source_hash(&module.specifier)
-        .map_or(false, |v| {
-          v == version
-        });
+    let is_valid = cache
+      .get_source_hash(&module.specifier)
+      .map_or(false, |v| v == version);
     if is_valid && !needs_reload {
       continue;
     }
@@ -626,11 +623,14 @@ pub fn emit(
       .map(|ps| ps.transpile(&emit_options))
       .unwrap()?;
     emit_count += 1;
-    cache.set_emit_data(module.specifier.clone(), SpecifierEmitCacheData {
-      source_hash: version,
-      text: transpiled_source.text,
-      map: transpiled_source.source_map,
-    })?;
+    cache.set_emit_data(
+      module.specifier.clone(),
+      SpecifierEmitCacheData {
+        source_hash: version,
+        text: transpiled_source.text,
+        map: transpiled_source.source_map,
+      },
+    )?;
   }
 
   let stats = Stats(vec![

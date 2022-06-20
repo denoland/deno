@@ -156,8 +156,7 @@ impl DiskCache {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<EmitMetadata> {
-    let filename = self
-      .get_cache_filename_with_extension(specifier, "meta")?;
+    let filename = self.get_cache_filename_with_extension(specifier, "meta")?;
     let bytes = self.get(&filename).ok()?;
     serde_json::from_slice(&bytes).ok()
   }
@@ -190,8 +189,8 @@ impl Cacher for DiskCache {
         return self.get_emit_metadata(specifier).map(|d| d.version_hash)
       }
     };
-    let filename = self
-      .get_cache_filename_with_extension(specifier, extension)?;
+    let filename =
+      self.get_cache_filename_with_extension(specifier, extension)?;
     self
       .get(&filename)
       .ok()
@@ -223,9 +222,7 @@ impl Cacher for DiskCache {
     let filename = self
       .get_cache_filename_with_extension(specifier, extension)
       .unwrap();
-    self
-      .set(&filename, value.as_bytes())
-      .map_err(|e| e.into())
+    self.set(&filename, value.as_bytes()).map_err(|e| e.into())
   }
 }
 
