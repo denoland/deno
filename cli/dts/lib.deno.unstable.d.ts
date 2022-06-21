@@ -257,6 +257,7 @@ declare namespace Deno {
     rid: number;
     readable: ReadableStream<Uint8Array>;
     writable: WritableStream<Uint8Array>;
+    close(): void;
   }
 
   /** The size of a console or a tty. */
