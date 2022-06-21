@@ -254,9 +254,9 @@ declare namespace Deno {
 
   /** A Pty fork with readable and writable streams. */
   export interface Pty {
-    rid: number;
-    readable: ReadableStream<Uint8Array>;
-    writable: WritableStream<Uint8Array>;
+    readonly rid: number;
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
     close(): void;
   }
 
