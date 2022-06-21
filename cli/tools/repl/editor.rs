@@ -423,7 +423,13 @@ impl ConditionalEventHandler for TabEventHandler {
         .filter(|c| c.is_whitespace())
         .is_some()
     {
-      Some(Cmd::Insert(n, "\t".into()))
+      if cfg!(target_os = "windows") {
+        // Inserting a tab is broken in windows with rustyline
+        // use 4 spaces as a workaround for now
+        Some(Cmd::Insert(n, "    ".into()))
+      } else {
+        Some(Cmd::Insert(n, "\t".into()))
+      }
     } else {
       None // default complete
     }
