@@ -19,7 +19,7 @@
       }
 
       this.#rid = rid;
-      this.readable = readableStreamForRid(rid);
+      this.readable = readableStreamForRid(rid, true);
       this.writable = writableStreamForRid(rid);
     }
   }
