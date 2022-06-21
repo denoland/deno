@@ -1,6 +1,6 @@
 [
   {
-    "title": "Extract to function in global scope",
+    "title": "Extract to function in module scope",
     "kind": "refactor.extract.function",
     "isPreferred": false,
     "data": {

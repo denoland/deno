@@ -887,11 +887,9 @@ Deno.test(function consoleTestWithCustomInspector() {
     [customInspect](
       inspect: unknown,
       options: Deno.InspectOptions,
-      depth: number,
     ): string {
       assertEquals(typeof inspect, "function");
       assertEquals(typeof options, "object");
-      assertEquals(depth, 0);
       return "b";
     }
   }

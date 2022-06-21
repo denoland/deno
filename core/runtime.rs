@@ -17,6 +17,7 @@ use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -163,6 +164,7 @@ pub(crate) struct JsRuntimeState {
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub(crate) source_map_cache: SourceMapCache,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
@@ -391,6 +393,7 @@ impl JsRuntime {
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
+      source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -1190,10 +1193,11 @@ impl JsRuntime {
   /// Evaluates an already instantiated ES module.
   ///
   /// Returns a receiver handle that resolves when module promise resolves.
-  /// Implementors must manually call `run_event_loop()` to drive module
-  /// evaluation future.
+  /// Implementors must manually call [`JsRuntime::run_event_loop`] to drive
+  /// module evaluation future.
   ///
-  /// `Error` can usually be downcast to `JsError`.
+  /// `Error` can usually be downcast to `JsError` and should be awaited and
+  /// checked after [`JsRuntime::run_event_loop`] completion.
   ///
   /// This function panics if module has not been instantiated.
   pub fn mod_evaluate(
@@ -1550,7 +1554,7 @@ impl JsRuntime {
   /// The module will be marked as "main", and because of that
   /// "import.meta.main" will return true when checked inside that module.
   ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_main_module(
     &mut self,
@@ -1609,7 +1613,7 @@ impl JsRuntime {
   /// This method is meant to be used when loading some utility code that
   /// might be later imported by the main module (ie. an entry point module).
   ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_side_module(
     &mut self,
