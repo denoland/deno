@@ -208,8 +208,8 @@ fn get_base_import_map_completions(
   import_map: &ImportMap,
 ) -> Vec<lsp::CompletionItem> {
   import_map
-    .imports_keys()
-    .iter()
+    .imports()
+    .keys()
     .map(|key| {
       // for some strange reason, keys that start with `/` get stored in the
       // import map as `file:///`, and so when we pull the keys out, we need to
@@ -253,7 +253,7 @@ fn get_import_map_completions(
   if !text.is_empty() {
     if let Some(import_map) = maybe_import_map {
       let mut items = Vec::new();
-      for key in import_map.imports_keys() {
+      for key in import_map.imports().keys() {
         // for some reason, the import_map stores keys that begin with `/` as
         // `file:///` in its index, so we have to reverse that here
         let key = if key.starts_with("file://") {

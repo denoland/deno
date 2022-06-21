@@ -51,7 +51,6 @@ use crate::flags::DocFlags;
 use crate::flags::EvalFlags;
 use crate::flags::Flags;
 use crate::flags::FmtFlags;
-use crate::flags::FutureTypeCheckMode;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
 use crate::flags::LintFlags;
@@ -179,7 +178,6 @@ fn create_web_worker_callback(
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      maybe_exit_code: args.maybe_exit_code,
       stdio: stdio.clone(),
       startup_snapshot: Some(deno_snapshots::cli_snapshot()),
     };
@@ -588,18 +586,6 @@ async fn check_command(
   flags: Flags,
   check_flags: CheckFlags,
 ) -> Result<i32, AnyError> {
-  // NOTE(bartlomieju): currently just an alias for `deno cache`, but
-  // it will be changed in Deno 2.0.
-  let mut flags = flags.clone();
-
-  // In `deno check` the default mode is to check only
-  // local modules, with `--remote` we check remote modules too.
-  flags.type_check_mode = if check_flags.remote {
-    TypeCheckMode::All
-  } else {
-    TypeCheckMode::Local
-  };
-
   cache_command(
     flags,
     CacheFlags {
@@ -735,7 +721,7 @@ async fn create_graph_and_maybe_check(
     let check_result = emit::check_and_maybe_emit(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      &mut cache,
+      &ps.dir.gen_cache,
       emit::CheckOptions {
         type_check_mode: ps.flags.type_check_mode.clone(),
         debug,
@@ -997,100 +983,6 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
-  let flags = Arc::new(flags);
-  let resolver = |_| {
-    let script1 = script.clone();
-    let script2 = script.clone();
-    let flags = flags.clone();
-    let watch_flag = flags.watch.clone();
-    async move {
-      let main_module = resolve_url_or_path(&script1)?;
-      let ps = ProcState::build(flags).await?;
-      let mut cache = cache::FetchCacher::new(
-        ps.dir.gen_cache.clone(),
-        ps.file_fetcher.clone(),
-        Permissions::allow_all(),
-        Permissions::allow_all(),
-      );
-      let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-      let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
-        config_file.to_maybe_imports()?
-      } else {
-        None
-      };
-      let maybe_import_map_resolver =
-        ps.maybe_import_map.clone().map(ImportMapResolver::new);
-      let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      });
-      let maybe_resolver = if maybe_jsx_resolver.is_some() {
-        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-      } else {
-        maybe_import_map_resolver
-          .as_ref()
-          .map(|im| im.as_resolver())
-      };
-      let graph = deno_graph::create_graph(
-        vec![(main_module.clone(), deno_graph::ModuleKind::Esm)],
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await;
-      let check_js = ps
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| cf.get_check_js())
-        .unwrap_or(false);
-      graph_valid(
-        &graph,
-        ps.flags.type_check_mode != flags::TypeCheckMode::None,
-        check_js,
-      )?;
-
-      // Find all local files in graph
-      let mut paths_to_watch: Vec<PathBuf> = graph
-        .specifiers()
-        .iter()
-        .filter_map(|(_, r)| {
-          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
-        })
-        .collect();
-
-      // Add the extra files listed in the watch flag
-      if let Some(watch_paths) = watch_flag {
-        paths_to_watch.extend(watch_paths);
-      }
-
-      if let Ok(Some(import_map_path)) =
-        config_file::resolve_import_map_specifier(
-          ps.flags.import_map_path.as_deref(),
-          ps.maybe_config_file.as_ref(),
-        )
-        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-      {
-        paths_to_watch.push(import_map_path);
-      }
-
-      Ok((paths_to_watch, main_module, ps))
-    }
-    .map(move |result| match result {
-      Ok((paths_to_watch, module_info, ps)) => ResolutionResult::Restart {
-        paths_to_watch,
-        result: Ok((ps, module_info)),
-      },
-      Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(script2)],
-        result: Err(e),
-      },
-    })
-  };
-
   /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
   /// state of any pending events and emitting accordingly on drop in the case of a future
   /// cancellation.
@@ -1146,10 +1038,19 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   }
 
-  let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
+  let flags = Arc::new(flags);
+  let main_module = resolve_url_or_path(&script)?;
+  let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+
+  let operation = |(sender, main_module): (
+    tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+    ModuleSpecifier,
+  )| {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options());
     async move {
+      let ps = ProcState::build_for_file_watcher(flags.clone(), sender.clone())
+        .await?;
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
@@ -1169,15 +1070,17 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   };
 
-  file_watcher::watch_func(
-    resolver,
+  file_watcher::watch_func2(
+    receiver,
     operation,
+    (sender, main_module),
     file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,
     },
   )
   .await?;
+
   Ok(0)
 }
 
@@ -1515,7 +1418,7 @@ pub fn main() {
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
-    let mut flags = match flags::flags_from_vec(args) {
+    let flags = match flags::flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
         if err.kind() == clap::ErrorKind::DisplayHelp
@@ -1531,26 +1434,6 @@ pub fn main() {
     }
 
     logger::init(flags.log_level);
-
-    // TODO(bartlomieju): v1.22 is a "pivot version" in terms of default
-    // type checking mode. We're opting into type checking only local
-    // files by default and in v1.23 we're not gonna type check at all by default.
-    // So right now, we're still allowing to use `--no-check` flag and if it is
-    // present, we opt into the "old" behavior. Additionally, if
-    // "DENO_FUTURE_CHECK" env var is present we're switching to the new behavior
-    // of skipping type checking completely if no `--check` flag is present.
-    let future_check_env_var = env::var("DENO_FUTURE_CHECK").ok();
-    if let Some(env_var) = future_check_env_var {
-      if env_var == "1" && !flags.has_check_flag {
-        flags.type_check_mode = TypeCheckMode::None;
-      }
-    } else if !flags.has_no_check_flag {
-      flags.type_check_mode = match &flags.future_type_check_mode {
-        FutureTypeCheckMode::None => TypeCheckMode::None,
-        FutureTypeCheckMode::All => TypeCheckMode::All,
-        FutureTypeCheckMode::Local => TypeCheckMode::Local,
-      }
-    }
 
     let exit_code = get_subcommand(flags).await;
 

@@ -1,10 +1,5 @@
-Deno.core.opSync("op_ffi_call_ptr", {
-  pointer: [0, 0],
-  def: {
-    name: null,
-    parameters: [],
-    result: "void",
-  },
+Deno.core.opSync("op_ffi_call_ptr", 0n, {
+  name: null,
   parameters: [],
-  buffers: [],
-});
+  result: "void",
+}, []);

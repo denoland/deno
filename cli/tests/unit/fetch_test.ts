@@ -643,6 +643,39 @@ Deno.test(
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
+      "accept-language: *\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n\r\n`,
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchRequestAcceptHeaders() {
+    const addr = "127.0.0.1:4501";
+    const bufPromise = bufferServer(addr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Accept", "text/html"],
+        ["Accept-Language", "en-US"],
+      ],
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "content-length: 0\r\n",
+      "accept: text/html\r\n",
+      "accept-language: en-US\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
@@ -678,6 +711,7 @@ Deno.test(
       "foo: Bar\r\n",
       "content-type: text/plain;charset=UTF-8\r\n",
       "accept: */*\r\n",
+      "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
@@ -715,6 +749,7 @@ Deno.test(
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
+      "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
@@ -1072,6 +1107,7 @@ Deno.test(
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
+      "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,

@@ -1,7 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache::CacheType;
+use crate::cache::Cacher;
+use crate::cache::EmitMetadata;
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
+use deno_ast::ModuleSpecifier;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::{Host, Url};
 use std::ffi::OsStr;
 use std::fs;
@@ -144,6 +150,79 @@ impl DiskCache {
     }?;
     fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
+  }
+
+  fn get_emit_metadata(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<EmitMetadata> {
+    let filename = self.get_cache_filename_with_extension(specifier, "meta")?;
+    let bytes = self.get(&filename).ok()?;
+    serde_json::from_slice(&bytes).ok()
+  }
+
+  fn set_emit_metadata(
+    &self,
+    specifier: &ModuleSpecifier,
+    data: EmitMetadata,
+  ) -> Result<(), AnyError> {
+    let filename = self
+      .get_cache_filename_with_extension(specifier, "meta")
+      .unwrap();
+    let bytes = serde_json::to_vec(&data)?;
+    self.set(&filename, &bytes).map_err(|e| e.into())
+  }
+}
+
+// todo(13302): remove and replace with sqlite database
+impl Cacher for DiskCache {
+  fn get(
+    &self,
+    cache_type: CacheType,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    let extension = match cache_type {
+      CacheType::Emit => "js",
+      CacheType::SourceMap => "js.map",
+      CacheType::TypeScriptBuildInfo => "buildinfo",
+      CacheType::Version => {
+        return self.get_emit_metadata(specifier).map(|d| d.version_hash)
+      }
+    };
+    let filename =
+      self.get_cache_filename_with_extension(specifier, extension)?;
+    self
+      .get(&filename)
+      .ok()
+      .and_then(|b| String::from_utf8(b).ok())
+  }
+
+  fn set(
+    &self,
+    cache_type: CacheType,
+    specifier: &ModuleSpecifier,
+    value: String,
+  ) -> Result<(), AnyError> {
+    let extension = match cache_type {
+      CacheType::Emit => "js",
+      CacheType::SourceMap => "js.map",
+      CacheType::TypeScriptBuildInfo => "buildinfo",
+      CacheType::Version => {
+        let data = if let Some(mut data) = self.get_emit_metadata(specifier) {
+          data.version_hash = value;
+          data
+        } else {
+          EmitMetadata {
+            version_hash: value,
+          }
+        };
+        return self.set_emit_metadata(specifier, data);
+      }
+    };
+    let filename = self
+      .get_cache_filename_with_extension(specifier, extension)
+      .unwrap();
+    self.set(&filename, value.as_bytes()).map_err(|e| e.into())
   }
 }
 

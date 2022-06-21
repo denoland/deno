@@ -1,9 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+"use strict";
+
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
-//
-"use strict";
 delete Object.prototype.__proto__;
+
+// Remove Intl.v8BreakIterator because it is a non-standard API.
+delete Intl.v8BreakIterator;
 
 ((window) => {
   const core = Deno.core;
@@ -231,7 +234,7 @@ delete Object.prototype.__proto__;
   function runtimeStart(runtimeOptions, source) {
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-    core.setFormatExceptionCallback(formatException);
+    core.opSync("op_set_format_exception_callback", formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
@@ -581,7 +584,6 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "error");
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
-
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
     // This prevents the recursive dispatches of unload events.
@@ -682,6 +684,11 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(self, "message");
     defineEventHandler(self, "error", undefined, true);
+    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
+    // code using an op in worker context is a no-op.
+    os.setExitHandler((_exitCode) => {
+      workerClose();
+    });
 
     runtimeStart(
       runtimeOptions,

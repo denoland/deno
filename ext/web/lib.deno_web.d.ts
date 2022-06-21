@@ -142,6 +142,7 @@ declare type EventListenerOrEventListenerObject =
 interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
+  signal?: AbortSignal;
 }
 
 interface EventListenerOptions {
@@ -730,7 +731,7 @@ declare class MessageEvent<T = any> extends Event {
    */
   readonly lastEventId: string;
   /**
-   * Returns transfered ports.
+   * Returns transferred ports.
    */
   readonly ports: ReadonlyArray<MessagePort>;
   constructor(type: string, eventInitDict?: MessageEventInit);
