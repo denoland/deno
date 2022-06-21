@@ -228,7 +228,7 @@ enum NativeType {
   F32,
   F64,
   Pointer,
-  Function {},
+  Function,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -248,7 +248,7 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
       NativeType::Pointer => libffi::middle::Type::pointer(),
-      NativeType::Function {} => libffi::middle::Type::pointer(),
+      NativeType::Function => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -289,7 +289,7 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer | NativeType::Function {} => Arg::new(&self.pointer),
+      NativeType::Pointer | NativeType::Function => Arg::new(&self.pointer),
     }
   }
 
@@ -317,7 +317,7 @@ impl NativeValue {
       }
       NativeType::F32 => Value::from(self.f32_value),
       NativeType::F64 => Value::from(self.f64_value),
-      NativeType::Pointer | NativeType::Function {} => {
+      NativeType::Pointer | NativeType::Function => {
         json!(U32x2::from(self.pointer as u64))
       }
     }
@@ -394,7 +394,7 @@ impl NativeValue {
           v8::Number::new(scope, self.f64_value).into();
         local_value.into()
       }
-      NativeType::Pointer | NativeType::Function {} => {
+      NativeType::Pointer | NativeType::Function => {
         let local_value: v8::Local<v8::Value> =
           v8::BigInt::new_from_u64(scope, self.pointer as u64).into();
         local_value.into()
@@ -702,7 +702,7 @@ where
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer, or ArrayBufferView"));
         }
       }
-      NativeType::Function {} => {
+      NativeType::Function => {
         if value.is_null() {
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
@@ -777,7 +777,7 @@ fn ffi_call(
     NativeType::F64 => NativeValue {
       f64_value: unsafe { cif.call::<f64>(fun_ptr, &call_args) },
     },
-    NativeType::Pointer | NativeType::Function {} => NativeValue {
+    NativeType::Pointer | NativeType::Function => NativeValue {
       pointer: unsafe { cif.call::<*const u8>(fun_ptr, &call_args) },
     },
   })
@@ -1245,7 +1245,7 @@ fn op_ffi_get_static<'scope>(
       let number = v8::Number::new(scope, result as f64);
       serde_v8::from_v8(scope, number.into())?
     }
-    NativeType::Pointer | NativeType::Function {} => {
+    NativeType::Pointer | NativeType::Function => {
       let result = data_ptr as *const u8 as u64;
       let big_int = v8::BigInt::new_from_u64(scope, result);
       serde_v8::from_v8(scope, big_int.into())?
