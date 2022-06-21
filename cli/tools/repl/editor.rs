@@ -371,7 +371,7 @@ impl ReplEditor {
       EventHandler::Simple(Cmd::Newline),
     );
     editor.bind_sequence(
-      KeyEvent::from('\t'),
+      KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
 
@@ -411,7 +411,10 @@ impl ConditionalEventHandler for TabEventHandler {
     _: bool,
     ctx: &EventContext,
   ) -> Option<Cmd> {
-    debug_assert_eq!(*evt, Event::from(KeyEvent::from('\t')));
+    debug_assert_eq!(
+      *evt,
+      Event::from(KeyEvent(KeyCode::Tab, Modifiers::NONE))
+    );
     if ctx.line().is_empty()
       || ctx.line()[..ctx.pos()]
         .chars()
