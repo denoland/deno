@@ -127,44 +127,27 @@ const dylib = Deno.dlopen(libPath, {
   },
   // Callback function
   call_fn_ptr: {
-    parameters: [{ function: { parameters: [], result: "void" } }],
+    parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_many_parameters: {
-    parameters: [{
-      function: {
-        parameters: [
-          "u8",
-          "i8",
-          "u16",
-          "i16",
-          "u32",
-          "i32",
-          "u64",
-          "i64",
-          "f32",
-          "f64",
-          "pointer",
-        ],
-        result: "void",
-      },
-    }],
+    parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_return_u8: {
-    parameters: [{ function: { parameters: [], result: "u8" } }],
+    parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_return_buffer: {
-    parameters: [{ function: { parameters: [], result: "pointer" } }],
+    parameters: ["function"],
     result: "void",
   },
   store_function: {
-    parameters: [{ function: { parameters: [], result: "void" } }],
+    parameters: ["function"],
     result: "void",
   },
   store_function_2: {
-    parameters: [{ function: { parameters: ["u8"], result: "u8" } }],
+    parameters: ["function"],
     result: "void",
   },
   call_stored_function: {

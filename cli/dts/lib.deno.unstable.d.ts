@@ -329,32 +329,86 @@ declare namespace Deno {
    */
   export function getGid(): number | null;
 
-  /** All possible types for interfacing with foreign functions */
-  export type NativeType =
-    | "void"
+  /** All plain number types for interfacing with foreign functions */
+  type NativeNumberType =
     | "u8"
     | "i8"
     | "u16"
     | "i16"
     | "u32"
     | "i32"
+    | "f32"
+    | "f64";
+
+  /** All BigInt number type sfor interfacing with foreign functions */
+  type NativeBigIntType =
     | "u64"
     | "i64"
     | "usize"
-    | "isize"
-    | "f32"
-    | "f64"
-    | "pointer";
+    | "isize";
 
-  type NativeParameterType =
-    | NativeType
-    | NativeCallbackType;
+  type NativePointerType = "pointer";
+
+  type NativeFunctionType = "function";
+
+  type NativeVoidType = "void";
+
+  /** All possible types for interfacing with foreign functions */
+  export type NativeType =
+    | NativeNumberType
+    | NativeBigIntType
+    | NativePointerType
+    | NativeFunctionType;
+
+  export type NativeResultType = NativeType | NativeVoidType;
+
+  /** Type conversion for foreign symbol parameters and unsafe callback return types */
+  type ToNativeType<T extends NativeType = NativeType> = T extends
+    NativeNumberType ? number
+    : T extends NativeBigIntType ? bigint | number
+    : T extends NativePointerType ? TypedArray | bigint | null
+    : T extends NativeFunctionType ? bigint | null
+    : never;
+
+  /** Type conversion for unsafe callback return types */
+  type ToNativeResultType<T extends NativeResultType = NativeResultType> =
+    T extends NativeType ? ToNativeType<T>
+      : T extends NativeVoidType ? void
+      : never;
+
+  type ToNativeParameterTypes<T extends readonly NativeType[]> = T extends
+    readonly [] ? []
+    : T extends readonly [
+      infer U extends NativeType,
+      ...(infer V extends NativeType[]),
+    ] ? [ToNativeType<U>, ...ToNativeParameterTypes<V>]
+    : never;
+
+  /** Type conversion for foreign symbol return types and unsafe callback parameters */
+  type FromNativeType<T extends NativeType = NativeType> = T extends
+    NativeNumberType ? number
+    : T extends NativeBigIntType | NativePointerType | NativeFunctionType
+      ? bigint
+    : never;
+
+  /** Type conversion for foregin symbol return types */
+  type FromNativeResultType<T extends NativeResultType = NativeResultType> =
+    T extends NativeType ? FromNativeType<T>
+      : T extends NativeVoidType ? void
+      : never;
+
+  type FromNativeParameterTypes<T extends readonly NativeType[]> = T extends
+    readonly [] ? []
+    : T extends readonly [
+      infer U extends NativeType,
+      ...(infer V extends NativeType[]),
+    ] ? [FromNativeType<U>, ...FromNativeParameterTypes<V>]
+    : never;
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
-    Parameters extends readonly NativeParameterType[] =
-      readonly NativeParameterType[],
-    Result extends NativeType = NativeType,
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
     NonBlocking extends boolean = boolean,
   > {
     /** Name of the symbol, defaults to the key name in symbols object. */
@@ -368,7 +422,7 @@ declare namespace Deno {
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
     name?: string;
-    type: Exclude<Type, "void">;
+    type: Type;
   }
 
   /** A foreign library interface descriptor */
@@ -376,49 +430,20 @@ declare namespace Deno {
     [name: string]: ForeignFunction | ForeignStatic;
   }
 
-  /** All possible number types interfacing with foreign functions */
-  type StaticNativeNumberType = Exclude<
-    NativeType,
-    "void" | "pointer" | StaticNativeBigIntType
-  >;
-
-  /** All possible bigint types interfacing with foreign functions */
-  type StaticNativeBigIntType = "u64" | "i64" | "usize" | "isize";
-
-  /** Infers a foreign function return type */
-  type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
-    ? void
-    : T extends StaticNativeBigIntType ? bigint
-    : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? bigint
-    : never;
-
-  type StaticForeignFunctionParameter<T> = T extends "void" ? void
-    : T extends StaticNativeNumberType | StaticNativeBigIntType
-      ? number | bigint
-    : T extends "pointer" ? bigint | TypedArray | null
-    : T extends NativeCallbackType ? bigint | null
-    : unknown;
-
-  /** Infers a foreign function parameter list. */
-  type StaticForeignFunctionParameters<
-    T extends readonly NativeParameterType[],
-  > = [
-    ...{
-      [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
-    },
-  ];
-
   /** Infers a foreign symbol */
   type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
-    T extends ForeignFunction ? (
-      ...args: StaticForeignFunctionParameters<T["parameters"]>
-    ) => ConditionalAsync<
-      T["nonblocking"],
-      StaticForeignFunctionResult<T["result"]>
-    >
-      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+    T extends ForeignFunction ? FromForeignFunction<T>
+      : T extends ForeignStatic ? FromNativeType<T["type"]>
       : never;
+
+  type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
+    readonly [] ? () => StaticForeignSymbolReturnType<T>
+    : (
+      ...args: ToNativeParameterTypes<T["parameters"]>
+    ) => StaticForeignSymbolReturnType<T>;
+
+  type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+    ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
 
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
@@ -504,63 +529,23 @@ declare namespace Deno {
 
     constructor(pointer: bigint, definition: Fn);
 
-    call(
-      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
-    ): ConditionalAsync<
-      Fn["nonblocking"],
-      StaticForeignFunctionResult<Fn["result"]>
-    >;
+    call: FromForeignFunction<Fn>;
   }
 
   export interface UnsafeCallbackDefinition<
     Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeParameterType = NativeParameterType,
+    Result extends NativeResultType = NativeResultType,
   > {
     parameters: Parameters;
     result: Result;
   }
 
-  interface NativeCallbackType<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeParameterType = NativeParameterType,
-  > {
-    readonly function: UnsafeCallbackDefinition<Parameters, Result>;
-  }
-
-  type UnsafeCallbackParameters<T extends readonly NativeType[]> = T extends []
-    ? []
-    : T extends
-      readonly [infer U extends NativeType, ...(infer V extends NativeType[])]
-      ? [
-        UnsafeCallbackParameter<U>,
-        ...UnsafeCallbackParameters<V>,
-      ]
-    : never;
-
-  type UnsafeCallbackParameter<T extends NativeType> = T extends
-    StaticNativeBigIntType ? bigint
-    : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? bigint
-    : never;
-
-  type UnsafeCallbackResult<T extends NativeParameterType> = T extends "void"
-    ? void
-    : T extends StaticNativeBigIntType ? number | bigint
-    : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? bigint | TypedArray | null
-    : T extends NativeCallbackType ? bigint | null
-    : never;
-
   type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeParameterType = NativeParameterType,
-  > = Result extends NativeParameterType
-    ? Parameters extends readonly [] ? () => UnsafeCallbackResult<Result>
-    : Parameters extends readonly NativeType[] ? (
-      ...args: UnsafeCallbackParameters<Parameters>
-    ) => UnsafeCallbackResult<Result>
-    : never
-    : never;
+    Result extends NativeResultType = NativeResultType,
+  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
+    ...args: FromNativeParameterTypes<Parameters>
+  ) => ToNativeResultType<Result>;
 
   /**
    * **UNSTABLE**: Unsafe and new API, beware!
@@ -571,17 +556,22 @@ declare namespace Deno {
    * The function pointer remains valid until the `close()` method is called.
    */
   export class UnsafeCallback<
-    Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeParameterType = NativeParameterType,
+    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
   > {
     constructor(
-      definition: UnsafeCallbackDefinition<Parameters, Result>,
-      callback: UnsafeCallbackFunction<Parameters, Result>,
+      definition: Definition,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
     );
 
     pointer: bigint;
-    definition: UnsafeCallbackDefinition<Parameters, Result>;
-    callback: UnsafeCallbackFunction<Parameters, Result>;
+    definition: Definition;
+    callback: UnsafeCallbackFunction<
+      Definition["parameters"],
+      Definition["result"]
+    >;
 
     close(): void;
   }
