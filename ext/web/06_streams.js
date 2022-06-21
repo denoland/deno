@@ -647,7 +647,7 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
-  function readableStreamForRid(rid) {
+  function readableStreamForRid(rid, closeOnBadResource = false) {
     const stream = new ReadableStream({
       type: "bytes",
       async pull(controller) {
@@ -662,7 +662,12 @@
             controller.byobRequest.respond(bytesRead);
           }
         } catch (e) {
-          controller.error(e);
+          if (closeOnBadResource && e instanceof core.BadResource) {
+            controller.close();
+            controller.byobRequest.respond(0);
+          } else {
+            controller.error(e);
+          }
           core.tryClose(rid);
         }
       },
