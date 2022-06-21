@@ -1157,6 +1157,8 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+    /** The tty the input will be received from and output will be sent to. */
+    tty?: Pty;
   }
 
   /**
