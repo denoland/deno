@@ -94,6 +94,7 @@ fn get_os_error_code(errno: i32) -> &'static str {
     libc::ENOMEM => "ENOMEM",
     libc::ENOSPC => "ENOSPC",
     libc::ENOTCONN => "ENOTCONN",
+    libc::ENOTDIR => "ENOTDIR",
     libc::ENOTEMPTY => "ENOTEMPTY",
     libc::ENOTSOCK => "ENOTSOCK",
     libc::ENOTSUP => "ENOTSUP",

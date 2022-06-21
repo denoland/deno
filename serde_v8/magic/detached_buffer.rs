@@ -6,12 +6,12 @@ use std::ops::DerefMut;
 
 use super::transl8::FromV8;
 use super::transl8::ToV8;
-use super::zero_copy_buf::to_ranged_buffer;
-use super::zero_copy_buf::ZeroCopyBuf;
+use super::v8slice::to_ranged_buffer;
+use super::v8slice::V8Slice;
 use crate::magic::transl8::impl_magic;
 
 // A buffer that detaches when deserialized from JS
-pub struct DetachedBuffer(ZeroCopyBuf);
+pub struct DetachedBuffer(V8Slice);
 impl_magic!(DetachedBuffer);
 
 impl AsRef<[u8]> for DetachedBuffer {
@@ -64,6 +64,6 @@ impl FromV8 for DetachedBuffer {
     }
     let store = b.get_backing_store();
     b.detach(); // Detach
-    Ok(Self(ZeroCopyBuf { store, range }))
+    Ok(Self(V8Slice { store, range }))
   }
 }

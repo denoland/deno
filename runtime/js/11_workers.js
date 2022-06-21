@@ -27,7 +27,6 @@
     specifier,
     hasSourceCode,
     sourceCode,
-    useDenoNamespace,
     permissions,
     name,
     workerType,
@@ -38,7 +37,6 @@
       permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
-      useDenoNamespace,
       workerType,
     });
   }
@@ -79,20 +77,6 @@
         type = "classic",
       } = options;
 
-      let namespace;
-      let permissions;
-      if (typeof deno == "object") {
-        namespace = deno.namespace ?? false;
-        permissions = deno.permissions ?? undefined;
-      } else {
-        // Assume `deno: boolean | undefined`.
-        // TODO(Soremwar)
-        // `deno: boolean` is kept for backwards compatibility with the previous
-        // worker options implementation. Remove for 2.0
-        namespace = !!deno;
-        permissions = undefined;
-      }
-
       const workerType = webidl.converters["WorkerType"](type);
 
       if (
@@ -120,8 +104,7 @@
         specifier,
         hasSourceCode,
         sourceCode,
-        namespace,
-        permissions,
+        deno?.permissions,
         name,
         workerType,
       );
@@ -134,17 +117,16 @@
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        lineno: e.lineNumber ? e.lineNumber : undefined,
+        colno: e.columnNumber ? e.columnNumber : undefined,
         filename: e.fileName,
         error: null,
       });
 
       this.dispatchEvent(event);
       // Don't bubble error event to window for loader errors (`!e.fileName`).
-      // TODO(nayeemrmn): Currently these are never bubbled because worker
-      // error event fields aren't populated correctly and `e.fileName` is
-      // always empty.
+      // TODO(nayeemrmn): It's not correct to use `e.fileName` to detect user
+      // errors. It won't be there for non-awaited async ops for example.
       if (e.fileName && !event.defaultPrevented) {
         window.dispatchEvent(event);
       }

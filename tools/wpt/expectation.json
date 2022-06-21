@@ -902,21 +902,13 @@
       "event.any.worker.html": true
     },
     "events": {
-      "AddEventListenerOptions-once.any.html": [
-        "Once listener should be added / removed like normal listeners"
-      ],
-      "AddEventListenerOptions-once.any.worker.html": [
-        "Once listener should be added / removed like normal listeners"
-      ],
+      "AddEventListenerOptions-once.any.html": true,
+      "AddEventListenerOptions-once.any.worker.html": true,
       "AddEventListenerOptions-passive.any.html": [
-        "Supports passive option on addEventListener only",
-        "returnValue should be ignored if-and-only-if the passive option is true",
-        "Equivalence of option values"
+        "returnValue should be ignored if-and-only-if the passive option is true"
       ],
       "AddEventListenerOptions-passive.any.worker.html": [
-        "Supports passive option on addEventListener only",
-        "returnValue should be ignored if-and-only-if the passive option is true",
-        "Equivalence of option values"
+        "returnValue should be ignored if-and-only-if the passive option is true"
       ],
       "AddEventListenerOptions-signal.any.html": true,
       "AddEventListenerOptions-signal.any.worker.html": true,
@@ -1169,30 +1161,16 @@
   "hr-time": {
     "monotonic-clock.any.html": true,
     "monotonic-clock.any.worker.html": true,
-    "basic.any.html": [
-      "Performance interface extends EventTarget."
-    ],
-    "basic.any.worker.html": [
-      "Performance interface extends EventTarget."
-    ],
+    "basic.any.html": true,
+    "basic.any.worker.html": true,
     "idlharness.any.html": [
-      "Performance interface: existence and properties of interface object",
-      "Performance interface: existence and properties of interface prototype object",
-      "Performance interface: attribute timeOrigin",
-      "Performance interface: performance must inherit property \"timeOrigin\" with the proper type",
-      "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
     ],
     "idlharness.any.worker.html": [
-      "Performance interface: existence and properties of interface object",
-      "Performance interface: existence and properties of interface prototype object",
-      "Performance interface: attribute timeOrigin",
-      "Performance interface: performance must inherit property \"timeOrigin\" with the proper type",
-      "Performance interface: default toJSON operation on performance",
       "WorkerGlobalScope interface: attribute performance",
       "WorkerGlobalScope interface: self must inherit property \"performance\" with the proper type"
     ],
-    "window-worker-timeOrigin.window.html": false,
+    "window-worker-timeOrigin.window.html": true,
     "idlharness-shadowrealm.window.html": false
   },
   "streams": {
@@ -1409,8 +1387,12 @@
         "validate.any.worker.html": true
       },
       "global": {
-        "constructor.any.html": true,
-        "constructor.any.worker.html": true,
+        "constructor.any.html": [
+          "Construct v128 global"
+        ],
+        "constructor.any.worker.html": [
+          "Construct v128 global"
+        ],
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "type.tentative.any.html": false,
@@ -1420,12 +1402,8 @@
         "valueOf.any.html": true,
         "valueOf.any.worker.html": true
       },
-      "idlharness.any.html": [
-        "Table interface: operation set(unsigned long, optional any)"
-      ],
-      "idlharness.any.worker.html": [
-        "Table interface: operation set(unsigned long, optional any)"
-      ],
+      "idlharness.any.html": true,
+      "idlharness.any.worker.html": true,
       "instance": {
         "constructor-bad-imports.any.html": true,
         "constructor-bad-imports.any.worker.html": true,
@@ -1438,12 +1416,8 @@
         "toString.any.html": true,
         "toString.any.worker.html": true
       },
-      "interface.any.html": [
-        "WebAssembly.Table.set: length"
-      ],
-      "interface.any.worker.html": [
-        "WebAssembly.Table.set: length"
-      ],
+      "interface.any.html": true,
+      "interface.any.worker.html": true,
       "memory": {
         "buffer.any.html": true,
         "buffer.any.worker.html": true,
@@ -3044,12 +3018,8 @@
         ],
         "text-utf8.any.html": true,
         "text-utf8.any.worker.html": true,
-        "accept-header.any.html": [
-          "Request through fetch should have a 'accept-language' header"
-        ],
-        "accept-header.any.worker.html": [
-          "Request through fetch should have a 'accept-language' header"
-        ],
+        "accept-header.any.html": true,
+        "accept-header.any.worker.html": true,
         "conditional-get.any.html": false,
         "conditional-get.any.worker.html": false,
         "error-after-response.any.html": false,
@@ -3211,7 +3181,9 @@
         "response-consume-stream.any.html": true,
         "response-consume-stream.any.worker.html": true,
         "response-init-contenttype.any.html": true,
-        "response-init-contenttype.any.worker.html": true
+        "response-init-contenttype.any.worker.html": true,
+        "response-static-json.any.html": true,
+        "response-static-json.any.worker.html": true
       },
       "body": {
         "formdata.any.html": [
@@ -4190,12 +4162,12 @@
     "eventhandlers.any.worker.html?wss": true,
     "referrer.any.html": true,
     "referrer.any.worker.html": true,
-    "Close-delayed.any.html": false,
+    "Close-delayed.any.html": true,
     "Close-delayed.any.html?wpt_flags=h2": false,
-    "Close-delayed.any.html?wss": false,
-    "Close-delayed.any.worker.html": false,
+    "Close-delayed.any.html?wss": true,
+    "Close-delayed.any.worker.html": true,
     "Close-delayed.any.worker.html?wpt_flags=h2": false,
-    "Close-delayed.any.worker.html?wss": false,
+    "Close-delayed.any.worker.html?wss": true,
     "stream": {
       "tentative": {
         "abort.any.html?wss": true,

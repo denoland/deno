@@ -4,39 +4,9 @@ use crate::colors::cyan;
 use crate::colors::italic_bold;
 use crate::colors::red;
 use crate::colors::yellow;
-use deno_core::error::{AnyError, JsError, JsStackFrame};
-use deno_core::url::Url;
-use std::error::Error;
-use std::fmt;
-use std::ops::Deref;
-
-const SOURCE_ABBREV_THRESHOLD: usize = 150;
-const DATA_URL_ABBREV_THRESHOLD: usize = 150;
-
-pub fn format_file_name(file_name: &str) -> String {
-  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
-    if let Ok(url) = Url::parse(file_name) {
-      if url.scheme() == "data" {
-        let data_path = url.path();
-        if let Some(data_pieces) = data_path.split_once(',') {
-          let data_length = data_pieces.1.len();
-          if let Some(data_start) = data_pieces.1.get(0..20) {
-            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
-              return format!(
-                "{}:{},{}......{}",
-                url.scheme(),
-                data_pieces.0,
-                data_start,
-                data_end
-              );
-            }
-          }
-        }
-      }
-    }
-  }
-  file_name.to_string()
-}
+use deno_core::error::format_file_name;
+use deno_core::error::JsError;
+use deno_core::error::JsStackFrame;
 
 // Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
@@ -67,7 +37,6 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   result
 }
 
-// Keep in sync with `runtime/js/40_error_stack.js`.
 fn format_frame(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
@@ -144,8 +113,7 @@ fn format_maybe_source_line(
   let source_line = source_line.unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
   // an empty source line when displayed, so need just short circuit here.
-  // Also short-circuit on error line too long.
-  if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
+  if source_line.is_empty() {
     return "".to_string();
   }
   if source_line.contains("Couldn't format source line: ") {
@@ -181,12 +149,12 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-fn format_js_error(js_error: &JsError, is_child: bool) -> String {
+fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
   let mut s = String::new();
   s.push_str(&js_error.exception_message);
   if let Some(aggregated) = &js_error.aggregated {
     for aggregated_error in aggregated {
-      let error_string = format_js_error(aggregated_error, true);
+      let error_string = format_js_error_inner(aggregated_error, true);
       for line in error_string.trim_start_matches("Uncaught ").lines() {
         s.push_str(&format!("\n    {}", line));
       }
@@ -209,7 +177,7 @@ fn format_js_error(js_error: &JsError, is_child: bool) -> String {
     s.push_str(&format!("\n    at {}", format_frame(frame)));
   }
   if let Some(cause) = &js_error.cause {
-    let error_string = format_js_error(cause, true);
+    let error_string = format_js_error_inner(cause, true);
     s.push_str(&format!(
       "\nCaused by: {}",
       error_string.trim_start_matches("Uncaught ")
@@ -218,32 +186,9 @@ fn format_js_error(js_error: &JsError, is_child: bool) -> String {
   s
 }
 
-/// Wrapper around deno_core::JsError which provides colorful
-/// string representation.
-#[derive(Debug)]
-pub struct PrettyJsError(JsError);
-
-impl PrettyJsError {
-  pub fn create(js_error: JsError) -> AnyError {
-    let pretty_js_error = Self(js_error);
-    pretty_js_error.into()
-  }
+pub fn format_js_error(js_error: &JsError) -> String {
+  format_js_error_inner(js_error, false)
 }
-
-impl Deref for PrettyJsError {
-  type Target = JsError;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl fmt::Display for PrettyJsError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}", &format_js_error(&self.0, false))
-  }
-}
-
-impl Error for PrettyJsError {}
 
 #[cfg(test)]
 mod tests {

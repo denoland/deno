@@ -4,7 +4,6 @@ use crate::deno_dir::DenoDir;
 use crate::flags::CompileFlags;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
-use crate::flags::FutureTypeCheckMode;
 use crate::flags::RunFlags;
 use crate::flags::TypeCheckMode;
 use crate::fs_util;
@@ -264,7 +263,7 @@ pub fn compile_to_runtime_flags(
     cache_blocklist: vec![],
     cache_path: None,
     cached_only: false,
-    config_path: None,
+    config_flag: Default::default(),
     coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,
     ignore: vec![],
@@ -275,9 +274,7 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    type_check_mode: TypeCheckMode::All,
-    future_type_check_mode: FutureTypeCheckMode::None,
-    has_check_flag: false,
+    type_check_mode: TypeCheckMode::Local,
     compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors

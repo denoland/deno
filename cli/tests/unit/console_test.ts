@@ -52,7 +52,7 @@ function parseCss(cssString: string): Css {
   return parseCss_(cssString);
 }
 
-function parseCssColor(colorString: string): Css {
+function parseCssColor(colorString: string): [number, number, number] | null {
   return parseCssColor_(colorString);
 }
 
@@ -884,7 +884,12 @@ Deno.test(async function consoleTestStringifyPromises() {
 
 Deno.test(function consoleTestWithCustomInspector() {
   class A {
-    [customInspect](): string {
+    [customInspect](
+      inspect: unknown,
+      options: Deno.InspectOptions,
+    ): string {
+      assertEquals(typeof inspect, "function");
+      assertEquals(typeof options, "object");
       return "b";
     }
   }
@@ -1937,6 +1942,71 @@ Deno.test(function inspectErrorCircular() {
 Deno.test(function inspectColors() {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
+});
+
+Deno.test(function inspectEmptyArray() {
+  const arr: string[] = [];
+
+  assertEquals(
+    Deno.inspect(arr, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "[\n]",
+  );
+});
+
+Deno.test(function inspectDeepEmptyArray() {
+  const obj = {
+    arr: [],
+  };
+
+  assertEquals(
+    Deno.inspect(obj, {
+      compact: false,
+      trailingComma: true,
+    }),
+    `{
+  arr: [
+  ],
+}`,
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const map = new Map();
+
+  assertEquals(
+    Deno.inspect(map, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Map {\n}",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const set = new Set();
+
+  assertEquals(
+    Deno.inspect(set, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Set {\n}",
+  );
+});
+
+Deno.test(function inspectEmptyMap() {
+  const typedArray = new Uint8Array(0);
+
+  assertEquals(
+    Deno.inspect(typedArray, {
+      compact: false,
+      trailingComma: true,
+    }),
+    "Uint8Array(0) [\n]",
+  );
 });
 
 Deno.test(function inspectStringAbbreviation() {
