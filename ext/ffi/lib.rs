@@ -324,6 +324,7 @@ impl NativeValue {
   }
 
   // SAFETY: native_type must correspond to the type of value represented by the union field
+  #[inline]
   unsafe fn to_v8<'scope>(
     &self,
     scope: &mut v8::HandleScope<'scope>,
@@ -731,6 +732,243 @@ where
   }
 
   Ok(ffi_args)
+}
+
+// A one-off synchronous FFI call.
+fn ffi_call_sync<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  args: serde_v8::Value<'scope>,
+  symbol: &Symbol,
+) -> Result<NativeValue, AnyError>
+where
+  'scope: 'scope,
+{
+  let Symbol {
+    parameter_types,
+    result_type,
+    cif,
+    ptr: fun_ptr,
+  } = symbol;
+  let args = v8::Local::<v8::Array>::try_from(args.v8_value)
+    .map_err(|_| type_error("Invalid FFI parameters, expected Array"))?;
+  let mut ffi_args: Vec<NativeValue> =
+    Vec::with_capacity(parameter_types.len());
+  let mut call_args: Vec<Arg> = Vec::with_capacity(parameter_types.len());
+
+  for (index, native_type) in parameter_types.iter().enumerate() {
+    let value = args.get_index(scope, index as u32).unwrap();
+    match native_type {
+      NativeType::Void => {
+        unreachable!();
+      }
+      NativeType::U8 => {
+        let value = value
+          .uint32_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI u8 type, expected number"))?
+          as u8;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { u8_value: value });
+      }
+      NativeType::I8 => {
+        let value = value
+          .int32_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI i8 type, expected number"))?
+          as i8;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { i8_value: value });
+      }
+      NativeType::U16 => {
+        let value = value
+          .uint32_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI u16 type, expected number"))?
+          as u16;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { u16_value: value });
+      }
+      NativeType::I16 => {
+        let value = value
+          .int32_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI i16 type, expected number"))?
+          as i16;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { i16_value: value });
+      }
+      NativeType::U32 => {
+        let value = value
+          .uint32_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI u32 type, expected number"))?
+          as u32;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { u32_value: value });
+      }
+      NativeType::I32 => {
+        let value = value
+          .int32_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI i32 type, expected number"))?
+          as i32;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { i32_value: value });
+      }
+      NativeType::U64 => {
+        let value: u64 =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.u64_value().0
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI u64 type, expected number")
+            })? as u64
+          };
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { u64_value: value });
+      }
+      NativeType::I64 => {
+        let value: i64 =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.i64_value().0
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI i64 type, expected number")
+            })? as i64
+          };
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { i64_value: value });
+      }
+      NativeType::USize => {
+        let value: usize =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.u64_value().0 as usize
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI usize type, expected number")
+            })? as usize
+          };
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { usize_value: value });
+      }
+      NativeType::ISize => {
+        let value: isize =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.i64_value().0 as isize
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI isize type, expected number")
+            })? as isize
+          };
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { isize_value: value });
+      }
+      NativeType::F32 => {
+        let value = value
+          .number_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI f32 type, expected number"))?
+          as f32;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { f32_value: value });
+      }
+      NativeType::F64 => {
+        let value = value
+          .number_value(scope)
+          .ok_or_else(|| type_error("Invalid FFI f64 type, expected number"))?
+          as f64;
+        call_args.push(Arg::new(&value));
+        ffi_args.push(NativeValue { f64_value: value });
+      }
+      NativeType::Pointer => {
+        if value.is_null() {
+          let value: *const u8 = ptr::null();
+          call_args.push(Arg::new(&value));
+          ffi_args.push(NativeValue { pointer: value })
+        } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+          let value = value.u64_value().0 as *const u8;
+          call_args.push(Arg::new(&value));
+          ffi_args.push(NativeValue { pointer: value });
+        } else if let Ok(value) =
+          v8::Local::<v8::ArrayBufferView>::try_from(value)
+        {
+          let byte_offset = value.byte_offset();
+          let backing_store = value
+            .buffer(scope)
+            .ok_or_else(|| {
+              type_error(
+                "Invalid FFI ArrayBufferView, expected data in the buffer",
+              )
+            })?
+            .get_backing_store();
+          let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+          call_args.push(Arg::new(&pointer));
+          ffi_args.push(NativeValue { pointer });
+        } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
+        {
+          let backing_store = value.get_backing_store();
+          let pointer = &backing_store as *const _ as *const u8;
+          call_args.push(Arg::new(&pointer));
+          ffi_args.push(NativeValue { pointer });
+        } else {
+          return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer, or ArrayBufferView"));
+        }
+      }
+      NativeType::Function => {
+        if value.is_null() {
+          let value: *const u8 = ptr::null();
+          call_args.push(Arg::new(&value));
+          ffi_args.push(NativeValue { pointer: value })
+        } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+          let value = value.u64_value().0 as *const u8;
+          call_args.push(Arg::new(&value));
+          ffi_args.push(NativeValue { pointer: value });
+        } else {
+          return Err(type_error(
+            "Invalid FFI function type, expected null, or BigInt",
+          ));
+        }
+      }
+    }
+  }
+
+  Ok(match result_type {
+    NativeType::Void => NativeValue {
+      void_value: unsafe { cif.call::<()>(*fun_ptr, &call_args) },
+    },
+    NativeType::U8 => NativeValue {
+      u8_value: unsafe { cif.call::<u8>(*fun_ptr, &call_args) },
+    },
+    NativeType::I8 => NativeValue {
+      i8_value: unsafe { cif.call::<i8>(*fun_ptr, &call_args) },
+    },
+    NativeType::U16 => NativeValue {
+      u16_value: unsafe { cif.call::<u16>(*fun_ptr, &call_args) },
+    },
+    NativeType::I16 => NativeValue {
+      i16_value: unsafe { cif.call::<i16>(*fun_ptr, &call_args) },
+    },
+    NativeType::U32 => NativeValue {
+      u32_value: unsafe { cif.call::<u32>(*fun_ptr, &call_args) },
+    },
+    NativeType::I32 => NativeValue {
+      i32_value: unsafe { cif.call::<i32>(*fun_ptr, &call_args) },
+    },
+    NativeType::U64 => NativeValue {
+      u64_value: unsafe { cif.call::<u64>(*fun_ptr, &call_args) },
+    },
+    NativeType::I64 => NativeValue {
+      i64_value: unsafe { cif.call::<i64>(*fun_ptr, &call_args) },
+    },
+    NativeType::USize => NativeValue {
+      usize_value: unsafe { cif.call::<usize>(*fun_ptr, &call_args) },
+    },
+    NativeType::ISize => NativeValue {
+      isize_value: unsafe { cif.call::<isize>(*fun_ptr, &call_args) },
+    },
+    NativeType::F32 => NativeValue {
+      f32_value: unsafe { cif.call::<f32>(*fun_ptr, &call_args) },
+    },
+    NativeType::F64 => NativeValue {
+      f64_value: unsafe { cif.call::<f64>(*fun_ptr, &call_args) },
+    },
+    NativeType::Pointer | NativeType::Function => NativeValue {
+      pointer: unsafe { cif.call::<*const u8>(*fun_ptr, &call_args) },
+    },
+  })
 }
 
 fn ffi_call(
@@ -1276,26 +1514,15 @@ fn op_ffi_call<'scope>(
   symbol: String,
   parameters: serde_v8::Value<'scope>,
 ) -> Result<serde_v8::Value<'scope>, AnyError> {
-  let symbol = {
-    let state = &mut state.borrow();
-    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
+  let state = state.borrow();
+  let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
-    resource
-      .symbols
-      .get(&symbol)
-      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
-      .clone()
-  };
-
-  let call_args = ffi_parse_args(scope, parameters, &symbol.parameter_types)?;
-
-  let result = ffi_call(
-    call_args,
-    &symbol.cif,
-    symbol.ptr,
-    &symbol.parameter_types,
-    symbol.result_type,
-  )?;
+  let symbol = resource
+    .symbols
+    .get(&symbol)
+    .ok_or_else(|| type_error("Invalid FFI symbol name"))?;
+  drop(state);
+  let result = ffi_call_sync(scope, parameters, &symbol)?;
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   let result = unsafe { result.to_v8(scope, symbol.result_type) };
   Ok(result)
