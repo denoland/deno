@@ -1063,7 +1063,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       );
 
       executor.execute(&main_module).await?;
-      Ok(executor.worker.get_exit_code())
+      Ok(())
     }
   };
 
