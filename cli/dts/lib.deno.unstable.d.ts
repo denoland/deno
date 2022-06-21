@@ -241,7 +241,7 @@ declare namespace Deno {
    *       console.log("%sx%s", size.columns, size.rows);
    *     `
    *   ],
-   *   tty: pty.rid,
+   *   tty: pty,
    * });
    *
    * const reader = pty.readable.getReader();
