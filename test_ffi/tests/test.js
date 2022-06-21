@@ -174,6 +174,9 @@ dylib.symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
+// Test subarrays
+const subarray = buffer.subarray(3);
+dylib.symbols.print_buffer(subarray, subarray.length - 2);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 const ptr0 = dylib.symbols.return_buffer();
 dylib.symbols.print_buffer(ptr0, 8);
