@@ -8,7 +8,11 @@ macro_rules! assert_ends_with {
         } else {
           &actual[actual.len() - expected.len()..]
         };
-        assert_eq!(actual, *expected, "should end with expected.");
+        pretty_assertions::assert_eq!(
+          actual,
+          *expected,
+          "should end with expected."
+        );
       }
     }
   };
