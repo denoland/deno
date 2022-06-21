@@ -267,7 +267,10 @@
     destructureError: opSync.bind(null, "op_destructure_error"),
     terminate: opSync.bind(null, "op_terminate"),
     opNames: opSync.bind(null, "op_op_names"),
-    setPromiseRejectCallback: opSync.bind(null, "op_op_names"),
+    setPromiseRejectCallback: opSync.bind(
+      null,
+      "op_set_promise_reject_callback",
+    ),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
