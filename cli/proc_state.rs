@@ -9,6 +9,7 @@ use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
+use crate::emit::EmitCache;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
@@ -499,7 +500,7 @@ impl ProcState {
         reload: self.flags.reload,
         reload_exclusions,
       };
-      let emit_result = emit::emit(&graph, &mut cache, options)?;
+      let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
       log::debug!("{}", emit_result.stats);
     } else {
       let maybe_config_specifier = self
@@ -519,7 +520,7 @@ impl ProcState {
       let emit_result = emit::check_and_maybe_emit(
         &roots,
         self.graph_data.clone(),
-        &mut cache,
+        &self.dir.gen_cache,
         options,
       )?;
       if !emit_result.diagnostics.is_empty() {
@@ -633,16 +634,10 @@ impl ProcState {
           | MediaType::Cts
           | MediaType::Jsx
           | MediaType::Tsx => {
-            let emit_path = self
-              .dir
-              .gen_cache
-              .get_cache_filename_with_extension(&found_url, "js")
-              .unwrap_or_else(|| {
-                unreachable!("Unable to get cache filename: {}", &found_url)
-              });
-            match self.dir.gen_cache.get(&emit_path) {
-              Ok(b) => String::from_utf8(b).unwrap(),
-              Err(_) => unreachable!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag or deleting your DENO_DIR.", found_url),
+            let cached_text = self.dir.gen_cache.get_emit_text(&found_url);
+            match cached_text {
+              Some(text) => text,
+              None => unreachable!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag or deleting your DENO_DIR.", found_url),
             }
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
@@ -665,28 +660,6 @@ impl ProcState {
       )),
     }
   }
-
-  // TODO(@kitsonk) this should be refactored to get it from the module graph
-  fn get_emit(&self, url: &Url) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
-    let emit_path = self
-      .dir
-      .gen_cache
-      .get_cache_filename_with_extension(url, "js")?;
-    let emit_map_path = self
-      .dir
-      .gen_cache
-      .get_cache_filename_with_extension(url, "js.map")?;
-    if let Ok(code) = self.dir.gen_cache.get(&emit_path) {
-      let maybe_map = if let Ok(map) = self.dir.gen_cache.get(&emit_map_path) {
-        Some(map)
-      } else {
-        None
-      };
-      Some((code, maybe_map))
-    } else {
-      None
-    }
-  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
@@ -700,8 +673,9 @@ impl SourceMapGetter for ProcState {
         "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
         _ => return None,
       }
-      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        source_map_from_code(&code).or(maybe_map)
+      if let Some(cache_data) = self.dir.gen_cache.get_emit_data(&specifier) {
+        source_map_from_code(cache_data.text.as_bytes())
+          .or_else(|| cache_data.map.map(|t| t.into_bytes()))
       } else if let Ok(source) = self.load(specifier, None, false) {
         source_map_from_code(&source.code)
       } else {
