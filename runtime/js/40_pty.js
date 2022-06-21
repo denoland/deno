@@ -22,6 +22,10 @@
       this.readable = readableStreamForRid(rid, true);
       this.writable = writableStreamForRid(rid);
     }
+
+    close() {
+      core.tryClose(this.#rid);
+    }
   }
 
   function openPty({
