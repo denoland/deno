@@ -127,44 +127,27 @@ const dylib = Deno.dlopen(libPath, {
   },
   // Callback function
   call_fn_ptr: {
-    parameters: [{ function: { parameters: [], result: "void" } }],
+    parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_many_parameters: {
-    parameters: [{
-      function: {
-        parameters: [
-          "u8",
-          "i8",
-          "u16",
-          "i16",
-          "u32",
-          "i32",
-          "u64",
-          "i64",
-          "f32",
-          "f64",
-          "pointer",
-        ],
-        result: "void",
-      },
-    }],
+    parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_return_u8: {
-    parameters: [{ function: { parameters: [], result: "u8" } }],
+    parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_return_buffer: {
-    parameters: [{ function: { parameters: [], result: "pointer" } }],
+    parameters: ["function"],
     result: "void",
   },
   store_function: {
-    parameters: [{ function: { parameters: [], result: "void" } }],
+    parameters: ["function"],
     result: "void",
   },
   store_function_2: {
-    parameters: [{ function: { parameters: ["u8"], result: "u8" } }],
+    parameters: ["function"],
     result: "void",
   },
   call_stored_function: {
@@ -191,6 +174,9 @@ dylib.symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
+// Test subarrays
+const subarray = buffer.subarray(3);
+dylib.symbols.print_buffer(subarray, subarray.length - 2);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 const ptr0 = dylib.symbols.return_buffer();
 dylib.symbols.print_buffer(ptr0, 8);
