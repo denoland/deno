@@ -1203,37 +1203,36 @@ fn op_ffi_get_static<'scope>(
     NativeType::U8 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u8) };
       let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+        v8::Integer::new_from_unsigned(scope, result as u32).into();
       number.into()
     }
     NativeType::I8 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i8) };
       let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+        v8::Integer::new(scope, result as i32).into();
       number.into()
     }
     NativeType::U16 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u16) };
       let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+        v8::Integer::new_from_unsigned(scope, result as u32).into();
       number.into()
     }
     NativeType::I16 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i16) };
       let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+        v8::Integer::new(scope, result as i32).into();
       number.into()
     }
     NativeType::U32 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u32) };
       let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+        v8::Integer::new_from_unsigned(scope, result).into();
       number.into()
     }
     NativeType::I32 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i32) };
-      let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+      let number: v8::Local<v8::Value> = v8::Integer::new(scope, result).into();
       number.into()
     }
     NativeType::U64 => {
@@ -1268,8 +1267,7 @@ fn op_ffi_get_static<'scope>(
     }
     NativeType::F64 => {
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f64) };
-      let number: v8::Local<v8::Value> =
-        v8::Number::new(scope, result as f64).into();
+      let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
       number.into()
     }
     NativeType::Pointer | NativeType::Function => {
