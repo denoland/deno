@@ -2281,16 +2281,16 @@ declare namespace Deno {
     readonly rid: number;
     readonly pid: number;
     readonly stdin: T["stdin"] extends "piped" ? Writer & Closer & {
-      writable: WritableStream<Uint8Array>;
-    }
+        writable: WritableStream<Uint8Array>;
+      }
       : (Writer & Closer & { writable: WritableStream<Uint8Array> }) | null;
     readonly stdout: T["stdout"] extends "piped" ? Reader & Closer & {
-      readable: ReadableStream<Uint8Array>;
-    }
+        readable: ReadableStream<Uint8Array>;
+      }
       : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
     readonly stderr: T["stderr"] extends "piped" ? Reader & Closer & {
-      readable: ReadableStream<Uint8Array>;
-    }
+        readable: ReadableStream<Uint8Array>;
+      }
       : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
     /** Wait for the process to exit and return its exit status.
      *
