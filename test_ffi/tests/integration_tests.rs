@@ -85,6 +85,10 @@ fn basic() {
     30\n\
     STORED_FUNCTION cleared\n\
     STORED_FUNCTION_2 cleared\n\
+    Thread safe call counter: 0\n\
+    logCallback\n\
+    Thread safe call counter: 1\n\
+    u8: 8\n\
     Static u32: 42\n\
     Static i64: -1242464576485n\n\
     Static ptr: true\n\

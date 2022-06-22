@@ -130,11 +130,22 @@ const dylib = Deno.dlopen(libPath, {
     parameters: ["function"],
     result: "void",
   },
+  call_fn_ptr_thread_safe: {
+    name: "call_fn_ptr",
+    parameters: ["function"],
+    result: "void",
+    nonblocking: true,
+  },
   call_fn_ptr_many_parameters: {
     parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_return_u8: {
+    parameters: ["function"],
+    result: "void",
+  },
+  call_fn_ptr_return_u8_thread_safe: {
+    name: "call_fn_ptr_return_u8",
     parameters: ["function"],
     result: "void",
   },
@@ -376,6 +387,19 @@ dylib.symbols.store_function(ptr(nestedCallback));
 dylib.symbols.store_function(null);
 dylib.symbols.store_function_2(null);
 
+let counter = 0;
+const addToFooCallback = new Deno.UnsafeCallback({
+  parameters: [],
+  result: "void",
+}, () => counter++);
+
+// Test thread safe callbacks
+console.log("Thread safe call counter:", counter);
+await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+console.log("Thread safe call counter:", counter);
+await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
+
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
 console.log("Static i64:", dylib.symbols.static_i64);
@@ -395,6 +419,7 @@ function cleanup() {
   returnBufferCallback.close();
   add10Callback.close();
   nestedCallback.close();
+  addToFooCallback.close();
 
   const resourcesPost = Deno.resources();
 

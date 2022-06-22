@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
+use std::sync::mpsc;
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -37,8 +38,13 @@ use std::ptr;
 use std::rc::Rc;
 
 thread_local! {
+  static ASYNC_WORK_SENDER: RefCell<Option<mpsc::SyncSender<PendingFfiAsyncWork>>> = RefCell::new(None);
   static IS_ISOLATE_THREAD: RefCell<bool> = RefCell::new(false);
 }
+
+static mut ASYNC_WORK_SENDER_SOURCE: Option<
+  mpsc::SyncSender<PendingFfiAsyncWork>,
+> = None;
 
 pub struct Unstable(pub bool);
 
@@ -122,7 +128,6 @@ impl DynamicLibraryResource {
     name: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
-    IS_ISOLATE_THREAD.with(|s| s.replace(true));
     let symbol = match &foreign_fn.name {
       Some(symbol) => symbol,
       None => &name,
@@ -174,6 +179,14 @@ impl DynamicLibraryResource {
   }
 }
 
+type PendingFfiAsyncWork = (Box<dyn FnOnce()>, mpsc::SyncSender<()>);
+
+struct FfiState {
+  //async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
+  async_work_receiver: mpsc::Receiver<PendingFfiAsyncWork>,
+  active_refd_functions: usize,
+}
+
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -201,9 +214,47 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_f64::decl::<P>(),
       op_ffi_unsafe_callback_create::decl::<P>(),
     ])
+    .event_loop_middleware(|op_state_rc, _cx| {
+      // FFI callbacks coming in from other threads will call in and get queued.
+      let mut maybe_scheduling = false;
+
+      let mut work_work: Vec<PendingFfiAsyncWork> = vec![];
+
+      {
+        let op_state = op_state_rc.borrow();
+        let ffi_state = op_state.borrow::<FfiState>();
+
+        while let Ok(work) = ffi_state.async_work_receiver.try_recv() {
+          work_work.push(work);
+          maybe_scheduling = true;
+        }
+
+        if ffi_state.active_refd_functions > 0 {
+          maybe_scheduling = true;
+        }
+      }
+      while let Some((async_work_fut, response_sender)) = work_work.pop() {
+        async_work_fut();
+        response_sender.try_send(()).unwrap();
+      }
+
+      maybe_scheduling
+    })
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
       state.put(Unstable(unstable));
+
+      let (async_work_sender, async_work_receiver) =
+        mpsc::sync_channel::<PendingFfiAsyncWork>(100);
+
+      unsafe { ASYNC_WORK_SENDER_SOURCE = Some(async_work_sender.clone()) };
+
+      state.put(FfiState {
+        active_refd_functions: 0,
+        async_work_receiver,
+        //async_work_sender,
+      });
+
       Ok(())
     })
     .build()
@@ -529,6 +580,9 @@ fn op_ffi_load<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  // An odd place to init this data but whatever.
+  IS_ISOLATE_THREAD.with(|s| s.replace(true));
+
   let path = args.path;
 
   check_unstable(state, "Deno.dlopen");
@@ -839,15 +893,35 @@ unsafe extern "C" fn deno_ffi_callback(
     NonNull<v8::Context>,
     v8::Local<v8::Context>,
   >(info.context);
-  IS_ISOLATE_THREAD.with(|is_event_loop_thread| {
-    if !(*is_event_loop_thread.borrow()) {
-      // Call from another thread, not yet supported.
-      eprintln!(
-        "Calling Deno FFI's callbacks from other threads is not supported"
-      );
-      std::process::exit(1);
+  let mut is_event_loop_thread = true;
+  IS_ISOLATE_THREAD.with(|s| {
+    if *s.borrow() {
+      // Isolate thread, a-okay
+    } else {
+      is_event_loop_thread = false;
     }
   });
+  if !is_event_loop_thread {
+    ASYNC_WORK_SENDER.with(|s| {
+      if s.borrow().is_none() {
+        let async_work_sender = ASYNC_WORK_SENDER_SOURCE.clone();
+        s.replace(async_work_sender);
+      }
+      // safeish, since we block until the message has been received. Lets just hope that we don't
+      // exit before the isolate thread deno_ffi_callback has been called to finalization...
+      let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
+      let result: &'static mut c_void = std::mem::transmute(result);
+      let info: &'static CallbackInfo = std::mem::transmute(info);
+      let fut = Box::new(move || {
+        deno_ffi_callback(cif, result, args, info);
+      });
+      let async_work_sender = s.borrow().as_ref().unwrap().clone();
+      let (response_sender, response_receiver) = mpsc::sync_channel::<()>(1);
+      async_work_sender.try_send((fut, response_sender)).unwrap();
+      response_receiver.recv().unwrap();
+    });
+    return;
+  }
   // Call from main thread. If this callback is being triggered due to a
   // function call coming from Deno itself, then this callback will build
   // ontop of that stack.
