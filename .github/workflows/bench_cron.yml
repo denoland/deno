@@ -1,6 +1,7 @@
 name: bench
 
 on:
+  # Runs at minute 9 past hour 0, 6, 12, and 18.
   schedule:
     - cron: 9 0,6,12,18 * * *
   workflow_dispatch:
