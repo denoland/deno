@@ -235,7 +235,7 @@
     symbols = {};
 
     constructor(path, symbols) {
-      this.#rid = core.opSync("op_ffi_load", { path, symbols });
+      [this.#rid, this.symbols] = core.opSync("op_ffi_load", { path, symbols });
 
       for (const symbol in symbols) {
         if ("type" in symbols[symbol]) {
@@ -289,26 +289,17 @@
 
             return promise;
           };
-        } else {
-          fn = (...parameters) =>
-            core.opSync(
-              "op_ffi_call",
-              this.#rid,
-              symbol,
-              parameters,
-            );
+          ObjectDefineProperty(
+            this.symbols,
+            symbol,
+            {
+              configurable: false,
+              enumerable: true,
+              value: fn,
+              writable: false,
+            },
+          );
         }
-
-        ObjectDefineProperty(
-          this.symbols,
-          symbol,
-          {
-            configurable: false,
-            enumerable: true,
-            value: fn,
-            writable: false,
-          },
-        );
       }
     }
 
