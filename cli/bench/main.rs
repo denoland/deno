@@ -118,7 +118,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   (
     "check",
     &[
-      "cache",
+      "check",
       "--reload",
       "--unstable",
       "test_util/std/examples/chat/server_test.ts",

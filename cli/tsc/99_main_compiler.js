@@ -83,10 +83,10 @@ delete Object.prototype.__proto__;
 
   // deno-fmt-ignore
   const base64abc = [
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", 
-    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", 
-    "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", 
-    "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7", 
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
+    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d",
+    "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
+    "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7",
     "8", "9", "+", "/",
   ];
 
@@ -188,17 +188,6 @@ delete Object.prototype.__proto__;
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
-    // TS1208: All files must be modules when the '--isolatedModules' flag is
-    // provided.  We can ignore because we guarantee that all files are
-    // modules.
-    1208,
-    // TS1375: 'await' expressions are only allowed at the top level of a file
-    // when that file is a module, but this file has no imports or exports.
-    // Consider adding an empty 'export {}' to make this file a module.
-    1375,
-    // TS2306: File 'file:///Users/rld/src/deno/cli/tests/testdata/subdir/amd_like.js' is
-    // not a module.
-    2306,
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
     2688,

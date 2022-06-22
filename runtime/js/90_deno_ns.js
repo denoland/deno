@@ -139,6 +139,7 @@
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
+    UnsafeCallback: __bootstrap.ffi.UnsafeCallback,
     UnsafePointer: __bootstrap.ffi.UnsafePointer,
     UnsafePointerView: __bootstrap.ffi.UnsafePointerView,
     UnsafeFnPointer: __bootstrap.ffi.UnsafeFnPointer,

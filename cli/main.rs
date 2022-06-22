@@ -719,7 +719,7 @@ async fn create_graph_and_maybe_check(
     let check_result = emit::check_and_maybe_emit(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      &mut cache,
+      &ps.dir.gen_cache,
       emit::CheckOptions {
         type_check_mode: ps.flags.type_check_mode.clone(),
         debug,

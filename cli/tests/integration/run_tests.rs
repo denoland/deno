@@ -2704,3 +2704,27 @@ itest!(error_name_non_string {
   output: "error_name_non_string.js.out",
   exit_code: 1,
 });
+
+itest!(custom_inspect_url {
+  args: "run custom_inspect_url.js",
+  output: "custom_inspect_url.js.out",
+});
+
+#[test]
+fn running_declaration_files() {
+  let temp_dir = TempDir::new();
+  let files = vec!["file.d.ts", "file.d.cts", "file.d.mts"];
+
+  for file in files {
+    temp_dir.write(file, "");
+    let mut deno_cmd = util::deno_cmd_with_deno_dir(&temp_dir);
+    let output = deno_cmd
+      .current_dir(temp_dir.path())
+      .args(["run", file])
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+  }
+}

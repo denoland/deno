@@ -6,7 +6,7 @@ const remote = Deno.dlopen(
   "dummy_lib.so",
   {
     method1: { parameters: ["usize", "usize"], result: "void" },
-    method2: { parameters: ["void"], result: "void" },
+    method2: { parameters: [], result: "void" },
     method3: { parameters: ["usize"], result: "void" },
     method4: { parameters: ["isize"], result: "void" },
     method5: { parameters: ["u8"], result: "void" },
@@ -24,6 +24,20 @@ const remote = Deno.dlopen(
     method17: { parameters: [], result: "usize", nonblocking: true },
     method18: { parameters: [], result: "pointer" },
     method19: { parameters: [], result: "pointer", nonblocking: true },
+    method20: {
+      parameters: ["pointer"],
+      result: "void",
+    },
+    method21: {
+      parameters: [
+        "pointer",
+      ],
+      result: "void",
+    },
+    method22: {
+      parameters: ["pointer"],
+      result: "void",
+    },
     static1: { type: "usize" },
     static2: { type: "pointer" },
     static3: { type: "usize" },
@@ -41,15 +55,32 @@ const remote = Deno.dlopen(
   } as const,
 );
 
+Deno.dlopen(
+  "dummy_lib_2.so",
+  // @ts-expect-error: Returning a function pointer
+  // is declared using "pointer" or "function" + UnsafeFnPointer
+  {
+    wrong_method1: {
+      parameters: [],
+      result: {
+        function: {
+          parameters: [],
+          result: "void",
+        },
+      },
+    },
+  } as const,
+);
+
 // @ts-expect-error: Invalid argument
 remote.symbols.method1(0);
 // @ts-expect-error: Invalid return type
 <number> remote.symbols.method1(0, 0);
 <void> remote.symbols.method1(0n, 0n);
 
-// @ts-expect-error: Invalid argument
+// @ts-expect-error: Expected 0 arguments, but got 1.
 remote.symbols.method2(null);
-remote.symbols.method2(void 0);
+remote.symbols.method2();
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method3(null);
@@ -102,7 +133,7 @@ remote.symbols.method14(0);
 // @ts-expect-error: Invalid argument
 remote.symbols.method15(0);
 remote.symbols.method15(new Uint16Array(1));
-remote.symbols.method15({} as Deno.UnsafePointer);
+remote.symbols.method15(0n);
 
 const result = remote.symbols.method16();
 // @ts-expect-error: Invalid argument
@@ -124,9 +155,8 @@ const result4 = remote.symbols.method19();
 result4.then((_0: Deno.TypedArray) => {});
 result4.then((_1: Deno.UnsafePointer) => {});
 
-const ptr = new Deno.UnsafePointer(0n);
 const fnptr = new Deno.UnsafeFnPointer(
-  ptr,
+  0n,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -135,6 +165,83 @@ const fnptr = new Deno.UnsafeFnPointer(
 // @ts-expect-error: Invalid argument
 fnptr.call(null, null);
 fnptr.call(0, null);
+
+const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
+  {
+    parameters: ["i8"],
+    result: "void",
+  } as const,
+  // @ts-expect-error: i8 is not a pointer
+  (_: bigint) => {},
+);
+const unsafe_callback_wrong2 = new Deno.UnsafeCallback(
+  {
+    parameters: ["pointer"],
+    result: "u64",
+  } as const,
+  // @ts-expect-error: must return a number or bigint
+  (_: Deno.UnsafePointer) => {},
+);
+const unsafe_callback_wrong3 = new Deno.UnsafeCallback(
+  {
+    parameters: [],
+    result: "void",
+  } as const,
+  // @ts-expect-error: no parameters
+  (_: Deno.UnsafePointer) => {},
+);
+const unsafe_callback_wrong4 = new Deno.UnsafeCallback(
+  {
+    parameters: ["u64"],
+    result: "void",
+  } as const,
+  // @ts-expect-error: Callback's 64bit parameters are always called as bigint
+  (_: number) => {},
+);
+const unsafe_callback_right1 = new Deno.UnsafeCallback(
+  {
+    parameters: ["u8", "u32", "pointer"],
+    result: "void",
+  } as const,
+  (_1: number, _2: number, _3: Deno.UnsafePointer) => {},
+);
+const unsafe_callback_right2 = new Deno.UnsafeCallback(
+  {
+    parameters: [],
+    result: "u8",
+  } as const,
+  () => 3,
+);
+const unsafe_callback_right3 = new Deno.UnsafeCallback(
+  {
+    parameters: [],
+    result: "function",
+  } as const,
+  // Callbacks can return other callbacks' pointers, if really wanted.
+  () => unsafe_callback_right2.pointer,
+);
+const unsafe_callback_right4 = new Deno.UnsafeCallback(
+  {
+    parameters: ["u8", "u32", "pointer"],
+    result: "u8",
+  } as const,
+  (_1: number, _2: number, _3: Deno.UnsafePointer) => 3,
+);
+const unsafe_callback_right5 = new Deno.UnsafeCallback(
+  {
+    parameters: ["u8", "i32", "pointer"],
+    result: "void",
+  } as const,
+  (_1: number, _2: number, _3: Deno.UnsafePointer) => {},
+);
+
+// @ts-expect-error: Must pass callback
+remote.symbols.method20();
+// nullptr is okay
+remote.symbols.method20(null);
+// @ts-expect-error: Callback cannot be passed directly
+remote.symbols.method20(unsafe_callback_right2);
+remote.symbols.method20(unsafe_callback_right1.pointer);
 
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;

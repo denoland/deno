@@ -35,4 +35,4 @@ steps buffered then streaming reporting ...
   step 2 ... ok ([WILDCARD])
 ok ([WILDCARD])
 
-test result: ok. 5 passed (18 steps); 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+ok | 5 passed (18 steps) | 0 failed [WILDCARD]
