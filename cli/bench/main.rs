@@ -374,7 +374,7 @@ fn cargo_deps() -> usize {
 }
 
 // TODO(@littledivy): Remove this, denoland/benchmark_data is deprecated.
-#[derive(Default, Serialize)]
+#[derive(Default, serde::Serialize)]
 struct BenchResult {
   created_at: String,
   sha1: String,
