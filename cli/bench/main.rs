@@ -22,6 +22,12 @@ fn read_json(filename: &str) -> Result<Value> {
   Ok(serde_json::from_reader(f)?)
 }
 
+fn write_json(filename: &str, value: &Value) -> Result<()> {
+  let f = fs::File::create(filename)?;
+  serde_json::to_writer(f, value)?;
+  Ok(())
+}
+
 /// The list of the tuples of the benchmark name, arguments and return code
 const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // we need to run the cold_* benchmarks before the _warm_ ones as they ensure
@@ -367,6 +373,27 @@ fn cargo_deps() -> usize {
   count
 }
 
+// TODO(@littledivy): Remove this, denoland/benchmark_data is deprecated.
+#[derive(Default, Serialize)]
+struct BenchResult {
+  created_at: String,
+  sha1: String,
+
+  // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
+  // When this is changed, the historical data in gh-pages branch needs to be
+  // changed too.
+  benchmark: HashMap<String, HashMap<String, i64>>,
+  binary_size: HashMap<String, i64>,
+  bundle_size: HashMap<String, i64>,
+  cargo_deps: usize,
+  max_latency: HashMap<String, i64>,
+  max_memory: HashMap<String, i64>,
+  lsp_exec_time: HashMap<String, i64>,
+  req_per_sec: HashMap<String, i64>,
+  syscall_count: HashMap<String, i64>,
+  thread_count: HashMap<String, i64>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
   let mut args = env::args();
@@ -397,13 +424,30 @@ async fn main() -> Result<()> {
 
   let target_dir = test_util::target_dir();
   let deno_exe = test_util::deno_exe_path();
-
   env::set_current_dir(&test_util::root_path())?;
+
+  let mut new_data = BenchResult {
+    created_at: chrono::Utc::now()
+      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    sha1: test_util::run_collect(
+      &["git", "rev-parse", "HEAD"],
+      None,
+      None,
+      None,
+      true,
+    )
+    .0
+    .trim()
+    .to_string(),
+    ..Default::default()
+  };
+
   let mut reporter = metrics::Reporter::new().await;
 
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
     reporter.write("bundle_size", &bundle_size);
+    new_data.bundle_size = bundle_size;
   }
 
   if benchmarks.contains(&"exec_time") {
@@ -411,21 +455,25 @@ async fn main() -> Result<()> {
     for (name, data) in exec_times.iter() {
       reporter.write_one("exec_time", name, *data.get("mean").unwrap());
     }
+    new_data.benchmark = exec_times;
   }
 
   if benchmarks.contains(&"binary_size") {
     let binary_sizes = get_binary_sizes(&target_dir)?;
     reporter.write("binary_size", &binary_sizes);
+    new_data.binary_size = binary_sizes;
   }
 
   if benchmarks.contains(&"cargo_deps") {
     let cargo_deps = cargo_deps();
     reporter.write_one("cargo_deps", "cargo_deps", cargo_deps as i64);
+    new_data.cargo_deps = cargo_deps;
   }
 
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
     reporter.write("lsp_exec_time", &lsp_exec_times);
+    new_data.lsp_exec_time = lsp_exec_times;
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
@@ -435,13 +483,14 @@ async fn main() -> Result<()> {
       .map(|(name, result)| (name.clone(), result.requests as i64))
       .collect();
     reporter.write("req_per_sec", &req_per_sec);
-
+    new_data.req_per_sec = req_per_sec;
     let max_latency = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.latency as i64))
       .collect();
 
     reporter.write("max_latency", &max_latency);
+    new_data.max_latency = max_latency;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {
@@ -479,15 +528,23 @@ async fn main() -> Result<()> {
     }
 
     reporter.write("thread_count", &thread_count);
+    new_data.thread_count = thread_count;
     reporter.write("syscall_count", &syscall_count);
+    new_data.syscall_count = syscall_count;
   }
 
   if benchmarks.contains(&"mem_usage") {
     let max_memory = run_max_mem_benchmark(&deno_exe)?;
     reporter.write("max_memory", &max_memory);
+    new_data.max_memory = max_memory;
   }
 
   reporter.submit().await;
+  if let Some(filename) = target_dir.join("bench.json").to_str() {
+    write_json(filename, &serde_json::to_value(&new_data)?)?;
+  } else {
+    eprintln!("Cannot write bench.json, path is invalid");
+  }
 
   Ok(())
 }
