@@ -41,6 +41,15 @@ fn napi_tests() {
 fn thrid_party_tests() {
   build();
 
+  let yarn_cmd = Command::new("yarn")
+    .current_dir(test_util::napi_tests_path().join("third_party_tests/"))
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(yarn_cmd.status.success());
+
   let output = deno_cmd()
     .current_dir(test_util::napi_tests_path().join("third_party_tests/"))
     .arg("test")
