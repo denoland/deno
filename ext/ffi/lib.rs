@@ -38,13 +38,8 @@ use std::ptr;
 use std::rc::Rc;
 
 thread_local! {
-  static ASYNC_WORK_SENDER: RefCell<Option<mpsc::SyncSender<PendingFfiAsyncWork>>> = RefCell::new(None);
   static IS_ISOLATE_THREAD: RefCell<bool> = RefCell::new(false);
 }
-
-static mut ASYNC_WORK_SENDER_SOURCE: Option<
-  mpsc::SyncSender<PendingFfiAsyncWork>,
-> = None;
 
 pub struct Unstable(pub bool);
 
@@ -179,10 +174,10 @@ impl DynamicLibraryResource {
   }
 }
 
-type PendingFfiAsyncWork = (Box<dyn FnOnce()>, mpsc::SyncSender<()>);
+type PendingFfiAsyncWork = Box<dyn FnOnce()>;
 
 struct FfiState {
-  //async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
+  async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
   async_work_receiver: mpsc::Receiver<PendingFfiAsyncWork>,
   active_refd_functions: usize,
 }
@@ -233,9 +228,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
           maybe_scheduling = true;
         }
       }
-      while let Some((async_work_fut, response_sender)) = work_work.pop() {
+      while let Some(async_work_fut) = work_work.pop() {
         async_work_fut();
-        response_sender.try_send(()).unwrap();
       }
 
       maybe_scheduling
@@ -247,12 +241,10 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       let (async_work_sender, async_work_receiver) =
         mpsc::sync_channel::<PendingFfiAsyncWork>(100);
 
-      unsafe { ASYNC_WORK_SENDER_SOURCE = Some(async_work_sender.clone()) };
-
       state.put(FfiState {
         active_refd_functions: 0,
         async_work_receiver,
-        //async_work_sender,
+        async_work_sender,
       });
 
       Ok(())
@@ -876,6 +868,7 @@ impl Resource for UnsafeCallbackResource {
 }
 
 struct CallbackInfo {
+  pub async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
@@ -887,41 +880,55 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &CallbackInfo,
 ) {
-  let isolate = &mut *info.isolate;
-  let callback = v8::Global::from_raw(isolate, info.callback);
-  let context = std::mem::transmute::<
-    NonNull<v8::Context>,
-    v8::Local<v8::Context>,
-  >(info.context);
-  let mut is_event_loop_thread = true;
   IS_ISOLATE_THREAD.with(|s| {
     if *s.borrow() {
       // Isolate thread, a-okay
+      do_ffi_callback(
+        cif,
+        result,
+        args,
+        info.callback,
+        info.context,
+        info.isolate,
+      );
     } else {
-      is_event_loop_thread = false;
-    }
-  });
-  if !is_event_loop_thread {
-    ASYNC_WORK_SENDER.with(|s| {
-      if s.borrow().is_none() {
-        let async_work_sender = ASYNC_WORK_SENDER_SOURCE.clone();
-        s.replace(async_work_sender);
-      }
-      // safeish, since we block until the message has been received. Lets just hope that we don't
-      // exit before the isolate thread deno_ffi_callback has been called to finalization...
+      let async_work_sender = &info.async_work_sender;
+      // safeish, since we block until the message has been received and a response transmitted.
       let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
       let result: &'static mut c_void = std::mem::transmute(result);
       let info: &'static CallbackInfo = std::mem::transmute(info);
-      let fut = Box::new(move || {
-        deno_ffi_callback(cif, result, args, info);
-      });
-      let async_work_sender = s.borrow().as_ref().unwrap().clone();
       let (response_sender, response_receiver) = mpsc::sync_channel::<()>(1);
-      async_work_sender.try_send((fut, response_sender)).unwrap();
+      let fut = Box::new(move || {
+        do_ffi_callback(
+          cif,
+          result,
+          args,
+          info.callback,
+          info.context,
+          info.isolate,
+        );
+        response_sender.try_send(()).unwrap();
+      });
+      async_work_sender.try_send(fut).unwrap();
       response_receiver.recv().unwrap();
-    });
-    return;
-  }
+    }
+  });
+}
+
+unsafe fn do_ffi_callback(
+  cif: &libffi::low::ffi_cif,
+  result: &mut c_void,
+  args: *const *const c_void,
+  callback: NonNull<v8::Function>,
+  context: NonNull<v8::Context>,
+  isolate: *mut v8::Isolate,
+) {
+  let isolate = &mut *isolate;
+  let callback = v8::Global::from_raw(isolate, callback);
+  let context = std::mem::transmute::<
+    NonNull<v8::Context>,
+    v8::Local<v8::Context>,
+  >(context);
   // Call from main thread. If this callback is being triggered due to a
   // function call coming from Deno itself, then this callback will build
   // ontop of that stack.
@@ -1160,12 +1167,15 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
+  let async_work_sender =
+    state.borrow_mut::<FfiState>().async_work_sender.clone();
   let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
   let callback = v8::Global::new(scope, cb).into_raw();
   let current_context = scope.get_current_context();
   let context = v8::Global::new(scope, current_context).into_raw();
 
   let info = Box::leak(Box::new(CallbackInfo {
+    async_work_sender,
     callback,
     context,
     isolate,
