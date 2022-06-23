@@ -189,9 +189,8 @@ delete Object.prototype.__proto__;
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
     // TS2306: File '.../index.d.ts' is not a module.
-    // In a lot of cases, CDNs like esm.sh wrongly provide cjs-style `.d.ts`
-    // files in `x-typescript-types`. While our behaviour is correct without
-    // ignoring this diagnostic, that may be too disruptive for now.
+    // We get this for `x-typescript-types` declaration files which don't export
+    // anything. We prefer to treat these as modules with no exports.
     2306,
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.

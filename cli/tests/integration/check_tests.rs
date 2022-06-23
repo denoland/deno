@@ -37,3 +37,9 @@ itest!(module_detection_force {
   args: "check --quiet module_detection_force.ts",
   output_str: Some(""),
 });
+
+// Regression test for https://github.com/denoland/deno/issues/14937.
+itest!(declaration_header_file_with_no_exports {
+  args: "check --quiet declaration_header_file_with_no_exports.ts",
+  output_str: Some(""),
+});
