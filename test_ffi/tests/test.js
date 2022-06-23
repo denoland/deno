@@ -303,7 +303,7 @@ console.log("After sleep_blocking");
 console.log(performance.now() - start >= 100);
 
 start = performance.now();
-dylib.symbols.sleep_nonblocking(100).then(() => {
+const promise_2 = dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
 });
@@ -311,7 +311,7 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 // Await to make sure `sleep_nonblocking` calls and logs before we proceed
-await new Promise((res) => setTimeout(res, 200));
+await promise_2;
 
 // Test calls with callback parameters
 const logCallback = new Deno.UnsafeCallback(
