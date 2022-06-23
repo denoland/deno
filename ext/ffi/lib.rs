@@ -508,13 +508,13 @@ where
   };
   let obj = v8::Object::new(scope);
 
+  IS_ISOLATE_THREAD.with(|s| s.replace(true));
   for (symbol_key, foreign_symbol) in args.symbols {
     match foreign_symbol {
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
       }
       ForeignSymbol::ForeignFunction(foreign_fn) => {
-        IS_ISOLATE_THREAD.with(|s| s.replace(true));
         let symbol = match &foreign_fn.name {
           Some(symbol) => symbol,
           None => &symbol_key,
@@ -550,10 +550,12 @@ where
 
         resource.symbols.insert(symbol_key, sym.clone());
         match foreign_fn.non_blocking {
+          // Generate functions for synchronous calls.
           Some(false) | None => {
             let function = make_sync_fn(scope, Box::leak(sym));
             obj.set(scope, func_key.into(), function.into());
           }
+          // This optimization is not yet supported for non-blocking calls.
           _ => {}
         };
       }
@@ -569,16 +571,20 @@ where
   ))
 }
 
+// Create a JavaScript function for synchronous FFI call to
+// the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
-  sym: &mut Symbol,
+  sym: *mut Symbol,
 ) -> v8::Local<'s, v8::Function> {
-  v8::Function::builder(
+  let func = v8::Function::builder(
     |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
       let external: v8::Local<v8::External> =
         args.data().unwrap().try_into().unwrap();
+      // SAFETY: The pointer will not be deallocated until the function is
+      // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
       let result = ffi_call_sync(scope, args, &symbol).unwrap();
       // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
@@ -586,9 +592,21 @@ fn make_sync_fn<'s>(
       rv.set(result.v8_value);
     },
   )
-  .data(v8::External::new(scope, sym as *mut _ as *mut _).into())
+  .data(v8::External::new(scope, sym as *mut _).into())
   .build(scope)
-  .unwrap()
+  .unwrap();
+
+  let weak = v8::Weak::with_finalizer(
+    scope,
+    func,
+    Box::new(move |_| {
+      // SAFETY: This is never called twice. pointer obtained
+      // from Box::into_raw, hence, satisfies memory layout requirements.
+      unsafe { Box::from_raw(sym) };
+    }),
+  );
+
+  weak.to_local(scope).unwrap()
 }
 
 fn ffi_parse_args<'scope>(

@@ -236,7 +236,6 @@
 
     constructor(path, symbols) {
       [this.#rid, this.symbols] = core.opSync("op_ffi_load", { path, symbols });
-
       for (const symbol in symbols) {
         if ("type" in symbols[symbol]) {
           const type = symbols[symbol].type;

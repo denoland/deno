@@ -219,7 +219,7 @@ const dylib = Deno.dlopen(libPath, {
     nonblocking: true,
   },
 });
-console.log(Object.keys(dylib.symbols).length);
+
 Deno.bench("nop()", () => {
   dylib.symbols.nop();
 });
