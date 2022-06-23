@@ -5,48 +5,46 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::sec1::ToEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
-use rsa::pkcs1::FromRsaPrivateKey;
-use rsa::pkcs1::ToRsaPublicKey;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::EncodeRsaPublicKey;
+use rsa::pkcs8::DecodePrivateKey;
 use rsa::RsaPrivateKey;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::ec_key::ECPrivateKey;
+pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+pub const SHA1_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.5");
+pub const SHA256_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
+pub const SHA384_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.12");
+pub const SHA512_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
+pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
+pub const ID_SHA1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
+pub const ID_SHA256_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
+pub const ID_SHA384_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.2");
+pub const ID_SHA512_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.3");
+pub const ID_MFG1: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.8");
+pub const RSAES_OAEP_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.7");
+pub const ID_P_SPECIFIED: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.9");
 
-pub const RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1");
-pub const SHA1_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.5");
-pub const SHA256_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.11");
-pub const SHA384_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.12");
-pub const SHA512_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.13");
-pub const RSASSA_PSS_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.10");
-pub const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.3.14.3.2.26");
-pub const ID_SHA256_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.1");
-pub const ID_SHA384_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.2");
-pub const ID_SHA512_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.3");
-pub const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.8");
-pub const RSAES_OAEP_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.7");
-pub const ID_P_SPECIFIED: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.9");
-
-pub const ID_SECP256R1_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.10045.3.1.7");
-pub const ID_SECP384R1_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.3.132.0.34");
-pub const ID_SECP521R1_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.3.132.0.35");
+pub const ID_SECP256R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
+pub const ID_SECP384R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.34");
+pub const ID_SECP521R1_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.35");
 
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
 pub enum ShaHash {
@@ -91,7 +89,7 @@ impl RawKeyData {
           .to_pkcs1_der()
           .map_err(|_| type_error("expected valid public key"))?;
 
-        Ok(Cow::Owned(public_key_doc.as_der().into()))
+        Ok(Cow::Owned(public_key_doc.as_bytes().into()))
       }
       _ => Err(type_error("expected public key")),
     }
@@ -136,16 +134,9 @@ impl RawKeyData {
           .map_err(|_| type_error("expected valid public EC key"))
       }
       RawKeyData::Private(data) => {
-        let ec_key = ECPrivateKey::<p384::NistP384>::try_from(&**data)
-          .map_err(|_| {
-            custom_error(
-              "DOMExceptionOperationError",
-              "failed to decode private key",
-            )
-          })?;
-        let point = p384::EncodedPoint::from_bytes(&ec_key.encoded_point)
-          .map_err(|_| data_error("expected valid public EC key"))?;
-        Ok(point)
+        let signing_key = p384::SecretKey::from_pkcs8_der(data)
+          .map_err(|_| type_error("expected valid private EC key"))?;
+        Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
       RawKeyData::Secret(_) => unreachable!(),

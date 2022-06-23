@@ -1,1 +1,1 @@
-Deno.core.opSync("op_ffi_read_i16", [0, 0]);
+Deno.core.opSync("op_ffi_read_i16", 0n);

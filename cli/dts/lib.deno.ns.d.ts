@@ -480,6 +480,8 @@ declare namespace Deno {
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
+   * In worker contexts this is an alias to `self.close();`.
+   *
    * ```ts
    * Deno.exit(5);
    * ```
@@ -2279,16 +2281,16 @@ declare namespace Deno {
     readonly rid: number;
     readonly pid: number;
     readonly stdin: T["stdin"] extends "piped" ? Writer & Closer & {
-      writable: WritableStream<Uint8Array>;
-    }
+        writable: WritableStream<Uint8Array>;
+      }
       : (Writer & Closer & { writable: WritableStream<Uint8Array> }) | null;
     readonly stdout: T["stdout"] extends "piped" ? Reader & Closer & {
-      readable: ReadableStream<Uint8Array>;
-    }
+        readable: ReadableStream<Uint8Array>;
+      }
       : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
     readonly stderr: T["stderr"] extends "piped" ? Reader & Closer & {
-      readable: ReadableStream<Uint8Array>;
-    }
+        readable: ReadableStream<Uint8Array>;
+      }
       : (Reader & Closer & { readable: ReadableStream<Uint8Array> }) | null;
     /** Wait for the process to exit and return its exit status.
      *
@@ -2342,6 +2344,7 @@ declare namespace Deno {
   export type Signal =
     | "SIGABRT"
     | "SIGALRM"
+    | "SIGBREAK"
     | "SIGBUS"
     | "SIGCHLD"
     | "SIGCONT"
@@ -2382,7 +2385,7 @@ declare namespace Deno {
    * });
    * ```
    *
-   * NOTE: This functionality is not yet implemented on Windows.
+   * NOTE: On Windows only SIGINT (ctrl+c) and SIGBREAK (ctrl+break) are supported.
    */
   export function addSignalListener(signal: Signal, handler: () => void): void;
 
@@ -2397,7 +2400,7 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * NOTE: This functionality is not yet implemented on Windows.
+   * NOTE: On Windows only SIGINT (ctrl+c) and SIGBREAK (ctrl+break) are supported.
    */
   export function removeSignalListener(
     signal: Signal,
@@ -2853,7 +2856,7 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const conn = await Deno.listen({ port: 80 });
+   * const conn = Deno.listen({ port: 80 });
    * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
@@ -2905,7 +2908,7 @@ declare namespace Deno {
    * upgrade to be successful.
    *
    * ```ts
-   * const conn = await Deno.listen({ port: 80 });
+   * const conn = Deno.listen({ port: 80 });
    * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
@@ -2937,7 +2940,8 @@ declare namespace Deno {
   /** Send a signal to process under given `pid`.
    *
    * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
+   * identified by `pid`. An error will be thrown if a negative
+   * `pid` is used on Windows.
    *
    * ```ts
    * const p = Deno.run({

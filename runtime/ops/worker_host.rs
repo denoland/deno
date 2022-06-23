@@ -11,7 +11,6 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
-use crate::worker::ExitCode;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
@@ -37,7 +36,6 @@ pub struct CreateWebWorkerArgs {
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
-  pub exit_code: ExitCode,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -171,7 +169,6 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let exit_code = state.borrow::<ExitCode>().clone();
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
@@ -207,7 +204,6 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         worker_type,
-        exit_code,
       });
 
     // Send thread safe handle from newly created worker to host thread

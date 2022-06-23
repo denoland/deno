@@ -10,5 +10,3 @@ function handleConn(conn: Deno.Conn) {
     event.respondWith(new Response("html", { status: 200 }));
   }
 }
-
-export {};
