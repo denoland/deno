@@ -554,7 +554,7 @@ declare namespace Deno {
    * as C function pointers to ffi calls.
    *
    * The function pointer remains valid until the `close()` method is called.
-   * 
+   *
    * The callback can be explicitly referenced and dereferenced to stop Deno's
    * process from exiting.
    */
@@ -578,7 +578,7 @@ declare namespace Deno {
 
     /**
      * Adds one to this callback's reference counting.
-     * 
+     *
      * If the callback's reference count becomes non-zero, it will keep
      * Deno's process from exiting.
      */
@@ -586,7 +586,7 @@ declare namespace Deno {
 
     /**
      * Removes one from this callback's reference counting.
-     * 
+     *
      * If the callback's reference counter becomes zero, it will no longer
      * keep Deno's process from exiting.
      */
@@ -596,7 +596,7 @@ declare namespace Deno {
      * Removes the C function pointer associated with the UnsafeCallback.
      * Continuing to use the instance after calling this object will lead to errors
      * and crashes.
-     * 
+     *
      * Calling this method will also immediately set the callback's reference
      * counting to zero and it will no longer keep Deno's process from exiting.
      */
