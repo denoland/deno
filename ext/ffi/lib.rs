@@ -140,7 +140,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .ops(vec![
       op_ffi_load::decl::<P>(),
       op_ffi_get_static::decl(),
-      // op_ffi_call::decl(),
       op_ffi_call_nonblocking::decl(),
       op_ffi_call_ptr::decl::<P>(),
       op_ffi_call_ptr_nonblocking::decl::<P>(),
@@ -1545,28 +1544,6 @@ fn op_ffi_get_static<'scope>(
     }
   })
 }
-
-// #[op(v8)]
-// fn op_ffi_call<'scope>(
-//   scope: &mut v8::HandleScope<'scope>,
-//   state: Rc<RefCell<deno_core::OpState>>,
-//   rid: ResourceId,
-//   symbol: String,
-//   parameters: serde_v8::Value<'scope>,
-// ) -> Result<serde_v8::Value<'scope>, AnyError> {
-//   let state = state.borrow();
-//   let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
-
-//   let symbol = resource
-//     .symbols
-//     .get(&symbol)
-//     .ok_or_else(|| type_error("Invalid FFI symbol name"))?;
-//   drop(state);
-//   let result = ffi_call_sync(scope, parameters, &symbol)?;
-//   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-//   let result = unsafe { result.to_v8(scope, symbol.result_type) };
-//   Ok(result)
-// }
 
 /// A non-blocking FFI call.
 #[op(v8)]
