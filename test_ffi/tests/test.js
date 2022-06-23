@@ -396,9 +396,14 @@ const addToFooCallback = new Deno.UnsafeCallback({
 
 // Test thread safe callbacks
 console.log("Thread safe call counter:", counter);
+addToFooCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+addToFooCallback.unref();
+logCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+logCallback.unref();
 console.log("Thread safe call counter:", counter);
+returnU8Callback.ref();
 await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
 
 // Test statics

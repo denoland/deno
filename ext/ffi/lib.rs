@@ -208,6 +208,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_f32::decl::<P>(),
       op_ffi_read_f64::decl::<P>(),
       op_ffi_unsafe_callback_create::decl::<P>(),
+      op_ffi_unsafe_callback_ref::decl(),
     ])
     .event_loop_middleware(|op_state_rc, _cx| {
       // FFI callbacks coming in from other threads will call in and get queued.
@@ -1231,6 +1232,16 @@ where
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   let result = unsafe { result.to_v8(scope, def.result) };
   Ok(result)
+}
+
+#[op]
+fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
+  let ffi_state = state.borrow_mut::<FfiState>();
+  if inc_dec {
+    ffi_state.active_refd_functions += 1;
+  } else {
+    ffi_state.active_refd_functions -= 1;
+  }
 }
 
 #[op(v8)]
