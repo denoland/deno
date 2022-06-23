@@ -9,13 +9,8 @@ https://github.com/denoland/deno_install
 ### 1.23.1 / 2022.06.23
 
 - BREAKING(ext/ffi): Remove `Deno.UnsafePointer` indirection (#14915)
-- feat(ext/ffi): Callbacks (#14663)
-- feat(ops): support
-  `Result<impl Future<Output = Result<T, AnyError>> + 'static, AnyError>`
-  (#14869)
-- feat(serde_v8): add serde_v8::Global (#14761)
+- feat(unstable/ffi): Callbacks (#14663)
 - fix(check): ignore TS2306 (#14940)
-- fix(cli/bench): Use `deno check` instead of `deno cache` (#14916)
 - fix(docs): update description of `--check` flag (#14890)
 - fix(ext/fetch): add `accept-language` default header to fetch (#14882)
 - fix(ext/web): add EventTarget brand checking (#14637)
@@ -29,8 +24,6 @@ https://github.com/denoland/deno_install
 - fix: upgrade swc via deno_ast 0.16 (#14930)
 - perf(core): Cache source lookups (#14816)
 - perf(ext/ffi): Optimize FFI Rust side type checks (#14923)
-- update expectations
-- update std submodule
 
 ### 1.23.0 / 2022.06.15
 
