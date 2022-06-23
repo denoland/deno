@@ -210,4 +210,8 @@ impl CacheMetadata {
     self.cache = http_cache::HttpCache::new(location);
     self.metadata.lock().clear();
   }
+
+  pub fn clear_metadata(&self) {
+    self.metadata.lock().clear();
+  }
 }

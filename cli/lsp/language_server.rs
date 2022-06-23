@@ -2816,7 +2816,9 @@ impl Inner {
 
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
-    self.diagnostics_server.invalidate(&[referrer]);
+    // self.diagnostics_server.invalidate(&[referrer]);
+    self.diagnostics_server.invalidate_all();
+    self.cache_metadata.clear_metadata();
     self.send_diagnostics_update();
     self.send_testing_update();
 
