@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.23.1 / 2022.06.23
+
+- BREAKING(unstable/ffi): Remove `Deno.UnsafePointer` indirection (#14915)
+- feat(unstable/ffi): Callbacks (#14663)
+- fix(check): ignore TS2306 (#14940)
+- fix(docs): update description of `--check` flag (#14890)
+- fix(ext/fetch): add `accept-language` default header to fetch (#14882)
+- fix(ext/web): add EventTarget brand checking (#14637)
+- fix(ext/web): handle rid=0 in TextDecoder#decode (#14894)
+- fix(fmt): ignore node_modules directory (#14943)
+- fix(fmt): should fail `--check` on parse error (#14907)
+- fix(repl): accept tab when previous character is whitespace (#14898)
+- fix(repl): use spaces for tab handler on windows (#14931)
+- fix: do not panic running .d.cts and .d.mts files (#14917)
+- fix: make Performance global an EventTarget
+- fix: upgrade swc via deno_ast 0.16 (#14930)
+- perf(core): Cache source lookups (#14816)
+- perf(ext/ffi): Optimize FFI Rust side type checks (#14923)
+
 ### 1.23.0 / 2022.06.15
 
 - BREAKING: remove `Intl.v8BreakIterator` (#14864)
