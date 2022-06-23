@@ -311,7 +311,7 @@ console.log("Before");
 console.log(performance.now() - start < 100);
 
 // Await to make sure `sleep_nonblocking` calls and logs before we proceed
-await new Promise((res) => setTimeout(res, 100));
+await new Promise((res) => setTimeout(res, 200));
 
 // Test calls with callback parameters
 const logCallback = new Deno.UnsafeCallback(
