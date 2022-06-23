@@ -38,7 +38,6 @@ use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
-use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;

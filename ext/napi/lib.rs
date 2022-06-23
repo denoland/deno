@@ -18,7 +18,6 @@ use std::cell::RefCell;
 pub use std::ffi::CStr;
 use std::ffi::CString;
 pub use std::mem::transmute;
-use std::mem::MaybeUninit;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
 pub use std::ptr;

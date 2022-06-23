@@ -12,8 +12,6 @@ pub struct TsFn {
   pub context: *mut c_void,
   pub thread_counter: usize,
   sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
-  // Must not be used from outside the js thread!
-  isolate_ptr: *mut v8::OwnedIsolate,
   tsfn_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
 
@@ -45,7 +43,7 @@ impl TsFn {
       let context = self.context;
       let env = self.env;
       let call = Box::new(move || {
-        let scope = &mut unsafe { (&mut *env).scope() };
+        let scope = &mut unsafe { (&*env).scope() };
         match js_func {
           Some(func) => {
             let func: v8::Local<v8::Value> =
@@ -128,9 +126,6 @@ fn napi_create_threadsafe_function(
     thread_counter: initial_thread_count,
     sender: env_ref.async_work_sender.clone(),
     tsfn_sender: env_ref.threadsafe_function_sender.clone(),
-    // We need to pass the isolate pointer
-    // when calling the tsfn on the main thread.
-    isolate_ptr: env_ref.isolate_ptr,
     env,
   };
 

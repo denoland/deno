@@ -46,16 +46,16 @@ pub extern "C" fn uv_default_loop() -> uv_loop_t {
   std::ptr::null_mut()
 }
 
+/// # Safety
+/// libuv APIs
 #[no_mangle]
-pub extern "C" fn uv_async_init(
+pub unsafe extern "C" fn uv_async_init(
   _loop: uv_loop_t,
   async_: uv_async_t,
   cb: uv_async_cb,
 ) -> c_int {
-  unsafe {
-    (*async_).callback = cb;
-  }
-  deno_runtime::deno_napi::ASYNC_WORK_SENDER.with(|sender| unsafe {
+  (*async_).callback = cb;
+  deno_runtime::deno_napi::ASYNC_WORK_SENDER.with(|sender| {
     (*async_).sender = Some(sender.borrow().clone().unwrap());
   });
 
@@ -66,19 +66,19 @@ pub extern "C" fn uv_async_init(
       .unwrap()
       .unbounded_send(deno_runtime::deno_napi::ThreadSafeFunctionStatus::Alive)
       .unwrap();
-    unsafe {
-      (*async_).ref_sender = Some(sender.borrow().clone().unwrap());
-    }
+    (*async_).ref_sender = Some(sender.borrow().clone().unwrap());
   });
 
   0
 }
 
+/// # Safety
+/// libuv APIs
 #[no_mangle]
-pub extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
-  let sender = unsafe { (*async_).sender.as_ref().unwrap() };
+pub unsafe extern "C" fn uv_async_send(async_: uv_async_t) -> c_int {
+  let sender = (*async_).sender.as_ref().unwrap();
   let fut = Box::new(move || {
-    unsafe { ((*async_).callback)(async_) };
+    ((*async_).callback)(async_);
   });
 
   match sender.unbounded_send(fut) {

@@ -25,7 +25,6 @@ use deno_core::SourceMapGetter;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
-use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
