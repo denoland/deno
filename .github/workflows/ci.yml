@@ -87,7 +87,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Deno
-        if: matrix.job == 'lint' || matrix.job == 'bench'
+        if: matrix.job == 'lint' || matrix.job == 'test'
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
