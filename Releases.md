@@ -8,7 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 1.23.1 / 2022.06.23
 
-- BREAKING(ext/ffi): Remove `Deno.UnsafePointer` indirection (#14915)
+- BREAKING(unstable/ffi): Remove `Deno.UnsafePointer` indirection (#14915)
 - feat(unstable/ffi): Callbacks (#14663)
 - fix(check): ignore TS2306 (#14940)
 - fix(docs): update description of `--check` flag (#14890)
@@ -257,7 +257,7 @@ https://github.com/denoland/deno_install
 - feat(lsp): support deno.enablePaths setting (#13978)
 - fix(bench): require --unstable flag in JavaScript (#14091)
 - fix(test): don't error on missing op details (#14074)
-- fix(compat): Changes an instance of collect::<Vec<_>>().join("") to
+- fix(compat): Changes an instance of collect::<Vec<\_>>().join("") to
   collect::<String>() (#14082)
 - fix(tests): do not use global env vars in install tests (#14078)
 - fix(ext/fetch): Connect async error stack with user code (#13899)
@@ -813,7 +813,7 @@ Note 1.20.0 was dead on arrival, see https://github.com/denoland/deno/pull/13993
 ### 1.14.0 / 2021.09.14
 
 - BREAKING(unstable): Fix casing in FfiPermissionDescriptor (#11659)
-- BREAKING(unstable): Remove Deno.Signals enum, Deno.signals.* (#11909)
+- BREAKING(unstable): Remove Deno.Signals enum, Deno.signals.\* (#11909)
 - feat(cli): Support Basic authentication in DENO_AUTH_TOKENS (#11910)
 - feat(cli): Update to TypeScript 4.4 (#11678)
 - feat(cli): add --ignore flag to test command (#11712)
@@ -1283,7 +1283,7 @@ https://github.com/denoland/deno_std/releases/tag/0.94.0
   (#10127)
 - fix(permissions): don't panic when no input is given (#9894)
 - fix(runtime/js/timers): Use (0, eval) instead of eval() (#10103)
-- fix(runtime/readFile*): close resources on error during read (#10059)
+- fix(runtime/readFile\*): close resources on error during read (#10059)
 - fix(websocket): ignore resource close error (#9755)
 
 Release notes for std version 0.93.0:
@@ -1535,7 +1535,7 @@ Changes in std version 0.85.0:
 - fix: use inline source maps when present in js (#8995)
 - fix: use tokio for async fs ops (#9042)
 - refactor(cli): remove 'js' module, simplify compiler snapshot (#9020)
-- refactor(op_crates/crypto): Prefix ops with "op_crypto_" (#9067)
+- refactor(op*crates/crypto): Prefix ops with "op_crypto*" (#9067)
 - refactor(op_crates/websocket): refactor event loop (#9079)
 - refactor: Print cause chain when downcasting AnyError fails (#9059)
 - refactor: make Process#kill() throw sensible errors on Windows (#9111)
@@ -2012,7 +2012,7 @@ Changes in std version 0.69.0:
 
 - feat(unstable): Add Deno.futime and Deno.futimeSync (#7266)
 - feat(unstable): Allow deno lint to read from stdin (#7263)
-- fix: Don't expose globalThis.__bootstrap (#7344)
+- fix: Don't expose globalThis.\_\_bootstrap (#7344)
 - fix: Handle bad redirects more gracefully (#7342)
 - fix: Handling of + character in URLSearchParams (#7314)
 - fix: Regex for TS references and deno-types (#7333)
