@@ -724,13 +724,13 @@ fn napi_make_callback(
     eprintln!("napi_make_callback: async_context is not supported");
   }
 
-  let recv = unsafe { transmute::<napi_value, v8::Local<v8::Value>>(recv) };
-  let func = unsafe { transmute::<napi_value, v8::Local<v8::Value>>(func) };
+  let recv = transmute::<napi_value, v8::Local<v8::Value>>(recv);
+  let func = transmute::<napi_value, v8::Local<v8::Value>>(func);
 
   let func = v8::Local::<v8::Function>::try_from(func)
     .map_err(|_| Error::FunctionExpected)?;
   let argv: &[v8::Local<v8::Value>] =
-    unsafe { transmute(std::slice::from_raw_parts(argv, argc as usize)) };
+    transmute(std::slice::from_raw_parts(argv, argc as usize));
   let ret = func.call(&mut env.scope(), recv, argv);
   *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
   Ok(())
@@ -1000,7 +1000,7 @@ fn napi_adjust_external_memory(
   adjusted_value: &mut i64,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let isolate = unsafe { &mut **env.isolate_ptr };
+  let isolate = &mut *env.isolate_ptr;
   *adjusted_value =
     isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
   Ok(())
@@ -1022,7 +1022,7 @@ fn napi_call_function(
     .map_err(|_| Error::FunctionExpected)?;
 
   let argv: &[v8::Local<v8::Value>] =
-    unsafe { transmute(std::slice::from_raw_parts(argv, argc as usize)) };
+    transmute(std::slice::from_raw_parts(argv, argc as usize));
   let ret = func.call(&mut env.scope(), recv, argv);
   if !result.is_null() {
     *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
@@ -1086,7 +1086,7 @@ fn napi_define_class(
 
   let scope = &mut env.scope();
   let napi_properties: &[napi_property_descriptor] =
-    unsafe { std::slice::from_raw_parts(properties, property_count) };
+    std::slice::from_raw_parts(properties, property_count);
 
   for p in napi_properties {
     let name = if !p.utf8name.is_null() {
@@ -1562,15 +1562,10 @@ fn napi_get_reference_value(
   result: *mut napi_value,
 ) -> Result {
   // TODO
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
 
   let value = transmute::<napi_ref, v8::Local<v8::Value>>(reference);
-  // let global = v8::Global::from_raw(unsafe { &mut **env.isolate_ptr }, raw);
-  // let scope = &mut env.scope();
-  // let value = global.open(scope).to_object(scope).unwrap();
   *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
-  // Leak.
-  // std::mem::forget(global);
   Ok(())
 }
 

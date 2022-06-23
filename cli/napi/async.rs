@@ -47,7 +47,7 @@ fn napi_delete_async_work(_env: &mut Env, work: napi_async_work) -> Result {
 
 #[napi_sym::napi_sym]
 fn napi_queue_async_work(env_ptr: *mut Env, work: napi_async_work) -> Result {
-  let work: &AsyncWork = unsafe { &*(work as *const AsyncWork) };
+  let work: &AsyncWork = &*(work as *const AsyncWork);
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
 
   let fut = Box::new(move || {

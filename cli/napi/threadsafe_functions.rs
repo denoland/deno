@@ -40,54 +40,34 @@ impl TsFn {
   pub fn call(&self, data: *mut c_void, is_blocking: bool) {
     let js_func = self.maybe_func.clone();
     let (tx, rx) = channel();
+
     if let Some(call_js_cb) = self.maybe_call_js_cb {
       let context = self.context;
-      let isolate_ptr = self.isolate_ptr;
-      let sender = self.sender.clone();
-      let tsfn_sender = self.tsfn_sender.clone();
       let env = self.env;
       let call = Box::new(move || {
-        // SAFETY: `env` is valid till isolate lifetime.
-        let env_ref = unsafe { env.as_mut() }.unwrap();
-        let scope = &mut env_ref.scope();
-        let ctx = scope.get_current_context();
+        let scope = &mut unsafe { (&mut *env).scope() };
         match js_func {
           Some(func) => {
             let func: v8::Local<v8::Value> =
               func.open(scope).to_object(scope).unwrap().into();
-            let mut env = Env::new(
-              isolate_ptr,
-              v8::Global::new(scope, ctx),
-              sender,
-              tsfn_sender,
-            );
             unsafe {
               call_js_cb(
-                &mut env as *mut _ as *mut c_void,
+                env as *mut c_void,
                 transmute::<v8::Local<v8::Value>, napi_value>(func),
                 context,
                 data,
               )
             };
-            std::mem::forget(env);
           }
           None => {
-            let mut env = Env::new(
-              isolate_ptr,
-              v8::Global::new(scope, ctx),
-              sender,
-              tsfn_sender,
-            );
             unsafe {
               call_js_cb(
-                &mut env as *mut _ as *mut c_void,
+                env as *mut c_void,
                 std::ptr::null_mut(),
                 context,
                 data,
               )
             };
-
-            std::mem::forget(env);
           }
         }
 
@@ -96,7 +76,7 @@ impl TsFn {
       });
       // This call should never fail
       self.sender.unbounded_send(call).unwrap();
-    } else if let Some(js_func) = js_func {
+    } else if let Some(_js_func) = js_func {
       let call = Box::new(move || {
         // TODO(@littledivy): Call js_func.
         // let _func = js_func.open(scope);
@@ -134,13 +114,13 @@ fn napi_create_threadsafe_function(
   let maybe_func = func
     .as_mut()
     .map(|func| {
-      let value =
-        unsafe { transmute::<napi_value, v8::Local<v8::Value>>(func) };
+      let value = transmute::<napi_value, v8::Local<v8::Value>>(func);
       let func = v8::Local::<v8::Function>::try_from(value)
         .map_err(|_| Error::FunctionExpected)?;
       Ok(v8::Global::new(&mut env_ref.scope(), func))
     })
     .transpose()?;
+
   let tsfn = TsFn {
     maybe_func,
     maybe_call_js_cb,
@@ -168,7 +148,7 @@ fn napi_acquire_threadsafe_function(
   tsfn: napi_threadsafe_function,
   _mode: napi_threadsafe_function_release_mode,
 ) -> Result {
-  let tsfn: &mut TsFn = unsafe { &mut *(tsfn as *mut TsFn) };
+  let tsfn: &mut TsFn = &mut *(tsfn as *mut TsFn);
   tsfn.acquire()?;
 
   Ok(())
@@ -179,7 +159,7 @@ fn napi_unref_threadsafe_function(
   _env: &mut Env,
   tsfn: napi_threadsafe_function,
 ) -> Result {
-  let _tsfn: &TsFn = unsafe { &*(tsfn as *const TsFn) };
+  let _tsfn: &TsFn = &*(tsfn as *const TsFn);
 
   Ok(())
 }
@@ -190,7 +170,7 @@ pub fn napi_get_threadsafe_function_context(
   func: napi_threadsafe_function,
   result: *mut *const c_void,
 ) -> Result {
-  let tsfn: &TsFn = unsafe { &*(func as *const TsFn) };
+  let tsfn: &TsFn = &*(func as *const TsFn);
   *result = tsfn.context;
   Ok(())
 }
@@ -201,7 +181,7 @@ fn napi_call_threadsafe_function(
   data: *mut c_void,
   is_blocking: napi_threadsafe_function_call_mode,
 ) -> Result {
-  let tsfn: &TsFn = unsafe { &*(func as *const TsFn) };
+  let tsfn: &TsFn = &*(func as *const TsFn);
   let _func = tsfn.call(data, is_blocking != 0);
 
   Ok(())
@@ -218,7 +198,7 @@ fn napi_release_threadsafe_function(
   tsfn: napi_threadsafe_function,
   _mode: napi_threadsafe_function_release_mode,
 ) -> Result {
-  let tsfn: Box<TsFn> = unsafe { Box::from_raw(tsfn as *mut TsFn) };
+  let tsfn: Box<TsFn> = Box::from_raw(tsfn as *mut TsFn);
   tsfn.release()?;
 
   Ok(())

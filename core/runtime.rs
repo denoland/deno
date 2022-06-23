@@ -392,6 +392,7 @@ impl JsRuntime {
       (isolate, None)
     };
 
+    op_state.borrow_mut().put(isolate_ptr);
     let inspector =
       JsRuntimeInspector::new(&mut isolate, global_context.clone());
 

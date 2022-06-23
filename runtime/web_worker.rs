@@ -372,9 +372,6 @@ impl WebWorker {
       })
       .build();
 
-    // Allocate isolate pointer.
-    let mut isolate_ptr: MaybeUninit<*mut deno_core::v8::OwnedIsolate> =
-      MaybeUninit::uninit();
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
@@ -424,7 +421,7 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       // napi
-      deno_napi::init(isolate_ptr),
+      deno_napi::init(),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
@@ -450,13 +447,6 @@ impl WebWorker {
       extensions,
       ..Default::default()
     });
-
-    // Initialize isolate ptr memory.
-    {
-      let isolate = js_runtime.v8_isolate();
-      // SAFETY: `isolate_ptr` is valid for writes and properly aligned.
-      isolate_ptr.write(isolate);
-    }
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

@@ -109,10 +109,10 @@ Deno.test("@swc/core transform", () => {
   });
 });
 
-Deno.test("lmdb", () => {
-  const { open } = require("lmdb");
-  console.log(open);
-});
+// Deno.test("lmdb", () => {
+//   const { open } = require("lmdb");
+//   console.log(open);
+// });
 
 Deno.test("@prisma/engines", async () => {
   const engine = require("@prisma/engines");
@@ -157,9 +157,9 @@ Deno.test("@prisma/engines", async () => {
   await qEngine.disconnect();
 });
 
+const original = Deno.readFileSync("test_parcel_optimizer.jpeg");
 Deno.test("snappy", () => {
   const snappy = require("snappy");
-  const original = Deno.readFileSync("test_parcel_optimizer.jpeg");
   const compressed = snappy.compressSync(original);
   assert(compressed instanceof Uint8Array);
 });
@@ -256,7 +256,6 @@ Deno.test("@napi-rs/ed25519", () => {
 
 Deno.test("@parcel/optimizer-image", () => {
   const optimizer = require("@parcel/optimizer-image/native");
-  const original = Deno.readFileSync("test_parcel_optimizer.jpeg");
   const optimized = optimizer.optimize("jpeg", original);
   assert(optimized instanceof Uint8Array);
   assert(optimized.byteLength < original.byteLength);
@@ -316,9 +315,9 @@ Deno.test("node-usb", () => {
 });
 
 Deno.test("@tensorflow/tfjs-node", () => {
-  const tf = require("@tensorflow/tfjs-node");
-  const x = tf.tensor1d([1, 2, Math.sqrt(2), -1]);
-  x.print();
+  // const tf = require("@tensorflow/tfjs-node");
+  // const x = tf.tensor1d([1, 2, Math.sqrt(2), -1]);
+  // x.print();
 });
 
 Deno.test("msgpackr-extract", () => {

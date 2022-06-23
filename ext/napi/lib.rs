@@ -6,8 +6,12 @@
 #![deny(clippy::missing_safety_doc)]
 
 use core::ptr::NonNull;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
+use deno_core::op;
+use deno_core::serde_v8;
 pub use deno_core::v8;
 use deno_core::Extension;
 use std::cell::RefCell;
@@ -18,6 +22,7 @@ use std::mem::MaybeUninit;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
 pub use std::ptr;
+use std::rc::Rc;
 use std::task::Poll;
 
 use std::thread_local;
@@ -386,7 +391,7 @@ impl Env {
   }
 }
 
-pub fn init(isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>) -> Extension {
+pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![op_napi_open::decl()])
     .event_loop_middleware(|op_state_rc, cx| {
@@ -453,193 +458,137 @@ pub fn init(isolate_ptr: MaybeUninit<*mut v8::OwnedIsolate>) -> Extension {
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
       });
-
-      // SAFETY: `.state` can only be called from a JsRuntime which means isolate pointer is
-      // initialized.
-      state.put(unsafe { isolate_ptr.assume_init() });
       Ok(())
     })
     .build()
 }
 
-#[allow(non_camel_case_types)]
-pub struct op_napi_open;
+#[op(v8)]
+fn op_napi_open<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  op_state: Rc<RefCell<deno_core::OpState>>,
+  path: String,
+) -> std::result::Result<serde_v8::Value<'scope>, AnyError> {
+  let (async_work_sender, tsfn_sender, isolate_ptr) = {
+    let op_state = op_state.borrow();
+    let napi_state = op_state.borrow::<NapiState>();
+    let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
+    (
+      napi_state.async_work_sender.clone(),
+      napi_state.threadsafe_function_sender.clone(),
+      *isolate_ptr,
+    )
+  };
 
-impl op_napi_open {
-  pub fn name() -> &'static str {
-    "op_napi_open"
+  let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
+  let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
+  let napi_wrap = v8::Local::new(scope, napi_wrap);
+  let napi_wrap = v8::Global::new(scope, napi_wrap);
+
+  let exports = v8::Object::new(scope);
+
+  // We need complete control over the env object's lifetime
+  // so we'll use explicit allocation for it, so that it doesn't
+  // die before the module itself. Using struct & their pointers
+  // resulted in a use-after-free situation which turned out to be
+  // unfixable, so here we are.
+  // SAFETY: EnvShared is non-zero size, the memory is initialized later when we
+  // write to the pointer.
+  let env_shared_ptr = unsafe {
+    std::alloc::alloc(std::alloc::Layout::new::<EnvShared>()) as *mut EnvShared
+  };
+  let mut env_shared = EnvShared::new(napi_wrap);
+  let cstr = CString::new(path.clone()).unwrap();
+  env_shared.filename = cstr.as_ptr();
+  std::mem::forget(cstr);
+  // SAFETY: we have ensured that the layout of the data the pointer points
+  // to is the same as `EnvShared`
+  unsafe {
+    env_shared_ptr.write(env_shared);
   }
 
-  pub fn v8_fn_ptr() -> deno_core::v8::FunctionCallback {
-    use deno_core::v8::MapFnTo;
-    Self::v8_func.map_fn_to()
+  // SAFETY: Env is non-zero size, the memory is initialized later when we write
+  // to the pointer.
+  let env_ptr =
+    unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
+  let ctx = scope.get_current_context();
+  let mut env = Env::new(
+    isolate_ptr,
+    v8::Global::new(scope, ctx),
+    async_work_sender,
+    tsfn_sender,
+  );
+  env.shared = env_shared_ptr;
+  // SAFETY: we have ensured that the layout of the data the pointer points
+  // to is the same as `Env`
+  unsafe {
+    (env_ptr as *mut Env).write(env);
   }
 
-  pub fn decl() -> deno_core::OpDecl {
-    deno_core::OpDecl {
-      name: Self::name(),
-      v8_fn_ptr: Self::v8_fn_ptr(),
-      enabled: true,
-      is_async: false,
-      is_v8: true,
-      is_unstable: true,
-    }
-  }
+  #[cfg(unix)]
+  let flags = RTLD_LAZY;
+  #[cfg(not(unix))]
+  let flags = 0x00000008;
 
-  pub fn v8_func(
-    scope: &mut deno_core::v8::HandleScope,
-    args: deno_core::v8::FunctionCallbackArguments,
-    mut rv: deno_core::v8::ReturnValue,
-  ) {
-    // SAFETY: Unchecked cast to external since #core guarantees args.data() is a v8 External.
-    let state_refcell_raw = unsafe {
-      deno_core::v8::Local::<deno_core::v8::External>::cast(
-        args.data().unwrap_unchecked(),
-      )
-    }
-    .value();
+  // SAFETY: opening a DLL calls dlopen
+  #[cfg(unix)]
+  let library = match unsafe { Library::open(Some(&path), flags) } {
+    Ok(lib) => lib,
+    Err(e) => return Err(type_error(e.to_string())),
+  };
 
-    // SAFETY: The Rc<RefCell<OpState>> is functionally pinned and is tied to the isolate's lifetime
-    let state = unsafe {
-      &*(state_refcell_raw as *const std::cell::RefCell<deno_core::OpState>)
-    };
+  // SAFETY: opening a DLL calls dlopen
+  #[cfg(not(unix))]
+  let library = match unsafe { Library::load_with_flags(&path, flags) } {
+    Ok(lib) => lib,
+    Err(e) => return Err(type_error(e.to_string())),
+  };
 
-    let (async_work_sender, tsfn_sender, isolate_ptr) = {
-      let op_state = &mut state.borrow_mut();
-      let napi_state = op_state.borrow::<NapiState>();
-      let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
-      (
-        napi_state.async_work_sender.clone(),
-        napi_state.threadsafe_function_sender.clone(),
-        *isolate_ptr,
-      )
-    };
+  MODULE.with(|cell| {
+    let slot = *cell.borrow();
+    match slot {
+      Some(nm) => {
+        // SAFETY: dereferencing a pointer is unsafe
+        let nm = unsafe { &*nm };
+        assert_eq!(nm.nm_version, 1);
+        // SAFETY: calling a function across FFI boundary
+        let exports = unsafe {
+          (nm.nm_register_func)(
+            env_ptr,
+            std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
+              exports.into(),
+            ),
+          )
+        };
 
-    let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
-    let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
-    let napi_wrap = v8::Local::new(scope, napi_wrap);
-    let napi_wrap = v8::Global::new(scope, napi_wrap);
-
-    let path = args.get(1).to_string(scope).unwrap();
-    let path = path.to_rust_string_lossy(scope);
-
-    let exports = v8::Object::new(scope);
-
-    // We need complete control over the env object's lifetime
-    // so we'll use explicit allocation for it, so that it doesn't
-    // die before the module itself. Using struct & their pointers
-    // resulted in a use-after-free situation which turned out to be
-    // unfixable, so here we are.
-    // SAFETY: EnvShared is non-zero size, the memory is initialized later when we
-    // write to the pointer.
-    let env_shared_ptr = unsafe {
-      std::alloc::alloc(std::alloc::Layout::new::<EnvShared>())
-        as *mut EnvShared
-    };
-    let mut env_shared = EnvShared::new(napi_wrap);
-    let cstr = CString::new(path.clone()).unwrap();
-    env_shared.filename = cstr.as_ptr();
-    std::mem::forget(cstr);
-    // SAFETY: we have ensured that the layout of the data the pointer points
-    // to is the same as `EnvShared`
-    unsafe {
-      env_shared_ptr.write(env_shared);
-    }
-
-    // SAFETY: Env is non-zero size, the memory is initialized later when we write
-    // to the pointer.
-    let env_ptr = unsafe {
-      std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env
-    };
-    let ctx = scope.get_current_context();
-    let mut env = Env::new(
-      isolate_ptr,
-      v8::Global::new(scope, ctx),
-      async_work_sender,
-      tsfn_sender,
-    );
-    env.shared = env_shared_ptr;
-    // SAFETY: we have ensured that the layout of the data the pointer points
-    // to is the same as `Env`
-    unsafe {
-      (env_ptr as *mut Env).write(env);
-    }
-
-    #[cfg(unix)]
-    let flags = RTLD_LAZY;
-    #[cfg(not(unix))]
-    let flags = 0x00000008;
-
-    // SAFETY: opening a DLL is always unsafe
-    #[cfg(unix)]
-    let library = match unsafe { Library::open(Some(&path), flags) } {
-      Ok(lib) => lib,
-      Err(e) => {
-        let message = v8::String::new(scope, &e.to_string()).unwrap();
-        let error = v8::Exception::type_error(scope, message);
-        scope.throw_exception(error);
-        return;
+        // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+        // to a value, they have the same layout
+        let exports = unsafe {
+          std::mem::transmute::<napi_value, v8::Local<v8::Value>>(exports)
+        };
+        Ok(serde_v8::Value { v8_value: exports })
       }
-    };
-
-    // SAFETY: opening a DLL is always unsafe
-    #[cfg(not(unix))]
-    let library = match unsafe { Library::load_with_flags(&path, flags) } {
-      Ok(lib) => lib,
-      Err(e) => {
-        let message = v8::String::new(scope, &e.to_string()).unwrap();
-        let error = v8::Exception::type_error(scope, message);
-        scope.throw_exception(error);
-        return;
+      None => {
+        // Initializer callback.
+        // SAFETY: calling a function across FFI boundary is always unsafe
+        unsafe {
+          let init = library
+            .get::<unsafe extern "C" fn(
+              env: napi_env,
+              exports: napi_value,
+            ) -> napi_value>(b"napi_register_module_v1")
+            .expect("napi_register_module_v1 not found");
+          init(
+            env_ptr,
+            std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
+              exports.into(),
+            ),
+          )
+        };
+        Ok(serde_v8::Value {
+          v8_value: exports.into(),
+        })
       }
-    };
-
-    MODULE.with(|cell| {
-      let slot = *cell.borrow();
-      match slot {
-        Some(nm) => {
-          // SAFETY: dereferencing a pointer is unsafe
-          let nm = unsafe { &*nm };
-          assert_eq!(nm.nm_version, 1);
-          // SAFETY: calling a function across FFI boundary is always unsafe
-          let exports = unsafe {
-            (nm.nm_register_func)(
-              env_ptr,
-              std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
-                exports.into(),
-              ),
-            )
-          };
-
-          // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
-          // to a value, they have the same layout
-          let exports = unsafe {
-            std::mem::transmute::<napi_value, v8::Local<v8::Value>>(exports)
-          };
-          rv.set(exports);
-        }
-        None => {
-          // Initializer callback.
-          // SAFETY: calling a function across FFI boundary is always unsafe
-          unsafe {
-            let init = library
-              .get::<unsafe extern "C" fn(
-                env: napi_env,
-                exports: napi_value,
-              ) -> napi_value>(b"napi_register_module_v1")
-              .expect("napi_register_module_v1 not found");
-            init(
-              env_ptr,
-              std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
-                exports.into(),
-              ),
-            )
-          };
-          rv.set(exports.into());
-        }
-      }
-    });
-
-    std::mem::forget(library);
-  }
+    }
+  })
 }
