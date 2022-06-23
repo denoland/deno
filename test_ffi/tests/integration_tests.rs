@@ -77,6 +77,8 @@ fn basic() {
     true\n\
     Before\n\
     true\n\
+    After\n\
+    true\n\
     logCallback\n\
     1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
@@ -93,8 +95,6 @@ fn basic() {
     Static i64: -1242464576485n\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
-    After\n\
-    true\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");

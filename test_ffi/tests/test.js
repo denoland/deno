@@ -306,11 +306,12 @@ start = performance.now();
 dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
-  // Close after task is complete.
-  cleanup();
 });
 console.log("Before");
 console.log(performance.now() - start < 100);
+
+// Await to make sure `sleep_nonblocking` calls and logs before we proceed
+await new Promise((res) => setTimeout(res, 100));
 
 // Test calls with callback parameters
 const logCallback = new Deno.UnsafeCallback(
@@ -410,7 +411,7 @@ console.log(
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
 
-function cleanup() {
+(function cleanup() {
   dylib.close();
   throwCallback.close();
   logCallback.close();
@@ -434,4 +435,4 @@ After: ${postStr}`,
   }
 
   console.log("Correct number of resources");
-}
+})();
