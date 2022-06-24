@@ -1,5 +1,8 @@
 # Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+# IMPORTANT(bartlomieju): this crate is internal and shouldn't be published
+# to crates.io
+
 [package]
 name = "deno_snapshots"
 version = "0.0.0"

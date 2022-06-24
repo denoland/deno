@@ -2,7 +2,7 @@ use deno_core::Snapshot;
 use once_cell::sync::Lazy;
 use std::convert::TryInto;
 
-pub fn compiler_snapshot() -> Snapshot {
+pub fn tsc_snapshot() -> Snapshot {
   Snapshot::Static(&*COMPILER_SNAPSHOT)
 }
 
