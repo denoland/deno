@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertStrictEquals,
   assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
@@ -626,5 +627,36 @@ Deno.test(
         });
       }, Deno.errors.PermissionDenied);
     }
+  },
+);
+
+Deno.test(
+  {
+    permissions: { run: true, read: true, write: true },
+  },
+  async function non_existent_cwd(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        `const dir = Deno.makeTempDirSync();
+        Deno.chdir(dir);
+        Deno.removeSync(dir);
+        const p = Deno.run({cmd:[Deno.execPath(), "eval", "console.log(1);"]});
+        const { code } = await p.status();
+        p.close();
+        Deno.exit(code);
+        `,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    });
+
+    const { code } = await p.status();
+    const stderr = new TextDecoder().decode(await p.stderrOutput());
+    p.close();
+    p.stdout.close();
+    assertStrictEquals(code, 1);
+    assertStringIncludes(stderr, "invalid module path");
   },
 );
