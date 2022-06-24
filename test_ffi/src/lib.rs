@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::undocumented_unsafe_blocks)]
+
 use std::os::raw::c_void;
 use std::thread::sleep;
 use std::time::Duration;
