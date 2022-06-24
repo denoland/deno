@@ -228,6 +228,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
         if ffi_state.active_refd_functions > 0 {
           maybe_scheduling = true;
         }
+
+        drop(op_state);
       }
       while let Some(async_work_fut) = work_work.pop() {
         async_work_fut();
