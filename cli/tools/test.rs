@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
-use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
@@ -1453,7 +1452,7 @@ pub async fn run_tests_with_watch(
           .collect(),
         false,
         maybe_imports,
-        cache.as_mut_loader(),
+        &mut cache,
         maybe_resolver,
         maybe_locker,
         None,

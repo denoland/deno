@@ -1583,9 +1583,9 @@ impl RefactorEditInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
   // description: String,
-// changes: Vec<FileTextChanges>,
-// #[serde(skip_serializing_if = "Option::is_none")]
-// commands: Option<Vec<Value>>,
+  // changes: Vec<FileTextChanges>,
+  // #[serde(skip_serializing_if = "Option::is_none")]
+  // commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

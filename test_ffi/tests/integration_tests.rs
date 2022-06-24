@@ -45,6 +45,7 @@ fn basic() {
   let expected = "\
     something\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    [4, 5, 6]\n\
     [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
     [ 1, 2, 3, 4, 5, 6 ]\n\
@@ -65,11 +66,27 @@ fn basic() {
     -8589934590n\n\
     579.9119873046875\n\
     579.912\n\
+    579\n\
+    8589934590n\n\
+    -8589934590n\n\
+    8589934590n\n\
+    -8589934590n\n\
+    579.9119873046875\n\
+    579.912\n\
     After sleep_blocking\n\
     true\n\
     Before\n\
     true\n\
+    logCallback\n\
+    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    u8: 8\n\
+    buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    logCallback\n\
+    30\n\
+    STORED_FUNCTION cleared\n\
+    STORED_FUNCTION_2 cleared\n\
     Static u32: 42\n\
+    Static i64: -1242464576485n\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
     After\n\

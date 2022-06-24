@@ -94,8 +94,11 @@ pub async fn format(
     maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
   );
 
-  let fmt_predicate =
-    |path: &Path| is_supported_ext_fmt(path) && !is_contain_git(path);
+  let fmt_predicate = |path: &Path| {
+    is_supported_ext_fmt(path)
+      && !contains_git(path)
+      && !contains_node_modules(path)
+  };
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -316,6 +319,7 @@ async fn check_source_files(
           incremental_cache.update_file(&file_path, &file_text);
         }
         Err(e) => {
+          not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
           eprintln!("Error checking: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
@@ -729,8 +733,12 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn is_contain_git(path: &Path) -> bool {
+fn contains_git(path: &Path) -> bool {
   path.components().any(|c| c.as_os_str() == ".git")
+}
+
+fn contains_node_modules(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 #[cfg(test)]
@@ -766,10 +774,22 @@ mod test {
 
   #[test]
   fn test_is_located_in_git() {
-    assert!(is_contain_git(Path::new("test/.git")));
-    assert!(is_contain_git(Path::new(".git/bad.json")));
-    assert!(is_contain_git(Path::new("test/.git/bad.json")));
-    assert!(!is_contain_git(Path::new("test/bad.git/bad.json")));
+    assert!(contains_git(Path::new("test/.git")));
+    assert!(contains_git(Path::new(".git/bad.json")));
+    assert!(contains_git(Path::new("test/.git/bad.json")));
+    assert!(!contains_git(Path::new("test/bad.git/bad.json")));
+  }
+
+  #[test]
+  fn test_is_located_in_node_modules() {
+    assert!(contains_node_modules(Path::new("test/node_modules")));
+    assert!(contains_node_modules(Path::new("node_modules/bad.json")));
+    assert!(contains_node_modules(Path::new(
+      "test/node_modules/bad.json"
+    )));
+    assert!(!contains_node_modules(Path::new(
+      "test/bad.node_modules/bad.json"
+    )));
   }
 
   #[test]

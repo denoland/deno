@@ -3018,12 +3018,8 @@
         ],
         "text-utf8.any.html": true,
         "text-utf8.any.worker.html": true,
-        "accept-header.any.html": [
-          "Request through fetch should have a 'accept-language' header"
-        ],
-        "accept-header.any.worker.html": [
-          "Request through fetch should have a 'accept-language' header"
-        ],
+        "accept-header.any.html": true,
+        "accept-header.any.worker.html": true,
         "conditional-get.any.html": false,
         "conditional-get.any.worker.html": false,
         "error-after-response.any.html": false,
