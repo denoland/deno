@@ -60,7 +60,7 @@ pub fn create_runtime_snapshot(snapshot_path: &Path) {
 }
 
 // TODO(bartlomieju): this module contains a lot of duplicated
-// logic with `cli/build.rs`, factor out to `deno_core`.
+// logic with `build_tsc.rs`
 fn write_runtime_snapshot(mut js_runtime: JsRuntime, snapshot_path: &Path) {
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
