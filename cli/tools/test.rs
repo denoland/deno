@@ -743,6 +743,11 @@ async fn test_specifier(
     },
   );
 
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
+
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
   {

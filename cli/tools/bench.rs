@@ -369,6 +369,11 @@ async fn bench_specifier(
     Default::default(),
   );
 
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
+
   if options.compat_mode {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     worker.execute_side_module(&compat::MODULE_URL).await?;
