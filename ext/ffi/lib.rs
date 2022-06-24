@@ -94,6 +94,8 @@ impl DynamicLibraryResource {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
+    //
+    // SAFETY: The obtained T symbol is the size of a pointer.
     let fn_ptr = match unsafe { self.lib.symbol::<*const c_void>(symbol) } {
       Ok(value) => Ok(value),
       Err(err) => Err(generic_error(format!(
@@ -128,6 +130,8 @@ impl DynamicLibraryResource {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
+    //
+    // SAFETY: The obtained T symbol is the size of a pointer.
     match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
@@ -599,57 +603,62 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .parameter_types
     .iter()
     .zip(native_values.iter())
-    .map(|(&native_type, native_value)| unsafe {
-      native_value.as_arg(native_type)
+    .map(|(&native_type, native_value)| {
+      // SAFETY: the union field is initialized
+      unsafe { native_value.as_arg(native_type) }
     })
     .collect::<Vec<_>>();
 
-  Ok(match symbol.result_type {
-    NativeType::Void => {
-      json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) })
-    }
-    NativeType::U8 => {
-      json!(unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) })
-    }
-    NativeType::I8 => {
-      json!(unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) })
-    }
-    NativeType::U16 => {
-      json!(unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) })
-    }
-    NativeType::I16 => {
-      json!(unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) })
-    }
-    NativeType::U32 => {
-      json!(unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) })
-    }
-    NativeType::I32 => {
-      json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
-    }
-    NativeType::U64 => {
-      json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) })
-    }
-    NativeType::I64 => {
-      json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) })
-    }
-    NativeType::USize => {
-      json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) })
-    }
-    NativeType::ISize => {
-      json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) })
-    }
-    NativeType::F32 => {
-      json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
-    }
-    NativeType::F64 => {
-      json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
-    }
-    NativeType::Pointer => {
-      json!(U32x2::from(unsafe {
-        symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
-      } as u64))
-    }
-  })
+  // SAFETY: types in the `Cif` match the actual calling convention and
+  // types of symbol.
+  unsafe {
+    Ok(match symbol.result_type {
+      NativeType::Void => {
+        json!(symbol.cif.call::<()>(symbol.ptr, &call_args))
+      }
+      NativeType::U8 => {
+        json!(symbol.cif.call::<u8>(symbol.ptr, &call_args))
+      }
+      NativeType::I8 => {
+        json!(symbol.cif.call::<i8>(symbol.ptr, &call_args))
+      }
+      NativeType::U16 => {
+        json!(symbol.cif.call::<u16>(symbol.ptr, &call_args))
+      }
+      NativeType::I16 => {
+        json!(symbol.cif.call::<i16>(symbol.ptr, &call_args))
+      }
+      NativeType::U32 => {
+        json!(symbol.cif.call::<u32>(symbol.ptr, &call_args))
+      }
+      NativeType::I32 => {
+        json!(symbol.cif.call::<i32>(symbol.ptr, &call_args))
+      }
+      NativeType::U64 => {
+        json!(symbol.cif.call::<u64>(symbol.ptr, &call_args))
+      }
+      NativeType::I64 => {
+        json!(symbol.cif.call::<i64>(symbol.ptr, &call_args))
+      }
+      NativeType::USize => {
+        json!(symbol.cif.call::<usize>(symbol.ptr, &call_args))
+      }
+      NativeType::ISize => {
+        json!(symbol.cif.call::<isize>(symbol.ptr, &call_args))
+      }
+      NativeType::F32 => {
+        json!(symbol.cif.call::<f32>(symbol.ptr, &call_args))
+      }
+      NativeType::F64 => {
+        json!(symbol.cif.call::<f64>(symbol.ptr, &call_args))
+      }
+      NativeType::Pointer => {
+        json!(U32x2::from(
+          symbol.cif.call::<*const u8>(symbol.ptr, &call_args) as u64
+        ))
+      }
+    })
+  }
 }
 
 #[op]
@@ -710,50 +719,57 @@ fn op_ffi_get_static(
 
   let data_ptr = resource.get_static(args.name)? as *const u8;
 
-  Ok(match args.r#type {
-    NativeType::Void => {
-      unreachable!();
-    }
-    NativeType::U8 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u8) })
-    }
-    NativeType::I8 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i8) })
-    }
-    NativeType::U16 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u16) })
-    }
-    NativeType::I16 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i16) })
-    }
-    NativeType::U32 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u32) })
-    }
-    NativeType::I32 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i32) })
-    }
-    NativeType::U64 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const u64) })
-    }
-    NativeType::I64 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const i64) })
-    }
-    NativeType::USize => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const usize) })
-    }
-    NativeType::ISize => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const isize) })
-    }
-    NativeType::F32 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const f32) })
-    }
-    NativeType::F64 => {
-      json!(unsafe { ptr::read_unaligned(data_ptr as *const f64) })
-    }
-    NativeType::Pointer => {
-      json!(U32x2::from(data_ptr as *const u8 as u64))
-    }
-  })
+  // SAFETY:
+  // Behavior is undefined if any of the following conditions are violated:
+  // - src is valid for reads.
+  // - user defined type T assumed points to a properly initialized value of type T.
+  // - size of T != 0 and src is non-null.
+  unsafe {
+    Ok(match args.r#type {
+      NativeType::Void => {
+        unreachable!();
+      }
+      NativeType::U8 => {
+        json!(ptr::read_unaligned(data_ptr as *const u8))
+      }
+      NativeType::I8 => {
+        json!(ptr::read_unaligned(data_ptr as *const i8))
+      }
+      NativeType::U16 => {
+        json!(ptr::read_unaligned(data_ptr as *const u16))
+      }
+      NativeType::I16 => {
+        json!(ptr::read_unaligned(data_ptr as *const i16))
+      }
+      NativeType::U32 => {
+        json!(ptr::read_unaligned(data_ptr as *const u32))
+      }
+      NativeType::I32 => {
+        json!(ptr::read_unaligned(data_ptr as *const i32))
+      }
+      NativeType::U64 => {
+        json!(ptr::read_unaligned(data_ptr as *const u64))
+      }
+      NativeType::I64 => {
+        json!(ptr::read_unaligned(data_ptr as *const i64))
+      }
+      NativeType::USize => {
+        json!(ptr::read_unaligned(data_ptr as *const usize))
+      }
+      NativeType::ISize => {
+        json!(ptr::read_unaligned(data_ptr as *const isize))
+      }
+      NativeType::F32 => {
+        json!(ptr::read_unaligned(data_ptr as *const f32))
+      }
+      NativeType::F64 => {
+        json!(ptr::read_unaligned(data_ptr as *const f64))
+      }
+      NativeType::Pointer => {
+        json!(U32x2::from(data_ptr as *const u8 as u64))
+      }
+    })
+  }
 }
 
 #[op]
@@ -829,6 +845,8 @@ where
     ))
   } else {
     let src = u64::from(src) as *const u8;
+    // SAFETY: src is user defined.
+    // dest is properly aligned and is valid for writes of len * size_of::<T>() bytes.
     unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
     Ok(())
   }
@@ -848,6 +866,8 @@ where
   permissions.check(None)?;
 
   let ptr = u64::from(ptr) as *const c_char;
+  // SAFETY: ptr is user provided
+  // lifetime validity is not an issue because we allocate a new string.
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
@@ -864,6 +884,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u8) })
 }
 
@@ -880,6 +901,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i8) })
 }
 
@@ -896,6 +918,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u16) })
 }
 
@@ -912,6 +935,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i16) })
 }
 
@@ -928,6 +952,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u32) })
 }
 
@@ -944,6 +969,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i32) })
 }
 
@@ -960,6 +986,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(U32x2::from(unsafe {
     ptr::read_unaligned(u64::from(ptr) as *const u64)
   }))
@@ -978,6 +1005,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f32) })
 }
 
@@ -994,6 +1022,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f64) })
 }
 
