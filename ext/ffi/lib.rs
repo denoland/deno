@@ -1205,18 +1205,83 @@ fn op_ffi_get_static<'scope>(
       return Err(type_error("Invalid FFI static type 'void'"));
     }
     NativeType::U8 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u8) };
       let number: v8::Local<v8::Value> =
         v8::Integer::new_from_unsigned(scope, result as u32).into();
       number.into()
     }
+    NativeType::I8 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i8) };
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new(scope, result as i32).into();
+      number.into()
+    }
+    NativeType::U16 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u16) };
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new_from_unsigned(scope, result as u32).into();
+      number.into()
+    }
+    NativeType::I16 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i16) };
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new(scope, result as i32).into();
+      number.into()
+    }
+    NativeType::U32 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u32) };
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new_from_unsigned(scope, result).into();
+      number.into()
+    }
+    NativeType::I32 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i32) };
+      let number: v8::Local<v8::Value> = v8::Integer::new(scope, result).into();
+      number.into()
+    }
+    NativeType::U64 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const u64) };
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result).into();
+      big_int.into()
+    }
+    NativeType::I64 => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const i64) };
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_i64(scope, result).into();
+      big_int.into()
+    }
+    NativeType::USize => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result as u64).into();
+      big_int.into()
+    }
+    NativeType::ISize => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_i64(scope, result as i64).into();
+      big_int.into()
+    }
     NativeType::F32 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f32) };
       let number: v8::Local<v8::Value> =
         v8::Number::new(scope, result as f64).into();
       number.into()
     }
     NativeType::F64 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f64) };
       let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
       number.into()
@@ -1226,7 +1291,7 @@ fn op_ffi_get_static<'scope>(
       let big_int: v8::Local<v8::Value> =
         v8::BigInt::new_from_u64(scope, result).into();
       big_int.into()
-    }
+    },
   })
 }
 
@@ -1290,6 +1355,7 @@ fn op_ffi_call_nonblocking<'scope>(
       cif,
       ptr,
       parameter_types,
+      result_type,
     } = symbol.clone();
     ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
   });
