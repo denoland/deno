@@ -49,6 +49,7 @@ use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
+pub mod assertions;
 pub mod lsp;
 pub mod pty;
 mod temp_dir;
@@ -1737,6 +1738,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
+  pub env_clear: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1766,6 +1768,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args.iter());
+    if self.env_clear {
+      command.env_clear();
+    }
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
@@ -1920,7 +1925,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           println!("ECHO: {}", echo.escape_debug());
 
           // Windows may also echo the previous line, so only check the end
-          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
+          assert_ends_with!(normalize_text(&echo), normalize_text(s));
         }
         PtyData::Output(s) => {
           let mut line = String::new();

@@ -38,11 +38,11 @@ async fn main() -> Result<(), AnyError> {
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       unstable: false,
+      user_agent: "hello_runtime".to_string(),
     },
     extensions: vec![],
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
-    user_agent: "hello_runtime".to_string(),
     seed: None,
     source_map_getter: None,
     format_js_error_fn: None,
@@ -58,6 +58,7 @@ async fn main() -> Result<(), AnyError> {
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
     stdio: Default::default(),
+    startup_snapshot: None,
   };
 
   let js_path =

@@ -17,10 +17,8 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use shared::operation_error;
 
-use std::num::NonZeroU32;
-
 use p256::elliptic_curve::sec1::FromEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
+use p256::pkcs8::DecodePrivateKey;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -37,10 +35,10 @@ use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
-use rsa::pkcs1::der::Decodable;
-use rsa::pkcs1::der::Encodable;
-use rsa::pkcs1::FromRsaPrivateKey;
-use rsa::pkcs1::FromRsaPublicKey;
+use rsa::pkcs1::der::Decode;
+use rsa::pkcs1::der::Encode;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::der::asn1;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -51,12 +49,12 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::convert::TryFrom;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
 mod decrypt;
-mod ec_key;
 mod encrypt;
 mod export_key;
 mod generate_key;
@@ -537,11 +535,10 @@ pub async fn op_crypto_derive_bits(
                   type_error("Unexpected error decoding private key")
                 })?;
 
-              let pk: Option<p256::PublicKey> =
-                p256::PublicKey::from_encoded_point(&point);
-
-              if let Some(pk) = pk {
-                pk
+              let pk = p256::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
               } else {
                 return Err(type_error(
                   "Unexpected error decoding private key",
@@ -552,11 +549,12 @@ pub async fn op_crypto_derive_bits(
           };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_secret_scalar(),
+            secret_key.to_nonzero_scalar(),
             public_key.as_affine(),
           );
 
-          Ok(shared_secret.as_bytes().to_vec().into())
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec().into())
         }
         // TODO(@littledivy): support for P384
         // https://github.com/RustCrypto/elliptic-curves/issues/240
@@ -654,7 +652,7 @@ static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
       // id-sha1
       oid: ID_SHA1_OID,
       // NULL
-      parameters: Some(asn1::Any::from(asn1::Null)),
+      parameters: Some(asn1::AnyRef::from(asn1::Null)),
     }
   });
 
@@ -675,7 +673,7 @@ static MGF1_SHA1_MASK_ALGORITHM: Lazy<
     oid: ID_MFG1,
     // sha1
     parameters: Some(
-      asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
+      asn1::AnyRef::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
     ),
   }
 });
@@ -695,33 +693,51 @@ static P_SPECIFIED_EMPTY: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
       // id-pSpecified
       oid: ID_P_SPECIFIED,
       // EncodingParameters
-      parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
+      parameters: Some(asn1::AnyRef::from(
+        asn1::OctetStringRef::new(b"").unwrap(),
+      )),
     }
   });
 
-impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
+fn decode_content_tag<'a, T>(
+  decoder: &mut rsa::pkcs8::der::SliceReader<'a>,
+  tag: rsa::pkcs8::der::TagNumber,
+) -> rsa::pkcs8::der::Result<Option<T>>
+where
+  T: rsa::pkcs8::der::Decode<'a>,
+{
+  Ok(
+    rsa::pkcs8::der::asn1::ContextSpecific::<T>::decode_explicit(decoder, tag)?
+      .map(|field| field.value),
+  )
+}
+
+impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
   for PssPrivateKeyParameters<'a>
 {
   type Error = rsa::pkcs8::der::Error;
 
   fn try_from(
-    any: rsa::pkcs8::der::asn1::Any<'a>,
-  ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters> {
+    any: rsa::pkcs8::der::asn1::AnyRef<'a>,
+  ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters<'a>> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG)?
+      let hash_algorithm =
+        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
+          decoder,
+          HASH_ALGORITHM_TAG,
+        )?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+      let mask_gen_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, MASK_GEN_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
-      let salt_length = decoder
-        .context_specific(SALT_LENGTH_TAG)?
+      let salt_length = decode_content_tag::<u32>(decoder, SALT_LENGTH_TAG)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(20);
@@ -749,32 +765,37 @@ pub struct OaepPrivateKeyParameters<'a> {
   pub p_source_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
 }
 
-impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
+impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
   for OaepPrivateKeyParameters<'a>
 {
   type Error = rsa::pkcs8::der::Error;
 
   fn try_from(
-    any: rsa::pkcs8::der::asn1::Any<'a>,
-  ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
+    any: rsa::pkcs8::der::asn1::AnyRef<'a>,
+  ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters<'a>> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG)?
+      let hash_algorithm =
+        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
+          decoder,
+          HASH_ALGORITHM_TAG,
+        )?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+      let mask_gen_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, MASK_GEN_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
-      let p_source_algorithm = decoder
-        .context_specific(P_SOURCE_ALGORITHM_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*P_SPECIFIED_EMPTY);
+      let p_source_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, P_SOURCE_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*P_SPECIFIED_EMPTY);
 
       Ok(Self {
         hash_algorithm,

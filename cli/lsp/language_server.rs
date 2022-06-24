@@ -649,6 +649,7 @@ impl Inner {
       "jsx": "react",
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
+      "moduleDetection": "force",
       "noEmit": true,
       "resolveJsonModule": true,
       "strict": true,
@@ -797,7 +798,7 @@ impl Inner {
       let watch_registration_options =
         DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.json{c}".to_string(),
+            glob_pattern: "**/*.{json,jsonc}".to_string(),
             kind: Some(WatchKind::Change),
           }],
         };
@@ -853,12 +854,11 @@ impl Inner {
         params.text_document.language_id, params.text_document.uri
       );
     }
-    let content = Arc::new(params.text_document.text);
     let document = self.documents.open(
       specifier.clone(),
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
-      content,
+      params.text_document.text.into(),
     );
 
     self.performance.measure(mark);
@@ -1106,13 +1106,13 @@ impl Inner {
         Some(Err(err)) => Err(anyhow!("{}", err)),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, document.content().as_str(), &fmt_options)
+          format_file(&file_path, &document.content(), &fmt_options)
         }
       };
 
       match format_result {
         Ok(Some(new_text)) => Some(text::get_edits(
-          document.content().as_str(),
+          &document.content(),
           &new_text,
           document.line_index().as_ref(),
         )),
@@ -1931,7 +1931,7 @@ impl Inner {
           .map(|span| {
             span.to_folding_range(
               asset_or_doc.line_index(),
-              asset_or_doc.text().as_str().as_bytes(),
+              asset_or_doc.text().as_bytes(),
               self.config.client_capabilities.line_folding_only,
             )
           })

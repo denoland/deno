@@ -3,38 +3,21 @@
 use super::lsp_custom;
 
 use crate::checksum;
+use crate::lsp::analysis::source_range_to_lsp_range;
 use crate::lsp::client::TestingNotification;
 
-use deno_ast::swc::common::Span;
+use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use tower_lsp::lsp_types as lsp;
-
-fn span_to_range(
-  span: &Span,
-  source_text_info: &SourceTextInfo,
-) -> Option<lsp::Range> {
-  let start = source_text_info.line_and_column_index(span.lo);
-  let end = source_text_info.line_and_column_index(span.hi);
-  Some(lsp::Range {
-    start: lsp::Position {
-      line: start.line_index as u32,
-      character: start.column_index as u32,
-    },
-    end: lsp::Position {
-      line: end.line_index as u32,
-      character: end.column_index as u32,
-    },
-  })
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDefinition {
   pub id: String,
   pub level: usize,
   pub name: String,
-  pub span: Span,
+  pub range: SourceRange,
   pub steps: Option<Vec<TestDefinition>>,
 }
 
@@ -42,7 +25,7 @@ impl TestDefinition {
   pub fn new(
     specifier: &ModuleSpecifier,
     name: String,
-    span: Span,
+    range: SourceRange,
     steps: Option<Vec<TestDefinition>>,
   ) -> Self {
     let id = checksum::gen(&[specifier.as_str().as_bytes(), name.as_bytes()]);
@@ -50,14 +33,14 @@ impl TestDefinition {
       id,
       level: 0,
       name,
-      span,
+      range,
       steps,
     }
   }
 
   pub fn new_step(
     name: String,
-    span: Span,
+    range: SourceRange,
     parent: String,
     level: usize,
     steps: Option<Vec<TestDefinition>>,
@@ -71,7 +54,7 @@ impl TestDefinition {
       id,
       level,
       name,
-      span,
+      range,
       steps,
     }
   }
@@ -89,7 +72,7 @@ impl TestDefinition {
           .map(|step| step.as_test_data(source_text_info))
           .collect()
       }),
-      range: span_to_range(&self.span, source_text_info),
+      range: Some(source_range_to_lsp_range(&self.range, source_text_info)),
     }
   }
 

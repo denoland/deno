@@ -2,6 +2,6 @@ Check [WILDCARD]/test/only.ts
 running 1 test from ./test/only.ts
 only ... ok ([WILDCARD])
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out ([WILDCARD])
+ok | 1 passed | 0 failed | 2 filtered out ([WILDCARD])
 
 error: Test failed because the "only" option was used

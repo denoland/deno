@@ -20,12 +20,13 @@ async function dlint() {
     ":!:cli/tests/testdata/swc_syntax_error.ts",
     ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
-    ":!:cli/bench/node*.js",
+    ":!:cli/bench/http/node*.js",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
+    ":!:cli/tests/testdata/fmt/**",
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
@@ -39,14 +40,14 @@ async function dlint() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const p = Deno.run({
-      cmd: [execPath, "run", "--config=" + configFile, ...chunk],
+    const { status } = await Deno.spawn(execPath, {
+      args: ["run", "--config=" + configFile, ...chunk],
+      stdout: "inherit",
+      stderr: "inherit",
     });
-    const { success } = await p.status();
-    if (!success) {
+    if (!status.success) {
       throw new Error("dlint failed");
     }
-    p.close();
   }
 }
 
@@ -70,14 +71,14 @@ async function dlintPreferPrimordials() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const p = Deno.run({
-      cmd: [execPath, "run", "--rule", "prefer-primordials", ...chunk],
+    const { status } = await Deno.spawn(execPath, {
+      args: ["run", "--rule", "prefer-primordials", ...chunk],
+      stdout: "inherit",
+      stderr: "inherit",
     });
-    const { success } = await p.status();
-    if (!success) {
+    if (!status.success) {
       throw new Error("prefer-primordials failed");
     }
-    p.close();
   }
 }
 
@@ -101,14 +102,14 @@ async function clippy() {
   console.log("clippy");
 
   const currentBuildMode = buildMode();
-  const cmd = ["cargo", "clippy", "--all-targets", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");
   }
 
-  const p = Deno.run({
-    cmd: [
+  const { status } = await Deno.spawn("cargo", {
+    args: [
       ...cmd,
       "--",
       "-D",
@@ -120,12 +121,12 @@ async function clippy() {
       "-D",
       "clippy::undocumented_unsafe_blocks",
     ],
+    stdout: "inherit",
+    stderr: "inherit",
   });
-  const { success } = await p.status();
-  if (!success) {
+  if (!status.success) {
     throw new Error("clippy failed");
   }
-  p.close();
 }
 
 async function main() {

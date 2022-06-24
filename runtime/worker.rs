@@ -35,6 +35,18 @@ use std::task::Poll;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
+#[derive(Clone)]
+pub struct ExitCode(Arc<AtomicI32>);
+
+impl ExitCode {
+  pub fn get(&self) -> i32 {
+    self.0.load(Relaxed)
+  }
+
+  pub fn set(&mut self, code: i32) {
+    self.0.store(code, Relaxed);
+  }
+}
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -45,6 +57,7 @@ pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  exit_code: ExitCode,
 }
 
 pub struct WorkerOptions {
@@ -52,7 +65,6 @@ pub struct WorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   // Callbacks invoked when creating new instance of WebWorker
@@ -69,6 +81,7 @@ pub struct WorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub startup_snapshot: Option<deno_core::Snapshot>,
 }
 
 impl MainWorker {
@@ -99,6 +112,7 @@ impl MainWorker {
         Ok(())
       })
       .build();
+    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -111,7 +125,7 @@ impl MainWorker {
         options.bootstrap.location.clone(),
       ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
-        user_agent: options.user_agent.clone(),
+        user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
@@ -120,7 +134,7 @@ impl MainWorker {
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
-        options.user_agent.clone(),
+        options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -148,13 +162,15 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(None),
+      ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
       ops::http::init(),
+      // Runtime JS
+      js::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -162,7 +178,7 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: options.startup_snapshot.take(),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -182,6 +198,7 @@ impl MainWorker {
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      exit_code,
     }
   }
 
@@ -222,7 +239,11 @@ impl MainWorker {
     }
   }
 
-  async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  /// Executes specified JavaScript module.
+  pub async fn evaluate_module(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -315,11 +336,8 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&mut self) -> i32 {
-    let op_state_rc = self.js_runtime.op_state();
-    let op_state = op_state_rc.borrow();
-    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
-    exit_code
+  pub fn get_exit_code(&self) -> i32 {
+    self.exit_code.get()
   }
 
   /// Dispatches "load" event to the JavaScript runtime.
@@ -376,9 +394,9 @@ mod tests {
         runtime_version: "x".to_string(),
         ts_version: "x".to_string(),
         unstable: false,
+        user_agent: "x".to_string(),
       },
       extensions: vec![],
-      user_agent: "x".to_string(),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
@@ -396,6 +414,7 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
+      startup_snapshot: None,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

@@ -9,6 +9,8 @@ use crate::config_file::LintConfig;
 use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
+use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -468,8 +470,8 @@ impl CodeActionCollection {
       // Get the end position of the comment.
       let line = maybe_parsed_source
         .unwrap()
-        .source()
-        .line_and_column_index(ignore_comment.span.hi());
+        .text_info()
+        .line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,
         character: line.column_index as u32,
@@ -719,6 +721,24 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   }
 }
 
+pub fn source_range_to_lsp_range(
+  range: &SourceRange,
+  source_text_info: &SourceTextInfo,
+) -> lsp::Range {
+  let start = source_text_info.line_and_column_index(range.start);
+  let end = source_text_info.line_and_column_index(range.end);
+  lsp::Range {
+    start: lsp::Position {
+      line: start.line_index as u32,
+      character: start.column_index as u32,
+    },
+    end: lsp::Position {
+      line: end.line_index as u32,
+      character: end.column_index as u32,
+    },
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -787,12 +807,12 @@ mod tests {
       start: deno_lint::diagnostic::Position {
         line_index: 0,
         column_index: 2,
-        byte_pos: 23,
+        byte_index: 23,
       },
       end: deno_lint::diagnostic::Position {
         line_index: 1,
         column_index: 0,
-        byte_pos: 33,
+        byte_index: 33,
       },
     };
     let actual = as_lsp_range(&fixture);

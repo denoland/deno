@@ -199,6 +199,11 @@ async fn test_specifier(
       },
     );
 
+    worker.js_runtime.execute_script(
+      &located_script_name!(),
+      r#"Deno[Deno.internal].enableTestAndBench()"#,
+    )?;
+
     worker
       .execute_script(
         &located_script_name!(),
@@ -917,7 +922,7 @@ impl test::TestReporter for LspTestReporter {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::lsp::testing::collectors::tests::new_span;
+  use crate::lsp::testing::collectors::tests::new_range;
 
   #[test]
   fn test_as_queue_and_filters() {
@@ -949,7 +954,7 @@ mod tests {
         .to_string(),
       level: 0,
       name: "test a".to_string(),
-      span: new_span(420, 424, 1),
+      range: new_range(420, 424),
       steps: None,
     };
     let test_def_b = TestDefinition {
@@ -957,7 +962,7 @@ mod tests {
         .to_string(),
       level: 0,
       name: "test b".to_string(),
-      span: new_span(480, 481, 1),
+      range: new_range(480, 481),
       steps: None,
     };
     let test_definitions = TestDefinitions {

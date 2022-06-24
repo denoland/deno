@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
-use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
@@ -29,6 +28,7 @@ use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -74,6 +74,58 @@ pub enum TestMode {
   Executable,
   /// Test as both documentation and an executable module.
   Both,
+}
+
+// TODO(nayeemrmn): This is only used for benches right now.
+#[derive(Clone, Debug, Default)]
+pub struct TestFilter {
+  pub substring: Option<String>,
+  pub regex: Option<Regex>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Vec<String>,
+}
+
+impl TestFilter {
+  pub fn includes(&self, name: &String) -> bool {
+    if let Some(substring) = &self.substring {
+      if !name.contains(substring) {
+        return false;
+      }
+    }
+    if let Some(regex) = &self.regex {
+      if !regex.is_match(name) {
+        return false;
+      }
+    }
+    if let Some(include) = &self.include {
+      if !include.contains(name) {
+        return false;
+      }
+    }
+    if self.exclude.contains(name) {
+      return false;
+    }
+    true
+  }
+
+  pub fn from_flag(flag: &Option<String>) -> Self {
+    let mut substring = None;
+    let mut regex = None;
+    if let Some(flag) = flag {
+      if flag.starts_with('/') && flag.ends_with('/') {
+        let rs = flag.trim_start_matches('/').trim_end_matches('/');
+        regex =
+          Some(Regex::new(rs).unwrap_or_else(|_| Regex::new("$^").unwrap()));
+      } else {
+        substring = Some(flag.clone());
+      }
+    }
+    Self {
+      substring,
+      regex,
+      ..Default::default()
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
@@ -564,19 +616,40 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
-    println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
+
+    let mut summary_result = String::new();
+
+    summary_result.push_str(&format!(
+      "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    ));
+
+    let ignored_steps = get_steps_text(summary.ignored_steps);
+    if summary.ignored > 0 || !ignored_steps.is_empty() {
+      summary_result
+        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
+    };
+
+    if summary.measured > 0 {
+      summary_result.push_str(&format!(" | {} measured", summary.measured,))
+    };
+
+    if summary.filtered_out > 0 {
+      summary_result
+        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+    };
+
+    println!(
+      "\n{} | {} {}\n",
+      status,
+      summary_result,
+      colors::gray(format!(
+        "({})",
+        display::human_elapsed(elapsed.as_millis())
+      )),
     );
     self.in_new_line = true;
   }
@@ -669,6 +742,11 @@ async fn test_specifier(
       stderr: StdioPipe::File(sender.stderr()),
     },
   );
+
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -810,8 +888,6 @@ fn extract_files_from_regex_blocks(
         file_source.push_str(&format!("{}\n", text.as_str()));
       }
 
-      file_source.push_str("export {};");
-
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
         specifier,
@@ -825,7 +901,7 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: Arc::new(file_source),
+        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
       })
@@ -837,12 +913,12 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: Arc<String>,
+  source: Arc<str>,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source: deno_ast::SourceTextInfo::new(source),
+    text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -866,7 +942,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.source().line_index(comment.span.lo),
+        parsed_source.text_info().line_index(comment.start()),
         &blocks_regex,
         &lines_regex,
       )
@@ -1381,7 +1457,7 @@ pub async fn run_tests_with_watch(
           .collect(),
         false,
         maybe_imports,
-        cache.as_mut_loader(),
+        &mut cache,
         maybe_resolver,
         maybe_locker,
         None,
