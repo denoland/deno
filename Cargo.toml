@@ -9,6 +9,7 @@ members = [
   "ops",
   "runtime",
   "serde_v8",
+  "snapshots",
   "test_ffi",
   "test_util",
   "ext/broadcast_channel",
