@@ -40,7 +40,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
@@ -335,7 +334,6 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub maybe_exit_code: Option<Arc<AtomicI32>>,
   pub stdio: Stdio,
   pub startup_snapshot: Option<deno_core::Snapshot>,
 }
@@ -422,11 +420,7 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(Some(
-        options
-          .maybe_exit_code
-          .expect("Worker has access to OS ops but exit code was not passed."),
-      )),
+      ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
       ops::spawn::init(),
@@ -445,7 +439,7 @@ impl WebWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options.startup_snapshot.clone(),
+      startup_snapshot: options.startup_snapshot.take(),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),

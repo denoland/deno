@@ -17,7 +17,7 @@ fn no_color() {
   assert!(out.contains("success ... ok"));
   assert!(out.contains("fail ... FAILED"));
   assert!(out.contains("ignored ... ignored"));
-  assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
+  assert!(out.contains("FAILED | 1 passed | 1 failed | 1 ignored"));
 }
 
 itest!(overloads {
@@ -385,5 +385,11 @@ itest!(check_local_by_default2 {
   args: "test --quiet test/check_local_by_default2.ts",
   output: "test/check_local_by_default2.out",
   http_server: true,
+  exit_code: 1,
+});
+
+itest!(non_error_thrown {
+  args: "test --quiet test/non_error_thrown.ts",
+  output: "test/non_error_thrown.out",
   exit_code: 1,
 });

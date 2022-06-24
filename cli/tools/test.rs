@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
-use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
@@ -617,19 +616,40 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
-    println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
+
+    let mut summary_result = String::new();
+
+    summary_result.push_str(&format!(
+      "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    ));
+
+    let ignored_steps = get_steps_text(summary.ignored_steps);
+    if summary.ignored > 0 || !ignored_steps.is_empty() {
+      summary_result
+        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
+    };
+
+    if summary.measured > 0 {
+      summary_result.push_str(&format!(" | {} measured", summary.measured,))
+    };
+
+    if summary.filtered_out > 0 {
+      summary_result
+        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+    };
+
+    println!(
+      "\n{} | {} {}\n",
+      status,
+      summary_result,
+      colors::gray(format!(
+        "({})",
+        display::human_elapsed(elapsed.as_millis())
+      )),
     );
     self.in_new_line = true;
   }
@@ -722,6 +742,11 @@ async fn test_specifier(
       stderr: StdioPipe::File(sender.stderr()),
     },
   );
+
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -862,8 +887,6 @@ fn extract_files_from_regex_blocks(
         let text = line.get(1).unwrap();
         file_source.push_str(&format!("{}\n", text.as_str()));
       }
-
-      file_source.push_str("export {};");
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
@@ -1434,7 +1457,7 @@ pub async fn run_tests_with_watch(
           .collect(),
         false,
         maybe_imports,
-        cache.as_mut_loader(),
+        &mut cache,
         maybe_resolver,
         maybe_locker,
         None,

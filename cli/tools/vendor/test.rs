@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -16,6 +17,10 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleKind;
+use import_map::ImportMap;
+
+use crate::resolver::ImportMapResolver;
 
 use super::build::VendorEnvironment;
 
@@ -120,6 +125,10 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
+  fn cwd(&self) -> Result<PathBuf, AnyError> {
+    Ok(make_path("/"))
+  }
+
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -141,6 +150,10 @@ impl VendorEnvironment for TestVendorEnvironment {
       .insert(file_path.to_path_buf(), text.to_string());
     Ok(())
   }
+
+  fn path_exists(&self, path: &Path) -> bool {
+    self.files.borrow().contains_key(&path.to_path_buf())
+  }
 }
 
 pub struct VendorOutput {
@@ -152,6 +165,8 @@ pub struct VendorOutput {
 pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
   loader: TestLoader,
+  original_import_map: Option<ImportMap>,
+  environment: TestVendorEnvironment,
 }
 
 impl VendorTestBuilder {
@@ -159,6 +174,19 @@ impl VendorTestBuilder {
     let mut builder = VendorTestBuilder::default();
     builder.add_entry_point("/mod.ts");
     builder
+  }
+
+  pub fn new_import_map(&self, base_path: &str) -> ImportMap {
+    let base = ModuleSpecifier::from_file_path(&make_path(base_path)).unwrap();
+    ImportMap::new(base)
+  }
+
+  pub fn set_original_import_map(
+    &mut self,
+    import_map: ImportMap,
+  ) -> &mut Self {
+    self.original_import_map = Some(import_map);
+    self
   }
 
   pub fn add_entry_point(&mut self, entry_point: impl AsRef<str>) -> &mut Self {
@@ -170,11 +198,24 @@ impl VendorTestBuilder {
   }
 
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
-    let graph = self.build_graph().await;
     let output_dir = make_path("/vendor");
-    let environment = TestVendorEnvironment::default();
-    super::build::build(&graph, &output_dir, &environment)?;
-    let mut files = environment.files.borrow_mut();
+    let roots = self
+      .entry_points
+      .iter()
+      .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
+      .collect();
+    let loader = self.loader.clone();
+    let graph =
+      build_test_graph(roots, self.original_import_map.clone(), loader.clone())
+        .await;
+    super::build::build(
+      graph,
+      &output_dir,
+      self.original_import_map.as_ref(),
+      &self.environment,
+    )?;
+
+    let mut files = self.environment.files.borrow_mut();
     let import_map = files.remove(&output_dir.join("import_map.json"));
     let mut files = files
       .iter()
@@ -193,27 +234,26 @@ impl VendorTestBuilder {
     action(&mut self.loader);
     self
   }
+}
 
-  async fn build_graph(&mut self) -> ModuleGraph {
-    let graph = deno_graph::create_graph(
-      self
-        .entry_points
-        .iter()
-        .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
-        .collect(),
-      false,
-      None,
-      &mut self.loader,
-      None,
-      None,
-      None,
-      None,
-    )
-    .await;
-    graph.lock().unwrap();
-    graph.valid().unwrap();
-    graph
-  }
+async fn build_test_graph(
+  roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  original_import_map: Option<ImportMap>,
+  mut loader: TestLoader,
+) -> ModuleGraph {
+  let resolver =
+    original_import_map.map(|m| ImportMapResolver::new(Arc::new(m)));
+  deno_graph::create_graph(
+    roots,
+    false,
+    None,
+    &mut loader,
+    resolver.as_ref().map(|im| im.as_resolver()),
+    None,
+    None,
+    None,
+  )
+  .await
 }
 
 fn make_path(text: &str) -> PathBuf {

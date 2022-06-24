@@ -1583,9 +1583,9 @@ impl RefactorEditInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
   // description: String,
-// changes: Vec<FileTextChanges>,
-// #[serde(skip_serializing_if = "Option::is_none")]
-// commands: Option<Vec<Value>>,
+  // changes: Vec<FileTextChanges>,
+  // #[serde(skip_serializing_if = "Option::is_none")]
+  // commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -2618,7 +2618,7 @@ fn op_script_version(
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
     extensions: vec![init_extension(performance)],
-    startup_snapshot: Some(deno_snapshots::compiler_snapshot()),
+    startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
     ..Default::default()
   })
 }

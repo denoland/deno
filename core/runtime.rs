@@ -17,6 +17,7 @@ use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -162,6 +163,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -172,6 +174,7 @@ pub(crate) struct JsRuntimeState {
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
+  pub(crate) source_map_cache: SourceMapCache,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
@@ -396,9 +399,11 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_uncaught_exception_cb: None,
+      js_format_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
+      source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -1198,10 +1203,11 @@ impl JsRuntime {
   /// Evaluates an already instantiated ES module.
   ///
   /// Returns a receiver handle that resolves when module promise resolves.
-  /// Implementors must manually call `run_event_loop()` to drive module
-  /// evaluation future.
+  /// Implementors must manually call [`JsRuntime::run_event_loop`] to drive
+  /// module evaluation future.
   ///
-  /// `Error` can usually be downcast to `JsError`.
+  /// `Error` can usually be downcast to `JsError` and should be awaited and
+  /// checked after [`JsRuntime::run_event_loop`] completion.
   ///
   /// This function panics if module has not been instantiated.
   pub fn mod_evaluate(
@@ -1558,7 +1564,7 @@ impl JsRuntime {
   /// The module will be marked as "main", and because of that
   /// "import.meta.main" will return true when checked inside that module.
   ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_main_module(
     &mut self,
@@ -1617,7 +1623,7 @@ impl JsRuntime {
   /// This method is meant to be used when loading some utility code that
   /// might be later imported by the main module (ie. an entry point module).
   ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_side_module(
     &mut self,
@@ -1998,6 +2004,9 @@ pub mod tests {
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
+      get_error_class_fn: Some(&|error| {
+        crate::error::get_custom_error_class(error).unwrap()
+      }),
       ..Default::default()
     });
 
@@ -2076,8 +2085,8 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.unrefOp(p1[promiseIdSymbol]);
-        Deno.core.unrefOp(p2[promiseIdSymbol]);
+        Deno.core.opSync("op_unref_op", p1[promiseIdSymbol]);
+        Deno.core.opSync("op_unref_op", p2[promiseIdSymbol]);
         "#,
       )
       .unwrap();
@@ -2092,8 +2101,8 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.refOp(p1[promiseIdSymbol]);
-        Deno.core.refOp(p2[promiseIdSymbol]);
+        Deno.core.opSync("op_ref_op", p1[promiseIdSymbol]);
+        Deno.core.opSync("op_ref_op", p2[promiseIdSymbol]);
         "#,
       )
       .unwrap();
@@ -2798,26 +2807,11 @@ assertEquals(1, notify_return_value);
         "is_proxy.js",
         r#"
       (function () {
-        const { isProxy } = Deno.core;
         const o = { a: 1, b: 2};
         const p = new Proxy(o, {});
-        return isProxy(p) && !isProxy(o) && !isProxy(42);
+        return Deno.core.opSync("op_is_proxy", p) && !Deno.core.opSync("op_is_proxy", o) && !Deno.core.opSync("op_is_proxy", 42);
       })()
     "#,
-      )
-      .unwrap();
-    let mut scope = runtime.handle_scope();
-    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
-    assert!(all_true.is_true());
-  }
-
-  #[test]
-  fn test_binding_names() {
-    let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    let all_true: v8::Global<v8::Value> = runtime
-      .execute_script(
-        "binding_names.js",
-        "Deno.core.encode.toString() === 'function encode() { [native code] }'",
       )
       .unwrap();
     let mut scope = runtime.handle_scope();
@@ -2892,16 +2886,16 @@ assertEquals(1, notify_return_value);
         r#"
         (async function () {
           const results = [];
-          Deno.core.setMacrotaskCallback(() => {
+          Deno.core.opSync("op_set_macrotask_callback", () => {
             results.push("macrotask");
             return true;
           });
-          Deno.core.setNextTickCallback(() => {
+          Deno.core.opSync("op_set_next_tick_callback", () => {
             results.push("nextTick");
-            Deno.core.setHasTickScheduled(false);
+            Deno.core.opSync("op_set_has_tick_scheduled", false);
           });
 
-          Deno.core.setHasTickScheduled(true);
+          Deno.core.opSync("op_set_has_tick_scheduled", true);
           await Deno.core.opAsync('op_async_sleep');
           if (results[0] != "nextTick") {
             throw new Error(`expected nextTick, got: ${results[0]}`);
@@ -2924,10 +2918,10 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "multiple_macrotasks_and_nextticks.js",
         r#"
-        Deno.core.setMacrotaskCallback(() => { return true; });
-        Deno.core.setMacrotaskCallback(() => { return true; });
-        Deno.core.setNextTickCallback(() => {});
-        Deno.core.setNextTickCallback(() => {});
+        Deno.core.opSync("op_set_macrotask_callback", () => { return true; });
+        Deno.core.opSync("op_set_macrotask_callback", () => { return true; });
+        Deno.core.opSync("op_set_next_tick_callback", () => {});
+        Deno.core.opSync("op_set_next_tick_callback", () => {});
         "#,
       )
       .unwrap();
@@ -2970,12 +2964,12 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "has_tick_scheduled.js",
         r#"
-          Deno.core.setMacrotaskCallback(() => {
+          Deno.core.opSync("op_set_macrotask_callback", () => {
             Deno.core.opSync("op_macrotask");
             return true; // We're done.
           });
-          Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
-          Deno.core.setHasTickScheduled(true);
+          Deno.core.opSync("op_set_next_tick_callback", () => Deno.core.opSync("op_next_tick"));
+          Deno.core.opSync("op_set_has_tick_scheduled", true);
           "#,
       )
       .unwrap();
@@ -3111,7 +3105,7 @@ assertEquals(1, notify_return_value);
         "promise_reject_callback.js",
         r#"
         // Note: |promise| is not the promise created below, it's a child.
-        Deno.core.setPromiseRejectCallback((type, promise, reason) => {
+        Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
           if (type !== /* PromiseRejectWithNoHandler */ 0) {
             throw Error("unexpected type: " + type);
           }
@@ -3122,7 +3116,7 @@ assertEquals(1, notify_return_value);
           throw Error("promiseReject"); // Triggers uncaughtException handler.
         });
 
-        Deno.core.setUncaughtExceptionCallback((err) => {
+        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
           if (err.message !== "promiseReject") throw err;
           Deno.core.opSync("op_uncaught_exception");
         });
@@ -3141,13 +3135,13 @@ assertEquals(1, notify_return_value);
         "promise_reject_callback.js",
         r#"
         {
-          const prev = Deno.core.setPromiseRejectCallback((...args) => {
+          const prev = Deno.core.opSync("op_set_promise_reject_callback", (...args) => {
             prev(...args);
           });
         }
 
         {
-          const prev = Deno.core.setUncaughtExceptionCallback((...args) => {
+          const prev = Deno.core.opSync("op_set_uncaught_exception_callback", (...args) => {
             prev(...args);
             throw Error("fail");
           });

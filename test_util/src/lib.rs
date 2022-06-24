@@ -49,6 +49,7 @@ use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
+pub mod assertions;
 pub mod lsp;
 pub mod pty;
 mod temp_dir;
@@ -1924,7 +1925,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           println!("ECHO: {}", echo.escape_debug());
 
           // Windows may also echo the previous line, so only check the end
-          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
+          assert_ends_with!(normalize_text(&echo), normalize_text(s));
         }
         PtyData::Output(s) => {
           let mut line = String::new();
