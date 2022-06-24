@@ -122,3 +122,33 @@ fn symbol_types() {
   assert!(output.status.success());
   assert_eq!(stderr, "");
 }
+
+#[test]
+fn thread_safe_callback() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/thread_safe_test.js")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  let expected = "\
+    Calling callback, isolate should stay asleep until callback is called\n\
+    Callback being called\n\
+    Isolate exiting\n";
+  assert_eq!(stdout, expected);
+  assert_eq!(stderr, "");
+}
