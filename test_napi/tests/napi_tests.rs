@@ -33,7 +33,12 @@ fn napi_tests() {
     .unwrap()
     .wait_with_output()
     .unwrap();
-
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
   assert!(output.status.success());
 }
 
@@ -63,6 +68,13 @@ fn thrid_party_tests() {
     .unwrap()
     .wait_with_output()
     .unwrap();
+
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
 
   assert!(output.status.success());
 }
