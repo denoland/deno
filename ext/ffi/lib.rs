@@ -214,14 +214,16 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       // FFI callbacks coming in from other threads will call in and get queued.
       let mut maybe_scheduling = false;
 
-      let mut work_work: Vec<PendingFfiAsyncWork> = vec![];
+      let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
       {
         let op_state = op_state_rc.borrow();
         let ffi_state = op_state.borrow::<FfiState>();
 
-        while let Ok(work) = ffi_state.async_work_receiver.try_recv() {
-          work_work.push(work);
+        while let Ok(async_work_fut) = ffi_state.async_work_receiver.try_recv()
+        {
+          // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
+          work_items.push(async_work_fut);
           maybe_scheduling = true;
         }
 
@@ -231,7 +233,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
 
         drop(op_state);
       }
-      while let Some(async_work_fut) = work_work.pop() {
+      while let Some(async_work_fut) = work_items.pop() {
         async_work_fut();
       }
 
