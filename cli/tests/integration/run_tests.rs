@@ -2728,3 +2728,8 @@ fn running_declaration_files() {
     assert!(output.status.success());
   }
 }
+
+itest!(test_and_bench_are_noops_in_run {
+  args: "run test_and_bench_in_run.js",
+  output_str: Some(""),
+});
