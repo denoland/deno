@@ -633,6 +633,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
   },
   async function non_existent_cwd(): Promise<void> {
     const p = Deno.run({
