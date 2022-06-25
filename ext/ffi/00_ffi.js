@@ -266,35 +266,33 @@
         }
 
         const isNonBlocking = symbols[symbol].nonblocking;
-        const resultType = symbols[symbol].result;
-
-        let fn;
         if (isNonBlocking) {
+          const resultType = symbols[symbol].result;
           const needsUnpacking = isReturnedAsBigInt(resultType);
-          fn = (...parameters) => {
-            const promise = core.opAsync(
-              "op_ffi_call_nonblocking",
-              this.#rid,
-              symbol,
-              parameters,
-            );
-
-            if (needsUnpacking) {
-              return PromisePrototypeThen(
-                promise,
-                (result) => unpackNonblockingReturnValue(resultType, result),
-              );
-            }
-
-            return promise;
-          };
           ObjectDefineProperty(
             this.symbols,
             symbol,
             {
               configurable: false,
               enumerable: true,
-              value: fn,
+              value: (...parameters) => {
+                const promise = core.opAsync(
+                  "op_ffi_call_nonblocking",
+                  this.#rid,
+                  symbol,
+                  parameters,
+                );
+
+                if (needsUnpacking) {
+                  return PromisePrototypeThen(
+                    promise,
+                    (result) =>
+                      unpackNonblockingReturnValue(resultType, result),
+                  );
+                }
+
+                return promise;
+              },
               writable: false,
             },
           );

@@ -585,10 +585,16 @@ fn make_sync_fn<'s>(
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let result = ffi_call_sync(scope, args, symbol).unwrap();
-      // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-      let result = unsafe { result.to_v8(scope, symbol.result_type) };
-      rv.set(result.v8_value);
+      match ffi_call_sync(scope, args, symbol) {
+        Ok(result) => {
+          // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+          let result = unsafe { result.to_v8(scope, symbol.result_type) };
+          rv.set(result.v8_value);
+        }
+        Err(err) => {
+          deno_core::_ops::throw_type_error(scope, err.to_string());
+        }
+      };
     },
   )
   .data(v8::External::new(scope, sym as *mut _).into())
