@@ -174,6 +174,8 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
     c.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     c.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
