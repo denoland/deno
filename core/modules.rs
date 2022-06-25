@@ -1803,15 +1803,11 @@ import "/a.js";
         )
         .unwrap();
 
-      // First poll runs `prepare_load` hook.
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
-
-      // Second poll actually loads modules into the isolate.
       assert!(matches!(
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
       assert_eq!(load_count.load(Ordering::Relaxed), 1);
       assert!(matches!(
