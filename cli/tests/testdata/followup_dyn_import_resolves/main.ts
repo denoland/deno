@@ -5,10 +5,10 @@
 
 // Long-running timer so the event loop doesn't have a next iteration for a
 // while.
-setTimeout(() => { }, 24 * 60 * 60 * 1000);
+setTimeout(() => {}, 24 * 60 * 60 * 1000);
 
 await import("./sub1.ts");
 
-// If we reach here, the test is passed. 
+// If we reach here, the test is passed.
 console.log("Done.");
 Deno.exit();
