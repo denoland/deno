@@ -248,7 +248,11 @@ fn op_system_memory_info(
 fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getGid");
   state.borrow_mut::<Permissions>().env.check_all()?;
-  unsafe { Ok(Some(libc::getgid())) }
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    Ok(Some(libc::getgid()))
+  }
 }
 
 #[cfg(windows)]
@@ -264,7 +268,11 @@ fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
   state.borrow_mut::<Permissions>().env.check_all()?;
-  unsafe { Ok(Some(libc::getuid())) }
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    Ok(Some(libc::getuid()))
+  }
 }
 
 #[cfg(windows)]
