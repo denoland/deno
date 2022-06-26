@@ -37,3 +37,9 @@ itest!(module_detection_force {
   args: "check --quiet module_detection_force.ts",
   output_str: Some(""),
 });
+
+itest!(error_mutually_exclusive_remote_args {
+  args: "check --remote --no-remote check_all.ts",
+  output: "check_exclusive_args.out",
+  exit_code: 1,
+});
