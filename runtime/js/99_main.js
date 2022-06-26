@@ -588,7 +588,7 @@ delete Intl.v8BreakIterator;
     defineEventHandler(window, "unhandledrejection");
 
     core.setPromiseRejectCallback((_type, promise, reason) => {
-      // console.log("setPromiseRejectionCallback", _type);
+      console.log("setPromiseRejectionCallback", _type, promise, reason);
       const event = new PromiseRejectionEvent("unhandledrejection", {
         cancelable: true,
         promise,

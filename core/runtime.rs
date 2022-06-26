@@ -1675,6 +1675,7 @@ impl JsRuntime {
       return Ok(());
     }
 
+    eprintln!("check_promise_exception goes");
     let key = {
       state
         .pending_promise_exceptions
