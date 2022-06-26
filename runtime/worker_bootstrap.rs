@@ -8,7 +8,6 @@ use deno_core::ModuleSpecifier;
 pub struct BootstrapOptions {
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
-  pub apply_source_maps: bool,
   pub cpu_count: usize,
   pub debug_flag: bool,
   pub enable_testing_features: bool,
@@ -21,6 +20,7 @@ pub struct BootstrapOptions {
   /// Sets `Deno.version.typescript` in JS runtime.
   pub ts_version: String,
   pub unstable: bool,
+  pub user_agent: String,
 }
 
 impl BootstrapOptions {
@@ -28,7 +28,6 @@ impl BootstrapOptions {
     let payload = json!({
       // Shared bootstrap args
       "args": self.args,
-      "applySourceMaps": self.apply_source_maps,
       "cpuCount": self.cpu_count,
       "debugFlag": self.debug_flag,
       "denoVersion": self.runtime_version,
@@ -44,6 +43,7 @@ impl BootstrapOptions {
       "ppid": ppid(),
       "target": env!("TARGET"),
       "v8Version": deno_core::v8_version(),
+      "userAgent": self.user_agent,
     });
     serde_json::to_string_pretty(&payload).unwrap()
   }

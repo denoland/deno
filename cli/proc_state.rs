@@ -4,10 +4,12 @@ use crate::cache;
 use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
+use crate::config_file;
 use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
+use crate::emit::EmitCache;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
@@ -20,7 +22,6 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::source_maps::SourceMapGetter;
 use crate::version;
 
 use deno_ast::MediaType;
@@ -38,6 +39,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
@@ -50,12 +52,12 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
-use import_map::parse_from_json;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
 use std::env;
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -81,6 +83,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
+  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
 }
 
 impl Deref for ProcState {
@@ -92,6 +95,41 @@ impl Deref for ProcState {
 
 impl ProcState {
   pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
+    Self::build_with_sender(flags, None).await
+  }
+
+  pub async fn build_for_file_watcher(
+    flags: Arc<flags::Flags>,
+    files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  ) -> Result<Self, AnyError> {
+    let ps = Self::build_with_sender(
+      flags.clone(),
+      Some(files_to_watch_sender.clone()),
+    )
+    .await?;
+
+    // Add the extra files listed in the watch flag
+    if let Some(watch_paths) = &flags.watch {
+      files_to_watch_sender.send(watch_paths.clone()).unwrap();
+    }
+
+    if let Ok(Some(import_map_path)) =
+      config_file::resolve_import_map_specifier(
+        ps.flags.import_map_path.as_deref(),
+        ps.maybe_config_file.as_ref(),
+      )
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+    {
+      files_to_watch_sender.send(vec![import_map_path]).unwrap();
+    }
+
+    Ok(ps)
+  }
+
+  async fn build_with_sender(
+    flags: Arc<flags::Flags>,
+    maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
+  ) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -209,6 +247,12 @@ impl ProcState {
       None
     };
 
+    let maybe_file_watcher_reporter =
+      maybe_sender.map(|sender| FileWatcherReporter {
+        sender,
+        file_paths: Arc::new(Mutex::new(vec![])),
+      });
+
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
@@ -225,6 +269,7 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       maybe_resolver,
+      maybe_file_watcher_reporter,
     })))
   }
 
@@ -304,12 +349,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.typecheck_mode == flags::TypecheckMode::None
+      if self.flags.type_check_mode == flags::TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.typecheck_mode != flags::TypecheckMode::None,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -358,6 +403,13 @@ impl ProcState {
       reload: reload_on_watch,
     };
 
+    let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
+      if let Some(reporter) = &self.maybe_file_watcher_reporter {
+        Some(reporter)
+      } else {
+        None
+      };
+
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -366,7 +418,7 @@ impl ProcState {
       maybe_resolver,
       maybe_locker,
       None,
-      None,
+      maybe_file_watcher_reporter,
     )
     .await;
 
@@ -419,21 +471,21 @@ impl ProcState {
       graph_data
         .check(
           &roots,
-          self.flags.typecheck_mode != flags::TypecheckMode::None,
+          self.flags.type_check_mode != flags::TypeCheckMode::None,
           check_js,
         )
         .unwrap()?;
     }
 
-    let config_type = if self.flags.typecheck_mode == flags::TypecheckMode::None
-    {
-      emit::ConfigType::Emit
-    } else {
-      emit::ConfigType::Check {
-        tsc_emit: true,
-        lib: lib.clone(),
-      }
-    };
+    let config_type =
+      if self.flags.type_check_mode == flags::TypeCheckMode::None {
+        emit::ConfigType::Emit
+      } else {
+        emit::ConfigType::Check {
+          tsc_emit: true,
+          lib: lib.clone(),
+        }
+      };
 
     let (ts_config, maybe_ignored_options) =
       emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
@@ -442,13 +494,13 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.typecheck_mode == flags::TypecheckMode::None {
+    if self.flags.type_check_mode == flags::TypeCheckMode::None {
       let options = emit::EmitOptions {
         ts_config,
         reload: self.flags.reload,
         reload_exclusions,
       };
-      let emit_result = emit::emit(&graph, &mut cache, options)?;
+      let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
       log::debug!("{}", emit_result.stats);
     } else {
       let maybe_config_specifier = self
@@ -456,7 +508,7 @@ impl ProcState {
         .as_ref()
         .map(|cf| cf.specifier.clone());
       let options = emit::CheckOptions {
-        typecheck_mode: self.flags.typecheck_mode.clone(),
+        type_check_mode: self.flags.type_check_mode.clone(),
         debug: self.flags.log_level == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -468,7 +520,7 @@ impl ProcState {
       let emit_result = emit::check_and_maybe_emit(
         &roots,
         self.graph_data.clone(),
-        &mut cache,
+        &self.dir.gen_cache,
         options,
       )?;
       if !emit_result.diagnostics.is_empty() {
@@ -477,7 +529,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.typecheck_mode != flags::TypecheckMode::None {
+    if self.flags.type_check_mode != flags::TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, &lib);
     }
@@ -558,8 +610,8 @@ impl ProcState {
     );
 
     let graph_data = self.graph_data.read();
-    let found = graph_data.follow_redirect(&specifier);
-    match graph_data.get(&found) {
+    let found_url = graph_data.follow_redirect(&specifier);
+    match graph_data.get(&found_url) {
       Some(ModuleEntry::Module {
         code, media_type, ..
       }) => {
@@ -573,28 +625,29 @@ impl ProcState {
             {
               source.to_owned()
             } else {
-              code.as_ref().clone()
+              code.to_string()
             }
           }
-          MediaType::Dts => "".to_string(),
-          _ => {
-            let emit_path = self
-              .dir
-              .gen_cache
-              .get_cache_filename_with_extension(&found, "js")
-              .unwrap_or_else(|| {
-                unreachable!("Unable to get cache filename: {}", &found)
-              });
-            match self.dir.gen_cache.get(&emit_path) {
-              Ok(b) => String::from_utf8(b).unwrap(),
-              Err(_) => unreachable!("Unexpected missing emit: {}", found),
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx => {
+            let cached_text = self.dir.gen_cache.get_emit_text(&found_url);
+            match cached_text {
+              Some(text) => text,
+              None => unreachable!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag or deleting your DENO_DIR.", found_url),
             }
+          }
+          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
+            panic!("Unexpected media type {} for {}", media_type, found_url)
           }
         };
         Ok(ModuleSource {
-          code,
+          code: code.into_bytes().into_boxed_slice(),
           module_url_specified: specifier.to_string(),
-          module_url_found: found.to_string(),
+          module_url_found: found_url.to_string(),
           module_type: match media_type {
             MediaType::Json => ModuleType::Json,
             _ => ModuleType::JavaScript,
@@ -605,28 +658,6 @@ impl ProcState {
         "Loading unprepared module: {}",
         specifier.to_string()
       )),
-    }
-  }
-
-  // TODO(@kitsonk) this should be refactored to get it from the module graph
-  fn get_emit(&self, url: &Url) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
-    let emit_path = self
-      .dir
-      .gen_cache
-      .get_cache_filename_with_extension(url, "js")?;
-    let emit_map_path = self
-      .dir
-      .gen_cache
-      .get_cache_filename_with_extension(url, "js.map")?;
-    if let Ok(code) = self.dir.gen_cache.get(&emit_path) {
-      let maybe_map = if let Ok(map) = self.dir.gen_cache.get(&emit_map_path) {
-        Some(map)
-      } else {
-        None
-      };
-      Some((code, maybe_map))
-    } else {
-      None
     }
   }
 }
@@ -642,11 +673,11 @@ impl SourceMapGetter for ProcState {
         "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
         _ => return None,
       }
-      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        let code = String::from_utf8(code).unwrap();
-        source_map_from_code(code).or(maybe_map)
+      if let Some(cache_data) = self.dir.gen_cache.get_emit_data(&specifier) {
+        source_map_from_code(cache_data.text.as_bytes())
+          .or_else(|| cache_data.map.map(|t| t.into_bytes()))
       } else if let Ok(source) = self.load(specifier, None, false) {
-        source_map_from_code(source.code)
+        source_map_from_code(&source.code)
       } else {
         None
       }
@@ -684,7 +715,12 @@ pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
 ) -> Result<ImportMap, AnyError> {
-  let result = parse_from_json(specifier, json_text)?;
+  debug_assert!(
+    !specifier.as_str().contains("../"),
+    "Import map specifier incorrectly contained ../: {}",
+    specifier.as_str()
+  );
+  let result = import_map::parse_from_json(specifier, json_text)?;
   if !result.diagnostics.is_empty() {
     warn!(
       "Import map diagnostics:\n{}",
@@ -694,27 +730,44 @@ pub fn import_map_from_text(
         .map(|d| format!("  - {}", d))
         .collect::<Vec<_>>()
         .join("\n")
-    )
+    );
   }
   Ok(result.import_map)
 }
 
-fn source_map_from_code(code: String) -> Option<Vec<u8>> {
-  let lines: Vec<&str> = code.split('\n').collect();
-  if let Some(last_line) = lines.last() {
-    if last_line
-      .starts_with("//# sourceMappingURL=data:application/json;base64,")
-    {
-      let input = last_line.trim_start_matches(
-        "//# sourceMappingURL=data:application/json;base64,",
-      );
-      let decoded_map = base64::decode(input)
-        .expect("Unable to decode source map from emitted file.");
-      Some(decoded_map)
-    } else {
-      None
-    }
+fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
+  static PREFIX: &[u8] = b"//# sourceMappingURL=data:application/json;base64,";
+  let last_line = code.rsplitn(2, |u| u == &b'\n').next().unwrap();
+  if last_line.starts_with(PREFIX) {
+    let input = last_line.split_at(PREFIX.len()).1;
+    let decoded_map = base64::decode(input)
+      .expect("Unable to decode source map from emitted file.");
+    Some(decoded_map)
   } else {
     None
+  }
+}
+
+#[derive(Debug)]
+struct FileWatcherReporter {
+  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  file_paths: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl deno_graph::source::Reporter for FileWatcherReporter {
+  fn on_load(
+    &self,
+    specifier: &ModuleSpecifier,
+    modules_done: usize,
+    modules_total: usize,
+  ) {
+    let mut file_paths = self.file_paths.lock();
+    if specifier.scheme() == "file" {
+      file_paths.push(specifier.to_file_path().unwrap());
+    }
+
+    if modules_done == modules_total {
+      self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
   }
 }

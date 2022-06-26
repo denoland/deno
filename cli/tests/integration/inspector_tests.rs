@@ -783,6 +783,7 @@ async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
   let mut child = util::deno_cmd()
     .arg("run")
+    .arg("--check")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .stdout(std::process::Stdio::piped())

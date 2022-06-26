@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use bytes::Bytes;
+use async_compression::tokio::write::BrotliEncoder;
+use async_compression::tokio::write::GzipEncoder;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -21,7 +22,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
 use deno_core::op;
-
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -38,6 +38,9 @@ use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
+use hyper::body::Bytes;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
@@ -60,9 +63,11 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 use tokio::task::spawn_local;
+use tokio_util::io::ReaderStream;
 
-mod compressible;
+pub mod compressible;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -75,6 +80,7 @@ pub fn init() -> Extension {
       op_http_read::decl(),
       op_http_write_headers::decl(),
       op_http_write::decl(),
+      op_http_write_resource::decl(),
       op_http_shutdown::decl(),
       op_http_websocket_accept_header::decl(),
       op_http_upgrade_websocket::decl(),
@@ -338,7 +344,8 @@ impl Default for HttpRequestReader {
 /// The write half of an HTTP stream.
 enum HttpResponseWriter {
   Headers(oneshot::Sender<Response<Body>>),
-  Body(hyper::body::Sender),
+  Body(Pin<Box<dyn tokio::io::AsyncWrite>>),
+  BodyUncompressed(hyper::body::Sender),
   Closed,
 }
 
@@ -383,13 +390,17 @@ async fn op_http_accept(
     _ => unreachable!(),
   };
 
-  {
-    let mut accept_encoding = stream.accept_encoding.borrow_mut();
-    *accept_encoding = fly_accept_encoding::parse(request.headers())
+  stream.accept_encoding.replace({
+    let encodings = fly_accept_encoding::encodings_iter(request.headers())
+      .filter(|r| {
+        matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
+      });
+
+    fly_accept_encoding::preferred(encodings)
       .ok()
       .flatten()
-      .unwrap_or(Encoding::Identity);
-  }
+      .unwrap_or(Encoding::Identity)
+  });
 
   let method = request.method().to_string();
   let headers = req_headers(request);
@@ -493,161 +504,47 @@ async fn op_http_write_headers(
     .resource_table
     .get::<HttpStreamResource>(rid)?;
 
-  let mut builder = Response::builder().status(status);
+  // Track supported encoding
+  let encoding = *stream.accept_encoding.borrow();
 
-  let mut body_compressible = false;
-  let mut headers_allow_compression = true;
-  let mut vary_header = None;
-  let mut etag_header = None;
-  let mut content_type_header = None;
+  let mut builder = Response::builder();
+  // SAFETY: can not fail, since a fresh Builder is non-errored
+  let hmap = unsafe { builder.headers_mut().unwrap_unchecked() };
 
-  builder.headers_mut().unwrap().reserve(headers.len());
-  for (key, value) in &headers {
-    if key.eq_ignore_ascii_case(b"cache-control") {
-      if let Ok(value) = std::str::from_utf8(value) {
-        if let Some(cache_control) = CacheControl::from_value(value) {
-          // We skip compression if the cache-control header value is set to
-          // "no-transform"
-          if cache_control.no_transform {
-            headers_allow_compression = false;
-          }
-        }
-      } else {
-        headers_allow_compression = false;
-      }
-    } else if key.eq_ignore_ascii_case(b"content-range") {
-      // we skip compression if the `content-range` header value is set, as it
-      // indicates the contents of the body were negotiated based directly
-      // with the user code and we can't compress the response
-      headers_allow_compression = false;
-    } else if key.eq_ignore_ascii_case(b"content-type") && !value.is_empty() {
-      content_type_header = Some(value);
-    } else if key.eq_ignore_ascii_case(b"content-encoding") {
-      // we don't compress if a content-encoding header was provided
-      headers_allow_compression = false;
-    } else if key.eq_ignore_ascii_case(b"etag") && !value.is_empty() {
-      // we store the values of ETag and Vary and skip adding them for now, as
-      // we may need to modify or change.
-      etag_header = Some(value);
-      continue;
-    } else if key.eq_ignore_ascii_case(b"vary") && !value.is_empty() {
-      vary_header = Some(value);
-      continue;
-    }
-    builder = builder.header(key.as_slice(), value.as_slice());
+  // Add headers
+  hmap.reserve(headers.len() + 2);
+  for (k, v) in headers.into_iter() {
+    let v: Vec<u8> = v.into();
+    hmap.append(
+      HeaderName::try_from(k.as_slice())?,
+      HeaderValue::try_from(v)?,
+    );
+  }
+  ensure_vary_accept_encoding(hmap);
+
+  let accepts_compression =
+    matches!(encoding, Encoding::Brotli | Encoding::Gzip);
+  let compressing = accepts_compression
+    && (matches!(data, Some(ref data) if data.len() > 20) || data.is_none())
+    && should_compress(hmap);
+
+  if compressing {
+    weaken_etag(hmap);
+    // Drop 'content-length' header. Hyper will update it using compressed body.
+    hmap.remove(hyper::header::CONTENT_LENGTH);
+    // Content-Encoding header
+    hmap.insert(
+      hyper::header::CONTENT_ENCODING,
+      HeaderValue::from_static(match encoding {
+        Encoding::Brotli => "br",
+        Encoding::Gzip => "gzip",
+        _ => unreachable!(), // Forbidden by accepts_compression
+      }),
+    );
   }
 
-  if headers_allow_compression {
-    body_compressible =
-      compressible::is_content_compressible(content_type_header);
-  }
-
-  let body: Response<Body>;
-  let new_wr: HttpResponseWriter;
-
-  match data {
-    Some(data) => {
-      // Set Vary: Accept-Encoding header for direct body response.
-      // Note: we set the header irrespective of whether or not we compress the
-      // data to make sure cache services do not serve uncompressed data to
-      // clients that support compression.
-      let vary_value = if let Some(value) = vary_header {
-        if let Ok(value_str) = std::str::from_utf8(value.as_slice()) {
-          if !value_str.to_lowercase().contains("accept-encoding") {
-            format!("Accept-Encoding, {}", value_str)
-          } else {
-            value_str.to_string()
-          }
-        } else {
-          // the header value wasn't valid UTF8, so it would have been a
-          // problem anyways, so sending a default header.
-          "Accept-Encoding".to_string()
-        }
-      } else {
-        "Accept-Encoding".to_string()
-      };
-      builder = builder.header("vary", &vary_value);
-
-      let accepts_compression = matches!(
-        *stream.accept_encoding.borrow(),
-        Encoding::Brotli | Encoding::Gzip
-      );
-
-      let should_compress =
-        body_compressible && data.len() > 20 && accepts_compression;
-
-      if should_compress {
-        // Drop 'content-length' header. Hyper will update it using compressed body.
-        if let Some(headers) = builder.headers_mut() {
-          headers.remove("content-length");
-        }
-        // If user provided a ETag header for uncompressed data, we need to
-        // ensure it is a Weak Etag header ("W/").
-        if let Some(value) = etag_header {
-          if let Ok(value_str) = std::str::from_utf8(value.as_slice()) {
-            if !value_str.starts_with("W/") {
-              builder = builder.header("etag", format!("W/{}", value_str));
-            } else {
-              builder = builder.header("etag", value.as_slice());
-            }
-          } else {
-            builder = builder.header("etag", value.as_slice());
-          }
-        }
-
-        match *stream.accept_encoding.borrow() {
-          Encoding::Brotli => {
-            builder = builder.header("content-encoding", "br");
-            // quality level 6 is based on google's nginx default value for
-            // on-the-fly compression
-            // https://github.com/google/ngx_brotli#brotli_comp_level
-            // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
-            // (~4MB)
-            let mut writer =
-              brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
-            writer.write_all(&data.into_bytes())?;
-            body = builder.body(writer.into_inner().into())?;
-          }
-          _ => {
-            assert_eq!(*stream.accept_encoding.borrow(), Encoding::Gzip);
-            builder = builder.header("content-encoding", "gzip");
-            // Gzip, after level 1, doesn't produce significant size difference.
-            // Probably the reason why nginx's default gzip compression level is
-            // 1.
-            // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
-            let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
-            writer.write_all(&data.into_bytes())?;
-            body = builder.body(writer.finish()?.into())?;
-          }
-        }
-      } else {
-        if let Some(value) = etag_header {
-          builder = builder.header("etag", value.as_slice());
-        }
-        // If a buffer was passed, but isn't compressible, we use it to
-        // construct a response body.
-        body = builder.body(data.into_bytes().into())?;
-      }
-      new_wr = HttpResponseWriter::Closed;
-    }
-    None => {
-      // If no buffer was passed, the caller will stream the response body.
-
-      // TODO(@kitsonk) had compression for streamed bodies.
-
-      // Set the user provided ETag & Vary headers for a streaming response
-      if let Some(value) = etag_header {
-        builder = builder.header("etag", value.as_slice());
-      }
-      if let Some(value) = vary_header {
-        builder = builder.header("vary", value.as_slice());
-      }
-
-      let (body_tx, body_rx) = Body::channel();
-      body = builder.body(body_rx)?;
-      new_wr = HttpResponseWriter::Body(body_tx);
-    }
-  }
+  let (new_wr, body) = http_response(data, compressing, encoding)?;
+  let body = builder.status(status).body(body)?;
 
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let response_tx = match replace(&mut *old_wr, new_wr) {
@@ -664,6 +561,180 @@ async fn op_http_write_headers(
   }
 }
 
+fn http_response(
+  data: Option<StringOrBuffer>,
+  compressing: bool,
+  encoding: Encoding,
+) -> Result<(HttpResponseWriter, hyper::Body), AnyError> {
+  match data {
+    Some(data) if compressing => match encoding {
+      Encoding::Brotli => {
+        // quality level 6 is based on google's nginx default value for
+        // on-the-fly compression
+        // https://github.com/google/ngx_brotli#brotli_comp_level
+        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
+        // (~4MB)
+        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        writer.write_all(&data)?;
+        Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
+      }
+      Encoding::Gzip => {
+        // Gzip, after level 1, doesn't produce significant size difference.
+        // Probably the reason why nginx's default gzip compression level is
+        // 1.
+        // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
+        let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
+        writer.write_all(&data)?;
+        Ok((HttpResponseWriter::Closed, writer.finish()?.into()))
+      }
+      _ => unreachable!(), // forbidden by accepts_compression
+    },
+    Some(data) => {
+      // If a buffer was passed, but isn't compressible, we use it to
+      // construct a response body.
+      Ok((HttpResponseWriter::Closed, Bytes::from(data).into()))
+    }
+    None if compressing => {
+      // Create a one way pipe that implements tokio's async io traits. To do
+      // this we create a [tokio::io::DuplexStream], but then throw away one
+      // of the directions to create a one way pipe.
+      let (a, b) = tokio::io::duplex(64 * 1024);
+      let (reader, _) = tokio::io::split(a);
+      let (_, writer) = tokio::io::split(b);
+      let writer: Pin<Box<dyn tokio::io::AsyncWrite>> = match encoding {
+        Encoding::Brotli => Box::pin(BrotliEncoder::new(writer)),
+        Encoding::Gzip => Box::pin(GzipEncoder::new(writer)),
+        _ => unreachable!(), // forbidden by accepts_compression
+      };
+      Ok((
+        HttpResponseWriter::Body(writer),
+        Body::wrap_stream(ReaderStream::new(reader)),
+      ))
+    }
+    None => {
+      let (body_tx, body_rx) = Body::channel();
+      Ok((HttpResponseWriter::BodyUncompressed(body_tx), body_rx))
+    }
+  }
+}
+
+// If user provided a ETag header for uncompressed data, we need to
+// ensure it is a Weak Etag header ("W/").
+fn weaken_etag(hmap: &mut hyper::HeaderMap) {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
+    if !etag.as_bytes().starts_with(b"W/") {
+      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+      v.extend(b"W/");
+      v.extend(etag.as_bytes());
+      *etag = v.try_into().unwrap();
+    }
+  }
+}
+
+// Set Vary: Accept-Encoding header for direct body response.
+// Note: we set the header irrespective of whether or not we compress the data
+// to make sure cache services do not serve uncompressed data to clients that
+// support compression.
+fn ensure_vary_accept_encoding(hmap: &mut hyper::HeaderMap) {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
+    if let Ok(s) = v.to_str() {
+      if !s.to_lowercase().contains("accept-encoding") {
+        *v = format!("Accept-Encoding, {}", s).try_into().unwrap()
+      }
+      return;
+    }
+  }
+  hmap.insert(
+    hyper::header::VARY,
+    HeaderValue::from_static("Accept-Encoding"),
+  );
+}
+
+fn should_compress(headers: &hyper::HeaderMap) -> bool {
+  // skip compression if the cache-control header value is set to "no-transform" or not utf8
+  fn cache_control_no_transform(headers: &hyper::HeaderMap) -> Option<bool> {
+    let v = headers.get(hyper::header::CACHE_CONTROL)?;
+    let s = match std::str::from_utf8(v.as_bytes()) {
+      Ok(s) => s,
+      Err(_) => return Some(true),
+    };
+    let c = CacheControl::from_value(s)?;
+    Some(c.no_transform)
+  }
+  // we skip compression if the `content-range` header value is set, as it
+  // indicates the contents of the body were negotiated based directly
+  // with the user code and we can't compress the response
+  let content_range = headers.contains_key(hyper::header::CONTENT_RANGE);
+  // assume body is already compressed if Content-Encoding header present, thus avoid recompressing
+  let is_precompressed = headers.contains_key(hyper::header::CONTENT_ENCODING);
+
+  !content_range
+    && !is_precompressed
+    && !cache_control_no_transform(headers).unwrap_or_default()
+    && headers
+      .get(hyper::header::CONTENT_TYPE)
+      .map(compressible::is_content_compressible)
+      .unwrap_or_default()
+}
+
+#[op]
+async fn op_http_write_resource(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  stream: ResourceId,
+) -> Result<(), AnyError> {
+  let http_stream = state
+    .borrow()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?;
+  let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
+  let resource = state.borrow().resource_table.get_any(stream)?;
+  loop {
+    match *wr {
+      HttpResponseWriter::Headers(_) => {
+        return Err(http_error("no response headers"))
+      }
+      HttpResponseWriter::Closed => {
+        return Err(http_error("response already completed"))
+      }
+      _ => {}
+    };
+
+    let vec = vec![0u8; 64 * 1024]; // 64KB
+    let buf = ZeroCopyBuf::new_temp(vec);
+    let (nread, buf) = resource.clone().read_return(buf).await?;
+    if nread == 0 {
+      break;
+    }
+
+    match &mut *wr {
+      HttpResponseWriter::Body(body) => {
+        if let Err(err) = body.write_all(&buf[..nread]).await {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          http_stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+        }
+      }
+      HttpResponseWriter::BodyUncompressed(body) => {
+        let mut buf = buf.to_temp();
+        buf.truncate(nread);
+        if let Err(err) = body.send_data(Bytes::from(buf)).await {
+          assert!(err.is_closed());
+          // Pull up the failure associated with the transport connection instead.
+          http_stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+        }
+      }
+      _ => unreachable!(),
+    };
+  }
+  Ok(())
+}
+
 #[op]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
@@ -676,27 +747,39 @@ async fn op_http_write(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
-  loop {
-    let body_tx = match &mut *wr {
-      HttpResponseWriter::Body(body_tx) => body_tx,
-      HttpResponseWriter::Headers(_) => {
-        break Err(http_error("no response headers"))
+  match &mut *wr {
+    HttpResponseWriter::Headers(_) => Err(http_error("no response headers")),
+    HttpResponseWriter::Closed => Err(http_error("response already completed")),
+    HttpResponseWriter::Body(body) => {
+      let mut result = body.write_all(&buf).await;
+      if result.is_ok() {
+        result = body.flush().await;
       }
-      HttpResponseWriter::Closed => {
-        break Err(http_error("response already completed"))
+      match result {
+        Ok(_) => Ok(()),
+        Err(err) => {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+          Err(http_error("response already completed"))
+        }
       }
-    };
-
-    let bytes = Bytes::copy_from_slice(&buf[..]);
-    match body_tx.send_data(bytes).await {
-      Ok(_) => break Ok(()),
-      Err(err) => {
-        // Don't return "channel closed", that's an implementation detail.
-        // Pull up the failure associated with the transport connection instead.
-        assert!(err.is_closed());
-        stream.conn.closed().await?;
-        // If there was no connection error, drop body_tx.
-        *wr = HttpResponseWriter::Closed;
+    }
+    HttpResponseWriter::BodyUncompressed(body) => {
+      let bytes = Bytes::from(buf);
+      match body.send_data(bytes).await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+          assert!(err.is_closed());
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+          // If there was no connection error, drop body_tx.
+          *wr = HttpResponseWriter::Closed;
+          Err(http_error("response already completed"))
+        }
       }
     }
   }
@@ -715,7 +798,18 @@ async fn op_http_shutdown(
     .resource_table
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
-  take(&mut *wr);
+  let wr = take(&mut *wr);
+  if let HttpResponseWriter::Body(mut body_writer) = wr {
+    match body_writer.shutdown().await {
+      Ok(_) => {}
+      Err(err) => {
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        // Don't return "broken pipe", that's an implementation detail.
+        // Pull up the failure associated with the transport connection instead.
+        stream.conn.closed().await?;
+      }
+    }
+  }
   Ok(())
 }
 

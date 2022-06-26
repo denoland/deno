@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git --no-check
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git --no-check --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { path } from "./deps.ts";
 import { DenoWorkspace } from "./deno_workspace.ts";

@@ -24,7 +24,6 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
-use deno_core::Snapshot;
 use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -52,27 +51,6 @@ pub static SHARED_GLOBALS_LIB: &str =
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
 pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
-pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
-  #[cold]
-  #[inline(never)]
-  || {
-    static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
-      include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
-
-    zstd::block::decompress(
-      &COMPRESSED_COMPILER_SNAPSHOT[4..],
-      u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
-        as usize,
-    )
-    .unwrap()
-    .into_boxed_slice()
-  },
-);
-
-pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(&*COMPILER_SNAPSHOT)
-}
-
 macro_rules! inc {
   ($e:expr) => {
     include_str!(concat!("dts/", $e))
@@ -88,6 +66,7 @@ pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
         inc!("lib.dom.asynciterable.d.ts"),
       ),
       ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
       ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
       ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
       ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
@@ -120,7 +99,7 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
 }
 
 fn get_maybe_hash(
-  maybe_source: Option<&String>,
+  maybe_source: Option<&str>,
   hash_data: &[Vec<u8>],
 ) -> Option<String> {
   if let Some(source) = maybe_source {
@@ -343,7 +322,7 @@ struct EmitArgs {
 }
 
 #[op]
-fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
+fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -388,7 +367,7 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> Result<Value, AnyError> {
     }
   }
 
-  Ok(json!(true))
+  true
 }
 
 #[derive(Debug, Deserialize)]
@@ -398,20 +377,20 @@ struct ExistsArgs {
 }
 
 #[op]
-fn op_exists(state: &mut OpState, args: ExistsArgs) -> Result<bool, AnyError> {
+fn op_exists(state: &mut OpState, args: ExistsArgs) -> bool {
   let state = state.borrow_mut::<State>();
   let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
-      Ok(true)
+      true
     } else {
-      Ok(matches!(
+      matches!(
         graph_data.get(&graph_data.follow_redirect(&specifier)),
         Some(ModuleEntry::Module { .. })
-      ))
+      )
     }
   } else {
-    Ok(false)
+    false
   }
 }
 
@@ -421,7 +400,7 @@ struct LoadArgs {
   specifier: String,
 }
 
-fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+pub fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   match media_type {
     MediaType::JavaScript => 1,
     MediaType::Jsx => 2,
@@ -448,18 +427,19 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
+  let graph_data = state.graph_data.read();
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
-    state.maybe_tsbuildinfo.clone()
+    state.maybe_tsbuildinfo.as_deref()
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if &v.specifier == "deno:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
-    Some("declare const __: any;\nexport = __;\n".to_string())
+    Some("declare const __: any;\nexport = __;\n")
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
-    let maybe_source = get_asset(&name).map(String::from);
-    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
+    let maybe_source = get_asset(&name);
+    hash = get_maybe_hash(maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
@@ -472,7 +452,6 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let graph_data = state.graph_data.read();
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
       media_type: mt,
@@ -481,17 +460,17 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       graph_data.get(&graph_data.follow_redirect(&specifier))
     {
       media_type = *mt;
-      Some(code.as_ref().clone())
+      Some(code as &str)
     } else {
       media_type = MediaType::Unknown;
       None
     };
-    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
+    hash = get_maybe_hash(maybe_source, &state.hash_data);
     maybe_source
   };
 
   Ok(
-    json!({ "data": data, "hash": hash, "scriptKind": as_ts_script_kind(&media_type) }),
+    json!({ "data": data, "version": hash, "scriptKind": as_ts_script_kind(&media_type) }),
   )
 }
 
@@ -509,7 +488,7 @@ pub struct ResolveArgs {
 fn op_resolve(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Value, AnyError> {
+) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = if let Some(remapped_specifier) =
@@ -606,7 +585,7 @@ fn op_resolve(
     }
   }
 
-  Ok(json!(resolved))
+  Ok(resolved)
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -656,7 +635,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     })
     .collect();
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(compiler_snapshot()),
+    startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
     extensions: vec![Extension::builder()
       .ops(vec![
         op_cwd::decl(),
@@ -751,7 +730,7 @@ mod tests {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
             maybe_headers: None,
-            content: Arc::new(c),
+            content: c.into(),
           })
         })
         .map_err(|err| err.into());
@@ -840,9 +819,9 @@ mod tests {
   }
 
   #[test]
-  fn test_compiler_snapshot() {
+  fn test_tsc_snapshot() {
     let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-      startup_snapshot: Some(compiler_snapshot()),
+      startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
       ..Default::default()
     });
     js_runtime
@@ -916,9 +895,8 @@ mod tests {
         file_name: "cache:///some/file.js".to_string(),
         maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    );
+    assert!(actual);
     let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 1);
     assert!(state.maybe_tsbuildinfo.is_none());
@@ -947,9 +925,8 @@ mod tests {
           vec!["file:///some/file.ts?q=.json".to_string()],
         ),
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    );
+    assert!(actual);
     let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 1);
     assert!(state.maybe_tsbuildinfo.is_none());
@@ -976,9 +953,8 @@ mod tests {
         file_name: "deno:///.tsbuildinfo".to_string(),
         maybe_specifiers: None,
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    );
+    assert!(actual);
     let state = state.borrow::<State>();
     assert_eq!(state.emitted_files.len(), 0);
     assert_eq!(
@@ -1004,7 +980,7 @@ mod tests {
       actual,
       json!({
         "data": "console.log(\"hello deno\");\n",
-        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "version": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
         "scriptKind": 3,
       })
     );
@@ -1014,7 +990,7 @@ mod tests {
   #[serde(rename_all = "camelCase")]
   struct LoadResponse {
     data: String,
-    hash: Option<String>,
+    version: Option<String>,
     script_kind: i64,
   }
 
@@ -1035,7 +1011,7 @@ mod tests {
       serde_json::from_value(value).expect("failed to deserialize");
     let expected = get_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
-    assert!(actual.hash.is_some());
+    assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
 
@@ -1054,7 +1030,7 @@ mod tests {
       actual,
       json!({
         "data": "some content",
-        "hash": null,
+        "version": null,
         "scriptKind": 0,
       })
     );
@@ -1072,7 +1048,7 @@ mod tests {
       actual,
       json!({
         "data": null,
-        "hash": null,
+        "version": null,
         "scriptKind": 0,
       })
     )
@@ -1094,7 +1070,10 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
+    assert_eq!(
+      actual,
+      vec![("https://deno.land/x/b.ts".into(), ".ts".into())]
+    );
   }
 
   #[tokio::test]
@@ -1115,7 +1094,7 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      json!([["deno:///missing_dependency.d.ts", ".d.ts"]])
+      vec![("deno:///missing_dependency.d.ts".into(), ".d.ts".into())]
     );
   }
 

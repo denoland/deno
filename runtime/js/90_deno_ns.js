@@ -116,7 +116,6 @@
   };
 
   __bootstrap.denoNsUnstable = {
-    emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
@@ -125,10 +124,8 @@
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
+    getGid: __bootstrap.os.getGid,
     getUid: __bootstrap.os.getUid,
-    applySourceMap: __bootstrap.errorStack.opApplySourceMap,
-    formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
-    sleepSync: __bootstrap.timers.sleepSync,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
@@ -142,6 +139,7 @@
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
+    UnsafeCallback: __bootstrap.ffi.UnsafeCallback,
     UnsafePointer: __bootstrap.ffi.UnsafePointer,
     UnsafePointerView: __bootstrap.ffi.UnsafePointerView,
     UnsafeFnPointer: __bootstrap.ffi.UnsafeFnPointer,
@@ -151,6 +149,10 @@
     funlockSync: __bootstrap.fs.funlockSync,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    Child: __bootstrap.spawn.Child,
+    spawnChild: __bootstrap.spawn.spawnChild,
+    spawn: __bootstrap.spawn.spawn,
+    spawnSync: __bootstrap.spawn.spawnSync,
     jupyter: __bootstrap.jupyter,
   };
 })(this);

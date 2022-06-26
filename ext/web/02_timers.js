@@ -21,14 +21,11 @@
     TypeError,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
+  const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
   function opNow() {
     return core.opSync("op_now");
-  }
-
-  function sleepSync(millis = 0) {
-    return core.opSync("op_sleep_sync", millis);
   }
 
   // ---------------------------------------------------------------------------
@@ -139,13 +136,16 @@
 
         // 2.
         // 3.
-        // TODO(@andreubotella): Error handling.
         if (typeof callback === "function") {
-          FunctionPrototypeCall(
-            callback,
-            globalThis,
-            ...new SafeArrayIterator(args),
-          );
+          try {
+            FunctionPrototypeCall(
+              callback,
+              globalThis,
+              ...new SafeArrayIterator(args),
+            );
+          } catch (error) {
+            reportException(error);
+          }
         } else {
           // TODO(@andreubotella): eval doesn't seem to have a primordial, but
           // it can be redefined in the global scope.
@@ -368,7 +368,6 @@
     clearInterval,
     handleTimerMacrotask,
     opNow,
-    sleepSync,
     refTimer,
     unrefTimer,
   };

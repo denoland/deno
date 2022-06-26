@@ -67,8 +67,17 @@
    * @param {Uint8Array | null} body
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
-  function opFetch(args, body) {
-    return core.opSync("op_fetch", args, body);
+  function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
+    return core.opSync(
+      "op_fetch",
+      method,
+      url,
+      headers,
+      clientRid,
+      hasBody,
+      bodyLength,
+      body,
+    );
   }
 
   /**
@@ -210,14 +219,12 @@
     }
 
     const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
-      {
-        method: req.method,
-        url: req.currentUrl(),
-        headers: req.headerList,
-        clientRid: req.clientRid,
-        hasBody: reqBody !== null,
-        bodyLength: req.body?.length,
-      },
+      req.method,
+      req.currentUrl(),
+      req.headerList,
+      req.clientRid,
+      reqBody !== null,
+      req.body?.length,
       ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody)
         ? reqBody
         : null,
@@ -443,6 +450,10 @@
 
       if (!requestObject.headers.has("Accept")) {
         ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
+      }
+
+      if (!requestObject.headers.has("Accept-Language")) {
+        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
       }
 
       // 12.

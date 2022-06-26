@@ -44,6 +44,18 @@ impl DenoDir {
 
     Ok(deno_dir)
   }
+
+  /// Path for the incremental cache used for formatting.
+  pub fn fmt_incremental_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("fmt_incremental_cache_v1")
+  }
+
+  /// Path for the incremental cache used for linting.
+  pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("lint_incremental_cache_v1")
+  }
 }
 
 /// To avoid the poorly managed dirs crate
@@ -64,7 +76,13 @@ mod dirs {
   pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
       .and_then(|h| if h.is_empty() { None } else { Some(h) })
-      .or_else(|| unsafe { fallback() })
+      .or_else(|| {
+        // TODO(bartlomieju):
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+          fallback()
+        }
+      })
       .map(PathBuf::from)
   }
 

@@ -11,7 +11,6 @@
     ArrayPrototypeMap,
     ArrayPrototypeSlice,
     TypeError,
-    isNaN,
     ObjectEntries,
     String,
   } = window.__bootstrap.primordials;
@@ -95,10 +94,6 @@
     }
   }
 
-  function isRid(arg) {
-    return !isNaN(arg);
-  }
-
   function run({
     cmd,
     cwd = undefined,
@@ -120,12 +115,9 @@
       env: ObjectEntries(env),
       gid,
       uid,
-      stdin: isRid(stdin) ? "" : stdin,
-      stdout: isRid(stdout) ? "" : stdout,
-      stderr: isRid(stderr) ? "" : stderr,
-      stdinRid: isRid(stdin) ? stdin : 0,
-      stdoutRid: isRid(stdout) ? stdout : 0,
-      stderrRid: isRid(stderr) ? stderr : 0,
+      stdin,
+      stdout,
+      stderr,
     });
     return new Process(res);
   }

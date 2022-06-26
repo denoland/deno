@@ -5,7 +5,6 @@ use crate::flags::CoverageFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
-use crate::source_maps::SourceMapGetter;
 use crate::tools::fmt::format_json;
 
 use deno_ast::MediaType;
@@ -14,10 +13,11 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::SourceMapGetter;
 use regex::Regex;
-use sourcemap::SourceMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
@@ -175,12 +175,12 @@ fn generate_coverage_report(
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
   let text_lines = TextLines::new(script_source);
 
-  let comment_spans = deno_ast::lex(script_source, MediaType::JavaScript)
+  let comment_ranges = deno_ast::lex(script_source, MediaType::JavaScript)
     .into_iter()
     .filter(|item| {
       matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
     })
-    .map(|item| item.span)
+    .map(|item| item.range)
     .collect::<Vec<_>>();
 
   let url = Url::parse(&script_coverage.url).unwrap();
@@ -267,9 +267,8 @@ fn generate_coverage_report(
   for line_index in 0..text_lines.lines_count() {
     let line_start_offset = text_lines.line_start(line_index);
     let line_end_offset = text_lines.line_end(line_index);
-    let ignore = comment_spans.iter().any(|span| {
-      (span.lo.0 as usize) <= line_start_offset
-        && (span.hi.0 as usize) >= line_end_offset
+    let ignore = comment_ranges.iter().any(|range| {
+      range.start <= line_start_offset && range.end >= line_end_offset
     }) || script_source[line_start_offset..line_end_offset]
       .trim()
       .is_empty();
@@ -583,7 +582,8 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("deno:")
         || e.url.ends_with("__anonymous__")
-        || e.url.ends_with("$deno$test.js");
+        || e.url.ends_with("$deno$test.js")
+        || e.url.ends_with(".snap");
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -663,7 +663,7 @@ pub async fn cover_files(
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().clone(),
+      | MediaType::Json => file.source.as_ref().to_string(),
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
       MediaType::TypeScript
       | MediaType::Jsx
@@ -703,7 +703,9 @@ pub async fn cover_files(
       &out_mode,
     );
 
-    reporter.report(&coverage_report, original_source)?;
+    if !coverage_report.found_lines.is_empty() {
+      reporter.report(&coverage_report, original_source)?;
+    }
   }
 
   reporter.done();
