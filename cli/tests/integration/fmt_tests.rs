@@ -126,7 +126,7 @@ fn fmt_ignore_unexplicit_files() {
 }
 
 #[test]
-fn fmt_auto_ignore_git() {
+fn fmt_auto_ignore_git_and_node_modules() {
   use std::fs::{create_dir_all, File};
   use std::io::Write;
   use std::path::PathBuf;
@@ -139,10 +139,16 @@ fn fmt_auto_ignore_git() {
   let t = temp_dir.path().join("target");
   let nest_git = t.join("nest").join(".git");
   let git_dir = t.join(".git");
+  let nest_node_modules = t.join("nest").join("node_modules");
+  let node_modules_dir = t.join("node_modules");
   create_dir_all(&nest_git).unwrap();
   create_dir_all(&git_dir).unwrap();
+  create_dir_all(&nest_node_modules).unwrap();
+  create_dir_all(&node_modules_dir).unwrap();
   create_bad_json(nest_git);
   create_bad_json(git_dir);
+  create_bad_json(nest_node_modules);
+  create_bad_json(node_modules_dir);
   let output = util::deno_cmd()
     .current_dir(t)
     .env("NO_COLOR", "1")
@@ -175,6 +181,12 @@ itest!(fmt_check_ignore {
   args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
+});
+
+itest!(fmt_check_parse_error {
+  args: "fmt --check fmt/parse_error/parse_error.ts",
+  output: "fmt/fmt_check_parse_error.out",
+  exit_code: 1,
 });
 
 itest!(fmt_stdin {

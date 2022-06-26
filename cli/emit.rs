@@ -43,6 +43,90 @@ use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Emit cache for a single file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpecifierEmitCacheData {
+  pub source_hash: String,
+  pub text: String,
+  pub map: Option<String>,
+}
+
+pub trait EmitCache {
+  /// Gets the emit data from the cache.
+  fn get_emit_data(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<SpecifierEmitCacheData>;
+  /// Gets the stored hash of the source of the provider specifier
+  /// to tell if the emit is out of sync with the source.
+  /// TODO(13302): this is actually not reliable and should be removed
+  /// once switching to an sqlite db
+  fn get_source_hash(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  /// Gets the emitted JavaScript of the TypeScript source.
+  /// TODO(13302): remove this once switching to an sqlite db
+  fn get_emit_text(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  /// Sets the emit data in the cache.
+  fn set_emit_data(
+    &self,
+    specifier: ModuleSpecifier,
+    data: SpecifierEmitCacheData,
+  ) -> Result<(), AnyError>;
+  /// Gets the .tsbuildinfo file from the cache.
+  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  /// Sets the .tsbuildinfo file in the cache.
+  fn set_tsbuildinfo(
+    &self,
+    specifier: ModuleSpecifier,
+    text: String,
+  ) -> Result<(), AnyError>;
+}
+
+impl<T: Cacher> EmitCache for T {
+  fn get_emit_data(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<SpecifierEmitCacheData> {
+    Some(SpecifierEmitCacheData {
+      source_hash: self.get_source_hash(specifier)?,
+      text: self.get_emit_text(specifier)?,
+      map: self.get(CacheType::SourceMap, specifier),
+    })
+  }
+
+  fn get_source_hash(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.get(CacheType::Version, specifier)
+  }
+
+  fn get_emit_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.get(CacheType::Emit, specifier)
+  }
+
+  fn set_emit_data(
+    &self,
+    specifier: ModuleSpecifier,
+    data: SpecifierEmitCacheData,
+  ) -> Result<(), AnyError> {
+    self.set(CacheType::Version, &specifier, data.source_hash)?;
+    self.set(CacheType::Emit, &specifier, data.text)?;
+    if let Some(map) = data.map {
+      self.set(CacheType::SourceMap, &specifier, map)?;
+    }
+    Ok(())
+  }
+
+  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.get(CacheType::TypeScriptBuildInfo, specifier)
+  }
+
+  fn set_tsbuildinfo(
+    &self,
+    specifier: ModuleSpecifier,
+    text: String,
+  ) -> Result<(), AnyError> {
+    self.set(CacheType::TypeScriptBuildInfo, &specifier, text)
+  }
+}
+
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
@@ -197,6 +281,9 @@ pub fn get_ts_config(
   } else {
     ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
   };
+  ts_config.merge(&json!({
+    "moduleDetection": "force",
+  }));
   Ok((ts_config, maybe_ignored_options))
 }
 
@@ -322,7 +409,7 @@ pub struct CheckEmitResult {
 pub fn check_and_maybe_emit(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
-  cache: &mut dyn Cacher,
+  cache: &dyn EmitCache,
   options: CheckOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
@@ -355,7 +442,7 @@ pub fn check_and_maybe_emit(
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get(CacheType::TypeScriptBuildInfo, &roots[0].0)
+    cache.get_tsbuildinfo(&roots[0].0)
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -397,9 +484,29 @@ pub fn check_and_maybe_emit(
       // while we retrieve the build info for just the first module, it can be
       // used for all the roots in the graph, so we will cache it for all roots
       for (root, _) in roots {
-        cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
+        cache.set_tsbuildinfo(root.clone(), info.to_string())?;
       }
     }
+
+    struct SpecifierEmitData {
+      pub version_hash: String,
+      pub text: Option<String>,
+      pub map: Option<String>,
+    }
+
+    impl SpecifierEmitData {
+      fn into_cache_data(self) -> Option<SpecifierEmitCacheData> {
+        self.text.map(|text| SpecifierEmitCacheData {
+          source_hash: self.version_hash,
+          text,
+          map: self.map,
+        })
+      }
+    }
+
+    // combine the emitted files into groups based on their specifier and media type
+    let mut emit_data_items: HashMap<ModuleSpecifier, SpecifierEmitData> =
+      HashMap::with_capacity(response.emitted_files.len());
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -434,25 +541,34 @@ pub fn check_and_maybe_emit(
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
+
+        let mut emit_data_item = emit_data_items
+          .entry(specifier.clone())
+          .or_insert_with(|| SpecifierEmitData {
+            version_hash: get_version(source_bytes, &config_bytes),
+            text: None,
+            map: None,
+          });
+
         match emit.media_type {
           MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-            let version = get_version(source_bytes, &config_bytes);
-            cache.set(CacheType::Version, &specifier, version)?;
-            cache.set(CacheType::Emit, &specifier, emit.data)?;
+            emit_data_item.text = Some(emit.data);
           }
           MediaType::SourceMap => {
-            cache.set(CacheType::SourceMap, &specifier, emit.data)?;
-          }
-          // this only occurs with the runtime emit, but we are using the same
-          // code paths, so we handle it here.
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            cache.set(CacheType::Declaration, &specifier, emit.data)?;
+            emit_data_item.map = Some(emit.data);
           }
           _ => unreachable!(
             "unexpected media_type {} {}",
             emit.media_type, specifier
           ),
         }
+      }
+    }
+
+    // now insert these items into the cache
+    for (specifier, data) in emit_data_items.into_iter() {
+      if let Some(cache_data) = data.into_cache_data() {
+        cache.set_emit_data(specifier, cache_data)?;
       }
     }
   }
@@ -474,7 +590,7 @@ pub struct EmitOptions {
 // `check_and_maybe_emit()`, but the AST isn't stored in that. Cleanup.
 pub fn emit(
   graph: &ModuleGraph,
-  cache: &mut dyn Cacher,
+  cache: &dyn EmitCache,
   options: EmitOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let start = Instant::now();
@@ -495,15 +611,9 @@ pub fn emit(
       module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
       &config_bytes,
     );
-    let is_valid =
-      cache
-        .get(CacheType::Version, &module.specifier)
-        .map_or(false, |v| {
-          v == get_version(
-            module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
-            &config_bytes,
-          )
-        });
+    let is_valid = cache
+      .get_source_hash(&module.specifier)
+      .map_or(false, |v| v == version);
     if is_valid && !needs_reload {
       continue;
     }
@@ -513,13 +623,14 @@ pub fn emit(
       .map(|ps| ps.transpile(&emit_options))
       .unwrap()?;
     emit_count += 1;
-    cache.set(CacheType::Emit, &module.specifier, transpiled_source.text)?;
-    if let Some(map) = transpiled_source.source_map {
-      cache.set(CacheType::SourceMap, &module.specifier, map)?;
-    }
-    if !is_valid {
-      cache.set(CacheType::Version, &module.specifier, version)?;
-    }
+    cache.set_emit_data(
+      module.specifier.clone(),
+      SpecifierEmitCacheData {
+        source_hash: version,
+        text: transpiled_source.text,
+        map: transpiled_source.source_map,
+      },
+    )?;
   }
 
   let stats = Stats(vec![
@@ -540,7 +651,7 @@ pub fn emit(
 /// a valid emit in the cache.
 fn valid_emit(
   graph_data: &GraphData,
-  cache: &dyn Cacher,
+  cache: &dyn EmitCache,
   ts_config: &TsConfig,
   reload: bool,
   reload_exclusions: &HashSet<ModuleSpecifier>,
@@ -566,13 +677,20 @@ fn valid_emit(
             continue;
           }
         }
-        _ => continue,
+        MediaType::Json
+        | MediaType::TsBuildInfo
+        | MediaType::SourceMap
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Wasm
+        | MediaType::Unknown => continue,
       }
       if reload && !reload_exclusions.contains(specifier) {
         return false;
       }
-      if let Some(version) = cache.get(CacheType::Version, specifier) {
-        if version != get_version(code.as_bytes(), &config_bytes) {
+      if let Some(source_hash) = cache.get_source_hash(specifier) {
+        if source_hash != get_version(code.as_bytes(), &config_bytes) {
           return false;
         }
       } else {

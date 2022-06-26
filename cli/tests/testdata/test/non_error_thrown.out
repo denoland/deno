@@ -35,6 +35,6 @@ qux => [WILDCARD]/non_error_thrown.ts:13:6
 quux => [WILDCARD]/non_error_thrown.ts:17:6
 quuz => [WILDCARD]/non_error_thrown.ts:21:6
 
-test result: FAILED. 0 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed | 6 failed ([WILDCARD])
 
 error: Test failed

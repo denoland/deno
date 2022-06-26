@@ -30,7 +30,7 @@ impl Resolver for ImportMapResolver {
     referrer: &ModuleSpecifier,
   ) -> ResolveResponse {
     match self.0.resolve(specifier, referrer) {
-      Ok(specifier) => ResolveResponse::Specifier(specifier),
+      Ok(resolved_specifier) => ResolveResponse::Specifier(resolved_specifier),
       Err(err) => ResolveResponse::Err(err.into()),
     }
   }

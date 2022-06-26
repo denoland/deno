@@ -142,6 +142,7 @@ declare type EventListenerOrEventListenerObject =
 interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
+  signal?: AbortSignal;
 }
 
 interface EventListenerOptions {

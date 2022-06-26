@@ -449,7 +449,7 @@ declare class Worker extends EventTarget {
 
 declare type PerformanceEntryList = PerformanceEntry[];
 
-declare class Performance {
+declare class Performance extends EventTarget {
   /** Returns a timestamp representing the start of the performance measurement. */
   readonly timeOrigin: number;
   constructor();

@@ -97,6 +97,8 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
   fn from(x: T) -> Self {
     #[inline(always)]
     fn tc<T, U>(src: T) -> U {
+      // SAFETY: the caller has ensured via the TypeId that the T and U types
+      // are the same.
       let x = unsafe { transmute_copy(&src) };
       std::mem::forget(src);
       x
