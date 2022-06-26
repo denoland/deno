@@ -232,6 +232,7 @@ impl Kernel {
       main_module.clone(),
       permissions,
       vec![jupyter_extension(stdio_tx)],
+      Default::default(),
     );
 
     let repl_session = ReplSession::initialize(worker).await?;
