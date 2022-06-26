@@ -43,3 +43,9 @@ itest!(error_mutually_exclusive_remote_args {
   output: "check_exclusive_args.out",
   exit_code: 1,
 });
+
+// Regression test for https://github.com/denoland/deno/issues/14937.
+itest!(declaration_header_file_with_no_exports {
+  args: "check --quiet declaration_header_file_with_no_exports.ts",
+  output_str: Some(""),
+});

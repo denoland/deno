@@ -2618,7 +2618,7 @@ fn op_script_version(
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
     extensions: vec![init_extension(performance)],
-    startup_snapshot: Some(tsc::compiler_snapshot()),
+    startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
     ..Default::default()
   })
 }
