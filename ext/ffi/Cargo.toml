@@ -9,6 +9,7 @@ license = "MIT"
 readme = "README.md"
 repository = "https://github.com/denoland/deno"
 description = "Dynamic library ffi for deno"
+build = "build.rs"
 
 [lib]
 path = "lib.rs"
@@ -19,7 +20,6 @@ dlopen = "0.1.8"
 libffi = "3.0.0"
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.17", features = ["full"] }
-libtcc = "0.2.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }

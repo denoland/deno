@@ -580,9 +580,9 @@ fn make_sync_fn<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let jitted = unsafe { crate::jit::create_func(scope, &*sym) };
   let func = v8::FunctionBuilder::<v8::Function>::new_raw(jitted)
-  .data(v8::External::new(scope, sym as *mut _).into())
-  .build(scope)
-  .unwrap();
+    .data(v8::External::new(scope, sym as *mut _).into())
+    .build(scope)
+    .unwrap();
   // let func = v8::Function::builder(
   //   |scope: &mut v8::HandleScope,
   //    args: v8::FunctionCallbackArguments,
