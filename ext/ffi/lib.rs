@@ -38,7 +38,7 @@ use std::ptr;
 use std::rc::Rc;
 
 thread_local! {
-  static IS_ISOLATE_THREAD: RefCell<bool> = RefCell::new(false);
+  static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
 }
 
 pub struct Unstable(pub bool);
@@ -577,9 +577,6 @@ fn op_ffi_load<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  // An odd place to init this data but whatever.
-  IS_ISOLATE_THREAD.with(|s| s.replace(true));
-
   let path = args.path;
 
   check_unstable(state, "Deno.dlopen");
@@ -885,9 +882,9 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &CallbackInfo,
 ) {
-  IS_ISOLATE_THREAD.with(|s| {
-    if *s.borrow() {
-      // Isolate thread, a-okay
+  LOCAL_ISOLATE_POINTER.with(|s| {
+    if *s.borrow() == info.isolate {
+      // Own isolate thread, okay to call directly
       do_ffi_callback(
         cif,
         result,
@@ -1172,9 +1169,11 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
+  let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
+  LOCAL_ISOLATE_POINTER.with(|s| s.replace(isolate));
+
   let async_work_sender =
     state.borrow_mut::<FfiState>().async_work_sender.clone();
-  let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
   let callback = v8::Global::new(scope, cb).into_raw();
   let current_context = scope.get_current_context();
   let context = v8::Global::new(scope, current_context).into_raw();

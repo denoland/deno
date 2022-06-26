@@ -146,9 +146,11 @@ fn thread_safe_callback() {
   println!("{:?}", output.status);
   assert!(output.status.success());
   let expected = "\
+    Callback on main thread\n\
+    Callback on worker thread\n\
     Calling callback, isolate should stay asleep until callback is called\n\
     Callback being called\n\
-    Isolate exiting\n";
+    Isolate should now exit\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
