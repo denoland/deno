@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::PromiseId;
 use std::collections::btree_map::BTreeMap;
 
