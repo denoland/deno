@@ -28,9 +28,8 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
   assertThrows(() => {
     Deno.dlopen("/usr/lib/libc.so.6", {});
   }, Deno.errors.PermissionDenied);
-  const ptr = new Deno.UnsafePointer(0n);
   const fnptr = new Deno.UnsafeFnPointer(
-    ptr,
+    0n,
     {
       parameters: ["u32", "pointer"],
       result: "void",
@@ -42,7 +41,7 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
   assertThrows(() => {
     Deno.UnsafePointer.of(new Uint8Array(0));
   }, Deno.errors.PermissionDenied);
-  const ptrView = new Deno.UnsafePointerView(ptr);
+  const ptrView = new Deno.UnsafePointerView(0n);
   assertThrows(() => {
     ptrView.copyInto(new Uint8Array(0));
   }, Deno.errors.PermissionDenied);

@@ -2,6 +2,8 @@
 
 use crate::itest;
 use test_util as util;
+use test_util::assert_contains;
+use test_util::assert_ends_with;
 use test_util::TempDir;
 
 #[test]
@@ -34,16 +36,15 @@ fn bundle_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -77,16 +78,15 @@ fn bundle_exports_no_check() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -110,16 +110,15 @@ fn bundle_circular() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
     .unwrap();
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("f2\nf1"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "f2\nf1",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -143,16 +142,15 @@ fn bundle_single_module() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
     .unwrap();
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello world!"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello world!",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -186,16 +184,15 @@ fn bundle_tla() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -219,7 +216,6 @@ fn bundle_js() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -255,10 +251,10 @@ fn bundle_dynamic_import() {
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -294,17 +290,16 @@ fn bundle_import_map() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -340,16 +335,15 @@ fn bundle_import_map_no_check() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -373,7 +367,6 @@ fn bundle_json_module() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -381,9 +374,7 @@ fn bundle_json_module() {
   // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
   // ensure the output looks right
-  assert!(String::from_utf8(output.stdout)
-    .unwrap()
-    .contains("with space"));
+  assert_contains!(String::from_utf8(output.stdout).unwrap(), "with space",);
 }
 
 #[test]
@@ -406,7 +397,6 @@ fn bundle_json_module_escape_sub() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -414,9 +404,10 @@ fn bundle_json_module_escape_sub() {
   // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
   // make sure the output looks right and the escapes were effective
-  assert!(String::from_utf8(output.stdout)
-    .unwrap()
-    .contains("${globalThis}`and string literal`"));
+  assert_contains!(
+    String::from_utf8(output.stdout).unwrap(),
+    "${globalThis}`and string literal`",
+  );
 }
 
 itest!(lock_check_err_with_bundle {

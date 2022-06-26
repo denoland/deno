@@ -4,18 +4,10 @@ use flaky_test::flaky_test;
 use std::fs::write;
 use std::io::BufRead;
 use test_util as util;
+use test_util::assert_contains;
 use test_util::TempDir;
 
 const CLEAR_SCREEN: &str = r#"[2J"#;
-
-macro_rules! assert_contains {
-  ($string:expr, $($test:expr),+) => {
-    let string = $string; // This might be a function call or something
-    if !($(string.contains($test))||+) {
-      panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
-    }
-  }
-}
 
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.
@@ -666,7 +658,6 @@ fn run_watch_load_unload_events() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -725,7 +716,6 @@ fn run_watch_not_exit() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -785,7 +775,6 @@ fn run_watch_with_import_map_and_relative_paths() {
     .arg(&import_map_path)
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -818,10 +807,7 @@ fn test_watch() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_eq!(stdout_lines.next().unwrap(), "");
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
-  );
+  assert_contains!(stdout_lines.next().unwrap(), "0 passed | 0 failed");
   wait_contains("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.js");
@@ -915,7 +901,7 @@ fn test_watch() {
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
   assert_contains!(stdout_lines.next().unwrap(), "FAILED");
-  wait_contains("test result", &mut stdout_lines);
+  wait_for(|m| m.contains("FAILED"), &mut stdout_lines);
   stdout_lines.next();
   wait_contains("Test finished", &mut stderr_lines);
 
@@ -962,10 +948,7 @@ fn test_watch_doc() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_eq!(stdout_lines.next().unwrap(), "");
-  assert_contains!(
-    stdout_lines.next().unwrap(),
-    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
-  );
+  assert_contains!(stdout_lines.next().unwrap(), "0 passed | 0 failed");
   wait_contains("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.ts");
@@ -1008,7 +991,6 @@ fn test_watch_module_graph_error_referrer() {
     .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1066,7 +1048,6 @@ fn run_watch_dynamic_imports() {
     .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()

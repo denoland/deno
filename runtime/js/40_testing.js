@@ -81,7 +81,6 @@
     "op_dgram_recv": ["receive a datagram message", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
     "op_dgram_send": ["send a datagram message", "awaiting the result of `Deno.DatagramConn#send` call"],
     "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
-    "op_emit": ["transpile code", "awaiting the result of a `Deno.emit` call"],
     "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
     "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
@@ -555,6 +554,7 @@
   const tests = [];
   /** @type {BenchDescription[]} */
   const benchDescs = [];
+  let isTestOrBenchSubcommand = false;
 
   // Main test function provided by Deno.
   function test(
@@ -562,6 +562,10 @@
     optionsOrFn,
     maybeFn,
   ) {
+    if (!isTestOrBenchSubcommand) {
+      return;
+    }
+
     let testDef;
     const defaults = {
       ignore: false,
@@ -670,6 +674,10 @@
     optionsOrFn,
     maybeFn,
   ) {
+    if (!isTestOrBenchSubcommand) {
+      return;
+    }
+
     core.opSync("op_bench_check_unstable");
     let benchDesc;
     const defaults = {
@@ -1042,6 +1050,13 @@
 
   function benchNow() {
     return core.opSync("op_bench_now");
+  }
+
+  // This function is called by Rust side if we're in `deno test` or
+  // `deno bench` subcommand. If this function is not called then `Deno.test()`
+  // and `Deno.bench()` become noops.
+  function enableTestAndBench() {
+    isTestOrBenchSubcommand = true;
   }
 
   async function runTests({
@@ -1508,6 +1523,7 @@
 
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
+    enableTestAndBench,
     runTests,
     runBenchmarks,
   };

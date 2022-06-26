@@ -1,18 +1,19 @@
+use crate::shared::*;
+use const_oid::AssociatedOid;
+use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ZeroCopyBuf;
-use rsa::pkcs1::UIntBytes;
+use elliptic_curve::sec1::ToEncodedPoint;
+use p256::pkcs8::DecodePrivateKey;
+use rsa::pkcs1::UIntRef;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::asn1;
-use spki::der::Decodable;
-use spki::der::Encodable;
+use spki::der::Decode;
+use spki::der::Encode;
 use spki::AlgorithmIdentifier;
-use spki::ObjectIdentifier;
-
-use crate::ec_key::ECPrivateKey;
-use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,7 +106,7 @@ pub fn op_crypto_export_key(
   }
 }
 
-fn uint_to_b64(bytes: UIntBytes) -> String {
+fn uint_to_b64(bytes: UIntRef) -> String {
   base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
 }
 
@@ -125,10 +126,10 @@ fn export_key_rsa(
       let key_info = spki::SubjectPublicKeyInfo {
         algorithm: spki::AlgorithmIdentifier {
           // rsaEncryption(1)
-          oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+          oid: const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
           // parameters field should not be ommited (None).
           // It MUST have ASN.1 type NULL.
-          parameters: Some(asn1::Any::from(asn1::Null)),
+          parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
         subject_public_key,
       };
@@ -150,14 +151,13 @@ fn export_key_rsa(
       // version is 0 when publickey is None
 
       let pk_info = rsa::pkcs8::PrivateKeyInfo {
-        attributes: None,
         public_key: None,
         algorithm: rsa::pkcs8::AlgorithmIdentifier {
           // rsaEncryption(1)
-          oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+          oid: rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
           // parameters field should not be ommited (None).
           // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
-          parameters: Some(asn1::Any::from(asn1::Null)),
+          parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
         private_key,
       };
@@ -266,14 +266,22 @@ fn export_key_ec(
       };
 
       let alg_id = match named_curve {
-        EcNamedCurve::P256 => <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
-        EcNamedCurve::P384 => <p384::NistP384 as p384::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
-        EcNamedCurve::P521 => return Err(data_error("Unsupported named curve"))
+        EcNamedCurve::P256 => AlgorithmIdentifier {
+          oid: elliptic_curve::ALGORITHM_OID,
+          parameters: Some((&p256::NistP256::OID).into()),
+        },
+        EcNamedCurve::P384 => AlgorithmIdentifier {
+          oid: elliptic_curve::ALGORITHM_OID,
+          parameters: Some((&p384::NistP384::OID).into()),
+        },
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
       };
 
       let alg_id = match algorithm {
         ExportKeyAlgorithm::Ecdh { .. } => AlgorithmIdentifier {
-          oid: ObjectIdentifier::new("1.3.132.1.12"),
+          oid: ObjectIdentifier::new_unwrap("1.3.132.1.12"),
           parameters: alg_id.parameters,
         },
         _ => alg_id,
@@ -339,24 +347,22 @@ fn export_key_ec(
 
       match named_curve {
         EcNamedCurve::P256 => {
-          let ec_key = ECPrivateKey::<p256::NistP256>::try_from(private_key)
-            .map_err(|_| {
+          let ec_key =
+            p256::SecretKey::from_pkcs8_der(private_key).map_err(|_| {
               custom_error(
                 "DOMExceptionOperationError",
                 "failed to decode private key",
               )
             })?;
 
-          let point = p256::EncodedPoint::from_bytes(&ec_key.encoded_point)
-            .map_err(|_| data_error("expected valid public EC key"))?;
-
+          let point = ec_key.public_key().to_encoded_point(false);
           if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
             point.coordinates()
           {
             Ok(ExportKeyResult::JwkPrivateEc {
               x: bytes_to_b64(x),
               y: bytes_to_b64(y),
-              d: bytes_to_b64(&ec_key.private_d),
+              d: bytes_to_b64(&ec_key.to_be_bytes()),
             })
           } else {
             Err(data_error("expected valid public EC key"))
@@ -364,24 +370,22 @@ fn export_key_ec(
         }
 
         EcNamedCurve::P384 => {
-          let ec_key = ECPrivateKey::<p384::NistP384>::try_from(private_key)
-            .map_err(|_| {
+          let ec_key =
+            p384::SecretKey::from_pkcs8_der(private_key).map_err(|_| {
               custom_error(
                 "DOMExceptionOperationError",
                 "failed to decode private key",
               )
             })?;
 
-          let point = p384::EncodedPoint::from_bytes(&ec_key.encoded_point)
-            .map_err(|_| data_error("expected valid public EC key"))?;
-
+          let point = ec_key.public_key().to_encoded_point(false);
           if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
             point.coordinates()
           {
             Ok(ExportKeyResult::JwkPrivateEc {
               x: bytes_to_b64(x),
               y: bytes_to_b64(y),
-              d: bytes_to_b64(&ec_key.private_d),
+              d: bytes_to_b64(&ec_key.to_be_bytes()),
             })
           } else {
             Err(data_error("expected valid public EC key"))
