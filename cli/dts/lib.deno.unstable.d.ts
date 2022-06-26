@@ -4,8 +4,6 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
-  export {};
-
   export interface BenchDefinition {
     fn: () => void | Promise<void>;
     name: string;
@@ -382,15 +380,18 @@ declare namespace Deno {
   type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly ToNativeType<T[number]>[]
       : T extends readonly [...NativeType[]] ? {
         [K in keyof T]: ToNativeType<T[K]>;
       }
       : never;
 
-  type FromNativeTypeMap = Pick<
-    ToNativeTypeMap,
-    NativeNumberType | NativeBigIntType | NativePointerType | NativeFunctionType
-  >;
+  type FromNativeTypeMap =
+    & Record<NativeNumberType, number>
+    & Record<NativeBigIntType, bigint>
+    & Record<NativePointerType, bigint>
+    & Record<NativeFunctionType, bigint>;
 
   /** Type conversion for foreign symbol return types and unsafe callback parameters */
   type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
@@ -408,6 +409,8 @@ declare namespace Deno {
   > =
     //
     [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly FromNativeType<T[number]>[]
       : T extends readonly [...NativeType[]] ? {
         [K in keyof T]: FromNativeType<T[K]>;
       }
@@ -444,18 +447,17 @@ declare namespace Deno {
       : T extends ForeignStatic ? FromNativeType<T["type"]>
       : never;
 
-  type FromForeignFunction<T extends ForeignFunction> =
-    //
-    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
-      : (
-        ...args: ToNativeParameterTypes<T["parameters"]>
-      ) => StaticForeignSymbolReturnType<T>;
+  type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
+    readonly [] ? () => StaticForeignSymbolReturnType<T>
+    : (
+      ...args: ToNativeParameterTypes<T["parameters"]>
+    ) => StaticForeignSymbolReturnType<T>;
 
   type StaticForeignSymbolReturnType<T extends ForeignFunction> =
     ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
 
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
-    [IsAsync] extends [true] ? Promise<T> : T;
+    IsAsync extends true ? Promise<T> : T;
 
   /** Infers a foreign library interface */
   type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
@@ -552,11 +554,9 @@ declare namespace Deno {
   type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
-  > =
-    //
-    Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
-      ...args: FromNativeParameterTypes<Parameters>
-    ) => ToNativeResultType<Result>;
+  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
+    ...args: FromNativeParameterTypes<Parameters>
+  ) => ToNativeResultType<Result>;
 
   /**
    * **UNSTABLE**: Unsafe and new API, beware!
@@ -602,56 +602,6 @@ declare namespace Deno {
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
-
-  namespace __ffi_tests__ {
-    export {};
-
-    // Adapted from https://stackoverflow.com/a/53808212/10873797
-    type Equal<T, U> = (<G>() => G extends T ? 1 : 2) extends
-      (<G>() => G extends U ? 1 : 2) ? true
-      : false;
-
-    type AssertEqual<
-      Expected extends $,
-      Got extends $$,
-      $ = [Equal<Got, Expected>] extends [true] ? Expected
-        : ([Expected] extends [Got] ? never : Got),
-      $$ = [Equal<Expected, Got>] extends [true] ? Got
-        : ([Got] extends [Expected] ? never : Got),
-    > = never;
-
-    type _ = [
-      empty_dynamic_library: AssertEqual<
-        { symbols: Record<never, never>; close(): void },
-        DynamicLibrary<Record<never, never>>
-      >,
-      basic_dynamic_library: AssertEqual<
-        { symbols: { add: (n1: number, n2: number) => number }; close(): void },
-        DynamicLibrary<{ add: { parameters: ["i32", "u8"]; result: "i32" } }>
-      >,
-      no_param_types: AssertEqual<
-        [],
-        FromNativeParameterTypes<[]>
-      >,
-      param_types_basic: AssertEqual<
-        [number, bigint | TypedArray | null],
-        FromNativeParameterTypes<["i32", "pointer"]>
-      >,
-      param_types_loose_def: AssertEqual<
-        (number | bigint | TypedArray | null)[],
-        FromNativeParameterTypes<("i32" | "pointer")[]>
-      >,
-      param_types_loose_def_save_mut: AssertEqual<
-        (number | bigint | TypedArray | null)[],
-        FromNativeParameterTypes<readonly ("i32" | "pointer")[]>
-      >,
-      native_result_type_void: AssertEqual<void, ToNativeResultType<"void">>,
-      native_result_type_ptr: AssertEqual<
-        bigint | null | TypedArray,
-        ToNativeResultType<"pointer">
-      >,
-    ];
-  }
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
