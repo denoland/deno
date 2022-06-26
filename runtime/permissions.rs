@@ -1886,6 +1886,8 @@ fn permission_prompt(message: &str, name: &str) -> bool {
 
   #[cfg(unix)]
   fn clear_stdin() -> Result<(), AnyError> {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
     assert_eq!(r, 0);
     Ok(())

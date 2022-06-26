@@ -2715,3 +2715,32 @@ itest!(custom_inspect_url {
   args: "run custom_inspect_url.js",
   output: "custom_inspect_url.js.out",
 });
+
+#[test]
+fn running_declaration_files() {
+  let temp_dir = TempDir::new();
+  let files = vec!["file.d.ts", "file.d.cts", "file.d.mts"];
+
+  for file in files {
+    temp_dir.write(file, "");
+    let mut deno_cmd = util::deno_cmd_with_deno_dir(&temp_dir);
+    let output = deno_cmd
+      .current_dir(temp_dir.path())
+      .args(["run", file])
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+  }
+}
+
+itest!(test_and_bench_are_noops_in_run {
+  args: "run test_and_bench_in_run.js",
+  output_str: Some(""),
+});
+
+itest!(followup_dyn_import_resolved {
+  args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
+  output: "followup_dyn_import_resolves/main.ts.out",
+});

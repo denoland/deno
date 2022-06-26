@@ -130,6 +130,8 @@ impl DynamicLibraryResource {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
+    //
+    // SAFETY: The obtained T symbol is the size of a pointer.
     let fn_ptr = match unsafe { self.lib.symbol::<*const c_void>(symbol) } {
       Ok(value) => Ok(value),
       Err(err) => Err(generic_error(format!(
@@ -164,6 +166,8 @@ impl DynamicLibraryResource {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
+    //
+    // SAFETY: The obtained T symbol is the size of a pointer.
     match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
@@ -228,7 +232,7 @@ enum NativeType {
   F32,
   F64,
   Pointer,
-  Function {},
+  Function,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -248,7 +252,7 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
       NativeType::Pointer => libffi::middle::Type::pointer(),
-      NativeType::Function {} => libffi::middle::Type::pointer(),
+      NativeType::Function => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -289,7 +293,7 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer | NativeType::Function {} => Arg::new(&self.pointer),
+      NativeType::Pointer | NativeType::Function => Arg::new(&self.pointer),
     }
   }
 
@@ -317,7 +321,7 @@ impl NativeValue {
       }
       NativeType::F32 => Value::from(self.f32_value),
       NativeType::F64 => Value::from(self.f64_value),
-      NativeType::Pointer | NativeType::Function {} => {
+      NativeType::Pointer | NativeType::Function => {
         json!(U32x2::from(self.pointer as u64))
       }
     }
@@ -394,7 +398,7 @@ impl NativeValue {
           v8::Number::new(scope, self.f64_value).into();
         local_value.into()
       }
-      NativeType::Pointer | NativeType::Function {} => {
+      NativeType::Pointer | NativeType::Function => {
         let local_value: v8::Local<v8::Value> =
           v8::BigInt::new_from_u64(scope, self.pointer as u64).into();
         local_value.into()
@@ -627,47 +631,47 @@ where
         ffi_args.push(NativeValue { i32_value: value });
       }
       NativeType::U64 => {
-        let value: u64 = if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value)?;
-          value.u64_value().0
-        } else {
-          value.integer_value(scope).ok_or_else(|| {
-            type_error("Invalid FFI u64 type, expected number")
-          })? as u64
-        };
+        let value: u64 =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.u64_value().0
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI u64 type, expected number")
+            })? as u64
+          };
         ffi_args.push(NativeValue { u64_value: value });
       }
       NativeType::I64 => {
-        let value: i64 = if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value)?;
-          value.i64_value().0
-        } else {
-          value.integer_value(scope).ok_or_else(|| {
-            type_error("Invalid FFI i64 type, expected number")
-          })? as i64
-        };
+        let value: i64 =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.i64_value().0
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI i64 type, expected number")
+            })? as i64
+          };
         ffi_args.push(NativeValue { i64_value: value });
       }
       NativeType::USize => {
-        let value: usize = if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value)?;
-          value.u64_value().0 as usize
-        } else {
-          value.integer_value(scope).ok_or_else(|| {
-            type_error("Invalid FFI usize type, expected number")
-          })? as usize
-        };
+        let value: usize =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.u64_value().0 as usize
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI usize type, expected number")
+            })? as usize
+          };
         ffi_args.push(NativeValue { usize_value: value });
       }
       NativeType::ISize => {
-        let value: isize = if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value)?;
-          value.i64_value().0 as isize
-        } else {
-          value.integer_value(scope).ok_or_else(|| {
-            type_error("Invalid FFI isize type, expected number")
-          })? as isize
-        };
+        let value: isize =
+          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
+            value.i64_value().0 as isize
+          } else {
+            value.integer_value(scope).ok_or_else(|| {
+              type_error("Invalid FFI isize type, expected number")
+            })? as isize
+          };
         ffi_args.push(NativeValue { isize_value: value });
       }
       NativeType::F32 => {
@@ -688,26 +692,37 @@ where
         if value.is_null() {
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
-        } else if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+        } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
           let value = value.u64_value().0 as *const u8;
           ffi_args.push(NativeValue { pointer: value });
-        } else if value.is_array_buffer() || value.is_array_buffer_view() {
-          let value: ZeroCopyBuf = serde_v8::from_v8(scope, value)?;
-          let value: &[u8] = &value[..];
-          ffi_args.push(NativeValue {
-            pointer: value.as_ptr(),
-          });
+        } else if let Ok(value) =
+          v8::Local::<v8::ArrayBufferView>::try_from(value)
+        {
+          let byte_offset = value.byte_offset();
+          let backing_store = value
+            .buffer(scope)
+            .ok_or_else(|| {
+              type_error(
+                "Invalid FFI ArrayBufferView, expected data in the buffer",
+              )
+            })?
+            .get_backing_store();
+          let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+          ffi_args.push(NativeValue { pointer });
+        } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
+        {
+          let backing_store = value.get_backing_store();
+          let pointer = &backing_store as *const _ as *const u8;
+          ffi_args.push(NativeValue { pointer });
         } else {
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer, or ArrayBufferView"));
         }
       }
-      NativeType::Function {} => {
+      NativeType::Function => {
         if value.is_null() {
           let value: *const u8 = ptr::null();
           ffi_args.push(NativeValue { pointer: value })
-        } else if value.is_big_int() {
-          let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+        } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
           let value = value.u64_value().0 as *const u8;
           ffi_args.push(NativeValue { pointer: value });
         } else {
@@ -732,55 +747,60 @@ fn ffi_call(
   let call_args: Vec<Arg> = call_args
     .iter()
     .enumerate()
-    .map(|(index, ffi_arg)| unsafe {
-      ffi_arg.as_arg(*parameter_types.get(index).unwrap())
+    .map(|(index, ffi_arg)| {
+      // SAFETY: the union field is initialized
+      unsafe { ffi_arg.as_arg(*parameter_types.get(index).unwrap()) }
     })
     .collect();
 
-  Ok(match result_type {
-    NativeType::Void => NativeValue {
-      void_value: unsafe { cif.call::<()>(fun_ptr, &call_args) },
-    },
-    NativeType::U8 => NativeValue {
-      u8_value: unsafe { cif.call::<u8>(fun_ptr, &call_args) },
-    },
-    NativeType::I8 => NativeValue {
-      i8_value: unsafe { cif.call::<i8>(fun_ptr, &call_args) },
-    },
-    NativeType::U16 => NativeValue {
-      u16_value: unsafe { cif.call::<u16>(fun_ptr, &call_args) },
-    },
-    NativeType::I16 => NativeValue {
-      i16_value: unsafe { cif.call::<i16>(fun_ptr, &call_args) },
-    },
-    NativeType::U32 => NativeValue {
-      u32_value: unsafe { cif.call::<u32>(fun_ptr, &call_args) },
-    },
-    NativeType::I32 => NativeValue {
-      i32_value: unsafe { cif.call::<i32>(fun_ptr, &call_args) },
-    },
-    NativeType::U64 => NativeValue {
-      u64_value: unsafe { cif.call::<u64>(fun_ptr, &call_args) },
-    },
-    NativeType::I64 => NativeValue {
-      i64_value: unsafe { cif.call::<i64>(fun_ptr, &call_args) },
-    },
-    NativeType::USize => NativeValue {
-      usize_value: unsafe { cif.call::<usize>(fun_ptr, &call_args) },
-    },
-    NativeType::ISize => NativeValue {
-      isize_value: unsafe { cif.call::<isize>(fun_ptr, &call_args) },
-    },
-    NativeType::F32 => NativeValue {
-      f32_value: unsafe { cif.call::<f32>(fun_ptr, &call_args) },
-    },
-    NativeType::F64 => NativeValue {
-      f64_value: unsafe { cif.call::<f64>(fun_ptr, &call_args) },
-    },
-    NativeType::Pointer | NativeType::Function {} => NativeValue {
-      pointer: unsafe { cif.call::<*const u8>(fun_ptr, &call_args) },
-    },
-  })
+  // SAFETY: types in the `Cif` match the actual calling convention and
+  // types of symbol.
+  unsafe {
+    Ok(match result_type {
+      NativeType::Void => NativeValue {
+        void_value: cif.call::<()>(fun_ptr, &call_args),
+      },
+      NativeType::U8 => NativeValue {
+        u8_value: cif.call::<u8>(fun_ptr, &call_args),
+      },
+      NativeType::I8 => NativeValue {
+        i8_value: cif.call::<i8>(fun_ptr, &call_args),
+      },
+      NativeType::U16 => NativeValue {
+        u16_value: cif.call::<u16>(fun_ptr, &call_args),
+      },
+      NativeType::I16 => NativeValue {
+        i16_value: cif.call::<i16>(fun_ptr, &call_args),
+      },
+      NativeType::U32 => NativeValue {
+        u32_value: cif.call::<u32>(fun_ptr, &call_args),
+      },
+      NativeType::I32 => NativeValue {
+        i32_value: cif.call::<i32>(fun_ptr, &call_args),
+      },
+      NativeType::U64 => NativeValue {
+        u64_value: cif.call::<u64>(fun_ptr, &call_args),
+      },
+      NativeType::I64 => NativeValue {
+        i64_value: cif.call::<i64>(fun_ptr, &call_args),
+      },
+      NativeType::USize => NativeValue {
+        usize_value: cif.call::<usize>(fun_ptr, &call_args),
+      },
+      NativeType::ISize => NativeValue {
+        isize_value: cif.call::<isize>(fun_ptr, &call_args),
+      },
+      NativeType::F32 => NativeValue {
+        f32_value: cif.call::<f32>(fun_ptr, &call_args),
+      },
+      NativeType::F64 => NativeValue {
+        f64_value: cif.call::<f64>(fun_ptr, &call_args),
+      },
+      NativeType::Pointer | NativeType::Function => NativeValue {
+        pointer: cif.call::<*const u8>(fun_ptr, &call_args),
+      },
+    })
+  }
 }
 
 struct UnsafeCallbackResource {
@@ -969,13 +989,19 @@ unsafe extern "C" fn deno_ffi_callback(
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-      if value.is_array_buffer() | value.is_array_buffer_view() {
-        let value: ZeroCopyBuf = serde_v8::from_v8(&mut scope, value)
-          .expect("Unable to deserialize result parameter.");
-        let value: &[u8] = &value[..];
-        *(result as *mut *const u8) = value.as_ptr();
-      } else if value.is_big_int() {
-        let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+      if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+        let byte_offset = value.byte_offset();
+        let backing_store = value
+          .buffer(&mut scope)
+          .expect("Unable to deserialize result parameter.")
+          .get_backing_store();
+        let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+        *(result as *mut *const u8) = pointer;
+      } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+        let backing_store = value.get_backing_store();
+        let pointer = &backing_store as *const _ as *const u8;
+        *(result as *mut *const u8) = pointer;
+      } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut u64) = value.u64_value().0;
       } else if value.is_null() {
         *(result as *mut *const c_void) = ptr::null();
@@ -1018,8 +1044,7 @@ unsafe extern "C" fn deno_ffi_callback(
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_SINT64 => {
-      if value.is_big_int() {
-        let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+      if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut i64) = value.i64_value().0;
       } else {
         *(result as *mut i64) = value
@@ -1029,8 +1054,7 @@ unsafe extern "C" fn deno_ffi_callback(
       }
     }
     FFI_TYPE_UINT64 => {
-      if value.is_big_int() {
-        let value = v8::Local::<v8::BigInt>::try_from(value).unwrap();
+      if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut u64) = value.u64_value().0;
       } else {
         *(result as *mut u64) = value
@@ -1179,76 +1203,99 @@ fn op_ffi_get_static<'scope>(
 ) -> Result<serde_v8::Value<'scope>, AnyError> {
   let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
-  let data_ptr = resource.get_static(name)? as *const u8;
+  let data_ptr = resource.get_static(name)?;
 
   Ok(match static_type {
     NativeType::Void => {
       return Err(type_error("Invalid FFI static type 'void'"));
     }
     NativeType::U8 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u8) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new_from_unsigned(scope, result as u32).into();
+      number.into()
     }
     NativeType::I8 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i8) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new(scope, result as i32).into();
+      number.into()
     }
     NativeType::U16 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u16) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new_from_unsigned(scope, result as u32).into();
+      number.into()
     }
     NativeType::I16 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i16) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new(scope, result as i32).into();
+      number.into()
     }
     NativeType::U32 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u32) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> =
+        v8::Integer::new_from_unsigned(scope, result).into();
+      number.into()
     }
     NativeType::I32 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i32) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> = v8::Integer::new(scope, result).into();
+      number.into()
     }
     NativeType::U64 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u64) };
-      let big_int = v8::BigInt::new_from_u64(scope, result);
-      serde_v8::from_v8(scope, big_int.into())?
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result).into();
+      big_int.into()
     }
     NativeType::I64 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i64) };
-      let big_int = v8::BigInt::new_from_i64(scope, result);
-      serde_v8::from_v8(scope, big_int.into())?
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_i64(scope, result).into();
+      big_int.into()
     }
     NativeType::USize => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
-      let big_int = v8::BigInt::new_from_u64(scope, result as u64);
-      serde_v8::from_v8(scope, big_int.into())?
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result as u64).into();
+      big_int.into()
     }
     NativeType::ISize => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
-      let big_int = v8::BigInt::new_from_i64(scope, result as i64);
-      serde_v8::from_v8(scope, big_int.into())?
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_i64(scope, result as i64).into();
+      big_int.into()
     }
     NativeType::F32 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f32) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> =
+        v8::Number::new(scope, result as f64).into();
+      number.into()
     }
     NativeType::F64 => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f64) };
-      let number = v8::Number::new(scope, result as f64);
-      serde_v8::from_v8(scope, number.into())?
+      let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
+      number.into()
     }
-    NativeType::Pointer | NativeType::Function {} => {
-      let result = data_ptr as *const u8 as u64;
-      let big_int = v8::BigInt::new_from_u64(scope, result);
-      serde_v8::from_v8(scope, big_int.into())?
+    NativeType::Pointer | NativeType::Function => {
+      let result = data_ptr as u64;
+      let big_int: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result).into();
+      big_int.into()
     }
   })
 }
@@ -1313,7 +1360,7 @@ fn op_ffi_call_nonblocking<'scope>(
       cif,
       ptr,
       parameter_types,
-      ..
+      result_type,
     } = symbol.clone();
     ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
   });
@@ -1366,6 +1413,8 @@ where
     ))
   } else {
     let src = src as *const u8;
+    // SAFETY: src is user defined.
+    // dest is properly aligned and is valid for writes of len * size_of::<T>() bytes.
     unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
     Ok(())
   }
@@ -1385,6 +1434,8 @@ where
   permissions.check(None)?;
 
   let ptr = ptr as *const c_char;
+  // SAFETY: ptr is user provided
+  // lifetime validity is not an issue because we allocate a new string.
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
@@ -1401,6 +1452,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const u8) })
 }
 
@@ -1417,6 +1469,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const i8) })
 }
 
@@ -1433,6 +1486,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const u16) })
 }
 
@@ -1449,6 +1503,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const i16) })
 }
 
@@ -1465,6 +1520,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const u32) })
 }
 
@@ -1481,6 +1537,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const i32) })
 }
 
@@ -1499,6 +1556,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   let result = unsafe { ptr::read_unaligned(ptr as *const u64) };
 
   let big_int: v8::Local<v8::Value> =
@@ -1519,6 +1577,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const f32) })
 }
 
@@ -1535,6 +1594,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  // SAFETY: ptr is user provided.
   Ok(unsafe { ptr::read_unaligned(ptr as *const f64) })
 }
 
