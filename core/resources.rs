@@ -77,6 +77,8 @@ impl dyn Resource {
   pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Some(unsafe { &*ptr })
     } else {
       None

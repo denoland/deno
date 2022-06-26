@@ -149,6 +149,8 @@ fn create_command(
     command.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     command.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());

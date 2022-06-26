@@ -602,7 +602,7 @@ async fn eval_command(
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
-    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
+    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
   let permissions = Permissions::from_options(&flags.permissions_options());
   let ps = ProcState::build(Arc::new(flags)).await?;
   let mut worker = create_main_worker(

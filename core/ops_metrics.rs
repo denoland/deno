@@ -56,12 +56,17 @@ impl OpsTracker {
   #[allow(clippy::mut_from_ref)]
   #[inline]
   fn ops_mut(&self) -> &mut Vec<OpMetrics> {
+    // SAFETY: `OpsTracker` is created after registering ops so it is guaranteed
+    // that that `ops` will be initialized.
     unsafe { &mut *self.ops.get() }
   }
 
   #[allow(clippy::mut_from_ref)]
   #[inline]
   fn metrics_mut(&self, id: OpId) -> &mut OpMetrics {
+    // SAFETY: `OpsTracker` is created after registering ops, and ops
+    // cannot be unregistered during runtime, so it is guaranteed that `id`
+    // is not causing out-of-bound access.
     unsafe { self.ops_mut().get_unchecked_mut(id) }
   }
 

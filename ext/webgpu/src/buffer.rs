@@ -105,6 +105,8 @@ pub async fn op_webgpu_buffer_get_map_async(
       user_data: *mut u8,
     ) {
       let sender_ptr = user_data as *mut oneshot::Sender<Result<(), AnyError>>;
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let boxed_sender = unsafe { Box::from_raw(sender_ptr) };
       boxed_sender
         .send(match status {
@@ -188,6 +190,8 @@ pub fn op_webgpu_buffer_get_mapped_range(
     ))
     .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, range_size as usize)
   };
@@ -225,6 +229,8 @@ pub fn op_webgpu_buffer_unmap(
   let size = mapped_resource.1;
 
   if let Some(buffer) = zero_copy {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
     slice.copy_from_slice(&buffer);
   }
