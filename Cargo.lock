@@ -968,6 +968,7 @@ dependencies = [
  "deno_core",
  "dlopen",
  "libffi",
+ "libtcc",
  "serde",
  "tokio",
  "winapi 0.3.9",
@@ -2402,6 +2403,15 @@ dependencies = [
  "cc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "libtcc"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff6ebcf55eb80df4cbc2e14e78e987e785e03681cd0abbda717c03dfafde335b"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

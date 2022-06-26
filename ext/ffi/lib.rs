@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+pub mod jit;
+
 use core::ptr::NonNull;
 use deno_core::anyhow::anyhow;
 use deno_core::error::generic_error;
@@ -64,7 +66,7 @@ pub trait FfiPermissions {
 }
 
 #[derive(Clone)]
-struct Symbol {
+pub(crate) struct Symbol {
   cif: libffi::middle::Cif,
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
@@ -169,7 +171,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
 /// parameters and return values in FFI.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum NativeType {
+pub(crate) enum NativeType {
   Void,
   U8,
   I8,
@@ -373,7 +375,7 @@ impl From<u64> for U32x2 {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ForeignFunction {
+pub(crate) struct ForeignFunction {
   name: Option<String>,
   parameters: Vec<NativeType>,
   result: NativeType,
@@ -576,30 +578,35 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: *mut Symbol,
 ) -> v8::Local<'s, v8::Function> {
-  let func = v8::Function::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> =
-        args.data().unwrap().try_into().unwrap();
-      // SAFETY: The pointer will not be deallocated until the function is
-      // garbage collected.
-      let symbol = unsafe { &*(external.value() as *const Symbol) };
-      match ffi_call_sync(scope, args, symbol) {
-        Ok(result) => {
-          // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-          let result = unsafe { result.to_v8(scope, symbol.result_type) };
-          rv.set(result.v8_value);
-        }
-        Err(err) => {
-          deno_core::_ops::throw_type_error(scope, err.to_string());
-        }
-      };
-    },
-  )
+  let jitted = unsafe { crate::jit::create_func(scope, &*sym) };
+  let func = v8::FunctionBuilder::<v8::Function>::new_raw(jitted)
   .data(v8::External::new(scope, sym as *mut _).into())
   .build(scope)
   .unwrap();
+  // let func = v8::Function::builder(
+  //   |scope: &mut v8::HandleScope,
+  //    args: v8::FunctionCallbackArguments,
+  //    mut rv: v8::ReturnValue| {
+  //     let external: v8::Local<v8::External> =
+  //       args.data().unwrap().try_into().unwrap();
+  //     // SAFETY: The pointer will not be deallocated until the function is
+  //     // garbage collected.
+  //     let symbol = unsafe { &*(external.value() as *const Symbol) };
+  //     match ffi_call_sync(scope, args, symbol) {
+  //       Ok(result) => {
+  //         // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+  //         let result = unsafe { result.to_v8(scope, symbol.result_type) };
+  //         rv.set(result.v8_value);
+  //       }
+  //       Err(err) => {
+  //         deno_core::_ops::throw_type_error(scope, err.to_string());
+  //       }
+  //     };
+  //   },
+  // )
+  // .data(v8::External::new(scope, sym as *mut _).into())
+  // .build(scope)
+  // .unwrap();
 
   let weak = v8::Weak::with_finalizer(
     scope,
@@ -787,6 +794,7 @@ where
 }
 
 // A one-off synchronous FFI call.
+#[allow(dead_code)]
 fn ffi_call_sync<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   args: v8::FunctionCallbackArguments,
