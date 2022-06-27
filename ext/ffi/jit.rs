@@ -62,9 +62,9 @@ macro_rules! impl_rv_int32 {
 }
 
 pub struct Allocation {
-  _raw: Vec<u8>,
+  pub addr: *mut c_void,
+  _ctx: Context,
   _sym: Box<crate::Symbol>,
-  pub(crate) func: extern "C" fn(*const v8::FunctionCallbackInfo),
 }
 
 pub(crate) struct Compiler {
@@ -93,7 +93,8 @@ impl Compiler {
   pub unsafe fn compile(
     mut self,
     sym: Box<crate::Symbol>,
-  ) -> Result<Allocation, ()> {
+  ) -> Result<Box<Allocation>, ()>
+  {
     self
       .ctx
       .add_symbol(cstr!("func"), sym.ptr.0 as *const c_void);
@@ -127,7 +128,7 @@ impl Compiler {
       }
     };
 
-    // deno_ffi_<ty>(info, 0), deno_ffi_<ty>(info, 1), ...);
+    //   deno_ffi_<ty>(info, 0), deno_ffi_<ty>(info, 1), ...);
     for (i, ty) in sym.parameter_types.iter().enumerate() {
       if i != 0 {
         self.c += ", ";
@@ -153,7 +154,7 @@ impl Compiler {
     }
     self.c += ");\n";
 
-    // deno_rv_<ty>(info, r);
+    //   deno_rv_<ty>(info, r);
     if sym.result_type != crate::NativeType::Void {
       match sym.result_type {
         NativeType::I8 => self.c += "  deno_rv_i8(info, r);\n",
@@ -175,17 +176,16 @@ impl Compiler {
         NativeType::Void => unreachable!(),
       };
     };
+    self.c += "}\n";
 
     println!("{}", &self.c);
     self.ctx.compile_string(cstr!(self.c))?;
-    let addr = self.ctx.relocate_and_get_symbol(cstr!("main"))?;
-    Ok(Allocation {
-      func: std::mem::transmute::<
-        *mut c_void,
-        extern "C" fn(*const v8::FunctionCallbackInfo),
-      >(addr),
-      _raw: self.ctx.bin.take().ok_or(())?,
+
+    let alloc = Allocation {
+      addr: self.ctx.relocate_and_get_symbol(cstr!("main"))?,
+      _ctx: self.ctx,
       _sym: sym,
-    })
+    };
+    Ok(Box::new(alloc))
   }
 }

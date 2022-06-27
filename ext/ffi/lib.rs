@@ -581,7 +581,13 @@ fn make_sync_fn<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let ctx = unsafe { crate::jit::Compiler::new() }.unwrap();
   let alloc = unsafe { ctx.compile(sym) }.unwrap();
-  let func = v8::FunctionBuilder::<v8::Function>::new_raw(alloc.func)
+
+  let func = unsafe { std::mem::transmute::<
+    *mut c_void,
+    extern "C" fn(*const v8::FunctionCallbackInfo),
+  >(alloc.addr) };
+  let alloc = Box::into_raw(alloc);
+  let func = v8::FunctionBuilder::<v8::Function>::new_raw(func)
     .build(scope)
     .unwrap();
   // let func = v8::Function::builder(
@@ -614,7 +620,7 @@ fn make_sync_fn<'s>(
     func,
     Box::new(move |_| {
       // SAFETY: This is never called twice.
-      drop(alloc);
+      unsafe { Box::from_raw(alloc) };
     }),
   );
 
