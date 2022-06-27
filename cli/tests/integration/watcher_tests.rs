@@ -4,18 +4,10 @@ use flaky_test::flaky_test;
 use std::fs::write;
 use std::io::BufRead;
 use test_util as util;
+use test_util::assert_contains;
 use test_util::TempDir;
 
 const CLEAR_SCREEN: &str = r#"[2J"#;
-
-macro_rules! assert_contains {
-  ($string:expr, $($test:expr),+) => {
-    let string = $string; // This might be a function call or something
-    if !($(string.contains($test))||+) {
-      panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
-    }
-  }
-}
 
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.

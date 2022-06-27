@@ -138,7 +138,9 @@ pub fn resolve_url_or_path(
 pub fn resolve_path(
   path_str: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  let path = current_dir().unwrap().join(path_str);
+  let path = current_dir()
+    .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
+    .join(path_str);
   let path = normalize_path(&path);
   Url::from_file_path(path.clone())
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
