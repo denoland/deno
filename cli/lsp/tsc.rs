@@ -2871,6 +2871,9 @@ pub enum RequestMethod {
   ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
   /// Resolve outgoing call hierarchy items for a specific position.
   ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
+
+  // Special request, used only internally by the LSP
+  Restart,
 }
 
 impl RequestMethod {
@@ -3084,6 +3087,10 @@ impl RequestMethod {
           "position": position
         })
       }
+      RequestMethod::Restart => json!({
+        "id": id,
+        "method": "restart",
+      }),
     }
   }
 }
