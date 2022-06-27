@@ -4,9 +4,7 @@
 //! populate a cache, emit files, and transform a graph into the structures for
 //! loading into an isolate.
 
-use crate::args::ConfigFile;
 use crate::args::EmitConfigOptions;
-use crate::args::IgnoredCompilerOptions;
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::CacheType;
@@ -28,8 +26,6 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
@@ -127,42 +123,6 @@ impl<T: Cacher> EmitCache for T {
   }
 }
 
-/// Represents the "default" type library that should be used when type
-/// checking the code in the module graph.  Note that a user provided config
-/// of `"lib"` would override this value.
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub enum TypeLib {
-  DenoWindow,
-  DenoWorker,
-  UnstableDenoWindow,
-  UnstableDenoWorker,
-}
-
-impl Default for TypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
-}
-
-impl Serialize for TypeLib {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let value = match self {
-      Self::DenoWindow => vec!["deno.window".to_string()],
-      Self::DenoWorker => vec!["deno.worker".to_string()],
-      Self::UnstableDenoWindow => {
-        vec!["deno.window".to_string(), "deno.unstable".to_string()]
-      }
-      Self::UnstableDenoWorker => {
-        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
-      }
-    };
-    Serialize::serialize(&value, serializer)
-  }
-}
-
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Stats(pub Vec<(String, u32)>);
@@ -195,96 +155,6 @@ impl fmt::Display for Stats {
 
     Ok(())
   }
-}
-
-/// An enum that represents the base tsc configuration to return.
-pub enum ConfigType {
-  /// Return a configuration for bundling, using swc to emit the bundle. This is
-  /// independent of type checking.
-  Bundle,
-  /// Return a configuration to use tsc to type check and optionally emit. This
-  /// is independent of either bundling or just emitting via swc
-  Check { lib: TypeLib, tsc_emit: bool },
-  /// Return a configuration to use swc to emit single module files.
-  Emit,
-}
-
-/// For a given configuration type and optionally a configuration file, return a
-/// tuple of the resulting `TsConfig` struct and optionally any user
-/// configuration options that were ignored.
-pub fn get_ts_config(
-  config_type: ConfigType,
-  maybe_config_file: Option<&ConfigFile>,
-  maybe_user_config: Option<&HashMap<String, Value>>,
-) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
-  let mut ts_config = match config_type {
-    ConfigType::Bundle => TsConfig::new(json!({
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
-      "inlineSources": false,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    })),
-    ConfigType::Check { tsc_emit, lib } => {
-      let mut ts_config = TsConfig::new(json!({
-        "allowJs": true,
-        "allowSyntheticDefaultImports": true,
-        "experimentalDecorators": true,
-        "incremental": true,
-        "jsx": "react",
-        "isolatedModules": true,
-        "lib": lib,
-        "module": "esnext",
-        "resolveJsonModule": true,
-        "strict": true,
-        "target": "esnext",
-        "tsBuildInfoFile": "deno:///.tsbuildinfo",
-        "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
-      }));
-      if tsc_emit {
-        ts_config.merge(&json!({
-          "emitDecoratorMetadata": false,
-          "importsNotUsedAsValues": "remove",
-          "inlineSourceMap": true,
-          "inlineSources": true,
-          "outDir": "deno://",
-          "removeComments": true,
-        }));
-      } else {
-        ts_config.merge(&json!({
-          "noEmit": true,
-        }));
-      }
-      ts_config
-    }
-    ConfigType::Emit => TsConfig::new(json!({
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "resolveJsonModule": true,
-    })),
-  };
-  let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
-    ts_config.merge_user_config(user_options)?
-  } else {
-    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
-  };
-  ts_config.merge(&json!({
-    "moduleDetection": "force",
-  }));
-  Ok((ts_config, maybe_ignored_options))
 }
 
 /// Transform the graph into root specifiers that we can feed `tsc`. We have to

@@ -23,7 +23,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::create_default_root_cert_store;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
@@ -224,7 +223,7 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
-  let ps = ProcState::build(Arc::new(flags)).await?;
+  let ps = ProcState::build(flags).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
@@ -252,10 +251,7 @@ pub async fn run(
       .collect::<Vec<_>>(),
   );
 
-  let mut root_cert_store = ps
-    .root_cert_store
-    .clone()
-    .unwrap_or_else(create_default_root_cert_store);
+  let mut root_cert_store = ps.root_cert_store.clone();
 
   if let Some(cert) = metadata.ca_data {
     let reader = &mut BufReader::new(Cursor::new(cert));
