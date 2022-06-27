@@ -383,8 +383,8 @@ declare namespace Deno {
       : [readonly (T[number])[]] extends [T]
         ? readonly ToNativeType<T[number]>[]
       : T extends readonly [...NativeType[]] ? {
-        [K in keyof T]: ToNativeType<T[K]>;
-      }
+          [K in keyof T]: ToNativeType<T[K]>;
+        }
       : never;
 
   type FromNativeTypeMap =
@@ -412,8 +412,8 @@ declare namespace Deno {
       : [readonly (T[number])[]] extends [T]
         ? readonly FromNativeType<T[number]>[]
       : T extends readonly [...NativeType[]] ? {
-        [K in keyof T]: FromNativeType<T[K]>;
-      }
+          [K in keyof T]: FromNativeType<T[K]>;
+        }
       : never;
 
   /** A foreign function as defined by its parameter and result types */
