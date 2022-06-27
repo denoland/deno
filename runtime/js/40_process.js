@@ -13,7 +13,10 @@
     TypeError,
     ObjectEntries,
     String,
+    SymbolFor,
   } = window.__bootstrap.primordials;
+
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function opKill(pid, signo) {
     core.opSync("op_kill", pid, signo);
@@ -28,20 +31,9 @@
     return core.opSync("op_run", request);
   }
 
-  async function runStatus(rid) {
-    const res = await opRunStatus(rid);
-
-    if (res.gotSignal) {
-      const signal = res.exitSignal;
-      return { success: false, code: 128 + signal, signal };
-    } else if (res.exitCode != 0) {
-      return { success: false, code: res.exitCode };
-    } else {
-      return { success: true, code: 0 };
-    }
-  }
-
   class Process {
+    #statusPromiseId;
+
     constructor(res) {
       this.rid = res.rid;
       this.pid = res.pid;
@@ -59,8 +51,32 @@
       }
     }
 
-    status() {
-      return runStatus(this.rid);
+    async status() {
+      const promise = opRunStatus(this.rid);
+      const promiseId = promise[promiseIdSymbol];
+      this.#statusPromiseId = promiseId;
+      const res = await promise;
+
+      if (res.gotSignal) {
+        const signal = res.exitSignal;
+        return { success: false, code: 128 + signal, signal };
+      } else if (res.exitCode != 0) {
+        return { success: false, code: res.exitCode };
+      } else {
+        return { success: true, code: 0 };
+      }
+    }
+
+    ref() {
+      if (this.#statusPromiseId) {
+        core.refOp(this.#statusPromiseId);
+      }
+    }
+
+    unref() {
+      if (this.#statusPromiseId) {
+        core.unrefOp(this.#statusPromiseId);
+      }
     }
 
     async output() {
