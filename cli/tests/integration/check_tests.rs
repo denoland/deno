@@ -38,14 +38,14 @@ itest!(module_detection_force {
   output_str: Some(""),
 });
 
-itest!(error_mutually_exclusive_remote_args {
-  args: "check --remote --no-remote check_all.ts",
-  output: "check_exclusive_args.out",
-  exit_code: 1,
-});
-
 // Regression test for https://github.com/denoland/deno/issues/14937.
 itest!(declaration_header_file_with_no_exports {
   args: "check --quiet declaration_header_file_with_no_exports.ts",
   output_str: Some(""),
+});
+
+itest!(error_mutually_exclusive_remote_args {
+  args: "check --remote --no-remote check_all.ts",
+  output: "check_exclusive_args.out",
+  exit_code: 1,
 });
