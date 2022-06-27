@@ -172,12 +172,16 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
       let handle = get_windows_handle(std_file)?;
       let mut test_mode: DWORD = 0;
       // If I cannot get mode out of console, it is not a console.
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE })
     }
     #[cfg(unix)]
     {
       use std::os::unix::io::AsRawFd;
       let raw_fd = std_file.as_raw_fd();
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
     }
   })?;
@@ -225,6 +229,8 @@ fn op_console_size(
       use std::os::unix::io::AsRawFd;
 
       let fd = std_file.as_raw_fd();
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
       unsafe {
         let mut size: libc::winsize = std::mem::zeroed();
         if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {

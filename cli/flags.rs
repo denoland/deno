@@ -1986,7 +1986,7 @@ fn compat_arg<'a>() -> Arg<'a> {
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
   let arg = Arg::new("watch")
     .long("watch")
-    .help("UNSTABLE: Watch for file changes and restart automatically");
+    .help("Watch for file changes and restart automatically");
 
   if takes_files {
     arg
@@ -1996,14 +1996,14 @@ fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
       .use_value_delimiter(true)
       .require_equals(true)
       .long_help(
-        "UNSTABLE: Watch for file changes and restart process automatically.
+        "Watch for file changes and restart process automatically.
 Local files from entry point module graph are watched by default.
 Additional paths might be watched by passing them as arguments to this flag.",
       )
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.long_help(
-      "UNSTABLE: Watch for file changes and restart process automatically. \
+      "Watch for file changes and restart process automatically. \
       Only local files from entry point module graph are watched.",
     )
   }

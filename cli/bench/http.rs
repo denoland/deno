@@ -153,11 +153,13 @@ fn run(
 fn get_port() -> u16 {
   static mut NEXT_PORT: u16 = 4544;
 
-  let port = unsafe { NEXT_PORT };
-
-  unsafe {
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  let port = unsafe {
+    let p = NEXT_PORT;
     NEXT_PORT += 1;
-  }
+    p
+  };
 
   port
 }
