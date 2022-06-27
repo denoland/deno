@@ -124,6 +124,7 @@ impl Default for WorkerOptions {
       origin_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
+      startup_snapshot: Default::default(),
       root_cert_store: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
