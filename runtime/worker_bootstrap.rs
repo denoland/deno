@@ -30,24 +30,24 @@ pub struct BootstrapOptions {
 impl Default for BootstrapOptions {
   fn default() -> Self {
     let cpu_count = thread::available_parallelism()
-        .map(|p| p.get())
-        .unwrap_or(1);
+      .map(|p| p.get())
+      .unwrap_or(1);
 
     let runtime_version = env!("CARGO_PKG_VERSION").into();
     let user_agent = format!("Deno/{}", runtime_version);
 
     Self {
-        runtime_version,
-        user_agent,
-        cpu_count,
-        no_color: !colors::use_color(),
-        is_tty: colors::is_tty(),
-        enable_testing_features: Default::default(),
-        debug_flag: Default::default(),
-        ts_version: Default::default(),
-        location: Default::default(),
-        unstable: Default::default(),
-        args: Default::default(),
+      runtime_version,
+      user_agent,
+      cpu_count,
+      no_color: !colors::use_color(),
+      is_tty: colors::is_tty(),
+      enable_testing_features: Default::default(),
+      debug_flag: Default::default(),
+      ts_version: Default::default(),
+      location: Default::default(),
+      unstable: Default::default(),
+      args: Default::default(),
     }
   }
 }

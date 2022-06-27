@@ -16,6 +16,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
@@ -26,7 +27,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_node::DenoDirNpmResolver;
-use deno_core::FsModuleLoader;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -104,29 +104,33 @@ fn grab_cb(
 }
 
 impl Default for WorkerOptions {
-    fn default() -> Self {
-        Self {
-            web_worker_preload_module_cb: Arc::new(|_| unimplemented!("web workers are not supported")),
-            create_web_worker_cb: Arc::new(|_| unimplemented!("web workers are not supported")),
-            module_loader: Rc::new(FsModuleLoader),
-            seed: None,
-            unsafely_ignore_certificate_errors: Default::default(),
-            should_break_on_first_statement: Default::default(),
-            compiled_wasm_module_store: Default::default(),
-            shared_array_buffer_store: Default::default(),
-            maybe_inspector_server: Default::default(),
-            format_js_error_fn: Default::default(),
-            get_error_class_fn: Default::default(),
-            origin_storage_dir: Default::default(),
-            broadcast_channel: Default::default(),
-            source_map_getter: Default::default(),
-            root_cert_store: Default::default(),
-            blob_store: Default::default(),
-            extensions: Default::default(),
-            bootstrap: Default::default(),
-            stdio: Default::default(),
-        }
+  fn default() -> Self {
+    Self {
+      web_worker_preload_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      create_web_worker_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      module_loader: Rc::new(FsModuleLoader),
+      seed: None,
+      unsafely_ignore_certificate_errors: Default::default(),
+      should_break_on_first_statement: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      maybe_inspector_server: Default::default(),
+      format_js_error_fn: Default::default(),
+      get_error_class_fn: Default::default(),
+      origin_storage_dir: Default::default(),
+      broadcast_channel: Default::default(),
+      source_map_getter: Default::default(),
+      root_cert_store: Default::default(),
+      blob_store: Default::default(),
+      extensions: Default::default(),
+      bootstrap: Default::default(),
+      stdio: Default::default(),
     }
+  }
 }
 
 impl MainWorker {
