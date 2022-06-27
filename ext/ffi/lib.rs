@@ -6,10 +6,11 @@ use deno_core::error::generic_error;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
-use std::sync::mpsc;
+use std::sync::mpsc::sync_channel;
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -181,8 +182,8 @@ impl DynamicLibraryResource {
 type PendingFfiAsyncWork = Box<dyn FnOnce()>;
 
 struct FfiState {
-  async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
-  async_work_receiver: mpsc::Receiver<PendingFfiAsyncWork>,
+  async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
+  async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
   active_refed_functions: usize,
 }
 
@@ -221,10 +222,11 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
       {
-        let op_state = op_state_rc.borrow();
-        let ffi_state = op_state.borrow::<FfiState>();
+        let mut op_state = op_state_rc.borrow_mut();
+        let ffi_state = op_state.borrow_mut::<FfiState>();
 
-        while let Ok(async_work_fut) = ffi_state.async_work_receiver.try_recv()
+        while let Ok(Some(async_work_fut)) =
+          ffi_state.async_work_receiver.try_next()
         {
           // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
           work_items.push(async_work_fut);
@@ -248,7 +250,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       state.put(Unstable(unstable));
 
       let (async_work_sender, async_work_receiver) =
-        mpsc::sync_channel::<PendingFfiAsyncWork>(100);
+        mpsc::unbounded::<PendingFfiAsyncWork>();
 
       state.put(FfiState {
         active_refed_functions: 0,
@@ -879,7 +881,7 @@ impl Resource for UnsafeCallbackResource {
 }
 
 struct CallbackInfo {
-  pub async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
+  pub async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
@@ -908,7 +910,7 @@ unsafe extern "C" fn deno_ffi_callback(
       let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
       let result: &'static mut c_void = std::mem::transmute(result);
       let info: &'static CallbackInfo = std::mem::transmute(info);
-      let (response_sender, response_receiver) = mpsc::sync_channel::<()>(1);
+      let (response_sender, response_receiver) = sync_channel::<()>(1);
       let fut = Box::new(move || {
         do_ffi_callback(
           cif,
@@ -920,7 +922,7 @@ unsafe extern "C" fn deno_ffi_callback(
         );
         response_sender.try_send(()).unwrap();
       });
-      async_work_sender.try_send(fut).unwrap();
+      async_work_sender.unbounded_send(fut).unwrap();
       response_receiver.recv().unwrap();
     }
   });
