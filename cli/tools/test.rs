@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
+use crate::args::TestFlags;
+use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::colors;
 use crate::compat;
@@ -9,9 +12,6 @@ use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::TestFlags;
-use crate::flags::TypeCheckMode;
 use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;

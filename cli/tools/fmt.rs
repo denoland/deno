@@ -7,16 +7,16 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::args::Flags;
+use crate::args::FmtConfig;
+use crate::args::FmtFlags;
+use crate::args::FmtOptionsConfig;
+use crate::args::ProseWrap;
 use crate::colors;
-use crate::config_file::FmtConfig;
-use crate::config_file::FmtOptionsConfig;
-use crate::config_file::ProseWrap;
 use crate::deno_dir::DenoDir;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::FmtFlags;
 use crate::fs_util::collect_files;
 use crate::fs_util::get_extension;
 use crate::fs_util::specifier_to_file_path;

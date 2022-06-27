@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::ConfigFile;
+use crate::args::Flags;
 use crate::cache::FetchCacher;
-use crate::config_file::ConfigFile;
-use crate::flags::Flags;
 use crate::graph_util::graph_valid;
 use crate::http_cache;
 use crate::proc_state::ProcState;

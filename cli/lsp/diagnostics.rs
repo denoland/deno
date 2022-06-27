@@ -13,7 +13,7 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
-use crate::config_file::LintConfig;
+use crate::args::LintConfig;
 use crate::diagnostics;
 
 use deno_ast::MediaType;
