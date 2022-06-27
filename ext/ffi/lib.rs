@@ -910,7 +910,7 @@ unsafe extern "C" fn deno_ffi_callback(
       let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
       let result: &'static mut c_void = std::mem::transmute(result);
       let info: &'static CallbackInfo = std::mem::transmute(info);
-      let (response_sender, response_receiver) = sync_channel::<()>(1);
+      let (response_sender, response_receiver) = sync_channel::<()>(0);
       let fut = Box::new(move || {
         do_ffi_callback(
           cif,
@@ -920,7 +920,7 @@ unsafe extern "C" fn deno_ffi_callback(
           info.context,
           info.isolate,
         );
-        response_sender.try_send(()).unwrap();
+        response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
       response_receiver.recv().unwrap();
