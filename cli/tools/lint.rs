@@ -6,9 +6,9 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-use crate::config_file::LintConfig;
+use crate::args::LintConfig;
+use crate::args::{Flags, LintFlags};
 use crate::file_watcher::ResolutionResult;
-use crate::flags::{Flags, LintFlags};
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
 use crate::proc_state::ProcState;
@@ -590,7 +590,7 @@ mod test {
   use deno_lint::rules::get_recommended_rules;
 
   use super::*;
-  use crate::config_file::LintRulesConfig;
+  use crate::args::LintRulesConfig;
 
   #[test]
   fn recommended_rules_when_no_tags_in_config() {

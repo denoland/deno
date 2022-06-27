@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod args;
 mod auth_tokens;
 mod cache;
 mod cdp;
 mod checksum;
 mod compat;
-mod config_file;
 mod deno_dir;
 mod diagnostics;
 mod diff;
@@ -15,8 +15,6 @@ mod emit;
 mod errors;
 mod file_fetcher;
 mod file_watcher;
-mod flags;
-mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
 mod graph_util;
@@ -37,31 +35,33 @@ mod unix_util;
 mod version;
 mod windows_util;
 
+use crate::args::flags_from_vec;
+use crate::args::resolve_import_map_specifier;
+use crate::args::BenchFlags;
+use crate::args::BundleFlags;
+use crate::args::CacheFlags;
+use crate::args::CheckFlags;
+use crate::args::CompileFlags;
+use crate::args::CompletionsFlags;
+use crate::args::CoverageFlags;
+use crate::args::DenoSubcommand;
+use crate::args::DocFlags;
+use crate::args::EvalFlags;
+use crate::args::Flags;
+use crate::args::FmtFlags;
+use crate::args::InfoFlags;
+use crate::args::InstallFlags;
+use crate::args::LintFlags;
+use crate::args::ReplFlags;
+use crate::args::RunFlags;
+use crate::args::TaskFlags;
+use crate::args::TestFlags;
+use crate::args::TypeCheckMode;
+use crate::args::UninstallFlags;
+use crate::args::UpgradeFlags;
+use crate::args::VendorFlags;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::BenchFlags;
-use crate::flags::BundleFlags;
-use crate::flags::CacheFlags;
-use crate::flags::CheckFlags;
-use crate::flags::CompileFlags;
-use crate::flags::CompletionsFlags;
-use crate::flags::CoverageFlags;
-use crate::flags::DenoSubcommand;
-use crate::flags::DocFlags;
-use crate::flags::EvalFlags;
-use crate::flags::Flags;
-use crate::flags::FmtFlags;
-use crate::flags::InfoFlags;
-use crate::flags::InstallFlags;
-use crate::flags::LintFlags;
-use crate::flags::ReplFlags;
-use crate::flags::RunFlags;
-use crate::flags::TaskFlags;
-use crate::flags::TestFlags;
-use crate::flags::TypeCheckMode;
-use crate::flags::UninstallFlags;
-use crate::flags::UpgradeFlags;
-use crate::flags::VendorFlags;
 use crate::fmt_errors::format_js_error;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
@@ -69,6 +69,7 @@ use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -797,12 +798,11 @@ async fn bundle_command(
         })
         .collect();
 
-      if let Ok(Some(import_map_path)) =
-        config_file::resolve_import_map_specifier(
-          ps.flags.import_map_path.as_deref(),
-          ps.maybe_config_file.as_ref(),
-        )
-        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      if let Ok(Some(import_map_path)) = resolve_import_map_specifier(
+        ps.flags.import_map_path.as_deref(),
+        ps.maybe_config_file.as_ref(),
+      )
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
       }
@@ -1418,7 +1418,7 @@ pub fn main() {
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
-    let flags = match flags::flags_from_vec(args) {
+    let flags = match flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
         if err.kind() == clap::ErrorKind::DisplayHelp
