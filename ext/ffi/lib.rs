@@ -523,6 +523,8 @@ where
         // By default, Err returned by this function does not tell
         // which symbol wasn't exported. So we'll modify the error
         // message to include the name of symbol.
+        //
+        // SAFETY: The obtained T symbol is the size of a pointer.
         let fn_ptr =
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
@@ -972,50 +974,54 @@ where
     }
   }
   let call_args: Vec<Arg> = ffi_args.iter().map(Arg::new).collect();
-  Ok(match result_type {
-    NativeType::Void => NativeValue {
-      void_value: unsafe { cif.call::<()>(*fun_ptr, &call_args) },
-    },
-    NativeType::U8 => NativeValue {
-      u8_value: unsafe { cif.call::<u8>(*fun_ptr, &call_args) },
-    },
-    NativeType::I8 => NativeValue {
-      i8_value: unsafe { cif.call::<i8>(*fun_ptr, &call_args) },
-    },
-    NativeType::U16 => NativeValue {
-      u16_value: unsafe { cif.call::<u16>(*fun_ptr, &call_args) },
-    },
-    NativeType::I16 => NativeValue {
-      i16_value: unsafe { cif.call::<i16>(*fun_ptr, &call_args) },
-    },
-    NativeType::U32 => NativeValue {
-      u32_value: unsafe { cif.call::<u32>(*fun_ptr, &call_args) },
-    },
-    NativeType::I32 => NativeValue {
-      i32_value: unsafe { cif.call::<i32>(*fun_ptr, &call_args) },
-    },
-    NativeType::U64 => NativeValue {
-      u64_value: unsafe { cif.call::<u64>(*fun_ptr, &call_args) },
-    },
-    NativeType::I64 => NativeValue {
-      i64_value: unsafe { cif.call::<i64>(*fun_ptr, &call_args) },
-    },
-    NativeType::USize => NativeValue {
-      usize_value: unsafe { cif.call::<usize>(*fun_ptr, &call_args) },
-    },
-    NativeType::ISize => NativeValue {
-      isize_value: unsafe { cif.call::<isize>(*fun_ptr, &call_args) },
-    },
-    NativeType::F32 => NativeValue {
-      f32_value: unsafe { cif.call::<f32>(*fun_ptr, &call_args) },
-    },
-    NativeType::F64 => NativeValue {
-      f64_value: unsafe { cif.call::<f64>(*fun_ptr, &call_args) },
-    },
-    NativeType::Pointer | NativeType::Function => NativeValue {
-      pointer: unsafe { cif.call::<*const u8>(*fun_ptr, &call_args) },
-    },
-  })
+  // SAFETY: types in the `Cif` match the actual calling convention and
+  // types of symbol.
+  unsafe {
+    Ok(match result_type {
+      NativeType::Void => NativeValue {
+        void_value: cif.call::<()>(*fun_ptr, &call_args),
+      },
+      NativeType::U8 => NativeValue {
+        u8_value: cif.call::<u8>(*fun_ptr, &call_args),
+      },
+      NativeType::I8 => NativeValue {
+        i8_value: cif.call::<i8>(*fun_ptr, &call_args),
+      },
+      NativeType::U16 => NativeValue {
+        u16_value: cif.call::<u16>(*fun_ptr, &call_args),
+      },
+      NativeType::I16 => NativeValue {
+        i16_value: cif.call::<i16>(*fun_ptr, &call_args),
+      },
+      NativeType::U32 => NativeValue {
+        u32_value: cif.call::<u32>(*fun_ptr, &call_args),
+      },
+      NativeType::I32 => NativeValue {
+        i32_value: cif.call::<i32>(*fun_ptr, &call_args),
+      },
+      NativeType::U64 => NativeValue {
+        u64_value: cif.call::<u64>(*fun_ptr, &call_args),
+      },
+      NativeType::I64 => NativeValue {
+        i64_value: cif.call::<i64>(*fun_ptr, &call_args),
+      },
+      NativeType::USize => NativeValue {
+        usize_value: cif.call::<usize>(*fun_ptr, &call_args),
+      },
+      NativeType::ISize => NativeValue {
+        isize_value: cif.call::<isize>(*fun_ptr, &call_args),
+      },
+      NativeType::F32 => NativeValue {
+        f32_value: cif.call::<f32>(*fun_ptr, &call_args),
+      },
+      NativeType::F64 => NativeValue {
+        f64_value: cif.call::<f64>(*fun_ptr, &call_args),
+      },
+      NativeType::Pointer | NativeType::Function => NativeValue {
+        pointer: cif.call::<*const u8>(*fun_ptr, &call_args),
+      },
+    })
+  }
 }
 
 fn ffi_call(
