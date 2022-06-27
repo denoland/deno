@@ -1433,7 +1433,7 @@ Specifying the filename '-' to read the file from stdin.
 fn task_subcommand<'a>() -> Command<'a> {
   Command::new("task")
     .trailing_var_arg(true)
-    .args(config_args())
+    .arg(task_args())
     .arg(
       Arg::new("cwd")
         .long("cwd")
@@ -2093,6 +2093,17 @@ static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
   )
 });
 
+fn task_args<'a>() -> Arg<'a> {
+  Arg::new("config")
+    .short('c')
+    .long("config")
+    .value_name("FILE")
+    .help("Specify the configuration file")
+    .long_help(CONFIG_HELP.as_str())
+    .takes_value(true)
+    .value_hint(ValueHint::FilePath)
+}
+
 fn config_args<'a>() -> [Arg<'a>; 2] {
   [
     Arg::new("config")
@@ -2549,7 +2560,7 @@ fn task_parse(
   matches: &clap::ArgMatches,
   raw_args: &[String],
 ) {
-  config_args_parse(flags, matches);
+  task_args_parse(flags, matches);
 
   let mut task_flags = TaskFlags {
     cwd: None,
@@ -2990,6 +3001,14 @@ fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
   flags.config_flag = if matches.is_present("no-config") {
     ConfigFlag::Disabled
   } else if let Some(config) = matches.value_of("config") {
+    ConfigFlag::Path(config.to_string())
+  } else {
+    ConfigFlag::Discover
+  };
+}
+
+fn task_args_parse(flags: &mut Flags, matches: &ArgMatches) {
+  flags.config_flag = if let Some(config) = matches.value_of("config") {
     ConfigFlag::Path(config.to_string())
   } else {
     ConfigFlag::Discover
@@ -5783,6 +5802,12 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn task_subcommand_noconfig_invalid() {
+    let r = flags_from_vec(svec!["deno", "task", "--no-config"]);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::UnknownArgument);
   }
 
   #[test]
