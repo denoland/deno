@@ -20,6 +20,8 @@ pub fn start(parent_process_id: u32) {
 
 #[cfg(unix)]
 fn is_process_active(process_id: u32) -> bool {
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     // signal of 0 checks for the existence of the process id
     libc::kill(process_id as i32, 0) == 0
