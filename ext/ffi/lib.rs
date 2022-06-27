@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub mod jit;
+pub mod tcc;
 
 use core::ptr::NonNull;
 use deno_core::anyhow::anyhow;
@@ -553,7 +554,7 @@ where
         match foreign_fn.non_blocking {
           // Generate functions for synchronous calls.
           Some(false) | None => {
-            let function = make_sync_fn(scope, Box::leak(sym));
+            let function = make_sync_fn(scope, sym);
             obj.set(scope, func_key.into(), function.into());
           }
           // This optimization is not yet supported for non-blocking calls.
@@ -576,11 +577,11 @@ where
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
-  sym: *mut Symbol,
+  sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let jitted = unsafe { crate::jit::create_func(scope, &*sym) };
-  let func = v8::FunctionBuilder::<v8::Function>::new_raw(jitted)
-    .data(v8::External::new(scope, sym as *mut _).into())
+  let ctx = unsafe { crate::jit::Compiler::new() }.unwrap();
+  let alloc = unsafe { ctx.compile(sym) }.unwrap();
+  let func = v8::FunctionBuilder::<v8::Function>::new_raw(alloc.func)
     .build(scope)
     .unwrap();
   // let func = v8::Function::builder(
@@ -612,9 +613,8 @@ fn make_sync_fn<'s>(
     scope,
     func,
     Box::new(move |_| {
-      // SAFETY: This is never called twice. pointer obtained
-      // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe { Box::from_raw(sym) };
+      // SAFETY: This is never called twice.
+      drop(alloc);
     }),
   );
 

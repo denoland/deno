@@ -20,6 +20,8 @@ dlopen = "0.1.8"
 libffi = "3.0.0"
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.17", features = ["full"] }
+libc = "0.2.126"
+paste = "1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }

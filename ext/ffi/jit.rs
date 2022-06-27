@@ -1,46 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::tcc::Context;
+use crate::NativeType;
+use deno_core::error::AnyError;
 use deno_core::v8;
 use std::ffi::c_void;
 use std::ffi::CString;
-use std::os::raw::c_int as int;
-use std::ptr::null_mut;
-
-use crate::NativeType;
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct TCCState {
-  _unused: [u8; 0],
-}
-pub const TCC_OUTPUT_MEMORY: int = 1;
-
-extern "C" {
-  pub fn tcc_new() -> *mut TCCState;
-  pub fn tcc_delete(s: *mut TCCState);
-  pub fn tcc_set_options(s: *mut TCCState, str: *const ::std::os::raw::c_char);
-  pub fn tcc_compile_string(
-    s: *mut TCCState,
-    buf: *const ::std::os::raw::c_char,
-  ) -> ::std::os::raw::c_int;
-  pub fn tcc_add_symbol(
-    s: *mut TCCState,
-    name: *const ::std::os::raw::c_char,
-    val: *const ::std::os::raw::c_void,
-  ) -> ::std::os::raw::c_int;
-  pub fn tcc_set_output_type(
-    s: *mut TCCState,
-    output_type: ::std::os::raw::c_int,
-  ) -> ::std::os::raw::c_int;
-  pub fn tcc_relocate(
-    s1: *mut TCCState,
-    ptr: *mut ::std::os::raw::c_void,
-  ) -> ::std::os::raw::c_int;
-  pub fn tcc_get_symbol(
-    s: *mut TCCState,
-    name: *const ::std::os::raw::c_char,
-  ) -> *mut ::std::os::raw::c_void;
-}
 
 macro_rules! cstr {
   ($st:expr) => {
@@ -68,157 +33,159 @@ fn native_to_c(ty: &crate::NativeType) -> &'static str {
   }
 }
 
-fn native_to_converter(ty: &crate::NativeType) -> &'static str {
-  match ty {
-    crate::NativeType::Void => unreachable!(),
-    crate::NativeType::U8 => "deno_ffi_u8",
-    crate::NativeType::U16 => "deno_ffi_u16",
-    crate::NativeType::U32 => "deno_ffi_u32",
-    crate::NativeType::U64 => "deno_ffi_u64",
-    crate::NativeType::USize => "deno_ffi_usize",
-    crate::NativeType::I8 => "deno_ffi_i8",
-    crate::NativeType::I16 => "deno_ffi_i16",
-    crate::NativeType::I32 => "deno_ffi_i32",
-    crate::NativeType::I64 => "deno_ffi_i64",
-    crate::NativeType::ISize => "deno_ffi_isize",
-    crate::NativeType::F32 => "deno_ffi_f32",
-    crate::NativeType::F64 => "deno_ffi_f64",
-    crate::NativeType::Pointer => "deno_ffi_pointer",
-    crate::NativeType::Function => "deno_ffi_function",
-  }
-}
-
 unsafe extern "C" fn deno_ffi_u8(
   info: *const v8::FunctionCallbackInfo,
-  i: int,
+  index: i32,
 ) -> u8 {
-  let scope = unsafe { &mut v8::CallbackScope::new(&*info) };
+  let scope = &mut v8::CallbackScope::new(&*info);
   let info = v8::FunctionCallbackArguments::from_function_callback_info(info);
-  info.get(i).uint32_value(scope).unwrap() as u8
+  info.get(index).uint32_value(scope).unwrap() as u8
 }
 
-macro_rules! impl_set_int32 {
-  ($ty: ty) => {
-    unsafe extern "C" fn deno_ffi_$ty(
-      info: *const v8::FunctionCallbackInfo,
-      val: $ty,
-    ) {
-      let mut rv = v8::ReturnValue::from_function_callback_info(info);
-      rv.set_uint32(i, value as i32);
+macro_rules! impl_rv_int32 {
+  ($ctx: ident, $ty: ty) => {
+    paste::paste! {
+      unsafe extern "C" fn [<deno_rv_ $ty>] (
+        info: *const v8::FunctionCallbackInfo,
+        val: $ty,
+      ) {
+        let mut rv = v8::ReturnValue::from_function_callback_info(info);
+        rv.set_int32(val as i32);
+      }
+
+      $ctx.add_symbol(
+        cstr!(stringify!([<deno_rv_ $ty>])),
+        [<deno_rv_ $ty>] as *const c_void,
+      );
     }
   };
 }
 
-unsafe extern "C" fn deno_rv_u8(
-  info: *const v8::FunctionCallbackInfo,
-  value: u8,
-) {
-  let scope = unsafe { &mut v8::CallbackScope::new(&*info) };
-  let mut rv = v8::ReturnValue::from_function_callback_info(info);
-  rv.set(v8::Integer::new(scope, value as i32).into());
+pub struct Allocation {
+  _raw: Vec<u8>,
+  _sym: Box<crate::Symbol>,
+  pub(crate) func: extern "C" fn(*const v8::FunctionCallbackInfo),
 }
 
-pub(crate) unsafe fn create_func<'s>(
-  _scope: &mut v8::HandleScope<'s>,
-  sym: &crate::Symbol,
-) -> extern "C" fn(*const v8::FunctionCallbackInfo) {
-  let ctx = tcc_new();
+pub(crate) struct Compiler {
+  ctx: Context,
+  c: String,
+}
 
-  tcc_set_options(ctx, cstr!("-nostdlib").as_ptr());
-  tcc_set_output_type(ctx, TCC_OUTPUT_MEMORY);
+impl Compiler {
+  pub unsafe fn new() -> Result<Self, ()> {
+    let mut ctx = Context::new()?;
+    ctx.set_options(cstr!("-nostdlib"));
 
-  tcc_add_symbol(
-    ctx,
-    cstr!("deno_ffi_u8").as_ptr(),
-    deno_ffi_u8 as *const c_void,
-  );
-  tcc_add_symbol(
-    ctx,
-    cstr!("deno_rv_u8").as_ptr(),
-    deno_rv_u8 as *const c_void,
-  );
+    ctx.add_symbol(cstr!("deno_ffi_u8"), deno_ffi_u8 as *const c_void);
 
-  tcc_add_symbol(ctx, cstr!("func").as_ptr(), sym.ptr.0);
-
-  let mut code = String::from(include_str!("jit.c"));
-
-  code += "extern ";
-  let result_c_type = native_to_c(&sym.result_type);
-  code += result_c_type;
-  code += " func(";
-  for (i, param) in sym.parameter_types.iter().enumerate() {
-    if i != 0 {
-      code += ", ";
-    }
-    let ty = native_to_c(param);
-    code += ty;
-    code += &format!(" p{i}");
-  }
-  code += ");\n\n";
-
-  code += "void main(void* info) {\n";
-
-  match sym.result_type {
-    crate::NativeType::Void => {
-      code += "  func(";
-    }
-    _ => {
-      code += "  ";
-      code += result_c_type;
-      code += " r = func(";
-    }
+    impl_rv_int32!(ctx, i8);
+    impl_rv_int32!(ctx, u8);
+    impl_rv_int32!(ctx, i16);
+    impl_rv_int32!(ctx, u16);
+    impl_rv_int32!(ctx, i32);
+    Ok(Compiler {
+      ctx,
+      c: String::from(include_str!("jit.c")),
+    })
   }
 
-  for (i, ty) in sym.parameter_types.iter().enumerate() {
-    if i != 0 {
-      code += ", ";
+  pub unsafe fn compile(
+    mut self,
+    sym: Box<crate::Symbol>,
+  ) -> Result<Allocation, ()> {
+    self
+      .ctx
+      .add_symbol(cstr!("func"), sym.ptr.0 as *const c_void);
+
+    // extern <return_type> func(
+    self.c += "\nextern ";
+    self.c += native_to_c(&sym.result_type);
+    self.c += " func(";
+    // <param_type> p0, <param_type> p1, ...);
+    for (i, ty) in sym.parameter_types.iter().enumerate() {
+      if i > 0 {
+        self.c += ", ";
+      }
+      self.c += native_to_c(ty);
+      self.c += &format!(" p{i}");
     }
-    code += &format!("{}(info, {i})", native_to_converter(ty));
-  }
+    self.c += ");\n\n";
 
-  code += ");\n";
+    // void main(void* info) {
+    self.c += "void main(void* info) {\n";
 
-  if sym.result_type != crate::NativeType::Void {
+    //  [<return_type> r =] func(
     match sym.result_type {
-      NativeType::I8
-      | NativeType::U8
-      | NativeType::I32
-      | NativeType::I16
-      | NativeType::U16 => {
-        code += "  deno_rv_u8(info, r);\n";
+      crate::NativeType::Void => {
+        self.c += "  func(";
       }
-      NativeType::U32 => {
-        code += "  v8__ReturnValue__Set__UInt32(rv, r);\n";
+      _ => {
+        self.c += "  ";
+        self.c += native_to_c(&sym.result_type);
+        self.c += " r = func(";
       }
-      NativeType::I64
-      | NativeType::U64
-      | NativeType::F32
-      | NativeType::F64
-      | NativeType::ISize
-      | NativeType::USize => {
-        code += "  v8__ReturnValue__Set__Double(rv, r);\n";
+    };
+
+    // deno_ffi_<ty>(info, 0), deno_ffi_<ty>(info, 1), ...);
+    for (i, ty) in sym.parameter_types.iter().enumerate() {
+      if i != 0 {
+        self.c += ", ";
       }
-      _ => todo!(),
+      let conv = match ty {
+        NativeType::Void => unreachable!(),
+        NativeType::U8 => "deno_ffi_u8",
+        NativeType::U16 => "deno_ffi_u16",
+        NativeType::U32 => "deno_ffi_u32",
+        NativeType::U64 => "deno_ffi_u64",
+        NativeType::USize => "deno_ffi_usize",
+        NativeType::I8 => "deno_ffi_i8",
+        NativeType::I16 => "deno_ffi_i16",
+        NativeType::I32 => "deno_ffi_i32",
+        NativeType::I64 => "deno_ffi_i64",
+        NativeType::ISize => "deno_ffi_isize",
+        NativeType::F32 => "deno_ffi_f32",
+        NativeType::F64 => "deno_ffi_f64",
+        NativeType::Pointer => "deno_ffi_pointer",
+        NativeType::Function => "deno_ffi_function",
+      };
+      self.c += &format!("{conv}(info, {i})");
     }
+    self.c += ");\n";
+
+    // deno_rv_<ty>(info, r);
+    if sym.result_type != crate::NativeType::Void {
+      match sym.result_type {
+        NativeType::I8 => self.c += "  deno_rv_i8(info, r);\n",
+        NativeType::U8 => self.c += "  deno_rv_u8(info, r);\n",
+        NativeType::I16 => self.c += "  deno_rv_i16(info, r);\n",
+        NativeType::U16 => self.c += "  deno_rv_u16(info, r);\n",
+        NativeType::I32 => self.c += "  deno_rv_i32(info, r);\n",
+        NativeType::U32 => self.c += "  deno_rv_u32(info, r);\n",
+        NativeType::I64 | NativeType::ISize => {
+          self.c += "  deno_rv_i64(info, r);\n"
+        }
+        NativeType::U64 | NativeType::USize => {
+          self.c += "  deno_rv_u64(info, r);\n"
+        }
+        NativeType::F32 => self.c += "  deno_rv_f32(info, r);\n",
+        NativeType::F64 => self.c += "  deno_rv_f64(info, r);\n",
+        NativeType::Pointer => self.c += "  deno_rv_pointer(info, r);\n",
+        NativeType::Function => self.c += "  deno_rv_function(info, r);\n",
+        NativeType::Void => unreachable!(),
+      };
+    };
+
+    println!("{}", &self.c);
+    self.ctx.compile_string(cstr!(self.c))?;
+    let addr = self.ctx.relocate_and_get_symbol(cstr!("main"))?;
+    Ok(Allocation {
+      func: std::mem::transmute::<
+        *mut c_void,
+        extern "C" fn(*const v8::FunctionCallbackInfo),
+      >(addr),
+      _raw: self.ctx.bin.take().ok_or(())?,
+      _sym: sym,
+    })
   }
-
-  code += "}\n";
-
-  println!("{}", code);
-  tcc_compile_string(ctx, cstr!(code).as_ptr());
-  // pass null ptr to get required length
-  let len = tcc_relocate(ctx, null_mut());
-  assert!(len != -1);
-  dbg!(len);
-  let mut bin = Vec::with_capacity(len as usize);
-  let ret = tcc_relocate(ctx, bin.as_mut_ptr() as *mut c_void);
-  assert!(ret == 0);
-  bin.set_len(len as usize);
-
-  let addr = tcc_get_symbol(ctx, cstr!("main").as_ptr());
-
-  let func = std::mem::transmute(addr);
-  Box::leak(Box::new(ctx));
-  tcc_delete(ctx);
-  func
 }

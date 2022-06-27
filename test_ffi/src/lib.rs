@@ -205,6 +205,11 @@ pub extern "C" fn nop() {}
 pub extern "C" fn nop_u8(_a: u8) {}
 
 #[no_mangle]
+pub extern "C" fn add_u8(a: u8, b: u8) -> u8 {
+  a + b
+}
+
+#[no_mangle]
 pub extern "C" fn nop_i8(_a: i8) {}
 
 #[no_mangle]
