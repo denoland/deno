@@ -555,7 +555,7 @@ declare namespace Deno {
    *
    * The function pointer remains valid until the `close()` method is called.
    *
-   * The callback can be explicitly referenced and dereferenced to stop Deno's
+   * The callback can be explicitly ref'ed and deref'ed to stop Deno's
    * process from exiting.
    */
   export class UnsafeCallback<

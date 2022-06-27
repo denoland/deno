@@ -183,7 +183,7 @@ type PendingFfiAsyncWork = Box<dyn FnOnce()>;
 struct FfiState {
   async_work_sender: mpsc::SyncSender<PendingFfiAsyncWork>,
   async_work_receiver: mpsc::Receiver<PendingFfiAsyncWork>,
-  active_refd_functions: usize,
+  active_refed_functions: usize,
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
@@ -231,7 +231,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
           maybe_scheduling = true;
         }
 
-        if ffi_state.active_refd_functions > 0 {
+        if ffi_state.active_refed_functions > 0 {
           maybe_scheduling = true;
         }
 
@@ -251,7 +251,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
         mpsc::sync_channel::<PendingFfiAsyncWork>(100);
 
       state.put(FfiState {
-        active_refd_functions: 0,
+        active_refed_functions: 0,
         async_work_receiver,
         async_work_sender,
       });
@@ -892,7 +892,7 @@ unsafe extern "C" fn deno_ffi_callback(
   info: &CallbackInfo,
 ) {
   LOCAL_ISOLATE_POINTER.with(|s| {
-    if *s.borrow() == info.isolate {
+    if ptr::eq(*s.borrow(), info.isolate) {
       // Own isolate thread, okay to call directly
       do_ffi_callback(
         cif,
@@ -904,7 +904,7 @@ unsafe extern "C" fn deno_ffi_callback(
       );
     } else {
       let async_work_sender = &info.async_work_sender;
-      // safeish, since we block until the message has been received and a response transmitted.
+      // SAFETY: Safe as this function blocks until `do_ffi_callback` completes and a response message is received.
       let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
       let result: &'static mut c_void = std::mem::transmute(result);
       let info: &'static CallbackInfo = std::mem::transmute(info);
@@ -1179,7 +1179,11 @@ where
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
   let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
-  LOCAL_ISOLATE_POINTER.with(|s| s.replace(isolate));
+  LOCAL_ISOLATE_POINTER.with(|s| {
+    if s.borrow().is_null() {
+      s.replace(isolate);
+    }
+  });
 
   let async_work_sender =
     state.borrow_mut::<FfiState>().async_work_sender.clone();
@@ -1250,9 +1254,9 @@ where
 fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
   let ffi_state = state.borrow_mut::<FfiState>();
   if inc_dec {
-    ffi_state.active_refd_functions += 1;
+    ffi_state.active_refed_functions += 1;
   } else {
-    ffi_state.active_refd_functions -= 1;
+    ffi_state.active_refed_functions -= 1;
   }
 }
 
