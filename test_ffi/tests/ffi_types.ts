@@ -285,3 +285,105 @@ const static13_right: number = remote.symbols.static13;
 // @ts-expect-error: Invalid member type
 const static14_wrong: null = remote.symbols.static14;
 const static14_right: number = remote.symbols.static14;
+
+// Adapted from https://stackoverflow.com/a/53808212/10873797
+type Equal<T, U> = (<G>() => G extends T ? 1 : 2) extends
+  (<G>() => G extends U ? 1 : 2) ? true
+  : false;
+
+type AssertEqual<
+  Expected extends $,
+  Got extends $$,
+  $ = [Equal<Got, Expected>] extends [true] ? Expected
+    : ([Expected] extends [Got] ? never : Got),
+  $$ = [Equal<Expected, Got>] extends [true] ? Got
+    : ([Got] extends [Expected] ? never : Got),
+> = never;
+
+type AssertNotEqual<
+  Expected extends $,
+  Got,
+  $ = [Equal<Expected, Got>] extends [true] ? never : Expected,
+> = never;
+
+type TypedArray =
+  | Int8Array
+  | Uint8Array
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Uint8ClampedArray
+  | Float32Array
+  | Float64Array
+  | BigInt64Array
+  | BigUint64Array;
+
+type __Tests__ = [
+  empty: AssertEqual<
+    { symbols: Record<never, never>; close(): void },
+    Deno.DynamicLibrary<Record<never, never>>
+  >,
+  basic: AssertEqual<
+    { symbols: { add: (n1: number, n2: number) => number }; close(): void },
+    Deno.DynamicLibrary<{ add: { parameters: ["i32", "u8"]; result: "i32" } }>
+  >,
+  higher_order_params: AssertEqual<
+    {
+      symbols: {
+        pushBuf: (ptr: bigint | TypedArray | null, func: bigint | null) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { pushBuf: { parameters: ["pointer", "function"]; result: "void" } }
+    >
+  >,
+  higher_order_returns: AssertEqual<
+    {
+      symbols: {
+        pushBuf: (
+          ptr: bigint | TypedArray | null,
+          func: bigint | null,
+        ) => bigint;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { pushBuf: { parameters: ["pointer", "function"]; result: "pointer" } }
+    >
+  >,
+  non_exact_params: AssertEqual<
+    {
+      symbols: {
+        foo: (...args: (number | bigint | TypedArray | null)[]) => bigint;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: ("i32" | "pointer")[]; result: "u64" } }
+    >
+  >,
+  non_exact_params_empty: AssertEqual<
+    {
+      symbols: {
+        foo: () => number;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: "i32" } }
+    >
+  >,
+  non_exact_params_empty: AssertNotEqual<
+    {
+      symbols: {
+        foo: (a: number) => number;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: "i32" } }
+    >
+  >,
+];
