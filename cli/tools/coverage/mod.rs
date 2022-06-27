@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CoverageFlags;
+use crate::args::Flags;
 use crate::colors;
-use crate::flags::CoverageFlags;
-use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;

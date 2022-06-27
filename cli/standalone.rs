@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
-use crate::flags::Flags;
 use crate::fmt_errors::format_js_error;
 use crate::ops;
 use crate::proc_state::ProcState;

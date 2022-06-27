@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::BenchFlags;
+use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::colors;
 use crate::compat;
@@ -7,9 +10,6 @@ use crate::create_main_worker;
 use crate::emit;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::BenchFlags;
-use crate::flags::Flags;
-use crate::flags::TypeCheckMode;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
 use crate::graph_util::contains_specifier;
