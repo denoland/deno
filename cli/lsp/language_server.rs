@@ -2814,9 +2814,16 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    // now that we have dependencies loaded, we need to re-analyze them and
-    // invalidate some diagnostics
-    self.diagnostics_server.invalidate(&[referrer]);
+    // Now that we have dependencies loaded, we need to re-analyze all the files.
+    // For that we're invalidating all the existing diagnostics and restarting
+    // the language server for TypeScript (as it might hold to some stale
+    // documents).
+    self.diagnostics_server.invalidate_all();
+    let _: bool = self
+      .ts_server
+      .request(self.snapshot(), tsc::RequestMethod::Restart)
+      .await
+      .unwrap();
     self.send_diagnostics_update();
     self.send_testing_update();
 
