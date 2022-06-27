@@ -409,14 +409,17 @@ async fn main() -> Result<()> {
     "mem_usage",
   ];
 
+  let mut found_bench = false;
   let filter = args.nth(1);
   if let Some(filter) = filter {
     if filter != "--bench" {
       benchmarks.retain(|s| s == &filter);
+    } else {
+      found_bench = true;
     }
   }
 
-  if !args.any(|s| s == "--bench") {
+  if !found_bench && !args.any(|s| s == "--bench") {
     return Ok(());
   }
 
