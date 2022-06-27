@@ -17,7 +17,7 @@ use super::text::LineIndex;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::config_file::TsConfig;
+use crate::args::TsConfig;
 use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;

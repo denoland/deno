@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CompileFlags;
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::args::RunFlags;
+use crate::args::TypeCheckMode;
 use crate::deno_dir::DenoDir;
-use crate::flags::CompileFlags;
-use crate::flags::DenoSubcommand;
-use crate::flags::Flags;
-use crate::flags::RunFlags;
-use crate::flags::TypeCheckMode;
 use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;

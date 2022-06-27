@@ -4,10 +4,11 @@ use super::definitions::TestDefinition;
 use super::definitions::TestDefinitions;
 use super::lsp_custom;
 
+use crate::args::flags_from_vec;
+use crate::args::DenoSubcommand;
 use crate::checksum;
 use crate::create_main_worker;
 use crate::emit;
-use crate::flags;
 use crate::located_script_name;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
@@ -306,8 +307,7 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags =
-      flags::flags_from_vec(args.into_iter().map(String::from).collect())?;
+    let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(Arc::new(flags)).await?;
     let permissions =
       Permissions::from_options(&ps.flags.permissions_options());
@@ -327,7 +327,7 @@ impl TestRun {
     let sender = TestEventSender::new(sender);
 
     let (concurrent_jobs, fail_fast) =
-      if let flags::DenoSubcommand::Test(test_flags) = &ps.flags.subcommand {
+      if let DenoSubcommand::Test(test_flags) = &ps.flags.subcommand {
         (
           test_flags.concurrent_jobs.into(),
           test_flags.fail_fast.map(|count| count.into()),
