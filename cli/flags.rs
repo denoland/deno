@@ -738,6 +738,8 @@ fn check_subcommand<'a>() -> Command<'a> {
       .long("remote")
       .help("Type-check all modules, including remote")
     )
+    .arg(no_clear_screen_arg())
+    .arg(watch_arg(true))
     .arg(
       Arg::new("file")
         .takes_value(true)
@@ -2219,6 +2221,7 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
+  watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
 }
 

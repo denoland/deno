@@ -94,6 +94,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use fs_util::collect_files;
 use log::debug;
 use log::info;
 use std::env;
@@ -584,6 +585,7 @@ async fn check_command(
   flags: Flags,
   check_flags: CheckFlags,
 ) -> Result<i32, AnyError> {
+  //TODO: add the file wathcer logic here
   cache_command(
     flags,
     CacheFlags {
