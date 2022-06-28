@@ -3,8 +3,8 @@
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::RootConfig;
-use crate::args::TsConfigType;
-use crate::args::TsTypeLib;
+use crate::emit::TsConfigType;
+use crate::emit::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::compat;
@@ -418,7 +418,8 @@ impl ProcState {
       }
     };
 
-    let ts_config_result = self.config.resolve_ts_config(config_type)?;
+    let ts_config_result =
+      self.config.resolve_ts_config_for_emit(config_type)?;
 
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       log::warn!("{}", ignored_options);

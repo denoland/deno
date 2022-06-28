@@ -55,7 +55,7 @@ use crate::args::ReplFlags;
 use crate::args::RunFlags;
 use crate::args::TaskFlags;
 use crate::args::TestFlags;
-use crate::args::TsConfigType;
+use crate::emit::TsConfigType;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
@@ -677,7 +677,7 @@ async fn create_graph_and_maybe_check(
 
   if ps.config.type_check_mode() != TypeCheckMode::None {
     let ts_config_result =
-      ps.config.resolve_ts_config(TsConfigType::Check {
+      ps.config.resolve_ts_config_for_emit(TsConfigType::Check {
         tsc_emit: false,
         lib: ps.config.ts_type_lib_window(),
       })?;
@@ -715,7 +715,8 @@ fn bundle_module_graph(
 ) -> Result<deno_emit::BundleEmit, AnyError> {
   info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
 
-  let ts_config_result = ps.config.resolve_ts_config(TsConfigType::Bundle)?;
+  let ts_config_result =
+    ps.config.resolve_ts_config_for_emit(TsConfigType::Bundle)?;
   if ps.config.type_check_mode() == TypeCheckMode::None {
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       eprintln!("{}", ignored_options);

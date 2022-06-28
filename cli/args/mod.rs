@@ -5,11 +5,6 @@ pub mod flags;
 
 mod flags_allow_net;
 
-use std::collections::BTreeMap;
-use std::env;
-use std::net::SocketAddr;
-use std::path::PathBuf;
-
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
@@ -20,26 +15,30 @@ pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
 pub use config_file::TsConfig;
-pub use config_file::TsConfigType;
-pub use config_file::TsConfigWithIgnoredOptions;
-pub use config_file::TsTypeLib;
+pub use flags::*;
+
+use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
-pub use flags::*;
-
-use config_file::get_ts_config;
-use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::normalize_path;
+use std::collections::BTreeMap;
+use std::env;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use crate::compat;
 use crate::deno_dir::DenoDir;
+use crate::emit::get_ts_config_for_emit;
+use crate::emit::TsConfigType;
+use crate::emit::TsConfigWithIgnoredOptions;
+use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::lockfile::Lockfile;
@@ -131,11 +130,11 @@ impl RootConfig {
     )
   }
 
-  pub fn resolve_ts_config(
+  pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigWithIgnoredOptions, AnyError> {
-    get_ts_config(config_type, self.maybe_config_file.as_ref())
+    get_ts_config_for_emit(config_type, self.maybe_config_file.as_ref())
   }
 
   /// Resolves the storage key to use based on the current flags, config, or main module.
