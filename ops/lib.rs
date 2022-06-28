@@ -97,12 +97,19 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let asyncness = func.sig.asyncness.is_some();
   let is_async = asyncness || is_future(&func.sig.output);
-  let v8_body = if is_async {
+  let (v8_body, needs_scope) = if is_async {
     codegen_v8_async(&core, &func, margs, asyncness)
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
 
+  let scope_decl = if needs_scope {
+    quote! {
+      let scope = unsafe { &mut #core::v8::CallbackScope::new(&*info) };
+    }
+  } else {
+    quote! {}
+  };
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
   // Generate wrapper
   quote! {
@@ -119,6 +126,14 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
         stringify!(#name)
       }
 
+      extern "C" fn v8_fn #generics (info: *const #core::v8::FunctionCallbackInfo) #where_clause {
+        #scope_decl
+        let args = unsafe { #core::v8::FunctionCallbackArguments::from_function_callback_info(info) };
+        let mut rv = unsafe { #core::v8::ReturnValue::from_function_callback_info(info) };
+
+        #v8_body
+      }
+
       pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
         use #core::v8::MapFnTo;
         Self::v8_func::<#type_params>.map_fn_to()
@@ -127,7 +142,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
       pub fn decl #generics () -> #core::OpDecl #where_clause {
         #core::OpDecl {
           name: Self::name(),
-          v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+          v8_fn_ptr: Self::v8_fn::<#type_params>,
           enabled: true,
           is_async: #is_async,
           is_unstable: #is_unstable,
@@ -156,7 +171,7 @@ fn codegen_v8_async(
   f: &syn::ItemFn,
   margs: MacroArgs,
   asyncness: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, bool) {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -169,7 +184,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {
@@ -200,46 +215,49 @@ fn codegen_v8_async(
     false => quote! { let result = Ok(result); },
   };
 
-  quote! {
-    use #core::futures::FutureExt;
-    // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
-    let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
-      as *const #core::_ops::OpCtx)
-    };
-    let op_id = ctx.id;
+  (
+    quote! {
+      use #core::futures::FutureExt;
+      // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+      let ctx = unsafe {
+        &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
+        as *const #core::_ops::OpCtx)
+      };
+      let op_id = ctx.id;
 
-    let promise_id = args.get(0);
-    let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
-      .map(|l| l.value() as #core::PromiseId)
-      .map_err(#core::anyhow::Error::from);
-    // Fail if promise id invalid (not an int)
-    let promise_id: #core::PromiseId = match promise_id {
-      Ok(promise_id) => promise_id,
-      Err(err) => {
-        #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
-        return;
-      }
-    };
+      let promise_id = args.get(0);
+      let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
+        .map(|l| l.value() as #core::PromiseId)
+        .map_err(#core::anyhow::Error::from);
+      // Fail if promise id invalid (not an int)
+      let promise_id: #core::PromiseId = match promise_id {
+        Ok(promise_id) => promise_id,
+        Err(err) => {
+          #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
+          return;
+        }
+      };
 
-    #arg_decls
+      #arg_decls
 
-    let state = ctx.state.clone();
+      let state = ctx.state.clone();
 
-    // Track async call & get copy of get_error_class_fn
-    let get_class = {
-      let state = state.borrow();
-      state.tracker.track_async(op_id);
-      state.get_error_class_fn
-    };
+      // Track async call & get copy of get_error_class_fn
+      let get_class = {
+        let state = state.borrow();
+        state.tracker.track_async(op_id);
+        state.get_error_class_fn
+      };
 
-    #pre_result
-    #core::_ops::queue_async_op(scope, async move {
-      let result = #result_fut
-      #result_wrapper
-      (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    });
-  }
+      #pre_result
+      #core::_ops::queue_async_op(scope, async move {
+        let result = #result_fut
+        #result_wrapper
+        (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+      });
+    },
+    true,
+  )
 }
 
 fn scope_arg(arg: &FnArg) -> Option<TokenStream2> {
@@ -265,7 +283,7 @@ fn codegen_v8_sync(
   core: &TokenStream2,
   f: &syn::ItemFn,
   margs: MacroArgs,
-) -> TokenStream2 {
+) -> (TokenStream2, bool) {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -278,26 +296,31 @@ fn codegen_v8_sync(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
-  let ret = codegen_sync_ret(core, &f.sig.output);
+  let (arg_decls, args_tail, needs_scope_arg) =
+    codegen_args(core, f, rust_i0, 0);
+  let (ret, needs_scope_ret) = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  quote! {
-    // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
-    let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
-      as *const #core::_ops::OpCtx)
-    };
+  let needs_scope = is_v8 || needs_scope_arg || needs_scope_ret;
+  (
+    quote! {
+      // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+      let ctx = unsafe {
+        &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
+        as *const #core::_ops::OpCtx)
+      };
 
-    #arg_decls
+      #arg_decls
 
-    let result = Self::call::<#type_params>(#args_head #args_tail);
+      let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    let op_state = &mut ctx.state.borrow();
-    op_state.tracker.track_sync(ctx.id);
+      let op_state = &mut ctx.state.borrow();
+      op_state.tracker.track_sync(ctx.id);
 
-    #ret
-  }
+      #ret
+    },
+    needs_scope,
+  )
 }
 
 fn codegen_args(
@@ -305,22 +328,22 @@ fn codegen_args(
   f: &syn::ItemFn,
   rust_i0: usize, // Index of first generic arg in rust
   v8_i0: usize,   // Index of first generic arg in v8/js
-) -> (TokenStream2, TokenStream2) {
+) -> (TokenStream2, TokenStream2, bool) {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
-  let ident_seq: TokenStream2 = inputs
+
+  let idents = inputs
     .clone()
     .map(|(i, _)| format!("arg_{i}"))
-    .collect::<Vec<_>>()
-    .join(", ")
-    .parse()
-    .unwrap();
+    .collect::<Vec<_>>();
+  let needs_scope = !idents.is_empty();
+  let ident_seq: TokenStream2 = idents.join(", ").parse().unwrap();
   let decls: TokenStream2 = inputs
     .clone()
     .map(|(i, arg)| {
       codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
     })
     .collect();
-  (decls, ident_seq)
+  (decls, ident_seq, needs_scope)
 }
 
 fn codegen_arg(
@@ -354,15 +377,17 @@ fn codegen_arg(
 fn codegen_sync_ret(
   core: &TokenStream2,
   output: &syn::ReturnType,
-) -> TokenStream2 {
+) -> (TokenStream2, bool) {
+  let mut needs_scope = false;
   if is_void(output) {
-    return quote! {};
+    return (quote! {}, needs_scope);
   }
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
   let ok_block = if is_unit_result(output) {
     quote! {}
   } else {
+    needs_scope = true;
     quote! {
       match #core::serde_v8::to_v8(scope, result) {
         Ok(ret) => rv.set(ret),
@@ -375,20 +400,24 @@ fn codegen_sync_ret(
   };
 
   if !is_result(output) {
-    return ok_block;
+    return (ok_block, needs_scope);
   }
 
-  quote! {
-    match result {
-      Ok(result) => {
-        #ok_block
-      },
-      Err(err) => {
-        let err = #core::OpError::new(op_state.get_error_class_fn, err);
-        rv.set(#core::serde_v8::to_v8(scope, err).unwrap());
-      },
-    };
-  }
+  needs_scope = true;
+  (
+    quote! {
+      match result {
+        Ok(result) => {
+          #ok_block
+        },
+        Err(err) => {
+          let err = #core::OpError::new(op_state.get_error_class_fn, err);
+          rv.set(#core::serde_v8::to_v8(scope, err).unwrap());
+        },
+      };
+    },
+    needs_scope,
+  )
 }
 
 fn is_void(ty: impl ToTokens) -> bool {
