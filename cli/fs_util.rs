@@ -250,15 +250,16 @@ where
   let mut prepared = vec![];
 
   let root_path = std::env::current_dir()?;
-  for path in include {
+  for mut path in include {
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
-      || lowercase_path.starts_with("file://")
     {
       let url = ModuleSpecifier::parse(&path)?;
       prepared.push(url);
       continue;
+    } else if lowercase_path.starts_with("file://") {
+      path = path[7..].to_string();
     }
 
     let p = normalize_path(&root_path.join(path));
