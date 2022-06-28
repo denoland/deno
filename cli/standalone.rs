@@ -316,7 +316,14 @@ pub async fn run(
   );
   worker.execute_main_module(main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(true).await?;
+
+  loop {
+    worker.run_event_loop(false).await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
+
   worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }

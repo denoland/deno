@@ -639,7 +639,13 @@ async fn eval_command(
   }
   worker.execute_main_module(&main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(false).await?;
+  loop {
+    worker.run_event_loop(false).await?;
+
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
   worker.dispatch_unload_event(&located_script_name!())?;
   Ok(0)
 }
@@ -975,7 +981,12 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   }
   worker.execute_main_module(&main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(false).await?;
+  loop {
+    worker.run_event_loop(false).await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
   worker.dispatch_unload_event(&located_script_name!())?;
   Ok(worker.get_exit_code())
 }
@@ -1014,7 +1025,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       self.worker.dispatch_load_event(&located_script_name!())?;
       self.pending_unload = true;
 
-      let result = self.worker.run_event_loop(false).await;
+      let result = loop {
+        let result = self.worker.run_event_loop(false).await;
+        if !self
+          .worker
+          .dispatch_beforeunload_event(&located_script_name!())?
+        {
+          break result;
+        }
+      };
       self.pending_unload = false;
 
       if let Err(err) = result {
@@ -1162,9 +1181,16 @@ async fn run_command(
   }
 
   worker.dispatch_load_event(&located_script_name!())?;
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
+
+  loop {
+    worker
+      .run_event_loop(maybe_coverage_collector.is_none())
+      .await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
+
   worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
