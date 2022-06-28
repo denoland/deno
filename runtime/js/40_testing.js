@@ -266,7 +266,7 @@
       case "timer":
         return ["A timer", "started", "fired/cleared"];
       case "textDecoder":
-        return ["A text decoder", "created", "finsihed"];
+        return ["A text decoder", "created", "finished"];
       case "messagePort":
         return ["A message port", "created", "closed"];
       case "webSocketStream":
