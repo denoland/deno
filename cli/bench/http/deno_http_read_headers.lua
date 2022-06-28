@@ -1,0 +1,1 @@
+wrk.headers["foo"] = "bar"
