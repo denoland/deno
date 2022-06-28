@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags::ConfigFlag;
-use crate::flags::Flags;
+use crate::args::ConfigFlag;
+use crate::args::Flags;
 use crate::fs_util::canonicalize_path;
 use crate::fs_util::specifier_parent;
 use crate::fs_util::specifier_to_file_path;

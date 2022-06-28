@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::ConfigFile;
+use crate::args::Flags;
+use crate::args::TaskFlags;
 use crate::colors;
-use crate::config_file::ConfigFile;
-use crate::flags::Flags;
-use crate::flags::TaskFlags;
 use crate::fs_util;
 use crate::proc_state::ProcState;
 use deno_core::anyhow::bail;

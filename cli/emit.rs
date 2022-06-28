@@ -4,15 +4,15 @@
 //! populate a cache, emit files, and transform a graph into the structures for
 //! loading into an isolate.
 
+use crate::args::ConfigFile;
+use crate::args::EmitConfigOptions;
+use crate::args::IgnoredCompilerOptions;
+use crate::args::TsConfig;
+use crate::args::TypeCheckMode;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
 use crate::colors;
-use crate::config_file;
-use crate::config_file::ConfigFile;
-use crate::config_file::IgnoredCompilerOptions;
-use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::flags;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::tsc;
@@ -372,7 +372,7 @@ pub fn is_emittable(
 pub struct CheckOptions {
   /// The check flag from the option which can effect the filtering of
   /// diagnostics in the emit result.
-  pub type_check_mode: flags::TypeCheckMode,
+  pub type_check_mode: TypeCheckMode,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -463,7 +463,7 @@ pub fn check_and_maybe_emit(
     root_names,
   })?;
 
-  let diagnostics = if options.type_check_mode == flags::TypeCheckMode::Local {
+  let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
@@ -772,10 +772,9 @@ impl Hook for BundleHook {
   }
 }
 
-impl From<config_file::TsConfig> for deno_ast::EmitOptions {
-  fn from(config: config_file::TsConfig) -> Self {
-    let options: config_file::EmitConfigOptions =
-      serde_json::from_value(config.0).unwrap();
+impl From<TsConfig> for deno_ast::EmitOptions {
+  fn from(config: TsConfig) -> Self {
+    let options: EmitConfigOptions = serde_json::from_value(config.0).unwrap();
     let imports_not_used_as_values =
       match options.imports_not_used_as_values.as_str() {
         "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
