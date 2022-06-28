@@ -28,6 +28,7 @@ delete Intl.v8BreakIterator;
     SymbolIterator,
     PromisePrototypeThen,
     TypeError,
+    queueMicrotask,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -618,9 +619,8 @@ delete Intl.v8BreakIterator;
         });
         globalThis.dispatchEvent(event);
 
-        if (!event.defaultPrevented) {
-          throw reason;
-        } else {
+        // If event was not prevented we will let Rust side handle it.
+        if (event.defaultPrevented) {
           core.opSync("op_remove_pending_promise_exception", promise);
         }
       });
