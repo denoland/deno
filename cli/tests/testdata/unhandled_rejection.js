@@ -7,4 +7,4 @@ function Foo() {
   this.bar = Promise.reject(new Error("bar not available"));
 }
 
-const foo = new Foo();
+new Foo();
