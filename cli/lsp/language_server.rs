@@ -364,7 +364,7 @@ impl Inner {
     if let Some(root_uri) = &self.config.root_uri {
       let root_path = fs_util::specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
-      let maybe_config = crate::args::discover_from(&root_path, &mut checked)?;
+      let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
       Ok(maybe_config.map(|c| {
         lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
         c

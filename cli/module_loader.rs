@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::emit::TypeLib;
+use crate::emit::TsTypeLib;
 use crate::proc_state::ProcState;
 
 use deno_core::error::AnyError;
@@ -16,7 +16,7 @@ use std::rc::Rc;
 use std::str;
 
 pub struct CliModuleLoader {
-  pub lib: TypeLib,
+  pub lib: TsTypeLib,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. They are decoupled from the worker (dynamic) permissions since
   /// read access errors must be raised based on the parent thread permissions.
@@ -26,28 +26,16 @@ pub struct CliModuleLoader {
 
 impl CliModuleLoader {
   pub fn new(ps: ProcState) -> Rc<Self> {
-    let lib = if ps.flags.unstable {
-      TypeLib::UnstableDenoWindow
-    } else {
-      TypeLib::DenoWindow
-    };
-
     Rc::new(CliModuleLoader {
-      lib,
+      lib: ps.config.ts_type_lib_window(),
       root_permissions: Permissions::allow_all(),
       ps,
     })
   }
 
   pub fn new_for_worker(ps: ProcState, permissions: Permissions) -> Rc<Self> {
-    let lib = if ps.flags.unstable {
-      TypeLib::UnstableDenoWorker
-    } else {
-      TypeLib::DenoWorker
-    };
-
     Rc::new(CliModuleLoader {
-      lib,
+      lib: ps.config.ts_type_lib_worker(),
       root_permissions: permissions,
       ps,
     })
@@ -97,13 +85,8 @@ impl ModuleLoader for CliModuleLoader {
     } else {
       self.root_permissions.clone()
     };
+    let lib = self.lib;
 
-    let lib = match self.lib {
-      TypeLib::DenoWindow => crate::emit::TypeLib::DenoWindow,
-      TypeLib::DenoWorker => crate::emit::TypeLib::DenoWorker,
-      TypeLib::UnstableDenoWindow => crate::emit::TypeLib::UnstableDenoWindow,
-      TypeLib::UnstableDenoWorker => crate::emit::TypeLib::UnstableDenoWorker,
-    };
     drop(state);
 
     async move {
