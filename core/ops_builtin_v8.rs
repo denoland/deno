@@ -47,6 +47,8 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_op_names::decl(),
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
+    op_store_pending_promise_exception::decl(),
+    op_remove_pending_promise_exception::decl(),
   ]
 }
 
@@ -785,4 +787,34 @@ fn op_set_format_exception_callback<'a>(
   let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
+}
+
+#[op(v8)]
+fn op_store_pending_promise_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  promise: serde_v8::Value<'a>,
+  reason: serde_v8::Value<'a>,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  let promise_value =
+    v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
+  let promise_global = v8::Global::new(scope, promise_value);
+  let error_global = v8::Global::new(scope, reason.v8_value);
+  state
+    .pending_promise_exceptions
+    .insert(promise_global, error_global);
+}
+
+#[op(v8)]
+fn op_remove_pending_promise_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  promise: serde_v8::Value<'a>,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  let promise_value =
+    v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
+  let promise_global = v8::Global::new(scope, promise_value);
+  state.pending_promise_exceptions.remove(&promise_global);
 }

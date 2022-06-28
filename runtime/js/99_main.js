@@ -587,18 +587,35 @@ delete Intl.v8BreakIterator;
     defineEventHandler(window, "unload");
     defineEventHandler(window, "unhandledrejection");
 
-    core.setPromiseRejectCallback((_type, promise, reason) => {
-      console.log("setPromiseRejectionCallback", _type, promise, reason);
-      const event = new PromiseRejectionEvent("unhandledrejection", {
-        cancelable: true,
-        promise,
-        reason,
-      });
-      globalThis.dispatchEvent(event);
-
-      if (!event.defaultPrevented) {
-        throw reason;
+    core.setPromiseRejectCallback((type, promise, reason) => {
+      switch (type) {
+        case 0: {
+          core.opSync("op_store_pending_promise_exception", promise, reason);
+          break;
+        }
+        case 1: {
+          core.opSync("op_remove_pending_promise_exception", promise, reason);
+          break;
+        }
+        default:
+          return;
       }
+      // TODO(bartlomieju):
+      // queueMicrotask(() => {
+      //   // TODO: check if the promise is still prevent in some hashmap and
+      //   // if so dispatch this event
+
+      //   const event = new PromiseRejectionEvent("unhandledrejection", {
+      //     cancelable: true,
+      //     promise,
+      //     reason,
+      //   });
+      //   globalThis.dispatchEvent(event);
+
+      //   if (!event.defaultPrevented) {
+      //     throw reason;
+      //   }
+      // });
     });
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
