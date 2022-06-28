@@ -595,15 +595,17 @@ delete Intl.v8BreakIterator;
           break;
         }
         case 1: {
-          core.opSync("op_remove_pending_promise_exception", promise, reason);
+          core.opSync("op_remove_pending_promise_exception", promise);
           break;
         }
         default:
           return;
       }
-      // TODO(bartlomieju):
       queueMicrotask(() => {
-        const hasPendingException = core.opSync("op_has_pending_promise_exception", promise);
+        const hasPendingException = core.opSync(
+          "op_has_pending_promise_exception",
+          promise,
+        );
 
         if (!hasPendingException) {
           return;
@@ -618,6 +620,8 @@ delete Intl.v8BreakIterator;
 
         if (!event.defaultPrevented) {
           throw reason;
+        } else {
+          core.opSync("op_remove_pending_promise_exception", promise);
         }
       });
     });

@@ -848,11 +848,13 @@ fn op_remove_pending_promise_exception<'a>(
 fn op_has_pending_promise_exception<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
-) {
+) -> bool {
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state.pending_promise_exceptions.contains_key(&promise_global);
+  state
+    .pending_promise_exceptions
+    .contains_key(&promise_global)
 }
