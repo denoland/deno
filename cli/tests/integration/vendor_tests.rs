@@ -553,24 +553,21 @@ fn success_text_updated_deno_json(module_count: &str, dir: &str) -> String {
     concat!(
       "Vendored {} into {} directory.\n\n",
       "Updated your local Deno configuration file with a reference to the ",
-      "new vendored import map at {}. Invoking Deno subcommands will ",
+      "new vendored import map at {}import_map.json. Invoking Deno subcommands will ",
       "now automatically resolve using the vendored modules. You may override ",
       "this by providing the `--import-map <other-import-map>` flag or by ",
       "manually editing your Deno configuration file.",
     ),
     module_count,
     dir,
-    format!(
-      "{}import_map.json",
-      if dir != "vendor/" {
-        format!(
-          "{}{}",
-          dir.trim_end_matches('/'),
-          if cfg!(windows) { '\\' } else { '/' }
-        )
-      } else {
-        dir.to_string()
-      }
-    )
+    if dir != "vendor/" {
+      format!(
+        "{}{}",
+        dir.trim_end_matches('/'),
+        if cfg!(windows) { '\\' } else { '/' }
+      )
+    } else {
+      dir.to_string()
+    }
   )
 }
