@@ -30,8 +30,8 @@ pub async fn execute_script(
     crate::colors::yellow("Warning"),
   );
   let ps = ProcState::build(flags).await?;
-  let tasks_config = ps.root_config.resolve_tasks_config()?;
-  let config_file_url = ps.root_config.maybe_config_file_specifier().unwrap();
+  let tasks_config = ps.config.resolve_tasks_config()?;
+  let config_file_url = ps.config.maybe_config_file_specifier().unwrap();
   let config_file_path = if config_file_url.scheme() == "file" {
     config_file_url.to_file_path().unwrap()
   } else {
@@ -52,8 +52,8 @@ pub async fn execute_script(
 
   if let Some(script) = maybe_script {
     let additional_args = ps
-      .flags()
-      .argv
+      .config
+      .argv()
       .iter()
       // surround all the additional arguments in double quotes
       // and santize any command substition

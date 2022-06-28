@@ -309,7 +309,7 @@ impl TestRun {
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(flags).await?;
     let permissions =
-      Permissions::from_options(&ps.flags().permissions_options());
+      Permissions::from_options(&ps.config.permissions_options());
     test::check_specifiers(
       &ps,
       permissions.clone(),
@@ -325,7 +325,7 @@ impl TestRun {
     let sender = TestEventSender::new(sender);
 
     let (concurrent_jobs, fail_fast) =
-      if let DenoSubcommand::Test(test_flags) = &ps.flags().subcommand {
+      if let DenoSubcommand::Test(test_flags) = ps.config.sub_command() {
         (
           test_flags.concurrent_jobs.into(),
           test_flags.fail_fast.map(|count| count.into()),

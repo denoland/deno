@@ -1013,7 +1013,7 @@ pub async fn check_specifiers(
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
-  let lib = ps.root_config.ts_type_lib_window();
+  let lib = ps.config.ts_type_lib_window();
   let inline_files = fetch_inline_files(
     ps.clone(),
     specifiers
@@ -1081,7 +1081,7 @@ async fn test_specifiers(
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.flags().log_level;
+  let log_level = ps.config.log_level();
   let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
@@ -1326,8 +1326,7 @@ pub async fn run_tests(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions =
-    Permissions::from_options(&ps.flags().permissions_options());
+  let permissions = Permissions::from_options(&ps.config.permissions_options());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
     test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
@@ -1347,7 +1346,7 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let compat = ps.flags().compat;
+  let compat = ps.config.compat();
   test_specifiers(
     ps,
     permissions,
@@ -1371,13 +1370,12 @@ pub async fn run_tests_with_watch(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions =
-    Permissions::from_options(&ps.flags().permissions_options());
+  let permissions = Permissions::from_options(&ps.config.permissions_options());
 
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags().type_check_mode == TypeCheckMode::None;
+  let no_check = ps.config.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
@@ -1393,15 +1391,15 @@ pub async fn run_tests_with_watch(
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = ps
-      .root_config
+      .config
       .to_maybe_jsx_import_source_module()
       .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports_result = ps.root_config.to_maybe_imports();
+    let maybe_imports_result = ps.config.to_maybe_imports();
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps.root_config.check_js();
+    let check_js = ps.config.check_js();
 
     async move {
       let test_modules = if test_flags.doc {
@@ -1530,7 +1528,7 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let root_config = ps.root_config.clone();
+  let root_config = ps.config.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let root_config = root_config.clone();
     let filter = test_flags.filter.clone();
@@ -1566,7 +1564,7 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
-          compat_mode: root_config.flags.compat,
+          compat_mode: root_config.compat(),
           concurrent_jobs: test_flags.concurrent_jobs,
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
@@ -1585,7 +1583,7 @@ pub async fn run_tests_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !root_config.flags.no_clear_screen,
+      clear_screen: !root_config.no_clear_screen(),
     },
   )
   .await?;

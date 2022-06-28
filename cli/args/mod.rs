@@ -7,6 +7,7 @@ mod flags_allow_net;
 
 use std::collections::BTreeMap;
 use std::env;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 pub use config_file::CompilerOptions;
@@ -23,8 +24,11 @@ pub use config_file::TsConfigType;
 pub use config_file::TsConfigWithIgnoredOptions;
 pub use config_file::TsTypeLib;
 use deno_core::anyhow::bail;
+use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::permissions::PermissionsOptions;
 pub use flags::*;
 
 use config_file::get_ts_config;
@@ -35,13 +39,18 @@ use deno_core::error::AnyError;
 use deno_core::normalize_path;
 
 use crate::compat;
+use crate::deno_dir::DenoDir;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
+use crate::lockfile::Lockfile;
+use crate::version;
 
+/// Holds the common configuration used by many sub commands
+/// and provides some helper function for creating common objects.
 pub struct RootConfig {
-  /// Flags parsed from `argv` contents.
-  pub flags: Flags,
-  /// Resolved configuration file.
+  // the source of the configuration is a detail the rest of the
+  // application need not concern itself with, so keep these private
+  flags: Flags,
   maybe_config_file: Option<ConfigFile>,
 }
 
@@ -99,12 +108,8 @@ impl RootConfig {
     }
   }
 
-  pub fn maybe_custom_root(&self) -> Option<PathBuf> {
-    self
-      .flags
-      .cache_path
-      .clone()
-      .or_else(|| env::var("DENO_DIR").map(String::into).ok())
+  pub fn resolve_deno_dir(&self) -> Result<DenoDir, AnyError> {
+    Ok(DenoDir::new(self.maybe_custom_root())?)
   }
 
   /// Based on an optional command line import map path and an optional
@@ -157,6 +162,31 @@ impl RootConfig {
     }
   }
 
+  pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
+    let maybe_inspect_host = self.flags.inspect.or(self.flags.inspect_brk);
+    maybe_inspect_host
+      .map(|host| InspectorServer::new(host, version::get_user_agent()))
+  }
+
+  pub fn resolve_lock_file(&self) -> Result<Option<Lockfile>, AnyError> {
+    if let Some(filename) = &self.flags.lock {
+      let lockfile = Lockfile::new(filename.clone(), self.flags.lock_write)?;
+      Ok(Some(lockfile))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn resolve_tasks_config(
+    &self,
+  ) -> Result<BTreeMap<String, String>, AnyError> {
+    if let Some(config_file) = &self.maybe_config_file {
+      config_file.resolve_tasks_config()
+    } else {
+      bail!("No config file found")
+    }
+  }
+
   /// Return the implied JSX import source module.
   pub fn to_maybe_jsx_import_source_module(&self) -> Option<String> {
     self
@@ -184,24 +214,6 @@ impl RootConfig {
     }
   }
 
-  pub fn check_js(&self) -> bool {
-    self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false)
-  }
-
-  pub fn resolve_tasks_config(
-    &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.resolve_tasks_config()
-    } else {
-      bail!("No config file found")
-    }
-  }
-
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.to_lint_config()
@@ -216,6 +228,91 @@ impl RootConfig {
     } else {
       Ok(None)
     }
+  }
+
+  /// Vector of user script CLI arguments.
+  pub fn argv(&self) -> &Vec<String> {
+    &self.flags.argv
+  }
+
+  pub fn check_js(&self) -> bool {
+    self
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.get_check_js())
+      .unwrap_or(false)
+  }
+
+  pub fn compat(&self) -> bool {
+    self.flags.compat
+  }
+
+  pub fn coverage_dir(&self) -> Option<&String> {
+    self.flags.coverage_dir.as_ref()
+  }
+
+  pub fn enable_testing_features(&self) -> bool {
+    self.flags.enable_testing_features
+  }
+
+  pub fn inspect_brk(&self) -> Option<SocketAddr> {
+    self.flags.inspect_brk
+  }
+
+  pub fn log_level(&self) -> Option<log::Level> {
+    self.flags.log_level
+  }
+
+  pub fn location_flag(&self) -> Option<&Url> {
+    self.flags.location.as_ref()
+  }
+
+  pub fn maybe_custom_root(&self) -> Option<PathBuf> {
+    self
+      .flags
+      .cache_path
+      .clone()
+      .or_else(|| env::var("DENO_DIR").map(String::into).ok())
+  }
+
+  pub fn no_clear_screen(&self) -> bool {
+    self.flags.no_clear_screen
+  }
+
+  pub fn no_remote(&self) -> bool {
+    self.flags.no_remote
+  }
+
+  pub fn permissions_options(&self) -> PermissionsOptions {
+    self.flags.permissions_options()
+  }
+
+  pub fn reload_flag(&self) -> bool {
+    self.flags.reload
+  }
+
+  pub fn seed(&self) -> Option<u64> {
+    self.flags.seed
+  }
+
+  pub fn sub_command(&self) -> &DenoSubcommand {
+    &self.flags.subcommand
+  }
+
+  pub fn type_check_mode(&self) -> TypeCheckMode {
+    self.flags.type_check_mode
+  }
+
+  pub fn unsafely_ignore_certificate_errors(&self) -> Option<&Vec<String>> {
+    self.flags.unsafely_ignore_certificate_errors.as_ref()
+  }
+
+  pub fn unstable(&self) -> bool {
+    self.flags.unstable
+  }
+
+  pub fn watch_paths(&self) -> Option<&Vec<PathBuf>> {
+    self.flags.watch.as_ref()
   }
 }
 

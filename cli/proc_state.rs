@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::RootConfig;
 use crate::args::TsConfigType;
@@ -20,7 +21,6 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::version;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -68,7 +68,7 @@ pub struct Inner {
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
-  pub root_config: Arc<RootConfig>,
+  pub config: Arc<RootConfig>,
   graph_data: Arc<RwLock<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
@@ -111,12 +111,12 @@ impl ProcState {
         .await?;
 
     // Add the extra files listed in the watch flag
-    if let Some(watch_paths) = &ps.flags().watch {
+    if let Some(watch_paths) = ps.config.watch_paths() {
       files_to_watch_sender.send(watch_paths.clone()).unwrap();
     }
 
     if let Ok(Some(import_map_path)) = ps
-      .root_config
+      .config
       .resolve_import_map_path()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
@@ -134,7 +134,7 @@ impl ProcState {
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
-    let dir = deno_dir::DenoDir::new(root_config.maybe_custom_root())?;
+    let dir = root_config.resolve_deno_dir()?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = root_config.resolve_root_cert_store()?;
@@ -142,20 +142,17 @@ impl ProcState {
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
-      !root_config.flags.no_remote,
+      !root_config.no_remote(),
       Some(root_cert_store.clone()),
       blob_store.clone(),
-      root_config.flags.unsafely_ignore_certificate_errors.clone(),
+      root_config
+        .unsafely_ignore_certificate_errors()
+        .map(ToOwned::to_owned),
     )?;
 
-    let lockfile = if let Some(filename) = &root_config.flags.lock {
-      let lockfile =
-        Lockfile::new(filename.clone(), root_config.flags.lock_write)?;
-      Some(Arc::new(Mutex::new(lockfile)))
-    } else {
-      None
-    };
-
+    let lockfile = root_config
+      .resolve_lock_file()?
+      .map(|f| Arc::new(Mutex::new(f)));
     let maybe_import_map_specifier = root_config.resolve_import_map_path()?;
 
     let maybe_import_map =
@@ -174,16 +171,12 @@ impl ProcState {
         None
       };
 
-    let maybe_inspect_host =
-      root_config.flags.inspect.or(root_config.flags.inspect_brk);
-    let maybe_inspector_server = maybe_inspect_host.map(|host| {
-      Arc::new(InspectorServer::new(host, version::get_user_agent()))
-    });
+    let maybe_inspector_server =
+      root_config.resolve_inspector_server().map(Arc::new);
 
     let coverage_dir = root_config
-      .flags
-      .coverage_dir
-      .clone()
+      .coverage_dir()
+      .map(ToOwned::to_owned)
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
@@ -198,7 +191,7 @@ impl ProcState {
       .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
-    > = if root_config.flags.compat {
+    > = if root_config.compat() {
       Some(Arc::new(node_resolver))
     } else if let Some(jsx_resolver) = maybe_jsx_resolver {
       // the JSX resolver offloads to the import map if present, otherwise uses
@@ -219,7 +212,7 @@ impl ProcState {
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
-      root_config,
+      config: root_config,
       file_fetcher,
       graph_data: Default::default(),
       lockfile,
@@ -283,7 +276,7 @@ impl ProcState {
 
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
-    let roots = if self.flags().compat {
+    let roots = if self.config.compat() {
       let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
       r.extend(roots);
       r
@@ -292,12 +285,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags().type_check_mode == TypeCheckMode::None
+      if self.config.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags().type_check_mode != TypeCheckMode::None,
+          self.config.type_check_mode() != TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -311,7 +304,7 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
-    let maybe_imports = self.root_config.to_maybe_imports()?;
+    let maybe_imports = self.config.to_maybe_imports()?;
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -406,17 +399,17 @@ impl ProcState {
     {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
-      let check_js = self.root_config.check_js();
+      let check_js = self.config.check_js();
       graph_data
         .check(
           &roots,
-          self.flags().type_check_mode != TypeCheckMode::None,
+          self.config.type_check_mode() != TypeCheckMode::None,
           check_js,
         )
         .unwrap()?;
     }
 
-    let config_type = if self.flags().type_check_mode == TypeCheckMode::None {
+    let config_type = if self.config.type_check_mode() == TypeCheckMode::None {
       TsConfigType::Emit
     } else {
       TsConfigType::Check {
@@ -425,31 +418,30 @@ impl ProcState {
       }
     };
 
-    let ts_config_result = self.root_config.resolve_ts_config(config_type)?;
+    let ts_config_result = self.config.resolve_ts_config(config_type)?;
 
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags().type_check_mode == TypeCheckMode::None {
+    if self.config.type_check_mode() == TypeCheckMode::None {
       let options = emit::EmitOptions {
         ts_config: ts_config_result.ts_config,
-        reload: self.flags().reload,
+        reload: self.config.reload_flag(),
         reload_exclusions,
       };
       let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
       log::debug!("{}", emit_result.stats);
     } else {
-      let maybe_config_specifier =
-        self.root_config.maybe_config_file_specifier();
+      let maybe_config_specifier = self.config.maybe_config_file_specifier();
       let options = emit::CheckOptions {
-        type_check_mode: self.flags().type_check_mode.clone(),
-        debug: self.flags().log_level == Some(log::Level::Debug),
+        type_check_mode: self.config.type_check_mode(),
+        debug: self.config.log_level() == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config: ts_config_result.ts_config,
         log_checks: true,
-        reload: self.flags().reload,
+        reload: self.config.reload_flag(),
         reload_exclusions,
       };
       let emit_result = emit::check_and_maybe_emit(
@@ -464,7 +456,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags().type_check_mode != TypeCheckMode::None {
+    if self.config.type_check_mode() != TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, lib);
     }
@@ -508,7 +500,9 @@ impl ProcState {
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
-    let referrer = if referrer.is_empty() && self.flags().repl {
+    let referrer = if referrer.is_empty()
+      && matches!(self.config.sub_command(), DenoSubcommand::Repl(_))
+    {
       deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
       deno_core::resolve_url_or_path(referrer).unwrap()
@@ -594,10 +588,6 @@ impl ProcState {
         specifier.to_string()
       )),
     }
-  }
-
-  pub fn flags(&self) -> &Flags {
-    &self.root_config.flags
   }
 }
 
