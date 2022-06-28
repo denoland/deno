@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 bencher = "0.1"
 deno_core = { version = "0.140.0", path = "../core" }
+once_cell = "1.10.0"
 tokio = { version = "1.19", features = ["full"] }
 
 [[bench]]
