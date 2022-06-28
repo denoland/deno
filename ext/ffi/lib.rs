@@ -560,7 +560,6 @@ where
   };
   let obj = v8::Object::new(scope);
 
-  IS_ISOLATE_THREAD.with(|s| s.replace(true));
   for (symbol_key, foreign_symbol) in args.symbols {
     match foreign_symbol {
       ForeignSymbol::ForeignStatic(_) => {
