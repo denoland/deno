@@ -1235,8 +1235,7 @@ async fn vendor_command(
   flags: Flags,
   vendor_flags: VendorFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
-  tools::vendor::vendor(ps, vendor_flags).await?;
+  tools::vendor::vendor(flags, vendor_flags).await?;
   Ok(0)
 }
 

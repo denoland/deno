@@ -122,6 +122,14 @@ impl RootConfig {
     )
   }
 
+  /// Removes the import map from the configuration.
+  pub fn remove_import_map(&mut self) {
+    self.flags.import_map_path = None;
+    if let Some(config_file) = self.maybe_config_file.as_mut() {
+      config_file.json.import_map = None;
+    }
+  }
+
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
     get_root_cert_store(
       None,
