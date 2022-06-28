@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::config_file::TsConfig;
+use crate::args::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::graph_util::GraphData;
@@ -699,7 +699,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::config_file::TsConfig;
+  use crate::args::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::emit::Stats;

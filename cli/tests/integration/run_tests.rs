@@ -249,6 +249,12 @@ itest!(webstorage_serialization {
   output: "webstorage/serialization.ts.out",
 });
 
+// tests the beforeunload event
+itest!(beforeunload_event {
+  args: "run before_unload.js",
+  output: "before_unload.js.out",
+});
+
 // tests to ensure that when `--location` is set, all code shares the same
 // localStorage cache based on the origin of the location URL.
 #[test]
