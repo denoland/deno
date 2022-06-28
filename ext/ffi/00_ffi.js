@@ -201,6 +201,7 @@
   }
 
   class UnsafeCallback {
+    #refcount;
     #rid;
     definition;
     callback;
@@ -217,13 +218,30 @@
         definition,
         callback,
       );
+      this.#refcount = 0;
       this.#rid = rid;
       this.pointer = pointer;
       this.definition = definition;
       this.callback = callback;
     }
 
+    ref() {
+      if (this.#refcount++ === 0) {
+        core.opSync("op_ffi_unsafe_callback_ref", true);
+      }
+    }
+
+    unref() {
+      if (--this.#refcount === 0) {
+        core.opSync("op_ffi_unsafe_callback_ref", false);
+      }
+    }
+
     close() {
+      if (this.#refcount) {
+        this.#refcount = 0;
+        core.opSync("op_ffi_unsafe_callback_ref", false);
+      }
       core.close(this.#rid);
     }
   }

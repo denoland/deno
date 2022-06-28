@@ -921,7 +921,7 @@ impl JsRuntime {
       let state = state_rc.borrow();
       let op_state = state.op_state.clone();
       for f in &self.event_loop_middlewares {
-        if f(&mut op_state.borrow_mut(), cx) {
+        if f(op_state.clone(), cx) {
           maybe_scheduling = true;
         }
       }
