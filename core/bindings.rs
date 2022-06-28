@@ -340,7 +340,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   } else {
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
-    eprintln!("we are here");
     match message.get_event() {
       PromiseRejectWithNoHandler => {
         let error = message.get_value().unwrap();
