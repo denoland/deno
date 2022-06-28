@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::DocFlags;
+use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::File;
-use crate::flags::DocFlags;
-use crate::flags::Flags;
 use crate::get_types;
 use crate::proc_state::ProcState;
 use crate::write_json_to_stdout;

@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
+use crate::args::TestFlags;
+use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::colors;
 use crate::compat;
@@ -9,9 +12,6 @@ use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::TestFlags;
-use crate::flags::TypeCheckMode;
 use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
@@ -743,6 +743,11 @@ async fn test_specifier(
     },
   );
 
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
+
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
   {
@@ -808,6 +813,13 @@ async fn test_specifier(
   )?;
 
   worker.js_runtime.resolve_value(test_result).await?;
+
+  loop {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+    worker.run_event_loop(false).await?;
+  }
 
   worker.dispatch_unload_event(&located_script_name!())?;
 

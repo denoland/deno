@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
-use crate::flags::Flags;
 use crate::fmt_errors::format_js_error;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -307,6 +307,7 @@ pub async fn run(
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
     stdio: Default::default(),
+    startup_snapshot: Some(deno_snapshots::cli_snapshot()),
   };
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
@@ -315,7 +316,14 @@ pub async fn run(
   );
   worker.execute_main_module(main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(true).await?;
+
+  loop {
+    worker.run_event_loop(false).await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
+
   worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }

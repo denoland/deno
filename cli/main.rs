@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod args;
 mod auth_tokens;
 mod cache;
 mod cdp;
 mod checksum;
 mod compat;
-mod config_file;
 mod deno_dir;
 mod diagnostics;
 mod diff;
@@ -15,8 +15,6 @@ mod emit;
 mod errors;
 mod file_fetcher;
 mod file_watcher;
-mod flags;
-mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
 mod graph_util;
@@ -37,31 +35,33 @@ mod unix_util;
 mod version;
 mod windows_util;
 
+use crate::args::flags_from_vec;
+use crate::args::resolve_import_map_specifier;
+use crate::args::BenchFlags;
+use crate::args::BundleFlags;
+use crate::args::CacheFlags;
+use crate::args::CheckFlags;
+use crate::args::CompileFlags;
+use crate::args::CompletionsFlags;
+use crate::args::CoverageFlags;
+use crate::args::DenoSubcommand;
+use crate::args::DocFlags;
+use crate::args::EvalFlags;
+use crate::args::Flags;
+use crate::args::FmtFlags;
+use crate::args::InfoFlags;
+use crate::args::InstallFlags;
+use crate::args::LintFlags;
+use crate::args::ReplFlags;
+use crate::args::RunFlags;
+use crate::args::TaskFlags;
+use crate::args::TestFlags;
+use crate::args::TypeCheckMode;
+use crate::args::UninstallFlags;
+use crate::args::UpgradeFlags;
+use crate::args::VendorFlags;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::BenchFlags;
-use crate::flags::BundleFlags;
-use crate::flags::CacheFlags;
-use crate::flags::CheckFlags;
-use crate::flags::CompileFlags;
-use crate::flags::CompletionsFlags;
-use crate::flags::CoverageFlags;
-use crate::flags::DenoSubcommand;
-use crate::flags::DocFlags;
-use crate::flags::EvalFlags;
-use crate::flags::Flags;
-use crate::flags::FmtFlags;
-use crate::flags::InfoFlags;
-use crate::flags::InstallFlags;
-use crate::flags::LintFlags;
-use crate::flags::ReplFlags;
-use crate::flags::RunFlags;
-use crate::flags::TaskFlags;
-use crate::flags::TestFlags;
-use crate::flags::TypeCheckMode;
-use crate::flags::UninstallFlags;
-use crate::flags::UpgradeFlags;
-use crate::flags::VendorFlags;
 use crate::fmt_errors::format_js_error;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
@@ -69,6 +69,7 @@ use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -179,6 +180,7 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
+      startup_snapshot: Some(deno_snapshots::cli_snapshot()),
     };
 
     WebWorker::bootstrap_from_options(
@@ -274,6 +276,7 @@ pub fn create_main_worker(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
+    startup_snapshot: Some(deno_snapshots::cli_snapshot()),
   };
 
   MainWorker::bootstrap_from_options(main_module, permissions, options)
@@ -600,7 +603,7 @@ async fn eval_command(
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
-    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
+    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
   let permissions = Permissions::from_options(&flags.permissions_options());
   let ps = ProcState::build(Arc::new(flags)).await?;
   let mut worker = create_main_worker(
@@ -636,7 +639,13 @@ async fn eval_command(
   }
   worker.execute_main_module(&main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(false).await?;
+  loop {
+    worker.run_event_loop(false).await?;
+
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
   worker.dispatch_unload_event(&located_script_name!())?;
   Ok(0)
 }
@@ -795,12 +804,11 @@ async fn bundle_command(
         })
         .collect();
 
-      if let Ok(Some(import_map_path)) =
-        config_file::resolve_import_map_specifier(
-          ps.flags.import_map_path.as_deref(),
-          ps.maybe_config_file.as_ref(),
-        )
-        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      if let Ok(Some(import_map_path)) = resolve_import_map_specifier(
+        ps.flags.import_map_path.as_deref(),
+        ps.maybe_config_file.as_ref(),
+      )
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
       }
@@ -973,7 +981,12 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   }
   worker.execute_main_module(&main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(false).await?;
+  loop {
+    worker.run_event_loop(false).await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
   worker.dispatch_unload_event(&located_script_name!())?;
   Ok(worker.get_exit_code())
 }
@@ -1012,7 +1025,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       self.worker.dispatch_load_event(&located_script_name!())?;
       self.pending_unload = true;
 
-      let result = self.worker.run_event_loop(false).await;
+      let result = loop {
+        let result = self.worker.run_event_loop(false).await;
+        if !self
+          .worker
+          .dispatch_beforeunload_event(&located_script_name!())?
+        {
+          break result;
+        }
+      };
       self.pending_unload = false;
 
       if let Err(err) = result {
@@ -1160,9 +1181,16 @@ async fn run_command(
   }
 
   worker.dispatch_load_event(&located_script_name!())?;
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
+
+  loop {
+    worker
+      .run_event_loop(maybe_coverage_collector.is_none())
+      .await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
+
   worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
@@ -1416,7 +1444,7 @@ pub fn main() {
     // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
     unwrap_or_exit(standalone_res);
 
-    let flags = match flags::flags_from_vec(args) {
+    let flags = match flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
         if err.kind() == clap::ErrorKind::DisplayHelp

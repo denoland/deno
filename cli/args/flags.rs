@@ -20,6 +20,8 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use super::flags_allow_net;
+
 static LONG_VERSION: Lazy<String> = Lazy::new(|| {
   format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
@@ -1746,7 +1748,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .help("Allow network access")
-        .validator(crate::flags_allow_net::validator),
+        .validator(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
@@ -1986,7 +1988,7 @@ fn compat_arg<'a>() -> Arg<'a> {
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
   let arg = Arg::new("watch")
     .long("watch")
-    .help("UNSTABLE: Watch for file changes and restart automatically");
+    .help("Watch for file changes and restart automatically");
 
   if takes_files {
     arg
@@ -1996,14 +1998,14 @@ fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
       .use_value_delimiter(true)
       .require_equals(true)
       .long_help(
-        "UNSTABLE: Watch for file changes and restart process automatically.
+        "Watch for file changes and restart process automatically.
 Local files from entry point module graph are watched by default.
 Additional paths might be watched by passing them as arguments to this flag.",
       )
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.long_help(
-      "UNSTABLE: Watch for file changes and restart process automatically. \
+      "Watch for file changes and restart process automatically. \
       Only local files from entry point module graph are watched.",
     )
   }
@@ -2126,7 +2128,7 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
     .require_equals(true)
     .value_name("HOSTNAMES")
     .help("DANGER: Disables verification of TLS certificates")
-    .validator(crate::flags_allow_net::validator)
+    .validator(flags_allow_net::validator)
 }
 
 fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -2773,7 +2775,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   if let Some(net_wl) = matches.values_of("allow-net") {
     let net_allowlist: Vec<String> =
-      crate::flags_allow_net::parse(net_wl.map(ToString::to_string).collect())
+      flags_allow_net::parse(net_wl.map(ToString::to_string).collect())
         .unwrap();
     flags.allow_net = Some(net_allowlist);
   }
@@ -2831,8 +2833,7 @@ fn unsafely_ignore_certificate_errors_parse(
 ) {
   if let Some(ic_wl) = matches.values_of("unsafely-ignore-certificate-errors") {
     let ic_allowlist: Vec<String> =
-      crate::flags_allow_net::parse(ic_wl.map(ToString::to_string).collect())
-        .unwrap();
+      flags_allow_net::parse(ic_wl.map(ToString::to_string).collect()).unwrap();
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 }

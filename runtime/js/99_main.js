@@ -584,6 +584,7 @@ delete Intl.v8BreakIterator;
 
     defineEventHandler(window, "error");
     defineEventHandler(window, "load");
+    defineEventHandler(window, "beforeunload");
     defineEventHandler(window, "unload");
     defineEventHandler(window, "unhandledrejection");
 

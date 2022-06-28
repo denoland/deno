@@ -1,19 +1,20 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::resolve_import_map_specifier;
+use crate::args::ConfigFile;
+use crate::args::Flags;
+use crate::args::MaybeImportsResult;
+use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
-use crate::config_file;
-use crate::config_file::ConfigFile;
-use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
 use crate::emit::EmitCache;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
-use crate::flags;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
@@ -68,7 +69,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
-  pub flags: Arc<flags::Flags>,
+  pub flags: Arc<Flags>,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
@@ -94,12 +95,12 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
+  pub async fn build(flags: Arc<Flags>) -> Result<Self, AnyError> {
     Self::build_with_sender(flags, None).await
   }
 
   pub async fn build_for_file_watcher(
-    flags: Arc<flags::Flags>,
+    flags: Arc<Flags>,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
     let ps = Self::build_with_sender(
@@ -113,12 +114,11 @@ impl ProcState {
       files_to_watch_sender.send(watch_paths.clone()).unwrap();
     }
 
-    if let Ok(Some(import_map_path)) =
-      config_file::resolve_import_map_specifier(
-        ps.flags.import_map_path.as_deref(),
-        ps.maybe_config_file.as_ref(),
-      )
-      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+    if let Ok(Some(import_map_path)) = resolve_import_map_specifier(
+      ps.flags.import_map_path.as_deref(),
+      ps.maybe_config_file.as_ref(),
+    )
+    .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
       files_to_watch_sender.send(vec![import_map_path]).unwrap();
     }
@@ -127,7 +127,7 @@ impl ProcState {
   }
 
   async fn build_with_sender(
-    flags: Arc<flags::Flags>,
+    flags: Arc<Flags>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
@@ -188,13 +188,12 @@ impl ProcState {
       None
     };
 
-    let maybe_config_file = crate::config_file::discover(&flags)?;
+    let maybe_config_file = crate::args::discover(&flags)?;
 
-    let maybe_import_map_specifier =
-      crate::config_file::resolve_import_map_specifier(
-        flags.import_map_path.as_deref(),
-        maybe_config_file.as_ref(),
-      )?;
+    let maybe_import_map_specifier = crate::args::resolve_import_map_specifier(
+      flags.import_map_path.as_deref(),
+      maybe_config_file.as_ref(),
+    )?;
 
     let maybe_import_map =
       if let Some(import_map_specifier) = maybe_import_map_specifier {
@@ -349,12 +348,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.type_check_mode == flags::TypeCheckMode::None
+      if self.flags.type_check_mode == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.type_check_mode != flags::TypeCheckMode::None,
+          self.flags.type_check_mode != TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -471,21 +470,20 @@ impl ProcState {
       graph_data
         .check(
           &roots,
-          self.flags.type_check_mode != flags::TypeCheckMode::None,
+          self.flags.type_check_mode != TypeCheckMode::None,
           check_js,
         )
         .unwrap()?;
     }
 
-    let config_type =
-      if self.flags.type_check_mode == flags::TypeCheckMode::None {
-        emit::ConfigType::Emit
-      } else {
-        emit::ConfigType::Check {
-          tsc_emit: true,
-          lib: lib.clone(),
-        }
-      };
+    let config_type = if self.flags.type_check_mode == TypeCheckMode::None {
+      emit::ConfigType::Emit
+    } else {
+      emit::ConfigType::Check {
+        tsc_emit: true,
+        lib: lib.clone(),
+      }
+    };
 
     let (ts_config, maybe_ignored_options) =
       emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
@@ -494,7 +492,7 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.type_check_mode == flags::TypeCheckMode::None {
+    if self.flags.type_check_mode == TypeCheckMode::None {
       let options = emit::EmitOptions {
         ts_config,
         reload: self.flags.reload,
@@ -529,7 +527,7 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.type_check_mode != flags::TypeCheckMode::None {
+    if self.flags.type_check_mode != TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, &lib);
     }

@@ -7,16 +7,16 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::args::Flags;
+use crate::args::FmtConfig;
+use crate::args::FmtFlags;
+use crate::args::FmtOptionsConfig;
+use crate::args::ProseWrap;
 use crate::colors;
-use crate::config_file::FmtConfig;
-use crate::config_file::FmtOptionsConfig;
-use crate::config_file::ProseWrap;
 use crate::deno_dir::DenoDir;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::FmtFlags;
 use crate::fs_util::collect_files;
 use crate::fs_util::get_extension;
 use crate::fs_util::specifier_to_file_path;
@@ -94,8 +94,11 @@ pub async fn format(
     maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
   );
 
-  let fmt_predicate =
-    |path: &Path| is_supported_ext_fmt(path) && !is_contain_git(path);
+  let fmt_predicate = |path: &Path| {
+    is_supported_ext_fmt(path)
+      && !contains_git(path)
+      && !contains_node_modules(path)
+  };
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -730,8 +733,12 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn is_contain_git(path: &Path) -> bool {
+fn contains_git(path: &Path) -> bool {
   path.components().any(|c| c.as_os_str() == ".git")
+}
+
+fn contains_node_modules(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 #[cfg(test)]
@@ -767,10 +774,22 @@ mod test {
 
   #[test]
   fn test_is_located_in_git() {
-    assert!(is_contain_git(Path::new("test/.git")));
-    assert!(is_contain_git(Path::new(".git/bad.json")));
-    assert!(is_contain_git(Path::new("test/.git/bad.json")));
-    assert!(!is_contain_git(Path::new("test/bad.git/bad.json")));
+    assert!(contains_git(Path::new("test/.git")));
+    assert!(contains_git(Path::new(".git/bad.json")));
+    assert!(contains_git(Path::new("test/.git/bad.json")));
+    assert!(!contains_git(Path::new("test/bad.git/bad.json")));
+  }
+
+  #[test]
+  fn test_is_located_in_node_modules() {
+    assert!(contains_node_modules(Path::new("test/node_modules")));
+    assert!(contains_node_modules(Path::new("node_modules/bad.json")));
+    assert!(contains_node_modules(Path::new(
+      "test/node_modules/bad.json"
+    )));
+    assert!(!contains_node_modules(Path::new(
+      "test/bad.node_modules/bad.json"
+    )));
   }
 
   #[test]

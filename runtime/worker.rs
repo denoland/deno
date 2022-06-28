@@ -81,6 +81,7 @@ pub struct WorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub startup_snapshot: Option<deno_core::Snapshot>,
 }
 
 impl MainWorker {
@@ -168,6 +169,8 @@ impl MainWorker {
       ops::tty::init(),
       deno_http::init(),
       ops::http::init(),
+      // Runtime JS
+      js::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -175,7 +178,7 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: options.startup_snapshot.take(),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -368,6 +371,24 @@ impl MainWorker {
       "dispatchEvent(new Event('unload'))",
     )
   }
+
+  /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
+  /// indicating if the event was prevented and thus event loop should continue
+  /// running.
+  pub fn dispatch_beforeunload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<bool, AnyError> {
+    let value = self.js_runtime.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+    )?;
+    let local_value = value.open(&mut self.js_runtime.handle_scope());
+    Ok(local_value.is_false())
+  }
 }
 
 #[cfg(test)]
@@ -411,6 +432,7 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
+      startup_snapshot: None,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

@@ -11,8 +11,8 @@ use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 use log::warn;
 
-use crate::config_file::FmtOptionsConfig;
-use crate::flags::VendorFlags;
+use crate::args::FmtOptionsConfig;
+use crate::args::VendorFlags;
 use crate::fs_util;
 use crate::fs_util::relative_specifier;
 use crate::fs_util::specifier_to_file_path;
