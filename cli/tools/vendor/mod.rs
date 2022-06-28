@@ -141,8 +141,8 @@ fn validate_config(
           .to_string(),
       );
 
-      // remove the import map from the config
-      config.remove_import_map();
+      // don't use an import map in the config
+      config.clear_import_map();
     }
   }
 

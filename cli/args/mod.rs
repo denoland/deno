@@ -122,8 +122,8 @@ impl RootConfig {
     )
   }
 
-  /// Removes the import map from the configuration.
-  pub fn remove_import_map(&mut self) {
+  /// Uses no import map in the configuration.
+  pub fn clear_import_map(&mut self) {
     self.flags.import_map_path = None;
     if let Some(config_file) = self.maybe_config_file.as_mut() {
       config_file.json.import_map = None;
