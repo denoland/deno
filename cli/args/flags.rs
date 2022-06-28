@@ -234,7 +234,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
@@ -305,7 +305,6 @@ pub struct Flags {
   pub compat: bool,
   pub no_prompt: bool,
   pub reload: bool,
-  pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -571,7 +570,6 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
 }
 
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
-  flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
@@ -4022,7 +4020,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: None
@@ -4047,7 +4044,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: None
@@ -4085,7 +4081,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
@@ -4110,7 +4105,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: Some(vec![
             "./a.js".to_string(),
@@ -4770,7 +4764,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
@@ -4845,7 +4838,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: None
