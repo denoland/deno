@@ -2557,7 +2557,11 @@ fn task_parse(
   matches: &clap::ArgMatches,
   raw_args: &[String],
 ) {
-  task_args_parse(flags, matches);
+  flags.config_flag = if let Some(config) = matches.value_of("config") {
+    ConfigFlag::Path(config.to_string())
+  } else {
+    ConfigFlag::Discover
+  };
 
   let mut task_flags = TaskFlags {
     cwd: None,
@@ -2997,14 +3001,6 @@ fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
   flags.config_flag = if matches.is_present("no-config") {
     ConfigFlag::Disabled
   } else if let Some(config) = matches.value_of("config") {
-    ConfigFlag::Path(config.to_string())
-  } else {
-    ConfigFlag::Discover
-  };
-}
-
-fn task_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  flags.config_flag = if let Some(config) = matches.value_of("config") {
     ConfigFlag::Path(config.to_string())
   } else {
     ConfigFlag::Discover
