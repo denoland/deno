@@ -602,21 +602,24 @@ delete Intl.v8BreakIterator;
           return;
       }
       // TODO(bartlomieju):
-      // queueMicrotask(() => {
-      //   // TODO: check if the promise is still prevent in some hashmap and
-      //   // if so dispatch this event
+      queueMicrotask(() => {
+        const hasPendingException = core.opSync("op_has_pending_promise_exception", promise);
 
-      //   const event = new PromiseRejectionEvent("unhandledrejection", {
-      //     cancelable: true,
-      //     promise,
-      //     reason,
-      //   });
-      //   globalThis.dispatchEvent(event);
+        if (!hasPendingException) {
+          return;
+        }
 
-      //   if (!event.defaultPrevented) {
-      //     throw reason;
-      //   }
-      // });
+        const event = new PromiseRejectionEvent("unhandledrejection", {
+          cancelable: true,
+          promise,
+          reason,
+        });
+        globalThis.dispatchEvent(event);
+
+        if (!event.defaultPrevented) {
+          throw reason;
+        }
+      });
     });
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
