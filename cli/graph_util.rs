@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::emit::TsTypeLib;
 use crate::colors;
+use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
 
 use deno_core::error::custom_error;

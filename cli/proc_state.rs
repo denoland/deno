@@ -3,8 +3,6 @@
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::RootConfig;
-use crate::emit::TsConfigType;
-use crate::emit::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::compat;
@@ -12,6 +10,8 @@ use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
 use crate::emit;
 use crate::emit::EmitCache;
+use crate::emit::TsConfigType;
+use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
