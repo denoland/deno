@@ -1089,7 +1089,7 @@
         filename = "",
         lineno = 0,
         colno = 0,
-        error = null,
+        error,
       } = {},
     ) {
       super(type, {

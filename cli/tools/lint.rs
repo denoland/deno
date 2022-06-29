@@ -76,7 +76,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let mut exclude_files = ignore.clone();
 
   let ps = ProcState::build(flags).await?;
-  let maybe_lint_config = ps.config.to_lint_config()?;
+  let maybe_lint_config = ps.options.to_lint_config()?;
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
@@ -202,7 +202,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
     Ok(())
   };
-  if ps.config.watch_paths().is_some() {
+  if ps.options.watch_paths().is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
@@ -213,7 +213,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       operation,
       file_watcher::PrintConfig {
         job_name: "Lint".to_string(),
-        clear_screen: !ps.config.no_clear_screen(),
+        clear_screen: !ps.options.no_clear_screen(),
       },
     )
     .await?;
