@@ -588,13 +588,14 @@ pub async fn run_benchmarks_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let graph = ps.create_graph(
-        bench_modules
-          .iter()
-          .map(|s| (s.clone(), ModuleKind::Esm))
-          .collect(),
-      )
-      .await?;
+      let graph = ps
+        .create_graph(
+          bench_modules
+            .iter()
+            .map(|s| (s.clone(), ModuleKind::Esm))
+            .collect(),
+        )
+        .await?;
       graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.

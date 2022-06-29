@@ -591,7 +591,10 @@ impl ProcState {
     }
   }
 
-  pub async fn create_graph(&self, roots: Vec<(ModuleSpecifier, ModuleKind)>) -> Result<deno_graph::ModuleGraph, AnyError> {
+  pub async fn create_graph(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = cache::FetchCacher::new(
       self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
@@ -614,17 +617,19 @@ impl ProcState {
         .map(|im| im.as_resolver())
     };
 
-    Ok(deno_graph::create_graph(
-      roots,
-      false,
-      maybe_imports,
-      &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      None,
-      None,
+    Ok(
+      deno_graph::create_graph(
+        roots,
+        false,
+        maybe_imports,
+        &mut cache,
+        maybe_resolver,
+        maybe_locker,
+        None,
+        None,
+      )
+      .await,
     )
-    .await)
   }
 }
 

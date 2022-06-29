@@ -50,19 +50,24 @@ impl CacheServer {
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let cli_options = CliOptions::new(Flags {
-          cache_path: maybe_cache_path,
-          ca_stores: maybe_ca_stores,
-          ca_file: maybe_ca_file,
-          unsafely_ignore_certificate_errors,
-          ..Default::default()
-        }, maybe_config_file);
+        let cli_options = CliOptions::new(
+          Flags {
+            cache_path: maybe_cache_path,
+            ca_stores: maybe_ca_stores,
+            ca_file: maybe_ca_file,
+            unsafely_ignore_certificate_errors,
+            ..Default::default()
+          },
+          maybe_config_file,
+        );
         let ps = ProcState::from_options(Arc::new(cli_options))
-        .await
-        .unwrap();
+          .await
+          .unwrap();
         let maybe_import_map_resolver =
           maybe_import_map.map(ImportMapResolver::new);
-        let maybe_jsx_resolver = ps.options.to_maybe_jsx_import_source_module()
+        let maybe_jsx_resolver = ps
+          .options
+          .to_maybe_jsx_import_source_module()
           .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
         let maybe_resolver = if maybe_jsx_resolver.is_some() {
           maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())

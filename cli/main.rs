@@ -450,10 +450,9 @@ async fn info_command(
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let graph = ps.create_graph(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
-    )
-    .await?;
+    let graph = ps
+      .create_graph(vec![(specifier, deno_graph::ModuleKind::Esm)])
+      .await?;
 
     if info_flags.json {
       write_json_to_stdout(&json!(graph))?;
