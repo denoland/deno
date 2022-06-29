@@ -117,7 +117,7 @@ impl ProcState {
 
     if let Ok(Some(import_map_path)) = ps
       .options
-      .resolve_import_map_path()
+      .resolve_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
       files_to_watch_sender.send(vec![import_map_path]).unwrap();
@@ -153,7 +153,8 @@ impl ProcState {
     let lockfile = cli_options
       .resolve_lock_file()?
       .map(|f| Arc::new(Mutex::new(f)));
-    let maybe_import_map_specifier = cli_options.resolve_import_map_path()?;
+    let maybe_import_map_specifier =
+      cli_options.resolve_import_map_specifier()?;
 
     let maybe_import_map =
       if let Some(import_map_specifier) = maybe_import_map_specifier {
