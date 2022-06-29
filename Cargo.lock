@@ -3839,6 +3839,7 @@ dependencies = [
  "derive_more",
  "serde",
  "serde_json",
+ "smallvec",
  "v8",
 ]
 
