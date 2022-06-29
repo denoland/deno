@@ -214,6 +214,10 @@ console.log(stringPtrview.getCString(11));
 console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
+const emptyBuffer = new BigUint64Array(0);
+console.log(Boolean(dylib.symbols.is_null_ptr(emptyBuffer)));
+const emptySlice = into.subarray(6);
+console.log(Boolean(dylib.symbols.is_null_ptr(emptySlice)));
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
