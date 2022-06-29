@@ -803,6 +803,7 @@ fn set_raw_should_not_panic_on_no_tty() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_resolve_dns() {
+  use ring::signature::Ed25519KeyPair;
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
@@ -836,16 +837,19 @@ async fn test_resolve_dns() {
     let mut authority =
       InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
         .unwrap();
-    let key = KeyPair::generate(Algorithm::RSASHA256).unwrap();
-    let dnskey = key.to_dnskey(Algorithm::RSASHA256).unwrap();
+    let key = KeyPair::generate_pkcs8(Algorithm::ED25519).unwrap();
+    let keypair = trust_dns_client::rr::dnssec::KeyPair::ED25519(
+      Ed25519KeyPair::from_pkcs8(&key).unwrap(),
+    );
+    let dnskey = keypair.to_dnskey(Algorithm::ED25519).unwrap();
     let signer = SigSigner::dnssec(
       dnskey,
-      key,
+      keypair,
       authority.origin().clone().into(),
       Duration::new(604800, 0),
     );
-    let _result = authority.add_zone_signing_key_mut(signer);
-    let _result = authority.secure_zone_mut();
+    let _ = authority.add_zone_signing_key_mut(signer);
+    let _ = authority.secure_zone_mut();
 
     let mut catalog: Catalog = Catalog::new();
     catalog.upsert(Name::root().into(), Box::new(Arc::new(authority)));
