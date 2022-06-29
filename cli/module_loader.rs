@@ -27,7 +27,7 @@ pub struct CliModuleLoader {
 impl CliModuleLoader {
   pub fn new(ps: ProcState) -> Rc<Self> {
     Rc::new(CliModuleLoader {
-      lib: ps.config.ts_type_lib_window(),
+      lib: ps.options.ts_type_lib_window(),
       root_permissions: Permissions::allow_all(),
       ps,
     })
@@ -35,7 +35,7 @@ impl CliModuleLoader {
 
   pub fn new_for_worker(ps: ProcState, permissions: Permissions) -> Rc<Self> {
     Rc::new(CliModuleLoader {
-      lib: ps.config.ts_type_lib_worker(),
+      lib: ps.options.ts_type_lib_worker(),
       root_permissions: permissions,
       ps,
     })
