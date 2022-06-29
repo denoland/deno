@@ -7,10 +7,10 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::args::CliOptions;
 use crate::args::FmtFlags;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
-use crate::args::RootConfig;
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
@@ -43,7 +43,7 @@ use super::incremental_cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  config: &RootConfig,
+  config: &CliOptions,
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   let maybe_fmt_config = config.to_fmt_config()?;

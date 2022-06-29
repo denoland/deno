@@ -44,16 +44,16 @@ use crate::file_fetcher::CacheSetting;
 use crate::lockfile::Lockfile;
 use crate::version;
 
-/// Holds the common configuration used by many sub commands
+/// Holds the common options used by many sub commands
 /// and provides some helper function for creating common objects.
-pub struct RootConfig {
-  // the source of the configuration is a detail the rest of the
+pub struct CliOptions {
+  // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
   flags: Flags,
   maybe_config_file: Option<ConfigFile>,
 }
 
-impl RootConfig {
+impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
