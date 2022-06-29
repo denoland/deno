@@ -56,6 +56,7 @@ pub fn benchmark(
     } else if name.starts_with("bun") && !cfg!(target_os = "windows") {
       // Bun does not support Windows.
       #[cfg(target_arch = "x86_64")]
+      #[cfg(not(target_vendor = "apple"))]
       let bun_exe = test_util::prebuilt_tool_path("bun");
       #[cfg(target_vendor = "apple")]
       #[cfg(target_arch = "x86_64")]
