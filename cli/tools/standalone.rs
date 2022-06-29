@@ -282,7 +282,6 @@ pub fn compile_to_runtime_flags(
     no_remote: false,
     no_prompt: flags.no_prompt,
     reload: false,
-    repl: false,
     seed: flags.seed,
     unstable: flags.unstable,
     v8_flags: flags.v8_flags.clone(),

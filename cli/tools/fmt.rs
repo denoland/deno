@@ -7,13 +7,11 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-use crate::args::Flags;
-use crate::args::FmtConfig;
 use crate::args::FmtFlags;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::args::RootConfig;
 use crate::colors;
-use crate::deno_dir::DenoDir;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -45,11 +43,11 @@ use super::incremental_cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  flags: &Flags,
+  config: &RootConfig,
   fmt_flags: FmtFlags,
-  maybe_fmt_config: Option<FmtConfig>,
-  deno_dir: &DenoDir,
 ) -> Result<(), AnyError> {
+  let maybe_fmt_config = config.to_fmt_config()?;
+  let deno_dir = config.resolve_deno_dir()?;
   let FmtFlags {
     files,
     ignore,
@@ -138,6 +136,7 @@ pub async fn format(
       }
     }
   };
+  let deno_dir = &deno_dir;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
@@ -154,13 +153,13 @@ pub async fn format(
     Ok(())
   };
 
-  if flags.watch.is_some() {
+  if config.watch_paths().is_some() {
     file_watcher::watch_func(
       resolver,
       operation,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),
-        clear_screen: !flags.no_clear_screen,
+        clear_screen: !config.no_clear_screen(),
       },
     )
     .await?;
