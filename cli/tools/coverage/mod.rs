@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CoverageFlags;
+use crate::args::Flags;
 use crate::colors;
-use crate::flags::CoverageFlags;
-use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
@@ -23,7 +23,6 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::{self, Error, Write};
 use std::path::PathBuf;
-use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -597,7 +596,7 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
+  let ps = ProcState::build(flags).await?;
 
   let script_coverages =
     collect_coverages(coverage_flags.files, coverage_flags.ignore)?;

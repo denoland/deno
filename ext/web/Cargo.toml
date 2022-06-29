@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 async-trait = "0.1.51"
-base64 = "0.13.0"
+base64-simd = "0.6.2"
 deno_core = { version = "0.140.0", path = "../../core" }
 encoding_rs = "0.8.31"
 flate2 = "1"

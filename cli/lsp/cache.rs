@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::ConfigFile;
+use crate::args::Flags;
 use crate::cache::FetchCacher;
-use crate::config_file::ConfigFile;
-use crate::flags::Flags;
 use crate::graph_util::graph_valid;
 use crate::http_cache;
 use crate::proc_state::ProcState;
@@ -49,13 +49,13 @@ impl CacheServer {
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let ps = ProcState::build(Arc::new(Flags {
+        let ps = ProcState::build(Flags {
           cache_path: maybe_cache_path,
           ca_stores: maybe_ca_stores,
           ca_file: maybe_ca_file,
           unsafely_ignore_certificate_errors,
           ..Default::default()
-        }))
+        })
         .await
         .unwrap();
         let maybe_import_map_resolver =

@@ -251,4 +251,8 @@ declare global {
     specifier: string;
     position: number;
   }
+
+  interface Restart {
+    method: "restart";
+  }
 }

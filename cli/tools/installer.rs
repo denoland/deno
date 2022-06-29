@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags::ConfigFlag;
-use crate::flags::Flags;
-use crate::flags::InstallFlags;
-use crate::flags::TypeCheckMode;
+use crate::args::ConfigFlag;
+use crate::args::Flags;
+use crate::args::InstallFlags;
+use crate::args::TypeCheckMode;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -403,7 +403,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
-  use crate::flags::ConfigFlag;
+  use crate::args::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;

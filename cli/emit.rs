@@ -4,15 +4,15 @@
 //! populate a cache, emit files, and transform a graph into the structures for
 //! loading into an isolate.
 
+use crate::args::config_file::IgnoredCompilerOptions;
+use crate::args::ConfigFile;
+use crate::args::EmitConfigOptions;
+use crate::args::TsConfig;
+use crate::args::TypeCheckMode;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
 use crate::colors;
-use crate::config_file;
-use crate::config_file::ConfigFile;
-use crate::config_file::IgnoredCompilerOptions;
-use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::flags;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::tsc;
@@ -29,7 +29,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
@@ -127,42 +126,6 @@ impl<T: Cacher> EmitCache for T {
   }
 }
 
-/// Represents the "default" type library that should be used when type
-/// checking the code in the module graph.  Note that a user provided config
-/// of `"lib"` would override this value.
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub enum TypeLib {
-  DenoWindow,
-  DenoWorker,
-  UnstableDenoWindow,
-  UnstableDenoWorker,
-}
-
-impl Default for TypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
-  }
-}
-
-impl Serialize for TypeLib {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let value = match self {
-      Self::DenoWindow => vec!["deno.window".to_string()],
-      Self::DenoWorker => vec!["deno.worker".to_string()],
-      Self::UnstableDenoWindow => {
-        vec!["deno.window".to_string(), "deno.unstable".to_string()]
-      }
-      Self::UnstableDenoWorker => {
-        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
-      }
-    };
-    Serialize::serialize(&value, serializer)
-  }
-}
-
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Stats(pub Vec<(String, u32)>);
@@ -197,28 +160,68 @@ impl fmt::Display for Stats {
   }
 }
 
+/// Represents the "default" type library that should be used when type
+/// checking the code in the module graph.  Note that a user provided config
+/// of `"lib"` would override this value.
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub enum TsTypeLib {
+  DenoWindow,
+  DenoWorker,
+  UnstableDenoWindow,
+  UnstableDenoWorker,
+}
+
+impl Default for TsTypeLib {
+  fn default() -> Self {
+    Self::DenoWindow
+  }
+}
+
+impl Serialize for TsTypeLib {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value = match self {
+      Self::DenoWindow => vec!["deno.window".to_string()],
+      Self::DenoWorker => vec!["deno.worker".to_string()],
+      Self::UnstableDenoWindow => {
+        vec!["deno.window".to_string(), "deno.unstable".to_string()]
+      }
+      Self::UnstableDenoWorker => {
+        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
+      }
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
 /// An enum that represents the base tsc configuration to return.
-pub enum ConfigType {
+pub enum TsConfigType {
   /// Return a configuration for bundling, using swc to emit the bundle. This is
   /// independent of type checking.
   Bundle,
   /// Return a configuration to use tsc to type check and optionally emit. This
   /// is independent of either bundling or just emitting via swc
-  Check { lib: TypeLib, tsc_emit: bool },
+  Check { lib: TsTypeLib, tsc_emit: bool },
   /// Return a configuration to use swc to emit single module files.
   Emit,
 }
 
-/// For a given configuration type and optionally a configuration file, return a
-/// tuple of the resulting `TsConfig` struct and optionally any user
-/// configuration options that were ignored.
-pub fn get_ts_config(
-  config_type: ConfigType,
+pub struct TsConfigWithIgnoredOptions {
+  pub ts_config: TsConfig,
+  pub maybe_ignored_options: Option<IgnoredCompilerOptions>,
+}
+
+/// For a given configuration type and optionally a configuration file,
+/// return a `TsConfig` struct and optionally any user configuration
+/// options that were ignored.
+pub fn get_ts_config_for_emit(
+  config_type: TsConfigType,
   maybe_config_file: Option<&ConfigFile>,
-  maybe_user_config: Option<&HashMap<String, Value>>,
-) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
+) -> Result<TsConfigWithIgnoredOptions, AnyError> {
   let mut ts_config = match config_type {
-    ConfigType::Bundle => TsConfig::new(json!({
+    TsConfigType::Bundle => TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
@@ -229,7 +232,7 @@ pub fn get_ts_config(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     })),
-    ConfigType::Check { tsc_emit, lib } => {
+    TsConfigType::Check { tsc_emit, lib } => {
       let mut ts_config = TsConfig::new(json!({
         "allowJs": true,
         "allowSyntheticDefaultImports": true,
@@ -263,7 +266,7 @@ pub fn get_ts_config(
       }
       ts_config
     }
-    ConfigType::Emit => TsConfig::new(json!({
+    TsConfigType::Emit => TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
@@ -276,15 +279,15 @@ pub fn get_ts_config(
       "resolveJsonModule": true,
     })),
   };
-  let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
-    ts_config.merge_user_config(user_options)?
-  } else {
-    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
-  };
+  let maybe_ignored_options =
+    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?;
   ts_config.merge(&json!({
     "moduleDetection": "force",
   }));
-  Ok((ts_config, maybe_ignored_options))
+  Ok(TsConfigWithIgnoredOptions {
+    ts_config,
+    maybe_ignored_options,
+  })
 }
 
 /// Transform the graph into root specifiers that we can feed `tsc`. We have to
@@ -372,7 +375,7 @@ pub fn is_emittable(
 pub struct CheckOptions {
   /// The check flag from the option which can effect the filtering of
   /// diagnostics in the emit result.
-  pub type_check_mode: flags::TypeCheckMode,
+  pub type_check_mode: TypeCheckMode,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -463,7 +466,7 @@ pub fn check_and_maybe_emit(
     root_names,
   })?;
 
-  let diagnostics = if options.type_check_mode == flags::TypeCheckMode::Local {
+  let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
@@ -772,10 +775,9 @@ impl Hook for BundleHook {
   }
 }
 
-impl From<config_file::TsConfig> for deno_ast::EmitOptions {
-  fn from(config: config_file::TsConfig) -> Self {
-    let options: config_file::EmitConfigOptions =
-      serde_json::from_value(config.0).unwrap();
+impl From<TsConfig> for deno_ast::EmitOptions {
+  fn from(config: TsConfig) -> Self {
+    let options: EmitConfigOptions = serde_json::from_value(config.0).unwrap();
     let imports_not_used_as_values =
       match options.imports_not_used_as_values.as_str() {
         "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,

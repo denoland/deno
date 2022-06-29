@@ -54,10 +54,10 @@ use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
-use crate::config_file::ConfigFile;
-use crate::config_file::FmtConfig;
-use crate::config_file::LintConfig;
-use crate::config_file::TsConfig;
+use crate::args::ConfigFile;
+use crate::args::FmtConfig;
+use crate::args::LintConfig;
+use crate::args::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
@@ -364,8 +364,7 @@ impl Inner {
     if let Some(root_uri) = &self.config.root_uri {
       let root_path = fs_util::specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
-      let maybe_config =
-        crate::config_file::discover_from(&root_path, &mut checked)?;
+      let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
       Ok(maybe_config.map(|c| {
         lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
         c
@@ -2814,9 +2813,16 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    // now that we have dependencies loaded, we need to re-analyze them and
-    // invalidate some diagnostics
-    self.diagnostics_server.invalidate(&[referrer]);
+    // Now that we have dependencies loaded, we need to re-analyze all the files.
+    // For that we're invalidating all the existing diagnostics and restarting
+    // the language server for TypeScript (as it might hold to some stale
+    // documents).
+    self.diagnostics_server.invalidate_all();
+    let _: bool = self
+      .ts_server
+      .request(self.snapshot(), tsc::RequestMethod::Restart)
+      .await
+      .unwrap();
     self.send_diagnostics_update();
     self.send_testing_update();
 
