@@ -25,8 +25,7 @@ impl_magic!(ByteString);
 // Note from https://docs.rs/smallvec/latest/smallvec/#union -
 //   smallvec can still be larger than Vec if the inline buffer is
 //   larger than two machine words.
-const _: () =
-  { assert!(size_of::<Vec<u8>>() == size_of::<SmallVec<[u8; 16]>>()) };
+const _: () = assert!(size_of::<Vec<u8>>() == size_of::<SmallVec<[u8; 16]>>());
 
 impl ToV8 for ByteString {
   fn to_v8<'a>(
@@ -69,6 +68,9 @@ impl FromV8 for ByteString {
   }
 }
 
+// smallvec does not impl From/Into traits
+// like Vec<u8> does. So here we are.
+
 impl From<Vec<u8>> for ByteString {
   fn from(vec: Vec<u8>) -> Self {
     ByteString(SmallVec::from_vec(vec))
@@ -92,5 +94,11 @@ impl From<&str> for ByteString {
   fn from(s: &str) -> Self {
     let v: Vec<u8> = s.into();
     ByteString::from(v)
+  }
+}
+
+impl From<String> for ByteString {
+  fn from(s: String) -> Self {
+    ByteString::from(s.into_bytes())
   }
 }
