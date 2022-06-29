@@ -111,7 +111,7 @@ fn validate_options(
 ) -> Result<(), AnyError> {
   // check the import map
   if let Some(import_map_path) = options
-    .resolve_import_map_path()?
+    .resolve_import_map_specifier()?
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| fs_util::canonicalize_path(&p).ok())
   {
@@ -142,7 +142,7 @@ fn validate_options(
       );
 
       // don't use an import map in the config
-      options.set_import_map_path(None);
+      options.set_import_map_specifier(None);
     }
   }
 
