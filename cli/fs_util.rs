@@ -664,6 +664,14 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
+    let predicate = |path: &Path| {
+      // exclude dotfiles
+      path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map_or(false, |f| !f.starts_with('.'))
+    };
+
     let result = collect_specifiers(
       vec![
         "http://localhost:8080".to_string(),
@@ -671,13 +679,7 @@ mod tests {
         "https://localhost:8080".to_string(),
       ],
       &[ignore_dir_path],
-      |path| {
-        // exclude dotfiles
-        path
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with('.'))
-      },
+      predicate,
     )
     .unwrap();
 
@@ -699,7 +701,27 @@ mod tests {
     ]
     .iter()
     .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<ModuleSpecifier>>();
+    .collect::<Vec<_>>();
+
+    assert_eq!(result, expected);
+
+    let result = collect_specifiers(
+      vec![("file://".to_owned()
+        + root_dir_path.join("child").to_str().unwrap())
+      .to_string()],
+      &[],
+      predicate,
+    )
+    .unwrap();
+
+    let expected: Vec<ModuleSpecifier> = [
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<_>>();
 
     assert_eq!(result, expected);
   }
