@@ -15,7 +15,6 @@ pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
 pub use config_file::TsConfig;
-use deno_runtime::colors;
 pub use flags::*;
 
 use deno_ast::ModuleSpecifier;
@@ -25,6 +24,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::url::Url;
+use deno_runtime::colors;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
@@ -342,7 +342,7 @@ fn resolve_import_map_specifier(
   if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
       if config_file.to_import_map_path().is_some() {
-        log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", crate::colors::yellow("Warning"), config_file.specifier);
+        log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
       }
     }
     let specifier = deno_core::resolve_url_or_path(import_map_path)
