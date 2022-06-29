@@ -15,6 +15,7 @@ pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
 pub use config_file::TsConfig;
+use deno_runtime::colors;
 pub use flags::*;
 
 use deno_ast::ModuleSpecifier;
@@ -24,7 +25,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::url::Url;
-use deno_runtime::colors;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
@@ -54,7 +54,7 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
-  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+  pub fn new(flags: Flags, maybe_config_file: Option<ConfigFile>) -> Self {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
     {
@@ -65,14 +65,19 @@ impl CliOptions {
       };
       let msg =
         format!("DANGER: TLS certificate validation is disabled {}", domains);
+      // use eprintln instead of log::warn so this always gets shown
       eprintln!("{}", colors::yellow(msg));
     }
 
-    let maybe_config_file = ConfigFile::discover(&flags)?;
-    Ok(Self {
+    Self {
       maybe_config_file,
       flags,
-    })
+    }
+  }
+
+  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    let maybe_config_file = ConfigFile::discover(&flags)?;
+    Ok(Self::new(flags, maybe_config_file))
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {

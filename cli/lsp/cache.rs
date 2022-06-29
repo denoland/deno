@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::cache::FetchCacher;
@@ -49,21 +50,20 @@ impl CacheServer {
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        let ps = ProcState::build(Flags {
+        let cli_options = CliOptions::new(Flags {
           cache_path: maybe_cache_path,
           ca_stores: maybe_ca_stores,
           ca_file: maybe_ca_file,
           unsafely_ignore_certificate_errors,
           ..Default::default()
-        })
+        }, maybe_config_file);
+        let ps = ProcState::from_options(Arc::new(cli_options))
         .await
         .unwrap();
         let maybe_import_map_resolver =
           maybe_import_map.map(ImportMapResolver::new);
-        let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
-          cf.to_maybe_jsx_import_source_module()
-            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-        });
+        let maybe_jsx_resolver = ps.options.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
         let maybe_resolver = if maybe_jsx_resolver.is_some() {
           maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
         } else {
@@ -71,9 +71,7 @@ impl CacheServer {
             .as_ref()
             .map(|im| im.as_resolver())
         };
-        let maybe_imports = maybe_config_file
-          .and_then(|cf| cf.to_maybe_imports().ok())
-          .flatten();
+        let maybe_imports = ps.options.to_maybe_imports().ok().flatten();
         let mut cache = FetchCacher::new(
           ps.dir.gen_cache.clone(),
           ps.file_fetcher.clone(),
