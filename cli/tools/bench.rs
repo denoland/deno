@@ -7,7 +7,6 @@ use crate::cache;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
-use crate::emit;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
@@ -40,7 +39,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -337,8 +335,8 @@ async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<ModuleSpecifier>,
-  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
+  let lib = ps.config.ts_type_lib_window();
   ps.prepare_module_load(
     specifiers,
     false,
@@ -365,7 +363,11 @@ async fn bench_specifier(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::bench::init(channel.clone(), filter, ps.flags.unstable)],
+    vec![ops::bench::init(
+      channel.clone(),
+      filter,
+      ps.config.unstable(),
+    )],
     Default::default(),
   );
 
@@ -422,7 +424,7 @@ async fn bench_specifiers(
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.flags.log_level;
+  let log_level = ps.config.log_level();
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
@@ -524,8 +526,8 @@ pub async fn run_benchmarks(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+  let ps = ProcState::build(flags).await?;
+  let permissions = Permissions::from_options(&ps.config.permissions_options());
   let specifiers = collect_specifiers(
     bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
     &bench_flags.ignore.clone(),
@@ -536,15 +538,9 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  let lib = if ps.flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-  check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib).await?;
-
-  let compat = ps.flags.compat;
+  let compat = ps.config.compat();
   bench_specifiers(
     ps,
     permissions,
@@ -564,20 +560,13 @@ pub async fn run_benchmarks_with_watch(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.permissions_options());
-
-  let lib = if flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  let ps = ProcState::build(flags).await?;
+  let permissions = Permissions::from_options(&ps.config.permissions_options());
 
   let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = bench_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
+  let no_check = ps.config.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
@@ -592,23 +581,16 @@ pub async fn run_benchmarks_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    });
+    let maybe_jsx_resolver = ps
+      .config
+      .to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_imports());
+    let maybe_imports_result = ps.config.to_maybe_imports();
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false);
+    let check_js = ps.config.check_js();
 
     async move {
       let bench_modules =
@@ -623,11 +605,7 @@ pub async fn run_benchmarks_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let maybe_imports = if let Some(result) = maybe_imports {
-        result?
-      } else {
-        None
-      };
+      let maybe_imports = maybe_imports_result?;
       let maybe_resolver = if maybe_jsx_resolver.is_some() {
         maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
       } else {
@@ -739,11 +717,9 @@ pub async fn run_benchmarks_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let flags = flags.clone();
     let filter = bench_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
-    let lib = lib.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -755,19 +731,14 @@ pub async fn run_benchmarks_with_watch(
           .cloned()
           .collect::<Vec<ModuleSpecifier>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib)
-        .await?;
+      check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-      bench_specifiers(
-        ps,
-        permissions.clone(),
-        specifiers,
-        BenchSpecifierOptions {
-          compat_mode: flags.compat,
-          filter: filter.clone(),
-        },
-      )
-      .await?;
+      let specifier_options = BenchSpecifierOptions {
+        compat_mode: ps.config.compat(),
+        filter: filter.clone(),
+      };
+      bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
+        .await?;
 
       Ok(())
     }
@@ -778,7 +749,7 @@ pub async fn run_benchmarks_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen: !flags.no_clear_screen,
+      clear_screen: !ps.config.no_clear_screen(),
     },
   )
   .await?;
