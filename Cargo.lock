@@ -813,7 +813,6 @@ dependencies = [
  "node_resolver",
  "notify",
  "once_cell",
- "openssl",
  "os_pipe",
  "percent-encoding 2.1.0",
  "pin-project",
@@ -1089,6 +1088,7 @@ dependencies = [
  "deno_core",
  "deno_tls",
  "log 0.4.17",
+ "openssl",
  "serde",
  "socket2",
  "tokio",
@@ -2891,9 +2891,9 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b501e44f11665960c7e7fcf062c7d96a14ade4aa98116c004b2e37b5be7d736c"
 dependencies = [
- "proc-macro2 1.0.38",
+ "proc-macro2 1.0.39",
  "quote 1.0.18",
- "syn 1.0.93",
+ "syn 1.0.96",
 ]
 
 [[package]]
@@ -2917,7 +2917,7 @@ version = "0.9.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "835363342df5fba8354c5b453325b110ffd54044e588c539cf2f20a8014e4cb1"
 dependencies = [
- "autocfg 1.1.0",
+ "autocfg",
  "cc",
  "libc",
  "openssl-src",
@@ -4893,12 +4893,8 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "lazy_static",
-<<<<<<< HEAD
- "log",
- "openssl",
-=======
  "log 0.4.17",
->>>>>>> main
+ "openssl",
  "radix_trie",
  "rand",
  "thiserror",
@@ -4923,12 +4919,8 @@ dependencies = [
  "idna 0.2.3",
  "ipnet",
  "lazy_static",
-<<<<<<< HEAD
- "log",
- "openssl",
-=======
  "log 0.4.17",
->>>>>>> main
+ "openssl",
  "rand",
  "serde",
  "smallvec",
@@ -4973,6 +4965,7 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "log 0.4.17",
+ "openssl",
  "serde",
  "thiserror",
  "time 0.3.9",

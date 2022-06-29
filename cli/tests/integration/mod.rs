@@ -803,7 +803,6 @@ fn set_raw_should_not_panic_on_no_tty() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_resolve_dns() {
-  use openssl::rsa::Rsa;
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
@@ -837,8 +836,7 @@ async fn test_resolve_dns() {
     let mut authority =
       InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
         .unwrap();
-    let rsa = Rsa::generate(2048).unwrap();
-    let key = KeyPair::from_rsa(rsa).unwrap();
+    let key = KeyPair::generate(Algorithm::RSASHA256).unwrap();
     let dnskey = key.to_dnskey(Algorithm::RSASHA256).unwrap();
     let signer = SigSigner::dnssec(
       dnskey,
