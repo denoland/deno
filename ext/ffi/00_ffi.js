@@ -253,8 +253,7 @@
     symbols = {};
 
     constructor(path, symbols) {
-      this.#rid = core.opSync("op_ffi_load", { path, symbols });
-
+      [this.#rid, this.symbols] = core.opSync("op_ffi_load", { path, symbols });
       for (const symbol in symbols) {
         if ("type" in symbols[symbol]) {
           const type = symbols[symbol].type;
@@ -285,48 +284,37 @@
         }
 
         const isNonBlocking = symbols[symbol].nonblocking;
-        const resultType = symbols[symbol].result;
-
-        let fn;
         if (isNonBlocking) {
+          const resultType = symbols[symbol].result;
           const needsUnpacking = isReturnedAsBigInt(resultType);
-          fn = (...parameters) => {
-            const promise = core.opAsync(
-              "op_ffi_call_nonblocking",
-              this.#rid,
-              symbol,
-              parameters,
-            );
+          ObjectDefineProperty(
+            this.symbols,
+            symbol,
+            {
+              configurable: false,
+              enumerable: true,
+              value: (...parameters) => {
+                const promise = core.opAsync(
+                  "op_ffi_call_nonblocking",
+                  this.#rid,
+                  symbol,
+                  parameters,
+                );
 
-            if (needsUnpacking) {
-              return PromisePrototypeThen(
-                promise,
-                (result) => unpackNonblockingReturnValue(resultType, result),
-              );
-            }
+                if (needsUnpacking) {
+                  return PromisePrototypeThen(
+                    promise,
+                    (result) =>
+                      unpackNonblockingReturnValue(resultType, result),
+                  );
+                }
 
-            return promise;
-          };
-        } else {
-          fn = (...parameters) =>
-            core.opSync(
-              "op_ffi_call",
-              this.#rid,
-              symbol,
-              parameters,
-            );
+                return promise;
+              },
+              writable: false,
+            },
+          );
         }
-
-        ObjectDefineProperty(
-          this.symbols,
-          symbol,
-          {
-            configurable: false,
-            enumerable: true,
-            value: fn,
-            writable: false,
-          },
-        );
       }
     }
 
