@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::{collections::HashMap, path::Path, process::Command, time::Duration};
 pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
-
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"
@@ -150,18 +150,11 @@ fn run(
   Ok(parse_wrk_output(&output))
 }
 
+static NEXT_PORT: AtomicU16 = AtomicU16::new(4544);
 fn get_port() -> u16 {
-  static mut NEXT_PORT: u16 = 4544;
-
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  let port = unsafe {
-    let p = NEXT_PORT;
-    NEXT_PORT += 1;
-    p
-  };
-
-  port
+  let p = NEXT_PORT.load(Ordering::SeqCst);
+  NEXT_PORT.store(p.wrapping_add(1), Ordering::SeqCst);
+  p
 }
 
 fn server_addr(port: u16) -> String {
