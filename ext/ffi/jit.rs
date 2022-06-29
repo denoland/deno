@@ -2,6 +2,7 @@
 
 use crate::tcc::Context;
 use crate::NativeType;
+use crate::Symbol;
 use deno_core::error::AnyError;
 use deno_core::v8;
 use std::ffi::c_void;
@@ -13,33 +14,61 @@ macro_rules! cstr {
   };
 }
 
-fn native_to_c(ty: &crate::NativeType) -> &'static str {
+fn native_to_c(ty: &NativeType) -> &'static str {
   match ty {
-    crate::NativeType::Void => "void",
-    crate::NativeType::U8 => "unsigned char",
-    crate::NativeType::U16 => "unsigned short",
-    crate::NativeType::U32 => "unsigned int",
-    crate::NativeType::U64 => "unsigned long",
-    crate::NativeType::USize => "unsigned long",
-    crate::NativeType::I8 => "char",
-    crate::NativeType::I16 => "short",
-    crate::NativeType::I32 => "int",
-    crate::NativeType::I64 => "long",
-    crate::NativeType::ISize => "long",
-    crate::NativeType::F32 => "float",
-    crate::NativeType::F64 => "double",
-    crate::NativeType::Pointer => "void*",
-    crate::NativeType::Function => "void*",
+    NativeType::Void => "void",
+    NativeType::U8 => "unsigned char",
+    NativeType::U16 => "unsigned short",
+    NativeType::U32 => "unsigned int",
+    NativeType::U64 | NativeType::USize => "unsigned long",
+    NativeType::I8 => "char",
+    NativeType::I16 => "short",
+    NativeType::I32 => "int",
+    NativeType::I64 | NativeType::ISize => "long",
+    NativeType::F32 => "float",
+    NativeType::F64 => "double",
+    NativeType::Pointer | NativeType::Function => "void*",
   }
 }
 
-unsafe extern "C" fn deno_ffi_u8(
-  info: *const v8::FunctionCallbackInfo,
-  index: i32,
-) -> u8 {
-  let scope = &mut v8::CallbackScope::new(&*info);
-  let info = v8::FunctionCallbackArguments::from_function_callback_info(info);
-  info.get(index).uint32_value(scope).unwrap() as u8
+macro_rules! impl_arg_int32 {
+  ($ctx: ident, $ty: ty) => {
+    paste::paste! {
+      unsafe extern "C" fn [<deno_ffi_ $ty>] (
+        info: *const v8::FunctionCallbackInfo,
+        index: i32,
+      ) -> $ty {
+        let scope = &mut v8::CallbackScope::new(&*info);
+        let info = v8::FunctionCallbackArguments::from_function_callback_info(info);
+        info.get(index).int32_value(scope).unwrap() as $ty
+      }
+
+      $ctx.add_symbol(
+        cstr!(stringify!([<deno_ffi_ $ty>])),
+        [<deno_ffi_ $ty>] as *const c_void,
+      );
+    }
+  };
+}
+
+macro_rules! impl_arg_uint32 {
+  ($ctx: ident, $ty: ty) => {
+    paste::paste! {
+      unsafe extern "C" fn [<deno_ffi_ $ty>] (
+        info: *const v8::FunctionCallbackInfo,
+        index: i32,
+      ) -> $ty {
+        let scope = &mut v8::CallbackScope::new(&*info);
+        let info = v8::FunctionCallbackArguments::from_function_callback_info(info);
+        info.get(index).uint32_value(scope).unwrap() as $ty
+      }
+
+      $ctx.add_symbol(
+        cstr!(stringify!([<deno_ffi_ $ty>])),
+        [<deno_ffi_ $ty>] as *const c_void,
+      );
+    }
+  };
 }
 
 macro_rules! impl_rv_int32 {
@@ -61,10 +90,29 @@ macro_rules! impl_rv_int32 {
   };
 }
 
+macro_rules! impl_rv_uint32 {
+  ($ctx: ident, $ty: ty) => {
+    paste::paste! {
+      unsafe extern "C" fn [<deno_rv_ $ty>] (
+        info: *const v8::FunctionCallbackInfo,
+        val: $ty,
+      ) {
+        let mut rv = v8::ReturnValue::from_function_callback_info(info);
+        rv.set_uint32(val as u32);
+      }
+
+      $ctx.add_symbol(
+        cstr!(stringify!([<deno_rv_ $ty>])),
+        [<deno_rv_ $ty>] as *const c_void,
+      );
+    }
+  };
+}
+
 pub struct Allocation {
   pub addr: *mut c_void,
   _ctx: Context,
-  _sym: Box<crate::Symbol>,
+  _sym: Box<Symbol>,
 }
 
 pub(crate) struct Compiler {
@@ -79,11 +127,20 @@ impl Compiler {
 
     ctx.add_symbol(cstr!("deno_ffi_u8"), deno_ffi_u8 as *const c_void);
 
+    impl_arg_uint32!(ctx, u8);
+    impl_arg_uint32!(ctx, u16);
+    impl_arg_uint32!(ctx, u32);
+    impl_arg_int32!(ctx, i8);
+    impl_arg_int32!(ctx, i16);
+    impl_arg_int32!(ctx, i32);
+
     impl_rv_int32!(ctx, i8);
     impl_rv_int32!(ctx, u8);
     impl_rv_int32!(ctx, i16);
     impl_rv_int32!(ctx, u16);
     impl_rv_int32!(ctx, i32);
+    impl_rv_uint32!(ctx, u32);
+
     Ok(Compiler {
       ctx,
       c: String::from(include_str!("jit.c")),
@@ -93,8 +150,7 @@ impl Compiler {
   pub unsafe fn compile(
     mut self,
     sym: Box<crate::Symbol>,
-  ) -> Result<Box<Allocation>, ()>
-  {
+  ) -> Result<Box<Allocation>, ()> {
     self
       .ctx
       .add_symbol(cstr!("func"), sym.ptr.0 as *const c_void);
