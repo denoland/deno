@@ -7,16 +7,14 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::args::FmtFlags;
+use crate::args::FmtOptionsConfig;
+use crate::args::ProseWrap;
+use crate::args::RootConfig;
 use crate::colors;
-use crate::config_file::FmtConfig;
-use crate::config_file::FmtOptionsConfig;
-use crate::config_file::ProseWrap;
-use crate::deno_dir::DenoDir;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::FmtFlags;
 use crate::fs_util::collect_files;
 use crate::fs_util::get_extension;
 use crate::fs_util::specifier_to_file_path;
@@ -45,11 +43,11 @@ use super::incremental_cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  flags: &Flags,
+  config: &RootConfig,
   fmt_flags: FmtFlags,
-  maybe_fmt_config: Option<FmtConfig>,
-  deno_dir: &DenoDir,
 ) -> Result<(), AnyError> {
+  let maybe_fmt_config = config.to_fmt_config()?;
+  let deno_dir = config.resolve_deno_dir()?;
   let FmtFlags {
     files,
     ignore,
@@ -94,8 +92,11 @@ pub async fn format(
     maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
   );
 
-  let fmt_predicate =
-    |path: &Path| is_supported_ext_fmt(path) && !is_contain_git(path);
+  let fmt_predicate = |path: &Path| {
+    is_supported_ext_fmt(path)
+      && !contains_git(path)
+      && !contains_node_modules(path)
+  };
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -135,6 +136,7 @@ pub async fn format(
       }
     }
   };
+  let deno_dir = &deno_dir;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
@@ -151,13 +153,13 @@ pub async fn format(
     Ok(())
   };
 
-  if flags.watch.is_some() {
+  if config.watch_paths().is_some() {
     file_watcher::watch_func(
       resolver,
       operation,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),
-        clear_screen: !flags.no_clear_screen,
+        clear_screen: !config.no_clear_screen(),
       },
     )
     .await?;
@@ -730,8 +732,12 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn is_contain_git(path: &Path) -> bool {
+fn contains_git(path: &Path) -> bool {
   path.components().any(|c| c.as_os_str() == ".git")
+}
+
+fn contains_node_modules(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 #[cfg(test)]
@@ -767,10 +773,22 @@ mod test {
 
   #[test]
   fn test_is_located_in_git() {
-    assert!(is_contain_git(Path::new("test/.git")));
-    assert!(is_contain_git(Path::new(".git/bad.json")));
-    assert!(is_contain_git(Path::new("test/.git/bad.json")));
-    assert!(!is_contain_git(Path::new("test/bad.git/bad.json")));
+    assert!(contains_git(Path::new("test/.git")));
+    assert!(contains_git(Path::new(".git/bad.json")));
+    assert!(contains_git(Path::new("test/.git/bad.json")));
+    assert!(!contains_git(Path::new("test/bad.git/bad.json")));
+  }
+
+  #[test]
+  fn test_is_located_in_node_modules() {
+    assert!(contains_node_modules(Path::new("test/node_modules")));
+    assert!(contains_node_modules(Path::new("node_modules/bad.json")));
+    assert!(contains_node_modules(Path::new(
+      "test/node_modules/bad.json"
+    )));
+    assert!(!contains_node_modules(Path::new(
+      "test/bad.node_modules/bad.json"
+    )));
   }
 
   #[test]

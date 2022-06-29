@@ -6,14 +6,18 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-use crate::config_file::LintConfig;
+use crate::args::Flags;
+use crate::args::LintConfig;
+use crate::args::LintFlags;
+use crate::colors;
+use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::{Flags, LintFlags};
 use crate::fmt_errors;
-use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
+use crate::fs_util::collect_files;
+use crate::fs_util::is_supported_ext;
+use crate::fs_util::specifier_to_file_path;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
-use crate::{colors, file_watcher};
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::generic_error;
@@ -29,10 +33,13 @@ use log::debug;
 use log::info;
 use serde::Serialize;
 use std::fs;
-use std::io::{stdin, Read};
+use std::io::stdin;
+use std::io::Read;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use super::incremental_cache::IncrementalCache;
 
@@ -52,7 +59,6 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
@@ -69,12 +75,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
 
-  let ps = ProcState::build(flags.clone()).await?;
-  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
-    config_file.to_lint_config()?
-  } else {
-    None
-  };
+  let ps = ProcState::build(flags).await?;
+  let maybe_lint_config = ps.config.to_lint_config()?;
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
@@ -200,7 +202,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
     Ok(())
   };
-  if flags.watch.is_some() {
+  if ps.config.watch_paths().is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
@@ -211,7 +213,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       operation,
       file_watcher::PrintConfig {
         job_name: "Lint".to_string(),
-        clear_screen: !flags.no_clear_screen,
+        clear_screen: !ps.config.no_clear_screen(),
       },
     )
     .await?;
@@ -590,7 +592,7 @@ mod test {
   use deno_lint::rules::get_recommended_rules;
 
   use super::*;
-  use crate::config_file::LintRulesConfig;
+  use crate::args::LintRulesConfig;
 
   #[test]
   fn recommended_rules_when_no_tags_in_config() {

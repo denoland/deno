@@ -583,6 +583,7 @@ delete Intl.v8BreakIterator;
 
     defineEventHandler(window, "error");
     defineEventHandler(window, "load");
+    defineEventHandler(window, "beforeunload");
     defineEventHandler(window, "unload");
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.

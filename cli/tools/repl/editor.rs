@@ -371,7 +371,7 @@ impl ReplEditor {
       EventHandler::Simple(Cmd::Newline),
     );
     editor.bind_sequence(
-      KeyEvent::from('\t'),
+      KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
 
@@ -411,7 +411,10 @@ impl ConditionalEventHandler for TabEventHandler {
     _: bool,
     ctx: &EventContext,
   ) -> Option<Cmd> {
-    debug_assert_eq!(*evt, Event::from(KeyEvent::from('\t')));
+    debug_assert_eq!(
+      *evt,
+      Event::from(KeyEvent(KeyCode::Tab, Modifiers::NONE))
+    );
     if ctx.line().is_empty()
       || ctx.line()[..ctx.pos()]
         .chars()
@@ -420,7 +423,13 @@ impl ConditionalEventHandler for TabEventHandler {
         .filter(|c| c.is_whitespace())
         .is_some()
     {
-      Some(Cmd::Insert(n, "\t".into()))
+      if cfg!(target_os = "windows") {
+        // Inserting a tab is broken in windows with rustyline
+        // use 4 spaces as a workaround for now
+        Some(Cmd::Insert(n, "    ".into()))
+      } else {
+        Some(Cmd::Insert(n, "\t".into()))
+      }
     } else {
       None // default complete
     }

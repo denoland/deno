@@ -249,6 +249,12 @@ itest!(webstorage_serialization {
   output: "webstorage/serialization.ts.out",
 });
 
+// tests the beforeunload event
+itest!(beforeunload_event {
+  args: "run before_unload.js",
+  output: "before_unload.js.out",
+});
+
 // tests to ensure that when `--location` is set, all code shares the same
 // localStorage cache based on the origin of the location URL.
 #[test]
@@ -2728,3 +2734,13 @@ fn running_declaration_files() {
     assert!(output.status.success());
   }
 }
+
+itest!(test_and_bench_are_noops_in_run {
+  args: "run test_and_bench_in_run.js",
+  output_str: Some(""),
+});
+
+itest!(followup_dyn_import_resolved {
+  args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
+  output: "followup_dyn_import_resolves/main.ts.out",
+});

@@ -90,14 +90,14 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
 }
 
-struct DynImportModEvaluate {
+pub(crate) struct DynImportModEvaluate {
   load_id: ModuleLoadId,
   module_id: ModuleId,
   promise: v8::Global<v8::Promise>,
   module: v8::Global<v8::Module>,
 }
 
-struct ModEvaluate {
+pub(crate) struct ModEvaluate {
   promise: v8::Global<v8::Promise>,
   sender: oneshot::Sender<Result<(), Error>>,
 }
@@ -158,8 +158,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
-  pending_mod_evaluate: Option<ModEvaluate>,
+  pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
+  pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
@@ -333,6 +333,9 @@ impl JsRuntime {
       assert!(options.startup_snapshot.is_none());
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
+      // SAFETY: `get_owned_isolate` is unsafe because it may only be called
+      // once. This is the only place we call this function, so this call is
+      // safe.
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -886,13 +889,28 @@ impl JsRuntime {
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
-      let poll_imports = self.prepare_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
+      // Run in a loop so that dynamic imports that only depend on another
+      // dynamic import can be resolved in this event loop iteration.
+      //
+      // For example, a dynamically imported module like the following can be
+      // immediately resolved after `dependency.ts` is fully evaluated, but it
+      // wouldn't if not for this loop.
+      //
+      //    await delay(1000);
+      //    await import("./dependency.ts");
+      //    console.log("test")
+      //
+      loop {
+        let poll_imports = self.prepare_dyn_imports(cx)?;
+        assert!(poll_imports.is_ready());
 
-      let poll_imports = self.poll_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
+        let poll_imports = self.poll_dyn_imports(cx)?;
+        assert!(poll_imports.is_ready());
 
-      self.evaluate_dyn_imports();
+        if !self.evaluate_dyn_imports() {
+          break;
+        }
+      }
 
       self.check_promise_exceptions()?;
     }
@@ -903,7 +921,7 @@ impl JsRuntime {
       let state = state_rc.borrow();
       let op_state = state.op_state.clone();
       for f in &self.event_loop_middlewares {
-        if f(&mut op_state.borrow_mut(), cx) {
+        if f(op_state.clone(), cx) {
           maybe_scheduling = true;
         }
       }
@@ -1003,6 +1021,30 @@ Pending dynamic modules:\n".to_string();
 
     Poll::Pending
   }
+
+  pub fn event_loop_has_work(&mut self) -> bool {
+    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    let state = state_rc.borrow_mut();
+    let module_map = module_map_rc.borrow();
+
+    let has_pending_refed_ops =
+      state.pending_ops.len() > state.unrefed_ops.len();
+    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
+    let has_pending_dyn_module_evaluation =
+      !state.pending_dyn_mod_evaluate.is_empty();
+    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
+    let has_pending_background_tasks =
+      self.v8_isolate().has_pending_background_tasks();
+    let has_tick_scheduled = state.has_tick_scheduled;
+
+    has_pending_refed_ops
+      || has_pending_dyn_imports
+      || has_pending_dyn_module_evaluation
+      || has_pending_module_evaluation
+      || has_pending_background_tasks
+      || has_tick_scheduled
+  }
 }
 
 extern "C" fn near_heap_limit_callback<F>(
@@ -1013,6 +1055,8 @@ extern "C" fn near_heap_limit_callback<F>(
 where
   F: FnMut(usize, usize) -> usize,
 {
+  // SAFETY: The data is a pointer to the Rust callback function. It is stored
+  // in `JsRuntime::allocations` and thus is guaranteed to outlive the isolate.
   let callback = unsafe { &mut *(data as *mut F) };
   callback(current_heap_limit, initial_heap_limit)
 }
@@ -1505,7 +1549,9 @@ impl JsRuntime {
     }
   }
 
-  fn evaluate_dyn_imports(&mut self) {
+  // Returns true if some dynamic import was resolved.
+  fn evaluate_dyn_imports(&mut self) -> bool {
+    let mut resolved_any = false;
     let state_rc = Self::state(self.v8_isolate());
     let mut still_pending = vec![];
     let pending =
@@ -1536,6 +1582,7 @@ impl JsRuntime {
       };
 
       if let Some(result) = maybe_result {
+        resolved_any = true;
         match result {
           Ok((dyn_import_id, module_id)) => {
             self.dynamic_import_resolve(dyn_import_id, module_id);
@@ -1547,6 +1594,7 @@ impl JsRuntime {
       }
     }
     state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
+    resolved_any
   }
 
   /// Asynchronously load specified module and all of its dependencies.

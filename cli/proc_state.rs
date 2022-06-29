@@ -1,19 +1,18 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::args::RootConfig;
+use crate::args::TypeCheckMode;
 use crate::cache;
-use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
-use crate::config_file;
-use crate::config_file::ConfigFile;
-use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
 use crate::emit::EmitCache;
-use crate::file_fetcher::get_root_cert_store;
-use crate::file_fetcher::CacheSetting;
+use crate::emit::TsConfigType;
+use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
-use crate::flags;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
@@ -22,7 +21,6 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
-use crate::version;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -67,17 +65,15 @@ use std::sync::Arc;
 pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
-  /// Flags parsed from `argv` contents.
-  pub flags: Arc<flags::Flags>,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
+  pub config: Arc<RootConfig>,
   graph_data: Arc<RwLock<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
-  pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store: RootCertStore,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
@@ -94,30 +90,34 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: Arc<flags::Flags>) -> Result<Self, AnyError> {
-    Self::build_with_sender(flags, None).await
+  pub async fn build(flags: Flags) -> Result<Self, AnyError> {
+    Self::from_root_config(Arc::new(RootConfig::from_flags(flags)?)).await
+  }
+
+  pub async fn from_root_config(
+    root_config: Arc<RootConfig>,
+  ) -> Result<Self, AnyError> {
+    Self::build_with_sender(root_config, None).await
   }
 
   pub async fn build_for_file_watcher(
-    flags: Arc<flags::Flags>,
+    flags: Flags,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
-    let ps = Self::build_with_sender(
-      flags.clone(),
-      Some(files_to_watch_sender.clone()),
-    )
-    .await?;
+    // resolve the config each time
+    let root_config = Arc::new(RootConfig::from_flags(flags)?);
+    let ps =
+      Self::build_with_sender(root_config, Some(files_to_watch_sender.clone()))
+        .await?;
 
     // Add the extra files listed in the watch flag
-    if let Some(watch_paths) = &flags.watch {
+    if let Some(watch_paths) = ps.config.watch_paths() {
       files_to_watch_sender.send(watch_paths.clone()).unwrap();
     }
 
-    if let Ok(Some(import_map_path)) =
-      config_file::resolve_import_map_specifier(
-        ps.flags.import_map_path.as_deref(),
-        ps.maybe_config_file.as_ref(),
-      )
+    if let Ok(Some(import_map_path)) = ps
+      .config
+      .resolve_import_map_path()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
       files_to_watch_sender.send(vec![import_map_path]).unwrap();
@@ -127,74 +127,33 @@ impl ProcState {
   }
 
   async fn build_with_sender(
-    flags: Arc<flags::Flags>,
+    root_config: Arc<RootConfig>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
-    let maybe_custom_root = flags
-      .cache_path
-      .clone()
-      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
-    let deps_cache_location = dir.root.join("deps");
-    let http_cache = http_cache::HttpCache::new(&deps_cache_location);
-
-    let root_cert_store = get_root_cert_store(
-      None,
-      flags.ca_stores.clone(),
-      flags.ca_file.clone(),
-    )?;
-
-    if let Some(insecure_allowlist) =
-      flags.unsafely_ignore_certificate_errors.as_ref()
-    {
-      let domains = if insecure_allowlist.is_empty() {
-        "for all hostnames".to_string()
-      } else {
-        format!("for: {}", insecure_allowlist.join(", "))
-      };
-      let msg =
-        format!("DANGER: TLS certificate validation is disabled {}", domains);
-      eprintln!("{}", colors::yellow(msg));
-    }
-
-    let cache_usage = if flags.cached_only {
-      CacheSetting::Only
-    } else if !flags.cache_blocklist.is_empty() {
-      CacheSetting::ReloadSome(flags.cache_blocklist.clone())
-    } else if flags.reload {
-      CacheSetting::ReloadAll
-    } else {
-      CacheSetting::Use
-    };
-
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
-
+    let dir = root_config.resolve_deno_dir()?;
+    let deps_cache_location = dir.root.join("deps");
+    let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+    let root_cert_store = root_config.resolve_root_cert_store()?;
+    let cache_usage = root_config.cache_setting();
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
-      !flags.no_remote,
+      !root_config.no_remote(),
       Some(root_cert_store.clone()),
       blob_store.clone(),
-      flags.unsafely_ignore_certificate_errors.clone(),
+      root_config
+        .unsafely_ignore_certificate_errors()
+        .map(ToOwned::to_owned),
     )?;
 
-    let lockfile = if let Some(filename) = &flags.lock {
-      let lockfile = Lockfile::new(filename.clone(), flags.lock_write)?;
-      Some(Arc::new(Mutex::new(lockfile)))
-    } else {
-      None
-    };
-
-    let maybe_config_file = crate::config_file::discover(&flags)?;
-
-    let maybe_import_map_specifier =
-      crate::config_file::resolve_import_map_specifier(
-        flags.import_map_path.as_deref(),
-        maybe_config_file.as_ref(),
-      )?;
+    let lockfile = root_config
+      .resolve_lock_file()?
+      .map(|f| Arc::new(Mutex::new(f)));
+    let maybe_import_map_specifier = root_config.resolve_import_map_path()?;
 
     let maybe_import_map =
       if let Some(import_map_specifier) = maybe_import_map_specifier {
@@ -212,14 +171,12 @@ impl ProcState {
         None
       };
 
-    let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
-    let maybe_inspector_server = maybe_inspect_host.map(|host| {
-      Arc::new(InspectorServer::new(host, version::get_user_agent()))
-    });
+    let maybe_inspector_server =
+      root_config.resolve_inspector_server().map(Arc::new);
 
-    let coverage_dir = flags
-      .coverage_dir
-      .clone()
+    let coverage_dir = root_config
+      .coverage_dir()
+      .map(ToOwned::to_owned)
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
@@ -229,13 +186,12 @@ impl ProcState {
     );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    });
+    let maybe_jsx_resolver = root_config
+      .to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
-    > = if flags.compat {
+    > = if root_config.compat() {
       Some(Arc::new(node_resolver))
     } else if let Some(jsx_resolver) = maybe_jsx_resolver {
       // the JSX resolver offloads to the import map if present, otherwise uses
@@ -256,14 +212,13 @@ impl ProcState {
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
-      flags,
+      config: root_config,
       file_fetcher,
       graph_data: Default::default(),
       lockfile,
-      maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
-      root_cert_store: Some(root_cert_store.clone()),
+      root_cert_store,
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
@@ -271,25 +226,6 @@ impl ProcState {
       maybe_resolver,
       maybe_file_watcher_reporter,
     })))
-  }
-
-  /// Return any imports that should be brought into the scope of the module
-  /// graph.
-  fn get_maybe_imports(&self) -> MaybeImportsResult {
-    let mut imports = Vec::new();
-    if let Some(config_file) = &self.maybe_config_file {
-      if let Some(config_imports) = config_file.to_maybe_imports()? {
-        imports.extend(config_imports);
-      }
-    }
-    if self.flags.compat {
-      imports.extend(compat::get_node_imports());
-    }
-    if imports.is_empty() {
-      Ok(None)
-    } else {
-      Ok(Some(imports))
-    }
   }
 
   /// This method must be called for a module or a static importer of that
@@ -300,7 +236,7 @@ impl ProcState {
     &self,
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
-    lib: emit::TypeLib,
+    lib: TsTypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
@@ -340,7 +276,7 @@ impl ProcState {
 
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
-    let roots = if self.flags.compat {
+    let roots = if self.config.compat() {
       let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
       r.extend(roots);
       r
@@ -349,12 +285,12 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
-      if self.flags.type_check_mode == flags::TypeCheckMode::None
+      if self.config.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
       {
         if let Some(result) = graph_data.check(
           &roots,
-          self.flags.type_check_mode != flags::TypeCheckMode::None,
+          self.config.type_check_mode() != TypeCheckMode::None,
           false,
         ) {
           return result;
@@ -368,7 +304,7 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
-    let maybe_imports = self.get_maybe_imports()?;
+    let maybe_imports = self.config.to_maybe_imports()?;
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -463,58 +399,50 @@ impl ProcState {
     {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
-      let check_js = self
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| cf.get_check_js())
-        .unwrap_or(false);
+      let check_js = self.config.check_js();
       graph_data
         .check(
           &roots,
-          self.flags.type_check_mode != flags::TypeCheckMode::None,
+          self.config.type_check_mode() != TypeCheckMode::None,
           check_js,
         )
         .unwrap()?;
     }
 
-    let config_type =
-      if self.flags.type_check_mode == flags::TypeCheckMode::None {
-        emit::ConfigType::Emit
-      } else {
-        emit::ConfigType::Check {
-          tsc_emit: true,
-          lib: lib.clone(),
-        }
-      };
+    let config_type = if self.config.type_check_mode() == TypeCheckMode::None {
+      TsConfigType::Emit
+    } else {
+      TsConfigType::Check {
+        tsc_emit: true,
+        lib,
+      }
+    };
 
-    let (ts_config, maybe_ignored_options) =
-      emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
+    let ts_config_result =
+      self.config.resolve_ts_config_for_emit(config_type)?;
 
-    if let Some(ignored_options) = maybe_ignored_options {
+    if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       log::warn!("{}", ignored_options);
     }
 
-    if self.flags.type_check_mode == flags::TypeCheckMode::None {
+    if self.config.type_check_mode() == TypeCheckMode::None {
       let options = emit::EmitOptions {
-        ts_config,
-        reload: self.flags.reload,
+        ts_config: ts_config_result.ts_config,
+        reload: self.config.reload_flag(),
         reload_exclusions,
       };
       let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
       log::debug!("{}", emit_result.stats);
     } else {
-      let maybe_config_specifier = self
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| cf.specifier.clone());
+      let maybe_config_specifier = self.config.maybe_config_file_specifier();
       let options = emit::CheckOptions {
-        type_check_mode: self.flags.type_check_mode.clone(),
-        debug: self.flags.log_level == Some(log::Level::Debug),
+        type_check_mode: self.config.type_check_mode(),
+        debug: self.config.log_level() == Some(log::Level::Debug),
         emit_with_diagnostics: false,
         maybe_config_specifier,
-        ts_config,
+        ts_config: ts_config_result.ts_config,
         log_checks: true,
-        reload: self.flags.reload,
+        reload: self.config.reload_flag(),
         reload_exclusions,
       };
       let emit_result = emit::check_and_maybe_emit(
@@ -529,9 +457,9 @@ impl ProcState {
       log::debug!("{}", emit_result.stats);
     }
 
-    if self.flags.type_check_mode != flags::TypeCheckMode::None {
+    if self.config.type_check_mode() != TypeCheckMode::None {
       let mut graph_data = self.graph_data.write();
-      graph_data.set_type_checked(&roots, &lib);
+      graph_data.set_type_checked(&roots, lib);
     }
 
     // any updates to the lockfile should be updated now
@@ -573,7 +501,9 @@ impl ProcState {
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
-    let referrer = if referrer.is_empty() && self.flags.repl {
+    let referrer = if referrer.is_empty()
+      && matches!(self.config.sub_command(), DenoSubcommand::Repl(_))
+    {
       deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
       deno_core::resolve_url_or_path(referrer).unwrap()

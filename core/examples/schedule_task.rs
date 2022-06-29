@@ -20,7 +20,8 @@ type Task = Box<dyn FnOnce()>;
 fn main() {
   let my_ext = Extension::builder()
     .ops(vec![op_schedule_task::decl()])
-    .event_loop_middleware(|state, cx| {
+    .event_loop_middleware(|state_rc, cx| {
+      let mut state = state_rc.borrow_mut();
       let recv = state.borrow_mut::<mpsc::UnboundedReceiver<Task>>();
       let mut ref_loop = false;
       while let Poll::Ready(Some(call)) = recv.poll_next_unpin(cx) {

@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::DocFlags;
+use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::File;
-use crate::flags::DocFlags;
-use crate::flags::Flags;
 use crate::get_types;
 use crate::proc_state::ProcState;
 use crate::write_json_to_stdout;
@@ -96,7 +96,7 @@ pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
+  let ps = ProcState::build(flags).await?;
   let source_file = doc_flags
     .source_file
     .unwrap_or_else(|| "--builtin".to_string());
@@ -122,7 +122,7 @@ pub async fn print_docs(
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
-      get_types(ps.flags.unstable).into(),
+      get_types(ps.config.unstable()).into(),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;

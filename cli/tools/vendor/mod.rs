@@ -11,8 +11,8 @@ use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 use log::warn;
 
-use crate::config_file::FmtOptionsConfig;
-use crate::flags::VendorFlags;
+use crate::args::FmtOptionsConfig;
+use crate::args::VendorFlags;
 use crate::fs_util;
 use crate::fs_util::relative_specifier;
 use crate::fs_util::specifier_to_file_path;
@@ -134,16 +134,17 @@ fn validate_output_dir(
 
 fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
   assert!(output_dir.is_absolute());
-  let config_file = match &ps.maybe_config_file {
+  let config_file_specifier = match ps.config.maybe_config_file_specifier() {
     Some(f) => f,
     None => return false,
   };
-  let fmt_config = config_file
+  let fmt_config = ps
+    .config
     .to_fmt_config()
     .unwrap_or_default()
     .unwrap_or_default();
   let result = update_config_file(
-    &config_file.specifier,
+    &config_file_specifier,
     &ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
       .unwrap(),
     &fmt_config.options,
@@ -262,17 +263,13 @@ async fn create_graph(
     Permissions::allow_all(),
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-  let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
-    config_file.to_maybe_imports()?
-  } else {
-    None
-  };
+  let maybe_imports = ps.config.to_maybe_imports()?;
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-    cf.to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-  });
+  let maybe_jsx_resolver = ps
+    .config
+    .to_maybe_jsx_import_source_module()
+    .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
