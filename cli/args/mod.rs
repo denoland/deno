@@ -44,6 +44,11 @@ use crate::file_fetcher::CacheSetting;
 use crate::lockfile::Lockfile;
 use crate::version;
 
+#[derive(Default)]
+struct CliOptionOverrides {
+  import_map_path: Option<Option<ModuleSpecifier>>,
+}
+
 /// Holds the common options used by many sub commands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
@@ -51,6 +56,7 @@ pub struct CliOptions {
   // application need not concern itself with, so keep these private
   flags: Flags,
   maybe_config_file: Option<ConfigFile>,
+  overrides: CliOptionOverrides,
 }
 
 impl CliOptions {
@@ -72,6 +78,7 @@ impl CliOptions {
     Ok(Self {
       maybe_config_file,
       flags,
+      overrides: Default::default(),
     })
   }
 
@@ -116,18 +123,18 @@ impl CliOptions {
   pub fn resolve_import_map_path(
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    resolve_import_map_specifier(
-      self.flags.import_map_path.as_deref(),
-      self.maybe_config_file.as_ref(),
-    )
+    match self.overrides.import_map_path.clone() {
+      Some(path) => Ok(path),
+      None => resolve_import_map_specifier(
+        self.flags.import_map_path.as_deref(),
+        self.maybe_config_file.as_ref(),
+      ),
+    }
   }
 
-  /// Uses no import map in the configuration.
-  pub fn clear_import_map(&mut self) {
-    self.flags.import_map_path = None;
-    if let Some(config_file) = self.maybe_config_file.as_mut() {
-      config_file.json.import_map = None;
-    }
+  /// Overrides the import map path to use.
+  pub fn set_import_map_path(&mut self, path: Option<ModuleSpecifier>) {
+    self.overrides.import_map_path = Some(path);
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {

@@ -12,9 +12,9 @@ use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 use log::warn;
 
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
-use crate::args::RootConfig;
 use crate::args::VendorFlags;
 use crate::fs_util;
 use crate::fs_util::relative_specifier;
@@ -37,15 +37,15 @@ pub async fn vendor(
   flags: Flags,
   vendor_flags: VendorFlags,
 ) -> Result<(), AnyError> {
-  let mut root_config = RootConfig::from_flags(flags)?;
+  let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
     Some(output_path) => output_path.to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = fs_util::resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &vendor_flags)?;
-  validate_config(&mut root_config, &output_dir)?;
-  let ps = ProcState::from_root_config(Arc::new(root_config)).await?;
+  validate_options(&mut cli_options, &output_dir)?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
   let graph = create_graph(&ps, &vendor_flags).await?;
   let vendored_count = build::build(
     graph,
@@ -105,12 +105,12 @@ fn validate_output_dir(
   Ok(())
 }
 
-fn validate_config(
-  config: &mut RootConfig,
+fn validate_options(
+  options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
   // check the import map
-  if let Some(import_map_path) = config
+  if let Some(import_map_path) = options
     .resolve_import_map_path()?
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| fs_util::canonicalize_path(&p).ok())
@@ -142,7 +142,7 @@ fn validate_config(
       );
 
       // don't use an import map in the config
-      config.clear_import_map();
+      options.set_import_map_path(None);
     }
   }
 
