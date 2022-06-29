@@ -999,13 +999,17 @@ where
               )
             })?
             .get_backing_store();
-          let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+          let pointer = if byte_offset > 0 {
+            &backing_store[byte_offset..] as *const _ as *const u8
+          } else {
+            &backing_store[..] as *const _ as *const u8
+          };
 
           ffi_args.push(NativeValue { pointer });
         } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
         {
           let backing_store = value.get_backing_store();
-          let pointer = &backing_store as *const _ as *const u8;
+          let pointer = &backing_store[..] as *const _ as *const u8;
 
           ffi_args.push(NativeValue { pointer });
         } else {
