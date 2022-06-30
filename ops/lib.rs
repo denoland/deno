@@ -293,7 +293,7 @@ fn codegen_v8_sync(
 
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    let op_state = &mut ctx.state.borrow();
+    let op_state = &*ctx.state.borrow();
     op_state.tracker.track_sync(ctx.id);
 
     #ret
