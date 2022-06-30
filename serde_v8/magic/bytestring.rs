@@ -1,10 +1,31 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use super::transl8::{FromV8, ToV8};
-use crate::magic::transl8::{impl_magic, impl_wrapper};
+use crate::magic::transl8::impl_magic;
 use crate::Error;
+use smallvec::SmallVec;
+use std::mem::size_of;
 
-impl_wrapper! { pub struct ByteString(Vec<u8>); }
+#[derive(
+  PartialEq,
+  Eq,
+  Clone,
+  Debug,
+  Default,
+  derive_more::Deref,
+  derive_more::DerefMut,
+  derive_more::AsRef,
+  derive_more::AsMut,
+)]
+#[as_mut(forward)]
+#[as_ref(forward)]
+pub struct ByteString(SmallVec<[u8; 16]>);
 impl_magic!(ByteString);
+
+// const-assert that Vec<u8> and SmallVec<[u8; 16]> have a same size.
+// Note from https://docs.rs/smallvec/latest/smallvec/#union -
+//   smallvec can still be larger than Vec if the inline buffer is
+//   larger than two machine words.
+const _: () = assert!(size_of::<Vec<u8>>() == size_of::<SmallVec<[u8; 16]>>());
 
 impl ToV8 for ByteString {
   fn to_v8<'a>(
@@ -29,7 +50,7 @@ impl FromV8 for ByteString {
       return Err(Error::ExpectedLatin1);
     }
     let len = v8str.length();
-    let mut buffer = Vec::with_capacity(len);
+    let mut buffer = SmallVec::with_capacity(len);
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
     #[allow(clippy::uninit_vec)]
@@ -43,13 +64,41 @@ impl FromV8 for ByteString {
       );
       assert!(written == len);
     }
-    Ok(buffer.into())
+    Ok(Self(buffer))
+  }
+}
+
+// smallvec does not impl From/Into traits
+// like Vec<u8> does. So here we are.
+
+impl From<Vec<u8>> for ByteString {
+  fn from(vec: Vec<u8>) -> Self {
+    ByteString(SmallVec::from_vec(vec))
   }
 }
 
 #[allow(clippy::from_over_into)]
 impl Into<Vec<u8>> for ByteString {
   fn into(self) -> Vec<u8> {
-    self.0
+    self.0.into_vec()
+  }
+}
+
+impl From<&[u8]> for ByteString {
+  fn from(s: &[u8]) -> Self {
+    ByteString(SmallVec::from_slice(s))
+  }
+}
+
+impl From<&str> for ByteString {
+  fn from(s: &str) -> Self {
+    let v: Vec<u8> = s.into();
+    ByteString::from(v)
+  }
+}
+
+impl From<String> for ByteString {
+  fn from(s: String) -> Self {
+    ByteString::from(s.into_bytes())
   }
 }
