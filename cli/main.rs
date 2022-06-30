@@ -769,7 +769,7 @@ async fn bundle_command(
 
       if let Ok(Some(import_map_path)) = ps
         .options
-        .resolve_import_map_path()
+        .resolve_import_map_specifier()
         .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
@@ -1237,8 +1237,7 @@ async fn vendor_command(
   flags: Flags,
   vendor_flags: VendorFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
-  tools::vendor::vendor(ps, vendor_flags).await?;
+  tools::vendor::vendor(flags, vendor_flags).await?;
   Ok(0)
 }
 
