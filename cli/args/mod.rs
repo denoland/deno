@@ -44,6 +44,9 @@ use crate::file_fetcher::CacheSetting;
 use crate::lockfile::Lockfile;
 use crate::version;
 
+/// Overrides for the options below that when set will
+/// use these values over the values derived from the
+/// CLI flags or config file.
 #[derive(Default)]
 struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,

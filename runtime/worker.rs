@@ -35,7 +35,7 @@ use std::task::Poll;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
 
 impl ExitCode {
