@@ -2818,14 +2818,14 @@ impl Inner {
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
-    // todo(dsherret): why is creating a basic runtime necessary? It errors otherwise.
-    let handle = std::thread::spawn(|| {
+    // todo(dsherret): why is running this on a new thread necessary? It does
+    // a compile error otherwise.
+    let handle = tokio::task::spawn_blocking(|| {
       run_basic(
         async move { create_graph_for_caching(cli_options, roots).await },
       )
     });
-    let result = handle.join().unwrap();
-    if let Err(err) = result {
+    if let Err(err) = handle.await.unwrap() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
