@@ -27,7 +27,7 @@ serde_json = { version = "1.0.79", features = ["preserve_order"] }
 serde_v8 = { version = "0.51.0", path = "../serde_v8" }
 sourcemap = "=6.0.1"
 url = { version = "2.2.2", features = ["serde"] }
-v8 = "0.44.2"
+v8 = "0.44.3"
 
 [[example]]
 name = "http_bench_json_ops"
