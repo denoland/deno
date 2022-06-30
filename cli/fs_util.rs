@@ -706,9 +706,11 @@ mod tests {
     assert_eq!(result, expected);
 
     let result = collect_specifiers(
-      vec![("file://".to_owned()
-        + root_dir_path.join("child").to_str().unwrap())
-      .to_string()],
+      vec![format!(
+        "{}{}",
+        "file://",
+        root_dir_path.join("child").to_str().unwrap()
+      )],
       &[],
       predicate,
     )
