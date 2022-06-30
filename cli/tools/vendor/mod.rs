@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -11,6 +12,8 @@ use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 use log::warn;
 
+use crate::args::CliOptions;
+use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
 use crate::fs_util;
@@ -30,14 +33,20 @@ mod specifiers;
 #[cfg(test)]
 mod test;
 
-pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
-  let raw_output_dir = match &flags.output_path {
+pub async fn vendor(
+  flags: Flags,
+  vendor_flags: VendorFlags,
+) -> Result<(), AnyError> {
+  let mut cli_options = CliOptions::from_flags(flags)?;
+  let raw_output_dir = match &vendor_flags.output_path {
     Some(output_path) => output_path.to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = fs_util::resolve_from_cwd(&raw_output_dir)?;
-  validate_output_dir(&output_dir, &flags, &ps)?;
-  let graph = create_graph(&ps, &flags).await?;
+  validate_output_dir(&output_dir, &vendor_flags)?;
+  validate_options(&mut cli_options, &output_dir)?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let graph = create_graph(&ps, &vendor_flags).await?;
   let vendored_count = build::build(
     graph,
     &output_dir,
@@ -86,7 +95,6 @@ pub async fn vendor(ps: ProcState, flags: VendorFlags) -> Result<(), AnyError> {
 fn validate_output_dir(
   output_dir: &Path,
   flags: &VendorFlags,
-  ps: &ProcState,
 ) -> Result<(), AnyError> {
   if !flags.force && !is_dir_empty(output_dir)? {
     bail!(concat!(
@@ -94,12 +102,17 @@ fn validate_output_dir(
       "--force to ignore this error and potentially overwrite its contents.",
     ));
   }
+  Ok(())
+}
 
+fn validate_options(
+  options: &mut CliOptions,
+  output_dir: &Path,
+) -> Result<(), AnyError> {
   // check the import map
-  if let Some(import_map_path) = ps
-    .maybe_import_map
-    .as_ref()
-    .and_then(|m| specifier_to_file_path(m.base_url()).ok())
+  if let Some(import_map_path) = options
+    .resolve_import_map_specifier()?
+    .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| fs_util::canonicalize_path(&p).ok())
   {
     // make the output directory in order to canonicalize it for the check below
@@ -114,11 +127,12 @@ fn validate_output_dir(
       let cwd = fs_util::canonicalize_path(&std::env::current_dir()?)?;
       // We don't allow using the output directory to help generate the
       // new state because this may lead to cryptic error messages.
-      bail!(
+      log::warn!(
         concat!(
-          "Specifying an import map file ({}) in the deno vendor output ",
-          "directory is not supported. Please specify no import map or one ",
-          "located outside this directory."
+          "Ignoring import map. Specifying an import map file ({}) in the ",
+          "deno vendor output directory is not supported. If you wish to use ",
+          "an import map while vendoring, please specify one located outside ",
+          "this directory."
         ),
         import_map_path
           .strip_prefix(&cwd)
@@ -126,6 +140,9 @@ fn validate_output_dir(
           .display()
           .to_string(),
       );
+
+      // don't use an import map in the config
+      options.set_import_map_specifier(None);
     }
   }
 
@@ -134,12 +151,12 @@ fn validate_output_dir(
 
 fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
   assert!(output_dir.is_absolute());
-  let config_file_specifier = match ps.config.maybe_config_file_specifier() {
+  let config_file_specifier = match ps.options.maybe_config_file_specifier() {
     Some(f) => f,
     None => return false,
   };
   let fmt_config = ps
-    .config
+    .options
     .to_fmt_config()
     .unwrap_or_default()
     .unwrap_or_default();
@@ -263,11 +280,11 @@ async fn create_graph(
     Permissions::allow_all(),
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-  let maybe_imports = ps.config.to_maybe_imports()?;
+  let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_import_map_resolver =
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
   let maybe_jsx_resolver = ps
-    .config
+    .options
     .to_maybe_jsx_import_source_module()
     .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
   let maybe_resolver = if maybe_jsx_resolver.is_some() {

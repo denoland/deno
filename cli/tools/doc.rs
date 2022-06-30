@@ -122,7 +122,7 @@ pub async fn print_docs(
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
-      get_types(ps.config.unstable()).into(),
+      get_types(ps.options.unstable()).into(),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;

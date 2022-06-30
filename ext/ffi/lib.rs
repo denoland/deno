@@ -810,12 +810,16 @@ where
               )
             })?
             .get_backing_store();
-          let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+          let pointer = if byte_offset > 0 {
+            &backing_store[byte_offset..] as *const _ as *const u8
+          } else {
+            &backing_store[..] as *const _ as *const u8
+          };
           ffi_args.push(NativeValue { pointer });
         } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
         {
           let backing_store = value.get_backing_store();
-          let pointer = &backing_store as *const _ as *const u8;
+          let pointer = &backing_store[..] as *const _ as *const u8;
           ffi_args.push(NativeValue { pointer });
         } else {
           return Err(type_error("Invalid FFI pointer type, expected null, BigInt, ArrayBuffer, or ArrayBufferView"));
@@ -995,13 +999,17 @@ where
               )
             })?
             .get_backing_store();
-          let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+          let pointer = if byte_offset > 0 {
+            &backing_store[byte_offset..] as *const _ as *const u8
+          } else {
+            &backing_store[..] as *const _ as *const u8
+          };
 
           ffi_args.push(NativeValue { pointer });
         } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
         {
           let backing_store = value.get_backing_store();
-          let pointer = &backing_store as *const _ as *const u8;
+          let pointer = &backing_store[..] as *const _ as *const u8;
 
           ffi_args.push(NativeValue { pointer });
         } else {
@@ -1367,11 +1375,15 @@ unsafe fn do_ffi_callback(
           .buffer(&mut scope)
           .expect("Unable to deserialize result parameter.")
           .get_backing_store();
-        let pointer = &backing_store[byte_offset] as *const _ as *const u8;
+        let pointer = if byte_offset > 0 {
+          &backing_store[byte_offset..] as *const _ as *const u8
+        } else {
+          &backing_store[..] as *const _ as *const u8
+        };
         *(result as *mut *const u8) = pointer;
       } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
         let backing_store = value.get_backing_store();
-        let pointer = &backing_store as *const _ as *const u8;
+        let pointer = &backing_store[..] as *const _ as *const u8;
         *(result as *mut *const u8) = pointer;
       } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut u64) = value.u64_value().0;

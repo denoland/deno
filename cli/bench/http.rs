@@ -53,6 +53,29 @@ pub fn benchmark(
           maybe_lua,
         )?,
       );
+    } else if name.starts_with("bun") && !cfg!(target_os = "windows") {
+      // Bun does not support Windows.
+      #[cfg(target_arch = "x86_64")]
+      #[cfg(not(target_vendor = "apple"))]
+      let bun_exe = test_util::prebuilt_tool_path("bun");
+      #[cfg(target_vendor = "apple")]
+      #[cfg(target_arch = "x86_64")]
+      let bun_exe = test_util::prebuilt_tool_path("bun-x64");
+      #[cfg(target_vendor = "apple")]
+      #[cfg(target_arch = "aarch64")]
+      let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
+
+      // bun <path> <port>
+      res.insert(
+        file_stem.to_string(),
+        run(
+          &[bun_exe.to_str().unwrap(), path, &port.to_string()],
+          port,
+          None,
+          None,
+          maybe_lua,
+        )?,
+      );
     } else {
       // deno run -A --unstable <path> <addr>
       res.insert(

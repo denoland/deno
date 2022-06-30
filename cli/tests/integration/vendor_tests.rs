@@ -73,43 +73,6 @@ fn output_dir_exists() {
 }
 
 #[test]
-fn import_map_output_dir() {
-  let t = TempDir::new();
-  t.write("mod.ts", "");
-  t.create_dir_all("vendor");
-  t.write(
-    "vendor/import_map.json",
-    "{ \"imports\": { \"https://localhost/\": \"./localhost/\" }}",
-  );
-
-  let deno = util::deno_cmd()
-    .current_dir(t.path())
-    .env("NO_COLOR", "1")
-    .arg("vendor")
-    .arg("--force")
-    .arg("--import-map")
-    .arg("vendor/import_map.json")
-    .arg("mod.ts")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr).trim(),
-    format!(
-      concat!(
-        "error: Specifying an import map file ({}) in the deno vendor ",
-        "output directory is not supported. Please specify no import ",
-        "map or one located outside this directory.",
-      ),
-      PathBuf::from("vendor").join("import_map.json").display(),
-    ),
-  );
-  assert!(!output.status.success());
-}
-
-#[test]
 fn standard_test() {
   let _server = http_server();
   let t = TempDir::new();
@@ -182,6 +145,57 @@ fn standard_test() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "");
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted");
+  assert!(output.status.success());
+}
+
+#[test]
+fn import_map_output_dir() {
+  let _server = http_server();
+  let t = TempDir::new();
+  t.write("mod.ts", "");
+  t.create_dir_all("vendor");
+  t.write(
+    "vendor/import_map.json",
+    // will be ignored
+    "{ \"imports\": { \"https://localhost:4545/\": \"./localhost/\" }}",
+  );
+  t.write(
+    "deno.json",
+    "{ \"import_map\": \"./vendor/import_map.json\" }",
+  );
+  t.write(
+    "my_app.ts",
+    "import {Logger} from 'http://localhost:4545/vendor/logger.ts'; new Logger().log('outputted');",
+  );
+
+  let deno = util::deno_cmd()
+    .current_dir(t.path())
+    .env("NO_COLOR", "1")
+    .arg("vendor")
+    .arg("--force")
+    .arg("--import-map")
+    .arg("vendor/import_map.json")
+    .arg("my_app.ts")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(
+    String::from_utf8_lossy(&output.stderr).trim(),
+    format!(
+      concat!(
+        "Ignoring import map. Specifying an import map file ({}) in the deno ",
+        "vendor output directory is not supported. If you wish to use an ",
+        "import map while vendoring, please specify one located outside this ",
+        "directory.\n",
+        "Download http://localhost:4545/vendor/logger.ts\n",
+        "{}",
+      ),
+      PathBuf::from("vendor").join("import_map.json").display(),
+      success_text_updated_deno_json("1 module", "vendor/"),
+    )
+  );
   assert!(output.status.success());
 }
 
@@ -487,16 +501,8 @@ fn update_existing_config_test() {
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
-      concat!(
-        "Download http://localhost:4545/vendor/logger.ts\n",
-        "Vendored 1 module into vendor2 directory.\n\n",
-        "Updated your local Deno configuration file with a reference to the ",
-        "new vendored import map at {}. Invoking Deno subcommands will ",
-        "now automatically resolve using the vendored modules. You may override ",
-        "this by providing the `--import-map <other-import-map>` flag or by ",
-        "manually editing your Deno configuration file."
-      ),
-      PathBuf::from("vendor2").join("import_map.json").display(),
+      "Download http://localhost:4545/vendor/logger.ts\n{}",
+      success_text_updated_deno_json("1 module", "vendor2",)
     )
   );
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
@@ -540,4 +546,28 @@ fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
     );
   }
   text
+}
+
+fn success_text_updated_deno_json(module_count: &str, dir: &str) -> String {
+  format!(
+    concat!(
+      "Vendored {} into {} directory.\n\n",
+      "Updated your local Deno configuration file with a reference to the ",
+      "new vendored import map at {}import_map.json. Invoking Deno subcommands will ",
+      "now automatically resolve using the vendored modules. You may override ",
+      "this by providing the `--import-map <other-import-map>` flag or by ",
+      "manually editing your Deno configuration file.",
+    ),
+    module_count,
+    dir,
+    if dir != "vendor/" {
+      format!(
+        "{}{}",
+        dir.trim_end_matches('/'),
+        if cfg!(windows) { '\\' } else { '/' }
+      )
+    } else {
+      dir.to_string()
+    }
+  )
 }
