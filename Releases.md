@@ -8,15 +8,15 @@ https://github.com/denoland/deno_install
 
 ### 1.23.2 / 2022.06.30
 
-- feat(ext/ffi): Thread safe callbacks (#14942)
+- feat(unstable/ffi): thread safe callbacks (#14942)
 - fix(core): don't panic on non-existent cwd (#14957)
 - fix(docs): --watch arg is stable (#14970)
 - fix(dts/ffi): non-exact types break FFI inference (#14968)
 - fix(ext/crypto): add EcdhKeyDeriveParams to deriveKey types (#15005)
-- fix(ext/ffi): Empty buffers error with index out of bounds on FFI (#14997)
+- fix(ext/ffi): empty buffers error with index out of bounds on FFI (#14997)
 - fix(ext/web): remove `ErrorEventInit`'s error default (#14809)
 - fix(lsp): restart TS language service when caching dependencies (#14979)
-- fix(modules): Immediately resolve follow-up dyn imports to a dyn imported
+- fix(modules): immediately resolve follow-up dyn imports to a dyn imported
   module (#14958)
 - fix(runtime): derive default for deno_runtime::ExitCode (#15017)
 - fix(task): remove --no-config as task subcommand argument (#14983)
