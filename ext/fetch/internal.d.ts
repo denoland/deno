@@ -87,9 +87,9 @@ declare namespace globalThis {
       function redirectStatus(status: number): boolean;
       function nullBodyStatus(status: number): boolean;
       function newInnerRequest(
-        method: string,
-        url: any,
-        headerList?: [string, string][],
+        method: () => string,
+        url: () => any,
+        headerList?: () => [string, string][],
         body?: globalThis.__bootstrap.fetchBody.InnerBody,
       ): InnerResponse;
       function toInnerResponse(response: Response): InnerResponse;

@@ -117,7 +117,7 @@
         return null;
       }
 
-      const streamRid = nextRequest;
+      const [streamRid, method, url] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -125,14 +125,14 @@
       // There might be a body, but we don't expose it for GET/HEAD requests.
       // It will be closed automatically once the request has been handled and
       // the response has been sent.
-      // if (method !== "GET" && method !== "HEAD") {
-      //   body = createRequestBodyStream(streamRid);
-      // }
+      if (method !== "GET" && method !== "HEAD") {
+        body = createRequestBodyStream(streamRid);
+      }
 
       const innerRequest = newInnerRequest(
-        "GET", // method,
-        "", // url,
-        [], // headersList,
+        method,
+        url,
+        () => core.opSync("op_http_headers", streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -183,6 +183,7 @@
     request,
   ) {
     return async function respondWith(resp) {
+      let streamClosed = false;
       try {
         resp = await resp;
         if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
@@ -249,18 +250,28 @@
         const ws = resp[_ws];
 
         try {
-          // Try to close the stream resource to save
-          // calls to `close()`
-          const closeStream = !isStreamingResponseBody || !!deferred || !!ws;
-          core.opSync(
-            "op_http_write_headers",
-            streamRid,
-            innerResp.status ?? 200,
-            innerResp.headerList,
-            isStreamingResponseBody ? null : respBody,
-            closeStream,
-          );
-          if (closeStream === true) {
+          if (isStreamingResponseBody === true) {
+            core.opSync(
+              "op_http_write_headers",
+              streamRid,
+              innerResp.status ?? 200,
+              innerResp.headerList,
+            );
+          } else {
+            // Try to close the stream resource to save
+            // calls to `close()`
+            streamClosed = !!deferred || !!ws;
+            core.opSync(
+              "op_http_write_headers_with_data",
+              streamRid,
+              innerResp.status ?? 200,
+              innerResp.headerList,
+              respBody,
+              streamClosed,
+            );
+          }
+          if (streamClosed === true) {
+            core.opAsync("op_http_closed_conn", streamRid);
             SetPrototypeDelete(httpConn.managedResources, streamRid);
             return;
           }
@@ -402,7 +413,10 @@
           ws[_serverHandleIdleTimeout]();
         }
       } finally {
-        if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
+        if (
+          streamClosed === false &&
+          SetPrototypeDelete(httpConn.managedResources, streamRid)
+        ) {
           core.close(streamRid);
         }
       }

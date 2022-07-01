@@ -8,12 +8,13 @@ console.log("Server listening on", addr);
 const encoder = new TextEncoder();
 const body = encoder.encode("Hello World");
 
+async function handle(conn) {
+  const requests = Deno.serveHttp(conn);
+  for await (const event of requests) {
+    event.respondWith(new Response(body));
+  }
+}
+
 for await (const conn of listener) {
-  (async () => {
-    const requests = Deno.serveHttp(conn);
-    for await (const event of requests) {
-      event.respondWith(new Response(body))
-        .catch((e) => console.log(e));
-    }
-  })();
+  handle(conn);
 }

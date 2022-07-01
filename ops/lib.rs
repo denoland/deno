@@ -361,7 +361,7 @@ fn codegen_sync_ret(
 
   if is_u32_rv(output) {
     return quote! {
-      rv.set_uint32(result);
+      rv.set_uint32(result as u32);
     };
   }
 
@@ -421,9 +421,7 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 
 /// Detects if the type can be set using `rv.set_uint32` fast path
 fn is_u32_rv(ty: impl ToTokens) -> bool {
-  ["u32", "u8", "u16"]
-    .iter()
-    .any(|&s| tokens(&ty).contains(s))
+  ["u32", "u8", "u16"].iter().any(|&s| tokens(&ty) == s)
 }
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
