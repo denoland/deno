@@ -42,7 +42,7 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           # use a recent version instead of the latest version in case
-          # the latest version ever has issues
+          # the latest version ever has issues that breaks publishing
           deno-version: v1.23.2
 
       - name: Run version bump
