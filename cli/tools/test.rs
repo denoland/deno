@@ -8,7 +8,6 @@ use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
 use crate::display;
-use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -54,6 +53,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -619,27 +619,33 @@ impl TestReporter for PrettyTestReporter {
 
     let mut summary_result = String::new();
 
-    summary_result.push_str(&format!(
+    write!(
+      summary_result,
       "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-    ));
+    )
+    .unwrap();
 
     let ignored_steps = get_steps_text(summary.ignored_steps);
     if summary.ignored > 0 || !ignored_steps.is_empty() {
-      summary_result
-        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
-    };
+      write!(
+        summary_result,
+        " | {} ignored{}",
+        summary.ignored, ignored_steps
+      )
+      .unwrap()
+    }
 
     if summary.measured > 0 {
-      summary_result.push_str(&format!(" | {} measured", summary.measured,))
-    };
+      write!(summary_result, " | {} measured", summary.measured,).unwrap();
+    }
 
     if summary.filtered_out > 0 {
-      summary_result
-        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+      write!(summary_result, " | {} filtered out", summary.filtered_out)
+        .unwrap()
     };
 
     println!(
@@ -892,7 +898,7 @@ fn extract_files_from_regex_blocks(
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
         let text = line.get(1).unwrap();
-        file_source.push_str(&format!("{}\n", text.as_str()));
+        writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
@@ -1020,8 +1026,8 @@ pub async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
-  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
+  let lib = ps.options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
     ps.clone(),
     specifiers
@@ -1050,7 +1056,7 @@ pub async fn check_specifiers(
     ps.prepare_module_load(
       specifiers,
       false,
-      lib.clone(),
+      lib,
       Permissions::allow_all(),
       permissions.clone(),
       false,
@@ -1089,7 +1095,7 @@ async fn test_specifiers(
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.flags.log_level;
+  let log_level = ps.options.log_level();
   let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
@@ -1333,8 +1339,9 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
     test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
@@ -1347,20 +1354,14 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  let lib = if ps.flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
-
-  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone(), lib)
+  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
     .await?;
 
   if test_flags.no_run {
     return Ok(());
   }
 
-  let compat = ps.flags.compat;
+  let compat = ps.options.compat();
   test_specifiers(
     ps,
     permissions,
@@ -1383,20 +1384,14 @@ pub async fn run_tests_with_watch(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.permissions_options());
-
-  let lib = if flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
 
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
+  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
@@ -1411,23 +1406,16 @@ pub async fn run_tests_with_watch(
 
     let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    });
+    let maybe_jsx_resolver = ps
+      .options
+      .to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_imports());
+    let maybe_imports_result = ps.options.to_maybe_imports();
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false);
+    let check_js = ps.options.check_js();
 
     async move {
       let test_modules = if test_flags.doc {
@@ -1445,11 +1433,7 @@ pub async fn run_tests_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let maybe_imports = if let Some(result) = maybe_imports {
-        result?
-      } else {
-        None
-      };
+      let maybe_imports = maybe_imports_result?;
       let maybe_resolver = if maybe_jsx_resolver.is_some() {
         maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
       } else {
@@ -1560,12 +1544,12 @@ pub async fn run_tests_with_watch(
     })
   };
 
+  let cli_options = ps.options.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let flags = flags.clone();
+    let cli_options = cli_options.clone();
     let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
-    let lib = lib.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -1584,13 +1568,8 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(
-        &ps,
-        permissions.clone(),
-        specifiers_with_mode.clone(),
-        lib,
-      )
-      .await?;
+      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
+        .await?;
 
       if test_flags.no_run {
         return Ok(());
@@ -1601,7 +1580,7 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
-          compat_mode: flags.compat,
+          compat_mode: cli_options.compat(),
           concurrent_jobs: test_flags.concurrent_jobs,
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
@@ -1620,7 +1599,7 @@ pub async fn run_tests_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !flags.no_clear_screen,
+      clear_screen: !cli_options.no_clear_screen(),
     },
   )
   .await?;
