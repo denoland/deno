@@ -450,37 +450,9 @@ async fn info_command(
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
-      ps.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
-    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_import_map_resolver =
-      ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
-    let maybe_resolver = if maybe_jsx_resolver.is_some() {
-      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      maybe_import_map_resolver
-        .as_ref()
-        .map(|im| im.as_resolver())
-    };
-    let graph = deno_graph::create_graph(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
-      false,
-      None,
-      &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      None,
-      None,
-    )
-    .await;
+    let graph = ps
+      .create_graph(vec![(specifier, deno_graph::ModuleKind::Esm)])
+      .await?;
 
     if info_flags.json {
       write_json_to_stdout(&json!(graph))?;
