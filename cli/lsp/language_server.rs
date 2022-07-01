@@ -13,6 +13,7 @@ use log::error;
 use log::warn;
 use serde_json::from_value;
 use std::env;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
@@ -2878,7 +2879,8 @@ impl Inner {
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.get_workspace_settings();
 
-      contents.push_str(&format!(
+      write!(
+        contents,
         r#"# Deno Language Server Status
 
 ## Workspace Settings
@@ -2914,16 +2916,19 @@ impl Inner {
           .map(|m| m.to_string())
           .collect::<Vec<String>>()
           .join("\n    - ")
-      ));
+      )
+      .unwrap();
       contents
         .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
       let mut averages = self.performance.averages();
       averages.sort();
       for average in averages {
-        contents.push_str(&format!(
+        writeln!(
+          contents,
           "|{}|{}ms|{}|\n",
           average.name, average.average_duration, average.count
-        ));
+        )
+        .unwrap();
       }
       Some(contents)
     } else {

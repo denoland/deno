@@ -573,9 +573,8 @@ where
         // By default, Err returned by this function does not tell
         // which symbol wasn't exported. So we'll modify the error
         // message to include the name of symbol.
-        //
-        // SAFETY: The obtained T symbol is the size of a pointer.
         let fn_ptr =
+          // SAFETY: The obtained T symbol is the size of a pointer.
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
             Err(err) => Err(generic_error(format!(
