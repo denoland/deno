@@ -271,7 +271,6 @@
             );
           }
           if (streamClosed === true) {
-            core.opAsync("op_http_closed_conn", streamRid);
             SetPrototypeDelete(httpConn.managedResources, streamRid);
             return;
           }
@@ -290,6 +289,7 @@
           ) {
             await respBody.cancel(error);
           }
+          await core.opAsync("op_http_closed_conn", streamRid);
           throw error;
         }
 
