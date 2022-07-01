@@ -8,11 +8,14 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_graph::ModuleKind;
+use deno_runtime::tokio_util::run_basic;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
 use serde_json::from_value;
 use std::env;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
@@ -54,14 +57,18 @@ use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
+use crate::args::CliOptions;
 use crate::args::ConfigFile;
+use crate::args::Flags;
 use crate::args::FmtConfig;
 use crate::args::LintConfig;
 use crate::args::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
+use crate::graph_util::graph_valid;
 use crate::proc_state::import_map_from_text;
+use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -103,8 +110,6 @@ pub struct Inner {
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_cache_path: Option<PathBuf>,
-  /// A lazily created "server" for handling cache requests.
-  maybe_cache_server: Option<cache::CacheServer>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
@@ -245,7 +250,6 @@ impl Inner {
       diagnostics_server,
       documents,
       maybe_cache_path: None,
-      maybe_cache_server: None,
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
@@ -428,7 +432,6 @@ impl Inner {
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
-    self.maybe_cache_server = None;
     let maybe_cache = self.config.get_workspace_settings().cache;
     let maybe_cache_path = if let Some(cache_str) = &maybe_cache {
       lsp_log!("Setting cache path from: \"{}\"", cache_str);
@@ -488,7 +491,6 @@ impl Inner {
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
-    self.maybe_cache_server = None;
     let maybe_import_map_url = if let Some(import_map_str) =
       self.config.get_workspace_settings().import_map
     {
@@ -2774,6 +2776,16 @@ impl Inner {
     &mut self,
     params: lsp_custom::CacheParams,
   ) -> LspResult<Option<Value>> {
+    async fn create_graph_for_caching(
+      cli_options: CliOptions,
+      roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    ) -> Result<(), AnyError> {
+      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+      let graph = ps.create_graph(roots).await?;
+      graph_valid(&graph, true, false)?;
+      Ok(())
+    }
+
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -2795,21 +2807,26 @@ impl Inner {
       vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
     };
 
-    if self.maybe_cache_server.is_none() {
-      self.maybe_cache_server = Some(
-        cache::CacheServer::new(
-          self.maybe_cache_path.clone(),
-          self.maybe_import_map.clone(),
-          self.maybe_config_file.clone(),
-          None,
-          None,
-          None,
-        )
-        .await,
-      );
-    }
-    let cache_server = self.maybe_cache_server.as_ref().unwrap();
-    if let Err(err) = cache_server.cache(roots).await {
+    let mut cli_options = CliOptions::new(
+      Flags {
+        cache_path: self.maybe_cache_path.clone(),
+        ca_stores: None,
+        ca_file: None,
+        unsafely_ignore_certificate_errors: None,
+        ..Default::default()
+      },
+      self.maybe_config_file.clone(),
+    );
+    cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
+
+    // todo(dsherret): why is running this on a new thread necessary? It does
+    // a compile error otherwise.
+    let handle = tokio::task::spawn_blocking(|| {
+      run_basic(
+        async move { create_graph_for_caching(cli_options, roots).await },
+      )
+    });
+    if let Err(err) = handle.await.unwrap() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
@@ -2878,7 +2895,8 @@ impl Inner {
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.get_workspace_settings();
 
-      contents.push_str(&format!(
+      write!(
+        contents,
         r#"# Deno Language Server Status
 
 ## Workspace Settings
@@ -2914,16 +2932,19 @@ impl Inner {
           .map(|m| m.to_string())
           .collect::<Vec<String>>()
           .join("\n    - ")
-      ));
+      )
+      .unwrap();
       contents
         .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
       let mut averages = self.performance.averages();
       averages.sort();
       for average in averages {
-        contents.push_str(&format!(
+        writeln!(
+          contents,
           "|{}|{}ms|{}|\n",
           average.name, average.average_duration, average.count
-        ));
+        )
+        .unwrap();
       }
       Some(contents)
     } else {

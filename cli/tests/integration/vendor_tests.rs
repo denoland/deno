@@ -3,6 +3,7 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use pretty_assertions::assert_eq;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::process::Stdio;
 use test_util as util;
@@ -530,20 +531,19 @@ fn update_existing_config_test() {
 fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
   let mut text = format!("Vendored {} into {} directory.", module_count, dir);
   if has_import_map {
-    text.push_str(&
-      format!(
-        concat!(
-          "\n\nTo use vendored modules, specify the `--import-map {}import_map.json` flag when ",
-          r#"invoking Deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,
-          "entry to a deno.json file.",
-        ),
-        if dir != "vendor/" {
-          format!("{}{}", dir.trim_end_matches('/'), if cfg!(windows) { '\\' } else {'/'})
-        } else {
-          dir.to_string()
-        }
-      )
+    let f = format!(
+      concat!(
+        "\n\nTo use vendored modules, specify the `--import-map {}import_map.json` flag when ",
+        r#"invoking Deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,
+        "entry to a deno.json file.",
+      ),
+      if dir != "vendor/" {
+        format!("{}{}", dir.trim_end_matches('/'), if cfg!(windows) { '\\' } else {'/'})
+      } else {
+        dir.to_string()
+      }
     );
+    write!(text, "{}", f).unwrap();
   }
   text
 }

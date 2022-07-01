@@ -3,7 +3,6 @@
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TypeCheckMode;
-use crate::cache;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
@@ -18,11 +17,8 @@ use crate::fs_util::is_supported_test_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
-use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -53,6 +49,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -618,27 +615,33 @@ impl TestReporter for PrettyTestReporter {
 
     let mut summary_result = String::new();
 
-    summary_result.push_str(&format!(
+    write!(
+      summary_result,
       "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-    ));
+    )
+    .unwrap();
 
     let ignored_steps = get_steps_text(summary.ignored_steps);
     if summary.ignored > 0 || !ignored_steps.is_empty() {
-      summary_result
-        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
-    };
+      write!(
+        summary_result,
+        " | {} ignored{}",
+        summary.ignored, ignored_steps
+      )
+      .unwrap()
+    }
 
     if summary.measured > 0 {
-      summary_result.push_str(&format!(" | {} measured", summary.measured,))
-    };
+      write!(summary_result, " | {} measured", summary.measured,).unwrap();
+    }
 
     if summary.filtered_out > 0 {
-      summary_result
-        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+      write!(summary_result, " | {} filtered out", summary.filtered_out)
+        .unwrap()
     };
 
     println!(
@@ -891,7 +894,7 @@ fn extract_files_from_regex_blocks(
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
         let text = line.get(1).unwrap();
-        file_source.push_str(&format!("{}\n", text.as_str()));
+        writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
@@ -1387,28 +1390,13 @@ pub async fn run_tests_with_watch(
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
-      ps.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
-
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_import_map_resolver =
-      ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
-    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports_result = ps.options.to_maybe_imports();
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps.options.check_js();
+    let ps = ps.clone();
 
     async move {
       let test_modules = if test_flags.doc {
@@ -1426,29 +1414,15 @@ pub async fn run_tests_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let maybe_imports = maybe_imports_result?;
-      let maybe_resolver = if maybe_jsx_resolver.is_some() {
-        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-      } else {
-        maybe_import_map_resolver
-          .as_ref()
-          .map(|im| im.as_resolver())
-      };
-      let graph = deno_graph::create_graph(
-        test_modules
-          .iter()
-          .map(|s| (s.clone(), ModuleKind::Esm))
-          .collect(),
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await;
-      graph_valid(&graph, !no_check, check_js)?;
+      let graph = ps
+        .create_graph(
+          test_modules
+            .iter()
+            .map(|s| (s.clone(), ModuleKind::Esm))
+            .collect(),
+        )
+        .await?;
+      graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {

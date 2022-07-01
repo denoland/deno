@@ -50,6 +50,7 @@ impl V8Slice {
   }
 
   fn as_slice_mut(&mut self) -> &mut [u8] {
+    #[allow(clippy::cast_ref_to_mut)]
     // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
     // it points to a fixed continuous slice of bytes on the heap.
     // It's safe-ish to mutate concurrently because it can not be
@@ -59,7 +60,6 @@ impl V8Slice {
     // concurrent mutation is simply an accepted fact of life.
     // And in practice V8Slices also do not have overallping read/write phases.
     // TLDR: permissive interior mutability on slices of bytes is "fine"
-    #[allow(clippy::cast_ref_to_mut)]
     unsafe {
       &mut *(&self.store[self.range.clone()] as *const _ as *mut [u8])
     }
