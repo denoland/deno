@@ -53,6 +53,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -618,27 +619,33 @@ impl TestReporter for PrettyTestReporter {
 
     let mut summary_result = String::new();
 
-    summary_result.push_str(&format!(
+    write!(
+      summary_result,
       "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-    ));
+    )
+    .unwrap();
 
     let ignored_steps = get_steps_text(summary.ignored_steps);
     if summary.ignored > 0 || !ignored_steps.is_empty() {
-      summary_result
-        .push_str(&format!(" | {} ignored{}", summary.ignored, ignored_steps))
-    };
+      write!(
+        summary_result,
+        " | {} ignored{}",
+        summary.ignored, ignored_steps
+      )
+      .unwrap()
+    }
 
     if summary.measured > 0 {
-      summary_result.push_str(&format!(" | {} measured", summary.measured,))
-    };
+      write!(summary_result, " | {} measured", summary.measured,).unwrap();
+    }
 
     if summary.filtered_out > 0 {
-      summary_result
-        .push_str(&format!(" | {} filtered out", summary.filtered_out,))
+      write!(summary_result, " | {} filtered out", summary.filtered_out)
+        .unwrap()
     };
 
     println!(
@@ -891,7 +898,7 @@ fn extract_files_from_regex_blocks(
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
         let text = line.get(1).unwrap();
-        file_source.push_str(&format!("{}\n", text.as_str()));
+        writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(

@@ -785,7 +785,7 @@ impl JsRuntime {
     }
   }
 
-  fn pump_v8_message_loop(&mut self) {
+  fn pump_v8_message_loop(&mut self) -> Result<(), Error> {
     let scope = &mut self.handle_scope();
     while v8::Platform::pump_message_loop(
       &v8::V8::get_current_platform(),
@@ -795,7 +795,12 @@ impl JsRuntime {
       // do nothing
     }
 
-    scope.perform_microtask_checkpoint();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    tc_scope.perform_microtask_checkpoint();
+    match tc_scope.exception() {
+      None => Ok(()),
+      Some(exception) => exception_to_err_result(tc_scope, exception, false),
+    }
   }
 
   pub fn poll_value(
@@ -877,7 +882,7 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    self.pump_v8_message_loop();
+    self.pump_v8_message_loop()?;
 
     // Ops
     {
@@ -1007,7 +1012,8 @@ Pending dynamic modules:\n".to_string();
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
             .unwrap();
-          msg.push_str(&format!("- {}", module_info.name.as_str()));
+          msg.push_str("- ");
+          msg.push_str(module_info.name.as_str());
         }
         return Poll::Ready(Err(generic_error(msg)));
       } else {
@@ -2295,6 +2301,56 @@ pub mod tests {
       "Promise resolution is still pending but the event loop has already resolved.",
       error_string,
     );
+  }
+
+  #[test]
+  fn terminate_execution_webassembly() {
+    let (mut isolate, _dispatch_count) = setup(Mode::Async);
+    let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
+
+    let terminator_thread = std::thread::spawn(move || {
+      // allow deno to boot and run
+      std::thread::sleep(std::time::Duration::from_millis(1000));
+
+      // terminate execution
+      let ok = v8_isolate_handle.terminate_execution();
+      assert!(ok);
+    });
+
+    // Run an infinite loop in Webassemby code, which should be terminated.
+    isolate.execute_script("infinite_wasm_loop.js",
+                                 r#"
+                                 (async () => {
+                                 console.log("Begin");
+                                  const wasmCode = new Uint8Array([
+                                      0,    97,   115,  109,  1,    0,    0,    0,    1,   4,    1,
+                                      96,   0,    0,    3,    2,    1,    0,    7,    17,  1,    13,
+                                      105,  110,  102,  105,  110,  105,  116,  101,  95,  108,  111,
+                                      111,  112,  0,    0,    10,   9,    1,    7,    0,   3,    64,
+                                      12,   0,    11,   11,
+                                  ]);
+                                  const wasmModule = await WebAssembly.compile(wasmCode);
+                                  const wasmInstance = new WebAssembly.Instance(wasmModule);
+                                  wasmInstance.exports.infinite_loop();
+                                  })();
+                                      "#).expect("wasm infinite loop failed");
+    match futures::executor::block_on(isolate.run_event_loop(false)) {
+      Ok(_) => panic!("execution should be terminated"),
+      Err(e) => {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
+      }
+    }
+    // Cancel the execution-terminating exception in order to allow script
+    // execution again.
+    let ok = isolate.v8_isolate().cancel_terminate_execution();
+    assert!(ok);
+
+    // Verify that the isolate usable again.
+    isolate
+      .execute_script("simple.js", "1 + 1")
+      .expect("execution should be possible again");
+
+    terminator_thread.join().unwrap();
   }
 
   #[test]

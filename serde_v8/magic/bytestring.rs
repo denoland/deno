@@ -51,9 +51,9 @@ impl FromV8 for ByteString {
     }
     let len = v8str.length();
     let mut buffer = SmallVec::with_capacity(len);
+    #[allow(clippy::uninit_vec)]
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
-    #[allow(clippy::uninit_vec)]
     unsafe {
       buffer.set_len(len);
       let written = v8str.write_one_byte(
