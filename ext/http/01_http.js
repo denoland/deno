@@ -32,8 +32,12 @@
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
-  const { Deferred, getReadableStreamRid, readableStreamClose } =
-    window.__bootstrap.streams;
+  const {
+    Deferred,
+    getReadableStreamRid,
+    readableStreamClose,
+    isReadableStreamDisturbed,
+  } = window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
@@ -57,12 +61,14 @@
 
   const connErrorSymbol = Symbol("connError");
   const _deferred = Symbol("upgradeHttpDeferred");
+  const _remoteAddr = Symbol("remoteAddr");
+  const _localAddr = Symbol("localAddr");
 
   class HttpConn {
     #rid = 0;
     #closed = false;
-    #remoteAddr;
-    #localAddr;
+    [_remoteAddr];
+    [_localAddr];
 
     // This set holds resource ids of resources
     // that were created during lifecycle of this request.
@@ -72,8 +78,8 @@
 
     constructor(rid, remoteAddr, localAddr) {
       this.#rid = rid;
-      this.#remoteAddr = remoteAddr;
-      this.#localAddr = localAddr;
+      this[_remoteAddr] = remoteAddr;
+      this[_localAddr] = localAddr;
     }
 
     /** @returns {number} */
@@ -111,7 +117,7 @@
         return null;
       }
 
-      const [streamRid, method, headersList, url] = nextRequest;
+      const streamRid = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -119,14 +125,14 @@
       // There might be a body, but we don't expose it for GET/HEAD requests.
       // It will be closed automatically once the request has been handled and
       // the response has been sent.
-      if (method !== "GET" && method !== "HEAD") {
-        body = createRequestBodyStream(streamRid);
-      }
+      // if (method !== "GET" && method !== "HEAD") {
+      //   body = createRequestBodyStream(streamRid);
+      // }
 
       const innerRequest = newInnerRequest(
-        method,
-        url,
-        headersList,
+        "GET", // method,
+        "", // url,
+        [], // headersList,
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -137,8 +143,6 @@
         this,
         streamRid,
         request,
-        this.#remoteAddr,
-        this.#localAddr,
       );
 
       return { request, respondWith };
@@ -177,8 +181,6 @@
     httpConn,
     streamRid,
     request,
-    remoteAddr,
-    localAddr,
   ) {
     return async function respondWith(resp) {
       try {
@@ -190,22 +192,25 @@
         }
 
         const innerResp = toInnerResponse(resp);
-
         // If response body length is known, it will be sent synchronously in a
         // single op, in other case a "response body" resource will be created and
         // we'll be streaming it.
         /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
         let respBody = null;
+        let isStreamingResponseBody = false;
         if (innerResp.body !== null) {
-          if (innerResp.body.unusable()) {
-            throw new TypeError("Body is unusable.");
-          }
           if (
             ObjectPrototypeIsPrototypeOf(
               ReadableStreamPrototype,
               innerResp.body.streamOrStatic,
             )
           ) {
+            if (
+              innerResp.body.streamOrStatic.locked ||
+              isReadableStreamDisturbed(innerResp.body.streamOrStatic)
+            ) {
+              throw new TypeError("Body is unusable.");
+            }
             if (
               innerResp.body.length === null ||
               ObjectPrototypeIsPrototypeOf(
@@ -225,25 +230,40 @@
                 if (!r2.done) throw new TypeError("Unreachable");
               }
             }
+            isStreamingResponseBody = !(
+              typeof respBody === "string" ||
+              ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+            );
           } else {
+            if (innerResp.body.streamOrStatic.consumed === true) {
+              throw new TypeError("Body is unusable.");
+            }
             innerResp.body.streamOrStatic.consumed = true;
             respBody = innerResp.body.streamOrStatic.body;
           }
         } else {
           respBody = new Uint8Array(0);
         }
-        const isStreamingResponseBody = !(
-          typeof respBody === "string" ||
-          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
-        );
+
+        const deferred = request[_deferred];
+        const ws = resp[_ws];
+
         try {
-          await core.opAsync(
+          // Try to close the stream resource to save
+          // calls to `close()`
+          const closeStream = !isStreamingResponseBody || !!deferred || !!ws;
+          core.opSync(
             "op_http_write_headers",
             streamRid,
             innerResp.status ?? 200,
             innerResp.headerList,
             isStreamingResponseBody ? null : respBody,
+            closeStream,
           );
+          if (closeStream === true) {
+            SetPrototypeDelete(httpConn.managedResources, streamRid);
+            return;
+          }
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
           if (
@@ -330,23 +350,34 @@
           }
         }
 
-        const deferred = request[_deferred];
         if (deferred) {
           const res = await core.opAsync("op_http_upgrade", streamRid);
           let conn;
           if (res.connType === "tcp") {
-            conn = new TcpConn(res.connRid, remoteAddr, localAddr);
+            conn = new TcpConn(
+              res.connRid,
+              httpConn[_remoteAddr],
+              httpConn[_localAddr],
+            );
           } else if (res.connType === "tls") {
-            conn = new TlsConn(res.connRid, remoteAddr, localAddr);
+            conn = new TlsConn(
+              res.connRid,
+              httpConn[_remoteAddr],
+              httpConn[_localAddr],
+            );
           } else if (res.connType === "unix") {
-            conn = new UnixConn(res.connRid, remoteAddr, localAddr);
+            conn = new UnixConn(
+              res.connRid,
+              httpConn[_remoteAddr],
+              httpConn[_localAddr],
+            );
           } else {
             throw new Error("unreachable");
           }
 
           deferred.resolve([conn, res.readBuf]);
         }
-        const ws = resp[_ws];
+
         if (ws) {
           const wsRid = await core.opAsync(
             "op_http_upgrade_websocket",

@@ -44,6 +44,7 @@ use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
+use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
 use serde::Serialize;
@@ -88,6 +89,7 @@ pub fn init() -> Extension {
     .build()
 }
 
+#[derive(Debug)]
 pub enum HttpSocketAddr {
   IpSocket(std::net::SocketAddr),
   #[cfg(unix)]
@@ -107,6 +109,7 @@ impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
   }
 }
 
+#[derive(Debug)]
 struct HttpConnResource {
   addr: HttpSocketAddr,
   scheme: &'static str,
@@ -163,7 +166,7 @@ impl HttpConnResource {
   // Accepts a new incoming HTTP request.
   async fn accept(
     self: &Rc<Self>,
-  ) -> Result<Option<HttpStreamResource>, AnyError> {
+  ) -> Result<Option<(HttpStreamResource, &'static HeaderMap)>, AnyError> {
     let fut = async {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
@@ -172,13 +175,15 @@ impl HttpConnResource {
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
 
       let request = request_rx.await.ok()?;
+      let headers: &'static HeaderMap =
+        unsafe { std::mem::transmute(request.headers()) };
       let stream = HttpStreamResource::new(self, request, response_tx);
-      Some(stream)
+      Some((stream, headers))
     };
 
     async {
       match fut.await {
-        Some(stream) => Ok(Some(stream)),
+        Some((stream, header)) => Ok(Some((stream, header))),
         // Return the connection error, if any.
         None => self.closed().map_ok(|_| None).await,
       }
@@ -265,6 +270,7 @@ impl Service<Request<Body>> for HttpService {
 /// A pair of one-shot channels which first transfer a HTTP request from the
 /// Hyper service to the HttpConn resource, and then take the Response back to
 /// the service.
+#[derive(Debug)]
 struct HttpAcceptor {
   request_tx: oneshot::Sender<Request<Body>>,
   response_rx: oneshot::Receiver<Response<Body>>,
@@ -294,6 +300,7 @@ impl HttpAcceptor {
 }
 
 /// A resource representing a single HTTP request/response stream.
+#[derive(Debug)]
 pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
   pub rd: AsyncRefCell<HttpRequestReader>,
@@ -375,26 +382,19 @@ struct NextRequestResponse(
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<Option<NextRequestResponse>, AnyError> {
+) -> Result<Option<ResourceId>, AnyError> {
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
-  let stream = match conn.accept().await {
-    Ok(Some(stream)) => Rc::new(stream),
+  let (stream, headers) = match conn.accept().await {
+    Ok(Some(stream)) => stream,
     Ok(None) => return Ok(None),
     Err(err) => return Err(err),
   };
 
-  let rd = RcRef::map(&stream, |r| &r.rd).borrow().await;
-  let request = match &*rd {
-    HttpRequestReader::Headers(request) => request,
-    _ => unreachable!(),
-  };
-
   stream.accept_encoding.replace({
-    let encodings = fly_accept_encoding::encodings_iter(request.headers())
-      .filter(|r| {
-        matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
-      });
+    let encodings = fly_accept_encoding::encodings_iter(headers).filter(|r| {
+      matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
+    });
 
     fly_accept_encoding::preferred(encodings)
       .ok()
@@ -402,14 +402,9 @@ async fn op_http_accept(
       .unwrap_or(Encoding::Identity)
   });
 
-  let method = request.method().to_string();
-  let headers = req_headers(request);
-  let url = req_url(request, conn.scheme(), conn.addr());
-
-  let stream_rid = state.borrow_mut().resource_table.add_rc(stream);
-
-  let r = NextRequestResponse(stream_rid, method, headers, url);
-  Ok(Some(r))
+  Ok(Some(
+    state.borrow_mut().resource_table.add_rc(Rc::new(stream)),
+  ))
 }
 
 fn req_url(
@@ -492,19 +487,31 @@ fn req_headers(
 }
 
 #[op]
-async fn op_http_write_headers(
+fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   rid: u32,
   status: u16,
   headers: Vec<(ByteString, ByteString)>,
   data: Option<StringOrBuffer>,
-) -> Result<(), AnyError> {
-  let stream = state
-    .borrow_mut()
-    .resource_table
-    .get::<HttpStreamResource>(rid)?;
+  close_stream: bool,
+) -> u8 {
+  let stream = if close_stream {
+    state
+      .borrow_mut()
+      .resource_table
+      .take::<HttpStreamResource>(rid)
+      .unwrap()
+  } else {
+    state
+      .borrow()
+      .resource_table
+      .get::<HttpStreamResource>(rid)
+      .unwrap()
+  };
 
   // Track supported encoding
+  // TODO(@littledivy): RefCell turns mem reads into mem writes.
+  // maybe use AtomicU8?
   let encoding = *stream.accept_encoding.borrow();
 
   let mut builder = Response::builder();
@@ -516,8 +523,8 @@ async fn op_http_write_headers(
   for (k, v) in headers.into_iter() {
     let v: Vec<u8> = v.into();
     hmap.append(
-      HeaderName::try_from(k.as_slice())?,
-      HeaderValue::try_from(v)?,
+      HeaderName::try_from(k.as_slice()).unwrap(),
+      HeaderValue::try_from(v).unwrap(),
     );
   }
   ensure_vary_accept_encoding(hmap);
@@ -543,24 +550,45 @@ async fn op_http_write_headers(
     );
   }
 
-  let (new_wr, body) = http_response(data, compressing, encoding)?;
-  let body = builder.status(status).body(body)?;
+  let (new_wr, body) = http_response(data, compressing, encoding).unwrap();
+  let body = builder.status(status).body(body).unwrap();
+  // Fast path for non-streaming bodies.
+  // We already know if we `took` the stream resource, so just unwrap
+  // the inner stream instead of going through the RcRef path.
+  if close_stream {
+    let response_tx = match Rc::try_unwrap(stream).unwrap().wr.into_inner() {
+      HttpResponseWriter::Headers(response_tx) => response_tx,
+      _ => return 1,
+    };
 
-  let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
+    return match response_tx.send(body) {
+      Ok(_) => 0,
+      Err(_) => {
+        // stream.conn.closed().await?;
+        1
+      }
+    };
+  }
+
+  let mut old_wr = match RcRef::map(&stream, |r| &r.wr).try_borrow_mut() {
+    Some(x) => x,
+    None => return 1,
+  };
   let response_tx = match replace(&mut *old_wr, new_wr) {
     HttpResponseWriter::Headers(response_tx) => response_tx,
-    _ => return Err(http_error("response headers already sent")),
+    _ => return 1,
   };
 
   match response_tx.send(body) {
-    Ok(_) => Ok(()),
+    Ok(_) => 0,
     Err(_) => {
-      stream.conn.closed().await?;
-      Err(http_error("connection closed while sending response"))
+      // stream.conn.closed().await?;
+      1
     }
   }
 }
 
+#[inline]
 fn http_response(
   data: Option<StringOrBuffer>,
   compressing: bool,
@@ -635,6 +663,7 @@ fn weaken_etag(hmap: &mut hyper::HeaderMap) {
 // Note: we set the header irrespective of whether or not we compress the data
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
+#[inline]
 fn ensure_vary_accept_encoding(hmap: &mut hyper::HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY) {
     if let Ok(s) = v.to_str() {

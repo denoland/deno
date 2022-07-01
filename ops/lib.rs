@@ -359,6 +359,12 @@ fn codegen_sync_ret(
     return quote! {};
   }
 
+  if is_u32_rv(output) {
+    return quote! {
+      rv.set_uint32(result);
+    };
+  }
+
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
   let ok_block = if is_unit_result(output) {
     quote! {}
@@ -411,6 +417,13 @@ fn is_result(ty: impl ToTokens) -> bool {
 /// Detects if a type is of the form Result<(), Err>
 fn is_unit_result(ty: impl ToTokens) -> bool {
   is_result(&ty) && tokens(&ty).contains("Result < ()")
+}
+
+/// Detects if the type can be set using `rv.set_uint32` fast path
+fn is_u32_rv(ty: impl ToTokens) -> bool {
+  ["u32", "u8", "u16"]
+    .iter()
+    .any(|&s| tokens(&ty).contains(s))
 }
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
