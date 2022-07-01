@@ -1012,7 +1012,8 @@ Pending dynamic modules:\n".to_string();
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
             .unwrap();
-          msg.push_str(&format!("- {}", module_info.name.as_str()));
+          msg.push_str("- ");
+          msg.push_str(module_info.name.as_str());
         }
         return Poll::Ready(Err(generic_error(msg)));
       } else {
