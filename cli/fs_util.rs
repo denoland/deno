@@ -259,10 +259,7 @@ where
       prepared.push(url);
       continue;
     } else if lowercase_path.starts_with("file://") {
-      let mut from = 7;
-      if cfg!(target_os = "windows") {
-        from += 1;
-      }
+      let from = if cfg!(target_os = "windows") { 8 } else { 7 };
       path = path[from..].to_string();
     }
 
@@ -709,10 +706,15 @@ mod tests {
 
     assert_eq!(result, expected);
 
+    let scheme = if cfg!(target_os = "windows") {
+      "file:///"
+    } else {
+      "file://"
+    };
     let result = collect_specifiers(
       vec![format!(
         "{}{}",
-        "file://",
+        scheme,
         root_dir_path.join("child").to_str().unwrap()
       )],
       &[],
