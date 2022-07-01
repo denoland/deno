@@ -31,6 +31,9 @@ pub fn benchmark(
     let entry = entry?;
     let pathbuf = entry.path();
     let path = pathbuf.to_str().unwrap();
+    if path.ends_with(".lua") {
+      continue;
+    }
     let name = entry.file_name().into_string().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
