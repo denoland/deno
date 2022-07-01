@@ -259,7 +259,11 @@ where
       prepared.push(url);
       continue;
     } else if lowercase_path.starts_with("file://") {
-      path = path[7..].to_string();
+      let mut from = 7;
+      if cfg!(target_os = "windows") {
+        from += 1;
+      }
+      path = path[from..].to_string();
     }
 
     let p = normalize_path(&root_path.join(path));
