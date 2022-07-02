@@ -591,6 +591,47 @@ impl ProcState {
       )),
     }
   }
+
+  pub async fn create_graph(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = cache::FetchCacher::new(
+      self.dir.gen_cache.clone(),
+      self.file_fetcher.clone(),
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    );
+    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_import_map_resolver =
+      self.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_jsx_resolver = self
+      .options
+      .to_maybe_jsx_import_source_module()
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+    let maybe_resolver = if maybe_jsx_resolver.is_some() {
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
+    };
+
+    Ok(
+      deno_graph::create_graph(
+        roots,
+        false,
+        maybe_imports,
+        &mut cache,
+        maybe_resolver,
+        maybe_locker,
+        None,
+        None,
+      )
+      .await,
+    )
+  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
