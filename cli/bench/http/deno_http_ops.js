@@ -17,7 +17,7 @@ class Http {
     };
   }
 }
-
+const hello = Deno.core.encode("Hello World");
 for await (const conn of tcp) {
   const id = Deno.core.opSync("op_http_start", conn.rid);
   const http = new Http(id);
@@ -25,14 +25,14 @@ for await (const conn of tcp) {
     for await (const req of http) {
       if (req == null) continue;
       const { 0: stream } = req;
-      await Deno.core.opAsync(
-        "op_http_write_headers",
+      Deno.core.opSync(
+        "op_http_write_headers_with_data",
         stream,
         200,
         [],
-        "Hello World",
+        hello,
+        true,
       );
-      Deno.core.close(stream);
     }
   })();
 }
