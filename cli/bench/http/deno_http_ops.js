@@ -1,6 +1,7 @@
-const { opSync, opAsync } = Deno.core;
-
-const tcp = Deno.listen({ port: 4500 });
+const addr = Deno.args[0] || "127.0.0.1:4500";
+const [hostname, port] = addr.split(":");
+const tcp = Deno.listen({ hostname, port: Number(port) });
+console.log("Server listening on", addr);
 
 class Http {
   id;
@@ -10,7 +11,7 @@ class Http {
   [Symbol.asyncIterator]() {
     return {
       next: async () => {
-        const reqEvt = await opAsync("op_http_accept", this.id);
+        const reqEvt = await Deno.core.opAsync("op_http_accept", this.id);
         return { value: reqEvt ?? undefined, done: reqEvt === null };
       },
     };
@@ -18,20 +19,20 @@ class Http {
 }
 
 for await (const conn of tcp) {
-  const id = opSync("op_http_start", conn.rid);
+  const id = Deno.core.opSync("op_http_start", conn.rid);
   const http = new Http(id);
   (async () => {
     for await (const req of http) {
       if (req == null) continue;
-      const { 3: url, 0: stream, 1: method, 2: headers } = req;
-      opSync(
-        "op_http_write_headers_with_data",
+      const { 0: stream } = req;
+      await Deno.core.opAsync(
+        "op_http_write_headers",
         stream,
         200,
         [],
         "Hello World",
-        true,
       );
+      Deno.core.close(stream);
     }
   })();
 }
