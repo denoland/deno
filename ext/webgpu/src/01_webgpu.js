@@ -48,6 +48,32 @@
     Uint8Array,
   } = window.__bootstrap.primordials;
 
+
+  const _rid = Symbol("[[rid]]");
+  const _size = Symbol("[[size]]");
+  const _usage = Symbol("[[usage]]");
+  const _state = Symbol("[[state]]");
+  const _mappingRange = Symbol("[[mapping_range]]");
+  const _mappedRanges = Symbol("[[mapped_ranges]]");
+  const _mapMode = Symbol("[[map_mode]]");
+  const _adapter = Symbol("[[adapter]]");
+  const _cleanup = Symbol("[[cleanup]]");
+  const _vendor = Symbol("[[vendor]]");
+  const _architecture = Symbol("[[architecture]]");
+  const _description = Symbol("[[description]]");
+  const _limits = Symbol("[[limits]]");
+  const _features = Symbol("[[features]]");
+  const _reason = Symbol("[[reason]]");
+  const _message = Symbol("[[message]]");
+  const _label = Symbol("[[label]]");
+  const _device = Symbol("[[device]]");
+  const _queue = Symbol("[[queue]]");
+  const _views = Symbol("[[views]]");
+  const _texture = Symbol("[[texture]]");
+  const _encoders = Symbol("[[encoders]]");
+  const _encoder = Symbol("[[encoder]]");
+  const _descriptor = Symbol("[[descriptor]]");
+
   /**
    * @param {any} self
    * @param {{prefix: string, context: string}} opts
@@ -233,8 +259,6 @@
   }
   const GPUPrototype = GPU.prototype;
 
-  const _adapter = Symbol("[[adapter]]");
-  const _cleanup = Symbol("[[cleanup]]");
 
   /**
    * @typedef InnerGPUAdapter
@@ -370,9 +394,6 @@
   }
   const GPUAdapterPrototype = GPUAdapter.prototype;
 
-  const _vendor = Symbol("[[vendor]]");
-  const _architecture = Symbol("[[architecture]]");
-  const _description = Symbol("[[description]]");
   class GPUAdapterInfo {
     /** @type {string} */
     [_vendor];
@@ -418,8 +439,6 @@
     }
   }
   const GPUAdapterInfoPrototype = GPUAdapterInfo.prototype;
-
-  const _limits = Symbol("[[limits]]");
 
   function createGPUSupportedLimits(features) {
     /** @type {GPUSupportedLimits} */
@@ -576,8 +595,6 @@
   }
   const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 
-  const _features = Symbol("[[features]]");
-
   function createGPUSupportedFeatures(features) {
     /** @type {GPUSupportedFeatures} */
     const adapterFeatures = webidl.createBranded(GPUSupportedFeatures);
@@ -643,9 +660,6 @@
 
   const GPUSupportedFeaturesPrototype = GPUSupportedFeatures.prototype;
 
-  const _reason = Symbol("[[reason]]");
-  const _message = Symbol("[[message]]");
-
   /**
    * @param {string | undefined} reason
    * @param {string} message
@@ -687,7 +701,6 @@
 
   const GPUDeviceLostInfoPrototype = GPUDeviceLostInfo.prototype;
 
-  const _label = Symbol("[[label]]");
 
   /**
    * @param {string} name
@@ -716,9 +729,6 @@
       },
     });
   }
-
-  const _device = Symbol("[[device]]");
-  const _queue = Symbol("[[queue]]");
 
   /**
    * @typedef ErrorScope
@@ -1720,15 +1730,6 @@
   }
   GPUObjectBaseMixin("GPUQueue", GPUQueue);
 
-  const _rid = Symbol("[[rid]]");
-
-  const _size = Symbol("[[size]]");
-  const _usage = Symbol("[[usage]]");
-  const _state = Symbol("[[state]]");
-  const _mappingRange = Symbol("[[mapping_range]]");
-  const _mappedRanges = Symbol("[[mapped_ranges]]");
-  const _mapMode = Symbol("[[map_mode]]");
-
   /**
    * @typedef CreateGPUBufferOptions
    * @property {ArrayBuffer | null} mapping
@@ -2091,8 +2092,6 @@
     }
   }
 
-  const _views = Symbol("[[views]]");
-
   /**
    * @param {string | null} label
    * @param {InnerGPUDevice} device
@@ -2201,8 +2200,6 @@
       return 0x10;
     }
   }
-
-  const _texture = Symbol("[[texture]]");
 
   /**
    * @param {string | null} label
@@ -2660,8 +2657,6 @@
       return 0xF;
     }
   }
-
-  const _encoders = Symbol("[[encoders]]");
 
   /**
    * @param {string | null} label
@@ -3394,8 +3389,6 @@
   }
   GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
   const GPUCommandEncoderPrototype = GPUCommandEncoder.prototype;
-
-  const _encoder = Symbol("[[encoder]]");
 
   /**
    * @param {string | null} label
@@ -5189,8 +5182,6 @@
     }
   }
   GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
-
-  const _descriptor = Symbol("[[descriptor]]");
 
   /**
    * @param {string | null} label
