@@ -78,7 +78,16 @@
     }
     return {
       method,
-      headerList,
+      headerListInner: null,
+      get headerList() {
+        if (this.headerListInner === null) {
+          this.headerListInner = headerList();
+        }
+        return this.headerListInner;
+      },
+      set headerList(value) {
+        this.headerListInner = value;
+      },
       body,
       redirectMode: "follow",
       redirectCount: 0,
@@ -285,7 +294,7 @@
       }
 
       // 30.
-      this[_headers] = headersFromHeaderList(request.headerList(), "request");
+      this[_headers] = headersFromHeaderList(request.headerList, "request");
 
       // 32.
       if (ObjectKeys(init).length > 0) {
@@ -470,7 +479,7 @@
     const request = webidl.createBranded(Request);
     request[_request] = inner;
     request[_signal] = signal;
-    request[_getHeaders] = inner.headerList;
+    request[_getHeaders] = () => inner.headerList;
     return request;
   }
 
