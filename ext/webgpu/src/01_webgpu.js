@@ -48,7 +48,6 @@
     Uint8Array,
   } = window.__bootstrap.primordials;
 
-
   const _rid = Symbol("[[rid]]");
   const _size = Symbol("[[size]]");
   const _usage = Symbol("[[usage]]");
@@ -258,7 +257,6 @@
     }
   }
   const GPUPrototype = GPU.prototype;
-
 
   /**
    * @typedef InnerGPUAdapter
@@ -700,7 +698,6 @@
   }
 
   const GPUDeviceLostInfoPrototype = GPUDeviceLostInfo.prototype;
-
 
   /**
    * @param {string} name
