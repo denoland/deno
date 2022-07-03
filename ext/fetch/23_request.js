@@ -43,6 +43,8 @@
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
+  const _getHeaders = Symbol("get headers");
+  const _headersCache = Symbol("headers cache");
   const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
@@ -52,7 +54,7 @@
    * @property {string} method
    * @property {() => string} url
    * @property {() => string} currentUrl
-   * @property {[string, string][]} headerList
+   * @property {() => [string, string][]} headerList
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
@@ -64,7 +66,7 @@
   /**
    * @param {string} method
    * @param {string} url
-   * @param {[string, string][]} headerList
+   * @param {() => [string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @param {boolean} maybeBlob
    * @returns
@@ -167,7 +169,24 @@
     /** @type {InnerRequest} */
     [_request];
     /** @type {Headers} */
-    [_headers];
+    [_headersCache];
+    [_getHeaders];
+
+    /** @type {Headers} */
+    get [_headers]() {
+      if (this[_headersCache] === undefined) {
+        this[_headersCache] = headersFromHeaderList(
+          this[_getHeaders](),
+          "request",
+        );
+      }
+      return this[_headersCache];
+    }
+
+    set [_headers](value) {
+      this[_headersCache] = value;
+    }
+
     /** @type {AbortSignal} */
     [_signal];
     get [_mimeType]() {
@@ -210,7 +229,7 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, [], null, true);
+        request = newInnerRequest("GET", parsedURL.href, () => [], null, true);
       } else { // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
@@ -266,7 +285,7 @@
       }
 
       // 30.
-      this[_headers] = headersFromHeaderList(request.headerList, "request");
+      this[_headers] = headersFromHeaderList(request.headerList(), "request");
 
       // 32.
       if (ObjectKeys(init).length > 0) {
@@ -451,7 +470,7 @@
     const request = webidl.createBranded(Request);
     request[_request] = inner;
     request[_signal] = signal;
-    request[_headers] = headersFromHeaderList(inner.headerList, guard);
+    request[_getHeaders] = inner.headerList;
     return request;
   }
 
