@@ -365,6 +365,12 @@ fn codegen_sync_ret(
     };
   }
 
+  if is_bool_rv(output) {
+    return quote! {
+      rv.set_bool(result);
+    };
+  }
+
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
   let ok_block = if is_unit_result(output) {
     quote! {}
@@ -372,6 +378,10 @@ fn codegen_sync_ret(
     quote! {
       rv.set_uint32(result as u32);
     }
+  } else if is_bool_rv_result(output) {
+    return quote! {
+      rv.set_bool(result);
+    };
   } else {
     quote! {
       match #core::serde_v8::to_v8(scope, result) {
@@ -421,6 +431,15 @@ fn is_result(ty: impl ToTokens) -> bool {
 /// Detects if the type can be set using `rv.set_uint32` fast path
 fn is_u32_rv(ty: impl ToTokens) -> bool {
   ["u32", "u8", "u16"].iter().any(|&s| tokens(&ty) == s) || is_resource_id(&ty)
+}
+
+/// Detects if the type can be set using `rv.set_bool` fast path
+fn is_bool_rv(ty: impl ToTokens) -> bool {
+  ["bool"].iter().any(|&s| tokens(&ty) == s)
+}
+
+fn is_bool_rv_result(ty: impl ToTokens) -> bool {
+  is_result(&ty) && tokens(&ty).contains("Result < bool")
 }
 
 /// Detects if the type is of the format Result<u32/u8/u16, Err>
