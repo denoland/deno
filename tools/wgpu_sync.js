@@ -3,10 +3,9 @@
 
 import { join, ROOT_PATH, walk } from "./util.js";
 
-// const COMMIT = "c00e471274b6c21acda89b4b13d41742c0285d71"; // Release 12
-const COMMIT = "c4aa3eaed020a640fec06b48f0a5ea93490d41bb"; // tip of PR (needs merge)
-const REPO = "kvark/wgpu";
-const V_WGPU = "0.12";
+const COMMIT = "076df1a56812eee01614b7a3a4c88798012e79ab";
+const REPO = "gfx-rs/wgpu";
+const V_WGPU = "0.13";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {

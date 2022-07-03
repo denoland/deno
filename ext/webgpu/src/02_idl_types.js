@@ -41,7 +41,7 @@
   } = window.__bootstrap.webgpu;
   const { SymbolIterator, TypeError } = window.__bootstrap.primordials;
 
-  // This needs to be initialized after all of the base classes are implemented,
+  // This needs to be initalized after all of the base classes are implmented,
   // otherwise their converters might not be available yet.
   // DICTIONARY: GPUObjectDescriptorBase
   const dictMembersGPUObjectDescriptorBase = [
@@ -120,6 +120,7 @@
       "texture-compression-astc",
       "timestamp-query",
       "indirect-first-instance",
+      "shader-f16",
       // extended from spec
       "mappable-primary-buffers",
       "texture-binding-array",
@@ -341,6 +342,8 @@
       "depth24plus",
       "depth24plus-stencil8",
       "depth32float",
+      "depth24unorm-stencil8",
+      "depth32float-stencil8",
       "bc1-rgba-unorm",
       "bc1-rgba-unorm-srgb",
       "bc2-rgba-unorm",
@@ -393,8 +396,6 @@
       "astc-12x10-unorm-srgb",
       "astc-12x12-unorm",
       "astc-12x12-unorm-srgb",
-      "depth24unorm-stencil8",
-      "depth32float-stencil8",
     ],
   );
 
@@ -539,6 +540,15 @@
     ],
   );
 
+  // ENUM: GPUMipmapFilterMode
+  webidl.converters["GPUMipmapFilterMode"] = webidl.createEnumConverter(
+    "GPUMipmapFilterMode",
+    [
+      "nearest",
+      "linear",
+    ],
+  );
+
   // ENUM: GPUCompareFunction
   webidl.converters["GPUCompareFunction"] = webidl.createEnumConverter(
     "GPUCompareFunction",
@@ -583,7 +593,7 @@
     },
     {
       key: "mipmapFilter",
-      converter: webidl.converters["GPUFilterMode"],
+      converter: webidl.converters["GPUMipmapFilterMode"],
       defaultValue: "nearest",
     },
     {
@@ -937,7 +947,10 @@
 
   // DICTIONARY: GPUPipelineDescriptorBase
   const dictMembersGPUPipelineDescriptorBase = [
-    { key: "layout", converter: webidl.converters["GPUPipelineLayout"] },
+    {
+      key: "layout",
+      converter: webidl.converters["GPUPipelineLayout"],
+    },
   ];
   webidl.converters["GPUPipelineDescriptorBase"] = webidl
     .createDictionaryConverter(
@@ -1675,6 +1688,7 @@
   // ENUM: GPULoadOp
   webidl.converters["GPULoadOp"] = webidl.createEnumConverter("GPULoadOp", [
     "load",
+    "clear",
   ]);
 
   // DICTIONARY: GPUColorDict
@@ -1724,8 +1738,12 @@
     },
     { key: "resolveTarget", converter: webidl.converters["GPUTextureView"] },
     {
-      key: "loadValue",
-      converter: webidl.converters.any, /** put union here! **/
+      key: "clearValue",
+      converter: webidl.converters["GPUColor"],
+    },
+    {
+      key: "loadOp",
+      converter: webidl.converters["GPULoadOp"],
       required: true,
     },
     {
@@ -1748,14 +1766,17 @@
       required: true,
     },
     {
-      key: "depthLoadValue",
-      converter: webidl.converters.any, /** put union here! **/
-      required: true,
+      key: "depthClearValue",
+      converter: webidl.converters["float"],
+      defaultValue: 0,
+    },
+    {
+      key: "depthLoadOp",
+      converter: webidl.converters["GPULoadOp"],
     },
     {
       key: "depthStoreOp",
       converter: webidl.converters["GPUStoreOp"],
-      required: true,
     },
     {
       key: "depthReadOnly",
@@ -1763,14 +1784,17 @@
       defaultValue: false,
     },
     {
-      key: "stencilLoadValue",
-      converter: webidl.converters.any, /** put union here! **/
-      required: true,
+      key: "stencilClearValue",
+      converter: webidl.converters["GPUStencilValue"],
+      defaultValue: 0,
+    },
+    {
+      key: "stencilLoadOp",
+      converter: webidl.converters["GPULoadOp"],
     },
     {
       key: "stencilStoreOp",
       converter: webidl.converters["GPUStoreOp"],
-      required: true,
     },
     {
       key: "stencilReadOnly",
