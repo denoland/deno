@@ -184,10 +184,7 @@
     /** @type {Headers} */
     get [_headers]() {
       if (this[_headersCache] === undefined) {
-        this[_headersCache] = headersFromHeaderList(
-          this[_getHeaders](),
-          "request",
-        );
+        this[_headersCache] = this[_getHeaders]();
       }
       return this[_headersCache];
     }
