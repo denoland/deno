@@ -479,7 +479,7 @@
     const request = webidl.createBranded(Request);
     request[_request] = inner;
     request[_signal] = signal;
-    request[_getHeaders] = () => inner.headerList;
+    request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
     return request;
   }
 
