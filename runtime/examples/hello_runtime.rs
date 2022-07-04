@@ -58,7 +58,6 @@ async fn main() -> Result<(), AnyError> {
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
     stdio: Default::default(),
-    startup_snapshot: None,
   };
 
   let js_path =

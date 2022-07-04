@@ -25,7 +25,17 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
-deno_runtime = { version = "0.67.0", path = "../runtime" }
+deno_broadcast_channel = { version = "0.53.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.59.0", path = "../ext/console" }
+deno_core = { version = "0.141.0", path = "../core" }
+deno_crypto = { version = "0.73.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.82.0", path = "../ext/fetch" }
+deno_net = { version = "0.51.0", path = "../ext/net" }
+deno_url = { version = "0.59.0", path = "../ext/url" }
+deno_web = { version = "0.90.0", path = "../ext/web" }
+deno_webgpu = { version = "0.60.0", path = "../ext/webgpu" }
+deno_websocket = { version = "0.64.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.54.0", path = "../ext/webstorage" }
 regex = "=1.5.6"
 serde = { version = "=1.0.136", features = ["derive"] }
 zstd = '=0.11.1'
@@ -42,7 +52,6 @@ deno_emit = "0.3.0"
 deno_graph = "0.28.0"
 deno_lint = { version = "0.31.0", features = ["docs"] }
 deno_runtime = { version = "0.67.0", path = "../runtime" }
-deno_snapshots = { version = "0.1.0", path = "../snapshots" }
 deno_task_shell = "0.4.0"
 
 atty = "=0.2.14"
