@@ -14,7 +14,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
-use std::cell::Ref;
 use std::cell::RefCell;
 use std::path::PathBuf;
 
