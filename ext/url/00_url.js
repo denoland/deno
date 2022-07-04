@@ -409,7 +409,11 @@
         context: "Argument 1",
       });
       try {
-        this[_url].hostname = opUrlReparse(this[_rid], SET_HOSTNAME, value);
+        this[_url][SET_HOSTNAME] = opUrlReparse(
+          this[_rid],
+          SET_HOSTNAME,
+          value,
+        );
       } catch {
         /* pass */
       }
