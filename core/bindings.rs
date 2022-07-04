@@ -271,6 +271,55 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let main_key = v8::String::new(scope, "main").unwrap();
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
+
+  let resolve_key = v8::String::new(scope, "resolve").unwrap();
+  let val = v8::Function::new(scope, import_meta_resolve).unwrap();
+  val.set_name(resolve_key);
+  meta.set(scope, resolve_key.into(), val.into());
+}
+
+fn import_meta_resolve(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if args.length() < 1
+    || !args.get(0).is_string()
+    || (args.length() == 2 && !args.get(1).is_string())
+  {
+    return throw_type_error(scope, "Invalid arguments");
+  }
+
+  let referrer = if args.length() == 2 {
+    let str = v8::Local::<v8::String>::try_from(args.get(1)).unwrap();
+    str.to_rust_string_lossy(scope)
+  } else {
+    let receiver = args.this();
+    let url_key = v8::String::new(scope, "url").unwrap();
+    let url_prop = receiver.get(scope, url_key.into()).unwrap();
+    url_prop.to_rust_string_lossy(scope)
+  };
+  let specifier = v8::Local::<v8::String>::try_from(args.get(0)).unwrap();
+  let module_map_rc = JsRuntime::module_map(scope);
+  let loader = {
+    let module_map = module_map_rc.borrow();
+    module_map.loader.clone()
+  };
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+  rv.set(promise.into());
+
+  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
+  {
+    Ok(resolved) => {
+      let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
+      resolver.resolve(scope, resolved_val);
+    }
+    Err(err) => {
+      let rejected_val = serde_v8::to_v8(scope, err.to_string()).unwrap();
+      resolver.reject(scope, rejected_val);
+    }
+  };
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
