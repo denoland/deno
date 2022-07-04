@@ -1191,12 +1191,13 @@
         }
       });
 
-      const { rid, err } = core.opSync("op_webgpu_create_bind_group", {
-        deviceRid: device.rid,
-        label: descriptor.label,
+      const { rid, err } = core.opSync(
+        "op_webgpu_create_bind_group",
+        device.rid,
+        descriptor.label,
         layout,
         entries,
-      });
+      );
       device.pushError(err);
 
       const bindGroup = createGPUBindGroup(
