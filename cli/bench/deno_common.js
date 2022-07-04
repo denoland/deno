@@ -55,7 +55,6 @@ function benchUrlParse() {
   benchSync("url_parse", 5e4, (i) => {
     url = new URL(`http://www.google.com/${i}`);
   });
-  console.log(url.toString());
   benchSync("url_parse_get_path", 5e4, () => {
     url.pathname;
   });
