@@ -397,7 +397,11 @@
         const preResource = pre[resource];
         const postResource = post[resource];
         if (preResource === postResource) continue;
-        if (ArrayPrototypeIncludes(resourceAllowList, postResource)) continue;
+        if (
+          ArrayPrototypeIncludes(resourceAllowList, preResource || postResource)
+        ) {
+          continue;
+        }
 
         if (preResource === undefined) {
           const [name, action1, action2] = prettyResourceNames(postResource);

@@ -13,6 +13,7 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -56,7 +57,7 @@ pub fn op_url_parse(
   state: &mut OpState,
   href: String,
   base_href: Option<String>,
-) -> Result<u32, AnyError> {
+) -> Result<ResourceId, AnyError> {
   let base_url = base_href
     .as_ref()
     .map(|b| Url::parse(b).map_err(|_| type_error("Invalid base URL")))
@@ -89,7 +90,7 @@ pub enum UrlSetter {
 #[op]
 pub fn op_url_get(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   getter: u8,
 ) -> Result<String, AnyError> {
   let resource = state.resource_table.get::<UrlResource>(rid)?;
@@ -118,7 +119,7 @@ pub fn op_url_get(
 #[op]
 pub fn op_url_reparse(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   setter_opts: (u8, String),
 ) -> Result<String, AnyError> {
   let resource = state.resource_table.get::<UrlResource>(rid)?;
