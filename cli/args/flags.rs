@@ -20,6 +20,8 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use super::flags_allow_net;
+
 static LONG_VERSION: Lazy<String> = Lazy::new(|| {
   format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
@@ -232,7 +234,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
@@ -303,7 +305,6 @@ pub struct Flags {
   pub compat: bool,
   pub no_prompt: bool,
   pub reload: bool,
-  pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -569,7 +570,6 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
 }
 
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
-  flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
@@ -1053,7 +1053,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 
   // deno-fmt-ignore-file",
     )
-    .args(config_args())
+    .arg(config_arg())
+    .arg(no_config_arg())
     .arg(
       Arg::new("check")
         .long("check")
@@ -1163,7 +1164,8 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hide(true))
-    .args(config_args())
+    .arg(no_config_arg())
+    .arg(config_arg())
     .arg(import_map_arg())
     .arg(
       Arg::new("json")
@@ -1342,7 +1344,8 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .conflicts_with("rules")
         .help("Exclude lint rules"),
     )
-    .args(config_args())
+    .arg(no_config_arg())
+    .arg(config_arg())
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1433,7 +1436,7 @@ Specifying the filename '-' to read the file from stdin.
 fn task_subcommand<'a>() -> Command<'a> {
   Command::new("task")
     .trailing_var_arg(true)
-    .args(config_args())
+    .arg(config_arg())
     .arg(
       Arg::new("cwd")
         .long("cwd")
@@ -1685,7 +1688,8 @@ Remote modules and multiple modules may also be specified:
         )
         .takes_value(false),
     )
-    .args(config_args())
+    .arg(no_config_arg())
+    .arg(config_arg())
     .arg(import_map_arg())
     .arg(lock_arg())
     .arg(reload_arg())
@@ -1696,7 +1700,8 @@ fn compile_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
-    .args(config_args())
+    .arg(no_config_arg())
+    .arg(config_arg())
     .arg(no_check_arg())
     .arg(check_arg())
     .arg(reload_arg())
@@ -1709,7 +1714,8 @@ fn compile_args_without_check_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
-    .args(config_args())
+    .arg(config_arg())
+    .arg(no_config_arg())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -1746,7 +1752,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .help("Allow network access")
-        .validator(crate::flags_allow_net::validator),
+        .validator(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
@@ -2093,22 +2099,22 @@ static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
   )
 });
 
-fn config_args<'a>() -> [Arg<'a>; 2] {
-  [
-    Arg::new("config")
-      .short('c')
-      .long("config")
-      .value_name("FILE")
-      .help("Specify the configuration file")
-      .long_help(CONFIG_HELP.as_str())
-      .takes_value(true)
-      .value_hint(ValueHint::FilePath)
-      .conflicts_with("no-config"),
-    Arg::new("no-config")
-      .long("no-config")
-      .help("Disable automatic loading of the configuration file.")
-      .conflicts_with("config"),
-  ]
+fn config_arg<'a>() -> Arg<'a> {
+  Arg::new("config")
+    .short('c')
+    .long("config")
+    .value_name("FILE")
+    .help("Specify the configuration file")
+    .long_help(CONFIG_HELP.as_str())
+    .takes_value(true)
+    .value_hint(ValueHint::FilePath)
+}
+
+fn no_config_arg<'a>() -> Arg<'a> {
+  Arg::new("no-config")
+    .long("no-config")
+    .help("Disable automatic loading of the configuration file.")
+    .conflicts_with("config")
 }
 
 fn no_remote_arg<'a>() -> Arg<'a> {
@@ -2126,7 +2132,7 @@ fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
     .require_equals(true)
     .value_name("HOSTNAMES")
     .help("DANGER: Disables verification of TLS certificates")
-    .validator(crate::flags_allow_net::validator)
+    .validator(flags_allow_net::validator)
 }
 
 fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -2549,7 +2555,11 @@ fn task_parse(
   matches: &clap::ArgMatches,
   raw_args: &[String],
 ) {
-  config_args_parse(flags, matches);
+  flags.config_flag = if let Some(config) = matches.value_of("config") {
+    ConfigFlag::Path(config.to_string())
+  } else {
+    ConfigFlag::Discover
+  };
 
   let mut task_flags = TaskFlags {
     cwd: None,
@@ -2773,7 +2783,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   if let Some(net_wl) = matches.values_of("allow-net") {
     let net_allowlist: Vec<String> =
-      crate::flags_allow_net::parse(net_wl.map(ToString::to_string).collect())
+      flags_allow_net::parse(net_wl.map(ToString::to_string).collect())
         .unwrap();
     flags.allow_net = Some(net_allowlist);
   }
@@ -2831,8 +2841,7 @@ fn unsafely_ignore_certificate_errors_parse(
 ) {
   if let Some(ic_wl) = matches.values_of("unsafely-ignore-certificate-errors") {
     let ic_allowlist: Vec<String> =
-      crate::flags_allow_net::parse(ic_wl.map(ToString::to_string).collect())
-        .unwrap();
+      flags_allow_net::parse(ic_wl.map(ToString::to_string).collect()).unwrap();
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 }
@@ -4011,7 +4020,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: None
@@ -4036,7 +4044,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: None
@@ -4074,7 +4081,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
@@ -4099,7 +4105,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: Some(vec![
             "./a.js".to_string(),
@@ -4759,7 +4764,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
@@ -4834,7 +4838,6 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        repl: true,
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: None
@@ -5783,6 +5786,12 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn task_subcommand_noconfig_invalid() {
+    let r = flags_from_vec(svec!["deno", "task", "--no-config"]);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::UnknownArgument);
   }
 
   #[test]

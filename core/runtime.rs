@@ -90,14 +90,14 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
 }
 
-struct DynImportModEvaluate {
+pub(crate) struct DynImportModEvaluate {
   load_id: ModuleLoadId,
   module_id: ModuleId,
   promise: v8::Global<v8::Promise>,
   module: v8::Global<v8::Module>,
 }
 
-struct ModEvaluate {
+pub(crate) struct ModEvaluate {
   promise: v8::Global<v8::Promise>,
   sender: oneshot::Sender<Result<(), Error>>,
 }
@@ -158,8 +158,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
-  pending_mod_evaluate: Option<ModEvaluate>,
+  pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
+  pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
@@ -785,7 +785,7 @@ impl JsRuntime {
     }
   }
 
-  fn pump_v8_message_loop(&mut self) {
+  fn pump_v8_message_loop(&mut self) -> Result<(), Error> {
     let scope = &mut self.handle_scope();
     while v8::Platform::pump_message_loop(
       &v8::V8::get_current_platform(),
@@ -795,7 +795,12 @@ impl JsRuntime {
       // do nothing
     }
 
-    scope.perform_microtask_checkpoint();
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    tc_scope.perform_microtask_checkpoint();
+    match tc_scope.exception() {
+      None => Ok(()),
+      Some(exception) => exception_to_err_result(tc_scope, exception, false),
+    }
   }
 
   pub fn poll_value(
@@ -877,7 +882,7 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    self.pump_v8_message_loop();
+    self.pump_v8_message_loop()?;
 
     // Ops
     {
@@ -921,7 +926,7 @@ impl JsRuntime {
       let state = state_rc.borrow();
       let op_state = state.op_state.clone();
       for f in &self.event_loop_middlewares {
-        if f(&mut op_state.borrow_mut(), cx) {
+        if f(op_state.clone(), cx) {
           maybe_scheduling = true;
         }
       }
@@ -1007,7 +1012,8 @@ Pending dynamic modules:\n".to_string();
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
             .unwrap();
-          msg.push_str(&format!("- {}", module_info.name.as_str()));
+          msg.push_str("- ");
+          msg.push_str(module_info.name.as_str());
         }
         return Poll::Ready(Err(generic_error(msg)));
       } else {
@@ -1020,6 +1026,30 @@ Pending dynamic modules:\n".to_string();
     }
 
     Poll::Pending
+  }
+
+  pub fn event_loop_has_work(&mut self) -> bool {
+    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    let state = state_rc.borrow_mut();
+    let module_map = module_map_rc.borrow();
+
+    let has_pending_refed_ops =
+      state.pending_ops.len() > state.unrefed_ops.len();
+    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
+    let has_pending_dyn_module_evaluation =
+      !state.pending_dyn_mod_evaluate.is_empty();
+    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
+    let has_pending_background_tasks =
+      self.v8_isolate().has_pending_background_tasks();
+    let has_tick_scheduled = state.has_tick_scheduled;
+
+    has_pending_refed_ops
+      || has_pending_dyn_imports
+      || has_pending_dyn_module_evaluation
+      || has_pending_module_evaluation
+      || has_pending_background_tasks
+      || has_tick_scheduled
   }
 }
 
@@ -2271,6 +2301,56 @@ pub mod tests {
       "Promise resolution is still pending but the event loop has already resolved.",
       error_string,
     );
+  }
+
+  #[test]
+  fn terminate_execution_webassembly() {
+    let (mut isolate, _dispatch_count) = setup(Mode::Async);
+    let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
+
+    let terminator_thread = std::thread::spawn(move || {
+      // allow deno to boot and run
+      std::thread::sleep(std::time::Duration::from_millis(1000));
+
+      // terminate execution
+      let ok = v8_isolate_handle.terminate_execution();
+      assert!(ok);
+    });
+
+    // Run an infinite loop in Webassemby code, which should be terminated.
+    isolate.execute_script("infinite_wasm_loop.js",
+                                 r#"
+                                 (async () => {
+                                 console.log("Begin");
+                                  const wasmCode = new Uint8Array([
+                                      0,    97,   115,  109,  1,    0,    0,    0,    1,   4,    1,
+                                      96,   0,    0,    3,    2,    1,    0,    7,    17,  1,    13,
+                                      105,  110,  102,  105,  110,  105,  116,  101,  95,  108,  111,
+                                      111,  112,  0,    0,    10,   9,    1,    7,    0,   3,    64,
+                                      12,   0,    11,   11,
+                                  ]);
+                                  const wasmModule = await WebAssembly.compile(wasmCode);
+                                  const wasmInstance = new WebAssembly.Instance(wasmModule);
+                                  wasmInstance.exports.infinite_loop();
+                                  })();
+                                      "#).expect("wasm infinite loop failed");
+    match futures::executor::block_on(isolate.run_event_loop(false)) {
+      Ok(_) => panic!("execution should be terminated"),
+      Err(e) => {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
+      }
+    }
+    // Cancel the execution-terminating exception in order to allow script
+    // execution again.
+    let ok = isolate.v8_isolate().cancel_terminate_execution();
+    assert!(ok);
+
+    // Verify that the isolate usable again.
+    isolate
+      .execute_script("simple.js", "1 + 1")
+      .expect("execution should be possible again");
+
+    terminator_thread.join().unwrap();
   }
 
   #[test]

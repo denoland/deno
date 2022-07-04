@@ -589,11 +589,16 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
     switch (request.method) {
+      case "restart": {
+        serverRestart();
+        return respond(id, true);
+      }
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
@@ -916,6 +921,11 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
+  }
+
+  function serverRestart() {
+    languageService = ts.createLanguageService(host);
+    debug("serverRestart()");
   }
 
   let hasStarted = false;

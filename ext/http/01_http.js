@@ -111,7 +111,7 @@
         return null;
       }
 
-      const [streamRid, method, headersList, url] = nextRequest;
+      const [streamRid, method, url] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -126,7 +126,7 @@
       const innerRequest = newInnerRequest(
         method,
         url,
-        headersList,
+        () => core.opSync("op_http_headers", streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
