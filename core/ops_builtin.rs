@@ -38,7 +38,6 @@ pub(crate) fn init_builtins() -> Extension {
       op_metrics::decl(),
       op_format_file_name::decl(),
       op_is_proxy::decl(),
-      op_next_task::decl(),
     ])
     .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
@@ -190,8 +189,3 @@ fn op_format_file_name(file_name: String) -> String {
 fn op_is_proxy(value: serde_v8::Value) -> bool {
   value.v8_value.is_proxy()
 }
-
-/// Empty op that when awaited forces a macrotask to run. Useful for
-/// "unhandledrejection" event.
-#[op]
-async fn op_next_task() {}
