@@ -55,7 +55,8 @@ function benchUrlParse() {
   benchSync("url_parse", 5e4, (i) => {
     url = new URL(`http://www.google.com/${i}`);
   });
-  benchSync("url_parse_get_path", 5e4, (i) => {
+  console.log(url.toString());
+  benchSync("url_parse_get_path", 5e4, () => {
     url.pathname;
   });
 }
@@ -124,6 +125,7 @@ function benchOpVoidAsync() {
 }
 
 async function main() {
+  benchRequestNew();
   // v8 builtin that's close to the upper bound non-NOPs
   benchDateNow();
   // Void ops measure op-overhead
@@ -141,6 +143,5 @@ async function main() {
   benchReadZero();
   benchWriteNull();
   await benchRead128k();
-  benchRequestNew();
 }
 await main();

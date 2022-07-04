@@ -30,6 +30,7 @@ pub fn init() -> Extension {
     .ops(vec![
       op_url_parse::decl(),
       op_url_reparse::decl(),
+      op_url_get::decl(),
       op_url_parse_search_params::decl(),
       op_url_stringify_search_params::decl(),
       op_urlpattern_parse::decl(),
@@ -81,6 +82,8 @@ pub enum UrlSetter {
   Protocol = 6,
   Search = 7,
   Username = 8,
+  Href = 9,
+  Origin = 10,
 }
 
 #[op]
@@ -91,10 +94,10 @@ pub fn op_url_get(
 ) -> Result<String, AnyError> {
   let resource = state.resource_table.get::<UrlResource>(rid)?;
   let url = resource.inner.borrow();
-  if getter > 8 {
+  if getter > 10 {
     return Err(type_error("Invalid URL setter"));
   }
-  // SAFETY: checked to be less than 9.
+  // SAFETY: checked to be less than 11.
   let getter = unsafe { std::mem::transmute::<u8, UrlSetter>(getter) };
   let part = match getter {
     UrlSetter::Hash => quirks::hash(&url),
@@ -106,6 +109,8 @@ pub fn op_url_get(
     UrlSetter::Protocol => quirks::protocol(&url),
     UrlSetter::Search => quirks::search(&url),
     UrlSetter::Username => quirks::username(&url),
+    UrlSetter::Href => quirks::href(&url),
+    UrlSetter::Origin => return Ok(quirks::origin(&url)),
   };
   Ok(part.to_string())
 }
@@ -168,6 +173,7 @@ pub fn op_url_reparse(
         .map_err(|_| uri_error("Invalid username"))?;
       quirks::username(&url)
     }
+    _ => unreachable!(),
   };
 
   Ok(parsed.to_string())

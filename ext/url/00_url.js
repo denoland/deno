@@ -344,7 +344,7 @@
     }
 
     #lazyGet(name) {
-      if (this[_url][name] === null) {
+      if (this[_url][name] === undefined) {
         this[_url][name] = core.opSync("op_url_get", this[_rid], name);
       }
       return this[_url][name];
@@ -375,7 +375,7 @@
     /** @return {string} */
     get host() {
       webidl.assertBranded(this, URLPrototype);
-      return this.#lazyGet(SET_HASH);
+      return this.#lazyGet(SET_HOST);
     }
 
     /** @param {string} value */
