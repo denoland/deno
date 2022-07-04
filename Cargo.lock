@@ -782,14 +782,23 @@ dependencies = [
  "data-url",
  "deno_ast",
  "deno_bench_util",
+ "deno_broadcast_channel",
+ "deno_console",
  "deno_core",
+ "deno_crypto",
  "deno_doc",
  "deno_emit",
+ "deno_fetch",
  "deno_graph",
  "deno_lint",
+ "deno_net",
  "deno_runtime",
- "deno_snapshots",
  "deno_task_shell",
+ "deno_url",
+ "deno_web",
+ "deno_webgpu",
+ "deno_websocket",
+ "deno_webstorage",
  "dissimilar",
  "dotenv",
  "dprint-plugin-json",
@@ -1152,19 +1161,6 @@ dependencies = [
  "uuid",
  "winapi 0.3.9",
  "winres",
-]
-
-[[package]]
-name = "deno_snapshots"
-version = "0.1.0"
-dependencies = [
- "deno_core",
- "deno_runtime",
- "lzzzz",
- "once_cell",
- "regex",
- "serde",
- "zstd",
 ]
 
 [[package]]
