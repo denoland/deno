@@ -5,8 +5,6 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-// 8cc98b6f10b7f354473a08c3773bb1de839845b9
-
 interface GPUObjectBase {
   label: string;
 }
