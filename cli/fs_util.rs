@@ -721,7 +721,7 @@ mod tests {
           .join("child")
           .to_str()
           .unwrap()
-          .replace('/', "\\")
+          .replace('\\', "/")
       )],
       &[],
       predicate,
