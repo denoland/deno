@@ -276,6 +276,11 @@
   webidl.configurePrototype(URLSearchParams);
   const URLSearchParamsPrototype = URLSearchParams.prototype;
 
+  // A finalization registry to clean up underlying fetch resources that are GC'ed.
+  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+    core.tryClose(rid);
+  });
+
   const _url = Symbol("url");
   const _rid = Symbol("rid");
 
@@ -299,6 +304,7 @@
       }
       this[webidl.brand] = webidl.brand;
       this[_rid] = opUrlParse(url, base);
+      RESOURCE_REGISTRY.register(this, this[_rid]);
       // Lazy loaded object
       this[_url] = new Array(11);
     }
