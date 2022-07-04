@@ -11,6 +11,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const {
+    Array,
     ArrayIsArray,
     ArrayPrototypeMap,
     ArrayPrototypePush,
