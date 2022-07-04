@@ -79,6 +79,7 @@ pub fn init() -> Extension {
       op_http_accept::decl(),
       op_http_read::decl(),
       op_http_write_headers::decl(),
+      op_http_headers::decl(),
       op_http_write::decl(),
       op_http_write_resource::decl(),
       op_http_shutdown::decl(),
@@ -365,8 +366,6 @@ struct NextRequestResponse(
   // This is a String rather than a ByteString because reqwest will only return
   // the method as a str which is guaranteed to be ASCII-only.
   String,
-  // headers:
-  Vec<(ByteString, ByteString)>,
   // url:
   String,
 );
@@ -403,12 +402,11 @@ async fn op_http_accept(
   });
 
   let method = request.method().to_string();
-  let headers = req_headers(request);
   let url = req_url(request, conn.scheme(), conn.addr());
 
   let stream_rid = state.borrow_mut().resource_table.add_rc(stream);
 
-  let r = NextRequestResponse(stream_rid, method, headers, url);
+  let r = NextRequestResponse(stream_rid, method, url);
   Ok(Some(r))
 }
 
@@ -558,6 +556,21 @@ async fn op_http_write_headers(
       stream.conn.closed().await?;
       Err(http_error("connection closed while sending response"))
     }
+  }
+}
+
+#[op]
+fn op_http_headers(
+  state: &mut OpState,
+  rid: u32,
+) -> Result<Vec<(ByteString, ByteString)>, AnyError> {
+  let stream = state.resource_table.get::<HttpStreamResource>(rid)?;
+  let rd = RcRef::map(&stream, |r| &r.rd)
+    .try_borrow()
+    .ok_or_else(|| http_error("already in use"))?;
+  match &*rd {
+    HttpRequestReader::Headers(request) => Ok(req_headers(request)),
+    _ => unreachable!(),
   }
 }
 
