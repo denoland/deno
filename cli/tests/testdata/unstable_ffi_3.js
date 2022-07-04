@@ -1,10 +1,5 @@
-Deno.core.opAsync("op_ffi_call_ptr_nonblocking", {
-  pointer: [0, 0],
-  def: {
-    name: null,
-    parameters: [],
-    result: "void",
-  },
+Deno.core.opAsync("op_ffi_call_ptr_nonblocking", 0n, {
+  name: null,
   parameters: [],
-  buffers: [],
-});
+  result: "void",
+}, []);

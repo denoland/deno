@@ -6,6 +6,49 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.23.2 / 2022.06.30
+
+- feat(unstable/ffi): thread safe callbacks (#14942)
+- fix(core): don't panic on non-existent cwd (#14957)
+- fix(docs): --watch arg is stable (#14970)
+- fix(dts/ffi): non-exact types break FFI inference (#14968)
+- fix(ext/crypto): add EcdhKeyDeriveParams to deriveKey types (#15005)
+- fix(ext/ffi): empty buffers error with index out of bounds on FFI (#14997)
+- fix(ext/web): remove `ErrorEventInit`'s error default (#14809)
+- fix(lsp): restart TS language service when caching dependencies (#14979)
+- fix(modules): immediately resolve follow-up dyn imports to a dyn imported
+  module (#14958)
+- fix(runtime): derive default for deno_runtime::ExitCode (#15017)
+- fix(task): remove --no-config as task subcommand argument (#14983)
+- fix(test): typo ('finsihed') if text decoder not closed during test (#14996)
+- fix(vendor): ignore import map in output directory instead of erroring
+  (#14998)
+- fix: don't error if Deno.bench() or Deno.test() are used in run subcommand
+  (#14946)
+- perf(ext/ffi): optimize synchronous calls (#14945)
+- perf(ext/web): avoid reallocations in op_base64_atob (#15018)
+- perf(ext/web): use base64-simd for atob/btoa (#14992)
+- perf(serde_v8): smallvec ByteString (#15008)
+
+### 1.23.1 / 2022.06.23
+
+- BREAKING(unstable/ffi): Remove `Deno.UnsafePointer` indirection (#14915)
+- feat(unstable/ffi): Callbacks (#14663)
+- fix(check): ignore TS2306 (#14940)
+- fix(docs): update description of `--check` flag (#14890)
+- fix(ext/fetch): add `accept-language` default header to fetch (#14882)
+- fix(ext/web): add EventTarget brand checking (#14637)
+- fix(ext/web): handle rid=0 in TextDecoder#decode (#14894)
+- fix(fmt): ignore node_modules directory (#14943)
+- fix(fmt): should fail `--check` on parse error (#14907)
+- fix(repl): accept tab when previous character is whitespace (#14898)
+- fix(repl): use spaces for tab handler on windows (#14931)
+- fix: do not panic running .d.cts and .d.mts files (#14917)
+- fix: make Performance global an EventTarget
+- fix: upgrade swc via deno_ast 0.16 (#14930)
+- perf(core): Cache source lookups (#14816)
+- perf(ext/ffi): Optimize FFI Rust side type checks (#14923)
+
 ### 1.23.0 / 2022.06.15
 
 - BREAKING: remove `Intl.v8BreakIterator` (#14864)

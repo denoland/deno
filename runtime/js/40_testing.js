@@ -261,7 +261,7 @@
       case "timer":
         return ["A timer", "started", "fired/cleared"];
       case "textDecoder":
-        return ["A text decoder", "created", "finsihed"];
+        return ["A text decoder", "created", "finished"];
       case "messagePort":
         return ["A message port", "created", "closed"];
       case "webSocketStream":
@@ -600,6 +600,7 @@
   const testStates = new Map();
   /** @type {BenchDescription[]} */
   const benchDescs = [];
+  let isTestOrBenchSubcommand = false;
 
   // Main test function provided by Deno.
   function test(
@@ -607,6 +608,10 @@
     optionsOrFn,
     maybeFn,
   ) {
+    if (!isTestOrBenchSubcommand) {
+      return;
+    }
+
     let testDesc;
     const defaults = {
       ignore: false,
@@ -722,6 +727,10 @@
     optionsOrFn,
     maybeFn,
   ) {
+    if (!isTestOrBenchSubcommand) {
+      return;
+    }
+
     core.opSync("op_bench_check_unstable");
     let benchDesc;
     const defaults = {
@@ -1021,6 +1030,13 @@
 
   function benchNow() {
     return core.opSync("op_bench_now");
+  }
+
+  // This function is called by Rust side if we're in `deno test` or
+  // `deno bench` subcommand. If this function is not called then `Deno.test()`
+  // and `Deno.bench()` become noops.
+  function enableTestAndBench() {
+    isTestOrBenchSubcommand = true;
   }
 
   async function runTests({
@@ -1376,6 +1392,7 @@
 
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
+    enableTestAndBench,
     runTests,
     runBenchmarks,
   };

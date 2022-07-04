@@ -17,83 +17,75 @@ pub trait SourceMapGetter {
   ) -> Option<String>;
 }
 
-/// Cached filename lookups. The key can be None if a previous lookup failed to
-/// find a SourceMap.
-pub type CachedMaps = HashMap<String, Option<SourceMap>>;
+#[derive(Debug, Default)]
+pub struct SourceMapCache {
+  maps: HashMap<String, Option<SourceMap>>,
+  source_lines: HashMap<(String, i64), Option<String>>,
+}
 
 pub fn apply_source_map<G: SourceMapGetter + ?Sized>(
   file_name: String,
   line_number: i64,
   column_number: i64,
-  mappings_map: &mut CachedMaps,
+  cache: &mut SourceMapCache,
   getter: &G,
-) -> (String, i64, i64, Option<String>) {
+) -> (String, i64, i64) {
   // Lookup expects 0-based line and column numbers, but ours are 1-based.
   let line_number = line_number - 1;
   let column_number = column_number - 1;
 
-  let default_pos = (file_name.clone(), line_number, column_number, None);
-  let maybe_source_map = get_mappings(&file_name, mappings_map, getter);
-  let (file_name, line_number, column_number, source_line) =
-    match maybe_source_map {
-      None => default_pos,
-      Some(source_map) => {
-        match source_map.lookup_token(line_number as u32, column_number as u32)
-        {
+  let default_pos = (file_name.clone(), line_number, column_number);
+  let maybe_source_map =
+    cache.maps.entry(file_name.clone()).or_insert_with(|| {
+      getter
+        .get_source_map(&file_name)
+        .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
+    });
+  let (file_name, line_number, column_number) = match maybe_source_map {
+    None => default_pos,
+    Some(source_map) => {
+      match source_map.lookup_token(line_number as u32, column_number as u32) {
+        None => default_pos,
+        Some(token) => match token.get_source() {
           None => default_pos,
-          Some(token) => match token.get_source() {
-            None => default_pos,
-            Some(source_file_name) => {
-              // The `source_file_name` written by tsc in the source map is
-              // sometimes only the basename of the URL, or has unwanted `<`/`>`
-              // around it. Use the `file_name` we get from V8 if
-              // `source_file_name` does not parse as a URL.
-              let file_name = match resolve_url(source_file_name) {
-                Ok(m) if m.scheme() == "blob" => file_name,
-                Ok(m) => m.to_string(),
-                Err(_) => file_name,
-              };
-              let source_line =
-                if let Some(source_view) = token.get_source_view() {
-                  source_view
-                    .get_line(token.get_src_line())
-                    .map(|s| s.to_string())
-                } else {
-                  None
-                };
-              (
-                file_name,
-                i64::from(token.get_src_line()),
-                i64::from(token.get_src_col()),
-                source_line,
-              )
-            }
-          },
-        }
+          Some(source_file_name) => {
+            // The `source_file_name` written by tsc in the source map is
+            // sometimes only the basename of the URL, or has unwanted `<`/`>`
+            // around it. Use the `file_name` we get from V8 if
+            // `source_file_name` does not parse as a URL.
+            let file_name = match resolve_url(source_file_name) {
+              Ok(m) if m.scheme() == "blob" => file_name,
+              Ok(m) => m.to_string(),
+              Err(_) => file_name,
+            };
+            (
+              file_name,
+              i64::from(token.get_src_line()),
+              i64::from(token.get_src_col()),
+            )
+          }
+        },
       }
-    };
-  let source_line = source_line
-    .or_else(|| getter.get_source_line(&file_name, line_number as usize));
-  (file_name, line_number + 1, column_number + 1, source_line)
+    }
+  };
+  (file_name, line_number + 1, column_number + 1)
 }
 
-fn get_mappings<'a, G: SourceMapGetter + ?Sized>(
-  file_name: &str,
-  mappings_map: &'a mut CachedMaps,
-  getter: &G,
-) -> &'a Option<SourceMap> {
-  mappings_map
-    .entry(file_name.to_string())
-    .or_insert_with(|| parse_map_string(file_name, getter))
-}
+const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
-// TODO(kitsonk) parsed source maps should probably be cached in state in
-// the module meta data.
-fn parse_map_string<G: SourceMapGetter + ?Sized>(
+pub fn get_source_line<G: SourceMapGetter + ?Sized>(
   file_name: &str,
+  line_number: i64,
+  cache: &mut SourceMapCache,
   getter: &G,
-) -> Option<SourceMap> {
-  getter
-    .get_source_map(file_name)
-    .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
+) -> Option<String> {
+  cache
+    .source_lines
+    .entry((file_name.to_string(), line_number))
+    .or_insert_with(|| {
+      // Source lookup expects a 0-based line number, ours are 1-based.
+      let s = getter.get_source_line(file_name, (line_number - 1) as usize);
+      s.filter(|s| s.len() <= MAX_SOURCE_LINE_LENGTH)
+    })
+    .clone()
 }

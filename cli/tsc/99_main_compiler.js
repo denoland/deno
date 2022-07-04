@@ -188,6 +188,10 @@ delete Object.prototype.__proto__;
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
+    // TS2306: File '.../index.d.ts' is not a module.
+    // We get this for `x-typescript-types` declaration files which don't export
+    // anything. We prefer to treat these as modules with no exports.
+    2306,
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
     2688,
@@ -585,11 +589,16 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
     switch (request.method) {
+      case "restart": {
+        serverRestart();
+        return respond(id, true);
+      }
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
@@ -912,6 +921,11 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
+  }
+
+  function serverRestart() {
+    languageService = ts.createLanguageService(host);
+    debug("serverRestart()");
   }
 
   let hasStarted = false;

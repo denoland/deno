@@ -7,8 +7,7 @@ use crate::colors::yellow;
 use deno_core::error::format_file_name;
 use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
-
-const SOURCE_ABBREV_THRESHOLD: usize = 150;
+use std::fmt::Write as _;
 
 // Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
@@ -31,9 +30,9 @@ pub fn format_location(frame: &JsStackFrame) -> String {
     result += &cyan("<anonymous>").to_string();
   }
   if let Some(line_number) = frame.line_number {
-    result += &format!("{}{}", ":", yellow(&line_number.to_string()));
+    write!(result, ":{}", yellow(&line_number.to_string())).unwrap();
     if let Some(column_number) = frame.column_number {
-      result += &format!("{}{}", ":", yellow(&column_number.to_string()));
+      write!(result, ":{}", yellow(&column_number.to_string())).unwrap();
     }
   }
   result
@@ -63,18 +62,18 @@ fn format_frame(frame: &JsStackFrame) -> String {
     if let Some(function_name) = &frame.function_name {
       if let Some(type_name) = &frame.type_name {
         if !function_name.starts_with(type_name) {
-          formatted_method += &format!("{}.", type_name);
+          write!(formatted_method, "{}.", type_name).unwrap();
         }
       }
       formatted_method += function_name;
       if let Some(method_name) = &frame.method_name {
         if !function_name.ends_with(method_name) {
-          formatted_method += &format!(" [as {}]", method_name);
+          write!(formatted_method, " [as {}]", method_name).unwrap();
         }
       }
     } else {
       if let Some(type_name) = &frame.type_name {
-        formatted_method += &format!("{}.", type_name);
+        write!(formatted_method, "{}.", type_name).unwrap();
       }
       if let Some(method_name) = &frame.method_name {
         formatted_method += method_name
@@ -86,7 +85,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   } else if frame.is_constructor {
     result += "new ";
     if let Some(function_name) = &frame.function_name {
-      result += &italic_bold(&function_name).to_string();
+      write!(result, "{}", italic_bold(&function_name)).unwrap();
     } else {
       result += &cyan("<anonymous>").to_string();
     }
@@ -96,7 +95,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
     result += &format_location(frame);
     return result;
   }
-  result += &format!(" ({})", format_location(frame));
+  write!(result, " ({})", format_location(frame)).unwrap();
   result
 }
 
@@ -115,8 +114,7 @@ fn format_maybe_source_line(
   let source_line = source_line.unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
   // an empty source line when displayed, so need just short circuit here.
-  // Also short-circuit on error line too long.
-  if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
+  if source_line.is_empty() {
     return "".to_string();
   }
   if source_line.contains("Couldn't format source line: ") {
@@ -159,7 +157,7 @@ fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
     for aggregated_error in aggregated {
       let error_string = format_js_error_inner(aggregated_error, true);
       for line in error_string.trim_start_matches("Uncaught ").lines() {
-        s.push_str(&format!("\n    {}", line));
+        write!(s, "\n    {}", line).unwrap();
       }
     }
   }
@@ -177,14 +175,16 @@ fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
     0,
   ));
   for frame in &js_error.frames {
-    s.push_str(&format!("\n    at {}", format_frame(frame)));
+    write!(s, "\n    at {}", format_frame(frame)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
     let error_string = format_js_error_inner(cause, true);
-    s.push_str(&format!(
+    write!(
+      s,
       "\nCaused by: {}",
       error_string.trim_start_matches("Uncaught ")
-    ));
+    )
+    .unwrap();
   }
   s
 }

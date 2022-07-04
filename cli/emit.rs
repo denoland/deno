@@ -4,15 +4,15 @@
 //! populate a cache, emit files, and transform a graph into the structures for
 //! loading into an isolate.
 
+use crate::args::config_file::IgnoredCompilerOptions;
+use crate::args::ConfigFile;
+use crate::args::EmitConfigOptions;
+use crate::args::TsConfig;
+use crate::args::TypeCheckMode;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
 use crate::colors;
-use crate::config_file;
-use crate::config_file::ConfigFile;
-use crate::config_file::IgnoredCompilerOptions;
-use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::flags;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::tsc;
@@ -29,7 +29,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
@@ -43,39 +42,87 @@ use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Represents the "default" type library that should be used when type
-/// checking the code in the module graph.  Note that a user provided config
-/// of `"lib"` would override this value.
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub enum TypeLib {
-  DenoWindow,
-  DenoWorker,
-  UnstableDenoWindow,
-  UnstableDenoWorker,
+/// Emit cache for a single file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpecifierEmitCacheData {
+  pub source_hash: String,
+  pub text: String,
+  pub map: Option<String>,
 }
 
-impl Default for TypeLib {
-  fn default() -> Self {
-    Self::DenoWindow
+pub trait EmitCache {
+  /// Gets the emit data from the cache.
+  fn get_emit_data(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<SpecifierEmitCacheData>;
+  /// Gets the stored hash of the source of the provider specifier
+  /// to tell if the emit is out of sync with the source.
+  /// TODO(13302): this is actually not reliable and should be removed
+  /// once switching to an sqlite db
+  fn get_source_hash(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  /// Gets the emitted JavaScript of the TypeScript source.
+  /// TODO(13302): remove this once switching to an sqlite db
+  fn get_emit_text(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  /// Sets the emit data in the cache.
+  fn set_emit_data(
+    &self,
+    specifier: ModuleSpecifier,
+    data: SpecifierEmitCacheData,
+  ) -> Result<(), AnyError>;
+  /// Gets the .tsbuildinfo file from the cache.
+  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  /// Sets the .tsbuildinfo file in the cache.
+  fn set_tsbuildinfo(
+    &self,
+    specifier: ModuleSpecifier,
+    text: String,
+  ) -> Result<(), AnyError>;
+}
+
+impl<T: Cacher> EmitCache for T {
+  fn get_emit_data(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<SpecifierEmitCacheData> {
+    Some(SpecifierEmitCacheData {
+      source_hash: self.get_source_hash(specifier)?,
+      text: self.get_emit_text(specifier)?,
+      map: self.get(CacheType::SourceMap, specifier),
+    })
   }
-}
 
-impl Serialize for TypeLib {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let value = match self {
-      Self::DenoWindow => vec!["deno.window".to_string()],
-      Self::DenoWorker => vec!["deno.worker".to_string()],
-      Self::UnstableDenoWindow => {
-        vec!["deno.window".to_string(), "deno.unstable".to_string()]
-      }
-      Self::UnstableDenoWorker => {
-        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
-      }
-    };
-    Serialize::serialize(&value, serializer)
+  fn get_source_hash(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.get(CacheType::Version, specifier)
+  }
+
+  fn get_emit_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.get(CacheType::Emit, specifier)
+  }
+
+  fn set_emit_data(
+    &self,
+    specifier: ModuleSpecifier,
+    data: SpecifierEmitCacheData,
+  ) -> Result<(), AnyError> {
+    self.set(CacheType::Version, &specifier, data.source_hash)?;
+    self.set(CacheType::Emit, &specifier, data.text)?;
+    if let Some(map) = data.map {
+      self.set(CacheType::SourceMap, &specifier, map)?;
+    }
+    Ok(())
+  }
+
+  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.get(CacheType::TypeScriptBuildInfo, specifier)
+  }
+
+  fn set_tsbuildinfo(
+    &self,
+    specifier: ModuleSpecifier,
+    text: String,
+  ) -> Result<(), AnyError> {
+    self.set(CacheType::TypeScriptBuildInfo, &specifier, text)
   }
 }
 
@@ -113,28 +160,68 @@ impl fmt::Display for Stats {
   }
 }
 
+/// Represents the "default" type library that should be used when type
+/// checking the code in the module graph.  Note that a user provided config
+/// of `"lib"` would override this value.
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub enum TsTypeLib {
+  DenoWindow,
+  DenoWorker,
+  UnstableDenoWindow,
+  UnstableDenoWorker,
+}
+
+impl Default for TsTypeLib {
+  fn default() -> Self {
+    Self::DenoWindow
+  }
+}
+
+impl Serialize for TsTypeLib {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value = match self {
+      Self::DenoWindow => vec!["deno.window".to_string()],
+      Self::DenoWorker => vec!["deno.worker".to_string()],
+      Self::UnstableDenoWindow => {
+        vec!["deno.window".to_string(), "deno.unstable".to_string()]
+      }
+      Self::UnstableDenoWorker => {
+        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
+      }
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
 /// An enum that represents the base tsc configuration to return.
-pub enum ConfigType {
+pub enum TsConfigType {
   /// Return a configuration for bundling, using swc to emit the bundle. This is
   /// independent of type checking.
   Bundle,
   /// Return a configuration to use tsc to type check and optionally emit. This
   /// is independent of either bundling or just emitting via swc
-  Check { lib: TypeLib, tsc_emit: bool },
+  Check { lib: TsTypeLib, tsc_emit: bool },
   /// Return a configuration to use swc to emit single module files.
   Emit,
 }
 
-/// For a given configuration type and optionally a configuration file, return a
-/// tuple of the resulting `TsConfig` struct and optionally any user
-/// configuration options that were ignored.
-pub fn get_ts_config(
-  config_type: ConfigType,
+pub struct TsConfigWithIgnoredOptions {
+  pub ts_config: TsConfig,
+  pub maybe_ignored_options: Option<IgnoredCompilerOptions>,
+}
+
+/// For a given configuration type and optionally a configuration file,
+/// return a `TsConfig` struct and optionally any user configuration
+/// options that were ignored.
+pub fn get_ts_config_for_emit(
+  config_type: TsConfigType,
   maybe_config_file: Option<&ConfigFile>,
-  maybe_user_config: Option<&HashMap<String, Value>>,
-) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
+) -> Result<TsConfigWithIgnoredOptions, AnyError> {
   let mut ts_config = match config_type {
-    ConfigType::Bundle => TsConfig::new(json!({
+    TsConfigType::Bundle => TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
@@ -145,7 +232,7 @@ pub fn get_ts_config(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     })),
-    ConfigType::Check { tsc_emit, lib } => {
+    TsConfigType::Check { tsc_emit, lib } => {
       let mut ts_config = TsConfig::new(json!({
         "allowJs": true,
         "allowSyntheticDefaultImports": true,
@@ -179,7 +266,7 @@ pub fn get_ts_config(
       }
       ts_config
     }
-    ConfigType::Emit => TsConfig::new(json!({
+    TsConfigType::Emit => TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
@@ -192,15 +279,15 @@ pub fn get_ts_config(
       "resolveJsonModule": true,
     })),
   };
-  let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
-    ts_config.merge_user_config(user_options)?
-  } else {
-    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
-  };
+  let maybe_ignored_options =
+    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?;
   ts_config.merge(&json!({
     "moduleDetection": "force",
   }));
-  Ok((ts_config, maybe_ignored_options))
+  Ok(TsConfigWithIgnoredOptions {
+    ts_config,
+    maybe_ignored_options,
+  })
 }
 
 /// Transform the graph into root specifiers that we can feed `tsc`. We have to
@@ -288,7 +375,7 @@ pub fn is_emittable(
 pub struct CheckOptions {
   /// The check flag from the option which can effect the filtering of
   /// diagnostics in the emit result.
-  pub type_check_mode: flags::TypeCheckMode,
+  pub type_check_mode: TypeCheckMode,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -325,7 +412,7 @@ pub struct CheckEmitResult {
 pub fn check_and_maybe_emit(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
-  cache: &mut dyn Cacher,
+  cache: &dyn EmitCache,
   options: CheckOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
@@ -358,7 +445,7 @@ pub fn check_and_maybe_emit(
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get(CacheType::TypeScriptBuildInfo, &roots[0].0)
+    cache.get_tsbuildinfo(&roots[0].0)
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -379,7 +466,7 @@ pub fn check_and_maybe_emit(
     root_names,
   })?;
 
-  let diagnostics = if options.type_check_mode == flags::TypeCheckMode::Local {
+  let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
@@ -400,9 +487,29 @@ pub fn check_and_maybe_emit(
       // while we retrieve the build info for just the first module, it can be
       // used for all the roots in the graph, so we will cache it for all roots
       for (root, _) in roots {
-        cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
+        cache.set_tsbuildinfo(root.clone(), info.to_string())?;
       }
     }
+
+    struct SpecifierEmitData {
+      pub version_hash: String,
+      pub text: Option<String>,
+      pub map: Option<String>,
+    }
+
+    impl SpecifierEmitData {
+      fn into_cache_data(self) -> Option<SpecifierEmitCacheData> {
+        self.text.map(|text| SpecifierEmitCacheData {
+          source_hash: self.version_hash,
+          text,
+          map: self.map,
+        })
+      }
+    }
+
+    // combine the emitted files into groups based on their specifier and media type
+    let mut emit_data_items: HashMap<ModuleSpecifier, SpecifierEmitData> =
+      HashMap::with_capacity(response.emitted_files.len());
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -437,20 +544,34 @@ pub fn check_and_maybe_emit(
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
+
+        let mut emit_data_item = emit_data_items
+          .entry(specifier.clone())
+          .or_insert_with(|| SpecifierEmitData {
+            version_hash: get_version(source_bytes, &config_bytes),
+            text: None,
+            map: None,
+          });
+
         match emit.media_type {
           MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-            let version = get_version(source_bytes, &config_bytes);
-            cache.set(CacheType::Version, &specifier, version)?;
-            cache.set(CacheType::Emit, &specifier, emit.data)?;
+            emit_data_item.text = Some(emit.data);
           }
           MediaType::SourceMap => {
-            cache.set(CacheType::SourceMap, &specifier, emit.data)?;
+            emit_data_item.map = Some(emit.data);
           }
           _ => unreachable!(
             "unexpected media_type {} {}",
             emit.media_type, specifier
           ),
         }
+      }
+    }
+
+    // now insert these items into the cache
+    for (specifier, data) in emit_data_items.into_iter() {
+      if let Some(cache_data) = data.into_cache_data() {
+        cache.set_emit_data(specifier, cache_data)?;
       }
     }
   }
@@ -472,7 +593,7 @@ pub struct EmitOptions {
 // `check_and_maybe_emit()`, but the AST isn't stored in that. Cleanup.
 pub fn emit(
   graph: &ModuleGraph,
-  cache: &mut dyn Cacher,
+  cache: &dyn EmitCache,
   options: EmitOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let start = Instant::now();
@@ -493,15 +614,9 @@ pub fn emit(
       module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
       &config_bytes,
     );
-    let is_valid =
-      cache
-        .get(CacheType::Version, &module.specifier)
-        .map_or(false, |v| {
-          v == get_version(
-            module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
-            &config_bytes,
-          )
-        });
+    let is_valid = cache
+      .get_source_hash(&module.specifier)
+      .map_or(false, |v| v == version);
     if is_valid && !needs_reload {
       continue;
     }
@@ -511,13 +626,14 @@ pub fn emit(
       .map(|ps| ps.transpile(&emit_options))
       .unwrap()?;
     emit_count += 1;
-    cache.set(CacheType::Emit, &module.specifier, transpiled_source.text)?;
-    if let Some(map) = transpiled_source.source_map {
-      cache.set(CacheType::SourceMap, &module.specifier, map)?;
-    }
-    if !is_valid {
-      cache.set(CacheType::Version, &module.specifier, version)?;
-    }
+    cache.set_emit_data(
+      module.specifier.clone(),
+      SpecifierEmitCacheData {
+        source_hash: version,
+        text: transpiled_source.text,
+        map: transpiled_source.source_map,
+      },
+    )?;
   }
 
   let stats = Stats(vec![
@@ -538,7 +654,7 @@ pub fn emit(
 /// a valid emit in the cache.
 fn valid_emit(
   graph_data: &GraphData,
-  cache: &dyn Cacher,
+  cache: &dyn EmitCache,
   ts_config: &TsConfig,
   reload: bool,
   reload_exclusions: &HashSet<ModuleSpecifier>,
@@ -564,13 +680,20 @@ fn valid_emit(
             continue;
           }
         }
-        _ => continue,
+        MediaType::Json
+        | MediaType::TsBuildInfo
+        | MediaType::SourceMap
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Wasm
+        | MediaType::Unknown => continue,
       }
       if reload && !reload_exclusions.contains(specifier) {
         return false;
       }
-      if let Some(version) = cache.get(CacheType::Version, specifier) {
-        if version != get_version(code.as_bytes(), &config_bytes) {
+      if let Some(source_hash) = cache.get_source_hash(specifier) {
+        if source_hash != get_version(code.as_bytes(), &config_bytes) {
           return false;
         }
       } else {
@@ -652,10 +775,9 @@ impl Hook for BundleHook {
   }
 }
 
-impl From<config_file::TsConfig> for deno_ast::EmitOptions {
-  fn from(config: config_file::TsConfig) -> Self {
-    let options: config_file::EmitConfigOptions =
-      serde_json::from_value(config.0).unwrap();
+impl From<TsConfig> for deno_ast::EmitOptions {
+  fn from(config: TsConfig) -> Self {
+    let options: EmitConfigOptions = serde_json::from_value(config.0).unwrap();
     let imports_not_used_as_values =
       match options.imports_not_used_as_values.as_str() {
         "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,

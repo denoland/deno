@@ -5,7 +5,7 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::config_file::LintConfig;
+use crate::args::LintConfig;
 use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
