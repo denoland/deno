@@ -4,6 +4,8 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
+  export {}; // stop default export type behavior
+
   export interface BenchDefinition {
     fn: () => void | Promise<void>;
     name: string;
