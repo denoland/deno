@@ -923,14 +923,20 @@
       "EventTarget-constructible.any.html": true,
       "EventTarget-constructible.any.worker.html": true,
       "Event-constructors.any.html": [
-        "Untitled 2",
-        "Untitled 3"
+        "Untitled 3",
+        "Untitled 4"
       ],
       "Event-constructors.any.worker.html": [
-        "Event constructors 2",
-        "Event constructors 3"
+        "Event constructors 3",
+        "Event constructors 4"
       ],
-      "event-global.worker.html": true
+      "event-global.worker.html": true,
+      "Event-dispatch-listener-order.window.html": false,
+      "EventListener-addEventListener.sub.window.html": false,
+      "event-global-extra.window.html": false,
+      "event-global-set-before-handleEvent-lookup.window.html": false,
+      "legacy-pre-activation-behavior.window.html": false,
+      "relatedTarget.window.html": false
     },
     "idlharness-shadowrealm.window.html": false,
     "idlharness.any.worker.html": [
@@ -1387,12 +1393,8 @@
         "validate.any.worker.html": true
       },
       "global": {
-        "constructor.any.html": [
-          "Construct v128 global"
-        ],
-        "constructor.any.worker.html": [
-          "Construct v128 global"
-        ],
+        "constructor.any.html": true,
+        "constructor.any.worker.html": true,
         "toString.any.html": true,
         "toString.any.worker.html": true,
         "type.tentative.any.html": false,
