@@ -11,7 +11,6 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const {
-    Array,
     ArrayIsArray,
     ArrayPrototypeMap,
     ArrayPrototypePush,
@@ -442,7 +441,13 @@
         context: "Argument 1",
       });
       this[_rid] = opUrlParse(value);
-      this[_url] = new Array(11);
+      // deno-fmt-ignore
+      this[_url] = [
+        undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined,
+        undefined
+      ];
+
       this.#updateSearchParams();
     }
 
