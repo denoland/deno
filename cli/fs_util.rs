@@ -258,12 +258,14 @@ where
       let url = ModuleSpecifier::parse(&path)?;
       prepared.push(url);
       continue;
-    } else if lowercase_path.starts_with("file://") {
-      let from = if cfg!(target_os = "windows") { 8 } else { 7 };
-      path = path[from..].to_string();
     }
 
-    let p = normalize_path(&root_path.join(path));
+    let p = if lowercase_path.starts_with("file://") {
+      specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
+    } else {
+      root_path.join(path)
+    };
+    let p = normalize_path(&p);
     if p.is_dir() {
       let test_files = collect_files(&[p], ignore, &predicate).unwrap();
       let mut test_files_as_urls = test_files
