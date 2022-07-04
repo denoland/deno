@@ -290,34 +290,35 @@ fn import_meta_resolve(
     return throw_type_error(scope, "Invalid arguments");
   }
 
+  let tc_scope = &mut v8::TryCatch::new(scope);
   let referrer = if args.length() == 2 {
     let str = v8::Local::<v8::String>::try_from(args.get(1)).unwrap();
-    str.to_rust_string_lossy(scope)
+    str.to_rust_string_lossy(tc_scope)
   } else {
     let receiver = args.this();
-    let url_key = v8::String::new(scope, "url").unwrap();
-    let url_prop = receiver.get(scope, url_key.into()).unwrap();
-    url_prop.to_rust_string_lossy(scope)
+    let url_key = v8::String::new(tc_scope, "url").unwrap();
+    let url_prop = receiver.get(tc_scope, url_key.into()).unwrap();
+    url_prop.to_rust_string_lossy(tc_scope)
   };
   let specifier = v8::Local::<v8::String>::try_from(args.get(0)).unwrap();
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map(tc_scope);
   let loader = {
     let module_map = module_map_rc.borrow();
     module_map.loader.clone()
   };
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-  rv.set(promise.into());
-
-  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
-  {
+  match loader.resolve(
+    &specifier.to_rust_string_lossy(tc_scope),
+    &referrer,
+    false,
+  ) {
     Ok(resolved) => {
-      let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
-      resolver.resolve(scope, resolved_val);
+      let resolved_val = serde_v8::to_v8(tc_scope, resolved.as_str()).unwrap();
+      rv.set(resolved_val.into());
     }
     Err(err) => {
-      let rejected_val = serde_v8::to_v8(scope, err.to_string()).unwrap();
-      resolver.reject(scope, rejected_val);
+      let message = v8::String::new(tc_scope, &err.to_string()).unwrap();
+      let exception = v8::Exception::error(tc_scope, message);
+      tc_scope.throw_exception(exception);
     }
   };
 }

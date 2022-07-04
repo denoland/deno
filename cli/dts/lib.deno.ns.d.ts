@@ -21,6 +21,21 @@ declare interface ImportMeta {
    * ```
    */
   main: boolean;
+
+  /** A function that returns resolved specifier as if it would be imported
+   * using `import(specifier)` from a module located at `baseUrl`.
+   *
+   * Specifier is resolved relative to optional `baseUrl`, which defaults to
+   * the URL of the active script.
+   *
+   * ```ts
+   * console.log(import.meta.resolve("./foo.js"));
+   * // file:///dev/foo.js
+   * console.log(import.meta.resolve("./foo.js", "../bar.js"));
+   * // file:///foo.js
+   * ```
+   */
+  resolve(specifier: string, baseUrl?: string): string;
 }
 
 /** Deno supports user timing Level 3 (see: https://w3c.github.io/user-timing)
