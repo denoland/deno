@@ -2177,8 +2177,6 @@
     "url-setters.any.worker.html": [
       "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
-      "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
-      "URL: Setting <non-spec:/.//p>.hostname = ''",
       "URL: Setting <foo://somehost/some/path>.pathname = '' Non-special URLs can have their paths erased",
       "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
       "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
@@ -2186,8 +2184,7 @@
       "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
       "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
       "URL: Setting <non-spec:/>.pathname = '/..//p'",
-      "URL: Setting <non-spec:/>.pathname = '//p'",
-      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
+      "URL: Setting <non-spec:/>.pathname = '//p'"
     ],
     "idlharness-shadowrealm.window.html": false,
     "percent-encoding.window.html": [
