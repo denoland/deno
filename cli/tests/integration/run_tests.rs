@@ -2744,8 +2744,3 @@ itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
   output: "followup_dyn_import_resolves/main.ts.out",
 });
-
-itest!(unhandled_rejection {
-  args: "run --allow-read unhandled_rejection.js",
-  output: "unhandled_rejection.js.out",
-});
