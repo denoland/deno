@@ -100,6 +100,7 @@
       if (url === null) {
         return;
       }
+      url[_invalidateCache]();
       url[_url][SET_SEARCH] = opUrlReparse(
         url[_rid],
         SET_SEARCH,
@@ -283,6 +284,7 @@
 
   const _url = Symbol("url");
   const _rid = Symbol("rid");
+  const _invalidateCache = Symbol("invalidate cache");
 
   class URL {
     [_url];
@@ -355,6 +357,15 @@
       return this[_url][name];
     }
 
+    [_invalidateCache]() {
+      // deno-fmt-ignore
+      this[_url] = [
+        undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined,
+        undefined
+      ];
+    }
+
     /** @return {string} */
     get hash() {
       webidl.assertBranded(this, URLPrototype);
@@ -371,6 +382,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_HASH] = opUrlReparse(this[_rid], SET_HASH, value);
       } catch {
         /* pass */
@@ -393,6 +405,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_HOST] = opUrlReparse(this[_rid], SET_HOST, value);
       } catch {
         /* pass */
@@ -415,6 +428,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_HOSTNAME] = opUrlReparse(
           this[_rid],
           SET_HOSTNAME,
@@ -441,13 +455,7 @@
         context: "Argument 1",
       });
       this[_rid] = opUrlParse(value);
-      // deno-fmt-ignore
-      this[_url] = [
-        undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined, undefined, undefined,
-        undefined
-      ];
-
+      this[_invalidateCache]();
       this.#updateSearchParams();
     }
 
@@ -473,6 +481,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_PASSWORD] = opUrlReparse(
           this[_rid],
           SET_PASSWORD,
@@ -499,6 +508,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_PATHNAME] = opUrlReparse(
           this[_rid],
           SET_PATHNAME,
@@ -525,6 +535,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_PORT] = opUrlReparse(this[_rid], SET_PORT, value);
       } catch {
         /* pass */
@@ -547,6 +558,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_PROTOCOL] = opUrlReparse(
           this[_rid],
           SET_PROTOCOL,
@@ -573,6 +585,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_SEARCH] = opUrlReparse(this[_rid], SET_SEARCH, value);
         this.#updateSearchParams();
       } catch {
@@ -596,6 +609,7 @@
         context: "Argument 1",
       });
       try {
+        this[_invalidateCache]();
         this[_url][SET_USERNAME] = opUrlReparse(
           this[_rid],
           SET_USERNAME,
