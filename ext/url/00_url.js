@@ -39,42 +39,15 @@
   const SET_PROTOCOL = 6;
   const SET_SEARCH = 7;
   const SET_USERNAME = 8;
+  const HREF = 9;
+  const ORIGIN = 10;
 
   // Helper functions
-  function opUrlReparse(href, setter, value) {
-    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
+  function opUrlReparse(rid, setter, value) {
+    return core.opSync("op_url_reparse", rid, [setter, value]);
   }
   function opUrlParse(href, maybeBase) {
-    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
-  }
-  function _urlParts(internalParts) {
-    // WARNING: must match UrlParts serialization rust's url_result()
-    const {
-      0: href,
-      1: hash,
-      2: host,
-      3: hostname,
-      4: origin,
-      5: password,
-      6: pathname,
-      7: port,
-      8: protocol,
-      9: search,
-      10: username,
-    } = internalParts.split("\n");
-    return {
-      href,
-      hash,
-      host,
-      hostname,
-      origin,
-      password,
-      pathname,
-      port,
-      protocol,
-      search,
-      username,
-    };
+    return core.opSync("op_url_parse", href, maybeBase);
   }
 
   class URLSearchParams {
@@ -127,7 +100,11 @@
       if (url === null) {
         return;
       }
-      url[_url] = opUrlReparse(url.href, SET_SEARCH, this.toString());
+      url[_url][SET_SEARCH] = opUrlReparse(
+        url[_rid],
+        SET_SEARCH,
+        this.toString(),
+      );
     }
 
     /**
@@ -300,9 +277,11 @@
   const URLSearchParamsPrototype = URLSearchParams.prototype;
 
   const _url = Symbol("url");
+  const _rid = Symbol("rid");
 
   class URL {
     [_url];
+    [_rid];
     #queryObject = null;
 
     /**
@@ -319,7 +298,9 @@
         });
       }
       this[webidl.brand] = webidl.brand;
-      this[_url] = opUrlParse(url, base);
+      this[_rid] = opUrlParse(url, base);
+      // Lazy loaded object
+      this[_url] = new Array(11);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -355,10 +336,17 @@
       }
     }
 
+    #lazyGet(name) {
+      if (this[_url][name] === null) {
+        this[_url][name] = core.opSync("op_url_get", this[_rid], name);
+      }
+      return this[_url][name];
+    }
+
     /** @return {string} */
     get hash() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].hash;
+      return this.#lazyGet(SET_HASH);
     }
 
     /** @param {string} value */
@@ -371,7 +359,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HASH, value);
+        this[_url][SET_HASH] = opUrlReparse(this[_rid], SET_HASH, value);
       } catch {
         /* pass */
       }
@@ -380,7 +368,7 @@
     /** @return {string} */
     get host() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].host;
+      return this.#lazyGet(SET_HASH);
     }
 
     /** @param {string} value */
@@ -393,7 +381,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HOST, value);
+        this[_url][SET_HOST] = opUrlReparse(this[_rid], SET_HOST, value);
       } catch {
         /* pass */
       }
@@ -402,7 +390,7 @@
     /** @return {string} */
     get hostname() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].hostname;
+      return this.#lazyGet(SET_HOSTNAME);
     }
 
     /** @param {string} value */
@@ -415,7 +403,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HOSTNAME, value);
+        this[_url].hostname = opUrlReparse(this[_rid], SET_HOSTNAME, value);
       } catch {
         /* pass */
       }
@@ -424,7 +412,7 @@
     /** @return {string} */
     get href() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].href;
+      return this.#lazyGet(HREF);
     }
 
     /** @param {string} value */
@@ -436,20 +424,21 @@
         prefix,
         context: "Argument 1",
       });
-      this[_url] = opUrlParse(value);
+      this[_rid] = opUrlParse(value);
+      this[_url] = new Array(11);
       this.#updateSearchParams();
     }
 
     /** @return {string} */
     get origin() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].origin;
+      return this.#lazyGet(ORIGIN);
     }
 
     /** @return {string} */
     get password() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].password;
+      return this.#lazyGet(SET_PASSWORD);
     }
 
     /** @param {string} value */
@@ -462,7 +451,11 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PASSWORD, value);
+        this[_url][SET_PASSWORD] = opUrlReparse(
+          this[_rid],
+          SET_PASSWORD,
+          value,
+        );
       } catch {
         /* pass */
       }
@@ -471,7 +464,7 @@
     /** @return {string} */
     get pathname() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].pathname;
+      return this.#lazyGet(SET_PATHNAME);
     }
 
     /** @param {string} value */
@@ -484,7 +477,11 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PATHNAME, value);
+        this[_url][SET_PATHNAME] = opUrlReparse(
+          this[_rid],
+          SET_PATHNAME,
+          value,
+        );
       } catch {
         /* pass */
       }
@@ -493,7 +490,7 @@
     /** @return {string} */
     get port() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].port;
+      return this.#lazyGet(SET_PORT);
     }
 
     /** @param {string} value */
@@ -506,7 +503,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PORT, value);
+        this[_url][SET_PORT] = opUrlReparse(this[_rid], SET_PORT, value);
       } catch {
         /* pass */
       }
@@ -515,7 +512,7 @@
     /** @return {string} */
     get protocol() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].protocol;
+      return this.#lazyGet(SET_PROTOCOL);
     }
 
     /** @param {string} value */
@@ -528,7 +525,11 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PROTOCOL, value);
+        this[_url][SET_PROTOCOL] = opUrlReparse(
+          this[_rid],
+          SET_PROTOCOL,
+          value,
+        );
       } catch {
         /* pass */
       }
@@ -537,7 +538,7 @@
     /** @return {string} */
     get search() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].search;
+      return this.#lazyGet(SET_SEARCH);
     }
 
     /** @param {string} value */
@@ -550,7 +551,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_SEARCH, value);
+        this[_url][SET_SEARCH] = opUrlReparse(this[_rid], SET_SEARCH, value);
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -560,7 +561,7 @@
     /** @return {string} */
     get username() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].username;
+      return this.#lazyGet(SET_USERNAME);
     }
 
     /** @param {string} value */
@@ -573,7 +574,11 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_USERNAME, value);
+        this[_url][SET_USERNAME] = opUrlReparse(
+          this[_rid],
+          SET_USERNAME,
+          value,
+        );
       } catch {
         /* pass */
       }
@@ -591,13 +596,13 @@
     /** @return {string} */
     toString() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].href;
+      return this.href;
     }
 
     /** @return {string} */
     toJSON() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].href;
+      return this.href;
     }
   }
 

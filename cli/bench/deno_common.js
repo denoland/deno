@@ -56,6 +56,13 @@ function benchUrlParse() {
   });
 }
 
+function benchUrlParseGetPath() {
+  benchSync("url_parse_get_path", 5e4, (i) => {
+    const url = new URL(`http://www.google.com/${i}`);
+    url.pathname;
+  });
+}
+
 function benchLargeBlobText() {
   const input = "long-string".repeat(999_999);
   benchSync("blob_text_large", 100, () => {
@@ -130,6 +137,7 @@ async function main() {
   // A common "language feature", that should be fast
   // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
+  benchUrlParseGetPath();
   benchLargeBlobText();
   benchB64RtLong();
   benchB64RtShort();

@@ -11,7 +11,10 @@ use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
+use std::cell::RefCell;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -35,31 +38,24 @@ pub fn init() -> Extension {
     .build()
 }
 
-// UrlParts is a \n joined string of the following parts:
-// #[derive(Serialize)]
-// pub struct UrlParts {
-//   href: String,
-//   hash: String,
-//   host: String,
-//   hostname: String,
-//   origin: String,
-//   password: String,
-//   pathname: String,
-//   port: String,
-//   protocol: String,
-//   search: String,
-//   username: String,
-// }
-// TODO: implement cleaner & faster serialization
-type UrlParts = String;
+struct UrlResource {
+  inner: RefCell<Url>,
+}
+
+impl Resource for UrlResource {
+  fn name(&self) -> std::borrow::Cow<str> {
+    "url".into()
+  }
+}
 
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
-/// optional part to "set" after parsing. Return `UrlParts`.
+/// optional part to "set" after parsing.
 #[op]
 pub fn op_url_parse(
+  state: &mut OpState,
   href: String,
   base_href: Option<String>,
-) -> Result<UrlParts, AnyError> {
+) -> Result<u32, AnyError> {
   let base_url = base_href
     .as_ref()
     .map(|b| Url::parse(b).map_err(|_| type_error("Invalid base URL")))
@@ -68,8 +64,9 @@ pub fn op_url_parse(
     .base_url(base_url.as_ref())
     .parse(&href)
     .map_err(|_| type_error("Invalid URL"))?;
-
-  Ok(url_parts(url))
+  Ok(state.resource_table.add(UrlResource {
+    inner: RefCell::new(url),
+  }))
 }
 
 #[derive(PartialEq, Debug)]
@@ -87,14 +84,40 @@ pub enum UrlSetter {
 }
 
 #[op]
-pub fn op_url_reparse(
-  href: String,
-  setter_opts: (u8, String),
-) -> Result<UrlParts, AnyError> {
-  let mut url = Url::options()
-    .parse(&href)
-    .map_err(|_| type_error("Invalid URL"))?;
+pub fn op_url_get(
+  state: &mut OpState,
+  rid: u32,
+  getter: u8,
+) -> Result<String, AnyError> {
+  let resource = state.resource_table.get::<UrlResource>(rid)?;
+  let url = resource.inner.borrow();
+  if getter > 8 {
+    return Err(type_error("Invalid URL setter"));
+  }
+  // SAFETY: checked to be less than 9.
+  let getter = unsafe { std::mem::transmute::<u8, UrlSetter>(getter) };
+  let part = match getter {
+    UrlSetter::Hash => quirks::hash(&url),
+    UrlSetter::Host => quirks::host(&url),
+    UrlSetter::Hostname => quirks::hostname(&url),
+    UrlSetter::Password => quirks::password(&url),
+    UrlSetter::Pathname => quirks::pathname(&url),
+    UrlSetter::Port => quirks::port(&url),
+    UrlSetter::Protocol => quirks::protocol(&url),
+    UrlSetter::Search => quirks::search(&url),
+    UrlSetter::Username => quirks::username(&url),
+  };
+  Ok(part.to_string())
+}
 
+#[op]
+pub fn op_url_reparse(
+  state: &mut OpState,
+  rid: u32,
+  setter_opts: (u8, String),
+) -> Result<String, AnyError> {
+  let resource = state.resource_table.get::<UrlResource>(rid)?;
+  let mut url = resource.inner.borrow_mut();
   let (setter, setter_value) = setter_opts;
   if setter > 8 {
     return Err(type_error("Invalid URL setter"));
@@ -102,42 +125,52 @@ pub fn op_url_reparse(
   // SAFETY: checked to be less than 9.
   let setter = unsafe { std::mem::transmute::<u8, UrlSetter>(setter) };
   let value = setter_value.as_ref();
-  match setter {
-    UrlSetter::Hash => quirks::set_hash(&mut url, value),
-    UrlSetter::Host => quirks::set_host(&mut url, value)
-      .map_err(|_| uri_error("Invalid host"))?,
-    UrlSetter::Hostname => quirks::set_hostname(&mut url, value)
-      .map_err(|_| uri_error("Invalid hostname"))?,
-    UrlSetter::Password => quirks::set_password(&mut url, value)
-      .map_err(|_| uri_error("Invalid password"))?,
-    UrlSetter::Pathname => quirks::set_pathname(&mut url, value),
-    UrlSetter::Port => quirks::set_port(&mut url, value)
-      .map_err(|_| uri_error("Invalid port"))?,
-    UrlSetter::Protocol => quirks::set_protocol(&mut url, value)
-      .map_err(|_| uri_error("Invalid protocol"))?,
-    UrlSetter::Search => quirks::set_search(&mut url, value),
-    UrlSetter::Username => quirks::set_username(&mut url, value)
-      .map_err(|_| uri_error("Invalid username"))?,
-  }
+  let parsed = match setter {
+    UrlSetter::Hash => {
+      quirks::set_hash(&mut url, value);
+      quirks::hash(&url)
+    }
+    UrlSetter::Host => {
+      quirks::set_host(&mut url, value)
+        .map_err(|_| uri_error("Invalid host"))?;
+      quirks::host(&url)
+    }
+    UrlSetter::Hostname => {
+      quirks::set_hostname(&mut url, value)
+        .map_err(|_| uri_error("Invalid hostname"))?;
+      quirks::hostname(&url)
+    }
+    UrlSetter::Password => {
+      quirks::set_password(&mut url, value)
+        .map_err(|_| uri_error("Invalid password"))?;
+      quirks::password(&url)
+    }
+    UrlSetter::Pathname => {
+      quirks::set_pathname(&mut url, value);
+      quirks::pathname(&url)
+    }
+    UrlSetter::Port => {
+      quirks::set_port(&mut url, value)
+        .map_err(|_| uri_error("Invalid port"))?;
+      quirks::port(&url)
+    }
+    UrlSetter::Protocol => {
+      quirks::set_protocol(&mut url, value)
+        .map_err(|_| uri_error("Invalid protocol"))?;
+      quirks::protocol(&url)
+    }
+    UrlSetter::Search => {
+      quirks::set_search(&mut url, value);
+      quirks::search(&url)
+    }
+    UrlSetter::Username => {
+      quirks::set_username(&mut url, value)
+        .map_err(|_| uri_error("Invalid username"))?;
+      quirks::username(&url)
+    }
+  };
 
-  Ok(url_parts(url))
-}
-
-fn url_parts(url: Url) -> UrlParts {
-  [
-    quirks::href(&url),
-    quirks::hash(&url),
-    quirks::host(&url),
-    quirks::hostname(&url),
-    &quirks::origin(&url),
-    quirks::password(&url),
-    quirks::pathname(&url),
-    quirks::port(&url),
-    quirks::protocol(&url),
-    quirks::search(&url),
-    quirks::username(&url),
-  ]
-  .join("\n")
+  Ok(parsed.to_string())
 }
 
 #[op]
