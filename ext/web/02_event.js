@@ -1296,7 +1296,7 @@
         cancelable,
         composed,
         promise,
-        reason = null,
+        reason,
       } = {},
     ) {
       super(type, {

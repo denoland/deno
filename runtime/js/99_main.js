@@ -568,7 +568,7 @@ delete Intl.v8BreakIterator;
       default:
         return;
     }
-    queueMicrotask(() => {
+    core.opAsync("op_next_task").then(() => {
       const hasPendingException = core.opSync(
         "op_has_pending_promise_exception",
         promise,
