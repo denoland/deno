@@ -411,6 +411,7 @@ delete Intl.v8BreakIterator;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    PromiseRejectionEvent: util.nonEnumerable(PromiseRejectionEvent),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
@@ -553,6 +554,43 @@ delete Intl.v8BreakIterator;
     postMessage: util.writable(postMessage),
   };
 
+  function promiseRejectCallback(type, promise, reason) {
+    switch (type) {
+      case 0: {
+        core.opSync("op_store_pending_promise_exception", promise, reason);
+        break;
+      }
+      case 1: {
+        core.opSync("op_remove_pending_promise_exception", promise);
+        break;
+      }
+      default:
+        return;
+    }
+    core.opAsync("op_next_task").then(() => {
+      const hasPendingException = core.opSync(
+        "op_has_pending_promise_exception",
+        promise,
+      );
+
+      if (!hasPendingException) {
+        return;
+      }
+
+      const event = new PromiseRejectionEvent("unhandledrejection", {
+        cancelable: true,
+        promise,
+        reason,
+      });
+      globalThis.dispatchEvent(event);
+
+      // If event was not prevented we will let Rust side handle it.
+      if (event.defaultPrevented) {
+        core.opSync("op_remove_pending_promise_exception", promise);
+      }
+    });
+  }
+
   let hasBootstrapped = false;
 
   function bootstrapMainRuntime(runtimeOptions) {
@@ -585,6 +623,10 @@ delete Intl.v8BreakIterator;
     defineEventHandler(window, "load");
     defineEventHandler(window, "beforeunload");
     defineEventHandler(window, "unload");
+    defineEventHandler(window, "unhandledrejection");
+
+    core.setPromiseRejectCallback(promiseRejectCallback);
+
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
     // This prevents the recursive dispatches of unload events.
@@ -685,6 +727,10 @@ delete Intl.v8BreakIterator;
 
     defineEventHandler(self, "message");
     defineEventHandler(self, "error", undefined, true);
+    defineEventHandler(self, "unhandledrejection");
+
+    core.setPromiseRejectCallback(promiseRejectCallback);
+
     // `Deno.exit()` is an alias to `self.close()`. Setting and exit
     // code using an op in worker context is a no-op.
     os.setExitHandler((_exitCode) => {
