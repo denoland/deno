@@ -715,7 +715,11 @@ mod tests {
       vec![format!(
         "{}{}",
         scheme,
-        root_dir_path.join("child").to_str().unwrap()
+        root_dir_path
+          .join("child")
+          .to_str()
+          .unwrap()
+          .replace("/", "\\")
       )],
       &[],
       predicate,
