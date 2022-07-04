@@ -181,7 +181,6 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
-      startup_snapshot: Some(deno_snapshots::cli_snapshot()),
     };
 
     WebWorker::bootstrap_from_options(
@@ -263,7 +262,6 @@ pub fn create_main_worker(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    startup_snapshot: Some(deno_snapshots::cli_snapshot()),
   };
 
   MainWorker::bootstrap_from_options(main_module, permissions, options)

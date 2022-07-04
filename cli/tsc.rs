@@ -24,6 +24,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
+use deno_core::Snapshot;
 use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -50,6 +51,27 @@ pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
 pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
+
+pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
+  #[cold]
+  #[inline(never)]
+  || {
+    static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
+      include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+
+    zstd::bulk::decompress(
+      &COMPRESSED_COMPILER_SNAPSHOT[4..],
+      u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
+        as usize,
+    )
+    .unwrap()
+    .into_boxed_slice()
+  },
+);
+
+pub fn compiler_snapshot() -> Snapshot {
+  Snapshot::Static(&*COMPILER_SNAPSHOT)
+}
 
 macro_rules! inc {
   ($e:expr) => {
@@ -635,7 +657,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     })
     .collect();
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
+    startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder()
       .ops(vec![
         op_cwd::decl(),
@@ -819,9 +841,9 @@ mod tests {
   }
 
   #[test]
-  fn test_tsc_snapshot() {
+  fn test_compiler_snapshot() {
     let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-      startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
+      startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
     });
     js_runtime
