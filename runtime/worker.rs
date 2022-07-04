@@ -35,6 +35,18 @@ use std::task::Poll;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
+#[derive(Clone, Default)]
+pub struct ExitCode(Arc<AtomicI32>);
+
+impl ExitCode {
+  pub fn get(&self) -> i32 {
+    self.0.load(Relaxed)
+  }
+
+  pub fn set(&mut self, code: i32) {
+    self.0.store(code, Relaxed);
+  }
+}
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -45,6 +57,7 @@ pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  exit_code: ExitCode,
 }
 
 pub struct WorkerOptions {
@@ -68,6 +81,7 @@ pub struct WorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub startup_snapshot: Option<deno_core::Snapshot>,
 }
 
 impl MainWorker {
@@ -98,6 +112,7 @@ impl MainWorker {
         Ok(())
       })
       .build();
+    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -147,13 +162,15 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(None),
+      ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
       ops::http::init(),
+      // Runtime JS
+      js::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -161,7 +178,7 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: options.startup_snapshot.take(),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -181,6 +198,7 @@ impl MainWorker {
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      exit_code,
     }
   }
 
@@ -221,7 +239,11 @@ impl MainWorker {
     }
   }
 
-  async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  /// Executes specified JavaScript module.
+  pub async fn evaluate_module(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -314,11 +336,8 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&mut self) -> i32 {
-    let op_state_rc = self.js_runtime.op_state();
-    let op_state = op_state_rc.borrow();
-    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
-    exit_code
+  pub fn get_exit_code(&self) -> i32 {
+    self.exit_code.get()
   }
 
   /// Dispatches "load" event to the JavaScript runtime.
@@ -351,6 +370,24 @@ impl MainWorker {
       // used a saved reference to global scope.
       "dispatchEvent(new Event('unload'))",
     )
+  }
+
+  /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
+  /// indicating if the event was prevented and thus event loop should continue
+  /// running.
+  pub fn dispatch_beforeunload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<bool, AnyError> {
+    let value = self.js_runtime.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+    )?;
+    let local_value = value.open(&mut self.js_runtime.handle_scope());
+    Ok(local_value.is_false())
   }
 }
 
@@ -395,6 +432,7 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
+      startup_snapshot: None,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

@@ -136,6 +136,9 @@ impl WsStreamResource {
     match res {
       Ok(()) => Ok(()),
       Err(Error::ConnectionClosed) => Ok(()),
+      Err(tokio_tungstenite::tungstenite::Error::Protocol(
+        tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing,
+      )) => Ok(()),
       Err(err) => Err(err.into()),
     }
   }

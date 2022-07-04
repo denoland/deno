@@ -57,6 +57,6 @@ nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
 multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
 failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
 
-test result: FAILED. 0 passed (1 step); 3 failed (5 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed (1 step) | 3 failed (5 steps) ([WILDCARD])
 
 error: Test failed

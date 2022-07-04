@@ -273,37 +273,19 @@ Deno.test({
 Deno.test({
   name: "worker with Deno namespace",
   fn: async function () {
-    const regularWorker = new Worker(
-      new URL("non_deno_worker.js", import.meta.url),
-      { type: "module" },
-    );
     const denoWorker = new Worker(
       new URL("deno_worker.ts", import.meta.url),
-      {
-        type: "module",
-        deno: {
-          namespace: true,
-          permissions: "inherit",
-        },
-      },
+      { type: "module", deno: { permissions: "inherit" } },
     );
 
-    const promise1 = deferred();
-    regularWorker.onmessage = (e) => {
-      regularWorker.terminate();
-      promise1.resolve(e.data);
-    };
-
-    const promise2 = deferred();
+    const promise = deferred();
     denoWorker.onmessage = (e) => {
       denoWorker.terminate();
-      promise2.resolve(e.data);
+      promise.resolve(e.data);
     };
 
-    regularWorker.postMessage("Hello World");
-    assertEquals(await promise1, "Hello World");
     denoWorker.postMessage("Hello World");
-    assertEquals(await promise2, "Hello World");
+    assertEquals(await promise, "Hello World");
   },
 });
 
@@ -394,13 +376,7 @@ Deno.test({
 Deno.test("Worker inherits permissions", async function () {
   const worker = new Worker(
     new URL("./read_check_worker.js", import.meta.url).href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: "inherit",
-      },
-    },
+    { type: "module", deno: { permissions: "inherit" } },
   );
 
   const promise = deferred();
@@ -416,15 +392,7 @@ Deno.test("Worker inherits permissions", async function () {
 Deno.test("Worker limit children permissions", async function () {
   const worker = new Worker(
     new URL("./read_check_worker.js", import.meta.url).href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: {
-          read: false,
-        },
-      },
-    },
+    { type: "module", deno: { permissions: { read: false } } },
   );
 
   const promise = deferred();
@@ -443,7 +411,6 @@ Deno.test("Worker limit children permissions granularly", async function () {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: {
           env: ["foo"],
           hrtime: true,
@@ -493,13 +460,7 @@ Deno.test("Nested worker limit children permissions", async function () {
   /** This worker has permissions but doesn't grant them to its children */
   const worker = new Worker(
     new URL("./parent_read_check_worker.js", import.meta.url).href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: "inherit",
-      },
-    },
+    { type: "module", deno: { permissions: "inherit" } },
   );
   const promise = deferred();
   worker.onmessage = ({ data }) => promise.resolve(data);
@@ -544,15 +505,7 @@ Deno.test({
       () => {
         const worker = new Worker(
           new URL("./deno_worker.ts", import.meta.url).href,
-          {
-            type: "module",
-            deno: {
-              namespace: true,
-              permissions: {
-                env: true,
-              },
-            },
-          },
+          { type: "module", deno: { permissions: { env: true } } },
         );
         worker.terminate();
       },
@@ -565,13 +518,7 @@ Deno.test({
 Deno.test("Worker with disabled permissions", async function () {
   const worker = new Worker(
     new URL("./no_permissions_worker.js", import.meta.url).href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: "none",
-      },
-    },
+    { type: "module", deno: { permissions: "none" } },
   );
 
   const promise = deferred();
@@ -587,13 +534,7 @@ Deno.test("Worker with disabled permissions", async function () {
 Deno.test("Worker permissions are not inherited with empty permission object", async function () {
   const worker = new Worker(
     new URL("./permission_echo.js", import.meta.url).href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: {},
-      },
-    },
+    { type: "module", deno: { permissions: {} } },
   );
 
   const promise = deferred();
@@ -617,15 +558,7 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
 Deno.test("Worker permissions are not inherited with single specified permission", async function () {
   const worker = new Worker(
     new URL("./permission_echo.js", import.meta.url).href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: {
-          net: true,
-        },
-      },
-    },
+    { type: "module", deno: { permissions: { net: true } } },
   );
 
   const promise = deferred();
@@ -720,17 +653,8 @@ Deno.test({
   fn: async function () {
     const result = deferred();
     const worker = new Worker(
-      new URL(
-        "./http_worker.js",
-        import.meta.url,
-      ).href,
-      {
-        type: "module",
-        deno: {
-          namespace: true,
-          permissions: "inherit",
-        },
-      },
+      new URL("./http_worker.js", import.meta.url).href,
+      { type: "module", deno: { permissions: "inherit" } },
     );
     worker.onmessage = () => {
       result.resolve();
@@ -870,7 +794,7 @@ Deno.test({
        * self.onmessage = function() {self.postMessage(Deno.memoryUsage())}
        */
       "data:application/typescript;base64,c2VsZi5vbm1lc3NhZ2UgPSBmdW5jdGlvbigpIHtzZWxmLnBvc3RNZXNzYWdlKERlbm8ubWVtb3J5VXNhZ2UoKSl9",
-      { type: "module", name: "tsWorker", deno: true },
+      { type: "module", name: "tsWorker" },
     );
 
     w.postMessage(null);

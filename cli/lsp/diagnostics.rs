@@ -13,7 +13,7 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
-use crate::config_file::LintConfig;
+use crate::args::LintConfig;
 use crate::diagnostics;
 
 use deno_ast::MediaType;
@@ -574,7 +574,7 @@ struct DiagnosticDataRedirect {
 
 /// An enum which represents diagnostic errors which originate from Deno itself.
 pub enum DenoDiagnostic {
-  /// A `x-deno-warn` is associated with the specifier and should be displayed
+  /// A `x-deno-warning` is associated with the specifier and should be displayed
   /// as a warning to the user.
   DenoWarn(String),
   /// The import assertion type is incorrect.
@@ -763,7 +763,7 @@ fn diagnose_dependency(
       specifier, range, ..
     } => {
       let range = documents::to_lsp_range(range);
-      // If the module is a remote module and has a `X-Deno-Warn` header, we
+      // If the module is a remote module and has a `X-Deno-Warning` header, we
       // want a warning diagnostic with that message.
       if let Some(metadata) = cache_metadata.get(specifier) {
         if let Some(message) =
@@ -898,7 +898,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     StateSnapshot {
