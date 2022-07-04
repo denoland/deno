@@ -8,3 +8,4 @@ function Foo() {
 }
 
 new Foo();
+Promise.reject();

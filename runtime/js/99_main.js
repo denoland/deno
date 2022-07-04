@@ -28,7 +28,6 @@ delete Intl.v8BreakIterator;
     SymbolIterator,
     PromisePrototypeThen,
     TypeError,
-    queueMicrotask,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
