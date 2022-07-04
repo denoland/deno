@@ -8,7 +8,7 @@
 // 8cc98b6f10b7f354473a08c3773bb1de839845b9
 
 interface GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUObjectDescriptorBase {
@@ -64,6 +64,13 @@ declare class GPUSupportedFeatures {
   values(): IterableIterator<GPUFeatureName>;
 }
 
+declare class GPUAdapterInfo {
+  readonly vendor: string;
+  readonly architecture: string;
+  readonly device: string;
+  readonly description: string;
+}
+
 declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
@@ -78,12 +85,12 @@ declare interface GPURequestAdapterOptions {
 declare type GPUPowerPreference = "low-power" | "high-performance";
 
 declare class GPUAdapter {
-  readonly name: string;
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
+  requestAdapterInfo(unmaskHints?: string[]): Promise<GPUAdapterInfo>;
 }
 
 declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
@@ -101,6 +108,7 @@ declare type GPUFeatureName =
   | "texture-compression-astc"
   | "timestamp-query"
   | "indirect-first-instance"
+  | "shader-f16"
   // extended from spec
   | "mappable-primary-buffers"
   | "sampled-texture-binding-array"
@@ -116,7 +124,7 @@ declare type GPUFeatureName =
   | "vertex-attribute-64bit";
 
 declare class GPUDevice extends EventTarget implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   readonly lost: Promise<GPUDeviceLostInfo>;
   pushErrorScope(filter: GPUErrorFilter): undefined;
@@ -168,7 +176,7 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
 }
 
 declare class GPUBuffer implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   mapAsync(
     mode: GPUMapModeFlags,
@@ -208,7 +216,7 @@ declare class GPUMapMode {
 }
 
 declare class GPUTexture implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
   destroy(): undefined;
@@ -235,7 +243,7 @@ declare class GPUTextureUsage {
 }
 
 declare class GPUTextureView implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
@@ -300,6 +308,8 @@ declare type GPUTextureFormat =
   | "depth24plus"
   | "depth24plus-stencil8"
   | "depth32float"
+  | "depth24unorm-stencil8"
+  | "depth32float-stencil8"
   | "bc1-rgba-unorm"
   | "bc1-rgba-unorm-srgb"
   | "bc2-rgba-unorm"
@@ -351,12 +361,10 @@ declare type GPUTextureFormat =
   | "astc-12x10-unorm"
   | "astc-12x10-unorm-srgb"
   | "astc-12x12-unorm"
-  | "astc-12x12-unorm-srgb"
-  | "depth24unorm-stencil8"
-  | "depth32float-stencil8";
+  | "astc-12x12-unorm-srgb";
 
 declare class GPUSampler implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
@@ -365,7 +373,7 @@ declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
   addressModeW?: GPUAddressMode;
   magFilter?: GPUFilterMode;
   minFilter?: GPUFilterMode;
-  mipmapFilter?: GPUFilterMode;
+  mipmapFilter?: GPUMipmapFilterMode;
   lodMinClamp?: number;
   lodMaxClamp?: number;
   compare?: GPUCompareFunction;
@@ -375,6 +383,8 @@ declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
 declare type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
 
 declare type GPUFilterMode = "nearest" | "linear";
+
+declare type GPUMipmapFilterMode = "nearest" | "linear";
 
 declare type GPUCompareFunction =
   | "never"
@@ -387,7 +397,7 @@ declare type GPUCompareFunction =
   | "always";
 
 declare class GPUBindGroupLayout implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
@@ -450,7 +460,7 @@ declare interface GPUStorageTextureBindingLayout {
 }
 
 declare class GPUBindGroup implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
@@ -475,7 +485,7 @@ declare interface GPUBufferBinding {
 }
 
 declare class GPUPipelineLayout implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
@@ -496,7 +506,7 @@ declare interface GPUCompilationInfo {
 }
 
 declare class GPUShaderModule implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   compilationInfo(): Promise<GPUCompilationInfo>;
 }
@@ -507,7 +517,7 @@ declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
 }
 
 declare interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
-  layout?: GPUPipelineLayout;
+  layout: GPUPipelineLayout;
 }
 
 declare interface GPUPipelineBase {
@@ -520,7 +530,7 @@ declare interface GPUProgrammableStage {
 }
 
 declare class GPUComputePipeline implements GPUObjectBase, GPUPipelineBase {
-  label: string | null;
+  label: string;
 
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
@@ -531,7 +541,7 @@ declare interface GPUComputePipelineDescriptor
 }
 
 declare class GPURenderPipeline implements GPUObjectBase, GPUPipelineBase {
-  label: string | null;
+  label: string;
 
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
@@ -545,13 +555,6 @@ declare interface GPURenderPipelineDescriptor
   fragment?: GPUFragmentState;
 }
 
-declare type GPUPrimitiveTopology =
-  | "point-list"
-  | "line-list"
-  | "line-strip"
-  | "triangle-list"
-  | "triangle-strip";
-
 declare interface GPUPrimitiveState {
   topology?: GPUPrimitiveTopology;
   stripIndexFormat?: GPUIndexFormat;
@@ -559,6 +562,13 @@ declare interface GPUPrimitiveState {
   cullMode?: GPUCullMode;
   unclippedDepth?: boolean;
 }
+
+declare type GPUPrimitiveTopology =
+  | "point-list"
+  | "line-list"
+  | "line-strip"
+  | "triangle-list"
+  | "triangle-strip";
 
 declare type GPUFrontFace = "ccw" | "cw";
 
@@ -571,7 +581,7 @@ declare interface GPUMultisampleState {
 }
 
 declare interface GPUFragmentState extends GPUProgrammableStage {
-  targets: GPUColorTargetState[];
+  targets: (GPUColorTargetState | null)[];
 }
 
 declare interface GPUColorTargetState {
@@ -710,13 +720,13 @@ declare interface GPUVertexAttribute {
 }
 
 declare class GPUCommandBuffer implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
 
 declare class GPUCommandEncoder implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;
   beginComputePass(
@@ -751,8 +761,8 @@ declare class GPUCommandEncoder implements GPUObjectBase {
 
   clearBuffer(
     destination: GPUBuffer,
-    destinationOffset: number,
-    size: number,
+    destinationOffset?: number,
+    size?: number,
   ): undefined;
 
   pushDebugGroup(groupLabel: string): undefined;
@@ -813,7 +823,7 @@ interface GPUProgrammablePassEncoder {
 
 declare class GPUComputePassEncoder
   implements GPUObjectBase, GPUProgrammablePassEncoder {
-  label: string | null;
+  label: string;
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -888,7 +898,7 @@ interface GPURenderEncoderBase {
 
 declare class GPURenderPassEncoder
   implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
-  label: string | null;
+  label: string;
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -967,11 +977,11 @@ declare class GPURenderPassEncoder
   writeTimestamp(querySet: GPUQuerySet, queryIndex: number): undefined;
 
   executeBundles(bundles: GPURenderBundle[]): undefined;
-  endPass(): undefined;
+  end(): undefined;
 }
 
 declare interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
-  colorAttachments: GPURenderPassColorAttachment[];
+  colorAttachments: (GPURenderPassColorAttachment | null)[];
   depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
   occlusionQuerySet?: GPUQuerySet;
 }
@@ -980,35 +990,38 @@ declare interface GPURenderPassColorAttachment {
   view: GPUTextureView;
   resolveTarget?: GPUTextureView;
 
-  loadValue: GPULoadOp | GPUColor;
-  storeOp?: GPUStoreOp;
+  clearValue?: GPUColor;
+  loadOp: GPULoadOp;
+  storeOp: GPUStoreOp;
 }
 
 declare interface GPURenderPassDepthStencilAttachment {
   view: GPUTextureView;
 
-  depthLoadValue: GPULoadOp | number;
-  depthStoreOp: GPUStoreOp;
+  depthClearValue?: number;
+  depthLoadOp?: GPULoadOp;
+  depthStoreOp?: GPUStoreOp;
   depthReadOnly?: boolean;
 
-  stencilLoadValue: GPULoadOp | number;
-  stencilStoreOp: GPUStoreOp;
+  stencilClearValue?: number;
+  stencilLoadOp?: GPULoadOp;
+  stencilStoreOp?: GPUStoreOp;
   stencilReadOnly?: boolean;
 }
 
-declare type GPULoadOp = "load";
+declare type GPULoadOp = "load" | "clear";
 
 declare type GPUStoreOp = "store" | "discard";
 
 declare class GPURenderBundle implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
 declare interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
 
 declare class GPURenderBundleEncoder
   implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
-  label: string | null;
+  label: string;
   draw(
     vertexCount: number,
     instanceCount?: number,
@@ -1060,7 +1073,7 @@ declare class GPURenderBundleEncoder
 }
 
 declare interface GPURenderPassLayout extends GPUObjectDescriptorBase {
-  colorFormats: GPUTextureFormat[];
+  colorFormats: (GPUTextureFormat | null)[];
   depthStencilFormat?: GPUTextureFormat;
   sampleCount?: number;
 }
@@ -1071,7 +1084,7 @@ declare interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
 }
 
 declare class GPUQueue implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   submit(commandBuffers: GPUCommandBuffer[]): undefined;
 
@@ -1094,7 +1107,7 @@ declare class GPUQueue implements GPUObjectBase {
 }
 
 declare class GPUQuerySet implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   destroy(): undefined;
 }
@@ -1121,18 +1134,19 @@ declare interface GPUDeviceLostInfo {
   readonly message: string;
 }
 
-declare type GPUErrorFilter = "out-of-memory" | "validation";
-
-declare class GPUOutOfMemoryError {
-  constructor();
-}
-
-declare class GPUValidationError {
-  constructor(message: string);
+declare class GPUError {
   readonly message: string;
 }
 
-declare type GPUError = GPUOutOfMemoryError | GPUValidationError;
+declare type GPUErrorFilter = "out-of-memory" | "validation";
+
+declare class GPUOutOfMemoryError extends GPUError {
+  constructor(message: string);
+}
+
+declare class GPUValidationError extends GPUError {
+  constructor(message: string);
+}
 
 declare class GPUUncapturedErrorEvent extends Event {
   constructor(
