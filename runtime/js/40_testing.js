@@ -363,6 +363,12 @@
     }
   }
 
+  // Some resources cannot be explicitly closed and depend on
+  // garbage collection.
+  const resourceAllowList = [
+    "urlResource",
+  ];
+
   // Wrap test function in additional assertion that makes sure
   // the test case does not "leak" resources - ie. resource table after
   // the test has exactly the same contents as before the test.
@@ -390,6 +396,7 @@
         const preResource = pre[resource];
         const postResource = post[resource];
         if (preResource === postResource) continue;
+        if (ArrayPrototypeIncludes(resourceAllowList, preResource)) continue;
 
         if (preResource === undefined) {
           const [name, action1, action2] = prettyResourceNames(postResource);
