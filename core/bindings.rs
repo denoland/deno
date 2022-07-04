@@ -313,7 +313,7 @@ fn import_meta_resolve(
   ) {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(tc_scope, resolved.as_str()).unwrap();
-      rv.set(resolved_val.into());
+      rv.set(resolved_val);
     }
     Err(err) => {
       let message = v8::String::new(tc_scope, &err.to_string()).unwrap();
