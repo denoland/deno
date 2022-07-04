@@ -1,2 +1,8 @@
-{ "0": "stdin", "1": "stdout", "2": "stderr", "3": "urlResource", "6": "fetchResponseBody" }
+{
+  "0": "stdin",
+  "1": "stdout",
+  "2": "stderr",
+  "3": "urlResource",
+  "6": "fetchResponseBody"
+}
 { "0": "stdin", "1": "stdout", "2": "stderr" }

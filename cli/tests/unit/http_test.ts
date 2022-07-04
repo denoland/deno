@@ -1025,7 +1025,7 @@ Deno.test(
       delete resourcesAfter[Number(rid)];
     }
 
-    assertEquals(Object.keys(resourcesAfter).length, 1);
+    assertEquals(Object.keys(resourcesAfter).length, 3);
 
     listener!.close();
     httpConn!.close();
