@@ -307,7 +307,7 @@ pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
   pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
-  accept_encoding: RefCell<Encoding>,
+  accept_encoding: Encoding,
   cancel_handle: CancelHandle,
 }
 
@@ -322,7 +322,7 @@ impl HttpStreamResource {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
-      accept_encoding: RefCell::new(accept_encoding),
+      accept_encoding,
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -491,7 +491,7 @@ async fn op_http_write_headers(
     .get::<HttpStreamResource>(rid)?;
 
   // Track supported encoding
-  let encoding = *stream.accept_encoding.borrow();
+  let encoding = stream.accept_encoding;
 
   let mut builder = Response::builder();
   // SAFETY: can not fail, since a fresh Builder is non-errored
