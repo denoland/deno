@@ -307,7 +307,13 @@
       this[_rid] = opUrlParse(url, base);
       RESOURCE_REGISTRY.register(this, this[_rid]);
       // Lazy loaded object
-      this[_url] = new Array(11);
+      // array literal used to avoid primodials.
+      // deno-fmt-ignore
+      this[_url] = [
+        undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined,
+        undefined
+      ];
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
