@@ -16,6 +16,7 @@
     ArrayPrototypeShift,
     ArrayPrototypeSome,
     ArrayPrototypeSort,
+    ArrayPrototypeIncludes,
     DateNow,
     Error,
     FunctionPrototype,
