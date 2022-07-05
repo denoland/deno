@@ -175,7 +175,7 @@ pub struct TestFlags {
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub allow_none: bool,
-  pub include: Option<Vec<String>>,
+  pub include: Vec<String>,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
@@ -2674,15 +2674,14 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     NonZeroUsize::new(1).unwrap()
   };
 
-  let include = if matches.is_present("files") {
-    let files: Vec<String> = matches
+  let include: Vec<String> = if matches.is_present("files") {
+    matches
       .values_of("files")
       .unwrap()
       .map(String::from)
-      .collect();
-    Some(files)
+      .collect::<Vec<_>>()
   } else {
-    None
+    Vec::new()
   };
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
@@ -4987,7 +4986,7 @@ mod tests {
           fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
-          include: Some(svec!["dir1/", "dir2/"]),
+          include: svec!["dir1/", "dir2/"],
           ignore: vec![],
           shuffle: None,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
@@ -5059,7 +5058,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
           trace_ops: false,
@@ -5087,7 +5086,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5119,7 +5118,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5145,7 +5144,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: Some(1),
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5171,7 +5170,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5198,7 +5197,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
