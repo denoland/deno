@@ -479,7 +479,7 @@ impl JsRuntime {
   }
 
   pub fn handle_scope(&mut self) -> v8::HandleScope {
-    self.global_realm().handle_scope(self)
+    self.global_realm().handle_scope(self.v8_isolate())
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -512,7 +512,7 @@ impl JsRuntime {
       let js_files = m.init_js();
       for (filename, source) in js_files {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self, filename, source)?;
+        realm.execute_script(self.v8_isolate(), filename, source)?;
       }
     }
     // Restore extensions
@@ -666,7 +666,9 @@ impl JsRuntime {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    self.global_realm().execute_script(self, name, source_code)
+    self
+      .global_realm()
+      .execute_script(self.v8_isolate(), name, source_code)
   }
 
   /// Takes a snapshot. The isolate should have been created with will_snapshot
@@ -1877,7 +1879,7 @@ impl JsRuntime {
 /// # Panics
 ///
 /// Every method of [`JsRealm`] will panic if you call if with a reference to a
-/// [`JsRuntime`] other than the one that corresponds to the current context.
+/// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
 /// # Lifetime of the realm
 ///
@@ -1896,16 +1898,16 @@ impl JsRealm {
 
   pub fn handle_scope<'s>(
     &self,
-    runtime: &'s mut JsRuntime,
+    isolate: &'s mut v8::Isolate,
   ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(runtime.v8_isolate(), &self.0)
+    v8::HandleScope::with_context(isolate, &self.0)
   }
 
   pub fn global_object<'s>(
     &self,
-    runtime: &'s mut JsRuntime,
+    isolate: &'s mut v8::Isolate,
   ) -> v8::Local<'s, v8::Object> {
-    let scope = &mut self.handle_scope(runtime);
+    let scope = &mut self.handle_scope(isolate);
     self.0.open(scope).global(scope)
   }
 
@@ -1923,11 +1925,11 @@ impl JsRealm {
   /// `Error` can usually be downcast to `JsError`.
   pub fn execute_script(
     &self,
-    runtime: &mut JsRuntime,
+    isolate: &mut v8::Isolate,
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope(runtime);
+    let scope = &mut self.handle_scope(isolate);
 
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
