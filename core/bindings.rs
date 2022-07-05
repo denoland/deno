@@ -283,14 +283,16 @@ fn import_meta_resolve(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  if args.length() < 1
-    || !args.get(0).is_string()
-    || (args.length() == 2 && !args.get(1).is_string())
-  {
+  if args.length() == 2 && !args.get(1).is_string() {
     return throw_type_error(scope, "Invalid arguments");
   }
 
   let tc_scope = &mut v8::TryCatch::new(scope);
+  let maybe_arg_str = args.get(0).to_string(tc_scope);
+  if maybe_arg_str.is_none() {
+    return throw_type_error(tc_scope, "Invalid arguments");
+  }
+  let specifier = maybe_arg_str.unwrap();
   let referrer = if args.length() == 2 {
     let str = v8::Local::<v8::String>::try_from(args.get(1)).unwrap();
     str.to_rust_string_lossy(tc_scope)
@@ -300,7 +302,6 @@ fn import_meta_resolve(
     let url_prop = receiver.get(tc_scope, url_key.into()).unwrap();
     url_prop.to_rust_string_lossy(tc_scope)
   };
-  let specifier = v8::Local::<v8::String>::try_from(args.get(0)).unwrap();
   let module_map_rc = JsRuntime::module_map(tc_scope);
   let loader = {
     let module_map = module_map_rc.borrow();
