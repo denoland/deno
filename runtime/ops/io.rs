@@ -412,10 +412,6 @@ impl StdFileResource {
     }
   }
 
-  pub fn metadata_mut(&self) -> std::cell::RefMut<FileMetadata> {
-    self.metadata.borrow_mut()
-  }
-
   async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
@@ -460,6 +456,19 @@ impl StdFileResource {
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     resource.inner.with_file(f)
+  }
+
+  pub fn with_file_and_metadata<F, R>(
+    state: &mut OpState,
+    rid: ResourceId,
+    f: F,
+  ) -> Result<R, AnyError>
+  where
+    F: FnOnce(&mut StdFile, &mut FileMetadata) -> Result<R, AnyError>,
+  {
+    let resource = state.resource_table.get::<StdFileResource>(rid)?;
+    let mut meta_data = resource.metadata.borrow_mut();
+    resource.inner.with_file(|file| f(file, &mut meta_data))
   }
 
   pub async fn with_file_async<F, R: Send + 'static>(
