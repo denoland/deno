@@ -116,46 +116,46 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    let std_file = resource.std_file();
-    let raw_fd = std_file.lock().as_raw_fd();
-    let mut meta_data = resource.metadata_mut();
-    let maybe_tty_mode = &mut meta_data.tty.mode;
+    StdFileResource::with_file(state, rid, move |std_file| {
+      let raw_fd = std_file.as_raw_fd();
+      let mut meta_data = resource.metadata_mut();
+      let maybe_tty_mode = &mut meta_data.tty.mode;
 
-    if is_raw {
-      if maybe_tty_mode.is_none() {
-        // Save original mode.
-        let original_mode = termios::tcgetattr(raw_fd)?;
-        maybe_tty_mode.replace(original_mode);
+      if is_raw {
+        if maybe_tty_mode.is_none() {
+          // Save original mode.
+          let original_mode = termios::tcgetattr(raw_fd)?;
+          maybe_tty_mode.replace(original_mode);
+        }
+
+        let mut raw = maybe_tty_mode.clone().unwrap();
+
+        raw.input_flags &= !(termios::InputFlags::BRKINT
+          | termios::InputFlags::ICRNL
+          | termios::InputFlags::INPCK
+          | termios::InputFlags::ISTRIP
+          | termios::InputFlags::IXON);
+
+        raw.control_flags |= termios::ControlFlags::CS8;
+
+        raw.local_flags &= !(termios::LocalFlags::ECHO
+          | termios::LocalFlags::ICANON
+          | termios::LocalFlags::IEXTEN);
+        if !cbreak {
+          raw.local_flags &= !(termios::LocalFlags::ISIG);
+        }
+        raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
+        raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+      } else {
+        // Try restore saved mode.
+        if let Some(mode) = maybe_tty_mode.take() {
+          termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+        }
       }
 
-      let mut raw = maybe_tty_mode.clone().unwrap();
-
-      raw.input_flags &= !(termios::InputFlags::BRKINT
-        | termios::InputFlags::ICRNL
-        | termios::InputFlags::INPCK
-        | termios::InputFlags::ISTRIP
-        | termios::InputFlags::IXON);
-
-      raw.control_flags |= termios::ControlFlags::CS8;
-
-      raw.local_flags &= !(termios::LocalFlags::ECHO
-        | termios::LocalFlags::ICANON
-        | termios::LocalFlags::IEXTEN);
-      if !cbreak {
-        raw.local_flags &= !(termios::LocalFlags::ISIG);
-      }
-      raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
-      raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
-      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-    } else {
-      // Try restore saved mode.
-      if let Some(mode) = maybe_tty_mode.take() {
-        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
-      }
-    }
-
-    Ok(())
+      Ok(())
+    })
   }
 }
 
