@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.23.3 / 2022.07.05
+
+- Revert "refactor(snapshots): to their own crate (#14794)" (#15076)
+- fix(cli): handle collecting a directory with file:// (#15002)
+- fix(core): handle exception from Wasm termination (#15014)
+- fix(core): remove unsafe in OpsTracker (#15025)
+- fix(dts): stop default export type behavior (#14977)
+- fix: update to TypeScript 4.7.4 (#15022)
+- perf(ext/http): lazy load headers (#15055)
+- perf(ext/http): remove accept_encoding interior mutability (#15070)
+- perf(ext/http): simplify op_http_accept (#15067)
+- perf(ops): fast path for SMI return values (#15033)
+- perf(serde_v8): avoid extra is_array_buffer_view check (#15056)
+
 ### 1.23.2 / 2022.06.30
 
 - feat(unstable/ffi): thread safe callbacks (#14942)
