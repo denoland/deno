@@ -14,11 +14,13 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::Permissions;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EmitMetadata {
   pub version_hash: String,
+  pub type_checks_succeeded: HashSet<String>,
 }
 
 pub enum CacheType {
@@ -26,6 +28,8 @@ pub enum CacheType {
   SourceMap,
   TypeScriptBuildInfo,
   Version,
+  GetTypeCheckSucceeded(String),
+  SetTypeCheckSucceeded,
 }
 
 /// A trait which provides a concise implementation to getting and setting

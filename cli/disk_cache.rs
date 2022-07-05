@@ -188,6 +188,17 @@ impl Cacher for DiskCache {
       CacheType::Version => {
         return self.get_emit_metadata(specifier).map(|d| d.version_hash)
       }
+      // TODO(nayeemrmn): This returns `Some("")`/`None` to represent a boolean
+      // because `Cacher::get()` is constrained that way. Clean up.
+      CacheType::GetTypeCheckSucceeded(config_hash) => {
+        if let Some(metadata) = self.get_emit_metadata(specifier) {
+          if metadata.type_checks_succeeded.contains(&config_hash) {
+            return Some("".to_string());
+          }
+        }
+        return None;
+      }
+      CacheType::SetTypeCheckSucceeded => panic!("Set only"),
     };
     let filename =
       self.get_cache_filename_with_extension(specifier, extension)?;
@@ -209,14 +220,28 @@ impl Cacher for DiskCache {
       CacheType::TypeScriptBuildInfo => "buildinfo",
       CacheType::Version => {
         let data = if let Some(mut data) = self.get_emit_metadata(specifier) {
+          if value != data.version_hash {
+            data.type_checks_succeeded.clear();
+          }
           data.version_hash = value;
           data
         } else {
           EmitMetadata {
             version_hash: value,
+            type_checks_succeeded: Default::default(),
           }
         };
         return self.set_emit_metadata(specifier, data);
+      }
+      CacheType::GetTypeCheckSucceeded(_) => panic!("Get only"),
+      CacheType::SetTypeCheckSucceeded => {
+        let mut data = self
+          .get_emit_metadata(specifier)
+          .expect("Must set emit before TypeCheckSucceeded");
+        if data.type_checks_succeeded.insert(value) {
+          self.set_emit_metadata(specifier, data)?;
+        }
+        return Ok(());
       }
     };
     let filename = self

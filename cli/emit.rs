@@ -67,8 +67,22 @@ pub trait EmitCache {
   /// Sets the emit data in the cache.
   fn set_emit_data(
     &self,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     data: SpecifierEmitCacheData,
+  ) -> Result<(), AnyError>;
+  /// Check if a type check with the given config succeeded with this module
+  /// as the entrypoint. Use `hash_check_config()` to hash the config.
+  fn get_type_check_succeeded(
+    &self,
+    specifier: &ModuleSpecifier,
+    config_hash: &str,
+  ) -> bool;
+  /// Mark that a type check with the given config succeeded with this module
+  /// as the entrypoint. Use `hash_check_config()` to hash the config.
+  fn set_type_check_succeeded(
+    &self,
+    specifier: &ModuleSpecifier,
+    config_hash: String,
   ) -> Result<(), AnyError>;
   /// Gets the .tsbuildinfo file from the cache.
   fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String>;
@@ -102,15 +116,36 @@ impl<T: Cacher> EmitCache for T {
 
   fn set_emit_data(
     &self,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     data: SpecifierEmitCacheData,
   ) -> Result<(), AnyError> {
-    self.set(CacheType::Version, &specifier, data.source_hash)?;
-    self.set(CacheType::Emit, &specifier, data.text)?;
+    self.set(CacheType::Version, specifier, data.source_hash)?;
+    self.set(CacheType::Emit, specifier, data.text)?;
     if let Some(map) = data.map {
-      self.set(CacheType::SourceMap, &specifier, map)?;
+      self.set(CacheType::SourceMap, specifier, map)?;
     }
     Ok(())
+  }
+
+  fn get_type_check_succeeded(
+    &self,
+    specifier: &ModuleSpecifier,
+    config_hash: &str,
+  ) -> bool {
+    self
+      .get(
+        CacheType::GetTypeCheckSucceeded(config_hash.to_string()),
+        specifier,
+      )
+      .is_some()
+  }
+
+  fn set_type_check_succeeded(
+    &self,
+    specifier: &ModuleSpecifier,
+    config_hash: String,
+  ) -> Result<(), AnyError> {
+    self.set(CacheType::SetTypeCheckSucceeded, specifier, config_hash)
   }
 
   fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
@@ -124,6 +159,33 @@ impl<T: Cacher> EmitCache for T {
   ) -> Result<(), AnyError> {
     self.set(CacheType::TypeScriptBuildInfo, &specifier, text)
   }
+}
+
+/// Hash the set of options which can affect the result of a type check on a
+/// given module graph. This should be stored in the cached metadata for each
+/// root of the graph.
+///
+/// The config also includes the exact set of roots used. For example, if two
+/// type checks are performed and the second uses a subset of the same roots,
+/// it's possible that the first passes and the second fails because of missing
+/// global augmentations. But without including the roots in the config hash
+/// the second would pass the other preliminary checks and short-circuit.
+fn hash_check_config(
+  ts_config: &TsConfig,
+  mode: TypeCheckMode,
+  roots: &[(ModuleSpecifier, ModuleKind)],
+) -> String {
+  let mut input = vec![ts_config.as_bytes(), vec![mode as u8]];
+  let mut roots = roots
+    .iter()
+    .map(|(s, k)| (s.as_str(), serde_json::to_string(k).unwrap()))
+    .collect::<Vec<_>>();
+  roots.sort();
+  for (specifier, kind) in roots {
+    input.push(specifier.as_bytes().to_vec());
+    input.push(kind.as_bytes().to_vec());
+  }
+  crate::checksum::gen(&input)
 }
 
 /// A structure representing stats from an emit operation for a graph.
@@ -339,15 +401,11 @@ fn get_tsc_roots(
   }
 }
 
-/// A hashing function that takes the source code, version and optionally a
-/// user provided config and generates a string hash which can be stored to
-/// determine if the cached emit is valid or not.
-fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
-  crate::checksum::gen(&[
-    source_bytes,
-    version::deno().as_bytes(),
-    config_bytes,
-  ])
+/// A hashing function that takes the source code and runtime version to
+/// generates a string hash which can be stored to determine if the cached emit
+/// is valid or not.
+fn get_version(source_bytes: &[u8]) -> String {
+  crate::checksum::gen(&[source_bytes, version::deno().as_bytes()])
 }
 
 /// Determine if a given module kind and media type is emittable or not.
@@ -421,9 +479,11 @@ pub fn check_and_maybe_emit(
     graph_data.graph_segment(roots).unwrap()
   };
   if valid_emit(
+    roots,
     &segment_graph_data,
     cache,
     &options.ts_config,
+    options.type_check_mode,
     options.reload,
     &options.reload_exclusions,
   ) {
@@ -454,10 +514,9 @@ pub fn check_and_maybe_emit(
     options.ts_config.as_bytes(),
     version::deno().as_bytes().to_owned(),
   ];
-  let config_bytes = options.ts_config.as_bytes();
 
   let response = tsc::exec(tsc::Request {
-    config: options.ts_config,
+    config: options.ts_config.clone(),
     debug: options.debug,
     graph_data: graph_data.clone(),
     hash_data,
@@ -548,7 +607,7 @@ pub fn check_and_maybe_emit(
         let mut emit_data_item = emit_data_items
           .entry(specifier.clone())
           .or_insert_with(|| SpecifierEmitData {
-            version_hash: get_version(source_bytes, &config_bytes),
+            version_hash: get_version(source_bytes),
             text: None,
             map: None,
           });
@@ -569,9 +628,12 @@ pub fn check_and_maybe_emit(
     }
 
     // now insert these items into the cache
+    let config_hash =
+      hash_check_config(&options.ts_config, options.type_check_mode, roots);
     for (specifier, data) in emit_data_items.into_iter() {
       if let Some(cache_data) = data.into_cache_data() {
-        cache.set_emit_data(specifier, cache_data)?;
+        cache.set_emit_data(&specifier, cache_data)?;
+        cache.set_type_check_succeeded(&specifier, config_hash.clone())?;
       }
     }
   }
@@ -597,7 +659,6 @@ pub fn emit(
   options: EmitOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let start = Instant::now();
-  let config_bytes = options.ts_config.as_bytes();
   let include_js = options.ts_config.get_check_js();
   let emit_options = options.ts_config.into();
 
@@ -610,10 +671,8 @@ pub fn emit(
     }
     let needs_reload =
       options.reload && !options.reload_exclusions.contains(&module.specifier);
-    let version = get_version(
-      module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
-      &config_bytes,
-    );
+    let version =
+      get_version(module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap());
     let is_valid = cache
       .get_source_hash(&module.specifier)
       .map_or(false, |v| v == version);
@@ -627,7 +686,7 @@ pub fn emit(
       .unwrap()?;
     emit_count += 1;
     cache.set_emit_data(
-      module.specifier.clone(),
+      &module.specifier,
       SpecifierEmitCacheData {
         source_hash: version,
         text: transpiled_source.text,
@@ -653,13 +712,16 @@ pub fn emit(
 /// graph are emittable and for those that are emittable, if there is currently
 /// a valid emit in the cache.
 fn valid_emit(
+  roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: &GraphData,
   cache: &dyn EmitCache,
   ts_config: &TsConfig,
+  mode: TypeCheckMode,
   reload: bool,
   reload_exclusions: &HashSet<ModuleSpecifier>,
 ) -> bool {
-  let config_bytes = ts_config.as_bytes();
+  let config_hash = hash_check_config(ts_config, mode, roots);
+  let roots = roots.iter().map(|e| e.0.clone()).collect::<HashSet<_>>();
   let check_js = ts_config.get_check_js();
   for (specifier, module_entry) in graph_data.entries() {
     if let ModuleEntry::Module {
@@ -673,6 +735,9 @@ fn valid_emit(
         MediaType::TypeScript
         | MediaType::Mts
         | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
         | MediaType::Tsx
         | MediaType::Jsx => {}
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
@@ -683,9 +748,6 @@ fn valid_emit(
         MediaType::Json
         | MediaType::TsBuildInfo
         | MediaType::SourceMap
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
         | MediaType::Wasm
         | MediaType::Unknown => continue,
       }
@@ -693,10 +755,15 @@ fn valid_emit(
         return false;
       }
       if let Some(source_hash) = cache.get_source_hash(specifier) {
-        if source_hash != get_version(code.as_bytes(), &config_bytes) {
+        if source_hash != get_version(code.as_bytes()) {
           return false;
         }
       } else {
+        return false;
+      }
+      if roots.contains(specifier)
+        && !cache.get_type_check_succeeded(specifier, &config_hash)
+      {
         return false;
       }
     }
