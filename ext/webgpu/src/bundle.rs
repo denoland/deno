@@ -133,9 +133,9 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
 
   // Align the data
   assert!(dynamic_offsets_data.len() % std::mem::size_of::<u32>() == 0);
+  let (prefix, dynamic_offsets_data, suffix) =
   // SAFETY: A u8 to u32 cast is safe because we asserted that the length is a
   // multiple of 4.
-  let (prefix, dynamic_offsets_data, suffix) =
     unsafe { dynamic_offsets_data.align_to::<u32>() };
   assert!(prefix.is_empty());
   assert!(suffix.is_empty());
