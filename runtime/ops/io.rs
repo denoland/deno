@@ -385,6 +385,9 @@ pub struct StdFileResource {
   inner: StdFileResourceInner,
   /// This is used to help synchronize asynchronous reads and writes
   /// so they happen in order. Tokio's mutex is FIFO.
+  /// We use a separate sync primitive here instead of putting the
+  /// StdFile inside this async mutex because we still need to be
+  /// able to access it synchronously.
   order_sync: tokio::sync::Mutex<()>,
   metadata: RefCell<FileMetadata>,
   name: String,
