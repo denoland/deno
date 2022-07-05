@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::convert::From;
 use std::error::Error;
 use std::fmt;
+use std::fmt::Write;
 use wgpu_core::binding_model::CreateBindGroupError;
 use wgpu_core::binding_model::CreateBindGroupLayoutError;
 use wgpu_core::binding_model::CreatePipelineLayoutError;
@@ -35,7 +36,9 @@ fn fmt_err(err: &(dyn Error + 'static)) -> String {
 
   let mut e = err.source();
   while let Some(source) = e {
-    output.push_str(&format!(": {source}"));
+    // No error possible, unwrap is fine here.
+    // https://github.com/rust-lang/rust/blob/1.47.0/library/alloc/src/string.rs#L2414-L2427
+    write!(output, ": {source}").unwrap();
     e = source.source();
   }
 
