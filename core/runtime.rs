@@ -3443,11 +3443,12 @@ assertEquals(1, notify_return_value);
 
     let realm = runtime.create_realm().unwrap();
     assert_ne!(realm.context(), &main_context);
-    assert_ne!(realm.global_object(&mut runtime), main_global);
+    assert_ne!(realm.global_object(runtime.v8_isolate()), main_global);
 
     let main_object = runtime.execute_script("", "Object").unwrap();
-    let realm_object =
-      realm.execute_script(&mut runtime, "", "Object").unwrap();
+    let realm_object = realm
+      .execute_script(runtime.v8_isolate(), "", "Object")
+      .unwrap();
     assert_ne!(main_object, realm_object);
   }
 
@@ -3464,10 +3465,10 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.opSync('op_test')")
       .unwrap();
 
-    let scope = &mut realm.handle_scope(&mut runtime);
+    let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 
@@ -3494,10 +3495,10 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.opSync('op_test')")
       .unwrap();
 
-    let scope = &mut realm.handle_scope(&mut runtime);
+    let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 
@@ -3530,7 +3531,7 @@ assertEquals(1, notify_return_value);
     for realm in [runtime.global_realm(), new_realm].into_iter() {
       let ret = realm
         .execute_script(
-          &mut runtime,
+          runtime.v8_isolate(),
           "",
           r#"
             const buf = Deno.core.opSync("op_test", false);
