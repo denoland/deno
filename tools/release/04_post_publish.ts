@@ -55,7 +55,8 @@ async function forwardReleaseCommitToMain() {
   await repo.runCommand([
     "git",
     "cherry-pick",
-    "-Xpatience",
+    "--strategy-option",
+    "theirs",
     releaseCommitHash,
   ]);
   await repo.gitPush("origin", newBranchName);
