@@ -35,6 +35,18 @@ use std::task::Poll;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
+#[derive(Clone, Default)]
+pub struct ExitCode(Arc<AtomicI32>);
+
+impl ExitCode {
+  pub fn get(&self) -> i32 {
+    self.0.load(Relaxed)
+  }
+
+  pub fn set(&mut self, code: i32) {
+    self.0.store(code, Relaxed);
+  }
+}
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -45,6 +57,7 @@ pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  exit_code: ExitCode,
 }
 
 pub struct WorkerOptions {
@@ -52,7 +65,6 @@ pub struct WorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   // Callbacks invoked when creating new instance of WebWorker
@@ -99,6 +111,7 @@ impl MainWorker {
         Ok(())
       })
       .build();
+    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -111,7 +124,7 @@ impl MainWorker {
         options.bootstrap.location.clone(),
       ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
-        user_agent: options.user_agent.clone(),
+        user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
@@ -120,7 +133,7 @@ impl MainWorker {
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
-        options.user_agent.clone(),
+        options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -148,7 +161,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(None),
+      ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
@@ -182,6 +195,7 @@ impl MainWorker {
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      exit_code,
     }
   }
 
@@ -222,7 +236,11 @@ impl MainWorker {
     }
   }
 
-  async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  /// Executes specified JavaScript module.
+  pub async fn evaluate_module(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -304,6 +322,7 @@ impl MainWorker {
   ) -> T {
     loop {
       tokio::select! {
+        biased;
         result = &mut fut => {
           return result;
         }
@@ -314,11 +333,8 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&mut self) -> i32 {
-    let op_state_rc = self.js_runtime.op_state();
-    let op_state = op_state_rc.borrow();
-    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
-    exit_code
+  pub fn get_exit_code(&self) -> i32 {
+    self.exit_code.get()
   }
 
   /// Dispatches "load" event to the JavaScript runtime.
@@ -352,6 +368,24 @@ impl MainWorker {
       "dispatchEvent(new Event('unload'))",
     )
   }
+
+  /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
+  /// indicating if the event was prevented and thus event loop should continue
+  /// running.
+  pub fn dispatch_beforeunload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<bool, AnyError> {
+    let value = self.js_runtime.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+    )?;
+    let local_value = value.open(&mut self.js_runtime.handle_scope());
+    Ok(local_value.is_false())
+  }
 }
 
 #[cfg(test)]
@@ -375,9 +409,9 @@ mod tests {
         runtime_version: "x".to_string(),
         ts_version: "x".to_string(),
         unstable: false,
+        user_agent: "x".to_string(),
       },
       extensions: vec![],
-      user_agent: "x".to_string(),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,

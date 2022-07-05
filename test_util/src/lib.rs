@@ -49,6 +49,7 @@ use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
+pub mod assertions;
 pub mod lsp;
 pub mod pty;
 mod temp_dir;
@@ -138,7 +139,7 @@ pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
   prebuilt_path().join(platform_dir_name()).join(exe)
 }
 
-fn platform_dir_name() -> &'static str {
+pub fn platform_dir_name() -> &'static str {
   if cfg!(target_os = "linux") {
     "linux64"
   } else if cfg!(target_os = "macos") {
@@ -1728,18 +1729,19 @@ pub fn run_powershell_script_file(
 }
 
 #[derive(Debug, Default)]
-pub struct CheckOutputIntegrationTest {
-  pub args: &'static str,
-  pub args_vec: Vec<&'static str>,
-  pub output: &'static str,
-  pub input: Option<&'static str>,
-  pub output_str: Option<&'static str>,
+pub struct CheckOutputIntegrationTest<'a> {
+  pub args: &'a str,
+  pub args_vec: Vec<&'a str>,
+  pub output: &'a str,
+  pub input: Option<&'a str>,
+  pub output_str: Option<&'a str>,
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
+  pub env_clear: bool,
 }
 
-impl CheckOutputIntegrationTest {
+impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn run(&self) {
     let args = if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
@@ -1766,6 +1768,9 @@ impl CheckOutputIntegrationTest {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args.iter());
+    if self.env_clear {
+      command.env_clear();
+    }
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
@@ -1818,6 +1823,13 @@ impl CheckOutputIntegrationTest {
     }
 
     actual = strip_ansi_codes(&actual).to_string();
+
+    // deno test's output capturing flushes with a zero-width space in order to
+    // synchronize the output pipes. Occassionally this zero width space
+    // might end up in the output so strip it from the output comparison here.
+    if args.get(0) == Some(&"test") {
+      actual = actual.replace('\u{200B}', "");
+    }
 
     let expected = if let Some(s) = self.output_str {
       s.to_owned()
@@ -1913,7 +1925,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           println!("ECHO: {}", echo.escape_debug());
 
           // Windows may also echo the previous line, so only check the end
-          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
+          assert_ends_with!(normalize_text(&echo), normalize_text(s));
         }
         PtyData::Output(s) => {
           let mut line = String::new();

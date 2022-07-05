@@ -7,10 +7,6 @@
 
 /// <reference no-default-lib="true"/>
 
-interface AbortSignal extends EventTarget {
-  readonly reason?: unknown;
-}
-
 declare interface URLPatternInit {
   protocol?: string;
   username?: string;
@@ -145,4 +141,9 @@ declare class URLPattern {
   readonly search: string;
   /** The pattern string for the `hash`. */
   readonly hash: string;
+}
+
+interface ErrorConstructor {
+  /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
+  captureStackTrace(error: Object, constructor?: Function): void;
 }

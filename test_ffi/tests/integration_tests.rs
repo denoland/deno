@@ -45,6 +45,7 @@ fn basic() {
   let expected = "\
     something\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    [4, 5, 6]\n\
     [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
     [ 1, 2, 3, 4, 5, 6 ]\n\
@@ -55,25 +56,47 @@ fn basic() {
     false\n\
     true\n\
     false\n\
+    false\n\
+    false\n\
     579\n\
     true\n\
     579\n\
     579\n\
+    8589934590n\n\
+    -8589934590n\n\
+    8589934590n\n\
+    -8589934590n\n\
+    579.9119873046875\n\
+    579.912\n\
     579\n\
-    579\n\
-    579\n\
-    579\n\
+    8589934590n\n\
+    -8589934590n\n\
+    8589934590n\n\
+    -8589934590n\n\
     579.9119873046875\n\
     579.912\n\
     After sleep_blocking\n\
     true\n\
     Before\n\
     true\n\
-    Static u32: 42\n\
-    Static ptr: true\n\
-    Static ptr value: 42\n\
     After\n\
     true\n\
+    logCallback\n\
+    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    u8: 8\n\
+    buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    logCallback\n\
+    30\n\
+    STORED_FUNCTION cleared\n\
+    STORED_FUNCTION_2 cleared\n\
+    Thread safe call counter: 0\n\
+    logCallback\n\
+    Thread safe call counter: 1\n\
+    u8: 8\n\
+    Static u32: 42\n\
+    Static i64: -1242464576485n\n\
+    Static ptr: true\n\
+    Static ptr value: 42\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
@@ -99,5 +122,37 @@ fn symbol_types() {
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
+  assert_eq!(stderr, "");
+}
+
+#[test]
+fn thread_safe_callback() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/thread_safe_test.js")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  let expected = "\
+    Callback on main thread\n\
+    Callback on worker thread\n\
+    Calling callback, isolate should stay asleep until callback is called\n\
+    Callback being called\n\
+    Isolate should now exit\n";
+  assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

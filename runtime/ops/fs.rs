@@ -4,7 +4,6 @@ use super::io::StdFileResource;
 use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
-use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -21,13 +20,19 @@ use deno_crypto::rand::Rng;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
-use std::env::{current_dir, set_current_dir, temp_dir};
+use std::env::current_dir;
+use std::env::set_current_dir;
+use std::env::temp_dir;
 use std::io;
+use std::io::Error;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::io::Write;
-use std::io::{Error, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -317,11 +322,8 @@ fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
 #[op]
 fn op_seek_sync(state: &mut OpState, args: SeekArgs) -> Result<u64, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
-  let pos = StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
-    Err(_) => Err(type_error(
-      "cannot seek on this type of resource".to_string(),
-    )),
+  let pos = StdFileResource::with_file(state, rid, |std_file| {
+    std_file.seek(seek_from).map_err(AnyError::from)
   })?;
   Ok(pos)
 }
@@ -338,15 +340,10 @@ async fn op_seek_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   tokio::task::spawn_blocking(move || {
-    let mut std_file = std_file.lock().unwrap();
+    let mut std_file = std_file.lock();
     std_file.seek(seek_from)
   })
   .await?
@@ -358,9 +355,8 @@ fn op_fdatasync_sync(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
+  StdFileResource::with_file(state, rid, |std_file| {
+    std_file.sync_data().map_err(AnyError::from)
   })?;
   Ok(())
 }
@@ -375,15 +371,10 @@ async fn op_fdatasync_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   tokio::task::spawn_blocking(move || {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     std_file.sync_data()
   })
   .await?
@@ -392,9 +383,8 @@ async fn op_fdatasync_async(
 
 #[op]
 fn op_fsync_sync(state: &mut OpState, rid: ResourceId) -> Result<(), AnyError> {
-  StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
+  StdFileResource::with_file(state, rid, |std_file| {
+    std_file.sync_all().map_err(AnyError::from)
   })?;
   Ok(())
 }
@@ -409,15 +399,10 @@ async fn op_fsync_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   tokio::task::spawn_blocking(move || {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     std_file.sync_all()
   })
   .await?
@@ -429,9 +414,8 @@ fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<FsStat, AnyError> {
-  let metadata = StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => std_file.metadata().map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
+  let metadata = StdFileResource::with_file(state, rid, |std_file| {
+    std_file.metadata().map_err(AnyError::from)
   })?;
   Ok(get_stat(metadata))
 }
@@ -446,15 +430,10 @@ async fn op_fstat_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   let metadata = tokio::task::spawn_blocking(move || {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     std_file.metadata()
   })
   .await?
@@ -471,16 +450,13 @@ fn op_flock_sync(
   use fs3::FileExt;
   super::check_unstable(state, "Deno.flockSync");
 
-  StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => {
-      if exclusive {
-        std_file.lock_exclusive()?;
-      } else {
-        std_file.lock_shared()?;
-      }
-      Ok(())
+  StdFileResource::with_file(state, rid, |std_file| {
+    if exclusive {
+      std_file.lock_exclusive()?;
+    } else {
+      std_file.lock_shared()?;
     }
-    Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
+    Ok(())
   })
 }
 
@@ -498,15 +474,10 @@ async fn op_flock_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     if exclusive {
       std_file.lock_exclusive()?;
     } else {
@@ -525,12 +496,9 @@ fn op_funlock_sync(
   use fs3::FileExt;
   super::check_unstable(state, "Deno.funlockSync");
 
-  StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => {
-      std_file.unlock()?;
-      Ok(())
-    }
-    Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
+  StdFileResource::with_file(state, rid, |std_file| {
+    std_file.unlock()?;
+    Ok(())
   })
 }
 
@@ -547,15 +515,10 @@ async fn op_funlock_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     std_file.unlock()?;
     Ok(())
   })
@@ -1615,9 +1578,8 @@ fn op_ftruncate_sync(
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let len = args.len as u64;
-  StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot truncate this type of resource")),
+  StdFileResource::with_file(state, rid, |std_file| {
+    std_file.set_len(len).map_err(AnyError::from)
   })?;
   Ok(())
 }
@@ -1635,15 +1597,10 @@ async fn op_ftruncate_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
 
   tokio::task::spawn_blocking(move || {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     std_file.set_len(len)
   })
   .await?
@@ -1909,14 +1866,9 @@ fn op_futime_sync(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  StdFileResource::with(state, rid, |r| match r {
-    Ok(std_file) => {
-      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
-        .map_err(AnyError::from)
-    }
-    Err(_) => Err(type_error(
-      "cannot futime on this type of resource".to_string(),
-    )),
+  StdFileResource::with_file(state, rid, |std_file| {
+    filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
+      .map_err(AnyError::from)
   })?;
 
   Ok(())
@@ -1937,14 +1889,9 @@ async fn op_futime_async(
     .resource_table
     .get::<StdFileResource>(rid)?;
 
-  if resource.fs_file.is_none() {
-    return Err(bad_resource_id());
-  }
-
-  let fs_file = resource.fs_file.as_ref().unwrap();
-  let std_file = fs_file.0.as_ref().unwrap().clone();
+  let std_file = resource.std_file();
   tokio::task::spawn_blocking(move || {
-    let std_file = std_file.lock().unwrap();
+    let std_file = std_file.lock();
     filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
     Ok(())
   })
@@ -2032,7 +1979,7 @@ fn op_readfile_text_sync(
   let permissions = state.borrow_mut::<Permissions>();
   let path = Path::new(&path);
   permissions.read.check(path)?;
-  Ok(std::fs::read_to_string(path)?)
+  Ok(string_from_utf8_lossy(std::fs::read(path)?))
 }
 
 #[op]
@@ -2075,7 +2022,7 @@ async fn op_readfile_text_async(
   }
   let fut = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
-    Ok(String::from_utf8(std::fs::read(path)?)?)
+    Ok(string_from_utf8_lossy(std::fs::read(path)?))
   });
   if let Some(cancel_rid) = cancel_rid {
     let cancel_handle = state
@@ -2087,4 +2034,15 @@ async fn op_readfile_text_async(
     }
   }
   fut.await?
+}
+
+// Like String::from_utf8_lossy but operates on owned values
+fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
+  match String::from_utf8_lossy(&buf) {
+    // buf contained non-utf8 chars than have been patched
+    Cow::Owned(s) => s,
+    // SAFETY: if Borrowed then the buf only contains utf8 chars,
+    // we do this instead of .into_owned() to avoid copying the input buf
+    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
+  }
 }

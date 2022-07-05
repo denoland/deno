@@ -383,6 +383,7 @@ type ResponseType =
 /** This Fetch API interface represents the response to a request. */
 declare class Response implements Body {
   constructor(body?: BodyInit | null, init?: ResponseInit);
+  static json(data: unknown, init?: ResponseInit): Response;
   static error(): Response;
   static redirect(url: string, status?: number): Response;
 
@@ -433,16 +434,6 @@ declare class Response implements Body {
  * console.log(response.statusText); // e.g. "OK"
  * const jsonData = await response.json();
  * ```
- */
-declare function fetch(
-  input: Request | string,
-  init?: RequestInit,
-): Promise<Response>;
-// TODO(kt3k): Remove the following overloaded declaration for 2.0.
-/** @deprecated URL is deprecated as the first argument. Use string or Request object instead.
- *
- * Fetch a resource from the network. It returns a `Promise` that resolves to the
- * `Response` to that `Request`, whether it is successful or not.
  */
 declare function fetch(
   input: URL | Request | string,

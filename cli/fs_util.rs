@@ -5,6 +5,7 @@ use deno_core::error::{uri_error, AnyError};
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::{Error, Write};
@@ -259,7 +260,12 @@ where
       continue;
     }
 
-    let p = normalize_path(&root_path.join(path));
+    let p = if lowercase_path.starts_with("file://") {
+      specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
+    } else {
+      root_path.join(path)
+    };
+    let p = normalize_path(&p);
     if p.is_dir() {
       let test_files = collect_files(&[p], ignore, &predicate).unwrap();
       let mut test_files_as_urls = test_files
@@ -359,6 +365,44 @@ pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
     specifier.set_path(&new_path);
   }
   specifier
+}
+
+/// `from.make_relative(to)` but with fixes.
+pub fn relative_specifier(
+  from: &ModuleSpecifier,
+  to: &ModuleSpecifier,
+) -> Option<String> {
+  let is_dir = to.path().ends_with('/');
+
+  if is_dir && from == to {
+    return Some("./".to_string());
+  }
+
+  // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
+  let from = if !from.path().ends_with('/') {
+    if let Some(end_slash) = from.path().rfind('/') {
+      let mut new_from = from.clone();
+      new_from.set_path(&from.path()[..end_slash + 1]);
+      Cow::Owned(new_from)
+    } else {
+      Cow::Borrowed(from)
+    }
+  } else {
+    Cow::Borrowed(from)
+  };
+
+  // workaround for url crate not adding a trailing slash for a directory
+  // it seems to be fixed once a version greater than 2.2.2 is released
+  let mut text = from.make_relative(to)?;
+  if is_dir && !text.ends_with('/') && to.query().is_none() {
+    text.push('/');
+  }
+
+  Some(if text.starts_with("../") || text.starts_with("./") {
+    text
+  } else {
+    format!("./{}", text)
+  })
 }
 
 /// This function checks if input path has trailing slash or not. If input path
@@ -623,6 +667,14 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
+    let predicate = |path: &Path| {
+      // exclude dotfiles
+      path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map_or(false, |f| !f.starts_with('.'))
+    };
+
     let result = collect_specifiers(
       vec![
         "http://localhost:8080".to_string(),
@@ -630,13 +682,7 @@ mod tests {
         "https://localhost:8080".to_string(),
       ],
       &[ignore_dir_path],
-      |path| {
-        // exclude dotfiles
-        path
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with('.'))
-      },
+      predicate,
     )
     .unwrap();
 
@@ -658,7 +704,38 @@ mod tests {
     ]
     .iter()
     .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<ModuleSpecifier>>();
+    .collect::<Vec<_>>();
+
+    assert_eq!(result, expected);
+
+    let scheme = if cfg!(target_os = "windows") {
+      "file:///"
+    } else {
+      "file://"
+    };
+    let result = collect_specifiers(
+      vec![format!(
+        "{}{}",
+        scheme,
+        root_dir_path
+          .join("child")
+          .to_str()
+          .unwrap()
+          .replace('\\', "/")
+      )],
+      &[],
+      predicate,
+    )
+    .unwrap();
+
+    let expected: Vec<ModuleSpecifier> = [
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<_>>();
 
     assert_eq!(result, expected);
   }
@@ -744,6 +821,39 @@ mod tests {
       let result =
         specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
       assert_eq!(result.to_string(), expected);
+    }
+  }
+
+  #[test]
+  fn test_relative_specifier() {
+    run_test("file:///from", "file:///to", Some("./to"));
+    run_test("file:///from", "file:///from/other", Some("./from/other"));
+    run_test("file:///from", "file:///from/other/", Some("./from/other/"));
+    run_test("file:///from", "file:///other/from", Some("./other/from"));
+    run_test("file:///from/", "file:///other/from", Some("../other/from"));
+    run_test("file:///from", "file:///other/from/", Some("./other/from/"));
+    run_test(
+      "file:///from",
+      "file:///to/other.txt",
+      Some("./to/other.txt"),
+    );
+    run_test(
+      "file:///from/test",
+      "file:///to/other.txt",
+      Some("../to/other.txt"),
+    );
+    run_test(
+      "file:///from/other.txt",
+      "file:///to/other.txt",
+      Some("../to/other.txt"),
+    );
+
+    fn run_test(from: &str, to: &str, expected: Option<&str>) {
+      let result = relative_specifier(
+        &ModuleSpecifier::parse(from).unwrap(),
+        &ModuleSpecifier::parse(to).unwrap(),
+      );
+      assert_eq!(result.as_deref(), expected);
     }
   }
 

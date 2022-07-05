@@ -93,10 +93,7 @@ impl StdioOrRid {
   ) -> Result<std::process::Stdio, AnyError> {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
-      StdioOrRid::Rid(rid) => {
-        let file = StdFileResource::clone_file(state, *rid)?;
-        Ok(file.into())
-      }
+      StdioOrRid::Rid(rid) => StdFileResource::as_stdio(state, *rid),
     }
   }
 }
@@ -177,6 +174,8 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
     c.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     c.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
@@ -320,6 +319,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
     Err(type_error("Invalid pid"))
   } else {
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+
     if handle.is_null() {
       let err = match unsafe { GetLastError() } {
         ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
@@ -327,9 +327,9 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
       };
       Err(err.into())
     } else {
-      let r = unsafe { TerminateProcess(handle, 1) };
+      let is_terminated = unsafe { TerminateProcess(handle, 1) };
       unsafe { CloseHandle(handle) };
-      match r {
+      match is_terminated {
         FALSE => Err(Error::last_os_error().into()),
         TRUE => Ok(()),
         _ => unreachable!(),

@@ -3433,6 +3433,24 @@
 
   function exportKeyEC(format, key, innerKey) {
     switch (format) {
+      case "raw": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = core.opSync("op_crypto_export_key", {
+          algorithm: key[_algorithm].name,
+          namedCurve: key[_algorithm].namedCurve,
+          format: "raw",
+        }, innerKey);
+
+        return data.buffer;
+      }
       case "pkcs8": {
         // 1.
         if (key[_type] !== "private") {

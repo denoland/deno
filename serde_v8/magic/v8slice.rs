@@ -3,7 +3,9 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
+use std::rc::Rc;
 
+use super::rawbytes;
 use super::transl8::FromV8;
 
 /// A V8Slice encapsulates a slice that's been borrowed from a JavaScript
@@ -41,12 +43,26 @@ impl V8Slice {
   }
 
   fn as_slice(&self) -> &[u8] {
+    // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+    // it points to a fixed continuous slice of bytes on the heap.
+    // We assume it's initialized and thus safe to read (though may not contain meaningful data)
     unsafe { &*(&self.store[self.range.clone()] as *const _ as *const [u8]) }
   }
 
-  #[allow(clippy::cast_ref_to_mut)]
   fn as_slice_mut(&mut self) -> &mut [u8] {
-    unsafe { &mut *(&self.store[self.range.clone()] as *const _ as *mut [u8]) }
+    #[allow(clippy::cast_ref_to_mut)]
+    // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+    // it points to a fixed continuous slice of bytes on the heap.
+    // It's safe-ish to mutate concurrently because it can not be
+    // shrunk/grown/moved/reallocated, thus avoiding dangling refs (unlike a Vec).
+    // Concurrent writes can't lead to meaningful structural invalidation
+    // since we treat them as opaque buffers / "bags of bytes",
+    // concurrent mutation is simply an accepted fact of life.
+    // And in practice V8Slices also do not have overallping read/write phases.
+    // TLDR: permissive interior mutability on slices of bytes is "fine"
+    unsafe {
+      &mut *(&self.store[self.range.clone()] as *const _ as *mut [u8])
+    }
   }
 }
 
@@ -54,8 +70,7 @@ pub(crate) fn to_ranged_buffer<'s>(
   scope: &mut v8::HandleScope<'s>,
   value: v8::Local<v8::Value>,
 ) -> Result<(v8::Local<'s, v8::ArrayBuffer>, Range<usize>), v8::DataError> {
-  if value.is_array_buffer_view() {
-    let view: v8::Local<v8::ArrayBufferView> = value.try_into()?;
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
     let (offset, len) = (view.byte_offset(), view.byte_length());
     let buffer = view.buffer(scope).ok_or(v8::DataError::NoData {
       expected: "view to have a buffer",
@@ -102,4 +117,53 @@ impl AsMut<[u8]> for V8Slice {
   fn as_mut(&mut self) -> &mut [u8] {
     self.as_slice_mut()
   }
+}
+
+// Implement V8Slice -> bytes::Bytes
+impl V8Slice {
+  fn rc_into_byte_parts(self: Rc<Self>) -> (*const u8, usize, *mut V8Slice) {
+    let (ptr, len) = {
+      let slice = self.as_ref();
+      (slice.as_ptr(), slice.len())
+    };
+    let rc_raw = Rc::into_raw(self);
+    let data = rc_raw as *mut V8Slice;
+    (ptr, len, data)
+  }
+}
+
+impl From<V8Slice> for bytes::Bytes {
+  fn from(v8slice: V8Slice) -> Self {
+    let (ptr, len, data) = Rc::new(v8slice).rc_into_byte_parts();
+    rawbytes::RawBytes::new_raw(ptr, len, data.cast(), &V8SLICE_VTABLE)
+  }
+}
+
+// NOTE: in the limit we could avoid extra-indirection and use the C++ shared_ptr
+// but we can't store both the underlying data ptr & ctrl ptr ... so instead we
+// use a shared rust ptr (Rc/Arc) that itself controls the C++ shared_ptr
+const V8SLICE_VTABLE: rawbytes::Vtable = rawbytes::Vtable {
+  clone: v8slice_clone,
+  drop: v8slice_drop,
+};
+
+unsafe fn v8slice_clone(
+  data: &rawbytes::AtomicPtr<()>,
+  ptr: *const u8,
+  len: usize,
+) -> bytes::Bytes {
+  let rc = Rc::from_raw(*data as *const V8Slice);
+  let (_, _, data) = rc.clone().rc_into_byte_parts();
+  std::mem::forget(rc);
+  // NOTE: `bytes::Bytes` does bounds checking so we trust its ptr, len inputs
+  // and must use them to allow cloning Bytes it has sliced
+  rawbytes::RawBytes::new_raw(ptr, len, data.cast(), &V8SLICE_VTABLE)
+}
+
+unsafe fn v8slice_drop(
+  data: &mut rawbytes::AtomicPtr<()>,
+  _: *const u8,
+  _: usize,
+) {
+  drop(Rc::from_raw(*data as *const V8Slice))
 }

@@ -329,7 +329,6 @@ impl<'a, 'b, 'c> ser::SerializeMap for MapSerializer<'a, 'b, 'c> {
   type Error = Error;
 
   fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<()> {
-    // Like struct field names, map keys are expected to be repeated a lot, so we'll intern them.
     let key = key.serialize(Serializer::new(self.scope))?;
     self.keys.push(key.try_into().map_err(|_| {
       Error::Message("Serialized Maps expect String keys".into())

@@ -1,18 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache;
-use crate::cache::CacherLoader;
+use crate::args::Flags;
+use crate::args::TestFlags;
+use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
 use crate::display;
-use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::TestFlags;
-use crate::flags::TypeCheckMode;
 use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
@@ -20,15 +17,13 @@ use crate::fs_util::is_supported_test_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
-use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -36,6 +31,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -53,6 +49,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -75,11 +72,72 @@ pub enum TestMode {
   Both,
 }
 
+// TODO(nayeemrmn): This is only used for benches right now.
+#[derive(Clone, Debug, Default)]
+pub struct TestFilter {
+  pub substring: Option<String>,
+  pub regex: Option<Regex>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Vec<String>,
+}
+
+impl TestFilter {
+  pub fn includes(&self, name: &String) -> bool {
+    if let Some(substring) = &self.substring {
+      if !name.contains(substring) {
+        return false;
+      }
+    }
+    if let Some(regex) = &self.regex {
+      if !regex.is_match(name) {
+        return false;
+      }
+    }
+    if let Some(include) = &self.include {
+      if !include.contains(name) {
+        return false;
+      }
+    }
+    if self.exclude.contains(name) {
+      return false;
+    }
+    true
+  }
+
+  pub fn from_flag(flag: &Option<String>) -> Self {
+    let mut substring = None;
+    let mut regex = None;
+    if let Some(flag) = flag {
+      if flag.starts_with('/') && flag.ends_with('/') {
+        let rs = flag.trim_start_matches('/').trim_end_matches('/');
+        regex =
+          Some(Regex::new(rs).unwrap_or_else(|_| Regex::new("$^").unwrap()));
+      } else {
+        substring = Some(flag.clone());
+      }
+    }
+    Self {
+      substring,
+      regex,
+      ..Default::default()
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct TestLocation {
+  pub file_name: String,
+  pub line_number: u32,
+  pub column_number: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
+  pub location: TestLocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -138,8 +196,9 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
-  Output(TestOutput),
+  Output(Vec<u8>),
   Result(TestDescription, TestResult, u64),
+  UncaughtError(String, Box<JsError>),
   StepWait(TestStepDescription),
   StepResult(TestStepDescription, TestStepResult, u64),
 }
@@ -157,6 +216,7 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, Box<JsError>)>,
+  pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,6 +243,7 @@ impl TestSummary {
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
+      uncaught_errors: Vec::new(),
     }
   }
 
@@ -198,13 +259,14 @@ impl TestSummary {
 pub trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_output(&mut self, output: &TestOutput);
+  fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
     description: &TestDescription,
     result: &TestResult,
     elapsed: u64,
   );
+  fn report_uncaught_error(&mut self, origin: &str, error: &JsError);
   fn report_step_wait(&mut self, description: &TestStepDescription);
   fn report_step_result(
     &mut self,
@@ -224,10 +286,11 @@ struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
   deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
-  in_test_count: usize,
+  in_new_line: bool,
   last_wait_output_level: usize,
   cwd: Url,
   did_have_user_output: bool,
+  started_tests: bool,
 }
 
 impl PrettyTestReporter {
@@ -235,16 +298,18 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
-      in_test_count: 0,
+      in_new_line: true,
       deferred_step_output: HashMap::new(),
       last_wait_output_level: 0,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
+      started_tests: false,
     }
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
     print!("{} ...", description.name);
+    self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = 0;
@@ -269,6 +334,7 @@ impl PrettyTestReporter {
       println!();
     }
     print!("{}{} ...", "  ".repeat(description.level), description.name);
+    self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.last_wait_output_level = description.level;
@@ -294,6 +360,10 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
+    if wrote_user_output {
+      print!("{} ... ", description.name);
+    }
+
     println!(
       "{} {}",
       status,
@@ -302,15 +372,18 @@ impl PrettyTestReporter {
 
     if let Some(js_error) = result.error() {
       let err_string = format_test_error(js_error);
+      let err_string = format!("{}: {}", colors::red_bold("error"), err_string);
       for line in err_string.lines() {
         println!("{}{}", "  ".repeat(description.level + 1), line);
       }
     }
+    self.in_new_line = true;
   }
 
   fn write_output_end(&mut self) -> bool {
     if self.did_have_user_output {
       println!("{}", colors::gray("----- output end -----"));
+      self.in_new_line = true;
       self.did_have_user_output = false;
       true
     } else {
@@ -331,35 +404,31 @@ impl TestReporter for PrettyTestReporter {
         self.to_relative_path_or_remote_url(&plan.origin)
       ))
     );
+    self.in_new_line = true;
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       self.force_report_wait(description);
     }
-    self.in_test_count += 1;
+    self.started_tests = true;
   }
 
-  fn report_output(&mut self, output: &TestOutput) {
+  fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
     }
 
-    if !self.did_have_user_output && self.in_test_count > 0 {
+    if !self.did_have_user_output && self.started_tests {
       self.did_have_user_output = true;
       println!();
       println!("{}", colors::gray("------- output -------"));
+      self.in_new_line = true;
     }
-    match output {
-      TestOutput::String(line) => {
-        // output everything to stdout in order to prevent
-        // stdout and stderr racing
-        print!("{}", line)
-      }
-      TestOutput::Bytes(bytes) => {
-        std::io::stdout().write_all(bytes).unwrap();
-      }
-    }
+
+    // output everything to stdout in order to prevent
+    // stdout and stderr racing
+    std::io::stdout().write_all(output).unwrap();
   }
 
   fn report_result(
@@ -368,8 +437,6 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
-    self.in_test_count -= 1;
-
     if self.concurrent {
       self.force_report_wait(description);
 
@@ -399,6 +466,10 @@ impl TestReporter for PrettyTestReporter {
       print!(" ");
     }
 
+    if wrote_user_output {
+      print!("{} ... ", description.name);
+    }
+
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
@@ -410,6 +481,21 @@ impl TestReporter for PrettyTestReporter {
       status,
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
+    self.in_new_line = true;
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, _error: &JsError) {
+    if !self.in_new_line {
+      println!();
+    }
+    println!(
+      "Uncaught error from {} {}",
+      self.to_relative_path_or_remote_url(origin),
+      colors::red("FAILED")
+    );
+    self.in_new_line = true;
+    self.last_wait_output_level = 0;
+    self.did_have_user_output = false;
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
@@ -446,39 +532,68 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
-    if !summary.failures.is_empty() {
-      println!("\nfailures:\n");
+    if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
+      #[allow(clippy::type_complexity)] // Type alias doesn't look better here
+      let mut failures_by_origin: BTreeMap<
+        String,
+        (Vec<(&TestDescription, &JsError)>, Option<&JsError>),
+      > = BTreeMap::default();
+      let mut failure_titles = vec![];
       for (description, js_error) in &summary.failures {
-        println!(
-          "{} {} {}",
-          colors::gray(
-            self.to_relative_path_or_remote_url(&description.origin)
-          ),
-          colors::gray(">"),
-          description.name
-        );
-        println!("{}", format_test_error(js_error));
-        println!();
-      }
-
-      let mut grouped_by_origin: BTreeMap<String, Vec<String>> =
-        BTreeMap::default();
-      for (description, _) in &summary.failures {
-        let test_names = grouped_by_origin
+        let (failures, _) = failures_by_origin
           .entry(description.origin.clone())
           .or_default();
-        test_names.push(description.name.clone());
+        failures.push((description, js_error.as_ref()));
       }
-
-      println!("failures:\n");
-      for (origin, test_names) in &grouped_by_origin {
-        println!(
-          "\t{}",
-          colors::gray(self.to_relative_path_or_remote_url(origin))
-        );
-        for test_name in test_names {
-          println!("\t{}", test_name);
+      for (origin, js_error) in &summary.uncaught_errors {
+        let (_, uncaught_error) =
+          failures_by_origin.entry(origin.clone()).or_default();
+        let _ = uncaught_error.insert(js_error.as_ref());
+      }
+      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+      for (origin, (failures, uncaught_error)) in failures_by_origin {
+        for (description, js_error) in failures {
+          let failure_title = format!(
+            "{} {}",
+            &description.name,
+            colors::gray(format!(
+              "=> {}:{}:{}",
+              self.to_relative_path_or_remote_url(
+                &description.location.file_name
+              ),
+              description.location.line_number,
+              description.location.column_number
+            ))
+          );
+          println!("{}", &failure_title);
+          println!(
+            "{}: {}",
+            colors::red_bold("error"),
+            format_test_error(js_error)
+          );
+          println!();
+          failure_titles.push(failure_title);
         }
+        if let Some(js_error) = uncaught_error {
+          let failure_title = format!(
+            "{} (uncaught error)",
+            self.to_relative_path_or_remote_url(&origin)
+          );
+          println!("{}", &failure_title);
+          println!(
+            "{}: {}",
+            colors::red_bold("error"),
+            format_test_error(js_error)
+          );
+          println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
+          println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+          println!();
+          failure_titles.push(failure_title);
+        }
+      }
+      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
+      for failure_title in failure_titles {
+        println!("{}", failure_title);
       }
     }
 
@@ -497,20 +612,48 @@ impl TestReporter for PrettyTestReporter {
         format!(" ({} steps)", count)
       }
     };
-    println!(
-      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
-      status,
+
+    let mut summary_result = String::new();
+
+    write!(
+      summary_result,
+      "{} passed{} | {} failed{}",
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
       get_steps_text(summary.failed_steps + summary.pending_steps),
-      summary.ignored,
-      get_steps_text(summary.ignored_steps),
-      summary.measured,
-      summary.filtered_out,
-      colors::gray(
-        format!("({})", display::human_elapsed(elapsed.as_millis()))),
+    )
+    .unwrap();
+
+    let ignored_steps = get_steps_text(summary.ignored_steps);
+    if summary.ignored > 0 || !ignored_steps.is_empty() {
+      write!(
+        summary_result,
+        " | {} ignored{}",
+        summary.ignored, ignored_steps
+      )
+      .unwrap()
+    }
+
+    if summary.measured > 0 {
+      write!(summary_result, " | {} measured", summary.measured,).unwrap();
+    }
+
+    if summary.filtered_out > 0 {
+      write!(summary_result, " | {} filtered out", summary.filtered_out)
+        .unwrap()
+    };
+
+    println!(
+      "\n{} | {} {}\n",
+      status,
+      summary_result,
+      colors::gray(format!(
+        "({})",
+        display::human_elapsed(elapsed.as_millis())
+      )),
     );
+    self.in_new_line = true;
   }
 }
 
@@ -587,21 +730,25 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  channel: UnboundedSender<TestEvent>,
+  sender: &TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let (stdout, stderr) = create_stdout_stderr_pipes(channel.clone());
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(channel.clone())],
+    vec![ops::testing::init(sender.clone())],
     Stdio {
       stdin: StdioPipe::Inherit,
-      stdout: StdioPipe::File(stdout),
-      stderr: StdioPipe::File(stderr),
+      stdout: StdioPipe::File(sender.stdout()),
+      stderr: StdioPipe::File(sender.stderr()),
     },
   );
+
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -668,6 +815,13 @@ async fn test_specifier(
   )?;
 
   worker.js_runtime.resolve_value(test_result).await?;
+
+  loop {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+    worker.run_event_loop(false).await?;
+  }
 
   worker.dispatch_unload_event(&located_script_name!())?;
 
@@ -740,10 +894,8 @@ fn extract_files_from_regex_blocks(
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
         let text = line.get(1).unwrap();
-        file_source.push_str(&format!("{}\n", text.as_str()));
+        writeln!(file_source, "{}", text.as_str()).unwrap();
       }
-
-      file_source.push_str("export {};");
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
@@ -758,7 +910,7 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: Arc::new(file_source),
+        source: file_source.into(),
         specifier: file_specifier,
         maybe_headers: None,
       })
@@ -770,12 +922,12 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: Arc<String>,
+  source: Arc<str>,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source: deno_ast::SourceTextInfo::new(source),
+    text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -799,7 +951,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.source().line_index(comment.span.lo),
+        parsed_source.text_info().line_index(comment.start()),
         &blocks_regex,
         &lines_regex,
       )
@@ -870,8 +1022,8 @@ pub async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
-  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
+  let lib = ps.options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
     ps.clone(),
     specifiers
@@ -900,7 +1052,7 @@ pub async fn check_specifiers(
     ps.prepare_module_load(
       specifiers,
       false,
-      lib.clone(),
+      lib,
       Permissions::allow_all(),
       permissions.clone(),
       false,
@@ -939,7 +1091,7 @@ async fn test_specifiers(
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.flags.log_level;
+  let log_level = ps.options.log_level();
   let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
@@ -951,6 +1103,7 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -960,14 +1113,30 @@ async fn test_specifiers(
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
-      let sender = sender.clone();
+      let mut sender = sender.clone();
       let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
-        let future =
-          test_specifier(ps, permissions, specifier, mode, sender, options);
-
-        run_basic(future)
+        let origin = specifier.to_string();
+        let file_result = run_basic(test_specifier(
+          ps,
+          permissions,
+          specifier,
+          mode,
+          &sender,
+          options,
+        ));
+        if let Err(error) = file_result {
+          if error.is::<JsError>() {
+            sender.send(TestEvent::UncaughtError(
+              origin,
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ))?;
+          } else {
+            return Err(error);
+          }
+        }
+        Ok(())
       })
     });
 
@@ -1020,6 +1189,12 @@ async fn test_specifiers(
             }
 
             reporter.report_result(&description, &result, elapsed);
+          }
+
+          TestEvent::UncaughtError(origin, error) => {
+            reporter.report_uncaught_error(&origin, &error);
+            summary.failed += 1;
+            summary.uncaught_errors.push((origin, error));
           }
 
           TestEvent::StepWait(description) => {
@@ -1160,8 +1335,9 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
     test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
@@ -1174,20 +1350,14 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  let lib = if ps.flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
-
-  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone(), lib)
+  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
     .await?;
 
   if test_flags.no_run {
     return Ok(());
   }
 
-  let compat = ps.flags.compat;
+  let compat = ps.options.compat();
   test_specifiers(
     ps,
     permissions,
@@ -1210,51 +1380,23 @@ pub async fn run_tests_with_watch(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.permissions_options());
-
-  let lib = if flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
 
   let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
+  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
-      ps.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
-
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_import_map_resolver =
-      ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    });
-    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false);
+    let ps = ps.clone();
 
     async move {
       let test_modules = if test_flags.doc {
@@ -1272,33 +1414,15 @@ pub async fn run_tests_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let maybe_imports = if let Some(result) = maybe_imports {
-        result?
-      } else {
-        None
-      };
-      let maybe_resolver = if maybe_jsx_resolver.is_some() {
-        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-      } else {
-        maybe_import_map_resolver
-          .as_ref()
-          .map(|im| im.as_resolver())
-      };
-      let graph = deno_graph::create_graph(
-        test_modules
-          .iter()
-          .map(|s| (s.clone(), ModuleKind::Esm))
-          .collect(),
-        false,
-        maybe_imports,
-        cache.as_mut_loader(),
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await;
-      graph_valid(&graph, !no_check, check_js)?;
+      let graph = ps
+        .create_graph(
+          test_modules
+            .iter()
+            .map(|s| (s.clone(), ModuleKind::Esm))
+            .collect(),
+        )
+        .await?;
+      graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1387,12 +1511,12 @@ pub async fn run_tests_with_watch(
     })
   };
 
+  let cli_options = ps.options.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let flags = flags.clone();
+    let cli_options = cli_options.clone();
     let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
-    let lib = lib.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -1411,13 +1535,8 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(
-        &ps,
-        permissions.clone(),
-        specifiers_with_mode.clone(),
-        lib,
-      )
-      .await?;
+      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
+        .await?;
 
       if test_flags.no_run {
         return Ok(());
@@ -1428,7 +1547,7 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
-          compat_mode: flags.compat,
+          compat_mode: cli_options.compat(),
           concurrent_jobs: test_flags.concurrent_jobs,
           fail_fast: test_flags.fail_fast,
           filter: filter.clone(),
@@ -1447,7 +1566,7 @@ pub async fn run_tests_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !flags.no_clear_screen,
+      clear_screen: !cli_options.no_clear_screen(),
     },
   )
   .await?;
@@ -1455,20 +1574,98 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
-/// Creates the stdout and stderr pipes and returns the writers for stdout and stderr.
-pub fn create_stdout_stderr_pipes(
+#[derive(Clone)]
+pub struct TestEventSender {
   sender: UnboundedSender<TestEvent>,
-) -> (std::fs::File, std::fs::File) {
-  let (stdout_reader, stdout_writer) = os_pipe::pipe().unwrap();
-  let (stderr_reader, stderr_writer) = os_pipe::pipe().unwrap();
+  stdout_writer: TestOutputPipe,
+  stderr_writer: TestOutputPipe,
+}
 
-  start_output_redirect_thread(stdout_reader, sender.clone());
-  start_output_redirect_thread(stderr_reader, sender);
+impl TestEventSender {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    Self {
+      stdout_writer: TestOutputPipe::new(sender.clone()),
+      stderr_writer: TestOutputPipe::new(sender.clone()),
+      sender,
+    }
+  }
 
-  (
-    pipe_writer_to_file(stdout_writer),
-    pipe_writer_to_file(stderr_writer),
-  )
+  pub fn stdout(&self) -> std::fs::File {
+    self.stdout_writer.as_file()
+  }
+
+  pub fn stderr(&self) -> std::fs::File {
+    self.stderr_writer.as_file()
+  }
+
+  pub fn send(&mut self, message: TestEvent) -> Result<(), AnyError> {
+    // for any event that finishes collecting output, we need to
+    // ensure that the collected stdout and stderr pipes are flushed
+    if matches!(
+      message,
+      TestEvent::Result(_, _, _)
+        | TestEvent::StepWait(_)
+        | TestEvent::StepResult(_, _, _)
+    ) {
+      self.flush_stdout_and_stderr();
+    }
+
+    self.sender.send(message)?;
+    Ok(())
+  }
+
+  fn flush_stdout_and_stderr(&mut self) {
+    self.stdout_writer.flush();
+    self.stderr_writer.flush();
+  }
+}
+
+// use a string that if it ends up in the output won't affect how things are displayed
+const ZERO_WIDTH_SPACE: &str = "\u{200B}";
+
+struct TestOutputPipe {
+  writer: os_pipe::PipeWriter,
+  state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+}
+
+impl Clone for TestOutputPipe {
+  fn clone(&self) -> Self {
+    Self {
+      writer: self.writer.try_clone().unwrap(),
+      state: self.state.clone(),
+    }
+  }
+}
+
+impl TestOutputPipe {
+  pub fn new(sender: UnboundedSender<TestEvent>) -> Self {
+    let (reader, writer) = os_pipe::pipe().unwrap();
+    let state = Arc::new(Mutex::new(None));
+
+    start_output_redirect_thread(reader, sender, state.clone());
+
+    Self { writer, state }
+  }
+
+  pub fn flush(&mut self) {
+    // We want to wake up the other thread and have it respond back
+    // that it's done clearing out its pipe before returning.
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if let Some(sender) = self.state.lock().replace(sender) {
+      let _ = sender.send(()); // just in case
+    }
+    // Bit of a hack to send a zero width space in order to wake
+    // the thread up. It seems that sending zero bytes here does
+    // not work on windows.
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
+    self.writer.flush().unwrap();
+    // ignore the error as it might have been picked up and closed
+    let _ = receiver.recv();
+  }
+
+  pub fn as_file(&self) -> std::fs::File {
+    pipe_writer_to_file(self.writer.try_clone().unwrap())
+  }
 }
 
 #[cfg(windows)]
@@ -1490,6 +1687,7 @@ fn pipe_writer_to_file(writer: os_pipe::PipeWriter) -> std::fs::File {
 fn start_output_redirect_thread(
   mut pipe_reader: os_pipe::PipeReader,
   sender: UnboundedSender<TestEvent>,
+  flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 ) {
   tokio::task::spawn_blocking(move || loop {
     let mut buffer = [0; 512];
@@ -1497,13 +1695,24 @@ fn start_output_redirect_thread(
       Ok(0) | Err(_) => break,
       Ok(size) => size,
     };
-    if sender
-      .send(TestEvent::Output(TestOutput::Bytes(
-        buffer[0..size].to_vec(),
-      )))
-      .is_err()
+    let oneshot_sender = flush_state.lock().take();
+    let mut data = &buffer[0..size];
+    if data.ends_with(ZERO_WIDTH_SPACE.as_bytes()) {
+      data = &data[0..data.len() - ZERO_WIDTH_SPACE.len()];
+    }
+
+    if !data.is_empty()
+      && sender
+        .send(TestEvent::Output(buffer[0..size].to_vec()))
+        .is_err()
     {
       break;
+    }
+
+    // Always respond back if this was set. Ideally we would also check to
+    // ensure the pipe reader is empty before sending back this response.
+    if let Some(sender) = oneshot_sender {
+      let _ignore = sender.send(());
     }
   });
 }
