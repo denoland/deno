@@ -82,37 +82,35 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-
     if cbreak {
       return Err(deno_core::error::not_supported());
     }
 
-    let std_file = resource.std_file();
-    let std_file = std_file.lock(); // hold the lock
-    let handle = std_file.as_raw_handle();
+    StdFileResource::with_file(state, rid, move |std_file| {
+      let handle = std_file.as_raw_handle();
 
-    if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(Error::last_os_error().into());
-    } else if handle.is_null() {
-      return Err(custom_error("ReferenceError", "null handle"));
-    }
-    let mut original_mode: DWORD = 0;
-    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
-      return Err(Error::last_os_error().into());
-    }
-    let new_mode = if is_raw {
-      original_mode & !RAW_MODE_MASK
-    } else {
-      original_mode | RAW_MODE_MASK
-    };
-    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(Error::last_os_error().into());
-    }
+      if handle == handleapi::INVALID_HANDLE_VALUE {
+        return Err(Error::last_os_error().into());
+      } else if handle.is_null() {
+        return Err(custom_error("ReferenceError", "null handle"));
+      }
+      let mut original_mode: DWORD = 0;
+      if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
+        == FALSE
+      {
+        return Err(Error::last_os_error().into());
+      }
+      let new_mode = if is_raw {
+        original_mode & !RAW_MODE_MASK
+      } else {
+        original_mode | RAW_MODE_MASK
+      };
+      if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+        return Err(Error::last_os_error().into());
+      }
 
-    Ok(())
+      Ok(())
+    })
   }
   #[cfg(unix)]
   {

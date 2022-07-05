@@ -322,7 +322,7 @@ impl StdFileResourceInner {
     StdFileResourceInner::File(Arc::new(Mutex::new(fs_file)))
   }
 
-  pub fn with_file<R>(&self, mut f: impl FnMut(&mut StdFile) -> R) -> R {
+  pub fn with_file<R>(&self, f: impl FnOnce(&mut StdFile) -> R) -> R {
     match self {
       Self::File(file) | Self::Stdin(file) => {
         let mut file = file.lock();
@@ -383,6 +383,9 @@ impl Write for StdFileResourceInner {
 
 pub struct StdFileResource {
   inner: StdFileResourceInner,
+  /// This is used to help synchronize asynchronous reads and writes
+  /// so they happen in order. Tokio's mutex is FIFO.
+  order_sync: tokio::sync::Mutex<()>,
   metadata: RefCell<FileMetadata>,
   name: String,
 }
@@ -391,6 +394,7 @@ impl StdFileResource {
   fn stdio(inner: StdFileResourceInner, name: &str) -> Self {
     Self {
       inner,
+      order_sync: Default::default(),
       metadata: Default::default(),
       name: name.to_string(),
     }
@@ -399,21 +403,9 @@ impl StdFileResource {
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
       inner: StdFileResourceInner::file(fs_file),
+      order_sync: Default::default(),
       metadata: Default::default(),
       name: "fsFile".to_string(),
-    }
-  }
-
-  pub fn std_file(&self) -> Arc<Mutex<StdFile>> {
-    match &self.inner {
-      StdFileResourceInner::File(fs_file)
-      | StdFileResourceInner::Stdin(fs_file) => fs_file.clone(),
-      StdFileResourceInner::Stdout => {
-        Arc::new(Mutex::new(STDOUT_HANDLE.try_clone().unwrap()))
-      }
-      StdFileResourceInner::Stderr => {
-        Arc::new(Mutex::new(STDERR_HANDLE.try_clone().unwrap()))
-      }
     }
   }
 
@@ -426,6 +418,7 @@ impl StdFileResource {
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut inner = self.inner.clone();
+    let _sync = self.order_sync.lock().await;
     tokio::task::spawn_blocking(
       move || -> Result<(usize, ZeroCopyBuf), AnyError> {
         Ok((inner.read(&mut buf)?, buf))
@@ -436,6 +429,7 @@ impl StdFileResource {
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     let mut inner = self.inner.clone();
+    let _sync = self.order_sync.lock().await;
     tokio::task::spawn_blocking(move || inner.write_and_maybe_flush(&buf))
       .await?
       .map_err(AnyError::from)
@@ -459,10 +453,30 @@ impl StdFileResource {
     f: F,
   ) -> Result<R, AnyError>
   where
-    F: FnMut(&mut StdFile) -> Result<R, AnyError>,
+    F: FnOnce(&mut StdFile) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     resource.inner.with_file(f)
+  }
+
+  pub async fn with_file_async<F, R: Send + 'static>(
+    state: Rc<RefCell<OpState>>,
+    rid: ResourceId,
+    f: F,
+  ) -> Result<R, AnyError>
+  where
+    F: (FnOnce(&mut StdFile) -> Result<R, AnyError>) + Send + 'static,
+  {
+    let resource = state
+      .borrow_mut()
+      .resource_table
+      .get::<StdFileResource>(rid)?;
+
+    let inner = resource.inner.clone();
+    let _sync = resource.order_sync.lock().await;
+    tokio::task::spawn_blocking(move || inner.with_file(f))
+      .await
+      .unwrap()
   }
 
   pub fn clone_file(
