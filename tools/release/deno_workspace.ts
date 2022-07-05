@@ -56,6 +56,7 @@ export class DenoWorkspace {
     return this.#repo.runCommandWithOutput([
       "deno",
       "run",
+      "--unstable",
       "--allow-write",
       "--allow-read",
       "--allow-run",
