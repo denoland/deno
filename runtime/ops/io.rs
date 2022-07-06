@@ -28,6 +28,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
+use tokio::sync::Semaphore;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -384,11 +385,11 @@ impl Write for StdFileResourceInner {
 pub struct StdFileResource {
   inner: StdFileResourceInner,
   /// This is used to help synchronize asynchronous reads and writes
-  /// so they happen in order. Tokio's mutex is FIFO.
+  /// so they happen in order. Tokio's semaphore is FIFO.
   /// We use a separate sync primitive here instead of putting the
-  /// StdFile inside this async mutex because we still need to be
+  /// StdFile inside an async mutex because we still need to be
   /// able to access it synchronously.
-  order_sync: tokio::sync::Mutex<()>,
+  order_semaphore: tokio::sync::Semaphore,
   metadata: RefCell<FileMetadata>,
   name: String,
 }
@@ -397,7 +398,7 @@ impl StdFileResource {
   fn stdio(inner: StdFileResourceInner, name: &str) -> Self {
     Self {
       inner,
-      order_sync: Default::default(),
+      order_semaphore: Semaphore::new(1),
       metadata: Default::default(),
       name: name.to_string(),
     }
@@ -406,7 +407,7 @@ impl StdFileResource {
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
       inner: StdFileResourceInner::file(fs_file),
-      order_sync: Default::default(),
+      order_semaphore: Semaphore::new(1),
       metadata: Default::default(),
       name: "fsFile".to_string(),
     }
@@ -417,7 +418,7 @@ impl StdFileResource {
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut inner = self.inner.clone();
-    let _sync = self.order_sync.lock().await;
+    let _permit = self.order_semaphore.acquire().await.unwrap();
     tokio::task::spawn_blocking(
       move || -> Result<(usize, ZeroCopyBuf), AnyError> {
         Ok((inner.read(&mut buf)?, buf))
@@ -428,7 +429,7 @@ impl StdFileResource {
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     let mut inner = self.inner.clone();
-    let _sync = self.order_sync.lock().await;
+    let _permit = self.order_semaphore.acquire().await.unwrap();
     tokio::task::spawn_blocking(move || inner.write_and_maybe_flush(&buf))
       .await?
       .map_err(AnyError::from)
@@ -485,7 +486,7 @@ impl StdFileResource {
       .get::<StdFileResource>(rid)?;
 
     let inner = resource.inner.clone();
-    let _sync = resource.order_sync.lock().await;
+    let _permit = resource.order_semaphore.acquire().await.unwrap();
     tokio::task::spawn_blocking(move || inner.with_file(f))
       .await
       .unwrap()
