@@ -175,7 +175,9 @@ fn hash_check_config(
   mode: TypeCheckMode,
   roots: &[(ModuleSpecifier, ModuleKind)],
 ) -> String {
-  let mut input = vec![ts_config.as_bytes(), vec![mode as u8]];
+  let mut input = Vec::with_capacity(2 + roots.len() * 2);
+  input.push(ts_config.as_bytes());
+  input.push(vec![mode as u8]);
   let mut roots = roots
     .iter()
     .map(|(s, k)| (s.as_str(), serde_json::to_string(k).unwrap()))
