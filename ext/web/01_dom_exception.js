@@ -25,7 +25,7 @@
   const consoleInternal = window.__bootstrap.console;
 
   const _name = Symbol("name");
-  const _messsage = Symbol("message");
+  const _message = Symbol("message");
   const _code = Symbol("code");
 
   // Defined in WebIDL 4.3.
