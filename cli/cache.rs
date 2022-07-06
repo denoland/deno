@@ -21,6 +21,7 @@ use std::sync::Arc;
 pub struct EmitMetadata {
   pub version_hash: String,
   /// List of hashed configs for successful type checks.
+  #[serde(default)]
   pub type_check_hashes: HashSet<String>,
 }
 
