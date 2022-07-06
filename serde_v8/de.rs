@@ -313,7 +313,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     let obj = v8::Local::<v8::Object>::try_from(self.input)
       .map_err(|_| Error::ExpectedObject)?;
 
-    if obj.is_map() {
+    if v8::Local::<v8::Map>::try_from(self.input).is_ok() {
       let pairs_array = v8::Local::<v8::Map>::try_from(self.input)
         .unwrap()
         .as_array(self.scope);

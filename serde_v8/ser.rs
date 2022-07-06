@@ -581,10 +581,11 @@ pub fn slice_to_uint8array<'a>(
   } else {
     let store: v8::UniqueRef<_> =
       v8::ArrayBuffer::new_backing_store(scope, buf.len());
+    // SAFETY: raw memory copy into the v8 ArrayBuffer allocated above
     unsafe {
       std::ptr::copy_nonoverlapping(
         buf.as_ptr(),
-        store.data().unwrap().as_ptr() as _,
+        store.data().unwrap().as_ptr() as *mut u8,
         buf.len(),
       )
     }
