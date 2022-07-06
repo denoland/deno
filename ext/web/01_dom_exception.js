@@ -23,8 +23,12 @@
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
 
+  const _name = Symbol("name");
+  const _messsage = Symbol("message");
+  const _code = Symbol("code");
+
   // Defined in WebIDL 4.3.
-  // https://heycam.github.io/webidl/#idl-DOMException
+  // https://webidl.spec.whatwg.org/#idl-DOMException
   const INDEX_SIZE_ERR = 1;
   const DOMSTRING_SIZE_ERR = 2;
   const HIERARCHY_REQUEST_ERR = 3;
@@ -52,9 +56,10 @@
   const DATA_CLONE_ERR = 25;
 
   // Defined in WebIDL 2.8.1.
-  // https://heycam.github.io/webidl/#dfn-error-names-table
+  // https://webidl.spec.whatwg.org/#dfn-error-names-table
   /** @type {Record<string, number>} */
   const nameToCodeMapping = {
+    __proto__: null,
     IndexSizeError: INDEX_SIZE_ERR,
     HierarchyRequestError: HIERARCHY_REQUEST_ERR,
     WrongDocumentError: WRONG_DOCUMENT_ERR,
@@ -80,24 +85,29 @@
   };
 
   // Defined in WebIDL 4.3.
-  // https://heycam.github.io/webidl/#idl-DOMException
+  // https://webidl.spec.whatwg.org/#idl-DOMException
   class DOMException {
-    #message = "";
-    #name = "";
-    #code = 0;
+    [_message];
+    [_name];
+    [_code];
 
+    // https://webidl.spec.whatwg.org/#dom-domexception-domexception
     constructor(message = "", name = "Error") {
-      this.#message = webidl.converters.DOMString(message, {
+      const message = webidl.converters.DOMString(message, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 1",
       });
-      this.#name = webidl.converters.DOMString(name, {
+      const name = webidl.converters.DOMString(name, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 2",
       });
-      this.#code = nameToCodeMapping[this.#name] ?? 0;
+      const code = nameToCodeMapping[name] ?? 0;
 
-      const error = new Error(this.#message);
+      this[_message] = message
+      this[_name] = name;
+      this[_code] = code;
+
+      const error = new Error(message);
       error.name = "DOMException";
       ObjectDefineProperty(this, "stack", {
         value: error.stack,
@@ -115,20 +125,23 @@
     }
 
     get message() {
-      return this.#message;
+      webidl.assertBranded(this, DOMExceptionPrototype);
+      return this[_message];
     }
 
     get name() {
-      return this.#name;
+      webidl.assertBranded(this, DOMExceptionPrototype);
+      return this[_name];
     }
 
     get code() {
-      return this.#code;
+      webidl.assertBranded(this, DOMExceptionPrototype);
+      return this[_code];
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
       if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-        return `DOMException: ${this.#message}`;
+        return `DOMException: ${this[_message]}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({
           object: this,
