@@ -20,7 +20,8 @@ use std::sync::Arc;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EmitMetadata {
   pub version_hash: String,
-  pub type_checks_succeeded: HashSet<String>,
+  /// List of hashed configs for successful type checks.
+  pub type_check_hashes: HashSet<String>,
 }
 
 pub enum CacheType {

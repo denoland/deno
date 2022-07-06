@@ -192,7 +192,7 @@ impl Cacher for DiskCache {
       // because `Cacher::get()` is constrained that way. Clean up.
       CacheType::GetTypeCheckSucceeded(config_hash) => {
         if let Some(metadata) = self.get_emit_metadata(specifier) {
-          if metadata.type_checks_succeeded.contains(&config_hash) {
+          if metadata.type_check_hashes.contains(&config_hash) {
             return Some("".to_string());
           }
         }
@@ -221,14 +221,14 @@ impl Cacher for DiskCache {
       CacheType::Version => {
         let data = if let Some(mut data) = self.get_emit_metadata(specifier) {
           if value != data.version_hash {
-            data.type_checks_succeeded.clear();
+            data.type_check_hashes.clear();
           }
           data.version_hash = value;
           data
         } else {
           EmitMetadata {
             version_hash: value,
-            type_checks_succeeded: Default::default(),
+            type_check_hashes: Default::default(),
           }
         };
         return self.set_emit_metadata(specifier, data);
@@ -238,7 +238,7 @@ impl Cacher for DiskCache {
         let mut data = self
           .get_emit_metadata(specifier)
           .expect("Must set emit before TypeCheckSucceeded");
-        if data.type_checks_succeeded.insert(value) {
+        if data.type_check_hashes.insert(value) {
           self.set_emit_metadata(specifier, data)?;
         }
         return Ok(());
