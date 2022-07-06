@@ -18,6 +18,7 @@
     ObjectEntries,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
+    Symbol,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
