@@ -93,11 +93,11 @@
 
     // https://webidl.spec.whatwg.org/#dom-domexception-domexception
     constructor(message = "", name = "Error") {
-      const message = webidl.converters.DOMString(message, {
+      message = webidl.converters.DOMString(message, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 1",
       });
-      const name = webidl.converters.DOMString(name, {
+      name = webidl.converters.DOMString(name, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 2",
       });
