@@ -148,8 +148,6 @@
             reportException(error);
           }
         } else {
-          // TODO(@andreubotella): eval doesn't seem to have a primordial, but
-          // it can be redefined in the global scope.
           indirectEval(callback);
         }
 
