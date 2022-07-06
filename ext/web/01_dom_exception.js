@@ -103,7 +103,7 @@
       });
       const code = nameToCodeMapping[name] ?? 0;
 
-      this[_message] = message
+      this[_message] = message;
       this[_name] = name;
       this[_code] = code;
       this[webidl.brand] = webidl.brand;
