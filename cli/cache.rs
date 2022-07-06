@@ -22,7 +22,7 @@ pub struct EmitMetadata {
   pub version_hash: String,
   /// List of hashed configs for successful type checks.
   #[serde(default)]
-  pub type_check_hashes: HashSet<String>,
+  pub check_config_hashes: HashSet<String>,
 }
 
 pub enum CacheType {
