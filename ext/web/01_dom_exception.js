@@ -106,6 +106,7 @@
       this[_message] = message
       this[_name] = name;
       this[_code] = code;
+      this[webidl.brand] = webidl.brand;
 
       const error = new Error(message);
       error.name = "DOMException";
