@@ -13,6 +13,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::TaskQueue;
 use deno_core::ZeroCopyBuf;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -28,7 +29,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
-use tokio::sync::Semaphore;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -43,35 +43,47 @@ use {
 // alive for the duration of the application since the last handle/fd
 // being dropped will close the corresponding pipe.
 #[cfg(unix)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+static STDIN_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_fd(0) }
+  unsafe { Arc::new(Mutex::new(StdFile::from_raw_fd(0))) }
 });
 #[cfg(unix)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+static STDOUT_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_fd(1) }
+  unsafe { Arc::new(Mutex::new(StdFile::from_raw_fd(1))) }
 });
 #[cfg(unix)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+static STDERR_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_fd(2) }
+  unsafe { Arc::new(Mutex::new(StdFile::from_raw_fd(2))) }
 });
 
 #[cfg(windows)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+static STDIN_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
+  unsafe {
+    Arc::new(Mutex::new(StdFile::from_raw_handle(GetStdHandle(
+      winbase::STD_INPUT_HANDLE,
+    ))))
+  }
 });
 #[cfg(windows)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+static STDOUT_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
+  unsafe {
+    Arc::new(Mutex::new(StdFile::from_raw_handle(GetStdHandle(
+      winbase::STD_OUTPUT_HANDLE,
+    ))))
+  }
 });
 #[cfg(windows)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+static STDERR_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
+  unsafe {
+    Arc::new(Mutex::new(StdFile::from_raw_handle(GetStdHandle(
+      winbase::STD_ERROR_HANDLE,
+    ))))
+  }
 });
 
 pub fn init() -> Extension {
@@ -126,9 +138,9 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
       let t = &mut state.resource_table;
       t.add(StdFileResource::stdio(
         match stdio.stdin {
-          StdioPipe::Inherit => StdFileResourceInner::Stdin(Arc::new(
-            Mutex::new(STDIN_HANDLE.try_clone().unwrap()),
-          )),
+          StdioPipe::Inherit => {
+            StdFileResourceInner::Stdin(STDIN_HANDLE.clone())
+          }
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
         "stdin",
@@ -329,8 +341,14 @@ impl StdFileResourceInner {
         let mut file = file.lock();
         f(&mut file)
       }
-      Self::Stdout => f(&mut STDOUT_HANDLE.try_clone().unwrap()),
-      Self::Stderr => f(&mut STDERR_HANDLE.try_clone().unwrap()),
+      Self::Stdout => {
+        let mut stdout = STDOUT_HANDLE.lock();
+        f(&mut stdout)
+      }
+      Self::Stderr => {
+        let mut stderr = STDERR_HANDLE.lock();
+        f(&mut stderr)
+      }
     }
   }
 
@@ -385,11 +403,11 @@ impl Write for StdFileResourceInner {
 pub struct StdFileResource {
   inner: StdFileResourceInner,
   /// This is used to help synchronize asynchronous reads and writes
-  /// so they happen in order. Tokio's semaphore is FIFO.
+  /// so they happen in order.
   /// We use a separate sync primitive here instead of putting the
   /// StdFile inside an async mutex because we still need to be
   /// able to access it synchronously.
-  order_semaphore: tokio::sync::Semaphore,
+  task_queue: TaskQueue,
   metadata: RefCell<FileMetadata>,
   name: String,
 }
@@ -398,7 +416,7 @@ impl StdFileResource {
   fn stdio(inner: StdFileResourceInner, name: &str) -> Self {
     Self {
       inner,
-      order_semaphore: Semaphore::new(1),
+      task_queue: TaskQueue::new(),
       metadata: Default::default(),
       name: name.to_string(),
     }
@@ -407,7 +425,7 @@ impl StdFileResource {
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
       inner: StdFileResourceInner::file(fs_file),
-      order_semaphore: Semaphore::new(1),
+      task_queue: TaskQueue::new(),
       metadata: Default::default(),
       name: "fsFile".to_string(),
     }
@@ -418,21 +436,29 @@ impl StdFileResource {
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut inner = self.inner.clone();
-    let _permit = self.order_semaphore.acquire().await.unwrap();
-    tokio::task::spawn_blocking(
-      move || -> Result<(usize, ZeroCopyBuf), AnyError> {
-        Ok((inner.read(&mut buf)?, buf))
-      },
-    )
-    .await?
+    self
+      .task_queue
+      .queue(async {
+        tokio::task::spawn_blocking(
+          move || -> Result<(usize, ZeroCopyBuf), AnyError> {
+            Ok((inner.read(&mut buf)?, buf))
+          },
+        )
+        .await?
+      })
+      .await
   }
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     let mut inner = self.inner.clone();
-    let _permit = self.order_semaphore.acquire().await.unwrap();
-    tokio::task::spawn_blocking(move || inner.write_and_maybe_flush(&buf))
-      .await?
-      .map_err(AnyError::from)
+    self
+      .task_queue
+      .queue(async {
+        tokio::task::spawn_blocking(move || inner.write_and_maybe_flush(&buf))
+          .await?
+          .map_err(AnyError::from)
+      })
+      .await
   }
 
   fn with_inner<F, R>(
@@ -486,10 +512,12 @@ impl StdFileResource {
       .get::<StdFileResource>(rid)?;
 
     let inner = resource.inner.clone();
-    let _permit = resource.order_semaphore.acquire().await.unwrap();
-    tokio::task::spawn_blocking(move || inner.with_file(f))
+    resource
+      .task_queue
+      .queue(async {
+        tokio::task::spawn_blocking(move || inner.with_file(f)).await?
+      })
       .await
-      .unwrap()
   }
 
   pub fn clone_file(
