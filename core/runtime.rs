@@ -479,7 +479,7 @@ impl JsRuntime {
   }
 
   pub fn handle_scope(&mut self) -> v8::HandleScope {
-    self.global_realm().handle_scope(self)
+    self.global_realm().handle_scope(self.v8_isolate())
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -512,7 +512,7 @@ impl JsRuntime {
       let js_files = m.init_js();
       for (filename, source) in js_files {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self, filename, source)?;
+        realm.execute_script(self.v8_isolate(), filename, source)?;
       }
     }
     // Restore extensions
@@ -666,7 +666,9 @@ impl JsRuntime {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    self.global_realm().execute_script(self, name, source_code)
+    self
+      .global_realm()
+      .execute_script(self.v8_isolate(), name, source_code)
   }
 
   /// Takes a snapshot. The isolate should have been created with will_snapshot
@@ -1877,7 +1879,7 @@ impl JsRuntime {
 /// # Panics
 ///
 /// Every method of [`JsRealm`] will panic if you call if with a reference to a
-/// [`JsRuntime`] other than the one that corresponds to the current context.
+/// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
 /// # Lifetime of the realm
 ///
@@ -1896,16 +1898,16 @@ impl JsRealm {
 
   pub fn handle_scope<'s>(
     &self,
-    runtime: &'s mut JsRuntime,
+    isolate: &'s mut v8::Isolate,
   ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(runtime.v8_isolate(), &self.0)
+    v8::HandleScope::with_context(isolate, &self.0)
   }
 
   pub fn global_object<'s>(
     &self,
-    runtime: &'s mut JsRuntime,
+    isolate: &'s mut v8::Isolate,
   ) -> v8::Local<'s, v8::Object> {
-    let scope = &mut self.handle_scope(runtime);
+    let scope = &mut self.handle_scope(isolate);
     self.0.open(scope).global(scope)
   }
 
@@ -1923,11 +1925,11 @@ impl JsRealm {
   /// `Error` can usually be downcast to `JsError`.
   pub fn execute_script(
     &self,
-    runtime: &mut JsRuntime,
+    isolate: &mut v8::Isolate,
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope(runtime);
+    let scope = &mut self.handle_scope(isolate);
 
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
@@ -3441,11 +3443,12 @@ assertEquals(1, notify_return_value);
 
     let realm = runtime.create_realm().unwrap();
     assert_ne!(realm.context(), &main_context);
-    assert_ne!(realm.global_object(&mut runtime), main_global);
+    assert_ne!(realm.global_object(runtime.v8_isolate()), main_global);
 
     let main_object = runtime.execute_script("", "Object").unwrap();
-    let realm_object =
-      realm.execute_script(&mut runtime, "", "Object").unwrap();
+    let realm_object = realm
+      .execute_script(runtime.v8_isolate(), "", "Object")
+      .unwrap();
     assert_ne!(main_object, realm_object);
   }
 
@@ -3462,10 +3465,10 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.opSync('op_test')")
       .unwrap();
 
-    let scope = &mut realm.handle_scope(&mut runtime);
+    let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 
@@ -3492,10 +3495,10 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.opSync('op_test')")
       .unwrap();
 
-    let scope = &mut realm.handle_scope(&mut runtime);
+    let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 
@@ -3528,7 +3531,7 @@ assertEquals(1, notify_return_value);
     for realm in [runtime.global_realm(), new_realm].into_iter() {
       let ret = realm
         .execute_script(
-          &mut runtime,
+          runtime.v8_isolate(),
           "",
           r#"
             const buf = Deno.core.opSync("op_test", false);

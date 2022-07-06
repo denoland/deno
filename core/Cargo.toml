@@ -12,6 +12,10 @@ description = "A modern JavaScript/TypeScript runtime built with V8, Rust, and T
 [lib]
 path = "lib.rs"
 
+[features]
+default = ["v8_use_custom_libcxx"]
+v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
+
 [dependencies]
 anyhow = "1.0.57"
 deno_ops = { path = "../ops", version = "0.20.0" }
@@ -27,7 +31,7 @@ serde_json = { version = "1.0.79", features = ["preserve_order"] }
 serde_v8 = { version = "0.53.0", path = "../serde_v8" }
 sourcemap = "=6.0.1"
 url = { version = "2.2.2", features = ["serde"] }
-v8 = "0.44.3"
+v8 = { version = "0.44.3", default-features = false }
 
 [[example]]
 name = "http_bench_json_ops"
