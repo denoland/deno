@@ -87,7 +87,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Deno
-        if: matrix.job == 'lint'
+        if: matrix.job == 'lint' || matrix.job == 'test'
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
@@ -433,14 +433,14 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json                      \
-                          ./tools/wpt.ts setup
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json              \
-                          ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                  --allow-write --unstable                         \
+                  --lock=tools/deno.lock.json                      \
+                  ./tools/wpt.ts setup
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json              \
+                   ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
 
       - name: Run web platform tests (release)
         if: |
@@ -449,17 +449,17 @@ jobs:
         env:
           DENO_BIN: ./target/release/deno
         run: |
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json                      \
-                          ./tools/wpt.ts setup
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json                      \
-                          ./tools/wpt.ts run --quiet --release             \
-                                             --binary="$DENO_BIN"          \
-                                             --json=wpt.json               \
-                                             --wptreport=wptreport.json
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json                      \
+                   ./tools/wpt.ts setup
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json                      \
+                   ./tools/wpt.ts run --quiet --release             \
+                                      --binary="$DENO_BIN"          \
+                                      --json=wpt.json               \
+                                      --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
         continue-on-error: true
