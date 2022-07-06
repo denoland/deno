@@ -468,6 +468,8 @@
     queueMicrotask = value;
   };
 
+  primordials.indirectEval = eval;
+
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);
 
