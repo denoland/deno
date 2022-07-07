@@ -156,3 +156,40 @@ fn thread_safe_callback() {
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
+
+#[test]
+fn event_loop_integration() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/event_loop_integration.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  let expected = "\
+    SYNCHRONOUS\n\
+    Sync\n\
+    STORED_FUNCTION called\n\
+    Async\n\
+    Timeout\n\
+    THREAD SAFE\n\
+    Sync\n\
+    STORED_FUNCTION called\n\
+    Async\n\
+    Timeout\n";
+  assert_eq!(stdout, expected);
+  assert_eq!(stderr, "");
+}
