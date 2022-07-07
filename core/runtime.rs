@@ -30,7 +30,6 @@ use futures::future::poll_fn;
 use futures::future::Future;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
-
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::any::Any;
@@ -40,7 +39,6 @@ use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
-
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -332,13 +330,14 @@ impl JsRuntime {
     let global_context;
 
     let align = std::mem::align_of::<usize>();
-    let layout = unsafe {
-      std::alloc::Layout::from_size_align_unchecked(
-        std::mem::size_of::<*mut v8::OwnedIsolate>(),
-        align,
-      )
-    };
+    let layout = std::alloc::Layout::from_size_align(
+      std::mem::size_of::<*mut v8::OwnedIsolate>(),
+      align,
+    )
+    .unwrap();
+    assert!(layout.size() > 0);
     let isolate_ptr: *mut v8::OwnedIsolate =
+      // SAFETY: we just asserted that layout has non-0 size.
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
@@ -353,9 +352,12 @@ impl JsRuntime {
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        unsafe { isolate_ptr.write(isolate) };
-        // Get isolate from the pointer.
-        isolate = unsafe { isolate_ptr.read() };
+        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+        // not overwriting an existing pointer.
+        isolate = unsafe {
+          isolate_ptr.write(isolate);
+          isolate_ptr.read()
+        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
@@ -382,9 +384,12 @@ impl JsRuntime {
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        unsafe { isolate_ptr.write(isolate) };
-
-        isolate = unsafe { isolate_ptr.read() };
+        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+        // not overwriting an existing pointer.
+        isolate = unsafe {
+          isolate_ptr.write(isolate);
+          isolate_ptr.read()
+        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
