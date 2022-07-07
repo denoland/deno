@@ -336,7 +336,7 @@ delete Object.prototype.__proto__;
     getDefaultLibLocation() {
       return ASSETS;
     },
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
       return core.opSync(
         "op_emit",
