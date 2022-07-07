@@ -99,8 +99,8 @@ Deno.test(async function evalPrimordial() {
     "globalThis.globalPromise.resolve();" as unknown as () => void,
     0,
   );
-  const _ = await global.globalPromise;
-  assert(wasCalled);
+  await global.globalPromise;
+  assert(!wasCalled);
   Reflect.deleteProperty(global, "globalPromise");
   globalThis.eval = originalEval;
 });
