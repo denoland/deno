@@ -2,7 +2,7 @@
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::undocumented_unsafe_blocks)]
 #![deny(clippy::missing_safety_doc)]
 
 use core::ptr::NonNull;
