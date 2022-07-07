@@ -14,7 +14,6 @@ use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
@@ -63,6 +62,8 @@ impl<T> Future for OpCall<T> {
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
+    // TODO(piscisaureus): safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let inner = unsafe { &mut self.get_unchecked_mut().0 };
     let mut pinned = Pin::new(inner);
     ready!(pinned.as_mut().poll(cx));
@@ -158,9 +159,7 @@ impl OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
-      tracker: OpsTracker {
-        ops: UnsafeCell::new(vec![Default::default(); ops_count]),
-      },
+      tracker: OpsTracker::new(ops_count),
     }
   }
 }

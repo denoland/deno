@@ -2,6 +2,7 @@
 
 use crate::colors;
 use dissimilar::{diff as difference, Chunk};
+use std::fmt::Write as _;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
@@ -113,12 +114,14 @@ impl DiffBuilder {
   fn write_line_diff(&mut self) {
     let split = self.orig.split('\n').enumerate();
     for (i, s) in split {
-      self.output.push_str(&format!(
+      write!(
+        self.output,
         "{:width$}{} ",
         self.orig_line + i,
         colors::gray(" |"),
         width = self.line_number_width
-      ));
+      )
+      .unwrap();
       self.output.push_str(&fmt_rem());
       self.output.push_str(s);
       self.output.push('\n');
@@ -126,12 +129,14 @@ impl DiffBuilder {
 
     let split = self.edit.split('\n').enumerate();
     for (i, s) in split {
-      self.output.push_str(&format!(
+      write!(
+        self.output,
         "{:width$}{} ",
         self.edit_line + i,
         colors::gray(" |"),
         width = self.line_number_width
-      ));
+      )
+      .unwrap();
       self.output.push_str(&fmt_add());
       self.output.push_str(s);
       self.output.push('\n');

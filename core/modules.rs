@@ -122,6 +122,7 @@ fn json_module_evaluation_steps<'a>(
   context: v8::Local<'a, v8::Context>,
   module: v8::Local<v8::Module>,
 ) -> Option<v8::Local<'a, v8::Value>> {
+  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
   let module_map = tc_scope
@@ -1803,15 +1804,11 @@ import "/a.js";
         )
         .unwrap();
 
-      // First poll runs `prepare_load` hook.
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
-
-      // Second poll actually loads modules into the isolate.
       assert!(matches!(
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
       assert_eq!(load_count.load(Ordering::Relaxed), 1);
       assert!(matches!(

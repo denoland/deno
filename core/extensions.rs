@@ -1,9 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::task::Context;
+use std::{cell::RefCell, rc::Rc, task::Context};
 
 pub type SourcePair = (&'static str, &'static str);
 pub type OpFnRef = v8::FunctionCallback;
@@ -92,13 +90,13 @@ impl Extension {
 
   pub fn run_event_loop_middleware(
     &self,
-    op_state: Rc<RefCell<OpState>>,
+    op_state_rc: Rc<RefCell<OpState>>,
     cx: &mut Context,
   ) -> bool {
     self
       .event_loop_middleware
       .as_ref()
-      .map(|f| f(op_state, cx))
+      .map(|f| f(op_state_rc, cx))
       .unwrap_or(false)
   }
 
